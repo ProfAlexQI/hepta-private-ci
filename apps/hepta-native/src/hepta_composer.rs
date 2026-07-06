@@ -491,9 +491,10 @@ mod tests {
         let command = parse_hepta_composer_command("/hepta tool read MEMORY.md").unwrap();
         assert_eq!(command.operator_summary(), "tool draft · read MEMORY.md");
         let plan = plan_hepta_composer_command("/status", 0).unwrap();
-        assert!(plan
-            .operator_summary()
-            .contains("read_only_runtime_command"));
+        assert!(
+            plan.operator_summary()
+                .contains("read_only_runtime_command")
+        );
     }
 
     #[test]

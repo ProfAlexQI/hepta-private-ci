@@ -1,6 +1,8 @@
-use hepta_core::{
-    DoctorCheckOutcome, DoctorReportContext, DoctorReportV2, DoctorRuntimeMetrics, ModelRef,
-};
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::DoctorReportContext;
+use hepta_core::DoctorReportV2;
+use hepta_core::DoctorRuntimeMetrics;
+use hepta_core::ModelRef;
 
 pub(super) fn assemble_report(
     active_model: ModelRef,
@@ -31,10 +33,12 @@ fn report_context(
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{
-        DoctorArea, DoctorCheckOutcome, DoctorOwner, DoctorRuntimeMetrics,
-        DoctorStatus as CoreDoctorStatus, ModelRef,
-    };
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorCheckOutcome;
+    use hepta_core::DoctorOwner;
+    use hepta_core::DoctorRuntimeMetrics;
+    use hepta_core::DoctorStatus as CoreDoctorStatus;
+    use hepta_core::ModelRef;
 
     use super::*;
 

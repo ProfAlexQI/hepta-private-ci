@@ -4,6 +4,30 @@ use makepad_widgets::*;
 
 use crate::tsp::{self, TspWalletMetadata};
 
+const TSP_WALLET_PENDING_CANCEL_COMPACT_LABEL: &str =
+    "Local cancel before submit; pending cancel is not wired.";
+pub const TSP_WALLET_PENDING_CANCEL_OPERATION_PACKET_EVIDENCE: &str = "CreateWalletModal now shows a local pending-cancel operation packet while wallet creation is in flight. The packet records a non-secret local operation key, the missing backend operation id, disabled cancel state, stale-result policy, and password redaction; it starts no TspRequest cancel, wallet database write beyond the already-submitted create request, filesystem delete, Matrix request, gateway/runtime/auth, or live mutation.";
+
+fn tsp_wallet_pending_cancel_operation_packet_label(
+    wallet_name: &str,
+    wallet_file_name: &str,
+) -> String {
+    let wallet_name = wallet_name.trim();
+    let wallet_name_state = if wallet_name.is_empty() {
+        "missing"
+    } else {
+        "loaded"
+    };
+    let file_name_state = if wallet_file_name.trim().is_empty() {
+        "default_from_wallet_name"
+    } else {
+        "explicit_local_value"
+    };
+    format!(
+        "Wallet creation pending-cancel packet: operation_id missing_backend_contract; local_operation_key wallet_name_state:{wallet_name_state} wallet_name_chars:{} file_name_state:{file_name_state}; cancel_state disabled_no_request; stale_result_policy backend_operation_id_required; password_redacted true. No TspRequest cancel, wallet database rollback, filesystem delete, Matrix request, gateway/runtime/auth, or live mutation starts. {TSP_WALLET_PENDING_CANCEL_OPERATION_PACKET_EVIDENCE}",
+        wallet_name.chars().count()
+    )
+}
 
 script_mod! {
     link tsp_enabled
@@ -174,6 +198,18 @@ script_mod! {
                 }
                 text: "status label"
             }
+
+            pending_cancel_evidence := Label {
+                width: Fill,
+                height: Fit,
+                flow: Flow.Right{wrap: true},
+                margin: Inset{top: 8}
+                draw_text +: {
+                    text_style: REGULAR_TEXT {font_size: 10},
+                    color: #555
+                }
+                text: "Local cancel before submit; pending cancel is not wired."
+            }
         }
     }
 }
@@ -201,12 +237,14 @@ enum CreateWalletModalState {
     WalletCreationError,
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 pub struct CreateWalletModal {
-    #[deref] view: View,
-    #[rust] state: CreateWalletModalState,
-    #[rust] is_showing_error: bool,
+    #[deref]
+    view: View,
+    #[rust]
+    state: CreateWalletModalState,
+    #[rust]
+    is_showing_error: bool,
 }
 
 impl Widget for CreateWalletModal {
@@ -227,8 +265,10 @@ impl WidgetMatchEvent for CreateWalletModal {
 
         // Handle canceling/closing the modal.
         let cancel_clicked = cancel_button.clicked(actions);
-        if cancel_clicked ||
-            actions.iter().any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
+        if cancel_clicked
+            || actions
+                .iter()
+                .any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
         {
             // If the modal was dismissed by clicking outside of it, we MUST NOT emit
             // a `CreateWalletModalAction::Close` action, as that would cause
@@ -294,7 +334,7 @@ impl WidgetMatchEvent for CreateWalletModal {
                                 empty if empty.is_empty() => wallet_file_name_input.empty_text(),
                                 non_empty => tsp::sanitize_wallet_name(&non_empty),
                             }
-                            .as_str()
+                            .as_str(),
                         );
                         let metadata = TspWalletMetadata {
                             wallet_name,
@@ -311,6 +351,13 @@ impl WidgetMatchEvent for CreateWalletModal {
                                 color: mod.widgets.COLOR_ACTIVE_PRIMARY_DARKER,
                             },
                         });
+                        self.view.label(cx, ids!(pending_cancel_evidence)).set_text(
+                            cx,
+                            &tsp_wallet_pending_cancel_operation_packet_label(
+                                &wallet_name_input.text(),
+                                &wallet_file_name_input.text(),
+                            ),
+                        );
                         accept_button.set_enabled(cx, false);
                         cancel_button.set_enabled(cx, false); // TODO: support canceling the wallet creation request?
                         wallet_name_input.set_is_read_only(cx, true);
@@ -322,10 +369,9 @@ impl WidgetMatchEvent for CreateWalletModal {
                     needs_redraw = true;
                 }
 
-                _ => { }
+                _ => {}
             }
         }
-
 
         // Clear the error message if the user changes any of the input fields.
         if self.is_showing_error {
@@ -357,11 +403,17 @@ impl WidgetMatchEvent for CreateWalletModal {
         for action in actions {
             match action.downcast_ref() {
                 // Handle the wallet creation success action.
-                Some(tsp::TspWalletAction::CreateWalletSuccess { metadata, is_default }) => {
+                Some(tsp::TspWalletAction::CreateWalletSuccess {
+                    metadata,
+                    is_default,
+                }) => {
                     self.state = CreateWalletModalState::WalletCreated;
                     self.is_showing_error = false;
                     let message = if *is_default {
-                        format!("Wallet \"{}\" created successfully and set as the default.", metadata.wallet_name)
+                        format!(
+                            "Wallet \"{}\" created successfully and set as the default.",
+                            metadata.wallet_name
+                        )
                     } else {
                         format!("Wallet \"{}\" created successfully.", metadata.wallet_name)
                     };
@@ -400,13 +452,16 @@ impl WidgetMatchEvent for CreateWalletModal {
                     });
                     accept_button.set_enabled(cx, false);
                     cancel_button.set_enabled(cx, true);
+                    self.view
+                        .label(cx, ids!(pending_cancel_evidence))
+                        .set_text(cx, "Wallet creation failed; inputs are unlocked again.");
                     wallet_name_input.set_is_read_only(cx, false);
                     wallet_file_name_input.set_is_read_only(cx, false);
                     password_input.set_is_read_only(cx, false);
                     confirm_password_input.set_is_read_only(cx, false);
                 }
 
-                _ => { }
+                _ => {}
             }
         }
 
@@ -430,11 +485,22 @@ impl CreateWalletModal {
         accept_button.set_visible(cx, true);
         cancel_button.set_visible(cx, true);
         // TODO: return buttons to their default state/appearance
-        self.view.text_input(cx, ids!(wallet_name_input)).set_is_read_only(cx, false);
-        self.view.text_input(cx, ids!(wallet_file_name_input)).set_is_read_only(cx, false);
-        self.view.text_input(cx, ids!(password_input)).set_is_read_only(cx, false);
-        self.view.text_input(cx, ids!(confirm_password_input)).set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(wallet_name_input))
+            .set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(wallet_file_name_input))
+            .set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(password_input))
+            .set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(confirm_password_input))
+            .set_is_read_only(cx, false);
         self.view.label(cx, ids!(status_label)).set_text(cx, "");
+        self.view
+            .label(cx, ids!(pending_cancel_evidence))
+            .set_text(cx, TSP_WALLET_PENDING_CANCEL_COMPACT_LABEL);
         self.is_showing_error = false;
         self.view.redraw(cx);
     }
@@ -442,7 +508,9 @@ impl CreateWalletModal {
 
 impl CreateWalletModalRef {
     pub fn show(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx);
     }
 }

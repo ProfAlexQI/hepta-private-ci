@@ -12,4 +12,8 @@ hepta-memory.workspace = true
 hepta-plugins.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+sqlx.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[dev-dependencies]
+tempfile.workspace = true

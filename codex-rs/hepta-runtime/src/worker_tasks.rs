@@ -1,22 +1,29 @@
-use std::{
-    collections::HashSet,
-    fs,
-    path::Path,
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
+use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+use std::process::Stdio;
+use std::thread;
+use std::time::Duration;
+use std::time::Instant;
 
-use hepta_core::{
-    AgentId, EventKind, ExecutionProfile, FilesystemScope, HeptaError, SessionId, WritePathScope,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::AgentId;
+use hepta_core::EventKind;
+use hepta_core::ExecutionProfile;
+use hepta_core::FilesystemScope;
+use hepta_core::HeptaError;
+use hepta_core::SessionId;
+use hepta_core::WritePathScope;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 
-use super::{
-    RuntimeKernel, VerticalSliceResult, WriteTransactionEntry, current_unix_ms,
-    resolve_path_within_root,
-};
+use super::RuntimeContextRecallProviderRollup;
+use super::RuntimeKernel;
+use super::VerticalSliceResult;
+use super::WriteTransactionEntry;
+use super::current_unix_ms;
+use super::resolve_path_within_root;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -110,6 +117,19 @@ pub struct WorkerTaskSteerDirective {
 pub enum WorkerTaskExecutionMode {
     Conversational,
     AutonomousCoding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerTaskContextRecallHandoffPolicy {
+    Disabled,
+    ExperimentalOperatorApproved,
+}
+
+impl WorkerTaskContextRecallHandoffPolicy {
+    fn experimental_api_enabled(self) -> bool {
+        matches!(self, Self::ExperimentalOperatorApproved)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -451,6 +471,16 @@ pub struct WorkerTaskRunReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkerTaskContextRecallRunReport {
+    pub run: WorkerTaskRunReport,
+    pub context_recall_handoff_policy: WorkerTaskContextRecallHandoffPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_rollup: Option<RuntimeContextRecallProviderRollup>,
+    pub selected_snippets_present: bool,
+    pub selected_snippet_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkerTaskLoopReport {
     pub task_id: String,
     pub workspace_id: String,
@@ -658,6 +688,18 @@ pub struct WorkerTaskDueRunReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkerTaskContextRecallDueRunReport {
+    pub now_unix_ms: u64,
+    pub due_count: usize,
+    pub ran_count: usize,
+    pub skipped_count: usize,
+    pub context_recall_handoff_policy: WorkerTaskContextRecallHandoffPolicy,
+    pub selected_snippets_present_count: usize,
+    pub selected_snippet_count: u32,
+    pub runs: Vec<WorkerTaskContextRecallRunReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkerTaskReadyRunReport {
     pub now_unix_ms: u64,
     pub candidate_count: usize,
@@ -667,6 +709,22 @@ pub struct WorkerTaskReadyRunReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
     pub runs: Vec<WorkerTaskRunReport>,
+    pub blocked_task_ids: Vec<String>,
+    pub pressure: WorkerPoolPressureReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkerTaskContextRecallReadyRunReport {
+    pub now_unix_ms: u64,
+    pub candidate_count: usize,
+    pub ready_count: usize,
+    pub ran_count: usize,
+    pub blocked_count: usize,
+    pub limit: Option<usize>,
+    pub context_recall_handoff_policy: WorkerTaskContextRecallHandoffPolicy,
+    pub selected_snippets_present_count: usize,
+    pub selected_snippet_count: u32,
+    pub runs: Vec<WorkerTaskContextRecallRunReport>,
     pub blocked_task_ids: Vec<String>,
     pub pressure: WorkerPoolPressureReport,
 }
@@ -1532,6 +1590,20 @@ impl RuntimeKernel {
     }
 
     pub async fn run_worker_task(&self, task_id: &str) -> Result<WorkerTaskRunReport, HeptaError> {
+        Ok(self
+            .run_worker_task_with_context_recall_handoff(
+                task_id,
+                WorkerTaskContextRecallHandoffPolicy::Disabled,
+            )
+            .await?
+            .run)
+    }
+
+    pub async fn run_worker_task_with_context_recall_handoff(
+        &self,
+        task_id: &str,
+        context_recall_handoff_policy: WorkerTaskContextRecallHandoffPolicy,
+    ) -> Result<WorkerTaskContextRecallRunReport, HeptaError> {
         let prompt = {
             let now = current_unix_ms()?;
             let mut guard = self
@@ -1614,10 +1686,32 @@ impl RuntimeKernel {
             })),
         )?;
 
+        let mut provider_rollup = None;
+        let mut selected_snippets_present = false;
+        let mut selected_snippet_count = 0;
         let run_result = if let Some(err) = simulated_worker_failure(&running) {
             Err(err)
         } else if running.execution_mode == WorkerTaskExecutionMode::AutonomousCoding {
             self.run_autonomous_coding_worker_loop(&running).await
+        } else if context_recall_handoff_policy.experimental_api_enabled() {
+            match self
+                .run_demo_turn_in_session_with_context_recall_handoff(
+                    &running.worker_session_id,
+                    &prompt,
+                    true,
+                )
+                .await
+            {
+                Ok(run) => {
+                    provider_rollup = Some(run.provider_rollup);
+                    selected_snippets_present = run.selected_snippets_present;
+                    selected_snippet_count = run.selected_snippet_count;
+                    Ok(build_conversational_worker_execution_output(
+                        &running, run.result,
+                    ))
+                }
+                Err(err) => Err(err),
+            }
         } else {
             self.run_demo_turn_in_session(&running.worker_session_id, &prompt)
                 .await
@@ -1661,21 +1755,27 @@ impl RuntimeKernel {
                     })),
                 )?;
                 let file_leases = task.file_leases.clone();
-                Ok(WorkerTaskRunReport {
-                    task,
-                    result: Some(output.result),
-                    artifact_count: output.artifacts.len(),
-                    artifacts: output.artifacts,
-                    patch_proposal_count: output.patch_proposals.len(),
-                    patch_proposals: output.patch_proposals,
-                    coding_round_count: output.coding_rounds.len(),
-                    coding_rounds: output.coding_rounds,
-                    file_lease_count: file_leases.len(),
-                    file_leases,
-                    loop_step_count: output.loop_steps.len(),
-                    loop_steps: output.loop_steps,
-                    command_run_count: output.command_runs.len(),
-                    command_runs: output.command_runs,
+                Ok(WorkerTaskContextRecallRunReport {
+                    run: WorkerTaskRunReport {
+                        task,
+                        result: Some(output.result),
+                        artifact_count: output.artifacts.len(),
+                        artifacts: output.artifacts,
+                        patch_proposal_count: output.patch_proposals.len(),
+                        patch_proposals: output.patch_proposals,
+                        coding_round_count: output.coding_rounds.len(),
+                        coding_rounds: output.coding_rounds,
+                        file_lease_count: file_leases.len(),
+                        file_leases,
+                        loop_step_count: output.loop_steps.len(),
+                        loop_steps: output.loop_steps,
+                        command_run_count: output.command_runs.len(),
+                        command_runs: output.command_runs,
+                    },
+                    context_recall_handoff_policy,
+                    provider_rollup,
+                    selected_snippets_present,
+                    selected_snippet_count,
                 })
             }
             Err(err) => {
@@ -1712,21 +1812,27 @@ impl RuntimeKernel {
                     })),
                 )?;
                 let file_leases = task.file_leases.clone();
-                Ok(WorkerTaskRunReport {
-                    task,
-                    result: None,
-                    artifact_count: 0,
-                    artifacts: Vec::new(),
-                    patch_proposal_count: 0,
-                    patch_proposals: Vec::new(),
-                    coding_round_count: 0,
-                    coding_rounds: Vec::new(),
-                    file_lease_count: file_leases.len(),
-                    file_leases,
-                    loop_step_count: 0,
-                    loop_steps: Vec::new(),
-                    command_run_count: 0,
-                    command_runs: Vec::new(),
+                Ok(WorkerTaskContextRecallRunReport {
+                    run: WorkerTaskRunReport {
+                        task,
+                        result: None,
+                        artifact_count: 0,
+                        artifacts: Vec::new(),
+                        patch_proposal_count: 0,
+                        patch_proposals: Vec::new(),
+                        coding_round_count: 0,
+                        coding_rounds: Vec::new(),
+                        file_lease_count: file_leases.len(),
+                        file_leases,
+                        loop_step_count: 0,
+                        loop_steps: Vec::new(),
+                        command_run_count: 0,
+                        command_runs: Vec::new(),
+                    },
+                    context_recall_handoff_policy,
+                    provider_rollup: None,
+                    selected_snippets_present: false,
+                    selected_snippet_count: 0,
                 })
             }
         }
@@ -2457,6 +2563,26 @@ impl RuntimeKernel {
         &self,
         now_unix_ms: Option<u64>,
     ) -> Result<WorkerTaskDueRunReport, HeptaError> {
+        let report = self
+            .run_due_worker_tasks_with_context_recall_handoff(
+                now_unix_ms,
+                WorkerTaskContextRecallHandoffPolicy::Disabled,
+            )
+            .await?;
+        Ok(WorkerTaskDueRunReport {
+            now_unix_ms: report.now_unix_ms,
+            due_count: report.due_count,
+            ran_count: report.ran_count,
+            skipped_count: report.skipped_count,
+            runs: report.runs.into_iter().map(|run| run.run).collect(),
+        })
+    }
+
+    pub async fn run_due_worker_tasks_with_context_recall_handoff(
+        &self,
+        now_unix_ms: Option<u64>,
+        context_recall_handoff_policy: WorkerTaskContextRecallHandoffPolicy,
+    ) -> Result<WorkerTaskContextRecallDueRunReport, HeptaError> {
         let now_unix_ms = now_unix_ms.map(Ok).unwrap_or_else(current_unix_ms)?;
         let due_task_ids = self
             .worker_task_records()?
@@ -2474,16 +2600,27 @@ impl RuntimeKernel {
         let mut runs = Vec::new();
         let mut skipped_count = 0usize;
         for task_id in due_task_ids {
-            match self.run_worker_task(&task_id).await {
+            match self
+                .run_worker_task_with_context_recall_handoff(
+                    &task_id,
+                    context_recall_handoff_policy,
+                )
+                .await
+            {
                 Ok(run) => runs.push(run),
                 Err(_) => skipped_count += 1,
             }
         }
-        Ok(WorkerTaskDueRunReport {
+        let (selected_snippets_present_count, selected_snippet_count) =
+            selected_snippet_totals_for_worker_runs(&runs);
+        Ok(WorkerTaskContextRecallDueRunReport {
             now_unix_ms,
             due_count,
             ran_count: runs.len(),
             skipped_count,
+            context_recall_handoff_policy,
+            selected_snippets_present_count,
+            selected_snippet_count,
             runs,
         })
     }
@@ -2493,6 +2630,32 @@ impl RuntimeKernel {
         limit: Option<usize>,
         now_unix_ms: Option<u64>,
     ) -> Result<WorkerTaskReadyRunReport, HeptaError> {
+        let report = self
+            .run_ready_worker_tasks_with_context_recall_handoff(
+                limit,
+                now_unix_ms,
+                WorkerTaskContextRecallHandoffPolicy::Disabled,
+            )
+            .await?;
+        Ok(WorkerTaskReadyRunReport {
+            now_unix_ms: report.now_unix_ms,
+            candidate_count: report.candidate_count,
+            ready_count: report.ready_count,
+            ran_count: report.ran_count,
+            blocked_count: report.blocked_count,
+            limit: report.limit,
+            runs: report.runs.into_iter().map(|run| run.run).collect(),
+            blocked_task_ids: report.blocked_task_ids,
+            pressure: report.pressure,
+        })
+    }
+
+    pub async fn run_ready_worker_tasks_with_context_recall_handoff(
+        &self,
+        limit: Option<usize>,
+        now_unix_ms: Option<u64>,
+        context_recall_handoff_policy: WorkerTaskContextRecallHandoffPolicy,
+    ) -> Result<WorkerTaskContextRecallReadyRunReport, HeptaError> {
         let now_unix_ms = now_unix_ms.map(Ok).unwrap_or_else(current_unix_ms)?;
         let snapshot = self.worker_task_records()?;
         let candidate_tasks = snapshot
@@ -2586,17 +2749,28 @@ impl RuntimeKernel {
         );
         let mut runs = Vec::new();
         for task_id in selected_ready_task_ids {
-            if let Ok(run) = self.run_worker_task(&task_id).await {
+            if let Ok(run) = self
+                .run_worker_task_with_context_recall_handoff(
+                    &task_id,
+                    context_recall_handoff_policy,
+                )
+                .await
+            {
                 runs.push(run);
             }
         }
-        Ok(WorkerTaskReadyRunReport {
+        let (selected_snippets_present_count, selected_snippet_count) =
+            selected_snippet_totals_for_worker_runs(&runs);
+        Ok(WorkerTaskContextRecallReadyRunReport {
             now_unix_ms,
             candidate_count: candidate_tasks.len(),
             ready_count,
             ran_count: runs.len(),
             blocked_count: blocked_task_ids.len(),
             limit,
+            context_recall_handoff_policy,
+            selected_snippets_present_count,
+            selected_snippet_count,
             runs,
             blocked_task_ids,
             pressure,
@@ -3591,6 +3765,19 @@ fn sanitize_for_id(value: &str) -> String {
 
 fn count_status(tasks: &[WorkerTaskRecord], status: WorkerTaskStatus) -> usize {
     tasks.iter().filter(|task| task.status == status).count()
+}
+
+fn selected_snippet_totals_for_worker_runs(
+    runs: &[WorkerTaskContextRecallRunReport],
+) -> (usize, u32) {
+    let present_count = runs
+        .iter()
+        .filter(|run| run.selected_snippets_present)
+        .count();
+    let snippet_count = runs.iter().fold(0u32, |total, run| {
+        total.saturating_add(run.selected_snippet_count)
+    });
+    (present_count, snippet_count)
 }
 
 fn dependencies_completed(task: &WorkerTaskRecord, tasks: &[WorkerTaskRecord]) -> bool {
@@ -6104,16 +6291,29 @@ fn is_zero(value: &usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{EventKind, ExecutionProfile, FilesystemScope, WritePathScope};
+    use hepta_core::EventKind;
+    use hepta_core::ExecutionProfile;
+    use hepta_core::FilesystemScope;
+    use hepta_core::MemoryStore;
+    use hepta_core::WritePathScope;
 
-    use super::{
-        WorkerExecutionBackendBinding, WorkerExecutionBackendKind, WorkerExecutionBackendStatus,
-        WorkerPoolPressureLevel, WorkerTaskCommandRunOrigin, WorkerTaskExecutionMode,
-        WorkerTaskFailureKind, WorkerTaskFileLeaseStatus, WorkerTaskLoopPhase,
-        WorkerTaskMergeDecision, WorkerTaskPatchApplyStatus, WorkerTaskPromotionDecision,
-        WorkerTaskStatus, effective_worker_task_prompt, redact_worker_output_exfiltration,
-        task_status_label,
-    };
+    use super::WorkerExecutionBackendBinding;
+    use super::WorkerExecutionBackendKind;
+    use super::WorkerExecutionBackendStatus;
+    use super::WorkerPoolPressureLevel;
+    use super::WorkerTaskCommandRunOrigin;
+    use super::WorkerTaskContextRecallHandoffPolicy;
+    use super::WorkerTaskExecutionMode;
+    use super::WorkerTaskFailureKind;
+    use super::WorkerTaskFileLeaseStatus;
+    use super::WorkerTaskLoopPhase;
+    use super::WorkerTaskMergeDecision;
+    use super::WorkerTaskPatchApplyStatus;
+    use super::WorkerTaskPromotionDecision;
+    use super::WorkerTaskStatus;
+    use super::effective_worker_task_prompt;
+    use super::redact_worker_output_exfiltration;
+    use super::task_status_label;
     use crate::RuntimeKernel;
 
     #[test]
@@ -6666,6 +6866,238 @@ mod tests {
             std::path::Path::new(&patch_review.patches[0].file_path),
         );
         let _ = std::fs::remove_file(target_path);
+    }
+
+    #[tokio::test]
+    async fn worker_task_context_recall_handoff_is_operator_opt_in_without_snippet_leak() {
+        let disabled_runtime = RuntimeKernel::new();
+        disabled_runtime
+            .memory
+            .put(hepta_core::MemoryRecord {
+                id: "worker-disabled-source-id".into(),
+                scope: hepta_core::MemoryScope::LongTerm,
+                content: format!("worker-needle {}", "disabled-worker-context ".repeat(80)),
+            })
+            .await
+            .expect("memory should store");
+        let disabled_task = disabled_runtime
+            .spawn_worker_task("builder", "worker-needle", None)
+            .expect("task should spawn");
+
+        let disabled_run = disabled_runtime
+            .run_worker_task_with_context_recall_handoff(
+                &disabled_task.task.task_id,
+                WorkerTaskContextRecallHandoffPolicy::Disabled,
+            )
+            .await
+            .expect("disabled worker task should run");
+
+        assert_eq!(disabled_run.run.task.status, WorkerTaskStatus::Completed);
+        assert!(!disabled_run.selected_snippets_present);
+        assert_eq!(disabled_run.selected_snippet_count, 0);
+        assert!(disabled_run.provider_rollup.is_none());
+
+        let opted_runtime = RuntimeKernel::new();
+        opted_runtime
+            .memory
+            .put(hepta_core::MemoryRecord {
+                id: "worker-context-source-id".into(),
+                scope: hepta_core::MemoryScope::LongTerm,
+                content: format!(
+                    "worker-needle {}",
+                    "operator-worker-safe-context ".repeat(80)
+                ),
+            })
+            .await
+            .expect("memory should store");
+        let opted_task = opted_runtime
+            .spawn_worker_task("builder", "worker-needle", None)
+            .expect("task should spawn");
+
+        let opted_run = opted_runtime
+            .run_worker_task_with_context_recall_handoff(
+                &opted_task.task.task_id,
+                WorkerTaskContextRecallHandoffPolicy::ExperimentalOperatorApproved,
+            )
+            .await
+            .expect("operator-approved worker task should run");
+        let encoded = serde_json::to_string(&opted_run).expect("report should serialize");
+        let debug = format!("{opted_run:?}");
+
+        assert_eq!(opted_run.run.task.status, WorkerTaskStatus::Completed);
+        assert!(opted_run.selected_snippets_present);
+        assert!(opted_run.selected_snippet_count > 0);
+        assert!(
+            opted_run
+                .provider_rollup
+                .as_ref()
+                .expect("provider rollup should be present")
+                .recall_selection
+                .has_count_integrity()
+        );
+        assert!(
+            opted_run
+                .run
+                .result
+                .as_ref()
+                .expect("worker result should be present")
+                .final_text
+                .contains("[chat] model reply: worker-needle")
+        );
+        for forbidden in [
+            "operator-worker-safe-context",
+            "worker-context-source-id",
+            "[redacted-query]",
+            "source_id",
+            "source_memory_ids",
+        ] {
+            assert!(
+                !encoded.contains(forbidden),
+                "serialized worker report leaked {forbidden}"
+            );
+            assert!(
+                !debug.contains(forbidden),
+                "worker report debug leaked {forbidden}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn worker_task_context_recall_handoff_scheduler_policy_is_explicit_without_leak() {
+        let disabled_ready_runtime = RuntimeKernel::new();
+        disabled_ready_runtime
+            .memory
+            .put(hepta_core::MemoryRecord {
+                id: "worker-ready-disabled-source-id".into(),
+                scope: hepta_core::MemoryScope::LongTerm,
+                content: format!("ready-needle {}", "disabled-ready-context ".repeat(80)),
+            })
+            .await
+            .expect("memory should store");
+        disabled_ready_runtime
+            .spawn_worker_task("ready", "ready-needle", None)
+            .expect("ready task should spawn");
+
+        let disabled_ready = disabled_ready_runtime
+            .run_ready_worker_tasks_with_context_recall_handoff(
+                Some(10),
+                None,
+                WorkerTaskContextRecallHandoffPolicy::Disabled,
+            )
+            .await
+            .expect("disabled ready batch should run");
+
+        assert_eq!(disabled_ready.ran_count, 1);
+        assert_eq!(
+            disabled_ready.context_recall_handoff_policy,
+            WorkerTaskContextRecallHandoffPolicy::Disabled
+        );
+        assert_eq!(disabled_ready.selected_snippets_present_count, 0);
+        assert_eq!(disabled_ready.selected_snippet_count, 0);
+        assert!(disabled_ready.runs[0].provider_rollup.is_none());
+
+        let opted_ready_runtime = RuntimeKernel::new();
+        opted_ready_runtime
+            .memory
+            .put(hepta_core::MemoryRecord {
+                id: "worker-ready-source-id".into(),
+                scope: hepta_core::MemoryScope::LongTerm,
+                content: format!("ready-needle {}", "operator-ready-safe-context ".repeat(80)),
+            })
+            .await
+            .expect("memory should store");
+        opted_ready_runtime
+            .spawn_worker_task("ready", "ready-needle", None)
+            .expect("ready task should spawn");
+
+        let opted_ready = opted_ready_runtime
+            .run_ready_worker_tasks_with_context_recall_handoff(
+                Some(10),
+                None,
+                WorkerTaskContextRecallHandoffPolicy::ExperimentalOperatorApproved,
+            )
+            .await
+            .expect("operator-approved ready batch should run");
+        let ready_encoded = serde_json::to_string(&opted_ready).expect("report should serialize");
+        let ready_debug = format!("{opted_ready:?}");
+
+        assert_eq!(opted_ready.ran_count, 1);
+        assert_eq!(
+            opted_ready.context_recall_handoff_policy,
+            WorkerTaskContextRecallHandoffPolicy::ExperimentalOperatorApproved
+        );
+        assert_eq!(opted_ready.selected_snippets_present_count, 1);
+        assert!(opted_ready.selected_snippet_count > 0);
+        assert!(
+            opted_ready.runs[0]
+                .provider_rollup
+                .as_ref()
+                .expect("provider rollup should be present")
+                .recall_selection
+                .has_count_integrity()
+        );
+
+        let opted_due_runtime = RuntimeKernel::new();
+        opted_due_runtime
+            .memory
+            .put(hepta_core::MemoryRecord {
+                id: "worker-due-source-id".into(),
+                scope: hepta_core::MemoryScope::LongTerm,
+                content: format!("due-needle {}", "operator-due-safe-context ".repeat(80)),
+            })
+            .await
+            .expect("memory should store");
+        let scheduled = opted_due_runtime
+            .spawn_worker_task("scheduler", "due-needle", Some("delay:10ms"))
+            .expect("scheduled task should spawn");
+        let due_at = scheduled
+            .task
+            .next_run_unix_ms
+            .expect("scheduled task should have next run");
+
+        let opted_due = opted_due_runtime
+            .run_due_worker_tasks_with_context_recall_handoff(
+                Some(due_at),
+                WorkerTaskContextRecallHandoffPolicy::ExperimentalOperatorApproved,
+            )
+            .await
+            .expect("operator-approved due batch should run");
+        let due_encoded = serde_json::to_string(&opted_due).expect("report should serialize");
+        let due_debug = format!("{opted_due:?}");
+
+        assert_eq!(opted_due.due_count, 1);
+        assert_eq!(opted_due.ran_count, 1);
+        assert_eq!(
+            opted_due.context_recall_handoff_policy,
+            WorkerTaskContextRecallHandoffPolicy::ExperimentalOperatorApproved
+        );
+        assert_eq!(opted_due.selected_snippets_present_count, 1);
+        assert!(opted_due.selected_snippet_count > 0);
+        assert!(
+            opted_due.runs[0]
+                .provider_rollup
+                .as_ref()
+                .expect("provider rollup should be present")
+                .recall_selection
+                .has_count_integrity()
+        );
+
+        for rendered in [ready_encoded, ready_debug, due_encoded, due_debug] {
+            for forbidden in [
+                "operator-ready-safe-context",
+                "operator-due-safe-context",
+                "worker-ready-source-id",
+                "worker-due-source-id",
+                "[redacted-query]",
+                "source_id",
+                "source_memory_ids",
+            ] {
+                assert!(
+                    !rendered.contains(forbidden),
+                    "scheduler report leaked {forbidden}"
+                );
+            }
+        }
     }
 
     #[tokio::test]

@@ -2685,6 +2685,11 @@ pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
         let mut stream = stream.context("failed to accept native gateway connection")?;
         let request = read_http_request(&mut stream)?;
         let (method, path) = request_method_and_path(&request).unwrap_or(("GET", "/"));
+        if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path)
+        {
+            write_http_response(&mut stream, status, content_type, body)?;
+            continue;
+        }
         let request_body = request_body_text(&request);
         let (status, content_type, body) =
             route_native_gateway_request_with_body(method, path, &options, request_body);
@@ -2716,6 +2721,20 @@ fn route_native_gateway_request_with_body(
     if method == "GET" {
         match path {
             "/" | "/index.html" => {
+                return (
+                    "200 OK",
+                    "text/html; charset=utf-8",
+                    hepta_core::control_ui::control_ui_index_html(),
+                );
+            }
+            "/styles.css" => {
+                return (
+                    "200 OK",
+                    "text/css; charset=utf-8",
+                    hepta_core::control_ui::CONTROL_UI_STYLES_CSS.to_string(),
+                );
+            }
+            "/gateway-status" | "/gateway-status.html" | "/native-gateway.html" => {
                 return (
                     "200 OK",
                     "text/html; charset=utf-8",
@@ -5391,6 +5410,21 @@ fn route_native_gateway_request_with_body(
             "text/plain; charset=utf-8",
             "not found".to_string(),
         )
+    }
+}
+
+fn route_native_gateway_binary_asset(
+    method: &str,
+    path: &str,
+) -> Option<(&'static str, &'static str, &'static [u8])> {
+    if method == "GET" && path == "/assets/hepta-agent-logo.png" {
+        Some((
+            "200 OK",
+            "image/png",
+            hepta_core::control_ui::CONTROL_UI_HEPTA_AGENT_LOGO_PNG,
+        ))
+    } else {
+        None
     }
 }
 
@@ -10089,6 +10123,9 @@ struct HeptaNativePackagingGateResponse {
     resource_path: &'static str,
     rust_source_file_count: usize,
     packaging_resource_file_count: usize,
+    rust_source_file_count_policy: &'static str,
+    packaging_resource_file_count_policy: &'static str,
+    ui_iteration_file_count_flexible: bool,
     required_metadata_file_count: usize,
     required_metadata_files: &'static [&'static str],
     cargo_metadata_gate_ready: bool,
@@ -122826,6 +122863,9 @@ fn hepta_native_packaging_gate_report() -> HeptaNativePackagingGateResponse {
         resource_path: "apps/hepta-native/resources",
         rust_source_file_count: 125,
         packaging_resource_file_count: 111,
+        rust_source_file_count_policy: "minimum_floor_from_reviewed_manifest",
+        packaging_resource_file_count_policy: "minimum_floor_from_reviewed_manifest",
+        ui_iteration_file_count_flexible: true,
         required_metadata_file_count: 9,
         required_metadata_files: &[
             "apps/hepta-native/Cargo.toml",
@@ -124550,7 +124590,7 @@ fn write_http_response(
     body: &[u8],
 ) -> Result<()> {
     let header = format!(
-        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\nContent-Security-Policy: default-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
+        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
         body.len()
     );
     stream
@@ -125149,6 +125189,15 @@ mod tests {
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["rust_source_file_count"], 125);
         assert_eq!(value["packaging_resource_file_count"], 111);
+        assert_eq!(
+            value["rust_source_file_count_policy"],
+            "minimum_floor_from_reviewed_manifest"
+        );
+        assert_eq!(
+            value["packaging_resource_file_count_policy"],
+            "minimum_floor_from_reviewed_manifest"
+        );
+        assert_eq!(value["ui_iteration_file_count_flexible"], true);
         assert_eq!(value["required_metadata_file_count"], 9);
         assert_eq!(value["cargo_metadata_gate_ready"], true);
         assert_eq!(value["package_metadata_ready"], true);
@@ -180448,6 +180497,48 @@ mod tests {
         assert!(!report.side_effects.model_invoked);
         assert!(!report.side_effects.message_sent);
         assert!(!report.side_effects.cursor_written);
+    }
+
+    #[test]
+    fn control_ui_root_serves_rust_rendered_shell_and_assets() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+
+        let (status, content_type, body) = route_native_gateway_request("GET", "/", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+        assert!(body.contains("data-rust-frontend-renderer=\"hepta-core::control_ui\""));
+        assert!(body.contains("data-control-ui-product-first=\"true\""));
+        assert!(!body.contains("<script src="));
+
+        let (status, content_type, legacy_body) =
+            route_native_gateway_request("GET", "/gateway-status", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+        assert!(legacy_body.contains("Hepta Control UI"));
+        assert!(legacy_body.contains("/api/hepta-merge-completion"));
+
+        let (status, content_type, css) =
+            route_native_gateway_request("GET", "/styles.css", &options);
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "text/css; charset=utf-8");
+        assert!(css.contains(".tg-conversation-rail"));
+        assert!(css.contains(".command-palette"));
+        assert!(css.contains("safe-area-inset-bottom"));
+
+        let (status, content_type, logo) =
+            route_native_gateway_binary_asset("GET", "/assets/hepta-agent-logo.png")
+                .expect("logo asset route");
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "image/png");
+        assert!(logo.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(logo.len() > 1024);
+        assert!(
+            route_native_gateway_binary_asset("POST", "/assets/hepta-agent-logo.png").is_none()
+        );
     }
 
     #[test]

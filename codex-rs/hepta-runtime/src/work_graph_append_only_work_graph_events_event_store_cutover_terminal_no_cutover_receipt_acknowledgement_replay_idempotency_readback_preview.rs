@@ -1,0 +1,636 @@
+use serde::Serialize;
+
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_PREVIEW_GATE;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPreviewReport;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyBlockerPreview;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyGuardPreview;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPlanPreview;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStagePreview;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::hepta_work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview_report;
+use crate::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview::work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_required_prior_gates;
+
+pub const WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_PREVIEW_GATE:
+    &str =
+    "hepta_work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_preview_gate";
+pub const WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_SCHEMA_VERSION:
+    &str = "work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_preview_v1";
+pub const WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_RECOMMENDED_NEXT_GATE:
+    &str =
+        "hepta_work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview_gate";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewReport {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub gate: &'static str,
+    pub schema_version: &'static str,
+    pub preview_mode: &'static str,
+    pub upstream_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview_gate: &'static str,
+    pub source_surface_count: usize,
+    pub preview_plan_count: usize,
+    pub readback_plan_count: usize,
+    pub stage_assertion_count: usize,
+    pub evidence_field_assertion_count: usize,
+    pub guard_assertion_count: usize,
+    pub blocker_mapping_assertion_count: usize,
+    pub drift_detector_count: usize,
+    pub blocker_count: usize,
+    pub required_prior_gate_count: usize,
+    pub readback_plans: Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPlanPreview>,
+    pub stage_assertions: Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStageAssertionPreview>,
+    pub evidence_field_assertions:
+        Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyEvidenceFieldAssertionPreview>,
+    pub guard_assertions: Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyGuardAssertionPreview>,
+    pub blocker_mapping_assertions:
+        Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyBlockerMappingAssertionPreview>,
+    pub drift_detectors: Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyDriftDetectorPreview>,
+    pub blockers: Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackBlockerPreview>,
+    pub required_prior_gates: Vec<&'static str>,
+    pub recommended_next_gate: &'static str,
+    pub ready_for_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview: bool,
+    pub ready_for_append_only_work_graph_events: bool,
+    pub ready_for_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency: bool,
+    pub ready_for_replay_readback_execution: bool,
+    pub ready_for_runtime_adapter_enforcement: bool,
+    pub ready_for_live_execution: bool,
+    pub side_effects:
+        WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewSideEffects,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPlanPreview
+{
+    pub source_surface_id: &'static str,
+    pub source_category: &'static str,
+    pub event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan_id:
+        String,
+    pub expected_stage_count: usize,
+    pub expected_evidence_field_count: usize,
+    pub expected_residual_blocker_count: usize,
+    pub readback_status: &'static str,
+    pub readback_execution_enabled: bool,
+    pub replay_execution_enabled: bool,
+    pub event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_enabled:
+        bool,
+    pub persists_work_graph_events: bool,
+    pub next_required_gate: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStageAssertionPreview
+{
+    pub stage_id: &'static str,
+    pub affected_source_surface_ids: Vec<&'static str>,
+    pub required_contract_ref_ids: Vec<&'static str>,
+    pub contract_ready_preview: bool,
+    pub event_store_enabled_after_readback: bool,
+    pub execution_enabled_after_readback: bool,
+    pub persistence_enabled_after_readback: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyEvidenceFieldAssertionPreview
+{
+    pub source_surface_id: &'static str,
+    pub evidence_field_ids: Vec<&'static str>,
+    pub evidence_contract_ready_preview: bool,
+    pub persists_evidence_after_readback: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyGuardAssertionPreview
+{
+    pub guard_id: &'static str,
+    pub severity: &'static str,
+    pub guard_scope: &'static str,
+    pub required_before_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency:
+        bool,
+    pub satisfied_by_preview: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyBlockerMappingAssertionPreview
+{
+    pub blocker_id: &'static str,
+    pub affected_source_surface_ids: Vec<&'static str>,
+    pub affected_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_ids:
+        Vec<&'static str>,
+    pub blocks_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency:
+        bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyDriftDetectorPreview
+{
+    pub id: &'static str,
+    pub source_fields: Vec<&'static str>,
+    pub drift_budget: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackBlockerPreview
+{
+    pub id: &'static str,
+    pub severity: &'static str,
+    pub affected_source_surface_ids: Vec<&'static str>,
+    pub recommended_fix: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewSideEffects
+{
+    pub filesystem_written: bool,
+    pub graph_state_persisted: bool,
+    pub work_graph_events_persisted: bool,
+    pub event_store_enabled: bool,
+    pub wal_written: bool,
+    pub checkpoint_written: bool,
+    pub replay_executed: bool,
+    pub readback_executed: bool,
+    pub adapter_projection_enforced: bool,
+    pub runtime_mutation_performed: bool,
+    pub agent_spawn_performed: bool,
+    pub external_send_performed: bool,
+    pub model_invoked: bool,
+}
+
+pub fn hepta_work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_preview_report()
+-> WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewReport
+{
+    let preview_report =
+        hepta_work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview_report(
+        );
+    let readback_plans =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_plans_from(
+            &preview_report.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans,
+        );
+    let stage_assertions =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_assertions_from(
+            &preview_report.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_plans,
+        );
+    let evidence_field_assertions =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_evidence_field_assertions_from(
+            &preview_report.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans,
+        );
+    let guard_assertions =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_guard_assertions_from(
+            &preview_report.guards,
+        );
+    let blocker_mapping_assertions =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_blocker_mapping_assertions_from(
+            &preview_report.blockers,
+        );
+    let drift_detectors =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_drift_detectors();
+    let blockers =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_blockers_from(
+            &preview_report,
+        );
+    let required_prior_gates =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_required_prior_gates();
+
+    WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewReport {
+        product: "Hepta",
+        runtime: "hepta",
+        status: "ready",
+        gate: WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_PREVIEW_GATE,
+        schema_version:
+            WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_SCHEMA_VERSION,
+        preview_mode:
+            "read_only_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_preview_no_execution",
+        upstream_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview_gate:
+            WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_PREVIEW_GATE,
+        source_surface_count: preview_report.source_surface_count,
+        preview_plan_count: preview_report.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan_count,
+        readback_plan_count: readback_plans.len(),
+        stage_assertion_count: stage_assertions.len(),
+        evidence_field_assertion_count: evidence_field_assertions.len(),
+        guard_assertion_count: guard_assertions.len(),
+        blocker_mapping_assertion_count: blocker_mapping_assertions.len(),
+        drift_detector_count: drift_detectors.len(),
+        blocker_count: blockers.len(),
+        required_prior_gate_count: required_prior_gates.len(),
+        readback_plans,
+        stage_assertions,
+        evidence_field_assertions,
+        guard_assertions,
+        blocker_mapping_assertions,
+        drift_detectors,
+        blockers,
+        required_prior_gates,
+        recommended_next_gate:
+            WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_RECOMMENDED_NEXT_GATE,
+        ready_for_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview: true,
+        ready_for_append_only_work_graph_events: false,
+        ready_for_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency: false,
+        ready_for_replay_readback_execution: false,
+        ready_for_runtime_adapter_enforcement: false,
+        ready_for_live_execution: false,
+        side_effects:
+            WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewSideEffects::none(),
+    }
+}
+
+pub fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_plans()
+-> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPlanPreview>{
+    let preview_report =
+        hepta_work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_preview_report(
+        );
+    work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_plans_from(
+        &preview_report.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans,
+    )
+}
+
+pub fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_drift_detectors()
+-> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyDriftDetectorPreview>
+{
+    vec![
+        drift_detector(
+            "event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_drift",
+            vec![
+                "event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_id",
+            ],
+        ),
+        drift_detector(
+            "non_recording_replay_idempotency_drift",
+            vec!["non_recording_replay_idempotency_confirmation_id"],
+        ),
+        drift_detector(
+            "non_send_replay_idempotency_boundary_drift",
+            vec!["non_send_replay_idempotency_boundary_id"],
+        ),
+        drift_detector(
+            "git_mutation_replay_idempotency_boundary_drift",
+            vec!["git_mutation_replay_idempotency_boundary_id"],
+        ),
+        drift_detector(
+            "no_enablement_regression_guard_drift",
+            vec!["no_enablement_regression_replay_idempotency_id"],
+        ),
+        drift_detector(
+            "residual_blocker_mapping_drift",
+            vec!["residual_source_blocker_ids"],
+        ),
+        drift_detector("next_required_gate_drift", vec!["next_required_gate"]),
+    ]
+}
+
+pub fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_required_prior_gates()
+-> Vec<&'static str> {
+    let mut gates =
+        work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_required_prior_gates(
+        );
+    gates.push(
+        WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_PREVIEW_GATE,
+    );
+    gates
+}
+
+fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_plans_from(
+    plans: &[WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPlanPreview],
+) -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPlanPreview>
+{
+    plans
+        .iter()
+        .map(|plan| WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPlanPreview {
+            source_surface_id: plan.source_surface_id,
+            source_category: plan.source_category,
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan_id: plan.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan_id.clone(),
+            expected_stage_count: plan.required_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_ids.len(),
+            expected_evidence_field_count: plan.expected_evidence_field_ids.len(),
+            expected_residual_blocker_count: plan.residual_source_blocker_ids.len(),
+            readback_status: "readback_plan_ready",
+            readback_execution_enabled: false,
+            replay_execution_enabled: false,
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_enabled: false,
+            persists_work_graph_events: false,
+            next_required_gate:
+                WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_READBACK_RECOMMENDED_NEXT_GATE,
+        })
+        .collect()
+}
+
+fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_assertions_from(
+    stages: &[WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStagePreview],
+) -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStageAssertionPreview>
+{
+    stages
+        .iter()
+        .map(|stage| {
+            WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStageAssertionPreview {
+                stage_id: stage.id,
+                affected_source_surface_ids: stage.affected_source_surface_ids.clone(),
+                required_contract_ref_ids: stage.required_contract_ref_ids.clone(),
+                contract_ready_preview: stage.contract_ready_preview,
+                event_store_enabled_after_readback: false,
+                execution_enabled_after_readback: false,
+                persistence_enabled_after_readback: false,
+            }
+        })
+        .collect()
+}
+
+fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_evidence_field_assertions_from(
+    plans: &[WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPlanPreview],
+) -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyEvidenceFieldAssertionPreview>{
+    plans
+        .iter()
+        .map(|plan| {
+            WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyEvidenceFieldAssertionPreview {
+                source_surface_id: plan.source_surface_id,
+                evidence_field_ids: plan.expected_evidence_field_ids.clone(),
+                evidence_contract_ready_preview: true,
+                persists_evidence_after_readback: false,
+            }
+        })
+        .collect()
+}
+
+fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_guard_assertions_from(
+    guards: &[WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyGuardPreview],
+) -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyGuardAssertionPreview>
+{
+    guards
+        .iter()
+        .map(|guard| {
+            WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyGuardAssertionPreview {
+                guard_id: guard.id,
+                severity: guard.severity,
+                guard_scope: guard.guard_scope,
+                required_before_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency: guard
+                    .required_before_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency,
+                satisfied_by_preview: guard.satisfied_by_preview,
+            }
+        })
+        .collect()
+}
+
+fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_blocker_mapping_assertions_from(
+    blockers: &[WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyBlockerPreview],
+) -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyBlockerMappingAssertionPreview>{
+    blockers
+        .iter()
+        .map(|blocker| {
+            WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyBlockerMappingAssertionPreview {
+                blocker_id: blocker.id,
+                affected_source_surface_ids: blocker.affected_source_surface_ids.clone(),
+                affected_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_ids: blocker
+                    .affected_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_ids
+                    .clone(),
+                blocks_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency: true,
+            }
+        })
+        .collect()
+}
+
+fn work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_blockers_from(
+    preview_report: &WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPreviewReport,
+) -> Vec<
+    WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackBlockerPreview,
+>{
+    let all_sources = preview_report
+        .event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans
+        .iter()
+        .map(|plan| plan.source_surface_id)
+        .collect::<Vec<_>>();
+    vec![
+        readback_blocker(
+            "append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_not_executed",
+            "high",
+            all_sources.clone(),
+            "keep terminal no-cutover receipt acknowledgement replay idempotency readback as a preview until terminal review is explicitly requested",
+        ),
+        readback_blocker(
+            "append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_missing",
+            "high",
+            all_sources,
+            "apply readback-verified terminal no-cutover receipt acknowledgement replay idempotency contracts into terminal no-enable outcomes",
+        ),
+    ]
+}
+
+fn drift_detector(
+    id: &'static str,
+    source_fields: Vec<&'static str>,
+) -> WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyDriftDetectorPreview{
+    WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyDriftDetectorPreview {
+        id,
+        source_fields,
+        drift_budget: 0,
+    }
+}
+
+fn readback_blocker(
+    id: &'static str,
+    severity: &'static str,
+    affected_source_surface_ids: Vec<&'static str>,
+    recommended_fix: &'static str,
+) -> WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackBlockerPreview{
+    WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackBlockerPreview {
+        id,
+        severity,
+        affected_source_surface_ids,
+        recommended_fix,
+    }
+}
+
+impl WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewSideEffects {
+    const fn none() -> Self {
+        Self {
+            filesystem_written: false,
+            graph_state_persisted: false,
+            work_graph_events_persisted: false,
+            event_store_enabled: false,
+            wal_written: false,
+            checkpoint_written: false,
+            replay_executed: false,
+            readback_executed: false,
+            adapter_projection_enforced: false,
+            runtime_mutation_performed: false,
+            agent_spawn_performed: false,
+            external_send_performed: false,
+            model_invoked: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_plans_preserve_no_execution()
+     {
+        let plans =
+            work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_plans_from(
+                &sample_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans(),
+            );
+
+        assert_eq!(plans.len(), 2);
+        assert!(plans.iter().all(|plan| {
+            plan.readback_status == "readback_plan_ready"
+                && plan.expected_stage_count == 6
+                && plan.expected_evidence_field_count == 10
+                && !plan.readback_execution_enabled
+                && !plan.replay_execution_enabled
+                && !plan.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_enabled
+                && !plan.persists_work_graph_events
+        }));
+    }
+
+    #[test]
+    fn event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_assertions_do_not_enable_persistence()
+     {
+        let stage_assertions =
+            work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_assertions_from(
+                &sample_stages(),
+            );
+        let evidence_assertions =
+            work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_evidence_field_assertions_from(
+                &sample_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans(),
+            );
+
+        assert!(
+            stage_assertions
+                .iter()
+                .all(|assertion| assertion.contract_ready_preview
+                    && !assertion.event_store_enabled_after_readback
+                    && !assertion.execution_enabled_after_readback
+                    && !assertion.persistence_enabled_after_readback)
+        );
+        assert!(
+            evidence_assertions
+                .iter()
+                .all(|assertion| assertion.evidence_contract_ready_preview
+                    && !assertion.persists_evidence_after_readback)
+        );
+    }
+
+    #[test]
+    fn event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_drift_detectors_cover_core_contracts()
+     {
+        let detectors =
+            work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_drift_detectors(
+            );
+
+        assert_eq!(detectors.len(), 7);
+        assert!(detectors.iter().all(|detector| detector.drift_budget == 0));
+        assert!(detectors.iter().any(|detector| detector.id
+            == "event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_drift"));
+    }
+
+    #[test]
+    fn event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_readback_side_effects_remain_disabled()
+     {
+        assert_eq!(
+            WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewSideEffects::none(),
+            WorkGraphAppendOnlyWorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyReadbackPreviewSideEffects {
+                filesystem_written: false,
+                graph_state_persisted: false,
+                work_graph_events_persisted: false,
+                event_store_enabled: false,
+                wal_written: false,
+                checkpoint_written: false,
+                replay_executed: false,
+                readback_executed: false,
+                adapter_projection_enforced: false,
+                runtime_mutation_performed: false,
+                agent_spawn_performed: false,
+                external_send_performed: false,
+                model_invoked: false,
+            }
+        );
+    }
+
+    fn sample_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plans()
+    -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPlanPreview>{
+        vec![
+            sample_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan(
+                "update_plan_tool",
+                "planning",
+            ),
+            sample_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan(
+                "multi_agent_v2_thread_spawn",
+                "multi_agent",
+            ),
+        ]
+    }
+
+    fn sample_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan(
+        source_surface_id: &'static str,
+        source_category: &'static str,
+    ) -> WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPlanPreview{
+        WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyPlanPreview {
+            source_surface_id,
+            source_category,
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_plan_id: format!(
+                "{source_surface_id}_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency"
+            ),
+            previous_enforcement_decision: "deny_append_only_work_graph_events_disabled",
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_state: "work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_ready_preview",
+            required_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_stage_ids: vec![
+                "work_graph_events_terminal_no_cutover_receipt_acknowledgement_replay_idempotency",
+                "work_graph_events_receipt_acknowledgement_replay_idempotency_non_recording",
+                "work_graph_events_receipt_acknowledgement_replay_idempotency_non_send_boundary",
+                "work_graph_events_receipt_acknowledgement_replay_idempotency_git_mutation_boundary",
+                "work_graph_events_receipt_acknowledgement_replay_idempotency_no_enablement_regression_guard",
+                "work_graph_events_receipt_acknowledgement_replay_idempotency_terminal_frontier_mapping",
+            ],
+            expected_evidence_field_ids: vec![
+                "source_surface_id",
+                "source_category",
+                "event_store_cutover_terminal_no_cutover_receipt_acknowledgement_rerun_decision_ref",
+                "terminal_no_cutover_receipt_acknowledgement_replay_idempotency_id",
+                "non_recording_replay_idempotency_confirmation_id",
+                "non_send_replay_idempotency_boundary_id",
+                "git_mutation_replay_idempotency_boundary_id",
+                "no_enablement_regression_replay_idempotency_id",
+                "residual_source_blocker_ids",
+                "next_required_gate",
+            ],
+            residual_source_blocker_ids: vec![],
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready_preview: true,
+            non_recording_replay_idempotency_ready_preview: true,
+            non_send_replay_idempotency_boundary_ready_preview: true,
+            git_mutation_replay_idempotency_boundary_ready_preview: true,
+            terminal_no_cutover_receipt_acknowledgement_replay_idempotency_frontier_ready_preview: true,
+            applies_to_runtime: false,
+            persists_work_graph_events: false,
+            enables_event_store: false,
+            writes_wal: false,
+            writes_checkpoint: false,
+            executes_replay: false,
+            executes_readback: false,
+            enforces_adapter_projection: false,
+            mutates_runtime: false,
+        }
+    }
+
+    fn sample_stages()
+    -> Vec<WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStagePreview>
+    {
+        vec![WorkGraphEventsEventStoreCutoverTerminalNoCutoverReceiptAcknowledgementReplayIdempotencyStagePreview {
+            id: "work_graph_events_terminal_no_cutover_receipt_acknowledgement_replay_idempotency",
+            priority: "critical",
+            category: "event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency",
+            affected_source_surface_ids: vec!["update_plan_tool"],
+            required_contract_ref_ids: vec![
+                "append_only_event_store_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready",
+            ],
+            expected_runtime_state: "preview_only_no_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency",
+            prerequisite_gate_ids: vec![
+                WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_EVENT_STORE_CUTOVER_TERMINAL_NO_CUTOVER_RECEIPT_ACKNOWLEDGEMENT_REPLAY_IDEMPOTENCY_PREVIEW_GATE,
+            ],
+            contract_ready_preview: true,
+            persists_work_graph_events_after_preview: false,
+            enables_event_store_after_preview: false,
+            writes_wal_after_preview: false,
+            writes_checkpoint_after_preview: false,
+            executes_replay_after_preview: false,
+            executes_readback_after_preview: false,
+            enforces_adapter_projection_after_preview: false,
+            mutates_runtime_after_preview: false,
+        }]
+    }
+}

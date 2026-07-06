@@ -1,8 +1,43 @@
-
 use makepad_widgets::*;
 use tsp_sdk::AsyncSecureStore;
 
-use crate::{sliding_sync::current_user_id, tsp::{submit_tsp_request, TspRequest, TspVerificationDetails}};
+use crate::{
+    sliding_sync::current_user_id,
+    tsp::{submit_tsp_request, TspRequest, TspVerificationDetails},
+};
+
+pub const TSP_VERIFICATION_REQUEST_METADATA_EVIDENCE: &str = "TspVerificationModal shows loaded request metadata from TspVerificationDetails plus the current Matrix identity and wallet cache: initiating user/VID availability, responding user/VID availability, current-user match, and wallet VID availability. Rendering this metadata starts no extra TspRequest, wallet database write, filesystem write, Matrix request, gateway/runtime/auth, or live mutation; Accept/Ignore keep the existing RespondToDidAssociationRequest flow unchanged.";
+
+fn tsp_verification_request_metadata_label(
+    details: &TspVerificationDetails,
+    current_user_matches: bool,
+    wallet_responding_vid_loaded: bool,
+) -> String {
+    let initiating_vid = if details.initiating_vid.trim().is_empty() {
+        "missing"
+    } else {
+        "loaded"
+    };
+    let responding_vid = if details.responding_vid.trim().is_empty() {
+        "missing"
+    } else {
+        "loaded"
+    };
+    let current_user_state = if current_user_matches {
+        "matches responding user"
+    } else {
+        "mismatch or not loaded"
+    };
+    let wallet_vid_state = if wallet_responding_vid_loaded {
+        "loaded"
+    } else {
+        "missing"
+    };
+    format!(
+        "TSP request metadata: from {} ({initiating_vid} VID); to {} ({responding_vid} VID); current user {current_user_state}; wallet responding VID {wallet_vid_state}. Metadata preview starts no extra TspRequest, wallet database write, filesystem write, Matrix request, gateway/runtime/auth, or live mutation.",
+        details.initiating_user_id, details.responding_user_id
+    )
+}
 
 script_mod! {
     link tsp_enabled
@@ -61,6 +96,17 @@ script_mod! {
                     }
                 }
 
+                request_metadata := Label {
+                    width: Fill
+                    flow: Flow.Right{wrap: true}
+                    draw_text +: {
+                        text_style: REGULAR_TEXT {
+                            font_size: 10.0,
+                        },
+                        color: #444
+                    }
+                }
+
                 View {
                     width: Fill, height: Fit
                     flow: Right,
@@ -90,8 +136,10 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct TspVerificationModal {
-    #[deref] view: View,
-    #[rust] state: TspVerificationModalState,
+    #[deref]
+    view: View,
+    #[rust]
+    state: TspVerificationModalState,
 }
 
 #[derive(Default)]
@@ -185,7 +233,10 @@ impl WidgetMatchEvent for TspVerificationModal {
                     // the wallet. If not, we need to show an error instructing the user
                     // to add that VID to their wallet first and then retry the verification process.
                     // Then, we need to send a negative response to the initiator of the request.
-                    let error_text = if !wallet_db.has_private_vid(&details.responding_vid).is_ok_and(|v| v) {
+                    let error_text = if !wallet_db
+                        .has_private_vid(&details.responding_vid)
+                        .is_ok_and(|v| v)
+                    {
                         Some(format!(
                             "Error: the VID \"{}\" was not found in your current wallet.\n\n\
                             Either the requestor has the wrong VID for you, or you have not yet added that VID to your wallet.\n\n\
@@ -224,16 +275,17 @@ impl WidgetMatchEvent for TspVerificationModal {
                             },
                         });
                         new_state = TspVerificationModalState::RequestDeclined;
-                    }
-                    else {
-                        let prompt = format!("You have accepted the TSP verification request.\n\n\
+                    } else {
+                        let prompt = format!(
+                            "You have accepted the TSP verification request.\n\n\
                             Please confirm that the following code matches for both users:\n\n\
                             Code: \"{}\"\n",
                             details.random_str,
                         );
                         prompt_label.set_text(cx, &prompt);
                         accept_button.set_text(cx, "Yes, they match!");
-                        new_state = TspVerificationModalState::RequestAccepted { details, wallet_db };
+                        new_state =
+                            TspVerificationModalState::RequestAccepted { details, wallet_db };
                     }
                 }
 
@@ -263,16 +315,22 @@ impl WidgetMatchEvent for TspVerificationModal {
 
         for action in actions {
             match action.downcast_ref() {
-                Some(TspVerificationModalAction::SentDidAssociationResponse { details, result })
-                    if self.state.details().is_some_and(|d| d == details) =>
-                {
+                Some(TspVerificationModalAction::SentDidAssociationResponse {
+                    details,
+                    result,
+                }) if self.state.details().is_some_and(|d| d == details) => {
                     match result {
                         Ok(()) => {
                             self.label(cx, ids!(prompt)).set_text(cx, "The TSP verification process has completed successfully.\n\nYou may now close this.");
                             self.state = TspVerificationModalState::RequestVerified;
                         }
                         Err(e) => {
-                            self.label(cx, ids!(prompt)).set_text(cx, &format!("Error: failed to complete the TSP verification process:\n\n{e}"));
+                            self.label(cx, ids!(prompt)).set_text(
+                                cx,
+                                &format!(
+                                    "Error: failed to complete the TSP verification process:\n\n{e}"
+                                ),
+                            );
                             self.state = TspVerificationModalState::RequestDeclined;
                         }
                     }
@@ -306,7 +364,8 @@ impl TspVerificationModal {
         wallet_db: AsyncSecureStore,
     ) {
         log!("Initializing TSP verification modal with: {:?}", details);
-        let prompt_text = format!("Matrix User \"{}\" is requesting to verify your identity via TSP.\n\
+        let prompt_text = format!(
+            "Matrix User \"{}\" is requesting to verify your identity via TSP.\n\
             Their TSP identity is: \"{}\".\n\n\
             They want to verify your TSP identity \"{}\" associated with Matrix User ID \"{}\".\n\n\
             If you recognize these details, would you like to accept this request?",
@@ -316,6 +375,17 @@ impl TspVerificationModal {
             details.responding_user_id,
         );
         self.label(cx, ids!(prompt)).set_text(cx, &prompt_text);
+        let current_user_matches = current_user_id().as_ref() == Some(&details.responding_user_id);
+        let wallet_responding_vid_loaded = wallet_db
+            .has_private_vid(&details.responding_vid)
+            .is_ok_and(|loaded| loaded);
+        let request_metadata_text = tsp_verification_request_metadata_label(
+            &details,
+            current_user_matches,
+            wallet_responding_vid_loaded,
+        );
+        self.label(cx, ids!(request_metadata))
+            .set_text(cx, &request_metadata_text);
 
         let accept_button = self.button(cx, ids!(accept_button));
         let cancel_button = self.button(cx, ids!(cancel_button));
@@ -328,10 +398,7 @@ impl TspVerificationModal {
         cancel_button.set_visible(cx, true);
         cancel_button.reset_hover(cx);
 
-        self.state = TspVerificationModalState::ReceivedRequest {
-            details,
-            wallet_db,
-        };
+        self.state = TspVerificationModalState::ReceivedRequest { details, wallet_db };
     }
 }
 
@@ -346,5 +413,49 @@ impl TspVerificationModalRef {
         if let Some(mut inner) = self.borrow_mut() {
             inner.initialize_with_details(cx, details, wallet_db);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use matrix_sdk::ruma::user_id;
+
+    use super::*;
+
+    fn fixture_details() -> TspVerificationDetails {
+        TspVerificationDetails {
+            initiating_vid: "did:tsp:alice".to_string(),
+            initiating_user_id: user_id!("@alice:example.org").to_owned(),
+            responding_vid: "did:tsp:bob".to_string(),
+            responding_user_id: user_id!("@bob:example.org").to_owned(),
+            random_str: "123456".to_string(),
+        }
+    }
+
+    #[test]
+    fn tsp_verification_request_metadata_summarizes_loaded_request() {
+        let label = tsp_verification_request_metadata_label(&fixture_details(), true, true);
+
+        assert!(label.contains("@alice:example.org"));
+        assert!(label.contains("@bob:example.org"));
+        assert!(label.contains("loaded VID"));
+        assert!(label.contains("current user matches responding user"));
+        assert!(label.contains("wallet responding VID loaded"));
+        assert!(label.contains("no extra TspRequest"));
+        assert!(label.contains("wallet database write"));
+        assert!(label.contains("live mutation"));
+    }
+
+    #[test]
+    fn tsp_verification_request_metadata_uses_safe_fallbacks() {
+        let mut details = fixture_details();
+        details.initiating_vid.clear();
+        details.responding_vid.clear();
+        let label = tsp_verification_request_metadata_label(&details, false, false);
+
+        assert!(label.contains("missing VID"));
+        assert!(label.contains("current user mismatch or not loaded"));
+        assert!(label.contains("wallet responding VID missing"));
+        assert!(label.contains("Matrix request"));
     }
 }

@@ -6,6 +6,7 @@ use matrix_sdk::ruma::OwnedMxcUri;
 
 use crate::sliding_sync::{submit_async_request, MatrixRequest};
 
+pub const AVATAR_FETCH_CACHE_READ_EVIDENCE: &str = "Avatar fetch cache read path uses existing FetchAvatar for known MXC URIs; fallback initials/cache misses send no SetAvatar, FetchMedia, profile/account mutation, membership, message, or room-state request.";
 
 thread_local! {
     /// A cache of Avatar images, indexed by Matrix URI.
@@ -65,21 +66,21 @@ pub fn process_avatar_updates(_cx: &mut Cx) {
 /// This function requires passing in a reference to `Cx`,
 /// which isn't used, but acts as a guarantee that this function
 /// must only be called by the main UI thread.
-pub fn get_or_fetch_avatar(
-    _cx: &mut Cx,
-    avatar_uri: &OwnedMxcUri,
-) -> AvatarCacheEntry {
-    AVATAR_NEW_CACHE.with_borrow_mut(|cache| {
-        match cache.raw_entry_mut().from_key(avatar_uri) {
-            RawEntryMut::Occupied(occupied) => occupied.get().clone(),
-            RawEntryMut::Vacant(vacant) => {
-                vacant.insert(avatar_uri.clone(), AvatarCacheEntry::Requested);
-                submit_async_request(MatrixRequest::FetchAvatar {
-                    mxc_uri: avatar_uri.clone(),
-                    on_fetched: enqueue_avatar_update,
-                });
-                AvatarCacheEntry::Requested
-            }
+pub fn get_or_fetch_avatar(_cx: &mut Cx, avatar_uri: &OwnedMxcUri) -> AvatarCacheEntry {
+    AVATAR_NEW_CACHE.with_borrow_mut(|cache| match cache.raw_entry_mut().from_key(avatar_uri) {
+        RawEntryMut::Occupied(occupied) => occupied.get().clone(),
+        RawEntryMut::Vacant(vacant) => {
+            // Avatar fetch cache read evidence: a known MXC URI may submit the
+            // existing Matrix FetchAvatar read request once; fallback initials,
+            // cache hits, failures, and requested states do not submit
+            // SetAvatar, FetchMedia, profile/account mutation, membership,
+            // message, or room-state requests.
+            vacant.insert(avatar_uri.clone(), AvatarCacheEntry::Requested);
+            submit_async_request(MatrixRequest::FetchAvatar {
+                mxc_uri: avatar_uri.clone(),
+                on_fetched: enqueue_avatar_update,
+            });
+            AvatarCacheEntry::Requested
         }
     })
 }

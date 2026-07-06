@@ -187,11 +187,8 @@ pub struct LogoutStateMachine {
 
 impl LogoutStateMachine {
     pub fn new(config: LogoutConfig) -> Self {
-        let initial_progress = LogoutProgress::new(
-            LogoutState::Idle,
-            "Ready to logout".to_string(),
-            0
-        );
+        let initial_progress =
+            LogoutProgress::new(LogoutState::Idle, "Ready to logout".to_string(), 0);
 
         Self {
             current_state: Arc::new(Mutex::new(LogoutState::Idle)),
@@ -225,15 +222,29 @@ impl LogoutStateMachine {
     }
 
     /// Transition to a new state
-    async fn transition_to(&self, new_state: LogoutState, message: String, percentage: u8) -> Result<()> {
+    async fn transition_to(
+        &self,
+        new_state: LogoutState,
+        message: String,
+        percentage: u8,
+    ) -> Result<()> {
         // Check for cancellation before transitioning
-        if self.is_cancelled() && !matches!(new_state, LogoutState::PointOfNoReturn | LogoutState::Failed(_)) {
+        if self.is_cancelled()
+            && !matches!(
+                new_state,
+                LogoutState::PointOfNoReturn | LogoutState::Failed(_)
+            )
+        {
             let mut state = self.current_state.lock().await;
             *state = LogoutState::Failed(LogoutError::Recoverable(RecoverableError::Cancelled));
             return Err(anyhow!("Logout cancelled by user"));
         }
 
-        log!("Logout state transition: {:?} -> {:?}", self.current_state.lock().await.clone(), new_state);
+        log!(
+            "Logout state transition: {:?} -> {:?}",
+            self.current_state.lock().await.clone(),
+            new_state
+        );
 
         // Update state and progress, then extract values for UI update
         let mut state = self.current_state.lock().await;
@@ -247,10 +258,14 @@ impl LogoutStateMachine {
         drop(progress);
 
         // Send progress update to UI
-        log!("Sending progress update: {} ({}%)", progress_message, progress_percentage);
+        log!(
+            "Sending progress update: {} ({}%)",
+            progress_message,
+            progress_percentage
+        );
         Cx::post_action(LogoutAction::ProgressUpdate {
             message: progress_message,
-            percentage: progress_percentage
+            percentage: progress_percentage,
         });
 
         Ok(())
@@ -270,16 +285,18 @@ impl LogoutStateMachine {
         self.transition_to(
             LogoutState::PreChecking,
             "Checking prerequisites...".to_string(),
-            10
-        ).await?;
+            10,
+        )
+        .await?;
 
         // Pre-checks
         if let Err(e) = self.perform_prechecks().await {
             self.transition_to(
                 LogoutState::Failed(e.clone()),
                 format!("Precheck failed: {}", e),
-                0
-            ).await?;
+                0,
+            )
+            .await?;
             self.handle_error(&e).await;
             return Err(anyhow!(e));
         }
@@ -288,15 +305,17 @@ impl LogoutStateMachine {
         self.transition_to(
             LogoutState::StoppingSyncService,
             "Stopping sync service...".to_string(),
-            20
-        ).await?;
+            20,
+        )
+        .await?;
 
         if let Err(e) = self.stop_sync_service().await {
             self.transition_to(
                 LogoutState::Failed(e.clone()),
                 format!("Failed to stop sync service: {}", e),
-                0
-            ).await?;
+                0,
+            )
+            .await?;
             self.handle_error(&e).await;
             return Err(anyhow!(e));
         }
@@ -305,8 +324,9 @@ impl LogoutStateMachine {
         self.transition_to(
             LogoutState::LoggingOutFromServer,
             "Logging out from server...".to_string(),
-            30
-        ).await?;
+            30,
+        )
+        .await?;
 
         match self.perform_server_logout().await {
             Ok(_) => {
@@ -315,8 +335,9 @@ impl LogoutStateMachine {
                 self.transition_to(
                     LogoutState::PointOfNoReturn,
                     "Point of no return reached".to_string(),
-                    50
-                ).await?;
+                    50,
+                )
+                .await?;
 
                 // We delete latest_user_id after reaching LOGOUT_POINT_OF_NO_RETURN:
                 // 1. To prevent auto-login with invalid session on next start
@@ -327,15 +348,17 @@ impl LogoutStateMachine {
             }
             Err(e) => {
                 // Check if it's an M_UNKNOWN_TOKEN error
-                if matches!(&e, LogoutError::Recoverable(RecoverableError::ServerLogoutFailed(msg)) if msg.contains("M_UNKNOWN_TOKEN")) {
+                if matches!(&e, LogoutError::Recoverable(RecoverableError::ServerLogoutFailed(msg)) if msg.contains("M_UNKNOWN_TOKEN"))
+                {
                     log!("Token already invalidated, continuing with logout");
                     self.point_of_no_return.store(true, Ordering::Release);
                     set_logout_point_of_no_return(true);
                     self.transition_to(
                         LogoutState::PointOfNoReturn,
                         "Token already invalidated".to_string(),
-                        50
-                    ).await?;
+                        50,
+                    )
+                    .await?;
 
                     // Same delete operation as in the success case above
                     if let Err(e) = delete_latest_user_id().await {
@@ -350,8 +373,9 @@ impl LogoutStateMachine {
                     self.transition_to(
                         LogoutState::Failed(e.clone()),
                         format!("Server logout failed: {}", e),
-                        0
-                    ).await?;
+                        0,
+                    )
+                    .await?;
                     self.handle_error(&e).await;
                     return Err(anyhow!(e));
                 }
@@ -365,16 +389,20 @@ impl LogoutStateMachine {
             self.transition_to(
                 LogoutState::ClosingTabs,
                 "Closing all tabs...".to_string(),
-                60
-            ).await?;
+                60,
+            )
+            .await?;
 
             if let Err(e) = self.close_all_tabs().await {
-                let error = LogoutError::Unrecoverable(UnrecoverableError::PostPointOfNoReturnFailure(e.to_string()));
+                let error = LogoutError::Unrecoverable(
+                    UnrecoverableError::PostPointOfNoReturnFailure(e.to_string()),
+                );
                 self.transition_to(
                     LogoutState::Failed(error.clone()),
                     "Failed to close tabs".to_string(),
-                    0
-                ).await?;
+                    0,
+                )
+                .await?;
                 self.handle_error(&error).await;
                 return Err(anyhow!(error));
             }
@@ -384,19 +412,23 @@ impl LogoutStateMachine {
         self.transition_to(
             LogoutState::CleaningAppState,
             "Cleaning up application state...".to_string(),
-            70
-        ).await?;
+            70,
+        )
+        .await?;
 
         // All static resources (CLIENT, SYNC_SERVICE, etc.) are defined in the sliding_sync module,
         // so the state machine delegates the cleanup operation to sliding_sync's clear_app_state function
         // rather than accessing these static variables directly from outside the module.
         if let Err(e) = clear_app_state(&self.config).await {
-            let error = LogoutError::Unrecoverable(UnrecoverableError::PostPointOfNoReturnFailure(e.to_string()));
+            let error = LogoutError::Unrecoverable(UnrecoverableError::PostPointOfNoReturnFailure(
+                e.to_string(),
+            ));
             self.transition_to(
                 LogoutState::Failed(error.clone()),
                 "Failed to clean app state".to_string(),
-                0
-            ).await?;
+                0,
+            )
+            .await?;
             self.handle_error(&error).await;
             return Err(anyhow!(error));
         }
@@ -404,8 +436,9 @@ impl LogoutStateMachine {
         self.transition_to(
             LogoutState::Completed,
             "Logout completed successfully".to_string(),
-            100
-        ).await?;
+            100,
+        )
+        .await?;
 
         // Close the settings screen after logout, since its content
         // is specific to the currently-logged-in user's account.
@@ -424,13 +457,17 @@ impl LogoutStateMachine {
         // Check client existence
         if get_client().is_none() {
             log!("perform_prechecks: client cleared");
-            return Err(LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared));
+            return Err(LogoutError::Unrecoverable(
+                UnrecoverableError::ComponentsCleared,
+            ));
         }
 
         // Check sync service
         if get_sync_service().is_none() {
             log!("perform_prechecks: sync service cleared");
-            return Err(LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared));
+            return Err(LogoutError::Unrecoverable(
+                UnrecoverableError::ComponentsCleared,
+            ));
         }
         log!("perform_prechecks: sync service exists");
 
@@ -452,28 +489,40 @@ impl LogoutStateMachine {
             sync_service.stop().await;
             Ok(())
         } else {
-            Err(LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared))
+            Err(LogoutError::Unrecoverable(
+                UnrecoverableError::ComponentsCleared,
+            ))
         }
     }
 
     async fn perform_server_logout(&self) -> Result<(), LogoutError> {
         let Some(client) = get_client() else {
-            return Err(LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared));
+            return Err(LogoutError::Unrecoverable(
+                UnrecoverableError::ComponentsCleared,
+            ));
         };
 
         match tokio::time::timeout(
             self.config.server_logout_timeout,
-            client.matrix_auth().logout()
-        ).await {
+            client.matrix_auth().logout(),
+        )
+        .await
+        {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => Err(LogoutError::Recoverable(RecoverableError::ServerLogoutFailed(e.to_string()))),
-            Err(_) => Err(LogoutError::Recoverable(RecoverableError::Timeout("Server logout timed out".to_string()))),
+            Ok(Err(e)) => Err(LogoutError::Recoverable(
+                RecoverableError::ServerLogoutFailed(e.to_string()),
+            )),
+            Err(_) => Err(LogoutError::Recoverable(RecoverableError::Timeout(
+                "Server logout timed out".to_string(),
+            ))),
         }
     }
 
     async fn close_all_tabs(&self) -> Result<()> {
         let on_close_all = Arc::new(Notify::new());
-        Cx::post_action(MainDesktopUiAction::CloseAllTabs { on_close_all: on_close_all.clone() });
+        Cx::post_action(MainDesktopUiAction::CloseAllTabs {
+            on_close_all: on_close_all.clone(),
+        });
 
         match tokio::time::timeout(self.config.tab_close_timeout, on_close_all.notified()).await {
             Ok(_) => {
@@ -494,7 +543,7 @@ impl LogoutStateMachine {
         match error {
             LogoutError::Unrecoverable(UnrecoverableError::ComponentsCleared) => {
                 Cx::post_action(LogoutAction::ApplicationRequiresRestart {
-                    cleared_component: ClearedComponentType::Client
+                    cleared_component: ClearedComponentType::Client,
                 });
             }
             LogoutError::Recoverable(RecoverableError::Cancelled) => {
@@ -537,7 +586,10 @@ fn set_logout_in_progress(value: bool) {
 
 /// Execute logout using the state machine
 pub async fn logout_with_state_machine(is_desktop: bool) -> Result<()> {
-    log!("logout_with_state_machine called with is_desktop: {}", is_desktop);
+    log!(
+        "logout_with_state_machine called with is_desktop: {}",
+        is_desktop
+    );
 
     let config = LogoutConfig {
         is_desktop,
@@ -547,6 +599,9 @@ pub async fn logout_with_state_machine(is_desktop: bool) -> Result<()> {
     let state_machine = LogoutStateMachine::new(config);
     let result = state_machine.execute().await;
 
-    log!("logout_with_state_machine finished with result: {:?}", result.is_ok());
+    log!(
+        "logout_with_state_machine finished with result: {:?}",
+        result.is_ok()
+    );
     result
 }

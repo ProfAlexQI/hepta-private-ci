@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-append-only-store-runtime-enablement-preview-report.sh"
+
+report="$(capture_json_report "hepta-work-graph-append-only-store-runtime-enablement-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_append_only_store_runtime_enablement_preview_gate"
+  and .schema_version == "work_graph_append_only_store_runtime_enablement_preview_v1"
+  and .preview_mode == "read_only_append_only_store_runtime_enablement_preview_no_store_or_runtime_mutation"
+  and .source_surface_count == 12
+  and .runtime_enablement_source_count == 12
+  and .runtime_enablement_plan_count == 12
+  and .runtime_stage_plan_count == 6
+  and .runtime_stage_source_ref_count == 62
+  and .runtime_stage_contract_ref_count == 29
+  and .runtime_plan_stage_ref_count == 72
+  and .runtime_plan_evidence_field_ref_count == 96
+  and .runtime_application_residual_source_count == 7
+  and .operator_review_residual_source_count == 7
+  and .guard_count == 10
+  and .blocker_count == 13
+  and .required_prior_gate_count == 40
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.runtime_enablement_plans | all(
+    .previous_enforcement_decision == "deny_runtime_append_only_store_enablement_disabled"
+    and .runtime_enablement_state == "runtime_enablement_blocked_preview_only"
+    and .required_runtime_stage_ids == [
+      "durable_store_runtime_switch",
+      "wal_write_boundary",
+      "idempotency_mutation_policy",
+      "rollback_readback_execution_gate",
+      "operator_review_side_effect_lock",
+      "runtime_application_promotion"
+    ]
+    and .expected_evidence_field_ids == [
+      "runtime_store_switch_contract_ref",
+      "wal_write_boundary_ref",
+      "idempotency_mutation_policy_ref",
+      "rollback_readback_gate_ref",
+      "operator_review_side_effect_lock_ref",
+      "runtime_application_promotion_ref",
+      "previous_role_manifest_rerun_decision_ref",
+      "no_mutation_guard_ref"
+    ]
+    and .runtime_enablement_contract_ready_preview == true
+    and .applies_to_runtime == false
+    and .enables_append_only_store == false
+    and .writes_wal == false
+    and .writes_checkpoint == false
+    and .mutates_idempotency_index == false
+    and .executes_readback == false
+    and .executes_rollback == false
+    and .records_approval == false
+  ))
+  and (.runtime_enablement_plans | map(select(.residual_source_blocker_ids | index("scheduler_admission_runtime_application_disabled"))) | length) == 5
+  and (.runtime_enablement_plans | map(select(.residual_source_blocker_ids | index("role_manifest_runtime_application_disabled"))) | length) == 4
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.runtime_stage_plans | map({id, count: (.affected_source_surface_ids | length), contracts: (.required_contract_ref_ids | length)}) == [
+    {"id": "durable_store_runtime_switch", "count": 12, "contracts": 5},
+    {"id": "wal_write_boundary", "count": 12, "contracts": 6},
+    {"id": "idempotency_mutation_policy", "count": 12, "contracts": 5},
+    {"id": "rollback_readback_execution_gate", "count": 12, "contracts": 5},
+    {"id": "operator_review_side_effect_lock", "count": 7, "contracts": 3},
+    {"id": "runtime_application_promotion", "count": 7, "contracts": 5}
+  ])
+  and (.runtime_stage_plans | all(
+    .priority == "p0"
+    and .expected_runtime_state == "contract_ready_preview_runtime_disabled"
+    and .contract_ready_preview == true
+    and .runtime_enabled_after_preview == false
+    and (.prerequisite_gate_ids[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_role_manifest_rerun_preview_gate")
+  ))
+  and (.runtime_stage_plans | map(select(.id == "wal_write_boundary" and .writes_wal == true)) | length) == 1
+  and (.runtime_stage_plans | map(select(.id == "idempotency_mutation_policy" and .mutates_idempotency_index == true)) | length) == 1
+  and (.runtime_stage_plans | map(select(.id == "rollback_readback_execution_gate" and .executes_readback == true)) | length) == 1
+  and (.runtime_stage_plans | map(select(.id == "operator_review_side_effect_lock" and .requires_operator_review == true)) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.guards | map(.id) == [
+    "runtime_enablement_preview_only",
+    "durable_store_switch_not_enabled",
+    "wal_write_boundary_not_enabled",
+    "idempotency_index_mutation_disabled",
+    "rollback_readback_execution_disabled",
+    "operator_review_required",
+    "runtime_application_promotion_disabled",
+    "scheduler_role_runtime_application_disabled",
+    "append_only_store_readback_required",
+    "side_effect_lock_not_established"
+  ])
+  and (.guards | all(.required_before_runtime_enablement == true and .satisfied_by_preview == false))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.blockers | map({id, count: (.affected_source_surface_ids | length)}) == [
+    {"id": "durable_store_runtime_switch_disabled", "count": 12},
+    {"id": "append_only_store_runtime_enablement_disabled", "count": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12},
+    {"id": "rollback_readback_not_executed", "count": 12},
+    {"id": "operator_review_required", "count": 7},
+    {"id": "projection_adapter_runtime_closure_application_disabled", "count": 7},
+    {"id": "store_guard_runtime_application_disabled", "count": 5},
+    {"id": "terminal_task_result_runtime_application_disabled", "count": 6},
+    {"id": "scheduler_admission_runtime_application_disabled", "count": 5},
+    {"id": "role_manifest_runtime_application_disabled", "count": 4},
+    {"id": "runtime_application_residuals_not_promoted", "count": 7},
+    {"id": "append_only_store_runtime_enablement_readback_missing", "count": 12}
+  ])
+  and (.blockers | all(.required_before_runtime_enablement == true))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_role_manifest_rerun_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_store_runtime_enablement_readback_preview_gate"
+  and .ready_for_append_only_store_runtime_enablement_readback_preview == true
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_role_manifest_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.append_only_store_runtime_enablement_preview.rust_module_present == true
+  and .source_probes.append_only_store_runtime_enablement_preview.report_script_present == true
+  and .source_probes.append_only_store_runtime_enablement_preview.gate_script_present == true
+  and .source_probes.role_manifest_readiness_rerun.upstream_gate == true
+  and .source_probes.role_manifest_readiness_rerun.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_store_runtime_enablement --lib
+
+echo "Hepta WorkGraph append-only store runtime enablement preview gate passed"

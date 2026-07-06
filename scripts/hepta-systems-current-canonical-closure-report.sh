@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+WRAPPER_REPORT="$ROOT/scripts/hepta-systems-current-canonical-wrapper-report.sh"
+WRAPPER_GATE="$ROOT/scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+VALIDATION_REPORT="$ROOT/scripts/hepta-systems-historical-canonical-gate-thin-wrapper-validation-report.sh"
+VALIDATION_GATE="$ROOT/scripts/hepta-systems-historical-canonical-gate-thin-wrapper-validation-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_CLOSURE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-closure-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$WRAPPER_REPORT" ]] || fail "missing executable current canonical wrapper report: $WRAPPER_REPORT"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -x "$VALIDATION_REPORT" ]] || fail "missing executable historical canonical gate thin wrapper validation report: $VALIDATION_REPORT"
+[[ -x "$VALIDATION_GATE" ]] || fail "missing executable historical canonical gate thin wrapper validation gate: $VALIDATION_GATE"
+[[ -f "$DOC" ]] || fail "missing current canonical closure architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the current canonical closure report"
+fi
+
+jq -n \
+  --slurpfile wrapper <("$WRAPPER_REPORT") \
+  --slurpfile validation <("$VALIDATION_REPORT") \
+  --arg gate "scripts/hepta-systems-current-canonical-closure-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_CLOSURE_2026-06-21.md" \
+  '
+  ($wrapper[0]) as $wrapper |
+  ($validation[0]) as $validation |
+  [
+    {
+      id:"current_canonical_wrapper",
+      surface:$wrapper.surface,
+      source_ready:$wrapper.current_canonical_wrapper_ready,
+      required:true,
+      invoked_by_report:false,
+      gate:"scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+    },
+    {
+      id:"historical_canonical_gate_thin_wrapper_validation",
+      surface:$validation.surface,
+      source_ready:$validation.historical_canonical_gate_thin_wrapper_validation_ready,
+      required:true,
+      invoked_by_report:false,
+      gate:"scripts/hepta-systems-historical-canonical-gate-thin-wrapper-validation-gate.sh"
+    }
+  ] as $closure_inputs |
+  [
+    "manual_operator_live_cutover_approval_required",
+    "tool_execution_live_cutover_allowed_false",
+    "tool_execution_public_ga_allowed_false",
+    "canonical_gate_not_invoked_by_closure_report",
+    "wrapper_target_not_invoked_by_closure_report",
+    "terminal_live_gates_not_invoked",
+    "live_url_not_contacted",
+    "long_soak_not_started"
+  ] as $closure_blockers |
+  ($wrapper.current_canonical_wrapper_ready == true
+    and $wrapper.historical_canonical_gate_name_claimed == true
+    and $wrapper.historical_canonical_gate_created == true
+    and $wrapper.historical_canonical_gate_executable == true
+    and $wrapper.historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+    and $wrapper.historical_canonical_gate_wrapper_path == "scripts/hepta-systems-canonical-gate.sh"
+    and $wrapper.historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+    and $wrapper.historical_canonical_gate_wrapper_exec_count == 1
+    and $wrapper.canonical_gate_wrapper_invoked == false
+    and $wrapper.capability_matrix_gate_invoked == false
+    and $validation.historical_canonical_gate_thin_wrapper_validation_ready == true
+    and $validation.historical_canonical_gate_path == "scripts/hepta-systems-canonical-gate.sh"
+    and $validation.historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+    and $validation.historical_canonical_gate_wrapper_target_count == 1
+    and $validation.historical_canonical_gate_wrapper_exec_count == 1
+    and $validation.historical_canonical_gate_bash_syntax_valid == true
+    and $validation.wrapper_target_invoked == false
+    and $validation.canonical_gate_invoked == false
+    and $wrapper.execution_enabled_count == 0
+    and $wrapper.public_ga_enabled_count == 0
+    and $validation.execution_enabled_count == 0
+    and $validation.public_ga_enabled_count == 0
+    and $wrapper.tool_execution_live_cutover_allowed == false
+    and $wrapper.tool_execution_public_ga_allowed == false
+    and $validation.tool_execution_live_cutover_allowed == false
+    and $validation.tool_execution_public_ga_allowed == false
+    and ($closure_inputs | all(.required == true and .source_ready == true and .invoked_by_report == false))
+    and ($wrapper.side_effects | to_entries | all(.value == false))
+    and ($validation.side_effects | to_entries | all(.value == false))) as $closure_ready |
+  {
+    runtime:"hepta",
+    surface:"current_canonical_closure",
+    plugin_id:$wrapper.plugin_id,
+    status:(if $closure_ready then "ready" else "blocked" end),
+    source_current_canonical_wrapper_surface:$wrapper.surface,
+    source_current_canonical_wrapper_ready:$wrapper.current_canonical_wrapper_ready,
+    source_thin_wrapper_validation_surface:$validation.surface,
+    source_thin_wrapper_validation_ready:$validation.historical_canonical_gate_thin_wrapper_validation_ready,
+    source_wrapper_plan_step_count:$wrapper.wrapper_plan_step_count,
+    source_validation_blocker_count:($validation.validation_blockers | length),
+    current_canonical_closure_ready:$closure_ready,
+    closure_input_count:($closure_inputs | length),
+    closure_inputs:$closure_inputs,
+    historical_canonical_gate_name_claimed:true,
+    historical_canonical_gate_created:true,
+    historical_canonical_gate_executable:true,
+    historical_canonical_gate_wrapper_kind:"thin_local_exec_wrapper",
+    historical_canonical_gate_wrapper_path:"scripts/hepta-systems-canonical-gate.sh",
+    historical_canonical_gate_wrapper_target:"scripts/hepta-systems-current-canonical-wrapper-gate.sh",
+    historical_canonical_gate_wrapper_target_count:$validation.historical_canonical_gate_wrapper_target_count,
+    historical_canonical_gate_wrapper_exec_count:$validation.historical_canonical_gate_wrapper_exec_count,
+    historical_canonical_gate_bash_syntax_valid:$validation.historical_canonical_gate_bash_syntax_valid,
+    historical_canonical_gate_thin_wrapper_validation_attached:true,
+    historical_canonical_gate_thin_wrapper_validation_pending:false,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    capability_matrix_gate_invoked:false,
+    terminal_live_gate_invoked:false,
+    live_url_required:false,
+    long_soak_required:false,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"add_historical_canonical_gate_alias_readback_to_current_canonical_closure_without_invocation",
+    closure_blocker_count:($closure_blockers | length),
+    closure_blockers:$closure_blockers,
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      current_canonical_wrapper_report:"scripts/hepta-systems-current-canonical-wrapper-report.sh",
+      current_canonical_wrapper_gate:"scripts/hepta-systems-current-canonical-wrapper-gate.sh",
+      thin_wrapper_validation_report:"scripts/hepta-systems-historical-canonical-gate-thin-wrapper-validation-report.sh",
+      thin_wrapper_validation_gate:"scripts/hepta-systems-historical-canonical-gate-thin-wrapper-validation-gate.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      historical_canonical_gate_mutated:false,
+      strict_missing_consumer_mutated:false,
+      historical_snapshot_evidence_written:false,
+      wrapper_body_emitted_by_report:false,
+      canonical_gate_invoked:false,
+      wrapper_target_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

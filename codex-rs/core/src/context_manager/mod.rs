@@ -1,5 +1,8 @@
+pub(crate) mod budget_planner;
 mod history;
+pub(crate) mod manifest;
 mod normalize;
+pub(crate) mod source_registry;
 pub(crate) mod updates;
 
 pub(crate) use history::ContextManager;

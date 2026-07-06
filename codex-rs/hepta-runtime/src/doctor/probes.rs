@@ -1,4 +1,5 @@
-use super::{DoctorProviderProbe, provider_probe};
+use super::DoctorProviderProbe;
+use super::provider_probe;
 use crate::RuntimeKernel;
 
 impl RuntimeKernel {

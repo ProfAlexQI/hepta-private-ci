@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-session-reconstruction-map-report.sh"
+
+[[ -x "$REPORT" ]] || {
+  echo "missing executable session reconstruction map report: $REPORT" >&2
+  exit 1
+}
+
+json="$("$REPORT")"
+
+jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_systems_session_reconstruction_map"
+  and .status == "ready"
+  and .side_effect_free == true
+  and .report_only == true
+  and .replay_applied == false
+  and .live_mutation_enabled == false
+  and .patch_replay_enabled == false
+  and .session_file_count >= 1
+  and .hepta_apply_patch_call_count >= 1
+  and .hepta_apply_patch_file_entry_count >= 1
+  and .touched_path_count >= 1
+  and .missing_recoverable_path_count >= 1
+  and .recovery_anchor_count == 5
+  and .recovery_anchor_evidence_ready_count == 5
+  and any(.recovery_anchors[]; .id == "plugin_contribution_point_abi" and .evidence_path_count >= 1)
+  and any(.recovery_anchors[]; .id == "tool_registry_router_lookup_shadow" and .evidence_path_count >= 1)
+  and any(.recovery_anchors[]; .id == "workflow_durable_store_replay_proof" and .evidence_path_count >= 1)
+  and any(.recovery_anchors[]; .id == "compact_capability_matrix" and .evidence_path_count >= 1)
+  and any(.recovery_anchors[]; .id == "scheduler_cutover_preview_chain" and .evidence_path_count >= 1)
+  and .recommended_next_local_step == "extract_ordered_hepta_patch_queue_and_apply_only_selected_phase0_recovery"
+' <<<"$json" >/dev/null
+
+printf '%s\n' "$json"
+echo "Hepta session reconstruction map gate passed"

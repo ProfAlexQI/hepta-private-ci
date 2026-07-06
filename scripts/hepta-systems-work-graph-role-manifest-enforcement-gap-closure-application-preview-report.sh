@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-role-manifest-gap-closure-application.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-role-manifest-enforcement-gap-closure-readback-preview-report" \
+  "$ROOT/scripts/hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview-report.sh" \
+  >"$tmpdir/readback.json"
+
+application_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_role_manifest_enforcement_gap_closure_application_preview.rs
+)"
+application_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-role-manifest-enforcement-gap-closure-application-preview-report.sh
+)"
+application_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-role-manifest-enforcement-gap-closure-application-preview-gate.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-role-manifest-enforcement-gap-closure-readback-preview-gate.sh
+)"
+
+jq -n \
+  --slurpfile readback "$tmpdir/readback.json" \
+  --argjson application_rust_module_present "$application_rust_module_present" \
+  --argjson application_report_script_present "$application_report_script_present" \
+  --argjson application_gate_script_present "$application_gate_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  '
+  $readback[0] as $readback
+  | def app_plan_id($source):
+      "apply_" + $source + "_role_manifest_gap_closure_preview";
+  def blocker_application_id($blocker):
+      "apply_" + $blocker + "_role_manifest_blocker_mapping_preview";
+  def app_plan_ids_for_sources($plans; $sources):
+      $plans | map(select(.source_surface_id as $source | $sources | index($source)) | .application_plan_id);
+  def application_plan($plan): {
+      application_plan_id: app_plan_id($plan.source_surface_id),
+      readback_plan_id: $plan.id,
+      closure_plan_id: $plan.closure_plan_id,
+      source_surface_id: $plan.source_surface_id,
+      source_category: $plan.source_category,
+      projected_role_kind: $plan.projected_role_kind,
+      role_blocker_id: $plan.role_blocker_id,
+      readback_probe_id: $plan.readback_probe_id,
+      role_binding_ids: $plan.role_binding_ids,
+      capability_ids: $plan.capability_ids,
+      tool_permission_mode_ids: $plan.tool_permission_mode_ids,
+      covered_wire_fields: $plan.covered_wire_fields,
+      application_scope: "role_manifest_runtime_enforcement_binding",
+      application_state: "preview_application_defined_role_manifest_not_attached",
+      readback_verified_by_preview: true,
+      applies_to_runtime: false,
+      enforces_role_manifest: false,
+      changes_tool_permissions: false,
+      consumes_budget: false,
+      mutates_lane_binding: false,
+      starts_work: false,
+      spawns_agent: false,
+      writes_store: false,
+      enables_append_only_store: false,
+      enforces_scheduler_admission: false
+    };
+  def source_outcome($plan): {
+      source_surface_id: $plan.source_surface_id,
+      source_category: $plan.source_category,
+      projected_role_kind: $plan.projected_role_kind,
+      application_plan_id: $plan.application_plan_id,
+      post_application_role_manifest_state: "role_manifest_contract_ready_preview_after_application",
+      role_manifest_contract_ready_preview: true,
+      ready_for_unified_projection_enforcement_readiness_role_manifest_rerun_preview: true,
+      ready_for_role_manifest_enforcement: false,
+      applies_to_runtime: false
+    };
+  def blocker_application($assertion): {
+      application_id: blocker_application_id($assertion.blocker_id),
+      blocker_id: $assertion.blocker_id,
+      category: $assertion.category,
+      affected_source_surface_ids: $assertion.affected_source_surface_ids,
+      affected_closure_plan_ids: $assertion.affected_closure_plan_ids,
+      expected_blocker_state: "blocker_mapping_contract_ready_preview_after_application_runtime_still_blocked",
+      blocker_contract_ready_preview: true,
+      readback_verified_by_preview: true,
+      clears_runtime_blocker: false,
+      mutates_runtime: false
+    };
+  def app_group($id; $scope; $plans): {
+      id: $id,
+      priority: "p0",
+      role_binding_scope: $scope,
+      source_surface_ids: ($plans | map(.source_surface_id)),
+      application_plan_ids: ($plans | map(.application_plan_id)),
+      expected_role_manifest_ready_source_count_after_application: ($plans | length),
+      mutates_runtime: false,
+      enforces_role_manifest: false,
+      starts_work: false,
+      spawns_agent: false
+    };
+  def app_guard($id; $severity; $scope): {
+      id: $id,
+      severity: $severity,
+      guard_scope: $scope,
+      required_before_role_manifest_enforcement: true,
+      satisfied_by_preview: false
+    };
+  def app_blocker($id; $severity; $category; $sources; $plan_ids; $fix): {
+      id: $id,
+      severity: $severity,
+      category: $category,
+      affected_source_surface_ids: $sources,
+      affected_application_plan_ids: $plan_ids,
+      required_before_role_manifest_enforcement: true,
+      recommended_fix: $fix
+    };
+  def app_blocker_from_readback($blocker; $plans):
+      app_blocker(
+        $blocker.id;
+        $blocker.severity;
+        $blocker.category;
+        $blocker.affected_source_surface_ids;
+        app_plan_ids_for_sources($plans; $blocker.affected_source_surface_ids);
+        $blocker.recommended_fix
+      );
+  ($readback.readback_plans | map(application_plan(.))) as $application_plans
+  | ($application_plans | map(source_outcome(.))) as $source_outcomes
+  | ($readback.blocker_mapping_assertions | map(blocker_application(.))) as $blocker_applications
+  | [
+      app_group("role_capability_binding_application"; "capability"; $application_plans),
+      app_group("role_tool_permission_binding_application"; "tool_permission"; $application_plans),
+      app_group("role_budget_lane_binding_application"; "budget_lane"; $application_plans),
+      app_group("role_termination_output_schema_application"; "termination_output_schema"; $application_plans),
+      app_group("role_source_adapter_binding_application"; "source_adapter"; $application_plans)
+    ] as $application_groups
+  | [
+      app_guard("role_manifest_application_is_preview_only"; "medium"; "application_preview"),
+      app_guard("readback_execution_disabled"; "critical"; "readback"),
+      app_guard("role_manifest_enforcement_disabled"; "critical"; "role_manifest"),
+      app_guard("role_capability_binding_not_enforced"; "high"; "capability"),
+      app_guard("tool_permission_binding_not_enforced"; "critical"; "tool_permission"),
+      app_guard("budget_lane_concurrency_not_enforced"; "high"; "budget_lane"),
+      app_guard("termination_output_schema_not_enforced"; "high"; "termination_output"),
+      app_guard("scheduler_admission_runtime_application_disabled"; "high"; "scheduler_admission"),
+      app_guard("projection_timeline_runtime_residuals_not_promoted"; "high"; "projection_timeline"),
+      app_guard("append_only_store_runtime_enablement_disabled"; "critical"; "append_only_store"),
+      app_guard("operator_review_required"; "high"; "operator_review"),
+      app_guard("enforcement_readiness_role_manifest_rerun_required"; "high"; "readiness_rerun")
+    ] as $application_guards
+  | ($application_plans | map(.source_surface_id)) as $all_sources
+  | ($application_plans | map(.application_plan_id)) as $all_application_plan_ids
+  | ([app_blocker("role_manifest_application_is_preview_only"; "medium"; "application_preview"; $all_sources; $all_application_plan_ids; "keep role manifest closure application as a no-mutation preview until readiness rerun proves the blocker moved")]
+      + ($readback.blockers | map(select(.id != "role_manifest_closure_application_missing") | app_blocker_from_readback(. ; $application_plans)))
+      + [app_blocker("role_manifest_readiness_rerun_missing"; "high"; "readiness_rerun"; $all_sources; $all_application_plan_ids; "rerun unified projection enforcement-readiness against the role manifest application preview outcomes")]) as $blockers
+  | ($readback.required_prior_gates + [$readback.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_role_manifest_enforcement_gap_closure_application_preview_gate",
+      schema_version: "work_graph_role_manifest_enforcement_gap_closure_application_preview_v1",
+      preview_mode: "read_only_role_manifest_gap_closure_application_preview_no_runtime_mutation",
+      readback_plan_count: $readback.readback_plan_count,
+      application_plan_count: ($application_plans | length),
+      source_outcome_count: ($source_outcomes | length),
+      role_manifest_contract_ready_preview_count: ($source_outcomes | map(select(.role_manifest_contract_ready_preview)) | length),
+      blocker_application_count: ($blocker_applications | length),
+      application_group_count: ($application_groups | length),
+      role_binding_ref_count: ($application_plans | map(.role_binding_ids | length) | add),
+      capability_ref_count: ($application_plans | map(.capability_ids | length) | add),
+      permission_mode_ref_count: ($application_plans | map(.tool_permission_mode_ids | length) | add),
+      manifest_field_ref_count: ($application_plans | map(.covered_wire_fields | length) | add),
+      application_guard_count: ($application_guards | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      application_plans: $application_plans,
+      source_outcomes: $source_outcomes,
+      blocker_applications: $blocker_applications,
+      application_groups: $application_groups,
+      application_guards: $application_guards,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_unified_projection_enforcement_readiness_role_manifest_rerun_preview_gate",
+      ready_for_unified_projection_enforcement_readiness_role_manifest_rerun_preview: true,
+      ready_for_role_manifest_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_append_only_store_enablement: false,
+      ready_for_projection_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        role_manifest_gap_closure_application: {
+          rust_module_present: $application_rust_module_present,
+          report_script_present: $application_report_script_present,
+          gate_script_present: $application_gate_script_present
+        },
+        role_manifest_gap_closure_readback: {
+          upstream_gate: ($readback.gate == "hepta_work_graph_role_manifest_enforcement_gap_closure_readback_preview_gate"),
+          gate_script_present: $readback_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        readback_performed: false,
+        role_manifest_enforced: false,
+        tool_permission_changed: false,
+        budget_consumed: false,
+        lane_binding_mutated: false,
+        work_started: false,
+        agent_spawned: false,
+        scheduler_admission_enforced: false,
+        append_only_store_enabled: false,
+        task_result_enforcement_enabled: false,
+        projection_enforcement_enabled: false,
+        runtime_mutation_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

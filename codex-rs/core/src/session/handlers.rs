@@ -12,6 +12,7 @@ use tracing::info_span;
 use crate::session::SteerInputError;
 use crate::session::session::Session;
 use crate::session::session::SessionSettingsUpdate;
+use crate::session::turn_context::TurnContext;
 
 use crate::config::Config;
 use crate::realtime_context::REALTIME_TURN_TOKEN_BUDGET;
@@ -299,8 +300,8 @@ pub(super) async fn user_input_or_turn_inner(
     }
 }
 
-fn attach_context_recall_selected_snippets_for_turn(
-    turn_context: &crate::session::turn_context::TurnContext,
+pub(crate) fn attach_context_recall_selected_snippets_for_turn(
+    turn_context: &TurnContext,
     selected_snippets: Option<TurnContextRecallSelectedSnippetEnvelope>,
 ) {
     if let Some(selected_snippets) = selected_snippets
@@ -340,7 +341,21 @@ pub async fn inter_agent_communication(
     communication: InterAgentCommunication,
 ) {
     let trigger_turn = communication.trigger_turn;
-    sess.enqueue_mailbox_communication(communication);
+    let mailbox_seq = sess.enqueue_mailbox_communication(communication.clone());
+    if let Some(state_db) = sess.state_db() {
+        let trace_id = codex_otel::current_span_trace_id();
+        if let Err(err) = state_db
+            .record_inter_agent_mailbox_queued(
+                sess.conversation_id,
+                mailbox_seq,
+                &communication,
+                trace_id.as_deref(),
+            )
+            .await
+        {
+            warn!("failed to record inter-agent mailbox queued shadow event: {err}");
+        }
+    }
     if trigger_turn {
         sess.maybe_start_turn_for_pending_work_with_sub_id(sub_id)
             .await;

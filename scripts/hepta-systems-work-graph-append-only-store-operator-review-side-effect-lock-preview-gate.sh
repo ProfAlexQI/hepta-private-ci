@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-preview-report.sh"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-store-operator-review-side-effect-lock-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_append_only_store_operator_review_side_effect_lock_preview_gate"
+  and .schema_version == "work_graph_append_only_store_operator_review_side_effect_lock_preview_v1"
+  and .preview_mode == "read_only_append_only_store_operator_review_side_effect_lock_preview_no_approval"
+  and .upstream_runtime_application_promotion_rerun_gate == "hepta_work_graph_unified_projection_enforcement_readiness_runtime_application_promotion_rerun_preview_gate"
+  and .upstream_operator_review_residual_source_count == 7
+  and .upstream_side_effect_lock_residual_source_count == 7
+  and .upstream_write_boundary_primary_blocked_source_count == 5
+  and .operator_review_packet_count == 7
+  and .side_effect_lock_plan_count == 7
+  and .approval_evidence_boundary_count == 7
+  and .readback_boundary_count == 7
+  and .evidence_field_ref_count == 56
+  and .operator_review_group_count == 4
+  and .guard_count == 11
+  and .blocker_count == 8
+  and .required_prior_gate_count == 48
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.operator_review_packets | map(.source_surface_id) == [
+    "multi_agent_v2_thread_spawn",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.operator_review_packets | all(
+    .runtime_application_promotion_rerun_decision == "deny_operator_review_required"
+    and .packet_state == "preview_only_operator_review_not_recorded"
+    and .ready_for_readback_preview == true
+    and .external_delivery_enabled == false
+    and .operator_review_recorded == false
+    and .approval_recorded == false
+    and .mutates_store == false
+    and .writes_wal == false
+    and .applies_to_runtime == false
+    and (.required_section_ids | length) == 5
+    and (.evidence_field_ids | length) == 8
+  ))
+  and (.operator_review_packets | map(select(.source_surface_id == "multi_agent_v2_thread_spawn" and .source_category == "multi_agent")) | length) == 1
+  and (.operator_review_packets | map(select(.source_surface_id == "hepta_runtime_scheduler_store" and .source_category == "runtime_scheduler")) | length) == 1
+  and (.operator_review_packets | map(select(.source_surface_id == "hepta_runtime_agent_harness" and .source_category == "external_handoff")) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.side_effect_lock_plans | length) == 7
+  and (.side_effect_lock_plans | all(
+    .lock_state == "planned_not_established"
+    and .prevents_runtime_mutation == true
+    and .side_effects_allowed == false
+    and .lock_established == false
+    and .writes_store == false
+    and .writes_wal == false
+    and (.lock_scope_ids == [
+      "runtime_application_promotion",
+      "wal_write_boundary",
+      "durable_store_runtime_switch",
+      "idempotency_mutation_policy",
+      "rollback_readback_execution"
+    ])
+  ))
+  and (.approval_evidence_boundaries | all(
+    .redaction_state == "redacted_preview_only"
+    and .records_operator_review == false
+    and .records_approval == false
+    and .persists_receipt == false
+    and .external_delivery_enabled == false
+    and (.required_evidence_field_ids | length) == 8
+  ))
+  and (.readback_boundaries | all(
+    .readback_state == "planned_not_executed"
+    and .ready_for_readback_preview == true
+    and .readback_executed == false
+    and .rollback_executed == false
+    and .writes_checkpoint == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.operator_review_groups | map({category: .source_category, count: (.affected_source_surface_ids | length), packets: .expected_review_packet_count}) == [
+    {"category": "multi_agent", "count": 2, "packets": 2},
+    {"category": "batch_agent_jobs", "count": 1, "packets": 1},
+    {"category": "runtime_scheduler", "count": 3, "packets": 3},
+    {"category": "external_handoff", "count": 1, "packets": 1}
+  ])
+  and (.operator_review_groups | all(.ready_for_application_preview == false))
+  and (.operator_review_groups | map(select(.source_category == "multi_agent" and .affected_source_surface_ids == ["multi_agent_v2_thread_spawn","hepta_runtime_multi_agent_reducer"])) | length) == 1
+  and (.operator_review_groups | map(select(.source_category == "runtime_scheduler" and .affected_source_surface_ids == ["hepta_runtime_task_board","hepta_runtime_worker_tasks","hepta_runtime_scheduler_store"])) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.guards | map(.id) == [
+    "operator_review_side_effect_lock_preview_only",
+    "operator_review_recording_disabled",
+    "approval_recording_disabled",
+    "side_effect_lock_not_established",
+    "external_delivery_disabled",
+    "runtime_mutation_disabled",
+    "wal_write_boundary_disabled",
+    "durable_store_runtime_switch_disabled",
+    "idempotency_mutation_disabled",
+    "readback_rollback_execution_disabled",
+    "model_invocation_disabled"
+  ])
+  and (.guards | all(.enforced_in_preview == true and .prevents_runtime_mutation == true))
+  and (.blockers | map({id, count: (.affected_source_surface_ids | length)}) == [
+    {"id": "readback_execution_disabled", "count": 12},
+    {"id": "durable_store_runtime_switch_disabled", "count": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12},
+    {"id": "rollback_readback_not_executed", "count": 12},
+    {"id": "operator_review_required", "count": 7},
+    {"id": "side_effect_lock_not_established", "count": 7},
+    {"id": "operator_review_side_effect_lock_readback_missing", "count": 7}
+  ])
+  and (.blockers | map(select(.id == "operator_review_required" and .blocks_operator_review == true and .blocks_side_effect_lock == true and .blocks_runtime_write_boundary == false)) | length) == 1
+  and (.blockers | map(select(.id == "wal_write_boundary_not_enabled" and .blocks_operator_review == false and .blocks_side_effect_lock == false and .blocks_runtime_write_boundary == true)) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_runtime_application_promotion_rerun_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_store_operator_review_side_effect_lock_readback_preview_gate"
+  and .ready_for_operator_review_side_effect_lock_readback_preview == true
+  and .ready_for_operator_review_side_effect_lock_application_preview == false
+  and .ready_for_operator_review_recording == false
+  and .ready_for_side_effect_lock_establishment == false
+  and .ready_for_runtime_write_boundary_preview == false
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.operator_review_side_effect_lock_preview.rust_module_present == true
+  and .source_probes.operator_review_side_effect_lock_preview.report_script_present == true
+  and .source_probes.operator_review_side_effect_lock_preview.gate_script_present == true
+  and .source_probes.runtime_application_promotion_rerun.upstream_gate == true
+  and .source_probes.runtime_application_promotion_rerun.gate_script_present == true
+  and .source_probes.runtime_application_promotion_rerun.recommended_next_matches == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_store_operator_review_side_effect_lock_preview --lib
+
+echo "Hepta WorkGraph append-only store operator review side-effect lock preview gate passed"

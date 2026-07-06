@@ -1,5 +1,6 @@
 use hepta_core::HeptaError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 const MAX_PREVIEW_BYTES: usize = 192;
 
@@ -434,7 +435,7 @@ fn strip_until_osc_end(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
 }
 
 fn strip_until_csi_end(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
-    while let Some(ch) = chars.next() {
+    for ch in chars.by_ref() {
         if ('@'..='~').contains(&ch) {
             return;
         }

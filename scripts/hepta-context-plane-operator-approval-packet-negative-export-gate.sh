@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+manifest="$repo_root/codex-rs/Cargo.toml"
+hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
+hepta_core_memory_context_plane="$repo_root/codex-rs/hepta-core/src/memory/context_plane.rs"
+hepta_core_memory_context_plane_operator="$repo_root/codex-rs/hepta-core/src/memory/context_plane/operator.rs"
+hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/context_plane_operator_packet.rs"
+hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
+hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/context_plane/operator_packet.rs"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+approval_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-report.sh"
+negative_export_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-negative-export-report.sh"
+lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
+target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
+target_leaf="$lane"
+if [[ "$target_leaf" != hepta-* ]]; then
+  target_leaf="hepta-$target_leaf"
+fi
+export CARGO_TARGET_DIR="${HEPTA_CARGO_TARGET_DIR:-$target_root/$target_leaf}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+
+fail() {
+  echo "hepta-context-plane-operator-approval-packet-negative-export-gate: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+line_number_of() {
+  local file_path="$1"
+  local needle="$2"
+  local line
+
+  line="$(grep -n -F "$needle" "$file_path" | head -n 1 | cut -d: -f1 || true)"
+  if [ -z "$line" ]; then
+    fail "$file_path is missing required text: $needle"
+  fi
+  printf '%s\n' "$line"
+}
+
+assert_line_before() {
+  local file_path="$1"
+  local before_needle="$2"
+  local after_needle="$3"
+  local label="$4"
+  local before_line
+  local after_line
+
+  before_line="$(line_number_of "$file_path" "$before_needle")"
+  after_line="$(line_number_of "$file_path" "$after_needle")"
+  if [ "$before_line" -ge "$after_line" ]; then
+    fail "$label expected '$before_needle' before '$after_needle'"
+  fi
+}
+
+for term in \
+  "Context Plane operator approval packet no-activation-command negative export" \
+  "guard: malformed or activation-shaped operator approval packet inputs" \
+  "context-plane-operator-approval-packet-negative-export=pass" \
+  "activation-shaped" \
+  "activation_command" \
+  "tool_args" \
+  "raw_payload" \
+  "PII-shaped values" \
+  "activation_command_present=true" \
+  "production_write=true" \
+  "graph_write=true" \
+  "runtime_activation=true" \
+  "adaptive_allocator_runtime_activation=true" \
+  "source_aware_runtime_activation=true" \
+  "prompt_assembly_change=true" \
+  "operator_activation_allowed=true" \
+  "activation-command=absent" \
+  "hepta-context-plane-operator-approval-packet-negative-export-report.sh" \
+  "hepta-context-plane-operator-approval-packet-negative-export-gate.sh" \
+  "must not activate adaptive allocation" \
+  "must not activate source-aware compression" \
+  "must not write graph facts" \
+  "must not write production memory" \
+  "must not alter prompt assembly" \
+  "must not enable operator activation"; do
+  assert_file_contains "$contracts" "$term" "operator approval packet negative export contract"
+done
+
+assert_file_contains "$hepta_core_memory_context_plane" \
+  "mod operator" \
+  "operator approval packet module declaration"
+assert_file_contains "$hepta_core_memory_context_plane_operator" \
+  "serde(default, deny_unknown_fields)" \
+  "operator approval packet serde unknown-field rejection"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_operator_approval_packet_rejects_activation_shaped_input" \
+  "operator approval packet activation-shaped core test"
+assert_file_contains "$hepta_memory_tests" \
+  "store_context_plane_operator_approval_packet_rejects_activation_shaped_rehydration" \
+  "operator approval packet activation-shaped store test"
+
+assert_file_contains "$debug_gate" \
+  "hepta-context-plane-operator-approval-packet-negative-export-gate.sh" \
+  "operator approval packet negative export debug gate"
+assert_file_contains "$preflight_script" \
+  "context plane operator approval packet negative export guard" \
+  "operator approval packet negative export preflight stage"
+assert_file_contains "$front_door_gate" \
+  "context_plane_operator_approval_packet_negative_gate_script" \
+  "operator approval packet negative export front-door static check"
+
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-plane-operator-approval-packet-gate.sh" \
+  "hepta-context-plane-operator-approval-packet-negative-export-gate.sh" \
+  "operator approval packet negative export debug order"
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-plane-operator-approval-packet-negative-export-gate.sh" \
+  "hepta-context-source-aware-compression-front-door-report.sh" \
+  "operator approval packet negative export debug front-door order"
+assert_line_before \
+  "$preflight_script" \
+  "context plane operator approval packet dry-run gate" \
+  "context plane operator approval packet negative export guard" \
+  "operator approval packet negative export preflight order"
+assert_line_before \
+  "$preflight_script" \
+  "context plane operator approval packet negative export guard" \
+  "source-aware compression front-door machine-readable report" \
+  "operator approval packet negative export front-door preflight order"
+
+malformed_packet_fixture="$(cat <<'JSON'
+{
+  "activation_command": "hepta context activate --now",
+  "tool_args": {"command": "hepta context activate --now"},
+  "raw_payload": "prompt_text transcript_text memory_text answer_text",
+  "operator_email": "operator@example.com",
+  "session_id": "session-private",
+  "memory_id": "memory-private",
+  "trace_id": "trace-private",
+  "runtime_activation": true,
+  "production_write": true,
+  "graph_write": true
+}
+JSON
+)"
+
+actual_status="$(bash "$approval_report")"
+expected_negative_status="$(cat <<'STATUS'
+context-plane-operator-approval-packet-negative-export=pass
+context-plane-operator-approval-packet-negative-export.activation-command=absent
+context-plane-operator-approval-packet-negative-export.payload-light=pass
+context-plane-operator-approval-packet-negative-export.runtime-activation=disabled
+STATUS
+)"
+actual_negative_status="$(bash "$negative_export_report")"
+if [ "$actual_negative_status" != "$expected_negative_status" ]; then
+  fail "operator approval packet negative export report output changed"
+fi
+
+if ! printf '%s\n' "$actual_status" | grep -F "context-plane-operator-approval-packet.activation-command=absent" >/dev/null; then
+  fail "operator approval packet report must keep activation command absent"
+fi
+
+if ! printf '%s\n' "$actual_status" | grep -F "context-plane-operator-approval-packet.runtime-activation=disabled" >/dev/null; then
+  fail "operator approval packet report must keep runtime activation disabled"
+fi
+
+if printf '%s\n' "$actual_status" | grep -E 'activation_command|tool_args|raw_payload|prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|ranked_payload|entity_hash|supersedes|idempotency|fixture_hash|operator@example\.com|activation-command=(run|enabled|present)|runtime-activation=enabled|production-write=enabled|graph-write=enabled|operator-activation=enabled' >/dev/null; then
+  fail "operator approval packet report leaked activation-shaped or payload-shaped fields"
+fi
+if printf '%s\n' "$actual_negative_status" | grep -E 'activation_command|tool_args|raw_payload|prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|ranked_payload|entity_hash|supersedes|idempotency|fixture_hash|operator@example\.com|activation-command=(run|enabled|present)|runtime-activation=enabled|production-write=enabled|graph-write=enabled|operator-activation=enabled' >/dev/null; then
+  fail "operator approval packet negative export report leaked activation-shaped or payload-shaped fields"
+fi
+
+while IFS= read -r forbidden; do
+  [ -z "$forbidden" ] && continue
+  if printf '%s\n' "$actual_status" | grep -F "$forbidden" >/dev/null; then
+    fail "operator approval packet report included malformed fixture token: $forbidden"
+  fi
+  if printf '%s\n' "$actual_negative_status" | grep -F "$forbidden" >/dev/null; then
+    fail "operator approval packet negative export report included malformed fixture token: $forbidden"
+  fi
+done <<TOKENS
+$(printf '%s\n' "$malformed_packet_fixture" | grep -Eo 'hepta context activate --now|prompt_text|transcript_text|memory_text|answer_text|operator@example\.com|session-private|memory-private|trace-private')
+TOKENS
+
+cargo test --manifest-path "$manifest" -p hepta-core \
+  context_plane_operator_approval_packet_rejects_activation_shaped_input \
+  --lib --message-format=short
+
+cargo test --manifest-path "$manifest" -p hepta-memory \
+  store_context_plane_operator_approval_packet_rejects_activation_shaped_rehydration \
+  --lib --message-format=short
+
+bash "$negative_export_report"
+echo "Hepta context plane operator approval packet negative export gate passed"

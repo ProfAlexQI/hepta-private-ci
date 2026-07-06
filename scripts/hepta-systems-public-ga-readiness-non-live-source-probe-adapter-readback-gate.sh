@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-public-ga-readiness-non-live-source-probe-adapter-readback-report.sh"
+ADAPTER_GATE="$ROOT/scripts/hepta-systems-public-ga-readiness-non-live-source-probe-adapter-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_READINESS_NON_LIVE_SOURCE_PROBE_ADAPTER_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-public-ga-readiness-non-live-source-probe-adapter-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Public GA readiness non-live source-probe adapter readback report: $REPORT"
+[[ -x "$ADAPTER_GATE" ]] || fail "missing executable Public GA readiness non-live source-probe adapter gate: $ADAPTER_GATE"
+[[ -f "$DOC" ]] || fail "missing Public GA readiness non-live source-probe adapter readback architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Public GA readiness non-live source-probe adapter readback report"
+fi
+
+grep -q 'Public GA Readiness Non-Live Source-Probe Adapter Readback' "$DOC" \
+  || fail "architecture note must document Public GA Readiness Non-Live Source-Probe Adapter Readback"
+grep -q 'static readback' "$DOC" \
+  || fail "architecture note must document static readback"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that readback does not invoke Public GA readiness"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "public_ga_readiness_non_live_source_probe_adapter_readback"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .readback_mode == "static_public_ga_readiness_non_live_source_probe_adapter_snapshot_only"
+  and .source_public_ga_readiness_non_live_source_probe_adapter_surface == "public_ga_readiness_non_live_source_probe_adapter"
+  and .source_public_ga_readiness_non_live_source_probe_adapter_report_reexecuted == false
+  and .source_public_ga_readiness_non_live_source_probe_adapter_ready == true
+  and .source_public_ga_readiness_non_live_source_probe_adapter_blocked == true
+  and .public_ga_readiness_non_live_source_probe_adapter_readback_ready == true
+  and .public_ga_readiness_non_live_source_probe_adapter_readback_blocked == true
+  and .readback_check_count == 15
+  and .public_ga_readiness_non_live_endpoint_inventory_ready == true
+  and .public_ga_readiness_target_endpoint_count == 9
+  and .public_ga_readiness_script_present == true
+  and .public_ga_readiness_existing_doc_present == false
+  and .public_ga_readiness_dedicated_architecture_note_required == true
+  and .public_ga_readiness_script_invoked == false
+  and .public_ga_readiness_live_endpoint_read_performed == false
+  and .public_ga_readiness_endpoint_curl_performed == false
+  and .public_ga_readiness_report_materialized == false
+  and .public_ga_readiness_attachment_recorded == false
+  and .public_ga_readiness_attachment_allowed == false
+  and .non_live_readback_adapter_available == true
+  and .terminal_publication_evidence_non_persistence_summary_gate_invoked == false
+  and .hepta_watchdog_invoked == false
+  and .terminal_public_distribution_non_publication_lock_gate_invoked == false
+  and .terminal_denial_index_gate_invoked == false
+  and .terminal_summary_gates_invoked == false
+  and .terminal_live_gates_invoked == false
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .adapter_blocker_count == 14
+  and .public_release_claim_allowed == false
+  and .public_ga_claim_allowed == false
+  and .public_release_published == false
+  and .public_ga_claimed == false
+  and .operator_approval_recorded == false
+  and .operator_identity_accepted == false
+  and .rollback_execution_allowed == false
+  and .next_migration_step == "derive_public_ga_readiness_non_live_source_probe_adapter_final_index_without_public_ga_readiness_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$ADAPTER_GATE" >/dev/null
+
+printf 'hepta-systems-public-ga-readiness-non-live-source-probe-adapter-readback-gate: PASS: Public GA readiness non-live adapter readback is static without live endpoint reads\n'

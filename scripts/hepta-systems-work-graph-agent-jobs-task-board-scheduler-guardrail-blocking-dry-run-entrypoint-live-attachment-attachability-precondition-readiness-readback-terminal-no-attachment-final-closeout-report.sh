@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+source_has() {
+  local pattern="$1"
+  local path="$2"
+  rg -q "$pattern" "$path"
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+SOURCE_REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-attachability-precondition-readiness-readback-audit-index-non-persistence-readback-report.sh"
+source_report="$("$SOURCE_REPORT_SCRIPT")"
+
+final_closeout_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout.rs
+)"
+non_persistence_readback_gate_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-attachability-precondition-readiness-readback-audit-index-non-persistence-readback-gate.sh
+)"
+non_persistence_readback_points_here="$(
+  bool_for source_has \
+    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_gate" \
+    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback.rs
+)"
+non_persistence_readback_ready_present="$(
+  bool_for source_has "ready_for_terminal_no_attachment_final_closeout: true" \
+    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback.rs
+)"
+non_persistence_readback_no_live_present="$(
+  bool_for source_has "ready_for_live_execution: false" \
+    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback.rs
+)"
+non_persistence_readback_unpersisted_present="$(
+  bool_for source_has "readback_persisted: false" \
+    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback.rs
+)"
+
+jq -n \
+  --argjson source "$source_report" \
+  --argjson final_closeout_module_present "$final_closeout_module_present" \
+  --argjson non_persistence_readback_gate_present "$non_persistence_readback_gate_present" \
+  --argjson non_persistence_readback_points_here "$non_persistence_readback_points_here" \
+  --argjson non_persistence_readback_ready_present "$non_persistence_readback_ready_present" \
+  --argjson non_persistence_readback_no_live_present "$non_persistence_readback_no_live_present" \
+  --argjson non_persistence_readback_unpersisted_present "$non_persistence_readback_unpersisted_present" \
+  '
+  def entry($id; $key; $source_readback; $category): {
+    id: $id,
+    stable_closeout_key: $key,
+    source_readback_id: $source_readback,
+    closeout_category: $category,
+    visible: true,
+    recorded: false,
+    persisted: false,
+    accepted: false,
+    authoritative: false,
+    mutation_allowed: false,
+    closed: true
+  };
+  def blocker($id; $action): {
+    id: $id,
+    blocked_action: $action,
+    blocked: true,
+    reason: "scheduler/guardrail live attachment attachability terminal no-attachment final closeout cannot authorize this action"
+  };
+  {
+    id: "agent_jobs_task_board_scheduler_guardrail_live_attachment_attachability_readback_terminal_no_attachment_final_closeout_scope",
+    source_surface_id: "work_graph_agent_jobs_task_board.scheduler_guardrail.live_attachment_attachability_precondition_readiness_readback_audit_index_non_persistence_readback",
+    closeout_mode: "live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_report_only",
+    stable_closeout_key: "work_graph.agent_jobs_task_board.scheduler_guardrail.live_attachment.attachability_precondition_readiness.readback.terminal_no_attachment.final_closeout",
+    visible: true,
+    recorded: false,
+    persisted: false,
+    authoritative: false,
+    accepted: false,
+    terminal: true,
+    mutation_allowed: false
+  } as $final_closeout_scope
+  | [
+    entry("live_attachment_attachability_no_attachment_branch_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.branch_closed"; "attachability_audit_index_no_live_authority_readback"; "terminal_no_attachment_branch"),
+    entry("live_attachment_attachability_audit_index_surface_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.audit_index_surface"; "attachability_audit_index_surface_non_persistence_readback"; "audit_index_surface"),
+    entry("live_attachment_attachability_audit_index_entry_inventory_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.audit_index_entries"; "attachability_audit_index_entry_inventory_non_persistence_readback"; "audit_index_entry_inventory"),
+    entry("live_attachment_attachability_audit_index_blocker_inventory_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.audit_index_blockers"; "attachability_audit_index_blocker_inventory_non_persistence_readback"; "audit_index_blocker_inventory"),
+    entry("live_attachment_attachability_audit_index_prior_chain_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.required_priors"; "attachability_audit_index_prior_chain_non_persistence_readback"; "required_prior_chain"),
+    entry("live_attachment_attachability_non_persistence_boundary_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.non_persistence_boundary"; "attachability_audit_index_non_persistence_boundary_readback"; "non_persistence_boundary"),
+    entry("live_attachment_attachability_no_live_authority_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.no_live_authority"; "attachability_audit_index_no_live_authority_readback"; "no_live_authority"),
+    entry("live_attachment_attachability_entrypoint_scope_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.entrypoint_scope"; "attachability_audit_index_entry_inventory_non_persistence_readback"; "entrypoint_scope"),
+    entry("live_attachment_attachability_scheduler_guardrail_boundary_final_closeout"; "live_attachment_attachability_readback.terminal_no_attachment.final_closeout.scheduler_guardrail_boundary"; "attachability_audit_index_no_live_authority_readback"; "scheduler_guardrail_attachment_boundary")
+  ] as $final_closeout_entries
+  | (
+    [
+      blocker("final_closeout_record_blocked"; "record_live_attachment_attachability_terminal_no_attachment_final_closeout"),
+      blocker("final_closeout_persistence_blocked"; "persist_live_attachment_attachability_terminal_no_attachment_final_closeout"),
+      blocker("final_closeout_acceptance_blocked"; "accept_live_attachment_attachability_terminal_no_attachment_final_closeout")
+    ]
+    + ($source.readback_blockers | map(blocker(.id; .blocked_action)))
+  ) as $final_closeout_blockers
+  | ([$source.gate] + $source.required_prior_gates) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_gate",
+      schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_v1",
+      preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_report_only",
+      source_non_persistence_readback_gate: $source.gate,
+      source_readback_entry_count: $source.readback_entry_count,
+      source_readback_blocker_count: $source.readback_blocker_count,
+      source_required_prior_gate_count: $source.required_prior_gate_count,
+      final_closeout_entry_count: ($final_closeout_entries | length),
+      final_closeout_blocker_count: ($final_closeout_blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      final_closeout_scope: $final_closeout_scope,
+      final_closeout_entries: $final_closeout_entries,
+      final_closeout_blockers: $final_closeout_blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_gate",
+      terminal_no_attachment_branch_closed: true,
+      final_closeout_visible: true,
+      final_closeout_recorded: false,
+      final_closeout_persisted: false,
+      final_closeout_authoritative: false,
+      final_closeout_accepted: false,
+      source_audit_index_visible: $source.audit_index_visible,
+      source_audit_index_persisted: false,
+      source_readback_persisted: false,
+      attachability_readback_persisted: false,
+      attachability_readiness_recording_allowed: false,
+      attachability_readiness_persistence_allowed: false,
+      live_attachment_allowed: false,
+      live_blocking_hook_install_allowed: false,
+      runtime_interception_allowed: false,
+      scheduler_admission_enforcement_allowed: false,
+      guardrail_enforcement_allowed: false,
+      work_graph_event_persistence_allowed: false,
+      projection_persistence_allowed: false,
+      lease_acquisition_allowed: false,
+      work_start_allowed: false,
+      agent_spawn_allowed: false,
+      model_invocation_allowed: false,
+      external_send_allowed: false,
+      live_task_result_emission_allowed: false,
+      hardening_decision_recording_allowed: false,
+      hardening_decision_persistence_allowed: false,
+      readback_execution_allowed: false,
+      replay_execution_allowed: false,
+      replay_diff_recording_allowed: false,
+      replay_diff_persistence_allowed: false,
+      rollback_execution_allowed: false,
+      idempotency_mutation_allowed: false,
+      config_write_allowed: false,
+      feature_flag_mutation_allowed: false,
+      canary_traffic_allowed: false,
+      operator_review_request_allowed: false,
+      approval_recording_allowed: false,
+      live_cutover_allowed: false,
+      ready_for_terminal_no_attachment_final_closeout_readback: true,
+      ready_for_live_attachment: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        final_closeout_module_present: $final_closeout_module_present,
+        non_persistence_readback_gate_present: $non_persistence_readback_gate_present,
+        non_persistence_readback_points_here: $non_persistence_readback_points_here,
+        non_persistence_readback_ready_present: $non_persistence_readback_ready_present,
+        non_persistence_readback_no_live_present: $non_persistence_readback_no_live_present,
+        non_persistence_readback_unpersisted_present: $non_persistence_readback_unpersisted_present
+      },
+      side_effects: {
+        filesystem_written: false,
+        final_closeout_recorded: false,
+        final_closeout_persisted: false,
+        final_closeout_accepted: false,
+        audit_index_recorded: false,
+        audit_index_persisted: false,
+        audit_index_accepted: false,
+        audit_index_readback_recorded: false,
+        audit_index_readback_persisted: false,
+        audit_index_readback_accepted: false,
+        attachability_readback_recorded: false,
+        attachability_readback_persisted: false,
+        attachability_readback_accepted: false,
+        attachability_readiness_recorded: false,
+        attachability_readiness_persisted: false,
+        attachability_readiness_accepted: false,
+        live_attachment_enabled: false,
+        live_blocking_hook_installed: false,
+        runtime_interception_enabled: false,
+        scheduler_admission_enforced: false,
+        guardrail_enforcement_enabled: false,
+        work_graph_event_persisted: false,
+        projection_index_persisted: false,
+        lease_acquired: false,
+        work_started: false,
+        hardening_decision_recorded: false,
+        hardening_decision_persisted: false,
+        live_task_result_emitted: false,
+        readback_executed: false,
+        replay_executed: false,
+        replay_diff_recorded: false,
+        replay_diff_persisted: false,
+        rollback_executed: false,
+        idempotency_index_mutated: false,
+        config_written: false,
+        feature_flag_mutated: false,
+        canary_traffic_routed: false,
+        operator_review_requested: false,
+        approval_recorded: false,
+        live_cutover_performed: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }
+  '

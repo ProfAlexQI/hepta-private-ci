@@ -2,7 +2,13 @@
 
 use makepad_widgets::*;
 
-use crate::shared::styles::*;
+use crate::shared::{
+    popup_list::{PopupKind, enqueue_popup_notification},
+    styles::*,
+};
+
+const TSP_SIGN_PREVIEW_COMPACT_LABEL: &str =
+    "Local TSP identity preview only; no lookup request starts.";
 
 script_mod! {
     link tsp_enabled
@@ -18,9 +24,7 @@ script_mod! {
         padding: 0,
         margin: Inset{ top: 5 }
 
-        // TODO: re-enable this once we have implemented the ability
-        // to click on the indicator to show the user's profile and TSP info.
-        // cursor: MouseCursor.Hand,
+        cursor: MouseCursor.Hand,
 
         tsp_html := Html {
             width: Fit, height: Fit
@@ -47,7 +51,6 @@ pub enum TspSignState {
     WrongSignature,
 }
 
-
 /// An indicator that is shown nearby a message that has a TSP signature.
 ///
 /// This widget is basically just a clickable icon group that shows
@@ -61,8 +64,10 @@ pub enum TspSignState {
 ///
 #[derive(Script, ScriptHook, Widget)]
 pub struct TspSignIndicator {
-    #[deref] view: View,
-    #[rust] state: TspSignState,
+    #[deref]
+    view: View,
+    #[rust]
+    state: TspSignState,
 }
 
 impl Widget for TspSignIndicator {
@@ -71,15 +76,21 @@ impl Widget for TspSignIndicator {
 
         let area = self.view.area();
         let should_hover_in = match event.hits(cx, area) {
-            Hit::FingerLongPress(_)
-            | Hit::FingerHoverIn(..) => true,
-            // TODO: show user profile and TSP info on click
-            // Hit::FingerUp(fue) if fue.is_over && fue.is_primary_hit() => {
-            //     log!("todo: show user profile and TSP info.");
-            //     false
-            // },
+            Hit::FingerLongPress(_) | Hit::FingerHoverIn(..) => true,
+            Hit::FingerUp(fue) if fue.is_over && fue.is_primary_hit() => {
+                cx.widget_action(
+                    self.widget_uid(),
+                    TspSignIndicatorAction::ShowTspIdentityPreview,
+                );
+                enqueue_popup_notification(
+                    self.local_preview_message(),
+                    PopupKind::Info,
+                    Some(5.0),
+                );
+                false
+            }
             Hit::FingerHoverOut(_) => {
-                cx.widget_action(self.widget_uid(),  TooltipAction::HoverOut);
+                cx.widget_action(self.widget_uid(), TooltipAction::HoverOut);
                 false
             }
             _ => false,
@@ -87,15 +98,15 @@ impl Widget for TspSignIndicator {
         if should_hover_in {
             let (text, bg_color) = match self.state {
                 TspSignState::Unknown => (
-                    "The sender's TSP signature is unknown.\n\nClick on their avatar to verify their TSP identity.",
+                    "TSP signature unknown. Open profile to verify.",
                     COLOR_FG_DISABLED,
                 ),
                 TspSignState::Verified => (
-                    "This message was signed with the user's verified TSP identity.",
+                    "Signed with the verified TSP identity.",
                     COLOR_FG_ACCEPT_GREEN,
                 ),
                 TspSignState::WrongSignature => (
-                    "Warning: this message's TSP signature does NOT match the expected sender signature.",
+                    "TSP signature does not match the verified identity.",
                     COLOR_FG_DANGER_RED,
                 ),
             };
@@ -119,20 +130,22 @@ impl Widget for TspSignIndicator {
 }
 
 impl TspSignIndicator {
+    fn local_preview_message(&self) -> &'static str {
+        match self.state {
+            TspSignState::Unknown => TSP_SIGN_PREVIEW_COMPACT_LABEL,
+            TspSignState::Verified => TSP_SIGN_PREVIEW_COMPACT_LABEL,
+            TspSignState::WrongSignature => TSP_SIGN_PREVIEW_COMPACT_LABEL,
+        }
+    }
+
     /// Sets this indicator to show given state of this message's TSP signature.
     pub fn show_with_state(&mut self, cx: &mut Cx, state: TspSignState) {
         let tsp_html_ref = self.view.html(cx, ids!(tsp_html));
         if let Some(mut tsp_html) = tsp_html_ref.borrow_mut() {
             let (text, font_color) = match state {
-                TspSignState::Unknown => {
-                    ("TSP ❔", COLOR_MESSAGE_NOTICE_TEXT)
-                }
-                TspSignState::Verified => {
-                    ("TSP ✅", COLOR_FG_ACCEPT_GREEN)
-                }
-                TspSignState::WrongSignature => {
-                    ("❗TSP❗", COLOR_FG_DANGER_RED)
-                }
+                TspSignState::Unknown => ("TSP ❔", COLOR_MESSAGE_NOTICE_TEXT),
+                TspSignState::Verified => ("TSP ✅", COLOR_FG_ACCEPT_GREEN),
+                TspSignState::WrongSignature => ("❗TSP❗", COLOR_FG_DANGER_RED),
             };
             tsp_html.set_text(cx, text);
             tsp_html.font_color = font_color;
@@ -152,13 +165,11 @@ impl TspSignIndicatorRef {
     }
 }
 
-
 /// Actions emitted by an `TspSignIndicator` widget.
 #[derive(Clone, Debug, Default)]
 pub enum TspSignIndicatorAction {
-    /// The indicator was clicked, and thus we should open
-    /// a modal/dialog showing the message's full edit history.
-    ShowEditHistory,
+    /// The indicator was clicked, so the UI should expose a local-only TSP identity preview.
+    ShowTspIdentityPreview,
     #[default]
     None,
 }

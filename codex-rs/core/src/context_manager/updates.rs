@@ -7,6 +7,7 @@ use crate::context::PersonalitySpecInstructions;
 use crate::context::RealtimeEndInstructions;
 use crate::context::RealtimeStartInstructions;
 use crate::context::RealtimeStartWithInstructions;
+use crate::context::UserInstructions;
 use crate::session::PreviousTurnSettings;
 use crate::session::turn_context::TurnContext;
 use crate::shell::Shell;
@@ -17,12 +18,21 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::TurnContextItem;
+use codex_protocol::protocol::stable_turn_context_manifest_replay_hash;
+
+mod capability;
+mod extension;
+
+pub(crate) use capability::CapabilityContextSections;
+use capability::build_capability_inventory_update_items;
+pub(crate) use extension::ExtensionContextSections;
+use extension::build_extension_context_update_items;
 
 fn build_environment_update_item(
     previous: Option<&TurnContextItem>,
     next: &TurnContext,
     shell: &Shell,
-) -> Option<ResponseItem> {
+) -> Option<String> {
     if !next.config.include_environment_context {
         return None;
     }
@@ -34,9 +44,7 @@ fn build_environment_update_item(
         return None;
     }
 
-    Some(ContextualUserFragment::into(
-        EnvironmentContext::diff_from_turn_context_item(prev, &next_context),
-    ))
+    Some(EnvironmentContext::diff_from_turn_context_item(prev, &next_context).render())
 }
 
 fn build_permissions_update_item(
@@ -79,16 +87,20 @@ fn build_collaboration_mode_update_item(
     }
 
     let prev = previous?;
-    if prev.collaboration_mode.as_ref() != Some(&next.collaboration_mode) {
-        // If the next mode has empty developer instructions, this returns None and we emit no
-        // update, so prior collaboration instructions remain in the prompt history.
-        Some(
-            CollaborationModeInstructions::from_collaboration_mode(&next.collaboration_mode)?
-                .render(),
-        )
-    } else {
-        None
+    if prev.collaboration_mode.as_ref() == Some(&next.collaboration_mode) {
+        return None;
     }
+
+    if let Some(next_instructions) =
+        CollaborationModeInstructions::from_collaboration_mode(&next.collaboration_mode)
+    {
+        return Some(next_instructions.render());
+    }
+
+    prev.collaboration_mode
+        .as_ref()
+        .and_then(CollaborationModeInstructions::from_collaboration_mode)
+        .map(|_| CollaborationModeInstructions::cleared().render())
 }
 
 pub(crate) fn build_realtime_update_item(
@@ -180,6 +192,69 @@ pub(crate) fn build_model_instructions_update_item(
     Some(ModelSwitchInstructions::new(model_instructions).render())
 }
 
+fn build_developer_instructions_update_item(
+    previous: Option<&TurnContextItem>,
+    next: &TurnContext,
+) -> Option<String> {
+    let prev = previous?;
+    let previous_instructions = prev
+        .developer_instructions
+        .as_deref()
+        .filter(|instructions| !instructions.is_empty());
+    let next_instructions = next
+        .developer_instructions
+        .as_deref()
+        .filter(|instructions| !instructions.is_empty());
+
+    if previous_instructions == next_instructions {
+        return None;
+    }
+
+    next_instructions.map_or_else(
+        || {
+            previous_instructions.map(|_| {
+                "Developer instructions were cleared. Do not continue applying previously injected developer instructions.".to_string()
+            })
+        },
+        |instructions| Some(instructions.to_string()),
+    )
+}
+
+fn build_user_instructions_update_item(
+    previous: Option<&TurnContextItem>,
+    next: &TurnContext,
+) -> Option<String> {
+    let prev = previous?;
+    let previous_instructions = prev
+        .user_instructions
+        .as_deref()
+        .filter(|instructions| !instructions.is_empty());
+    let next_instructions = next
+        .user_instructions
+        .as_deref()
+        .filter(|instructions| !instructions.is_empty());
+
+    if previous_instructions == next_instructions {
+        return None;
+    }
+
+    let text = next_instructions.unwrap_or(
+        "Workspace/user instructions were cleared. Do not continue applying previously injected workspace or user instructions.",
+    );
+    Some(
+        UserInstructions {
+            text: text.to_string(),
+            #[allow(deprecated)]
+            directory: next.cwd.to_string_lossy().into_owned(),
+        }
+        .render(),
+    )
+}
+
+fn manifest_text_hash(text: &str) -> String {
+    stable_turn_context_manifest_replay_hash(&format!("text:{text}\n"))
+}
+
 pub(crate) fn build_developer_update_item(text_sections: Vec<String>) -> Option<ResponseItem> {
     build_text_message("developer", text_sections)
 }
@@ -213,17 +288,26 @@ pub(crate) fn build_settings_update_items(
     shell: &Shell,
     exec_policy: &Policy,
     personality_feature_enabled: bool,
+    capability_sections: CapabilityContextSections,
+    extension_sections: ExtensionContextSections,
 ) -> Vec<ResponseItem> {
     // TODO(ccunningham): build_settings_update_items still does not cover every
     // model-visible item emitted by build_initial_context. Persist the remaining
     // inputs or add explicit replay events so fork/resume can diff everything
     // deterministically.
-    let contextual_user_message = build_environment_update_item(previous, next, shell);
-    let developer_update_sections = [
+    let mut contextual_user_sections: Vec<String> = [
+        build_user_instructions_update_item(previous, next),
+        build_environment_update_item(previous, next, shell),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let mut developer_update_sections: Vec<String> = [
         // Keep model-switch instructions first so model-specific guidance is read before
         // any other context diffs on this turn.
         build_model_instructions_update_item(previous_turn_settings, next),
         build_permissions_update_item(previous, next, exec_policy),
+        build_developer_instructions_update_item(previous, next),
         build_collaboration_mode_update_item(previous, next),
         build_realtime_update_item(previous, previous_turn_settings, next),
         build_personality_update_item(previous, next, personality_feature_enabled),
@@ -231,12 +315,20 @@ pub(crate) fn build_settings_update_items(
     .into_iter()
     .flatten()
     .collect();
+    developer_update_sections.extend(build_capability_inventory_update_items(
+        previous,
+        capability_sections,
+    ));
+    let extension_update_sections =
+        build_extension_context_update_items(previous, extension_sections);
+    developer_update_sections.extend(extension_update_sections.developer);
+    contextual_user_sections.extend(extension_update_sections.contextual_user);
 
     let mut items = Vec::with_capacity(2);
     if let Some(developer_message) = build_developer_update_item(developer_update_sections) {
         items.push(developer_message);
     }
-    if let Some(contextual_user_message) = contextual_user_message {
+    if let Some(contextual_user_message) = build_contextual_user_message(contextual_user_sections) {
         items.push(contextual_user_message);
     }
     items

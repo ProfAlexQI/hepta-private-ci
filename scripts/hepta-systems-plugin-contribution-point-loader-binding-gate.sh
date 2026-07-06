@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-plugin-contribution-point-loader-binding-report.sh"
+ABI_GATE="$ROOT/scripts/hepta-systems-plugin-contribution-point-abi-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_CONTRIBUTION_POINT_LOADER_BINDING_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-plugin-contribution-point-loader-binding-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable contribution-point loader binding report: $REPORT"
+[[ -x "$ABI_GATE" ]] || fail "missing executable contribution-point ABI gate: $ABI_GATE"
+[[ -f "$DOC" ]] || fail "missing contribution-point loader binding architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the contribution-point loader binding report"
+fi
+
+grep -q 'Contribution Point Loader Binding' "$DOC" \
+  || fail "architecture note must document Contribution Point Loader Binding"
+grep -q 'ToolRegistry' "$DOC" \
+  || fail "architecture note must document ToolRegistry follow-up"
+grep -q 'live mutation disabled' "$DOC" \
+  || fail "architecture note must document live mutation disabled boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "plugin_contribution_point_loader_binding"
+  and .status == "ready"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_abi_surface == "plugin_contribution_point_abi"
+  and .source_abi_ready == true
+  and .lib_export_present == true
+  and .hepta_system_manifest_present == true
+  and .abi_entry_count == 8
+  and .loader_bound_kinds == ["skill","mcp_server","app_connector","hook"]
+  and .loader_contract_entry_count == 4
+  and .declared_manifest_fields == ["skills","mcpServers","apps"]
+  and .declared_manifest_field_count == 3
+  and .fixture_declared_bound_entry_count == 3
+  and .current_fixture_binding_ready == true
+  and .future_bridge_blocked_kinds == ["tool","permission","activation_event","local_storage"]
+  and .future_bridge_blocked_count == 4
+  and .unbound_without_future_bridge_count == 0
+  and .manifest_loader_fields == ["skills","mcpServers","apps","hooks"]
+  and .loader_output_fields == ["skill_roots","mcp_servers","apps","hook_sources"]
+  and .all_loader_bindings_have_abi_entries == true
+  and .all_declared_manifest_paths_bound == true
+  and .future_bridges_blocked_until_manifest_fields_exist == true
+  and .loader_contract_ready == true
+  and .binding_ready == true
+  and .tool_registry_registration_enabled == false
+  and .runtime_execution_enabled == false
+  and .local_storage_created == false
+  and .all_live_paths_blocked == true
+  and .live_mutation_ready == false
+  and .next_migration_step == "restore_tool_registry_invocation_source_of_truth_without_execution"
+  and (.blockers | index("plugin_tool_invocation_router_preflight_binding_not_restored")) != null
+  and (.blockers | index("tool_registry_registration_disabled")) != null
+  and (.next_actions | index("restore_tool_registry_invocation_source_of_truth_without_execution")) != null
+  and (.next_actions | index("keep_parser_output_read_only_until_preflight_adapter_is_restored")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$ABI_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p codex-core-plugins contribution_point_loader_binding --quiet
+)
+
+printf 'hepta-systems-plugin-contribution-point-loader-binding-gate: PASS: manifest loader contribution-point binding is restored locally and execution remains disabled\n'

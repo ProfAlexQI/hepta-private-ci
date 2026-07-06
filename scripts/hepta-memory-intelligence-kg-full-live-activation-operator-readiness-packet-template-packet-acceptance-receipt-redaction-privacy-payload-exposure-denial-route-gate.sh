@@ -6,7 +6,6 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
-EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(bash "$REPO_ROOT/scripts/lib/hepta-native-route-count.sh")}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -52,7 +51,7 @@ REDACTION_PRIVACY_JSON="$(
       scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-redaction-privacy-payload-exposure-denial-gate.sh
 )"
 
-jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
+jq -e '
   .runtime == "hepta"
   and .status == "ready"
   and .gate == "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_redaction_privacy_payload_exposure_denial_gate"
@@ -147,7 +146,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = ${EXPECTED_ROUTE_COUNT};" \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 167;' \
   "native gateway route/source command count includes operator readiness packet acceptance receipt redaction/privacy route"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_REDACTION_PRIVACY_PAYLOAD_EXPOSURE_DENIAL_ENDPOINT' \
@@ -187,10 +186,10 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   LIVE_ROUTE_JSON="$(
     curl -fsS "$BASE_URL/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-redaction-privacy-payload-exposure-denial"
   )"
-  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
+  jq -e '
     .status == "ready"
-    and .route_count == $expected
-    and .implemented_route_count == $expected
+    and .route_count == 160
+    and .implemented_route_count == 160
     and .missing_route_count == 0
     and .route_count_source_command_accepted == true
     and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_redaction_privacy_payload_exposure_denial_route_enabled == true
@@ -252,11 +251,11 @@ TERMINAL_COVERAGE_JSON="$(
     scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 )"
 
-jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
+jq -e '
   .status == "ready"
   and .preflight_terminal_coverage_inventory_ready == true
-  and .required_marker_count >= 300
-  and .present_required_marker_count == .required_marker_count
+  and .required_marker_count == 300
+  and .present_required_marker_count == 300
   and .missing_required_marker_count == 0
   and .duplicate_required_marker_count == 0
   and .out_of_order_required_marker_count == 0
@@ -265,9 +264,6 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 source_redaction_privacy_gate_sha256="$(printf '%s' "$REDACTION_PRIVACY_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
-terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
-terminal_present_required_marker_count="$(jq -r '.present_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
-terminal_missing_required_marker_count="$(jq -r '.missing_required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"
 
 jq -n \
   --arg product "Hepta" \
@@ -279,9 +275,6 @@ jq -n \
   --arg source_redaction_privacy_gate_sha256 "$source_redaction_privacy_gate_sha256" \
   --arg test_log "$TEST_LOG" \
   --arg terminal_coverage_sha256 "$terminal_coverage_sha256" \
-  --argjson terminal_required_marker_count "$terminal_required_marker_count" \
-  --argjson terminal_present_required_marker_count "$terminal_present_required_marker_count" \
-  --argjson terminal_missing_required_marker_count "$terminal_missing_required_marker_count" \
   --argjson source "$REDACTION_PRIVACY_JSON" \
   --argjson terminal "$TERMINAL_COVERAGE_JSON" \
   --argjson live "$LIVE_ROUTE_JSON" \
@@ -305,7 +298,7 @@ jq -n \
     terminal_coverage_sha256:$terminal_coverage_sha256,
     live_endpoint_checked:$live_checked,
     source_route_count_expected:153,
-    expected_terminal_required_marker_count:$terminal_required_marker_count,
+    terminal_required_marker_count_expected:293,
     source_packet_acceptance_receipt_export_query_observability_ready:$source.source_packet_acceptance_receipt_export_query_observability_ready,
     source_export_query_observability_surface_count:$source.source_export_query_observability_surface_count,
     redaction_privacy_surface_count:$source.redaction_privacy_surface_count,

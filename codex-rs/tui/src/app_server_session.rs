@@ -20,6 +20,7 @@ use codex_app_server_protocol::AuthMode;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigWriteResponse;
+use codex_app_server_protocol::ContextRecallSelectedSnippetEnvelope;
 use codex_app_server_protocol::ExternalAgentConfigDetectParams;
 use codex_app_server_protocol::ExternalAgentConfigDetectResponse;
 use codex_app_server_protocol::ExternalAgentConfigImportParams;
@@ -114,12 +115,15 @@ use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ModelServiceTier;
 use codex_protocol::openai_models::ModelUpgrade;
 use codex_protocol::openai_models::ReasoningEffortPreset;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope as CoreTurnContextRecallSelectedSnippetEnvelope;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use color_eyre::eyre::ContextCompat;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::WrapErr;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+const CONTEXT_RECALL_SELECTED_SNIPPETS_EXPERIMENTAL_API_ENABLED: bool = true;
 
 fn bootstrap_request_error(context: &'static str, err: TypedRequestError) -> color_eyre::Report {
     color_eyre::eyre::eyre!("{context}: {err}")
@@ -555,6 +559,7 @@ impl AppServerSession {
         &mut self,
         thread_id: ThreadId,
         items: Vec<UserInput>,
+        context_recall_selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
         cwd: PathBuf,
         approval_policy: AskForApproval,
         approvals_reviewer: codex_protocol::config_types::ApprovalsReviewer,
@@ -578,7 +583,10 @@ impl AppServerSession {
                     thread_id: thread_id.to_string(),
                     input: items,
                     responsesapi_client_metadata: None,
-                    context_recall_selected_snippets: None,
+                    context_recall_selected_snippets:
+                        context_recall_selected_snippets_for_turn_start(
+                            context_recall_selected_snippets,
+                        ),
                     environments: None,
                     cwd: Some(cwd),
                     runtime_workspace_roots: Some(
@@ -1600,6 +1608,25 @@ pub(crate) fn app_server_rate_limit_snapshots(
     snapshots
 }
 
+fn context_recall_selected_snippets_for_turn_start(
+    selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
+) -> Option<ContextRecallSelectedSnippetEnvelope> {
+    context_recall_selected_snippets_for_turn_start_with_opt_in(
+        selected_snippets,
+        CONTEXT_RECALL_SELECTED_SNIPPETS_EXPERIMENTAL_API_ENABLED,
+    )
+}
+
+fn context_recall_selected_snippets_for_turn_start_with_opt_in(
+    selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
+    experimental_api_enabled: bool,
+) -> Option<ContextRecallSelectedSnippetEnvelope> {
+    ContextRecallSelectedSnippetEnvelope::from_core_for_experimental_client(
+        selected_snippets,
+        experimental_api_enabled,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1633,6 +1660,67 @@ mod tests {
             .build()
             .await
             .expect("config should build")
+    }
+
+    #[test]
+    fn context_recall_selected_snippets_for_turn_start_maps_valid_opted_in_envelope() {
+        let envelope = test_core_selected_snippet_envelope();
+        let selected_snippets =
+            context_recall_selected_snippets_for_turn_start_with_opt_in(Some(envelope), true)
+                .expect("valid opted-in envelope should be mapped");
+
+        assert!(selected_snippets.clone().into_core().has_shadow_integrity());
+        assert_eq!(selected_snippets.selected_snippet_count, 1);
+        assert_eq!(
+            selected_snippets.snippets[0].text,
+            "[redacted-query] bounded memory"
+        );
+    }
+
+    #[test]
+    fn context_recall_selected_snippets_for_turn_start_requires_opt_in_and_integrity() {
+        let valid = test_core_selected_snippet_envelope();
+        assert!(
+            context_recall_selected_snippets_for_turn_start_with_opt_in(Some(valid.clone()), false)
+                .is_none()
+        );
+
+        let mut invalid = valid;
+        invalid.selected_snippet_count = 2;
+        assert!(
+            context_recall_selected_snippets_for_turn_start_with_opt_in(Some(invalid), true)
+                .is_none()
+        );
+    }
+
+    fn test_core_selected_snippet_envelope() -> CoreTurnContextRecallSelectedSnippetEnvelope {
+        CoreTurnContextRecallSelectedSnippetEnvelope {
+            version:
+                codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+            max_snippets: 4,
+            max_snippet_chars: 120,
+            selected_snippet_count: 1,
+            omitted_snippet_count: 2,
+            redacted_snippet_count: 1,
+            truncated_snippet_count: 0,
+            snippets: vec![codex_protocol::protocol::TurnContextRecallSelectedSnippet {
+                snippet_hash: "fedcba9876543210".to_string(),
+                text: "[redacted-query] bounded memory".to_string(),
+                estimated_tokens: 8,
+                redacted: true,
+                truncated: false,
+            }],
+            safety: codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety {
+                ready_for_shadow_handoff: true,
+                bounded: true,
+                origin_identifiers_exposed: false,
+                raw_ranked_payload_exposed: false,
+                rank_explanation_exposed: false,
+                control_marker_exposed: false,
+                query_payload_exposed: false,
+                per_origin_list_exposed: false,
+            },
+        }
     }
 
     #[tokio::test]

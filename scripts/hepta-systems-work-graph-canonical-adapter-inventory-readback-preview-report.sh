@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+preview_report="$("$ROOT/scripts/hepta-systems-work-graph-canonical-adapter-inventory-preview-report.sh")"
+
+readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_canonical_adapter_inventory_readback_preview.rs
+)"
+readback_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-adapter-inventory-readback-preview-report.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-adapter-inventory-readback-preview-gate.sh
+)"
+preview_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_canonical_adapter_inventory_preview.rs
+)"
+preview_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-canonical-adapter-inventory-preview-gate.sh
+)"
+
+jq -n \
+  --argjson preview "$preview_report" \
+  --argjson readback_rust_module_present "$readback_rust_module_present" \
+  --argjson readback_report_script_present "$readback_report_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  --argjson preview_rust_module_present "$preview_rust_module_present" \
+  --argjson preview_gate_script_present "$preview_gate_script_present" \
+  '
+  def readback_plan($adapter): {
+    source_surface_id: $adapter.source_surface_id,
+    source_category: $adapter.source_category,
+    canonical_inventory_state: $adapter.canonical_inventory_state,
+    expected_identity_field_count: ($adapter.canonical_identity_fields | length),
+    expected_edge_kind_count: ($adapter.canonical_edge_kinds | length),
+    expected_collection_binding_count: ($adapter.canonical_collection_ids | length),
+    expected_timeline_event_binding_count: ($adapter.timeline_event_type_ids | length),
+    expected_inventory_blocker_count: ($adapter.inventory_blocker_ids | length),
+    readback_status: "readback_plan_ready",
+    readback_execution_enabled: false,
+    next_required_gate: "hepta_work_graph_canonical_adapter_inventory_application_preview_gate"
+  };
+  def identity_assertion($adapter): {
+    source_surface_id: $adapter.source_surface_id,
+    canonical_node_kind: $adapter.canonical_node_kind,
+    required_identity_fields: $adapter.canonical_identity_fields,
+    deterministic_identity_required: true
+  };
+  def edge_assertion($adapter): {
+    source_surface_id: $adapter.source_surface_id,
+    canonical_edge_kinds: $adapter.canonical_edge_kinds,
+    edge_namespace: "work_graph_edge_kind"
+  };
+  def collection_assertion($adapter): {
+    source_surface_id: $adapter.source_surface_id,
+    canonical_collection_ids: $adapter.canonical_collection_ids,
+    store_projection_persisted: false
+  };
+  def timeline_assertion($adapter): {
+    source_surface_id: $adapter.source_surface_id,
+    timeline_event_type_ids: $adapter.timeline_event_type_ids,
+    timeline_persisted: false
+  };
+  def drift_detector($id; $fields): {
+    id: $id,
+    source_fields: $fields,
+    drift_budget: 0
+  };
+  def readback_blocker($id; $severity; $sources; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_source_surface_ids: $sources,
+    recommended_fix: $fix
+  };
+  ($preview.adapters | map(readback_plan(.))) as $readback_plans
+  | ($preview.adapters | map(identity_assertion(.))) as $identity_assertions
+  | ($preview.adapters | map(edge_assertion(.))) as $edge_kind_assertions
+  | ($preview.adapters | map(collection_assertion(.))) as $collection_binding_assertions
+  | ($preview.adapters | map(timeline_assertion(.))) as $timeline_event_assertions
+  | ($preview.inventory_blockers | map({
+      blocker_id: .id,
+      affected_source_surface_ids: .affected_source_surface_ids,
+      blocks_append_only_fact_source: .blocks_append_only_fact_source
+    })) as $blocker_mapping_assertions
+  | [
+      drift_detector("source_surface_order_drift"; ["source_surface_id"]),
+      drift_detector("canonical_node_kind_drift"; ["source_surface_id", "canonical_node_kind"]),
+      drift_detector("canonical_identity_field_drift"; ["source_surface_id", "canonical_identity_fields"]),
+      drift_detector("canonical_edge_kind_drift"; ["source_surface_id", "canonical_edge_kinds"]),
+      drift_detector("canonical_collection_binding_drift"; ["source_surface_id", "canonical_collection_ids"]),
+      drift_detector("timeline_event_binding_drift"; ["source_surface_id", "timeline_event_type_ids"]),
+      drift_detector("inventory_blocker_mapping_drift"; ["source_surface_id", "inventory_blocker_ids"])
+    ] as $drift_detectors
+  | ($preview.adapters | map(.source_surface_id)) as $all_sources
+  | [
+      readback_blocker("canonical_adapter_inventory_readback_not_executed"; "high"; $all_sources; "keep readback as a preview until the append-only event store can replay canonical adapter rows"),
+      readback_blocker("canonical_adapter_inventory_application_missing"; "high"; $all_sources; "apply readback-verified adapter rows into a no-mutation application outcome before any enforcement"),
+      readback_blocker("append_only_work_graph_events_disabled"; "high"; $all_sources; "do not persist WorkGraph events until readback and operator-review boundaries are promoted")
+    ] as $blockers
+  | ($preview.required_prior_gates + ["hepta_work_graph_canonical_adapter_inventory_preview_gate"]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_canonical_adapter_inventory_readback_preview_gate",
+      schema_version: "work_graph_canonical_adapter_inventory_readback_preview_v1",
+      preview_mode: "read_only_canonical_adapter_inventory_readback_preview_no_execution",
+      source_surface_count: ($preview.adapters | length),
+      readback_plan_count: ($readback_plans | length),
+      identity_assertion_count: ($identity_assertions | length),
+      edge_kind_assertion_count: ($edge_kind_assertions | length),
+      collection_binding_assertion_count: ($collection_binding_assertions | length),
+      timeline_event_assertion_count: ($timeline_event_assertions | length),
+      blocker_mapping_assertion_count: ($blocker_mapping_assertions | length),
+      drift_detector_count: ($drift_detectors | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      readback_plans: $readback_plans,
+      identity_assertions: $identity_assertions,
+      edge_kind_assertions: $edge_kind_assertions,
+      collection_binding_assertions: $collection_binding_assertions,
+      timeline_event_assertions: $timeline_event_assertions,
+      blocker_mapping_assertions: $blocker_mapping_assertions,
+      drift_detectors: $drift_detectors,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_canonical_adapter_inventory_application_preview_gate",
+      ready_for_canonical_adapter_inventory_application_preview: true,
+      ready_for_append_only_work_graph_events: false,
+      ready_for_runtime_adapter_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        canonical_adapter_inventory_readback: {
+          rust_module_present: $readback_rust_module_present,
+          report_script_present: $readback_report_script_present,
+          gate_script_present: $readback_gate_script_present
+        },
+        canonical_adapter_inventory_preview: {
+          rust_module_present: $preview_rust_module_present,
+          gate_script_present: $preview_gate_script_present,
+          upstream_gate: ($preview.gate == "hepta_work_graph_canonical_adapter_inventory_preview_gate" and $preview.status == "ready")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_events_persisted: false,
+        readback_executed: false,
+        adapter_projection_enforced: false,
+        runtime_mutation_performed: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        role_manifest_enforcement_enabled: false,
+        approval_recorded: false,
+        side_effect_lock_established: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

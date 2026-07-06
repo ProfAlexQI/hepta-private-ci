@@ -3,6 +3,8 @@ use super::*;
 use crate::config::ConfigBuilder;
 use crate::config::test_config;
 use crate::context::ContextualUserFragment;
+use crate::context::ExtensionPromptFragment;
+use crate::context::ExtensionPromptSlot;
 use crate::context::TurnAborted;
 use crate::function_tool::FunctionCallError;
 use crate::shell::default_user_shell;
@@ -2344,6 +2346,7 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
         developer_instructions: None,
         final_output_json_schema: None,
         truncation_policy: Some(turn_context.truncation_policy),
+        context_manifest: None,
     };
     let turn_id = previous_context_item
         .turn_id
@@ -3848,6 +3851,9 @@ enabled = false
         crate::config::AgentRoleConfig {
             description: None,
             config_file: Some(role_path.to_path_buf()),
+            agent_card_manifest_source: None,
+            agent_card_manifest_version: None,
+            agent_card_manifest: None,
             nickname_candidates: None,
         },
     );
@@ -5246,6 +5252,7 @@ fn op_kind_distinguishes_turn_ops() {
             items: vec![],
             final_output_json_schema: None,
             responsesapi_client_metadata: None,
+            context_recall_selected_snippets: None,
             cwd: None,
             workspace_roots: None,
             profile_workspace_roots: None,
@@ -6554,6 +6561,289 @@ async fn build_settings_update_items_emits_environment_item_for_time_changes() {
 }
 
 #[tokio::test]
+async fn build_settings_update_items_manifest_uses_semantic_contribution_sources() {
+    let (session, previous_context) = make_session_and_context().await;
+    let previous_context = Arc::new(previous_context);
+    let mut current_context = previous_context
+        .with_model(
+            previous_context.model_info.slug.clone(),
+            &session.services.models_manager,
+        )
+        .await;
+    current_context.permission_profile = PermissionProfile::Disabled;
+    current_context.current_date = Some("2026-02-27".to_string());
+
+    let previous_context_item = previous_context.to_turn_context_item();
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("settings update items should produce a manifest");
+
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "turn_context:developer:permissions:0",
+            "turn_context:contextual_user:environment:1",
+        ]
+    );
+    assert_eq!(
+        manifest
+            .decision_ledger
+            .iter()
+            .map(|entry| entry.decision.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "included:always_include_safety_policy",
+            "included:turn_environment",
+            "policy:non_omitting_replay_baseline:within_budget",
+        ]
+    );
+    assert_eq!(manifest.budget_tokens, Some(manifest.estimated_tokens));
+    assert_eq!(manifest.omitted_entries, 0);
+    assert!(manifest.omitted_sources.is_empty());
+    assert!(!manifest.truncated);
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_emits_collaboration_mode_clear_when_instructions_disappear() {
+    let (session, mut previous_context) = make_session_and_context().await;
+    previous_context.collaboration_mode = CollaborationMode {
+        mode: ModeKind::Plan,
+        settings: Settings {
+            model: previous_context.model_info.slug.clone(),
+            reasoning_effort: previous_context.reasoning_effort,
+            developer_instructions: Some("Use plan-mode guidance".to_string()),
+        },
+    };
+    let mut current_context = previous_context
+        .with_model(
+            previous_context.model_info.slug.clone(),
+            &session.services.models_manager,
+        )
+        .await;
+    current_context.collaboration_mode =
+        current_context
+            .collaboration_mode
+            .with_updates(None, None, Some(None));
+
+    let update_items = session
+        .build_settings_update_items(
+            Some(&previous_context.to_turn_context_item()),
+            &current_context,
+        )
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("collaboration-mode clear should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<collaboration_mode>")
+                && text.contains("developer instructions were cleared")
+        }),
+        "expected collaboration mode clear update, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:collaboration_mode:0"]
+    );
+    assert!(
+        manifest
+            .decision_ledger
+            .iter()
+            .any(|entry| entry.decision == "included:always_include_developer")
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_emits_user_and_developer_instruction_clears() {
+    let (session, mut previous_context) = make_session_and_context().await;
+    previous_context.developer_instructions =
+        Some("Keep previous developer guidance active.".to_string());
+    previous_context.user_instructions =
+        Some("Keep previous workspace guidance active.".to_string());
+    let mut current_context = previous_context
+        .with_model(
+            previous_context.model_info.slug.clone(),
+            &session.services.models_manager,
+        )
+        .await;
+    current_context.developer_instructions = None;
+    current_context.user_instructions = None;
+
+    let update_items = session
+        .build_settings_update_items(
+            Some(&previous_context.to_turn_context_item()),
+            &current_context,
+        )
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let user_texts = user_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("instruction clears should produce a manifest");
+
+    assert!(
+        developer_texts
+            .iter()
+            .any(|text| text.contains("Developer instructions were cleared")),
+        "expected developer-instruction clear update, got {developer_texts:?}"
+    );
+    assert!(
+        user_texts.iter().any(|text| {
+            text.contains("# AGENTS.md instructions for ")
+                && text.contains("Workspace/user instructions were cleared")
+        }),
+        "expected user-instruction clear update, got {user_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "turn_context:developer:developer_instructions:0",
+            "turn_context:contextual_user:user_instructions:1",
+        ]
+    );
+    assert_eq!(
+        manifest
+            .decision_ledger
+            .iter()
+            .map(|entry| entry.decision.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "included:always_include_developer",
+            "included:always_include_contextual_user",
+            "policy:non_omitting_replay_baseline:within_budget",
+        ]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_emits_capability_inventory_clears() {
+    let (session, previous_context) = make_session_and_context().await;
+    let mut previous_context_item = previous_context.to_turn_context_item();
+    let previous_capability_items = vec![ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![
+            ContentItem::InputText {
+                text: tagged_context_fragment(
+                    codex_protocol::protocol::APPS_INSTRUCTIONS_OPEN_TAG,
+                    codex_protocol::protocol::APPS_INSTRUCTIONS_CLOSE_TAG,
+                    "Previously visible apps.",
+                ),
+            },
+            ContentItem::InputText {
+                text: tagged_context_fragment(
+                    codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG,
+                    codex_protocol::protocol::SKILLS_INSTRUCTIONS_CLOSE_TAG,
+                    "Previously visible skills.",
+                ),
+            },
+            ContentItem::InputText {
+                text: tagged_context_fragment(
+                    codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG,
+                    codex_protocol::protocol::PLUGINS_INSTRUCTIONS_CLOSE_TAG,
+                    "Previously visible plugins.",
+                ),
+            },
+        ],
+        phase: None,
+    }];
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&previous_capability_items);
+    let mut current_context = previous_context
+        .with_model(
+            previous_context.model_info.slug.clone(),
+            &session.services.models_manager,
+        )
+        .await;
+    current_context.turn_skills = TurnSkillsContext::new(Arc::new(SkillLoadOutcome::default()));
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("capability clears should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<apps_instructions>")
+                && text.contains("Apps/connectors capability inventory was cleared")
+        }),
+        "expected apps clear update, got {developer_texts:?}"
+    );
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<skills_instructions>")
+                && text.contains("Available skills capability inventory was cleared")
+        }),
+        "expected skills clear update, got {developer_texts:?}"
+    );
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<plugins_instructions>")
+                && text.contains("Available plugins capability inventory was cleared")
+        }),
+        "expected plugins clear update, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "turn_context:developer:apps:0:0",
+            "turn_context:developer:available_skills:0:1",
+            "turn_context:developer:available_plugins:0:2",
+        ]
+    );
+    assert_eq!(
+        manifest
+            .decision_ledger
+            .iter()
+            .map(|entry| entry.decision.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "included:capability_inventory",
+            "included:capability_inventory",
+            "included:capability_inventory",
+            "policy:non_omitting_replay_baseline:within_budget",
+        ]
+    );
+    assert!(manifest.has_replay_integrity());
+
+    previous_context_item.context_manifest = Some(manifest);
+    let repeated_update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    assert!(
+        repeated_update_items.is_empty(),
+        "already-cleared capability inventory should not be cleared again: {repeated_update_items:?}"
+    );
+}
+
+fn tagged_context_fragment(open_tag: &str, close_tag: &str, body: &str) -> String {
+    format!("{open_tag}\n{body}\n{close_tag}")
+}
+
+#[tokio::test]
 async fn build_settings_update_items_omits_environment_item_when_disabled() {
     let (session, previous_context) = make_session_and_context().await;
     let previous_context = Arc::new(previous_context);
@@ -6720,6 +7010,9 @@ async fn make_multi_agent_v2_usage_hint_test_session(
 
 struct PromptExtensionTestContributor;
 struct PromptExtensionTestState;
+struct PromptExtensionDiffState {
+    fragments: Vec<codex_extension_api::PromptFragment>,
+}
 
 impl codex_extension_api::ContextContributor for PromptExtensionTestContributor {
     fn contribute<'a>(
@@ -6730,16 +7023,16 @@ impl codex_extension_api::ContextContributor for PromptExtensionTestContributor 
         Box<dyn std::future::Future<Output = Vec<codex_extension_api::PromptFragment>> + Send + 'a>,
     > {
         Box::pin(async move {
-            thread_store
-                .get::<PromptExtensionTestState>()
-                .is_some()
-                .then(|| {
-                    codex_extension_api::PromptFragment::developer_policy(
-                        "prompt extension enabled",
-                    )
-                })
-                .into_iter()
-                .collect()
+            let mut fragments = Vec::new();
+            if thread_store.get::<PromptExtensionTestState>().is_some() {
+                fragments.push(codex_extension_api::PromptFragment::developer_policy(
+                    "prompt extension enabled",
+                ));
+            }
+            if let Some(state) = thread_store.get::<PromptExtensionDiffState>() {
+                fragments.extend(state.fragments.iter().cloned());
+            }
+            fragments
         })
     }
 }
@@ -6767,7 +7060,8 @@ async fn build_initial_context_includes_prompt_fragments_from_extensions() {
         developer_messages
             .iter()
             .flatten()
-            .any(|text| *text == "prompt extension enabled"),
+            .any(|text| text.contains("<extension_developer_policy>")
+                && text.contains("prompt extension enabled")),
         "expected prompt extension developer text, got {developer_messages:?}"
     );
 }
@@ -6784,8 +7078,154 @@ async fn build_initial_context_omits_prompt_fragments_without_extension_state() 
         !developer_messages
             .iter()
             .flatten()
-            .any(|text| *text == "prompt extension enabled"),
+            .any(|text| text.contains("prompt extension enabled")),
         "did not expect prompt extension developer text, got {developer_messages:?}"
+    );
+}
+
+#[tokio::test]
+async fn build_settings_update_items_emits_extension_fragment_replacements_and_clears() {
+    let (mut session, previous_context) = make_session_and_context().await;
+    session.services.extensions = prompt_extension_test_registry();
+    session
+        .services
+        .thread_extension_data
+        .insert(PromptExtensionDiffState {
+            fragments: vec![
+                codex_extension_api::PromptFragment::developer_policy("next extension policy"),
+                codex_extension_api::PromptFragment::developer_capability(
+                    "next extension capabilities",
+                ),
+                codex_extension_api::PromptFragment::new(
+                    codex_extension_api::PromptSlot::ContextualUser,
+                    "next extension contextual user",
+                ),
+            ],
+        });
+    let mut previous_context_item = previous_context.to_turn_context_item();
+    let previous_extension_items = vec![
+        ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![
+                ContentItem::InputText {
+                    text: ExtensionPromptFragment::new(
+                        ExtensionPromptSlot::DeveloperPolicy,
+                        "old extension policy",
+                    )
+                    .render(),
+                },
+                ContentItem::InputText {
+                    text: ExtensionPromptFragment::new(
+                        ExtensionPromptSlot::DeveloperCapabilities,
+                        "old extension capabilities",
+                    )
+                    .render(),
+                },
+            ],
+            phase: None,
+        },
+        ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
+                text: ExtensionPromptFragment::new(
+                    ExtensionPromptSlot::SeparateDeveloper,
+                    "old extension separate developer",
+                )
+                .render(),
+            }],
+            phase: None,
+        },
+        ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: ExtensionPromptFragment::new(
+                    ExtensionPromptSlot::ContextualUser,
+                    "old extension contextual user",
+                )
+                .render(),
+            }],
+            phase: None,
+        },
+    ];
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&previous_extension_items);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &previous_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let user_texts = user_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("extension updates should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<extension_developer_policy>") && text.contains("next extension policy")
+        }),
+        "expected extension policy replacement, got {developer_texts:?}"
+    );
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<extension_developer_capabilities>")
+                && text.contains("next extension capabilities")
+        }),
+        "expected extension capabilities replacement, got {developer_texts:?}"
+    );
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<extension_separate_developer>")
+                && text.contains(
+                    "extension separate developer extension prompt fragments were cleared",
+                )
+        }),
+        "expected extension separate-developer clear, got {developer_texts:?}"
+    );
+    assert!(
+        user_texts.iter().any(|text| {
+            text.contains("<extension_contextual_user>")
+                && text.contains("next extension contextual user")
+        }),
+        "expected extension contextual-user replacement, got {user_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "turn_context:developer:extension_developer_policy:0:0",
+            "turn_context:developer:extension_developer_capabilities:0:1",
+            "turn_context:developer:extension_separate_developer:0:2",
+            "turn_context:contextual_user:extension_contextual_user:1",
+        ]
+    );
+    assert_eq!(
+        manifest
+            .decision_ledger
+            .iter()
+            .map(|entry| entry.decision.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "included:extension_prompt",
+            "included:extension_prompt",
+            "included:extension_prompt",
+            "included:extension_prompt",
+            "policy:non_omitting_replay_baseline:within_budget",
+        ]
+    );
+    assert!(manifest.has_replay_integrity());
+
+    previous_context_item.context_manifest = Some(manifest);
+    let repeated_update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &previous_context)
+        .await;
+    assert!(
+        repeated_update_items.is_empty(),
+        "unchanged extension fragments and already-cleared source should not emit again: {repeated_update_items:?}"
     );
 }
 
@@ -7346,11 +7786,2091 @@ async fn record_context_updates_and_set_reference_context_item_injects_full_cont
     assert_eq!(history.raw_items().to_vec(), initial_context);
 
     let current_context = session.reference_context_item().await;
+    let mut expected_context_item = turn_context.to_turn_context_item();
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::from_model_context_window(
+            turn_context.model_context_window(),
+        );
+    expected_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest_with_policy(
+            &initial_context,
+            &assembly_policy,
+        );
     assert_eq!(
         serde_json::to_value(current_context).expect("serialize current context item"),
-        serde_json::to_value(Some(turn_context.to_turn_context_item()))
-            .expect("serialize expected context item")
+        serde_json::to_value(Some(expected_context_item)).expect("serialize expected context item")
     );
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_persists_shadow_context_manifest() {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    let initial_context = session.build_initial_context(&turn_context).await;
+    let first_context_text = initial_context.iter().find_map(|item| {
+        let ResponseItem::Message { content, .. } = item else {
+            return None;
+        };
+        content.iter().find_map(|content_item| {
+            let ContentItem::InputText { text } = content_item else {
+                return None;
+            };
+            Some(text.as_str())
+        })
+    });
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    assert!(current_manifest.has_replay_integrity());
+    assert!(!current_manifest.entries.is_empty());
+    assert_eq!(
+        current_manifest.decision_ledger.len(),
+        current_manifest.entries.len() + 1
+    );
+    assert!(current_manifest.budget_tokens.is_some());
+    assert_eq!(current_manifest.omitted_entries, 0);
+    assert!(current_manifest.omitted_sources.is_empty());
+    assert!(!current_manifest.truncated);
+    assert!(current_manifest.decision_ledger.iter().any(|entry| {
+        entry.source == "turn_context:assembly_policy"
+            && entry
+                .decision
+                .starts_with("policy:non_omitting_replay_baseline:")
+    }));
+    assert!(
+        current_manifest
+            .decision_ledger
+            .iter()
+            .all(|entry| entry.reason_hash.is_some())
+    );
+    assert!(
+        current_manifest
+            .entries
+            .iter()
+            .all(|entry| entry.source.starts_with("turn_context:"))
+    );
+
+    let manifest_json =
+        serde_json::to_string(current_manifest).expect("context manifest should serialize");
+    if let Some(first_context_text) = first_context_text {
+        assert!(!manifest_json.contains(first_context_text));
+    }
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed.history.iter().find_map(|item| match item {
+        RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+        _ => None,
+    });
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_carries_shadow_manifest_without_diffs()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    assert_eq!(
+        session.clone_history().await.raw_items().len(),
+        history_after_first
+    );
+    assert_eq!(
+        session
+            .reference_context_item()
+            .await
+            .and_then(|item| item.context_manifest),
+        Some(first_manifest)
+    );
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_persists_recall_provider_rollup_in_shadow_manifest()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    let recall_selection = codex_protocol::protocol::TurnContextRecallSelectionSummary {
+        returned_source_count: 4,
+        selected_source_count: 3,
+        ranked_source_count: 2,
+        returned_unselected_source_count: 1,
+        source_diversity_met: true,
+        source_diversity_target: 3,
+        max_per_source: 2,
+        ranked_item_count: 4,
+        omitted_by_budget_count: 1,
+        memory_control_omitted_count: 2,
+        low_trust_ranked_item_count: 1,
+        low_recency_ranked_item_count: 1,
+    };
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_manifest_options(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: Some(
+                    crate::context_manager::manifest::ContextRecallProviderRollup {
+                        recall_selection: recall_selection.clone(),
+                    },
+                ),
+                recall_selected_snippets: None,
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+        )
+        .await;
+
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let manifest_value =
+        serde_json::to_value(current_manifest).expect("context manifest should serialize");
+
+    assert!(current_manifest.has_replay_integrity());
+    assert_eq!(
+        current_manifest.recall_selection.as_ref(),
+        Some(&recall_selection)
+    );
+    assert!(
+        manifest_value["recall_selection"]
+            .get("source_id")
+            .is_none()
+    );
+    assert!(manifest_value["recall_selection"].get("summary").is_none());
+    assert!(manifest_value["recall_selection"].get("snippet").is_none());
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_updates_recall_provider_rollup_without_context_diffs()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let recall_selection = codex_protocol::protocol::TurnContextRecallSelectionSummary {
+        returned_source_count: 2,
+        selected_source_count: 2,
+        ranked_source_count: 0,
+        returned_unselected_source_count: 0,
+        source_diversity_met: true,
+        source_diversity_target: 2,
+        max_per_source: 2,
+        ranked_item_count: 0,
+        omitted_by_budget_count: 0,
+        memory_control_omitted_count: 1,
+        low_trust_ranked_item_count: 0,
+        low_recency_ranked_item_count: 0,
+    };
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_manifest_options(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: Some(
+                    crate::context_manager::manifest::ContextRecallProviderRollup {
+                        recall_selection: recall_selection.clone(),
+                    },
+                ),
+                recall_selected_snippets: None,
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+        )
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    assert_eq!(
+        session.clone_history().await.raw_items().len(),
+        history_after_first
+    );
+    assert_eq!(
+        current_manifest.recall_selection.as_ref(),
+        Some(&recall_selection)
+    );
+    assert_ne!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_consumes_turn_scoped_recall_provider_rollup()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let recall_selection = codex_protocol::protocol::TurnContextRecallSelectionSummary {
+        returned_source_count: 3,
+        selected_source_count: 3,
+        ranked_source_count: 3,
+        returned_unselected_source_count: 0,
+        source_diversity_met: true,
+        source_diversity_target: 3,
+        max_per_source: 2,
+        ranked_item_count: 4,
+        omitted_by_budget_count: 1,
+        memory_control_omitted_count: 2,
+        low_trust_ranked_item_count: 1,
+        low_recency_ranked_item_count: 1,
+    };
+    turn_context.extension_data.insert(recall_selection.clone());
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    let manifest_json =
+        serde_json::to_string(&current_manifest).expect("context manifest should serialize");
+
+    assert_eq!(
+        session.clone_history().await.raw_items().len(),
+        history_after_first
+    );
+    assert_eq!(
+        current_manifest.recall_selection.as_ref(),
+        Some(&recall_selection)
+    );
+    assert_ne!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+    assert!(!manifest_json.contains("source_id"));
+    assert!(!manifest_json.contains("snippet"));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_consumes_turn_scoped_recall_rollup_and_selected_snippets_without_drift()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let recall_selection = codex_protocol::protocol::TurnContextRecallSelectionSummary {
+        returned_source_count: 4,
+        selected_source_count: 3,
+        ranked_source_count: 3,
+        returned_unselected_source_count: 1,
+        source_diversity_met: true,
+        source_diversity_target: 3,
+        max_per_source: 2,
+        ranked_item_count: 5,
+        omitted_by_budget_count: 1,
+        memory_control_omitted_count: 2,
+        low_trust_ranked_item_count: 1,
+        low_recency_ranked_item_count: 1,
+    };
+    let selected_snippets = test_recall_selected_snippet_envelope();
+    turn_context.extension_data.insert(recall_selection.clone());
+    turn_context
+        .extension_data
+        .insert(selected_snippets.clone());
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let current_history = session.clone_history().await;
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("combined handoff manifest should be retained");
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+    let manifest_json =
+        serde_json::to_string(&current_manifest).expect("manifest should serialize");
+
+    assert_eq!(current_history.raw_items().len(), history_after_first + 1);
+    assert_eq!(
+        current_manifest.recall_selection.as_ref(),
+        Some(&recall_selection)
+    );
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert_ne!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+    assert_eq!(history_json.matches("<selected_context_recall>").count(), 1);
+    assert!(history_json.contains("[redacted-query] bounded memory"));
+    assert!(history_json.contains("fedcba9876543210"));
+    assert!(!manifest_json.contains("source-memory-id"));
+    assert!(!manifest_json.contains("[hepta-memory:"));
+    assert!(!manifest_json.contains("needle"));
+    assert!(!history_json.contains("source-memory-id"));
+    assert!(!history_json.contains("source_id"));
+    assert!(!history_json.contains("[hepta-memory:"));
+    assert!(!history_json.contains("needle"));
+
+    let refreshed_recall_selection = codex_protocol::protocol::TurnContextRecallSelectionSummary {
+        returned_source_count: 3,
+        selected_source_count: 2,
+        ranked_source_count: 2,
+        returned_unselected_source_count: 1,
+        source_diversity_met: true,
+        source_diversity_target: 2,
+        max_per_source: 2,
+        ranked_item_count: 4,
+        omitted_by_budget_count: 2,
+        memory_control_omitted_count: 1,
+        low_trust_ranked_item_count: 0,
+        low_recency_ranked_item_count: 1,
+    };
+    turn_context
+        .extension_data
+        .insert(refreshed_recall_selection.clone());
+    let history_after_combined = current_history.raw_items().len();
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let refreshed_history = session.clone_history().await;
+    let refreshed_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("refreshed rollup manifest should be retained");
+    let refreshed_history_json =
+        serde_json::to_string(refreshed_history.raw_items()).expect("history should serialize");
+
+    assert_eq!(refreshed_history.raw_items().len(), history_after_combined);
+    assert_eq!(
+        refreshed_manifest.recall_selection.as_ref(),
+        Some(&refreshed_recall_selection)
+    );
+    assert_eq!(
+        refreshed_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert_eq!(
+        refreshed_history_json
+            .matches("<selected_context_recall>")
+            .count(),
+        1
+    );
+    assert!(!refreshed_history_json.contains("source-memory-id"));
+    assert!(!refreshed_history_json.contains("[hepta-memory:"));
+    assert!(!refreshed_history_json.contains("needle"));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_injects_guarded_selected_snippets_without_context_diffs()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let selected_snippets = test_recall_selected_snippet_envelope();
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_manifest_options(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: None,
+                recall_selected_snippets: Some(
+                    crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                        envelope: selected_snippets.clone(),
+                    },
+                ),
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+        )
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+    let manifest_json =
+        serde_json::to_string(&current_manifest).expect("manifest should serialize");
+
+    assert_eq!(current_history.raw_items().len(), history_after_first + 1);
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert_ne!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+    assert!(history_json.contains("<selected_context_recall>"));
+    assert!(history_json.contains("fedcba9876543210"));
+    assert!(history_json.contains("[redacted-query] bounded memory"));
+    assert!(!history_json.contains("source-memory-id"));
+    assert!(!history_json.contains("source_id"));
+    assert!(!history_json.contains("[hepta-memory:"));
+    assert!(!history_json.contains("needle"));
+    assert!(!manifest_json.contains("source-memory-id"));
+    assert!(!manifest_json.contains("[hepta-memory:"));
+    assert!(!manifest_json.contains("needle"));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_with_source_aware_policy_filters_omitted_prompt_fragments()
+ {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    let selected_snippets = test_recall_selected_snippet_envelope();
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::source_aware_omission_for_model_context_window(
+            Some(1),
+        );
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_policy(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: None,
+                recall_selected_snippets: Some(
+                    crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                        envelope: selected_snippets.clone(),
+                    },
+                ),
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+            assembly_policy,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let selected_recall_omitted = current_manifest
+        .omitted_sources
+        .iter()
+        .any(|source| source.contains(":selected_context_recall:"));
+
+    assert!(current_manifest.has_replay_integrity());
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert!(selected_recall_omitted);
+    assert!(
+        !current_manifest
+            .entries
+            .iter()
+            .any(|entry| entry.source.contains(":selected_context_recall:"))
+    );
+    assert!(current_manifest.decision_ledger.iter().any(|entry| {
+        entry.source.contains(":selected_context_recall:")
+            && entry
+                .decision
+                .starts_with("omitted:selected_context_recall:")
+    }));
+    assert!(!history_json.contains("<selected_context_recall>"));
+    assert!(!history_json.contains("fedcba9876543210"));
+    assert!(!history_json.contains("[redacted-query] bounded memory"));
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed.history.iter().find_map(|item| match item {
+        RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+        _ => None,
+    });
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_with_source_aware_policy_truncates_prompt_fragments()
+ {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let history_after_baseline = session.clone_history().await.raw_items().len();
+    let selected_snippets = test_recall_selected_snippet_envelope();
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::source_aware_omission_and_truncation_for_model_context_window(
+            Some(1),
+        );
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_policy(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: None,
+                recall_selected_snippets: Some(
+                    crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                        envelope: selected_snippets.clone(),
+                    },
+                ),
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+            assembly_policy,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let selected_recall_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":selected_context_recall:"))
+        .expect("selected recall should remain as a truncated manifest entry");
+
+    assert_eq!(
+        current_history.raw_items().len(),
+        history_after_baseline + 1
+    );
+    assert!(current_manifest.has_replay_integrity());
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert!(current_manifest.truncated);
+    assert_eq!(current_manifest.omitted_entries, 0);
+    assert!(current_manifest.omitted_sources.is_empty());
+    assert!(history_json.contains("<selected_context_recall>"));
+    assert!(history_json.contains("[context truncated for budget]"));
+    assert!(!history_json.contains("fedcba9876543210"));
+    assert!(!history_json.contains("[redacted-query] bounded memory"));
+    assert!(current_manifest.decision_ledger.iter().any(|entry| {
+        entry.source == selected_recall_entry.source
+            && entry
+                .decision
+                .starts_with("truncated:selected_context_recall:original_tokens:")
+            && entry.reason_hash.is_some()
+    }));
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_with_source_aware_policy_summarizes_prompt_fragments()
+ {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let history_after_baseline = session.clone_history().await.raw_items().len();
+    let mut selected_snippets = test_recall_selected_snippet_envelope();
+    selected_snippets.snippets[0].text =
+        "bounded memory summary with project preference, recent context details, and durable recall notes"
+            .into();
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::source_aware_summary_for_model_context_window(
+            Some(1),
+        );
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_policy(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: None,
+                recall_selected_snippets: Some(
+                    crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                        envelope: selected_snippets.clone(),
+                    },
+                ),
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+            assembly_policy,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let selected_recall_text = developer_input_texts(current_history.raw_items())
+        .into_iter()
+        .find(|text| text.starts_with("<selected_context_recall>"))
+        .expect("selected recall should remain as summarized prompt text");
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let selected_recall_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":selected_context_recall:"))
+        .expect("selected recall should remain as a summarized manifest entry");
+    let expected_text_hash = codex_protocol::protocol::stable_turn_context_manifest_text_hash(
+        &format!("text:{selected_recall_text}\n"),
+    );
+
+    assert_eq!(
+        current_history.raw_items().len(),
+        history_after_baseline + 1
+    );
+    assert!(current_manifest.has_replay_integrity());
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert!(selected_recall_text.contains("[context summarized for budget]"));
+    assert!(!selected_recall_text.contains("fedcba9876543210"));
+    assert!(!selected_recall_text.contains("bounded memory summary"));
+    assert!(!current_manifest.truncated);
+    assert_eq!(current_manifest.omitted_entries, 0);
+    assert!(current_manifest.omitted_sources.is_empty());
+    assert_eq!(current_manifest.compression_stages.len(), 1);
+    assert_eq!(
+        current_manifest.compression_stages[0].kind,
+        codex_protocol::protocol::TurnContextCompressionStageKind::Summary
+    );
+    assert_eq!(
+        current_manifest.compression_stages[0].output_tokens,
+        selected_recall_entry.estimated_tokens
+    );
+    assert!(current_manifest.compression_stages[0].tokens_saved() > 0);
+    assert_eq!(selected_recall_entry.text_hash, expected_text_hash);
+    assert!(
+        !current_manifest
+            .compression_candidates
+            .iter()
+            .any(|candidate| candidate.source_id == "selected_context_recall")
+    );
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let persisted_response_items = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let persisted_selected_recall_text = developer_input_texts(&persisted_response_items)
+        .into_iter()
+        .find(|text| text.starts_with("<selected_context_recall>"))
+        .expect("persisted history should retain summarized selected recall");
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+    assert_eq!(persisted_selected_recall_text, selected_recall_text);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_with_source_aware_policy_defragments_tool_inventory_prompt_fragments()
+ {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let previous_tool_inventory_items = vec![ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: tagged_context_fragment(
+                codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG,
+                codex_protocol::protocol::PLUGINS_INSTRUCTIONS_CLOSE_TAG,
+                "Previously visible plugins with repeated capability metadata for shell, files, docs, and search.",
+            ),
+        }],
+        phase: None,
+    }];
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_tool_inventory_items,
+        );
+    {
+        let mut state = session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::source_aware_tool_defragment_for_model_context_window(
+            Some(1),
+        );
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_policy(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions::default(),
+            assembly_policy,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let defragmented_plugins_text = developer_input_texts(current_history.raw_items())
+        .into_iter()
+        .find(|text| text.starts_with(codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG))
+        .expect("available plugins should remain as defragmented prompt text");
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let plugins_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":available_plugins:"))
+        .expect("available plugins should remain as a defragmented manifest entry");
+    let expected_text_hash = codex_protocol::protocol::stable_turn_context_manifest_text_hash(
+        &format!("text:{defragmented_plugins_text}\n"),
+    );
+
+    assert_eq!(current_history.raw_items().len(), 1);
+    assert!(current_manifest.has_replay_integrity());
+    assert!(defragmented_plugins_text.contains("[context defragmented for budget]"));
+    assert!(
+        !defragmented_plugins_text.contains("Available plugins capability inventory was cleared")
+    );
+    assert!(!defragmented_plugins_text.contains("Previously visible plugins"));
+    assert!(!current_manifest.truncated);
+    assert_eq!(current_manifest.omitted_entries, 0);
+    assert!(current_manifest.omitted_sources.is_empty());
+    assert_eq!(current_manifest.compression_stages.len(), 1);
+    assert_eq!(
+        current_manifest.compression_stages[0].kind,
+        codex_protocol::protocol::TurnContextCompressionStageKind::Defragment
+    );
+    assert_eq!(
+        current_manifest.compression_stages[0].output_tokens,
+        plugins_entry.estimated_tokens
+    );
+    assert!(current_manifest.compression_stages[0].tokens_saved() > 0);
+    assert_eq!(plugins_entry.text_hash, expected_text_hash);
+    assert!(
+        !current_manifest
+            .compression_candidates
+            .iter()
+            .any(|candidate| candidate.source_id == "available_plugins")
+    );
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let persisted_response_items = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let persisted_plugins_text = developer_input_texts(&persisted_response_items)
+        .into_iter()
+        .find(|text| text.starts_with(codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG))
+        .expect("persisted history should retain defragmented plugins inventory");
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+    assert_eq!(persisted_plugins_text, defragmented_plugins_text);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_with_source_aware_policy_prunes_extension_capabilities_prompt_fragments()
+ {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let previous_extension_capabilities_items = vec![ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: ExtensionPromptFragment::new(
+                ExtensionPromptSlot::DeveloperCapabilities,
+                "Previously visible extension capabilities with repeated dispatch metadata, routing hints, tool affordances, and policy reminders.",
+            )
+            .render(),
+        }],
+        phase: None,
+    }];
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_extension_capabilities_items,
+        );
+    {
+        let mut state = session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::source_aware_tool_prune_for_model_context_window(
+            Some(1),
+        );
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_policy(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions::default(),
+            assembly_policy,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let pruned_capabilities_text = developer_input_texts(current_history.raw_items())
+        .into_iter()
+        .find(|text| text.starts_with(crate::context::EXTENSION_DEVELOPER_CAPABILITIES_OPEN_TAG))
+        .expect("extension capabilities should remain as pruned prompt text");
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let capabilities_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":extension_developer_capabilities:"))
+        .expect("extension capabilities should remain as a pruned manifest entry");
+    let expected_text_hash = codex_protocol::protocol::stable_turn_context_manifest_text_hash(
+        &format!("text:{pruned_capabilities_text}\n"),
+    );
+
+    assert_eq!(current_history.raw_items().len(), 1);
+    assert!(current_manifest.has_replay_integrity());
+    assert!(pruned_capabilities_text.contains("[context pruned for budget]"));
+    assert!(
+        !pruned_capabilities_text
+            .contains("extension developer capabilities extension prompt fragments were cleared")
+    );
+    assert!(!pruned_capabilities_text.contains("Previously visible extension capabilities"));
+    assert!(!current_manifest.truncated);
+    assert_eq!(current_manifest.omitted_entries, 0);
+    assert!(current_manifest.omitted_sources.is_empty());
+    assert_eq!(current_manifest.compression_stages.len(), 1);
+    assert_eq!(
+        current_manifest.compression_stages[0].kind,
+        codex_protocol::protocol::TurnContextCompressionStageKind::Prune
+    );
+    assert_eq!(
+        current_manifest.compression_stages[0].output_tokens,
+        capabilities_entry.estimated_tokens
+    );
+    assert!(current_manifest.compression_stages[0].tokens_saved() > 0);
+    assert_eq!(capabilities_entry.text_hash, expected_text_hash);
+    assert!(
+        !current_manifest
+            .compression_candidates
+            .iter()
+            .any(|candidate| candidate.source_id == "extension_developer_capabilities")
+    );
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let persisted_response_items = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let persisted_capabilities_text = developer_input_texts(&persisted_response_items)
+        .into_iter()
+        .find(|text| text.starts_with(crate::context::EXTENSION_DEVELOPER_CAPABILITIES_OPEN_TAG))
+        .expect("persisted history should retain pruned extension capabilities");
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+    assert_eq!(persisted_capabilities_text, pruned_capabilities_text);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_with_source_aware_policy_compresses_summary_defragment_and_prune_together()
+ {
+    let (mut session, turn_context) = make_session_and_context().await;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let previous_compressible_items = vec![ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![
+            ContentItem::InputText {
+                text: tagged_context_fragment(
+                    codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG,
+                    codex_protocol::protocol::PLUGINS_INSTRUCTIONS_CLOSE_TAG,
+                    "Previously visible plugins with repeated capability metadata for shell, files, docs, and search.",
+                ),
+            },
+            ContentItem::InputText {
+                text: ExtensionPromptFragment::new(
+                    ExtensionPromptSlot::DeveloperCapabilities,
+                    "Previously visible extension capabilities with repeated dispatch metadata, routing hints, tool affordances, and policy reminders.",
+                )
+                .render(),
+            },
+        ],
+        phase: None,
+    }];
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&previous_compressible_items);
+    {
+        let mut state = session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let rollout_path = attach_thread_persistence(&mut session).await;
+    let mut selected_snippets = test_recall_selected_snippet_envelope();
+    selected_snippets.snippets[0].text =
+        "bounded memory summary with repeated project context, recent decisions, durable recall notes, and handoff details"
+            .into();
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::source_aware_compression_for_model_context_window(
+            Some(1),
+        );
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_policy(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: None,
+                recall_selected_snippets: Some(
+                    crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                        envelope: selected_snippets.clone(),
+                    },
+                ),
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+            assembly_policy,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let current_texts = developer_input_texts(current_history.raw_items());
+    let summarized_recall_text = current_texts
+        .iter()
+        .find(|text| text.starts_with("<selected_context_recall>"))
+        .expect("selected recall should remain as summarized prompt text");
+    let defragmented_plugins_text = current_texts
+        .iter()
+        .find(|text| text.starts_with(codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG))
+        .expect("available plugins should remain as defragmented prompt text");
+    let pruned_capabilities_text = current_texts
+        .iter()
+        .find(|text| text.starts_with(crate::context::EXTENSION_DEVELOPER_CAPABILITIES_OPEN_TAG))
+        .expect("extension capabilities should remain as pruned prompt text");
+    let current_context = session
+        .reference_context_item()
+        .await
+        .expect("reference context item should be set");
+    let current_manifest = current_context
+        .context_manifest
+        .as_ref()
+        .expect("context manifest should be attached");
+    let selected_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":selected_context_recall:"))
+        .expect("selected recall should remain as a summarized manifest entry");
+    let plugins_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":available_plugins:"))
+        .expect("available plugins should remain as a defragmented manifest entry");
+    let capabilities_entry = current_manifest
+        .entries
+        .iter()
+        .find(|entry| entry.source.contains(":extension_developer_capabilities:"))
+        .expect("extension capabilities should remain as a pruned manifest entry");
+
+    assert!(current_manifest.has_replay_integrity());
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert!(summarized_recall_text.contains("[context summarized for budget]"));
+    assert!(defragmented_plugins_text.contains("[context defragmented for budget]"));
+    assert!(pruned_capabilities_text.contains("[context pruned for budget]"));
+    assert!(!summarized_recall_text.contains("bounded memory summary"));
+    assert!(!defragmented_plugins_text.contains("Previously visible plugins"));
+    assert!(!pruned_capabilities_text.contains("Previously visible extension capabilities"));
+    assert!(!current_manifest.truncated);
+    assert_eq!(current_manifest.omitted_entries, 0);
+    assert!(current_manifest.omitted_sources.is_empty());
+    assert_eq!(current_manifest.compression_stages.len(), 3);
+    assert_eq!(
+        current_manifest
+            .compression_stages
+            .iter()
+            .map(|stage| stage.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            codex_protocol::protocol::TurnContextCompressionStageKind::Defragment,
+            codex_protocol::protocol::TurnContextCompressionStageKind::Prune,
+            codex_protocol::protocol::TurnContextCompressionStageKind::Summary,
+        ]
+    );
+    assert!(
+        current_manifest
+            .compression_stages
+            .iter()
+            .all(|stage| { stage.affected_entries == 1 && stage.tokens_saved() > 0 })
+    );
+    assert_eq!(
+        selected_entry.text_hash,
+        codex_protocol::protocol::stable_turn_context_manifest_text_hash(&format!(
+            "text:{summarized_recall_text}\n"
+        ))
+    );
+    assert_eq!(
+        plugins_entry.text_hash,
+        codex_protocol::protocol::stable_turn_context_manifest_text_hash(&format!(
+            "text:{defragmented_plugins_text}\n"
+        ))
+    );
+    assert_eq!(
+        capabilities_entry.text_hash,
+        codex_protocol::protocol::stable_turn_context_manifest_text_hash(&format!(
+            "text:{pruned_capabilities_text}\n"
+        ))
+    );
+    assert!(
+        !current_manifest
+            .compression_candidates
+            .iter()
+            .any(|candidate| matches!(
+                candidate.source_id.as_str(),
+                "selected_context_recall"
+                    | "available_plugins"
+                    | "extension_developer_capabilities"
+            ))
+    );
+
+    session.ensure_rollout_materialized().await;
+    session.flush_rollout().await.expect("rollout should flush");
+
+    let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    else {
+        panic!("expected resumed rollout history");
+    };
+    let persisted_manifest = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let persisted_response_items = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let persisted_texts = developer_input_texts(&persisted_response_items);
+
+    assert_eq!(persisted_manifest.as_ref(), Some(current_manifest));
+    assert!(persisted_texts.contains(summarized_recall_text));
+    assert!(persisted_texts.contains(defragmented_plugins_text));
+    assert!(persisted_texts.contains(pruned_capabilities_text));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_honors_turn_scoped_source_aware_compression_opt_in()
+ {
+    let previous_compressible_items = || {
+        vec![ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![
+                ContentItem::InputText {
+                    text: tagged_context_fragment(
+                        codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG,
+                        codex_protocol::protocol::PLUGINS_INSTRUCTIONS_CLOSE_TAG,
+                        "Previously visible plugins with repeated capability metadata for shell, files, docs, and search.",
+                    ),
+                },
+                ContentItem::InputText {
+                    text: ExtensionPromptFragment::new(
+                        ExtensionPromptSlot::DeveloperCapabilities,
+                        "Previously visible extension capabilities with repeated dispatch metadata, routing hints, tool affordances, and policy reminders.",
+                    )
+                    .render(),
+                },
+            ],
+            phase: None,
+        }]
+    };
+    let selected_snippets_for_budget_pressure = || {
+        let mut selected_snippets = test_recall_selected_snippet_envelope();
+        selected_snippets.snippets[0].text =
+            "bounded memory summary with repeated project context, recent decisions, durable recall notes, and handoff details"
+                .into();
+        selected_snippets
+    };
+    fn assert_no_source_aware_compression_routing_metadata(rendered: &str) {
+        assert!(!rendered.contains("TurnContextAssemblyPolicyOptIn"));
+        assert!(!rendered.contains("SourceAwareCompression"));
+        assert!(!rendered.contains("source_aware_compression_canary"));
+    }
+
+    let (mut baseline_session, mut baseline_context) = make_session_and_context().await;
+    baseline_context.model_info.context_window = Some(1);
+    baseline_context.model_info.effective_context_window_percent = 100;
+    let mut previous_context_item = baseline_context.to_turn_context_item();
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_compressible_items(),
+        );
+    {
+        let mut state = baseline_session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let baseline_selected_snippets = selected_snippets_for_budget_pressure();
+    baseline_context
+        .extension_data
+        .insert(baseline_selected_snippets.clone());
+    let baseline_rollout_path = attach_thread_persistence(&mut baseline_session).await;
+
+    baseline_session
+        .record_context_updates_and_set_reference_context_item(&baseline_context)
+        .await;
+
+    let baseline_history = baseline_session.clone_history().await;
+    let baseline_history_json =
+        serde_json::to_string(baseline_history.raw_items()).expect("history should serialize");
+    let baseline_manifest = baseline_session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("baseline manifest should persist");
+
+    assert!(baseline_manifest.has_replay_integrity());
+    assert!(baseline_manifest.compression_stages.is_empty());
+    assert_eq!(
+        baseline_manifest
+            .compression_candidates
+            .iter()
+            .map(|candidate| candidate.source_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "extension_developer_capabilities",
+            "available_plugins",
+            "selected_context_recall",
+        ]
+    );
+    assert!(baseline_history_json.contains("Available plugins capability inventory was cleared"));
+    assert!(
+        baseline_history_json
+            .contains("extension developer capabilities extension prompt fragments were cleared")
+    );
+    assert!(baseline_history_json.contains("bounded memory summary"));
+    assert!(!baseline_history_json.contains("[context summarized for budget]"));
+    assert!(!baseline_history_json.contains("[context defragmented for budget]"));
+    assert!(!baseline_history_json.contains("[context pruned for budget]"));
+
+    baseline_session.ensure_rollout_materialized().await;
+    baseline_session
+        .flush_rollout()
+        .await
+        .expect("baseline rollout should flush");
+
+    let InitialHistory::Resumed(baseline_resumed) =
+        RolloutRecorder::get_rollout_history(&baseline_rollout_path)
+            .await
+            .expect("read baseline rollout history")
+    else {
+        panic!("expected baseline resumed rollout history");
+    };
+    let baseline_persisted_manifest = baseline_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let baseline_persisted_response_items = baseline_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let baseline_persisted_json =
+        serde_json::to_string(&baseline_persisted_response_items).expect("persisted serializes");
+    let baseline_persisted_history_json =
+        serde_json::to_string(&baseline_resumed.history).expect("history serializes");
+
+    assert_eq!(
+        baseline_persisted_manifest.as_ref(),
+        Some(&baseline_manifest)
+    );
+    assert!(baseline_persisted_json.contains("bounded memory summary"));
+    assert!(!baseline_persisted_json.contains("[context summarized for budget]"));
+    assert_no_source_aware_compression_routing_metadata(&baseline_persisted_json);
+    assert_no_source_aware_compression_routing_metadata(&baseline_persisted_history_json);
+
+    let (mut marker_only_session, mut marker_only_context) = make_session_and_context().await;
+    marker_only_context.model_info.context_window = Some(1);
+    marker_only_context
+        .model_info
+        .effective_context_window_percent = 100;
+    let mut previous_context_item = marker_only_context.to_turn_context_item();
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_compressible_items(),
+        );
+    {
+        let mut state = marker_only_session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let marker_only_selected_snippets = selected_snippets_for_budget_pressure();
+    marker_only_context
+        .extension_data
+        .insert(marker_only_selected_snippets.clone());
+    crate::context_manager::manifest::insert_source_aware_compression_policy_opt_in_marker(
+        marker_only_context.extension_data.as_ref(),
+    );
+    let marker_only_rollout_path = attach_thread_persistence(&mut marker_only_session).await;
+
+    marker_only_session
+        .record_context_updates_and_set_reference_context_item(&marker_only_context)
+        .await;
+
+    let marker_only_history = marker_only_session.clone_history().await;
+    let marker_only_history_json =
+        serde_json::to_string(marker_only_history.raw_items()).expect("history should serialize");
+    let marker_only_manifest = marker_only_session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("marker-only manifest should persist");
+
+    assert!(marker_only_manifest.has_replay_integrity());
+    assert!(marker_only_manifest.compression_stages.is_empty());
+    assert_eq!(
+        marker_only_manifest
+            .compression_candidates
+            .iter()
+            .map(|candidate| candidate.source_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "extension_developer_capabilities",
+            "available_plugins",
+            "selected_context_recall",
+        ]
+    );
+    assert!(marker_only_history_json.contains("bounded memory summary"));
+    assert!(!marker_only_history_json.contains("[context summarized for budget]"));
+    assert!(!marker_only_history_json.contains("[context defragmented for budget]"));
+    assert!(!marker_only_history_json.contains("[context pruned for budget]"));
+
+    marker_only_session.ensure_rollout_materialized().await;
+    marker_only_session
+        .flush_rollout()
+        .await
+        .expect("marker-only rollout should flush");
+
+    let InitialHistory::Resumed(marker_only_resumed) =
+        RolloutRecorder::get_rollout_history(&marker_only_rollout_path)
+            .await
+            .expect("read marker-only rollout history")
+    else {
+        panic!("expected marker-only resumed rollout history");
+    };
+    let marker_only_persisted_manifest = marker_only_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let marker_only_persisted_response_items = marker_only_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let marker_only_persisted_json =
+        serde_json::to_string(&marker_only_persisted_response_items).expect("persisted serializes");
+    let marker_only_persisted_history_json =
+        serde_json::to_string(&marker_only_resumed.history).expect("history serializes");
+
+    assert_eq!(
+        marker_only_persisted_manifest.as_ref(),
+        Some(&marker_only_manifest)
+    );
+    assert!(marker_only_persisted_json.contains("bounded memory summary"));
+    assert!(!marker_only_persisted_json.contains("[context summarized for budget]"));
+    assert!(!marker_only_persisted_json.contains("[context defragmented for budget]"));
+    assert!(!marker_only_persisted_json.contains("[context pruned for budget]"));
+    assert_no_source_aware_compression_routing_metadata(&marker_only_persisted_json);
+    assert_no_source_aware_compression_routing_metadata(&marker_only_persisted_history_json);
+
+    let (mut feature_only_session, mut feature_only_context) = make_session_and_context().await;
+    feature_only_session
+        .features
+        .enable(Feature::SourceAwareCompressionCanary)
+        .expect("canary feature should enable");
+    feature_only_context
+        .features
+        .enable(Feature::SourceAwareCompressionCanary)
+        .expect("canary feature should enable");
+    feature_only_context.model_info.context_window = Some(1);
+    feature_only_context
+        .model_info
+        .effective_context_window_percent = 100;
+    let mut previous_context_item = feature_only_context.to_turn_context_item();
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_compressible_items(),
+        );
+    {
+        let mut state = feature_only_session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let feature_only_selected_snippets = selected_snippets_for_budget_pressure();
+    feature_only_context
+        .extension_data
+        .insert(feature_only_selected_snippets.clone());
+    let feature_only_rollout_path = attach_thread_persistence(&mut feature_only_session).await;
+
+    feature_only_session
+        .record_context_updates_and_set_reference_context_item(&feature_only_context)
+        .await;
+
+    let feature_only_history = feature_only_session.clone_history().await;
+    let feature_only_history_json =
+        serde_json::to_string(feature_only_history.raw_items()).expect("history should serialize");
+    let feature_only_manifest = feature_only_session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("feature-only manifest should persist");
+
+    assert!(feature_only_manifest.has_replay_integrity());
+    assert!(feature_only_manifest.compression_stages.is_empty());
+    assert_eq!(
+        feature_only_manifest
+            .compression_candidates
+            .iter()
+            .map(|candidate| candidate.source_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "extension_developer_capabilities",
+            "available_plugins",
+            "selected_context_recall",
+        ]
+    );
+    assert!(feature_only_history_json.contains("bounded memory summary"));
+    assert!(!feature_only_history_json.contains("[context summarized for budget]"));
+    assert!(!feature_only_history_json.contains("[context defragmented for budget]"));
+    assert!(!feature_only_history_json.contains("[context pruned for budget]"));
+
+    feature_only_session.ensure_rollout_materialized().await;
+    feature_only_session
+        .flush_rollout()
+        .await
+        .expect("feature-only rollout should flush");
+
+    let InitialHistory::Resumed(feature_only_resumed) =
+        RolloutRecorder::get_rollout_history(&feature_only_rollout_path)
+            .await
+            .expect("read feature-only rollout history")
+    else {
+        panic!("expected feature-only resumed rollout history");
+    };
+    let feature_only_persisted_manifest = feature_only_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let feature_only_persisted_response_items = feature_only_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let feature_only_persisted_json = serde_json::to_string(&feature_only_persisted_response_items)
+        .expect("persisted serializes");
+    let feature_only_persisted_history_json =
+        serde_json::to_string(&feature_only_resumed.history).expect("history serializes");
+
+    assert_eq!(
+        feature_only_persisted_manifest.as_ref(),
+        Some(&feature_only_manifest)
+    );
+    assert!(feature_only_persisted_json.contains("bounded memory summary"));
+    assert!(!feature_only_persisted_json.contains("[context summarized for budget]"));
+    assert!(!feature_only_persisted_json.contains("[context defragmented for budget]"));
+    assert!(!feature_only_persisted_json.contains("[context pruned for budget]"));
+    assert_no_source_aware_compression_routing_metadata(&feature_only_persisted_json);
+    assert_no_source_aware_compression_routing_metadata(&feature_only_persisted_history_json);
+
+    let (mut canary_session, mut canary_context) = make_session_and_context().await;
+    canary_session
+        .features
+        .enable(Feature::SourceAwareCompressionCanary)
+        .expect("canary feature should enable");
+    canary_context
+        .features
+        .enable(Feature::SourceAwareCompressionCanary)
+        .expect("canary feature should enable");
+    canary_context.model_info.context_window = Some(1);
+    canary_context.model_info.effective_context_window_percent = 100;
+    let mut previous_context_item = canary_context.to_turn_context_item();
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_compressible_items(),
+        );
+    {
+        let mut state = canary_session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let canary_selected_snippets = selected_snippets_for_budget_pressure();
+    canary_context
+        .extension_data
+        .insert(canary_selected_snippets.clone());
+    crate::context_manager::manifest::insert_source_aware_compression_policy_opt_in_marker(
+        canary_context.extension_data.as_ref(),
+    );
+    let canary_rollout_path = attach_thread_persistence(&mut canary_session).await;
+
+    canary_session
+        .record_context_updates_and_set_reference_context_item(&canary_context)
+        .await;
+
+    let canary_history = canary_session.clone_history().await;
+    let canary_history_json =
+        serde_json::to_string(canary_history.raw_items()).expect("history should serialize");
+    let canary_manifest = canary_session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("canary manifest should persist");
+
+    assert!(canary_manifest.has_replay_integrity());
+    assert_eq!(canary_manifest.compression_stages.len(), 3);
+    assert_eq!(
+        canary_manifest
+            .compression_stages
+            .iter()
+            .map(|stage| stage.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            codex_protocol::protocol::TurnContextCompressionStageKind::Defragment,
+            codex_protocol::protocol::TurnContextCompressionStageKind::Prune,
+            codex_protocol::protocol::TurnContextCompressionStageKind::Summary,
+        ]
+    );
+    assert!(canary_manifest.compression_candidates.is_empty());
+    assert!(canary_history_json.contains("[context summarized for budget]"));
+    assert!(canary_history_json.contains("[context defragmented for budget]"));
+    assert!(canary_history_json.contains("[context pruned for budget]"));
+    assert!(!canary_history_json.contains("bounded memory summary"));
+    assert!(!canary_history_json.contains("Available plugins capability inventory was cleared"));
+    assert!(
+        !canary_history_json
+            .contains("extension developer capabilities extension prompt fragments were cleared")
+    );
+
+    canary_session.ensure_rollout_materialized().await;
+    canary_session
+        .flush_rollout()
+        .await
+        .expect("canary rollout should flush");
+
+    let InitialHistory::Resumed(canary_resumed) =
+        RolloutRecorder::get_rollout_history(&canary_rollout_path)
+            .await
+            .expect("read canary rollout history")
+    else {
+        panic!("expected canary resumed rollout history");
+    };
+    let canary_persisted_manifest = canary_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::TurnContext(ctx) => ctx.context_manifest.clone(),
+            _ => None,
+        })
+        .next_back();
+    let canary_persisted_response_items = canary_resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(item) => Some(item.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let canary_persisted_json =
+        serde_json::to_string(&canary_persisted_response_items).expect("persisted serializes");
+    let canary_persisted_history_json =
+        serde_json::to_string(&canary_resumed.history).expect("history serializes");
+
+    assert_eq!(canary_persisted_manifest.as_ref(), Some(&canary_manifest));
+    assert!(canary_persisted_json.contains("[context summarized for budget]"));
+    assert!(canary_persisted_json.contains("[context defragmented for budget]"));
+    assert!(canary_persisted_json.contains("[context pruned for budget]"));
+    assert!(!canary_persisted_json.contains("bounded memory summary"));
+    assert_no_source_aware_compression_routing_metadata(&canary_persisted_json);
+    assert_no_source_aware_compression_routing_metadata(&canary_persisted_history_json);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_rejects_prompt_unsafe_selected_snippets_under_source_aware_compression_opt_in()
+ {
+    let previous_compressible_items = || {
+        vec![ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![
+                ContentItem::InputText {
+                    text: tagged_context_fragment(
+                        codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG,
+                        codex_protocol::protocol::PLUGINS_INSTRUCTIONS_CLOSE_TAG,
+                        "Previously visible plugins with repeated capability metadata for shell, files, docs, and search.",
+                    ),
+                },
+                ContentItem::InputText {
+                    text: ExtensionPromptFragment::new(
+                        ExtensionPromptSlot::DeveloperCapabilities,
+                        "Previously visible extension capabilities with repeated dispatch metadata, routing hints, tool affordances, and policy reminders.",
+                    )
+                    .render(),
+                },
+            ],
+            phase: None,
+        }]
+    };
+    fn assert_no_source_aware_compression_routing_metadata(rendered: &str) {
+        assert!(!rendered.contains("TurnContextAssemblyPolicyOptIn"));
+        assert!(!rendered.contains("SourceAwareCompression"));
+        assert!(!rendered.contains("source_aware_compression_canary"));
+    }
+
+    let (mut session, mut turn_context) = make_session_and_context().await;
+    session
+        .features
+        .enable(Feature::SourceAwareCompressionCanary)
+        .expect("canary feature should enable");
+    turn_context
+        .features
+        .enable(Feature::SourceAwareCompressionCanary)
+        .expect("canary feature should enable");
+    turn_context.model_info.context_window = Some(1);
+    turn_context.model_info.effective_context_window_percent = 100;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(
+            &previous_compressible_items(),
+        );
+    {
+        let mut state = session.state.lock().await;
+        state.set_reference_context_item(Some(previous_context_item));
+    }
+    let unsafe_selected_snippet_payload =
+        "source_id unsafe-selected-snippet-live-compression-bait should not reach prompt";
+    let mut selected_snippets = test_recall_selected_snippet_envelope();
+    selected_snippets.snippets[0].text = unsafe_selected_snippet_payload.into();
+    assert!(selected_snippets.has_shadow_integrity());
+    turn_context.extension_data.insert(selected_snippets);
+    crate::context_manager::manifest::insert_source_aware_compression_policy_opt_in_marker(
+        turn_context.extension_data.as_ref(),
+    );
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(history.raw_items()).expect("history should serialize");
+    let manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("manifest should persist under source-aware compression");
+
+    assert!(manifest.has_replay_integrity());
+    assert_eq!(manifest.recall_selected_snippets, None);
+    assert_eq!(
+        manifest
+            .compression_stages
+            .iter()
+            .map(|stage| stage.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            codex_protocol::protocol::TurnContextCompressionStageKind::Defragment,
+            codex_protocol::protocol::TurnContextCompressionStageKind::Prune,
+        ]
+    );
+    assert!(history_json.contains("[context defragmented for budget]"));
+    assert!(history_json.contains("[context pruned for budget]"));
+    assert!(!history_json.contains("[context summarized for budget]"));
+    assert!(!history_json.contains("<selected_context_recall>"));
+    assert!(!history_json.contains("unsafe-selected-snippet-live-compression-bait"));
+    assert_no_source_aware_compression_routing_metadata(&history_json);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_dedupes_repeated_selected_snippets_without_context_diffs()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let selected_snippets = test_recall_selected_snippet_envelope();
+    let manifest_options = crate::context_manager::manifest::TurnContextManifestOptions {
+        recall_provider_rollup: None,
+        recall_selected_snippets: Some(
+            crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                envelope: selected_snippets.clone(),
+            },
+        ),
+        memory_taxonomy: Vec::new(),
+        memory_formation_receipts: Vec::new(),
+        memory_temporal_facts: Vec::new(),
+    };
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_manifest_options(
+            &turn_context,
+            manifest_options.clone(),
+        )
+        .await;
+    let history_after_first_selected = session.clone_history().await;
+    let first_selected_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("selected manifest should be retained");
+    let retry_turn_context = session.new_default_turn().await;
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_manifest_options(
+            retry_turn_context.as_ref(),
+            manifest_options,
+        )
+        .await;
+
+    let current_history = session.clone_history().await;
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("selected manifest should be retained after duplicate turn");
+    let selected_context_recall_count = developer_input_texts(current_history.raw_items())
+        .into_iter()
+        .filter(|text| text.contains("<selected_context_recall>"))
+        .count();
+
+    assert_eq!(
+        current_history.raw_items().len(),
+        history_after_first_selected.raw_items().len()
+    );
+    assert_eq!(selected_context_recall_count, 1);
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert_eq!(
+        current_manifest.ledger_hash,
+        first_selected_manifest.ledger_hash
+    );
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_consumes_turn_scoped_selected_snippets()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let selected_snippets = test_recall_selected_snippet_envelope();
+    turn_context
+        .extension_data
+        .insert(selected_snippets.clone());
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+
+    assert_eq!(current_history.raw_items().len(), history_after_first + 1);
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert_ne!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+    assert!(history_json.contains("<selected_context_recall>"));
+    assert!(history_json.contains("fedcba9876543210"));
+    assert!(history_json.contains("[redacted-query] bounded memory"));
+    assert!(!history_json.contains("source-memory-id"));
+    assert!(!history_json.contains("source_id"));
+    assert!(!history_json.contains("[hepta-memory:"));
+    assert!(!history_json.contains("needle"));
+}
+
+#[tokio::test]
+async fn user_input_with_turn_context_selected_snippets_reach_guarded_live_handoff() {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let request_turn_context = session.new_default_turn().await;
+    let selected_snippets = test_recall_selected_snippet_envelope();
+
+    handlers::attach_context_recall_selected_snippets_for_turn(
+        request_turn_context.as_ref(),
+        Some(selected_snippets.clone()),
+    );
+    session
+        .record_context_updates_and_set_reference_context_item(request_turn_context.as_ref())
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+
+    assert_eq!(current_history.raw_items().len(), history_after_first + 1);
+    assert_eq!(
+        current_manifest.recall_selected_snippets.as_ref(),
+        Some(&selected_snippets)
+    );
+    assert!(history_json.contains("<selected_context_recall>"));
+    assert!(history_json.contains("fedcba9876543210"));
+    assert!(history_json.contains("[redacted-query] bounded memory"));
+    assert!(!history_json.contains("source-memory-id"));
+    assert!(!history_json.contains("source_id"));
+    assert!(!history_json.contains("[hepta-memory:"));
+    assert!(!history_json.contains("needle"));
+}
+
+#[tokio::test]
+async fn user_input_with_turn_context_selected_snippets_reject_prompt_unsafe_payload() {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let request_turn_context = session.new_default_turn().await;
+    let mut selected_snippets = test_recall_selected_snippet_envelope();
+    selected_snippets.snippets[0].text = "source_id leaked into request snippet".into();
+    assert!(selected_snippets.has_shadow_integrity());
+
+    handlers::attach_context_recall_selected_snippets_for_turn(
+        request_turn_context.as_ref(),
+        Some(selected_snippets),
+    );
+    session
+        .record_context_updates_and_set_reference_context_item(request_turn_context.as_ref())
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+
+    assert_eq!(current_history.raw_items().len(), history_after_first);
+    assert_eq!(current_manifest.recall_selected_snippets, None);
+    assert_eq!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+    assert!(!history_json.contains("source_id leaked into request snippet"));
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_ignores_invalid_turn_scoped_selected_snippets()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let mut selected_snippets = test_recall_selected_snippet_envelope();
+    selected_snippets.selected_snippet_count = 2;
+    turn_context.extension_data.insert(selected_snippets);
+
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+
+    assert_eq!(
+        session.clone_history().await.raw_items().len(),
+        history_after_first
+    );
+    assert_eq!(current_manifest.recall_selected_snippets, None);
+    assert_eq!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+}
+
+#[tokio::test]
+async fn record_context_updates_and_set_reference_context_item_rejects_selected_snippets_with_forbidden_prompt_payload()
+ {
+    let (session, turn_context) = make_session_and_context().await;
+    session
+        .record_context_updates_and_set_reference_context_item(&turn_context)
+        .await;
+    let first_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("initial context should attach manifest");
+    let history_after_first = session.clone_history().await.raw_items().len();
+    let mut selected_snippets = test_recall_selected_snippet_envelope();
+    selected_snippets.snippets[0].text = "source_id leaked into bounded snippet".into();
+    assert!(selected_snippets.has_shadow_integrity());
+
+    session
+        .record_context_updates_and_set_reference_context_item_with_manifest_options(
+            &turn_context,
+            crate::context_manager::manifest::TurnContextManifestOptions {
+                recall_provider_rollup: None,
+                recall_selected_snippets: Some(
+                    crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                        envelope: selected_snippets,
+                    },
+                ),
+                memory_taxonomy: Vec::new(),
+                memory_formation_receipts: Vec::new(),
+                memory_temporal_facts: Vec::new(),
+            },
+        )
+        .await;
+
+    let current_manifest = session
+        .reference_context_item()
+        .await
+        .and_then(|item| item.context_manifest)
+        .expect("context manifest should be retained");
+    let current_history = session.clone_history().await;
+    let history_json =
+        serde_json::to_string(current_history.raw_items()).expect("history should serialize");
+
+    assert_eq!(current_history.raw_items().len(), history_after_first);
+    assert_eq!(current_manifest.recall_selected_snippets, None);
+    assert_eq!(current_manifest.ledger_hash, first_manifest.ledger_hash);
+    assert!(!history_json.contains("source_id leaked into bounded snippet"));
+}
+
+fn test_recall_selected_snippet_envelope()
+-> codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope {
+    codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope {
+        version: codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+        max_snippets: 4,
+        max_snippet_chars: 120,
+        selected_snippet_count: 1,
+        omitted_snippet_count: 2,
+        redacted_snippet_count: 1,
+        truncated_snippet_count: 0,
+        snippets: vec![codex_protocol::protocol::TurnContextRecallSelectedSnippet {
+            snippet_hash: "fedcba9876543210".into(),
+            text: "[redacted-query] bounded memory".into(),
+            estimated_tokens: 8,
+            redacted: true,
+            truncated: false,
+        }],
+        safety: codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: true,
+            bounded: true,
+            origin_identifiers_exposed: false,
+            raw_ranked_payload_exposed: false,
+            rank_explanation_exposed: false,
+            control_marker_exposed: false,
+            query_payload_exposed: false,
+            per_origin_list_exposed: false,
+        },
+    }
 }
 
 #[tokio::test]
@@ -7544,6 +10064,17 @@ async fn record_context_updates_and_set_reference_context_item_persists_full_rei
             realtime_active: Some(previous_context.realtime_active),
         }))
         .await;
+    let expected_context_items = session.build_initial_context(&turn_context).await;
+    let mut expected_turn_context = turn_context.to_turn_context_item();
+    let assembly_policy =
+        crate::context_manager::manifest::ContextAssemblyPolicy::from_model_context_window(
+            turn_context.model_context_window(),
+        );
+    expected_turn_context.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest_with_policy(
+            &expected_context_items,
+            &assembly_policy,
+        );
     session
         .record_context_updates_and_set_reference_context_item(&turn_context)
         .await;
@@ -7564,7 +10095,7 @@ async fn record_context_updates_and_set_reference_context_item_persists_full_rei
     assert_eq!(
         serde_json::to_value(persisted_turn_context)
             .expect("serialize persisted turn context item"),
-        serde_json::to_value(Some(turn_context.to_turn_context_item()))
+        serde_json::to_value(Some(expected_turn_context))
             .expect("serialize expected turn context item")
     );
 }

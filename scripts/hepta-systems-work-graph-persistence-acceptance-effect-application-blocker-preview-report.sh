@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+blocker_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_acceptance_effect_application_blocker_preview.rs
+)"
+blocker_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview-report.sh
+)"
+blocker_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-effect-application-blocker-preview-gate.sh
+)"
+ack_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_acceptance_record_receipt_acknowledgement_preview.rs
+)"
+ack_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-record-receipt-acknowledgement-preview-gate.sh
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-report.sh
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-gate.sh
+)"
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-durable-identity-preview-report.sh"
+)"
+
+jq -n \
+  --argjson blocker_rust_module_present "$blocker_rust_module_present" \
+  --argjson blocker_report_script_present "$blocker_report_script_present" \
+  --argjson blocker_gate_script_present "$blocker_gate_script_present" \
+  --argjson ack_rust_module_present "$ack_rust_module_present" \
+  --argjson ack_gate_script_present "$ack_gate_script_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_persistence_feature_flag_preview_gate",
+    "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+    "hepta_work_graph_persistence_canary_readback_receipt_preview_gate",
+    "hepta_work_graph_persistence_promotion_blocker_preview_gate",
+    "hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate",
+    "hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_packet_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate",
+    "hepta_work_graph_persistence_acceptance_record_intake_preview_gate",
+    "hepta_work_graph_persistence_acceptance_record_receipt_preview_gate",
+    "hepta_work_graph_persistence_acceptance_record_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def effect_ids: [
+    "operator_acceptance_recording_effect",
+    "approval_ledger_write_effect",
+    "authority_grant_effect",
+    "graph_state_persistence_effect",
+    "wal_checkpoint_write_effect",
+    "enforcement_rollout_effect",
+    "release_publication_effect",
+    "external_delivery_effect"
+  ];
+  def surface($id; $effect; $fields): {
+    id: $id,
+    requested_effect: $effect,
+    required_fields: $fields,
+    effect_applied: false,
+    persistence_enabled: false,
+    external_delivery_enabled: false
+  };
+  def blocker($id; $ids; $reason): {
+    id: $id,
+    applies_to_effect_surface_ids: $ids,
+    reason: $reason,
+    blocks_effect_application: true
+  };
+  def guard($id; $from; $blocked; $fields): {
+    id: $id,
+    from_signal: $from,
+    blocked_effect_surface_id: $blocked,
+    required_denial_fields: $fields,
+    blocks_apply: true
+  };
+  def rollback($id; $surface): {
+    id: $id,
+    guarded_effect_surface_id: $surface,
+    rollback_owner_required: true,
+    quarantine_required: true,
+    armed_in_preview: false
+  };
+  def view($id; $audience; $fields): {
+    id: $id,
+    audience: $audience,
+    required_fields: $fields,
+    external_delivery_enabled: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    surface("operator_acceptance_recording_effect"; "record operator acceptance for persistence authority"; durable_fields + ["acceptanceRecordHash", "operatorScopeHash", "recordingDenialIds", "sideEffectHash"]),
+    surface("approval_ledger_write_effect"; "write approval decision into the WorkGraph ledger"; durable_fields + ["approvalLedgerId", "approvalRecordHash", "ledgerWriteDenied", "sideEffectHash"]),
+    surface("authority_grant_effect"; "grant WorkGraph persistence authority"; durable_fields + ["authoritySurfaceId", "authorityGrantHash", "authorityDenied", "sideEffectHash"]),
+    surface("graph_state_persistence_effect"; "persist WorkGraph state store collections"; durable_fields + ["collectionId", "stateStorePathHash", "persistenceDenied", "zeroWriteProofHash"]),
+    surface("wal_checkpoint_write_effect"; "write WAL entries or checkpoints"; durable_fields + ["walScopeHash", "checkpointScopeHash", "writeDenied", "idempotencyGuardHash"]),
+    surface("enforcement_rollout_effect"; "start enforcement rollout or traffic ramp"; durable_fields + ["rolloutStageId", "trafficRampId", "enforcementDisabled", "zeroTrafficProofHash"]),
+    surface("release_publication_effect"; "publish release status or artifact availability"; durable_fields + ["releaseOwnerHash", "publicationPolicyHash", "publicationDenied", "artifactWriteDenied"]),
+    surface("external_delivery_effect"; "send acceptance, rollout, or release receipts externally"; durable_fields + ["deliveryChannelId", "recipientScopeHash", "externalDeliveryDenied", "channelSendDenied"])
+  ] as $effect_surfaces
+  | [
+    blocker("durable_identity_evidence_missing"; effect_ids; "effect application cannot proceed without durable identity evidence"),
+    blocker("accepted_looking_record_is_not_apply_authority"; effect_ids; "accepted-looking records are still preview evidence and cannot apply side effects"),
+    blocker("receipt_acknowledgement_is_not_apply_authority"; effect_ids; "receipt acknowledgement visibility cannot grant side-effect application authority"),
+    blocker("approval_recording_precondition_absent"; ["operator_acceptance_recording_effect", "approval_ledger_write_effect"]; "approval and acceptance recording preconditions are absent"),
+    blocker("authority_grant_precondition_absent"; ["authority_grant_effect", "graph_state_persistence_effect"]; "explicit authority grant preconditions are absent"),
+    blocker("persistence_feature_flag_still_disabled"; ["graph_state_persistence_effect", "wal_checkpoint_write_effect", "enforcement_rollout_effect"]; "persistence feature flags remain disabled"),
+    blocker("zero_write_or_traffic_receipt_required"; ["graph_state_persistence_effect", "wal_checkpoint_write_effect", "enforcement_rollout_effect"]; "zero-write and zero-traffic proofs are still required"),
+    blocker("rollback_quarantine_not_armed_for_apply"; ["wal_checkpoint_write_effect", "enforcement_rollout_effect"]; "rollback and quarantine owners are not armed for effect application"),
+    blocker("release_publication_policy_not_accepted"; ["release_publication_effect", "external_delivery_effect"]; "release publication policy is not accepted"),
+    blocker("external_delivery_consent_absent"; ["external_delivery_effect"]; "external delivery consent is absent")
+  ] as $effect_blockers
+  | [
+    guard("record_to_approval_recording_guard"; "accepted_looking_record"; "operator_acceptance_recording_effect"; durable_fields + ["recordingDenied", "operatorAcceptanceRecorded", "approvalRecorded"]),
+    guard("receipt_ack_to_authority_guard"; "acceptance_receipt_acknowledgement"; "authority_grant_effect"; durable_fields + ["authorityDenied", "acknowledgementHash", "nonAcceptanceReasonIds"]),
+    guard("authority_to_persistence_guard"; "authority_grant_attempt"; "graph_state_persistence_effect"; durable_fields + ["featureFlagStillOff", "persistenceDenied", "zeroWriteProofHash"]),
+    guard("persistence_to_wal_checkpoint_guard"; "persistence_apply_attempt"; "wal_checkpoint_write_effect"; durable_fields + ["walWriteDenied", "checkpointWriteDenied", "idempotencyGuardHash"]),
+    guard("persistence_to_rollout_guard"; "persistence_apply_attempt"; "enforcement_rollout_effect"; durable_fields + ["rolloutStageZeroTraffic", "trafficRouted", "enforcementDisabled"]),
+    guard("rollout_to_release_guard"; "rollout_apply_attempt"; "release_publication_effect"; durable_fields + ["releaseDenied", "publicationDenied", "artifactWriteDenied"]),
+    guard("release_to_external_delivery_guard"; "release_publication_attempt"; "external_delivery_effect"; durable_fields + ["externalDeliveryDenied", "recipientScopeDenied", "channelSendDenied"])
+  ] as $apply_guards
+  | [
+    rollback("graph_state_persistence_quarantine"; "graph_state_persistence_effect"),
+    rollback("wal_checkpoint_write_quarantine"; "wal_checkpoint_write_effect"),
+    rollback("enforcement_rollout_quarantine"; "enforcement_rollout_effect"),
+    rollback("release_publication_quarantine"; "release_publication_effect"),
+    rollback("external_delivery_quarantine"; "external_delivery_effect")
+  ] as $rollback_quarantines
+  | [
+    view("operator_effect_application_blocker_view"; "operator"; durable_fields + ["effectSurfaceId", "effectBlocked", "blockerIds", "nextGate"]),
+    view("auditor_effect_application_denial_view"; "auditor"; durable_fields + ["effectSurfaceId", "applyGuardIds", "rollbackQuarantineIds", "sideEffectHash"]),
+    view("release_owner_effect_application_blocker_view"; "release_owner"; durable_fields + ["releaseDenied", "publicationDenied", "externalDeliveryDenied", "quarantineRequired"]),
+    view("runtime_effect_application_zero_effect_view"; "system"; durable_fields + ["authorityGranted", "livePersistenceEnabled", "trafficRouted", "externalSendPerformed"])
+  ] as $local_views
+  | [
+    invariant("acceptance_effect_application_requires_durable_identity_evidence"; "effect application blockers require workflow, run, step, checkpoint, replay, rollback, and receipt evidence"),
+    invariant("accepted_looking_records_cannot_apply_effects"; "records, receipts, and acknowledgements cannot apply side effects"),
+    invariant("approval_and_authority_effects_are_blocked"; "operator acceptance, approval recording, and authority grant effects remain blocked"),
+    invariant("persistence_and_rollout_effects_are_blocked"; "state persistence, WAL, checkpoints, enforcement, rollout, and traffic effects remain blocked"),
+    invariant("release_and_external_delivery_effects_are_blocked"; "release publication and external delivery effects remain blocked"),
+    invariant("rollback_quarantine_required_but_not_armed"; "rollback and quarantine ownership is required and remains unarmed in preview"),
+    invariant("acceptance_effect_application_blocker_preview_has_no_side_effects"; "this gate cannot record acceptance, grant authority, persist state, start rollout, publish, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_persistence_acceptance_effect_application_blocker_preview_gate",
+      schema_version: "work_graph_persistence_acceptance_effect_application_blocker_preview_v1",
+      preview_mode: "read_only_persistence_acceptance_effect_application_blocker_preview_no_apply",
+      effect_surface_count: ($effect_surfaces | length),
+      effect_blocker_count: ($effect_blockers | length),
+      apply_guard_count: ($apply_guards | length),
+      rollback_quarantine_count: ($rollback_quarantines | length),
+      local_view_count: ($local_views | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      effect_surfaces: $effect_surfaces,
+      effect_blockers: $effect_blockers,
+      apply_guards: $apply_guards,
+      rollback_quarantines: $rollback_quarantines,
+      local_views: $local_views,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+        required_field_ids: durable_fields,
+        required_for_effect_surface_ids: effect_ids,
+        durable_field_count: $durable_identity_report.durable_field_count,
+        preview_binding_count: $durable_identity_report.preview_binding_count,
+        invariant_count: $durable_identity_report.invariant_count,
+        currently_satisfied: false
+      },
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_preview_gate",
+      ready_for_acceptance_effect_application_denial_receipt_preview: true,
+      ready_for_operator_acceptance: false,
+      ready_for_live_persistence: false,
+      source_probes: {
+        persistence_acceptance_effect_application_blocker: {
+          rust_module_present: $blocker_rust_module_present,
+          report_script_present: $blocker_report_script_present,
+          gate_script_present: $blocker_gate_script_present
+        },
+        persistence_acceptance_record_receipt_acknowledgement: {
+          rust_module_present: $ack_rust_module_present,
+          gate_script_present: $ack_gate_script_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        acceptance_record_persisted: false,
+        acknowledgement_recorded: false,
+        operator_acceptance_recorded: false,
+        approval_recorded: false,
+        authority_granted: false,
+        live_persistence_enabled: false,
+        wal_written: false,
+        checkpoint_written: false,
+        enforcement_enabled: false,
+        rollout_started: false,
+        traffic_routed: false,
+        release_published: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

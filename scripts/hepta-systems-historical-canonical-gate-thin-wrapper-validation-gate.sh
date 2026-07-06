@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-historical-canonical-gate-thin-wrapper-validation-report.sh"
+CANONICAL_GATE="$ROOT/scripts/hepta-systems-canonical-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_THIN_WRAPPER_VALIDATION_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-gate-thin-wrapper-validation-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable historical canonical gate thin wrapper validation report: $REPORT"
+[[ -x "$CANONICAL_GATE" ]] || fail "missing executable historical canonical gate thin wrapper: $CANONICAL_GATE"
+[[ -f "$DOC" ]] || fail "missing historical canonical gate thin wrapper validation architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the historical canonical gate thin wrapper validation report"
+fi
+
+grep -q 'Thin Wrapper Validation' "$DOC" \
+  || fail "architecture note must document Thin Wrapper Validation"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that validation does not invoke the wrapper"
+grep -q 'bash syntax' "$DOC" \
+  || fail "architecture note must document bash syntax validation"
+
+bash -n "$CANONICAL_GATE"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "historical_canonical_gate_thin_wrapper_validation"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_creation_surface == "historical_canonical_gate_thin_wrapper_creation"
+  and .source_creation_ready == true
+  and .source_wrapper_target_invoked == false
+  and .source_canonical_gate_invoked == false
+  and .historical_canonical_gate_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_created == true
+  and .historical_canonical_gate_executable == true
+  and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .historical_canonical_gate_wrapper_target_count == 1
+  and .historical_canonical_gate_wrapper_exec_count == 1
+  and .historical_canonical_gate_bash_syntax_checked == true
+  and .historical_canonical_gate_bash_syntax_valid == true
+  and .wrapper_target_exists == true
+  and .wrapper_target_executable == true
+  and .wrapper_target_invoked == false
+  and .canonical_gate_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .historical_canonical_gate_thin_wrapper_validation_ready == true
+  and .next_migration_step == "attach_historical_canonical_gate_thin_wrapper_validation_to_current_canonical_closure_without_live_invocation"
+  and (.validation_blockers | index("canonical_gate_not_invoked_by_validation_report")) != null
+  and (.validation_blockers | index("wrapper_target_not_invoked_by_validation_report")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+printf 'hepta-systems-historical-canonical-gate-thin-wrapper-validation-gate: PASS: historical canonical gate thin wrapper validates without invocation\n'

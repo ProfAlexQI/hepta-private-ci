@@ -1,4 +1,5 @@
-use hepta_core::{DoctorReportV2, HeptaError};
+use hepta_core::DoctorReportV2;
+use hepta_core::HeptaError;
 
 use crate::RuntimeKernel;
 
@@ -24,7 +25,10 @@ mod state_checks;
 mod status_rollup;
 mod v2;
 
-pub use contracts::{DoctorCheck, DoctorProviderProbe, DoctorReport, DoctorStatus};
+pub use contracts::DoctorCheck;
+pub use contracts::DoctorProviderProbe;
+pub use contracts::DoctorReport;
+pub use contracts::DoctorStatus;
 
 impl RuntimeKernel {
     pub async fn doctor_report(&self) -> Result<DoctorReport, HeptaError> {
@@ -40,7 +44,8 @@ impl RuntimeKernel {
 mod tests {
     use std::collections::HashSet;
 
-    use hepta_core::{DoctorArea, DoctorStatus as CoreDoctorStatus};
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus as CoreDoctorStatus;
 
     use super::*;
 

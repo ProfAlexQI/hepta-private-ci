@@ -6,6 +6,12 @@ use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
 
 use crate::shared::popup_list::{PopupKind, enqueue_popup_notification};
 
+pub const EVENT_SOURCE_CLIPBOARD_EVIDENCE: &str = "Event source copy actions use already loaded room id, event id, and JSON source data to write clipboard text locally; Copy Room ID, Copy Event ID, Copy Source, open, and close send no Matrix event source request, event fetch, message send, room-state, membership, or live mutation request.";
+pub const EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL: &str =
+    "Event source uses loaded data and local clipboard only.";
+pub const EVENT_SOURCE_LOADED_METADATA_EVIDENCE: &str = "EventSourceModal summarizes already loaded room id, event id, and latest JSON source availability plus local source byte/line counts. The summary is derived only from data passed into the local View Source modal and sends no Matrix event source request, event fetch, event context fetch, timeline pagination/reload, message send/edit/redact, room-state, membership, account/profile, gateway/runtime/auth, or live mutation request.";
+pub const EVENT_SOURCE_LOADED_METADATA_LABEL: &str =
+    "Loaded event source metadata; no event fetch.";
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -154,6 +160,17 @@ script_mod! {
             margin: 3
         }
 
+        source_metadata_value := Label {
+            width: Fill, height: Fit,
+            flow: Flow.Right{wrap: true},
+            padding: Inset{top: 3, bottom: 3}
+            draw_text +: {
+                text_style: REGULAR_TEXT {font_size: 10},
+                color: #666
+            }
+            text: "Loaded event source metadata; no event fetch."
+        }
+
         // Original event source section header
         source_header := View {
             width: Fill, height: Fit,
@@ -251,13 +268,16 @@ pub enum EventSourceModalAction {
     Close,
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 pub struct EventSourceModal {
-    #[deref] view: View,
-    #[rust] room_id: Option<OwnedRoomId>,
-    #[rust] event_id: Option<OwnedEventId>,
-    #[rust] latest_json: Option<String>,
+    #[deref]
+    view: View,
+    #[rust]
+    room_id: Option<OwnedRoomId>,
+    #[rust]
+    event_id: Option<OwnedEventId>,
+    #[rust]
+    latest_json: Option<String>,
 }
 
 impl Widget for EventSourceModal {
@@ -268,14 +288,26 @@ impl Widget for EventSourceModal {
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         if let Some(room_id) = &self.room_id {
-            self.view.label(cx, ids!(room_id_value)).set_text(cx, room_id.as_str());
+            self.view
+                .label(cx, ids!(room_id_value))
+                .set_text(cx, room_id.as_str());
         }
         if let Some(event_id) = &self.event_id {
-            self.view.label(cx, ids!(event_id_value)).set_text(cx, event_id.as_str());
+            self.view
+                .label(cx, ids!(event_id_value))
+                .set_text(cx, event_id.as_str());
         }
         if let Some(json) = &self.latest_json {
             self.view.code_view(cx, ids!(code_view)).set_text(cx, json);
         }
+        self.view.label(cx, ids!(source_metadata_value)).set_text(
+            cx,
+            &loaded_event_source_metadata_label(
+                self.room_id.as_ref().map(|room_id| room_id.as_str()),
+                self.event_id.as_ref().map(|event_id| event_id.as_str()),
+                self.latest_json.as_deref(),
+            ),
+        );
         self.view.draw_walk(cx, scope, walk)
     }
 }
@@ -286,45 +318,79 @@ impl WidgetMatchEvent for EventSourceModal {
 
         // Handle canceling/closing the modal.
         let close_clicked = close_button.clicked(actions);
-        if close_clicked ||
-            actions.iter().any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
+        if close_clicked
+            || actions
+                .iter()
+                .any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
         {
             // If the modal was dismissed by clicking outside of it, we MUST NOT emit
             // an EventSourceModalAction::Close action, as that would cause
             // an infinite action feedback loop.
             if close_clicked {
+                enqueue_popup_notification(
+                    format!("Event source preview closed. {EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL}"),
+                    PopupKind::Info,
+                    Some(3.0),
+                );
                 cx.action(EventSourceModalAction::Close);
             }
             return;
         }
 
-        if self.view.button(cx, ids!(room_id_copy_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(room_id_copy_button))
+            .clicked(actions)
+        {
             if let Some(room_id) = &self.room_id {
+                // Event source clipboard evidence: Room ID is already loaded
+                // in this local modal and only writes clipboard text.
+                // It sends no Matrix event source request, event fetch,
+                // message send, room-state, membership, or live mutation
+                // request.
                 cx.copy_to_clipboard(room_id.as_str());
                 enqueue_popup_notification(
-                    "Copied Room ID to clipboard.",
+                    format!("Copied Room ID. {EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL}"),
                     PopupKind::Success,
                     Some(3.0),
                 );
             }
         }
 
-        if self.view.button(cx, ids!(event_id_copy_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(event_id_copy_button))
+            .clicked(actions)
+        {
             if let Some(event_id) = &self.event_id {
+                // Event source clipboard evidence: Event ID is already loaded
+                // in this local modal and only writes clipboard text.
+                // It sends no Matrix event source request, event fetch,
+                // message send, room-state, membership, or live mutation
+                // request.
                 cx.copy_to_clipboard(event_id.as_str());
                 enqueue_popup_notification(
-                    "Copied Event ID to clipboard.",
+                    format!("Copied Event ID. {EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL}"),
                     PopupKind::Success,
                     Some(3.0),
                 );
             }
         }
 
-        if self.view.button(cx, ids!(copy_source_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(copy_source_button))
+            .clicked(actions)
+        {
             if let Some(json) = &self.latest_json {
+                // Event source clipboard evidence: JSON source is already
+                // passed into this local modal and only writes clipboard text.
+                // It sends no Matrix event source request, event fetch,
+                // message send, room-state, membership, or live mutation
+                // request.
                 cx.copy_to_clipboard(json);
                 enqueue_popup_notification(
-                    "Copied event source to clipboard.",
+                    format!("Copied event source. {EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL}"),
                     PopupKind::Success,
                     Some(3.0),
                 );
@@ -347,10 +413,22 @@ impl EventSourceModal {
         self.latest_json = latest_json.clone();
 
         self.view.button(cx, ids!(close_button)).reset_hover(cx);
-        self.view.button(cx, ids!(room_id_copy_button)).reset_hover(cx);
-        self.view.button(cx, ids!(event_id_copy_button)).reset_hover(cx);
-        self.view.button(cx, ids!(copy_source_button)).reset_hover(cx);
+        self.view
+            .button(cx, ids!(room_id_copy_button))
+            .reset_hover(cx);
+        self.view
+            .button(cx, ids!(event_id_copy_button))
+            .reset_hover(cx);
+        self.view
+            .button(cx, ids!(copy_source_button))
+            .reset_hover(cx);
         self.view.redraw(cx);
+
+        enqueue_popup_notification(
+            format!("Event source preview opened. {EVENT_SOURCE_CLIPBOARD_COMPACT_LABEL}"),
+            PopupKind::Info,
+            Some(3.0),
+        );
     }
 }
 
@@ -363,7 +441,69 @@ impl EventSourceModalRef {
         event_id: Option<OwnedEventId>,
         latest_json: Option<String>,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx, room_id, event_id, latest_json);
+    }
+}
+
+fn loaded_event_source_metadata_label(
+    room_id: Option<&str>,
+    event_id: Option<&str>,
+    latest_json: Option<&str>,
+) -> String {
+    let room = if room_id.is_some_and(|value| !value.trim().is_empty()) {
+        "room id loaded"
+    } else {
+        "room id missing"
+    };
+    let event = if event_id.is_some_and(|value| !value.trim().is_empty()) {
+        "event id loaded"
+    } else {
+        "event id missing"
+    };
+    let source = latest_json
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            let line_count = value.lines().count().max(1);
+            format!(
+                "source JSON loaded ({} bytes, {line_count} lines)",
+                value.len()
+            )
+        })
+        .unwrap_or_else(|| "source JSON missing".to_string());
+    format!(
+        "Loaded event source metadata: {room}, {event}, {source}. {EVENT_SOURCE_LOADED_METADATA_LABEL}"
+    )
+}
+
+#[cfg(test)]
+mod event_source_modal_tests {
+    use super::*;
+
+    #[test]
+    fn loaded_event_source_metadata_label_summarizes_loaded_source() {
+        let label = loaded_event_source_metadata_label(
+            Some("!room:example.org"),
+            Some("$event:example.org"),
+            Some("{\n  \"type\": \"m.room.message\"\n}"),
+        );
+
+        assert!(label.contains("room id loaded"));
+        assert!(label.contains("event id loaded"));
+        assert!(label.contains("source JSON loaded"));
+        assert!(label.contains("bytes"));
+        assert!(label.contains("3 lines"));
+        assert!(label.contains(EVENT_SOURCE_LOADED_METADATA_LABEL));
+    }
+
+    #[test]
+    fn loaded_event_source_metadata_label_marks_missing_source() {
+        let label = loaded_event_source_metadata_label(None, Some("  "), Some(" "));
+
+        assert!(label.contains("room id missing"));
+        assert!(label.contains("event id missing"));
+        assert!(label.contains("source JSON missing"));
     }
 }

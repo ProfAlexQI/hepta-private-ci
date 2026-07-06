@@ -263,6 +263,10 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
         .expect("wait_agent should use object params");
     assert!(!properties.contains_key("targets"));
     assert!(properties.contains_key("timeout_ms"));
+    assert!(properties.contains_key("task_name"));
+    assert!(properties.contains_key("task_id"));
+    assert!(properties.contains_key("barrier_id"));
+    assert!(properties.contains_key("result_required"));
     assert!(description.contains(
         "Does not return the content; returns either a summary of which agents have updates (if any)"
     ));
@@ -276,6 +280,232 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
     assert_eq!(
         output_schema.expect("wait output schema")["properties"]["message"]["description"],
         json!("Brief wait summary without the agent's final content.")
+    );
+    let output_schema = create_wait_agent_tool_v2(WaitAgentTimeoutOptions {
+        default_timeout_ms: 30_000,
+        min_timeout_ms: 10_000,
+        max_timeout_ms: 3_600_000,
+    });
+    let ToolSpec::Function(ResponsesApiTool { output_schema, .. }) = output_schema else {
+        panic!("wait_agent should be a function tool");
+    };
+    let output_schema = output_schema.expect("wait output schema");
+    assert_eq!(
+        output_schema["required"],
+        json!([
+            "message",
+            "timed_out",
+            "barrier_id",
+            "task_id",
+            "task_name",
+            "task_thread_id",
+            "task_status",
+            "task_result",
+            "result_required",
+            "wait_condition",
+            "durable_mailbox",
+            "work_graph_lifecycle_shadow_decision"
+        ])
+    );
+    assert_eq!(
+        output_schema["properties"]["wait_condition"]["enum"],
+        json!([
+            "mailbox_change",
+            "task_terminal_status",
+            "task_result_evidence"
+        ])
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["live_cutover_enabled"]["description"],
+        json!("Always false while durable wait barriers are shadow-only.")
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_operator_review_packet_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement operator-review packet evidence was written to the durable mailbox stream without approval or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_operator_review_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement operator-review replay consistency evidence was written to the durable mailbox stream without approval or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_no_live_rehearsal_closeout_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement no-live rehearsal closeout evidence was written to the durable mailbox stream without approval or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement no-live rehearsal closeout replay consistency evidence was written to the durable mailbox stream without approval or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_audit_chain_closeout_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement final audit-chain closeout evidence was written to the durable mailbox stream without approval or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_audit_chain_closeout_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement final audit-chain closeout replay consistency evidence was written to the durable mailbox stream without approval or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_precondition_operator_packet_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation-precondition operator packet evidence was written to the durable mailbox stream without approval, activation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_precondition_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation-precondition replay consistency evidence was written to the durable mailbox stream without approval, activation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_no_live_closeout_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation no-live closeout evidence was written to the durable mailbox stream without approval, activation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation no-live closeout replay consistency evidence was written to the durable mailbox stream without approval, activation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_audit_chain_closeout_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement final activation audit-chain closeout evidence was written to the durable mailbox stream without approval, activation, reviewed flag mutation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement final activation audit-chain closeout replay consistency evidence was written to the durable mailbox stream without approval, activation, reviewed flag mutation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation operator-approval/readiness preflight evidence was written to the durable mailbox stream while requiring future approval record and reviewed flag prerequisites without approval recording, activation, reviewed flag mutation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation operator-approval/readiness preflight replay consistency evidence was written to the durable mailbox stream without approval recording, activation, reviewed flag mutation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation approval/review side-effect lock closeout evidence was written to the durable mailbox stream without approval recording, reviewed flag mutation, activation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["durable_mailbox"]["properties"]["wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_event_recorded"]
+            ["description"],
+        json!(
+            "Whether result_required wait canonical WorkGraph projection enablement activation approval/review side-effect lock closeout replay consistency evidence was written to the durable mailbox stream without approval recording, reviewed flag mutation, activation, or cutover."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_precondition_operator_packet"]
+            ["description"],
+        json!(
+            "Shadow-only activation-precondition operator packet for canonical WorkGraph projection enablement. It consumes the final enablement audit-chain closeout replay evidence while keeping activationAllowed=false, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision"]
+            ["description"],
+        json!(
+            "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation-precondition operator packet. Mismatch only fails shadow readiness; activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt"]
+            ["description"],
+        json!(
+            "Shadow-only no-live closeout receipt for canonical WorkGraph projection enablement activation preconditions. It consumes activation-precondition packet/replay evidence while keeping activationAllowed=false, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision"]
+            ["description"],
+        json!(
+            "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation no-live closeout receipt. Mismatch only fails shadow readiness; activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt"]
+            ["description"],
+        json!(
+            "Shadow-only final activation audit-chain closeout receipt for canonical WorkGraph projection enablement. It consumes activation-precondition packet/replay plus activation no-live closeout/replay evidence while keeping activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision"]
+            ["description"],
+        json!(
+            "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement final activation audit-chain closeout receipt. Mismatch only fails shadow readiness; activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet"]
+            ["description"],
+        json!(
+            "Shadow-only operator-approval/readiness preflight packet for canonical WorkGraph projection enablement activation. It consumes final activation closeout replay evidence, requires future approval record and reviewed flag prerequisites, and keeps activation, approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision"]
+            ["description"],
+        json!(
+            "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation operator-approval/readiness preflight packet. Mismatch only fails shadow readiness; approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet"]
+            ["description"],
+        json!(
+            "Shadow-only approval/review side-effect lock closeout packet for canonical WorkGraph projection enablement activation. It consumes operator-approval/readiness preflight replay evidence and proves approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision"]
+            ["description"],
+        json!(
+            "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation approval/review side-effect lock closeout packet. Mismatch only fails shadow readiness; approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled."
+        )
+    );
+    assert_eq!(
+        output_schema["properties"]["work_graph_lifecycle_shadow_decision"]["description"],
+        json!(
+            "Shadow-only AgentCard lifecycle decision for allowed tool, budget, and lane checks. This is not live-blocking."
+        )
     );
 }
 

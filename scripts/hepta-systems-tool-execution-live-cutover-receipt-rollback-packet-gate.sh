@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-tool-execution-live-cutover-receipt-rollback-packet-report.sh"
+SOURCE_GATE="$ROOT/scripts/hepta-systems-tool-execution-live-cutover-operator-decision-preflight-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_LIVE_CUTOVER_RECEIPT_ROLLBACK_PACKET_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-live-cutover-receipt-rollback-packet-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable execution live cutover receipt rollback packet report: $REPORT"
+[[ -x "$SOURCE_GATE" ]] || fail "missing executable execution live cutover operator decision preflight gate: $SOURCE_GATE"
+[[ -f "$DOC" ]] || fail "missing execution live cutover receipt rollback packet architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the execution live cutover receipt rollback packet report"
+fi
+
+grep -q 'Live Cutover Receipt Rollback Packet' "$DOC" \
+  || fail "architecture note must document Live Cutover Receipt Rollback Packet"
+grep -q 'without invocation' "$DOC" \
+  || fail "architecture note must document without invocation"
+grep -q 'rollback' "$DOC" \
+  || fail "architecture note must document rollback"
+grep -q 'result receipt' "$DOC" \
+  || fail "architecture note must document result receipt"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "tool_execution_live_cutover_receipt_rollback_packet"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_live_cutover_operator_decision_preflight_surface == "tool_execution_live_cutover_operator_decision_preflight"
+  and .source_live_cutover_operator_decision_preflight_ready == true
+  and .source_live_cutover_operator_decision_acceptance_allowed == false
+  and .source_live_cutover_allowed == false
+  and .rollback_anchor_present == true
+  and .rollback_readback_channel_present == true
+  and .result_receipt_schema_present == true
+  and .operator_summary_template_present == true
+  and .kill_switch_present == true
+  and .approval_request_sent == false
+  and .operator_cutover_decision_receipt_written == false
+  and .operator_cutover_readback_evidence_written == false
+  and .operator_cutover_acceptance_recorded == false
+  and .live_cutover_switch_enabled == false
+  and .adapter_dispatch_switch_enabled == false
+  and .tool_invocation_execution_switch_enabled == false
+  and .live_cutover_started == false
+  and .result_receipt_written == false
+  and .rollback_executed == false
+  and .rollback_receipt_written == false
+  and .candidate_count == 2
+  and .live_cutover_receipt_rollback_packet_ready_count == 2
+  and .live_cutover_receipt_rollback_packet_blocked_count == 0
+  and .rollback_anchor_present_count == 2
+  and .rollback_readback_required_count == 1
+  and .result_receipt_required_count == 1
+  and .rollback_receipt_required_count == 1
+  and .operator_summary_required_count == 1
+  and .live_cutover_start_blocked_count == 1
+  and .rollback_execution_blocked_count == 1
+  and .result_receipt_write_blocked_count == 1
+  and .selected_status_canary_count == 1
+  and .preflight_only_non_selected_count == 1
+  and .all_live_cutover_operator_decision_preflight_entries_bound_to_receipt_rollback_packet == true
+  and .all_live_cutover_receipt_rollback_packets_keep_no_invocation_guard == true
+  and .tool_execution_live_cutover_receipt_rollback_packet_ready == true
+  and .tool_execution_live_cutover_start_allowed == false
+  and .tool_execution_live_cutover_rollback_allowed == false
+  and .tool_execution_live_cutover_result_receipt_write_allowed == false
+  and .tool_execution_live_cutover_allowed == false
+  and .router_registration_lookup_enabled == false
+  and .registry_lookup_executed == false
+  and .registry_source_of_truth_enabled == false
+  and .tool_registration_enabled == false
+  and .execution_adapter_dispatched == false
+  and .tool_invocation_enabled == false
+  and .ledger_written == false
+  and .approval_requested == false
+  and .live_mutation_ready == false
+  and .next_migration_step == "restore_tool_execution_live_cutover_final_gate_without_invocation"
+  and (.entries | length) == 2
+  and any(.entries[]; .contribution_kind == "mcp_server" and .execution_adapter_kind == "mcp_tool_call_adapter" and .selected_for_status_canary == true and .preflight_only_non_selected_candidate == false and .source_live_cutover_operator_decision_preflight_route == "live_cutover_operator_decision_pending_explicit_approval" and .registry_guard_route == "require_approval_ledger" and .live_cutover_receipt_rollback_packet_route == "live_cutover_receipt_rollback_packet_ready" and .live_cutover_receipt_rollback_packet_ready == true and .rollback_anchor_present == true and .rollback_readback_channel_present == true and .result_receipt_schema_present == true and .operator_summary_template_present == true and .kill_switch_present == true and .rollback_plan_required == true and .rollback_readback_required == true and .result_receipt_required == true and .rollback_receipt_required == true and .operator_summary_required == true and .live_cutover_start_blocked == true and .rollback_execution_blocked == true and .result_receipt_write_blocked == true and .execution_adapter_dispatch_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false)
+  and any(.entries[]; .contribution_kind == "app_connector" and .execution_adapter_kind == "app_connector_invocation_adapter" and .selected_for_status_canary == false and .preflight_only_non_selected_candidate == true and .source_live_cutover_operator_decision_preflight_route == "preflight_only_non_selected_candidate" and .registry_guard_route == "require_approval_ledger" and .live_cutover_receipt_rollback_packet_route == "preflight_only_non_selected_candidate" and .live_cutover_receipt_rollback_packet_ready == true and .rollback_anchor_present == true and .rollback_readback_channel_present == true and .result_receipt_schema_present == true and .operator_summary_template_present == true and .kill_switch_present == true and .rollback_plan_required == false and .rollback_readback_required == false and .result_receipt_required == false and .rollback_receipt_required == false and .operator_summary_required == false and .live_cutover_start_blocked == false and .rollback_execution_blocked == false and .result_receipt_write_blocked == false and .execution_adapter_dispatch_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false)
+  and (.blockers | index("live_cutover_start_blocked")) != null
+  and (.blockers | index("rollback_execution_blocked")) != null
+  and (.blockers | index("result_receipt_write_blocked")) != null
+  and (.next_actions | index("restore_tool_execution_live_cutover_final_gate_without_invocation")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p codex-tools tool_execution_live_cutover_receipt_rollback_packet --quiet
+)
+
+printf 'hepta-systems-tool-execution-live-cutover-receipt-rollback-packet-gate: PASS: rollback and result receipt packets are ready while start, rollback, receipt writes, and invocation stay disabled\n'

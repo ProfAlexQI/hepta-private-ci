@@ -1,5 +1,11 @@
 use super::*;
+use crate::session::turn_context::TurnContext;
 use crate::tools::handlers::multi_agents_spec::create_close_agent_tool_v2;
+use crate::tools::handlers::work_graph_admission::WorkGraphAgentCardManifestObservation;
+use crate::tools::handlers::work_graph_admission::WorkGraphRoleManifestShadowDecision;
+use crate::tools::handlers::work_graph_admission::build_agent_card_manifest_shadow_decision;
+use crate::tools::handlers::work_graph_admission::configured_agent_role_manifest_source;
+use crate::tools::handlers::work_graph_admission::subagent_lifecycle_agent_card_manifest;
 use crate::turn_timing::now_unix_timestamp_ms;
 use codex_tools::ToolSpec;
 
@@ -41,6 +47,11 @@ async fn handle_close_agent(
         .agent_control
         .get_agent_metadata(agent_id)
         .unwrap_or_default();
+    let lifecycle_shadow_decision = build_lifecycle_role_manifest_shadow_decision(
+        "close_agent",
+        &turn,
+        receiver_agent.agent_role.as_ref(),
+    );
     if receiver_agent
         .agent_path
         .as_ref()
@@ -115,6 +126,7 @@ async fn handle_close_agent(
 
     Ok(CloseAgentResult {
         previous_status: status,
+        work_graph_lifecycle_shadow_decision: Some(lifecycle_shadow_decision),
     })
 }
 
@@ -130,9 +142,57 @@ struct CloseAgentArgs {
     target: String,
 }
 
+fn build_lifecycle_role_manifest_shadow_decision(
+    source_surface_id: &'static str,
+    turn: &TurnContext,
+    receiver_agent_role: Option<&String>,
+) -> WorkGraphRoleManifestShadowDecision {
+    let requested_role = receiver_agent_role
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|role| !role.is_empty());
+    let configured_role = requested_role.and_then(|role| turn.config.agent_roles.get(role));
+    let role_declared = requested_role.is_none() || configured_role.is_some();
+    let role_description_present = requested_role.is_none()
+        || configured_role
+            .and_then(|role| role.description.as_deref())
+            .is_some_and(|description| !description.trim().is_empty());
+
+    build_agent_card_manifest_shadow_decision(
+        subagent_lifecycle_agent_card_manifest(source_surface_id),
+        WorkGraphAgentCardManifestObservation {
+            role_name: requested_role.map(str::to_string),
+            role_declared,
+            role_description_present,
+            configured_manifest_source: configured_agent_role_manifest_source(
+                requested_role,
+                configured_role.is_some(),
+                configured_role.is_some_and(|role| role.config_file.is_some()),
+                configured_role.and_then(|role| role.agent_card_manifest_source.as_deref()),
+            ),
+            configured_manifest_version: configured_role
+                .and_then(|role| role.agent_card_manifest_version.clone()),
+            configured_manifest_overlay: configured_role
+                .and_then(|role| role.agent_card_manifest.clone()),
+            budget_present: turn
+                .config
+                .agent_max_threads
+                .is_none_or(|max_threads| max_threads > 0),
+            output_contract_present: None,
+            result_contract_present: None,
+            verifier_present: None,
+            reducer_present: None,
+            attempted_tool: Some(source_surface_id),
+            observed_lane: Some("subagent_lifecycle"),
+        },
+    )
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct CloseAgentResult {
     pub(crate) previous_status: AgentStatus,
+    #[serde(default, skip_deserializing)]
+    pub(crate) work_graph_lifecycle_shadow_decision: Option<WorkGraphRoleManifestShadowDecision>,
 }
 
 impl ToolOutput for CloseAgentResult {

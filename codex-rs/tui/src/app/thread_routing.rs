@@ -507,6 +507,7 @@ impl App {
             }
             AppCommand::UserTurn {
                 items,
+                context_recall_selected_snippets,
                 cwd,
                 approval_policy,
                 approvals_reviewer,
@@ -597,6 +598,7 @@ impl App {
                         .turn_start(
                             thread_id,
                             items.to_vec(),
+                            context_recall_selected_snippets.clone(),
                             cwd.clone(),
                             *approval_policy,
                             approvals_reviewer,

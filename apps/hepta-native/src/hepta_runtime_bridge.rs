@@ -57,8 +57,8 @@ impl HeptaCodexRuntimeBridgeSnapshot {
     }
 }
 
-pub fn sample_current_codex_runtime_bridge_snapshot(
-) -> Result<HeptaCodexRuntimeBridgeSnapshot, String> {
+pub fn sample_current_codex_runtime_bridge_snapshot()
+-> Result<HeptaCodexRuntimeBridgeSnapshot, String> {
     let absorption = hepta_native_absorption_report();
     let readiness = evaluate_runtime_readiness(
         "hepta-native-current-codex-runtime-bridge",

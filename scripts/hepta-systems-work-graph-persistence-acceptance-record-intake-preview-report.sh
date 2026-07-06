@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+intake_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_acceptance_record_intake_preview.rs
+)"
+intake_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-record-intake-preview-report.sh
+)"
+intake_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-record-intake-preview-gate.sh
+)"
+authority_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_acceptance_authority_blocker_preview.rs
+)"
+authority_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-acceptance-authority-blocker-preview-gate.sh
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-report.sh
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-gate.sh
+)"
+
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-durable-identity-preview-report.sh"
+)"
+
+jq -n \
+  --argjson intake_rust_module_present "$intake_rust_module_present" \
+  --argjson intake_report_script_present "$intake_report_script_present" \
+  --argjson intake_gate_script_present "$intake_gate_script_present" \
+  --argjson authority_rust_module_present "$authority_rust_module_present" \
+  --argjson authority_gate_script_present "$authority_gate_script_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_persistence_feature_flag_preview_gate",
+    "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+    "hepta_work_graph_persistence_canary_readback_receipt_preview_gate",
+    "hepta_work_graph_persistence_promotion_blocker_preview_gate",
+    "hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate",
+    "hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_packet_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def record_ids: [
+    "trusted_operator_acceptance_record",
+    "approval_decision_record",
+    "live_persistence_enablement_record",
+    "rollback_quarantine_owner_attestation",
+    "release_publication_owner_attestation",
+    "external_delivery_consent_record"
+  ];
+  def template($id; $surface_ids): {
+    id: $id,
+    target_authority_surface_ids: $surface_ids,
+    required_fields: (durable_fields + ["recordTemplateId", "trustedOperatorIdHash", "operatorScopeHash", "acceptedCapabilityIds", "explicitAuthorityGrant", "expiresAtUnixMs", "revocationStatus", "sideEffectDenialHash"]),
+    redaction_state: "hash_only_redacted",
+    present_in_preview: false,
+    accepted_in_preview: false,
+    recording_enabled: false
+  };
+  def denial($id; $reason): {
+    id: $id,
+    applies_to_record_ids: record_ids,
+    reason: $reason,
+    blocks_record_acceptance: true
+  };
+  def guard($id; $effect; $fields): {
+    id: $id,
+    blocked_effect: $effect,
+    required_evidence_fields: (durable_fields + $fields),
+    enforced_in_preview: true
+  };
+  def digest($id; $fields): {
+    id: $id,
+    hashed_fields: $fields,
+    hash_only: true,
+    required: true
+  };
+  def view($id; $audience; $fields): {
+    id: $id,
+    audience: $audience,
+    required_fields: (durable_fields + $fields),
+    external_delivery_enabled: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    template("trusted_operator_acceptance_record"; ["operator_acceptance_authority", "approval_recording_authority"]),
+    template("approval_decision_record"; ["approval_recording_authority", "live_persistence_authority"]),
+    template("live_persistence_enablement_record"; ["live_persistence_authority", "wal_checkpoint_authority"]),
+    template("rollback_quarantine_owner_attestation"; ["wal_checkpoint_authority", "enforcement_rollout_authority"]),
+    template("release_publication_owner_attestation"; ["release_publication_authority"]),
+    template("external_delivery_consent_record"; ["external_delivery_authority"])
+  ] as $record_templates
+  | [
+    denial("durable_identity_evidence_missing"; "acceptance record intake cannot continue without durable identity evidence"),
+    denial("missing_trusted_operator_identity_hash"; "trusted operator identity hash is required before acceptance intake can continue"),
+    denial("missing_explicit_authority_grant"; "record lacks explicit authority grant for each requested WorkGraph capability"),
+    denial("capability_scope_mismatch"; "record capability scope does not match blocked authority surfaces"),
+    denial("approval_ledger_write_attempted"; "acceptance intake cannot write approval ledger records"),
+    denial("live_persistence_enablement_attempted"; "acceptance intake cannot enable persistence, WAL, checkpoints, or rollout"),
+    denial("release_publication_attempted"; "acceptance intake cannot publish release status or artifacts"),
+    denial("external_delivery_attempted"; "acceptance intake cannot send receipts or acknowledgements externally"),
+    denial("expired_or_revoked_acceptance_scope"; "expired, superseded, revoked, or digest-mismatched acceptance scope blocks intake")
+  ] as $validation_denials
+  | [
+    guard("acceptance_record_persistence_guard"; "acceptance_record_persisted"; ["acceptanceRecordHash", "persistenceDenied", "sideEffectHash"]),
+    guard("approval_recording_guard"; "approval_recorded"; ["approvalLedgerId", "recordingDenied", "operatorAcceptanceRecorded"]),
+    guard("live_execution_guard"; "live_persistence_enabled"; ["featureFlagStillOff", "liveExecutionDenied", "zeroWriteProofHash"]),
+    guard("rollout_guard"; "rollout_started"; ["rolloutStageZeroTraffic", "trafficRouted", "enforcementDisabled"]),
+    guard("release_publication_guard"; "release_published"; ["releaseDenied", "publicationDenied", "artifactWriteDenied"]),
+    guard("external_delivery_guard"; "external_send_performed"; ["externalDeliveryDenied", "recipientScopeDenied", "channelSendDenied"])
+  ] as $intake_guards
+  | [
+    digest("durable_identity_digest"; durable_fields),
+    digest("operator_identity_digest"; ["trustedOperatorIdHash", "operatorScopeHash"]),
+    digest("authority_scope_digest"; ["acceptedCapabilityIds", "explicitAuthorityGrant"]),
+    digest("approval_decision_digest"; ["approvalLedgerId", "decisionHash", "approverScopeHash"]),
+    digest("rollback_quarantine_digest"; ["rollbackOwnerHash", "quarantineOwnerHash", "killSwitchId"]),
+    digest("publication_delivery_digest"; ["releaseOwnerHash", "recipientScopeHash", "redactionPolicyHash"])
+  ] as $redaction_digests
+  | [
+    view("operator_acceptance_record_missing_fields_view"; "operator"; ["recordTemplateId", "missingFieldIds", "validationDenialIds", "acceptanceDenied"]),
+    view("auditor_acceptance_record_digest_view"; "auditor"; ["recordDigestHash", "redactionDigestIds", "intakeGuardIds", "sideEffectHash"]),
+    view("release_owner_acceptance_record_denial_view"; "release_owner"; ["releaseDenied", "publicationDenied", "externalDeliveryDenied", "requiredRecordIds"]),
+    view("runtime_acceptance_record_zero_effect_view"; "system"; ["operatorAcceptanceRecorded", "approvalRecorded", "authorityGranted", "livePersistenceEnabled"])
+  ] as $local_views
+  | [
+    invariant("acceptance_record_intake_requires_durable_identity_evidence"; "record intake templates require workflow, run, step, checkpoint, replay, rollback, and receipt evidence"),
+    invariant("acceptance_records_are_templates_only"; "record templates are declared but not accepted, recorded, or persisted"),
+    invariant("acceptance_record_validation_denies_all_live_effects"; "validation denials block authority, approval recording, persistence, rollout, release, and delivery"),
+    invariant("acceptance_record_digests_are_hash_only"; "operator identity, scope, approval, rollback, publication, and delivery fields stay hash-only"),
+    invariant("acceptance_record_intake_views_are_local_only"; "operator, auditor, release-owner, and system intake views cannot be sent externally"),
+    invariant("acceptance_record_intake_requires_prior_authority_blocker"; "intake cannot run unless the acceptance authority blocker gate is present"),
+    invariant("acceptance_record_intake_preview_has_no_side_effects"; "this gate cannot record acceptance, grant authority, enable live execution, publish, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_persistence_acceptance_record_intake_preview_gate",
+      schema_version: "work_graph_persistence_acceptance_record_intake_preview_v1",
+      preview_mode: "read_only_persistence_acceptance_record_intake_preview_no_recording",
+      record_template_count: ($record_templates | length),
+      validation_denial_count: ($validation_denials | length),
+      intake_guard_count: ($intake_guards | length),
+      redaction_digest_count: ($redaction_digests | length),
+      local_view_count: ($local_views | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      record_templates: $record_templates,
+      validation_denials: $validation_denials,
+      intake_guards: $intake_guards,
+      redaction_digests: $redaction_digests,
+      local_views: $local_views,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+        required_field_ids: durable_fields,
+        required_for_record_ids: record_ids,
+        durable_field_count: $durable_identity_report.durable_field_count,
+        preview_binding_count: $durable_identity_report.preview_binding_count,
+        invariant_count: $durable_identity_report.invariant_count,
+        currently_satisfied: false
+      },
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_persistence_acceptance_record_receipt_preview_gate",
+      ready_for_acceptance_record_receipt_preview: true,
+      ready_for_operator_acceptance: false,
+      ready_for_live_persistence: false,
+      source_probes: {
+        persistence_acceptance_record_intake: {
+          rust_module_present: $intake_rust_module_present,
+          report_script_present: $intake_report_script_present,
+          gate_script_present: $intake_gate_script_present
+        },
+        persistence_acceptance_authority_blocker: {
+          rust_module_present: $authority_rust_module_present,
+          gate_script_present: $authority_gate_script_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        acceptance_record_persisted: false,
+        operator_acceptance_recorded: false,
+        approval_recorded: false,
+        authority_granted: false,
+        live_persistence_enabled: false,
+        wal_written: false,
+        checkpoint_written: false,
+        enforcement_enabled: false,
+        rollout_started: false,
+        traffic_routed: false,
+        release_published: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

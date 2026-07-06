@@ -1,54 +1,222 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use hepta_core::{
-    ApprovalRequirement, ContextRecallAvailability, ContextRecallBundle, ContextRecallItem,
-    ContextRecallRequest, ContextRecallScore, ContextRecallSource, HeptaError, HeptaNeuron,
-    IntelligenceTurnFrame, IntuitionActionMode, IntuitionBundle, IntuitionFeedbackOutcome,
-    IntuitionFeedbackRecord, IntuitionRequest, LinkPolarity, MEMORY_NEURON_COMPRESSION_V2_POLICY,
-    MemoryQuery, MemoryStore, MessageRole, ModelRef, NeuronActivation, NeuronCompressionReport,
-    NeuronId, NeuronLink, NeuronLinkKind, RiskTier, SessionId, SkillActivationDecision, SkillPrior,
-    TopicActivationScore, TopicGraphEdgeKind, TopicId, TopicLabel, TopicRoutingDecision,
-    TopicSession, TopicSessionStatus, TopicShiftEvent, TopicShiftKind, TranscriptEntry,
-    TranscriptEntryKind, TranscriptQueryReport, TranscriptRange, TranscriptSpanRef, WorkflowPrior,
-};
-use hepta_intelligence::{
-    IntuitionCalibrationFeedbackSummary, IntuitionCalibrationTargetSummary,
-    LearnedSemanticRouterEvidence, MemoryKgAdapterClientReport, MemoryKgAdapterConfigEnvReport,
-    MemoryKgAdapterDryRunReport, MemoryKgAdapterStagingGateReport,
-    MemoryKgContextInjectionReadinessReport, MemoryKgContextRecallBridgeReport,
-    MemoryKgPromptPreviewApprovalPacketReport, MemoryKgPromptPreviewContextHandoffReport,
-    MemoryKgPromptPreviewOperatorEvidenceReport, MemoryKgPromptPreviewPreflightReport,
-    MemoryKgPromptPreviewRedactionDiffReport, MemoryKgPromptPreviewRollbackKillSwitchReport,
-    MemoryKgRecallEvaluationReport, MemoryKgRecallPlanReport, MemoryKgShadowRankComparisonReport,
-    MemoryKgShadowRankDriftReport, MemoryKgShadowRankReport, MemoryKgWriteCandidateReport,
-    SEMANTIC_ROUTER_LAST_SIGNAL_KEY, SEMANTIC_ROUTER_LEARNED_KEY, SEMANTIC_ROUTER_NET_DELTA_KEY,
-    TopicAwareModelFeedbackOutcome, TopicAwareModelFeedbackRecord, TopicAwareModelFeedbackSummary,
-    TopicRouteShellPatch, compute_intuition_feedback_delta,
-    evaluate_intelligence_semantic_expectations, format_intuition_feedback_outcome,
-    intuition_calibration_feedback_summary, intuition_calibration_skill_targets,
-    intuition_calibration_workflow_targets, intuition_feedback_confidence_shift,
-    is_learned_feedback_contrast_case, learned_feedback_contrast_expected_signal_direction,
-    learned_feedback_contrast_focus, learned_semantic_terms_for_feedback,
-    memory_atom_pipeline_sample_report, memory_kg_adapter_client_report,
-    memory_kg_adapter_config_env_report, memory_kg_adapter_dry_run_report,
-    memory_kg_adapter_staging_gate_report, memory_kg_context_injection_readiness_report,
-    memory_kg_context_recall_bridge_report, memory_kg_prompt_preview_approval_packet_report,
-    memory_kg_prompt_preview_context_handoff_report,
-    memory_kg_prompt_preview_operator_evidence_report, memory_kg_prompt_preview_preflight_report,
-    memory_kg_prompt_preview_redaction_diff_report,
-    memory_kg_prompt_preview_rollback_kill_switch_report, memory_kg_recall_evaluation_report,
-    memory_kg_recall_plan_report, memory_kg_shadow_rank_comparison_report,
-    memory_kg_shadow_rank_drift_report, memory_kg_shadow_rank_report,
-    memory_kg_write_candidate_report, neuron_lifecycle_health_summary, semantic_score_from_counts,
-    summarize_topic_aware_model_feedback,
-};
-use serde::{Deserialize, Serialize};
+use hepta_core::ApprovalRequirement;
+use hepta_core::ContextRecallAvailability;
+use hepta_core::ContextRecallBundle;
+use hepta_core::ContextRecallItem;
+use hepta_core::ContextRecallRequest;
+use hepta_core::ContextRecallScore;
+use hepta_core::ContextRecallSource;
+use hepta_core::HeptaError;
+use hepta_core::HeptaNeuron;
+use hepta_core::IntelligenceTurnFrame;
+use hepta_core::IntuitionActionMode;
+use hepta_core::IntuitionBundle;
+use hepta_core::IntuitionFeedbackOutcome;
+use hepta_core::IntuitionFeedbackRecord;
+use hepta_core::IntuitionRequest;
+use hepta_core::LinkPolarity;
+use hepta_core::MEMORY_NEURON_COMPRESSION_V2_POLICY;
+use hepta_core::MemoryQuery;
+use hepta_core::MemoryStore;
+use hepta_core::MessageRole;
+use hepta_core::ModelRef;
+use hepta_core::NeuronActivation;
+use hepta_core::NeuronCompressionReport;
+use hepta_core::NeuronId;
+use hepta_core::NeuronLink;
+use hepta_core::NeuronLinkKind;
+use hepta_core::RiskTier;
+use hepta_core::SessionId;
+use hepta_core::SkillActivationDecision;
+use hepta_core::SkillPrior;
+use hepta_core::TopicActivationScore;
+use hepta_core::TopicGraphEdgeKind;
+use hepta_core::TopicId;
+use hepta_core::TopicLabel;
+use hepta_core::TopicRoutingDecision;
+use hepta_core::TopicSession;
+use hepta_core::TopicSessionStatus;
+use hepta_core::TopicShiftEvent;
+use hepta_core::TopicShiftKind;
+use hepta_core::TranscriptEntry;
+use hepta_core::TranscriptEntryKind;
+use hepta_core::TranscriptQueryReport;
+use hepta_core::TranscriptRange;
+use hepta_core::TranscriptSpanRef;
+use hepta_core::WorkflowPrior;
+use hepta_intelligence::IntuitionCalibrationFeedbackSummary;
+use hepta_intelligence::IntuitionCalibrationTargetSummary;
+use hepta_intelligence::LearnedSemanticRouterEvidence;
+use hepta_intelligence::MemoryKgAdapterClientReport;
+use hepta_intelligence::MemoryKgAdapterConfigEnvReport;
+use hepta_intelligence::MemoryKgAdapterDryRunReport;
+use hepta_intelligence::MemoryKgAdapterStagingGateReport;
+use hepta_intelligence::MemoryKgContextInjectionReadinessReport;
+use hepta_intelligence::MemoryKgContextRecallBridgeReport;
+use hepta_intelligence::MemoryKgPromptPreviewApprovalPacketReport;
+use hepta_intelligence::MemoryKgPromptPreviewContextHandoffReport;
+use hepta_intelligence::MemoryKgPromptPreviewOperatorEvidenceReport;
+use hepta_intelligence::MemoryKgPromptPreviewPreflightReport;
+use hepta_intelligence::MemoryKgPromptPreviewRedactionDiffReport;
+use hepta_intelligence::MemoryKgPromptPreviewRollbackKillSwitchReport;
+use hepta_intelligence::MemoryKgRecallEvaluationReport;
+use hepta_intelligence::MemoryKgRecallPlanReport;
+use hepta_intelligence::MemoryKgShadowRankComparisonReport;
+use hepta_intelligence::MemoryKgShadowRankDriftReport;
+use hepta_intelligence::MemoryKgShadowRankReport;
+use hepta_intelligence::MemoryKgWriteCandidateReport;
+use hepta_intelligence::SEMANTIC_ROUTER_LAST_SIGNAL_KEY;
+use hepta_intelligence::SEMANTIC_ROUTER_LEARNED_KEY;
+use hepta_intelligence::SEMANTIC_ROUTER_NET_DELTA_KEY;
+use hepta_intelligence::TopicAwareModelFeedbackOutcome;
+use hepta_intelligence::TopicAwareModelFeedbackRecord;
+use hepta_intelligence::TopicAwareModelFeedbackSummary;
+use hepta_intelligence::TopicRouteShellPatch;
+use hepta_intelligence::compute_intuition_feedback_delta;
+use hepta_intelligence::evaluate_intelligence_semantic_expectations;
+use hepta_intelligence::format_intuition_feedback_outcome;
+use hepta_intelligence::intuition_calibration_feedback_summary;
+use hepta_intelligence::intuition_calibration_skill_targets;
+use hepta_intelligence::intuition_calibration_workflow_targets;
+use hepta_intelligence::intuition_feedback_confidence_shift;
+use hepta_intelligence::is_learned_feedback_contrast_case;
+use hepta_intelligence::learned_feedback_contrast_expected_signal_direction;
+use hepta_intelligence::learned_feedback_contrast_focus;
+use hepta_intelligence::learned_semantic_terms_for_feedback;
+use hepta_intelligence::memory_atom_pipeline_sample_report;
+use hepta_intelligence::memory_kg_adapter_client_report;
+use hepta_intelligence::memory_kg_adapter_config_env_report;
+use hepta_intelligence::memory_kg_adapter_dry_run_report;
+use hepta_intelligence::memory_kg_adapter_staging_gate_report;
+use hepta_intelligence::memory_kg_context_injection_readiness_report;
+use hepta_intelligence::memory_kg_context_recall_bridge_report;
+use hepta_intelligence::memory_kg_prompt_preview_approval_packet_report;
+use hepta_intelligence::memory_kg_prompt_preview_context_handoff_report;
+use hepta_intelligence::memory_kg_prompt_preview_operator_evidence_report;
+use hepta_intelligence::memory_kg_prompt_preview_preflight_report;
+use hepta_intelligence::memory_kg_prompt_preview_redaction_diff_report;
+use hepta_intelligence::memory_kg_prompt_preview_rollback_kill_switch_report;
+use hepta_intelligence::memory_kg_recall_evaluation_report;
+use hepta_intelligence::memory_kg_recall_plan_report;
+use hepta_intelligence::memory_kg_shadow_rank_comparison_report;
+use hepta_intelligence::memory_kg_shadow_rank_drift_report;
+use hepta_intelligence::memory_kg_shadow_rank_report;
+use hepta_intelligence::memory_kg_write_candidate_report;
+use hepta_intelligence::neuron_lifecycle_health_summary;
+use hepta_intelligence::semantic_score_from_counts;
+use hepta_intelligence::summarize_topic_aware_model_feedback;
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::events::{format_event_record, summarize_line};
-use crate::{
-    EventRecord, MemorySnapshot, RuntimeKernel, SessionSnapshot, ToolDescriptor, TopicGraphState,
-    TurnRecord, current_unix_ms,
-};
+use crate::EventRecord;
+use crate::MemorySnapshot;
+use crate::RuntimeKernel;
+use crate::SessionSnapshot;
+use crate::ToolDescriptor;
+
+pub const TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CoreTurnContextRecallSelectedSnippetEnvelope {
+    pub version: u32,
+    pub max_snippets: u32,
+    pub max_snippet_chars: u32,
+    pub selected_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub omitted_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub redacted_snippet_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub truncated_snippet_count: u32,
+    pub snippets: Vec<CoreTurnContextRecallSelectedSnippet>,
+    pub safety: CoreTurnContextRecallSelectedSnippetSafety,
+}
+
+impl CoreTurnContextRecallSelectedSnippetEnvelope {
+    pub fn counts_match(&self) -> bool {
+        self.selected_snippet_count == u32::try_from(self.snippets.len()).unwrap_or(u32::MAX)
+            && self.redacted_snippet_count
+                == u32::try_from(
+                    self.snippets
+                        .iter()
+                        .filter(|snippet| snippet.redacted)
+                        .count(),
+                )
+                .unwrap_or(u32::MAX)
+            && self.truncated_snippet_count
+                == u32::try_from(
+                    self.snippets
+                        .iter()
+                        .filter(|snippet| snippet.truncated)
+                        .count(),
+                )
+                .unwrap_or(u32::MAX)
+    }
+
+    pub fn bounds_match(&self) -> bool {
+        self.selected_snippet_count <= self.max_snippets
+            && self.snippets.len() <= usize::try_from(self.max_snippets).unwrap_or(usize::MAX)
+            && self.snippets.iter().all(|snippet| {
+                !snippet.text.is_empty()
+                    && snippet.text.chars().count()
+                        <= usize::try_from(self.max_snippet_chars).unwrap_or(usize::MAX)
+                    && is_stable_manifest_replay_hash(&snippet.snippet_hash)
+            })
+    }
+
+    pub fn safety_matches(&self) -> bool {
+        let forbidden_exposure = self.safety.origin_identifiers_exposed
+            || self.safety.raw_ranked_payload_exposed
+            || self.safety.rank_explanation_exposed
+            || self.safety.control_marker_exposed
+            || self.safety.query_payload_exposed
+            || self.safety.per_origin_list_exposed
+            || self
+                .snippets
+                .iter()
+                .any(|snippet| snippet.text.contains("[hepta-memory:"));
+        self.safety.bounded == self.bounds_match()
+            && self.safety.ready_for_shadow_handoff == (self.safety.bounded && !forbidden_exposure)
+            && self.safety.ready_for_shadow_handoff
+    }
+
+    pub fn has_shadow_integrity(&self) -> bool {
+        self.version == TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION
+            && self.counts_match()
+            && self.bounds_match()
+            && self.safety_matches()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CoreTurnContextRecallSelectedSnippet {
+    pub snippet_hash: String,
+    pub text: String,
+    pub estimated_tokens: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub redacted: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub truncated: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CoreTurnContextRecallSelectedSnippetSafety {
+    pub ready_for_shadow_handoff: bool,
+    pub bounded: bool,
+    pub origin_identifiers_exposed: bool,
+    pub raw_ranked_payload_exposed: bool,
+    pub rank_explanation_exposed: bool,
+    pub control_marker_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub per_origin_list_exposed: bool,
+}
+use crate::TopicGraphState;
+use crate::TurnRecord;
+use crate::current_unix_ms;
+use crate::events::format_event_record;
+use crate::events::summarize_line;
 
 pub(crate) const PROVENANCE_RECALL_RECENT_WINDOW_LIMIT: usize = 6;
 pub(crate) const PROVENANCE_RECALL_TRANSCRIPT_LIMIT: usize = 6;
@@ -56,22 +224,29 @@ pub(crate) const PROVENANCE_RECALL_MEMORY_LIMIT: usize = 6;
 pub(crate) const PROVENANCE_INTUITION_TOPIC_LIMIT: usize = 3;
 pub(crate) const PROVENANCE_INTUITION_NEURON_LIMIT: usize = 3;
 pub(crate) const PROVENANCE_INTUITION_SKILL_LIMIT: usize = 3;
+const LOW_TRUST_RANKED_ITEM_CONFIDENCE_THRESHOLD: f32 = 0.50;
+const LOW_RECENCY_RANKED_ITEM_RECENCY_THRESHOLD: f32 = 0.50;
 const FEEDBACK_LEARNER_COUNT_KEY: &str = "feedback.learning.count";
 const FEEDBACK_LEARNER_NET_DELTA_KEY: &str = "feedback.learning.net_weight_delta";
 const FEEDBACK_LEARNER_LAST_OUTCOME_KEY: &str = "feedback.learning.last_outcome";
 
+use self::topic_graph::bootstrap_topic_graph_edge;
 #[cfg(test)]
 use self::topic_graph::bootstrap_topic_graph_edge_count;
-use self::topic_graph::{
-    bootstrap_topic_graph_edge, bootstrap_topic_graph_edge_relation,
-    bootstrap_topic_graph_edge_weight, bootstrap_topic_graph_relation_for_shift_kind,
-    hydrate_topic_session_graph_edges, project_topic_sessions_with_graph_edges,
-    upsert_bootstrap_topic_graph_edge,
-};
+use self::topic_graph::bootstrap_topic_graph_edge_relation;
+use self::topic_graph::bootstrap_topic_graph_edge_weight;
+use self::topic_graph::bootstrap_topic_graph_relation_for_shift_kind;
+use self::topic_graph::hydrate_topic_session_graph_edges;
+use self::topic_graph::project_topic_sessions_with_graph_edges;
+use self::topic_graph::upsert_bootstrap_topic_graph_edge;
 
 mod topic_graph {
-    use super::{TopicGraphState, topic_session_label_overlap};
-    use hepta_core::{TopicGraphEdge, TopicGraphEdgeKind, TopicSession, TopicShiftKind};
+    use super::TopicGraphState;
+    use super::topic_session_label_overlap;
+    use hepta_core::TopicGraphEdge;
+    use hepta_core::TopicGraphEdgeKind;
+    use hepta_core::TopicSession;
+    use hepta_core::TopicShiftKind;
 
     const LEGACY_BOOTSTRAP_TOPIC_GRAPH_EDGE_PREFIX: &str = "bootstrap.graph.edge:";
 
@@ -271,11 +446,15 @@ mod topic_graph {
 }
 
 mod bootstrap_neuron_propagation {
-    use super::{
-        BootstrapNeuronSeed, bootstrap_neuron_id, bootstrap_topic_graph_edge,
-        bootstrap_topic_graph_edge_relation, infer_bootstrap_propagation_link,
-    };
-    use hepta_core::{NeuronId, NeuronLinkKind, TopicGraphEdgeKind, TopicSession};
+    use super::BootstrapNeuronSeed;
+    use super::bootstrap_neuron_id;
+    use super::bootstrap_topic_graph_edge;
+    use super::bootstrap_topic_graph_edge_relation;
+    use super::infer_bootstrap_propagation_link;
+    use hepta_core::NeuronId;
+    use hepta_core::NeuronLinkKind;
+    use hepta_core::TopicGraphEdgeKind;
+    use hepta_core::TopicSession;
 
     pub(super) fn record_source_link(
         source_topic_session: &TopicSession,
@@ -416,14 +595,17 @@ mod bootstrap_neuron_propagation {
 }
 
 mod bootstrap_neuron_activation_support {
-    use hepta_core::{NeuronId, NeuronLinkKind, TranscriptSpanRef};
+    use hepta_core::NeuronId;
+    use hepta_core::NeuronLinkKind;
+    use hepta_core::TranscriptSpanRef;
 
-    use super::{
-        BootstrapNeuronSeed, compute_bootstrap_inhibition_score,
-        compute_bootstrap_propagated_score, infer_bootstrap_neuron_inhibition_link,
-        infer_bootstrap_neuron_propagation_link, merge_bootstrap_topic_session_transcript_evidence,
-        record_bootstrap_neuron_link,
-    };
+    use super::BootstrapNeuronSeed;
+    use super::compute_bootstrap_inhibition_score;
+    use super::compute_bootstrap_propagated_score;
+    use super::infer_bootstrap_neuron_inhibition_link;
+    use super::infer_bootstrap_neuron_propagation_link;
+    use super::merge_bootstrap_topic_session_transcript_evidence;
+    use super::record_bootstrap_neuron_link;
 
     #[derive(Debug, Clone, Default, PartialEq)]
     pub(super) struct BootstrapNeuronActivationSources {
@@ -542,9 +724,8 @@ mod bootstrap_neuron_activation_support {
 mod bootstrap_neuron_activation_summary {
     use hepta_core::NeuronActivation;
 
-    use super::{
-        BootstrapNeuronSeed, bootstrap_neuron_activation_support::BootstrapNeuronActivationSources,
-    };
+    use super::BootstrapNeuronSeed;
+    use super::bootstrap_neuron_activation_support::BootstrapNeuronActivationSources;
 
     pub(super) fn build(
         seed: &BootstrapNeuronSeed,
@@ -627,12 +808,14 @@ mod bootstrap_neuron_activation_summary {
 }
 
 mod neuron_activation_overview_support {
-    use hepta_core::{HeptaNeuron, NeuronActivation, TopicActivationScore, TopicSession};
+    use hepta_core::HeptaNeuron;
+    use hepta_core::NeuronActivation;
+    use hepta_core::TopicActivationScore;
+    use hepta_core::TopicSession;
 
-    use super::{
-        build_bootstrap_neuron_activation, collect_bootstrap_direct_seeds,
-        detect_bootstrap_inhibition_marker,
-    };
+    use super::build_bootstrap_neuron_activation;
+    use super::collect_bootstrap_direct_seeds;
+    use super::detect_bootstrap_inhibition_marker;
 
     pub(super) fn build_bootstrap_activations(
         query_text: Option<&str>,
@@ -673,7 +856,10 @@ mod neuron_activation_overview_support {
 mod event_digest_rollup {
     use std::collections::BTreeMap;
 
-    use super::{EventRecord, RuntimeEventDigest, RuntimeEventKindTally, RuntimeEventSessionTally};
+    use super::EventRecord;
+    use super::RuntimeEventDigest;
+    use super::RuntimeEventKindTally;
+    use super::RuntimeEventSessionTally;
 
     pub(super) fn build(events: Vec<EventRecord>) -> RuntimeEventDigest {
         let kinds = tally_kinds(&events);
@@ -738,7 +924,8 @@ mod event_digest_rollup {
 }
 
 mod session_activity_rollup {
-    use super::{RuntimeSessionActivityOverview, RuntimeSessionActivitySlice};
+    use super::RuntimeSessionActivityOverview;
+    use super::RuntimeSessionActivitySlice;
 
     pub(super) fn build(
         sessions: Vec<RuntimeSessionActivitySlice>,
@@ -791,7 +978,8 @@ mod transcript_query_rollup {
 
     use hepta_core::TranscriptQueryReport;
 
-    use super::{RuntimeTranscriptQueryOverview, RuntimeTranscriptQuerySessionTally};
+    use super::RuntimeTranscriptQueryOverview;
+    use super::RuntimeTranscriptQuerySessionTally;
 
     pub(super) fn build(report: TranscriptQueryReport) -> RuntimeTranscriptQueryOverview {
         let returned_entries = report.hits.iter().map(|span| span.entry_count).sum();
@@ -834,9 +1022,11 @@ mod transcript_query_rollup {
 }
 
 mod transcript_query_support {
-    use hepta_core::{
-        SessionId, TranscriptEntry, TranscriptQuery, TranscriptQueryReport, TranscriptSpan,
-    };
+    use hepta_core::SessionId;
+    use hepta_core::TranscriptEntry;
+    use hepta_core::TranscriptQuery;
+    use hepta_core::TranscriptQueryReport;
+    use hepta_core::TranscriptSpan;
 
     pub(super) fn request(session_id: Option<&str>, query: &str, limit: usize) -> TranscriptQuery {
         TranscriptQuery {
@@ -868,12 +1058,23 @@ mod transcript_query_support {
 }
 
 mod context_recall_support {
-    use hepta_core::{
-        ContextBudget, ContextRecallBundle, ContextRecallItem, ContextRecallRequest,
-        ContextRecallScore, ContextRecallSource, MemoryQueryReport, MemoryRecord, MemoryScope,
-        TopicSession, TranscriptEntry, TranscriptQueryReport, TranscriptSpan, TranscriptSpanRef,
-    };
+    use hepta_core::ContextBudget;
+    use hepta_core::ContextRecallBundle;
+    use hepta_core::ContextRecallItem;
+    use hepta_core::ContextRecallRequest;
+    use hepta_core::ContextRecallScore;
+    use hepta_core::ContextRecallSource;
+    use hepta_core::MemoryQueryReport;
+    use hepta_core::MemoryRecord;
+    use hepta_core::MemoryScope;
+    use hepta_core::TopicSession;
+    use hepta_core::TranscriptEntry;
+    use hepta_core::TranscriptQueryReport;
+    use hepta_core::TranscriptSpan;
+    use hepta_core::TranscriptSpanRef;
 
+    use super::LOW_RECENCY_RANKED_ITEM_RECENCY_THRESHOLD;
+    use super::LOW_TRUST_RANKED_ITEM_CONFIDENCE_THRESHOLD;
     use super::RuntimeContextRecallSlice;
 
     #[derive(Debug)]
@@ -914,28 +1115,23 @@ mod context_recall_support {
         let transcript_truncated = transcript_report.truncated;
         let transcript_hits = transcript_report.hits;
         let memory_matched_count = memory_report.matched_count;
+        let memory_control_omitted_count = memory_report.omitted_control_count;
         let memory_truncated = memory_report.truncated;
         let (durable_memory_hits, summary_hits) = partition_memory_hits(memory_report.hits);
         let durable_memory_hit_count = durable_memory_hits.len();
         let summary_hit_count = summary_hits.len();
         let active_topic_session_count = active_topic_sessions.len();
         let budget = ContextBudget::from_request(&request);
-        let mut ranked_items = build_ranked_items(
-            &recent_entries,
-            &transcript_hits,
-            &durable_memory_hits,
-            &summary_hits,
-            &active_topic_sessions,
+        let (ranked_items, omitted_by_budget) = select_ranked_items_for_budget(
+            build_ranked_items(
+                &recent_entries,
+                &transcript_hits,
+                &durable_memory_hits,
+                &summary_hits,
+                &active_topic_sessions,
+            ),
+            &budget,
         );
-        ranked_items.sort_by(|left, right| {
-            right
-                .score
-                .final_score
-                .total_cmp(&left.score.final_score)
-                .then_with(|| left.source_id.cmp(&right.source_id))
-        });
-        let omitted_by_budget = ranked_items.len().saturating_sub(budget.max_items);
-        ranked_items.truncate(budget.max_items);
         let bundle = ContextRecallBundle {
             request,
             recent_entries,
@@ -947,9 +1143,11 @@ mod context_recall_support {
             budget,
             ranked_items,
             omitted_by_budget,
-            truncated: transcript_truncated || memory_truncated,
+            truncated: transcript_truncated || memory_truncated || omitted_by_budget > 0,
         };
         let transcript_evidence = transcript_evidence(&bundle);
+        let low_trust_ranked_item_count = low_trust_ranked_item_count(&bundle.ranked_items);
+        let low_recency_ranked_item_count = low_recency_ranked_item_count(&bundle.ranked_items);
 
         RuntimeContextRecallSlice {
             bundle,
@@ -960,8 +1158,11 @@ mod context_recall_support {
             memory_matched_count,
             durable_memory_hit_count,
             summary_hit_count,
+            memory_control_omitted_count,
             active_topic_session_count,
             transcript_evidence,
+            low_trust_ranked_item_count,
+            low_recency_ranked_item_count,
         }
     }
 
@@ -1111,6 +1312,109 @@ mod context_recall_support {
         items
     }
 
+    pub(super) fn select_ranked_items_for_budget(
+        mut items: Vec<ContextRecallItem>,
+        budget: &ContextBudget,
+    ) -> (Vec<ContextRecallItem>, usize) {
+        sort_ranked_items(&mut items);
+        let total_ranked = items.len();
+        if budget.max_items == 0 || items.is_empty() {
+            return (Vec::new(), total_ranked);
+        }
+
+        let max_items = budget.max_items;
+        let max_per_source = budget.max_per_source.max(1);
+        let diversity_target = budget.min_source_diversity.min(max_items);
+        let mut selected_indices = vec![false; items.len()];
+        let mut source_counts = Vec::new();
+        let mut selected = Vec::new();
+
+        if diversity_target > 0 {
+            for (index, item) in items.iter().enumerate() {
+                if selected.len() >= diversity_target {
+                    break;
+                }
+                let count = source_count(&source_counts, item.source);
+                if count > 0 || count >= max_per_source {
+                    continue;
+                }
+
+                selected_indices[index] = true;
+                increment_source_count(&mut source_counts, item.source);
+                selected.push(item.clone());
+            }
+        }
+
+        for (index, item) in items.iter().enumerate() {
+            if selected.len() >= max_items {
+                break;
+            }
+            if selected_indices[index]
+                || source_count(&source_counts, item.source) >= max_per_source
+            {
+                continue;
+            }
+
+            selected_indices[index] = true;
+            increment_source_count(&mut source_counts, item.source);
+            selected.push(item.clone());
+        }
+
+        sort_ranked_items(&mut selected);
+        let omitted_by_budget = total_ranked.saturating_sub(selected.len());
+
+        (selected, omitted_by_budget)
+    }
+
+    pub(super) fn low_trust_ranked_item_count(items: &[ContextRecallItem]) -> usize {
+        items
+            .iter()
+            .filter(|item| item.score.confidence < LOW_TRUST_RANKED_ITEM_CONFIDENCE_THRESHOLD)
+            .count()
+    }
+
+    pub(super) fn low_recency_ranked_item_count(items: &[ContextRecallItem]) -> usize {
+        items
+            .iter()
+            .filter(|item| item.score.recency < LOW_RECENCY_RANKED_ITEM_RECENCY_THRESHOLD)
+            .count()
+    }
+
+    fn sort_ranked_items(items: &mut [ContextRecallItem]) {
+        items.sort_by(|left, right| {
+            right
+                .score
+                .final_score
+                .total_cmp(&left.score.final_score)
+                .then_with(|| left.source_id.cmp(&right.source_id))
+        });
+    }
+
+    fn source_count(
+        source_counts: &[(ContextRecallSource, usize)],
+        source: ContextRecallSource,
+    ) -> usize {
+        source_counts
+            .iter()
+            .find_map(|(candidate, count)| (*candidate == source).then_some(*count))
+            .unwrap_or_default()
+    }
+
+    fn increment_source_count(
+        source_counts: &mut Vec<(ContextRecallSource, usize)>,
+        source: ContextRecallSource,
+    ) {
+        if let Some((_, count)) = source_counts
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == source)
+        {
+            *count += 1;
+            return;
+        }
+
+        source_counts.push((source, 1));
+    }
+
     fn partition_memory_hits(hits: Vec<MemoryRecord>) -> (Vec<MemoryRecord>, Vec<MemoryRecord>) {
         let mut durable_memory_hits = Vec::new();
         let mut summary_hits = Vec::new();
@@ -1133,11 +1437,22 @@ mod context_recall_support {
 
     #[cfg(test)]
     mod tests {
-        use hepta_core::{
-            MemoryRecord, MemoryScope, MessageRole, SessionId, TranscriptEntry, TranscriptEntryKind,
-        };
+        use hepta_core::ContextBudget;
+        use hepta_core::ContextRecallItem;
+        use hepta_core::ContextRecallScore;
+        use hepta_core::ContextRecallSource;
+        use hepta_core::MemoryRecord;
+        use hepta_core::MemoryScope;
+        use hepta_core::MessageRole;
+        use hepta_core::SessionId;
+        use hepta_core::TranscriptEntry;
+        use hepta_core::TranscriptEntryKind;
 
-        use super::{partition_memory_hits, prepare_recent_entries};
+        use super::low_recency_ranked_item_count;
+        use super::low_trust_ranked_item_count;
+        use super::partition_memory_hits;
+        use super::prepare_recent_entries;
+        use super::select_ranked_items_for_budget;
 
         #[test]
         fn prepare_recent_entries_preserves_total_count_when_truncating() {
@@ -1182,6 +1497,79 @@ mod context_recall_support {
             );
         }
 
+        #[test]
+        fn select_ranked_items_for_budget_prefers_source_diversity_before_overflow() {
+            let budget = ContextBudget {
+                max_items: 3,
+                max_tokens_estimate: 768,
+                min_source_diversity: 3,
+                max_per_source: 2,
+            };
+            let items = vec![
+                ranked_item(ContextRecallSource::RecentWindow, "recent-1", 0.99),
+                ranked_item(ContextRecallSource::RecentWindow, "recent-2", 0.98),
+                ranked_item(ContextRecallSource::Transcript, "transcript-1", 0.50),
+                ranked_item(ContextRecallSource::DurableMemory, "memory-1", 0.40),
+            ];
+
+            let (selected, omitted_by_budget) = select_ranked_items_for_budget(items, &budget);
+
+            assert_eq!(omitted_by_budget, 1);
+            assert_eq!(
+                selected
+                    .iter()
+                    .map(|item| item.source_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["recent-1", "transcript-1", "memory-1"]
+            );
+        }
+
+        #[test]
+        fn select_ranked_items_for_budget_enforces_max_per_source_when_filling() {
+            let budget = ContextBudget {
+                max_items: 4,
+                max_tokens_estimate: 1024,
+                min_source_diversity: 4,
+                max_per_source: 2,
+            };
+            let items = vec![
+                ranked_item(ContextRecallSource::RecentWindow, "recent-1", 0.99),
+                ranked_item(ContextRecallSource::RecentWindow, "recent-2", 0.98),
+                ranked_item(ContextRecallSource::RecentWindow, "recent-3", 0.97),
+                ranked_item(ContextRecallSource::Transcript, "transcript-1", 0.50),
+                ranked_item(ContextRecallSource::Transcript, "transcript-2", 0.40),
+            ];
+
+            let (selected, omitted_by_budget) = select_ranked_items_for_budget(items, &budget);
+
+            assert_eq!(omitted_by_budget, 1);
+            assert_eq!(
+                selected
+                    .iter()
+                    .map(|item| item.source_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["recent-1", "recent-2", "transcript-1", "transcript-2"]
+            );
+        }
+
+        #[test]
+        fn ranked_item_quality_counts_track_low_trust_and_low_recency() {
+            let normal = ranked_item(ContextRecallSource::RecentWindow, "normal", 0.80);
+            let mut low_trust = ranked_item(ContextRecallSource::DurableMemory, "low-trust", 0.80);
+            low_trust.score.confidence = 0.49;
+            let mut low_recency =
+                ranked_item(ContextRecallSource::SummaryMemory, "low-recency", 0.80);
+            low_recency.score.recency = 0.49;
+            let mut low_both = ranked_item(ContextRecallSource::Transcript, "low-both", 0.80);
+            low_both.score.confidence = 0.49;
+            low_both.score.recency = 0.49;
+
+            let items = vec![normal, low_trust, low_recency, low_both];
+
+            assert_eq!(low_trust_ranked_item_count(&items), 2);
+            assert_eq!(low_recency_ranked_item_count(&items), 2);
+        }
+
         fn transcript_entry(sequence: u64, content: &str) -> TranscriptEntry {
             TranscriptEntry {
                 entry_id: format!("entry-{sequence}"),
@@ -1203,6 +1591,321 @@ mod context_recall_support {
                 scope,
                 content: format!("memory {id}"),
             }
+        }
+
+        fn ranked_item(
+            source: ContextRecallSource,
+            source_id: &str,
+            final_score: f32,
+        ) -> ContextRecallItem {
+            ContextRecallItem {
+                source,
+                source_id: source_id.to_string(),
+                summary: source_id.to_string(),
+                score: ContextRecallScore {
+                    recency: final_score,
+                    relevance: final_score,
+                    durability: final_score,
+                    topic_activation: 0.0,
+                    neuron_activation: 0.0,
+                    confidence: final_score,
+                    final_score,
+                    reason: Some("test fixture".into()),
+                },
+                source_transcript_spans: Vec::new(),
+                source_memory_ids: Vec::new(),
+                topic_session_ids: Vec::new(),
+                neuron_ids: Vec::new(),
+            }
+        }
+    }
+}
+
+mod context_recall_provider_rollup {
+    use hepta_core::ContextRecallSource;
+
+    use super::RuntimeContextRecallProviderRollup;
+    use super::RuntimeContextRecallSelectionSummary;
+    use super::RuntimeContextRecallSlice;
+
+    const CONTEXT_RECALL_SOURCE_COUNT: usize = 7;
+
+    pub(super) fn build(slice: &RuntimeContextRecallSlice) -> RuntimeContextRecallProviderRollup {
+        let mut returned_sources = [false; CONTEXT_RECALL_SOURCE_COUNT];
+        let mut ranked_sources = [false; CONTEXT_RECALL_SOURCE_COUNT];
+
+        if slice.recent_entry_count > 0 {
+            returned_sources[source_index(ContextRecallSource::RecentWindow)] = true;
+        }
+        if slice.transcript_returned_count > 0 {
+            returned_sources[source_index(ContextRecallSource::Transcript)] = true;
+        }
+        if slice.durable_memory_hit_count > 0 {
+            returned_sources[source_index(ContextRecallSource::DurableMemory)] = true;
+        }
+        if slice.summary_hit_count > 0 {
+            returned_sources[source_index(ContextRecallSource::SummaryMemory)] = true;
+        }
+        if slice.active_topic_session_count > 0 {
+            returned_sources[source_index(ContextRecallSource::ActiveTopicSession)] = true;
+        }
+        if !slice.bundle.active_neurons.is_empty() {
+            returned_sources[source_index(ContextRecallSource::ActiveNeuron)] = true;
+        }
+
+        for item in &slice.bundle.ranked_items {
+            returned_sources[source_index(item.source)] = true;
+            ranked_sources[source_index(item.source)] = true;
+        }
+
+        let returned_source_count = count_sources(&returned_sources);
+        let selected_source_count = count_sources(&ranked_sources);
+        let ranked_source_count = selected_source_count;
+        let source_diversity_target = to_u32(slice.bundle.budget.min_source_diversity);
+        let source_diversity_met =
+            source_diversity_target == 0 || selected_source_count >= source_diversity_target;
+
+        RuntimeContextRecallProviderRollup {
+            recall_selection: RuntimeContextRecallSelectionSummary {
+                returned_source_count,
+                selected_source_count,
+                ranked_source_count,
+                returned_unselected_source_count: returned_source_count
+                    .saturating_sub(selected_source_count),
+                source_diversity_met,
+                source_diversity_target,
+                max_per_source: to_u32(slice.bundle.budget.max_per_source),
+                ranked_item_count: to_u32(slice.bundle.ranked_items.len()),
+                omitted_by_budget_count: to_u32(slice.bundle.omitted_by_budget),
+                memory_control_omitted_count: to_u32(slice.memory_control_omitted_count),
+                low_trust_ranked_item_count: to_u32(slice.low_trust_ranked_item_count),
+                low_recency_ranked_item_count: to_u32(slice.low_recency_ranked_item_count),
+            },
+        }
+    }
+
+    fn source_index(source: ContextRecallSource) -> usize {
+        match source {
+            ContextRecallSource::RecentWindow => 0,
+            ContextRecallSource::Transcript => 1,
+            ContextRecallSource::DurableMemory => 2,
+            ContextRecallSource::SummaryMemory => 3,
+            ContextRecallSource::ActiveTopicSession => 4,
+            ContextRecallSource::ActiveNeuron => 5,
+            ContextRecallSource::KnowledgeGraph => 6,
+        }
+    }
+
+    fn count_sources(sources: &[bool; CONTEXT_RECALL_SOURCE_COUNT]) -> u32 {
+        to_u32(sources.iter().filter(|selected| **selected).count())
+    }
+
+    fn to_u32(value: usize) -> u32 {
+        u32::try_from(value).unwrap_or(u32::MAX)
+    }
+}
+
+mod context_recall_selected_snippet_envelope {
+    use hepta_core::ContextRecallItem;
+
+    use super::RuntimeContextRecallSelectedSnippet;
+    use super::RuntimeContextRecallSelectedSnippetEnvelope;
+    use super::RuntimeContextRecallSelectedSnippetSafety;
+    use super::RuntimeContextRecallSlice;
+
+    const ENVELOPE_VERSION: u32 = 1;
+    pub(super) const DEFAULT_MAX_SNIPPETS: usize = 4;
+    pub(super) const DEFAULT_MAX_SNIPPET_CHARS: usize = 120;
+
+    pub(super) fn build(
+        slice: &RuntimeContextRecallSlice,
+        query_text: Option<&str>,
+    ) -> RuntimeContextRecallSelectedSnippetEnvelope {
+        build_with_limits(
+            slice,
+            query_text,
+            DEFAULT_MAX_SNIPPETS,
+            DEFAULT_MAX_SNIPPET_CHARS,
+        )
+    }
+
+    fn build_with_limits(
+        slice: &RuntimeContextRecallSlice,
+        query_text: Option<&str>,
+        max_snippets: usize,
+        max_snippet_chars: usize,
+    ) -> RuntimeContextRecallSelectedSnippetEnvelope {
+        let query_text = query_text.map(str::trim).filter(|text| !text.is_empty());
+        let candidate_count = slice.bundle.ranked_items.len();
+        let mut snippets = Vec::new();
+        let mut redacted_snippet_count = 0;
+        let mut truncated_snippet_count = 0;
+
+        for item in &slice.bundle.ranked_items {
+            if snippets.len() >= max_snippets {
+                break;
+            }
+            let Some(snippet) = snippet_from_ranked_item(item, query_text, max_snippet_chars)
+            else {
+                continue;
+            };
+            if snippet.redacted {
+                redacted_snippet_count += 1;
+            }
+            if snippet.truncated {
+                truncated_snippet_count += 1;
+            }
+            snippets.push(snippet);
+        }
+
+        let omitted_snippet_count = candidate_count.saturating_sub(snippets.len());
+        let safety = safety_gate(&snippets, query_text, max_snippets, max_snippet_chars);
+
+        RuntimeContextRecallSelectedSnippetEnvelope {
+            version: ENVELOPE_VERSION,
+            max_snippets,
+            max_snippet_chars,
+            selected_snippet_count: snippets.len(),
+            omitted_snippet_count,
+            redacted_snippet_count,
+            truncated_snippet_count,
+            snippets,
+            safety,
+        }
+    }
+
+    fn snippet_from_ranked_item(
+        item: &ContextRecallItem,
+        query_text: Option<&str>,
+        max_snippet_chars: usize,
+    ) -> Option<RuntimeContextRecallSelectedSnippet> {
+        let text = normalize_snippet_text(&item.summary);
+        if text.is_empty() {
+            return None;
+        }
+        let (text, redacted) = redact_shadow_snippet(&text, query_text);
+        let (text, truncated) = truncate_chars(&text, max_snippet_chars);
+
+        Some(RuntimeContextRecallSelectedSnippet {
+            snippet_hash: stable_snippet_hash(&text),
+            estimated_tokens: estimate_snippet_tokens(&text),
+            text,
+            redacted,
+            truncated,
+        })
+    }
+
+    fn safety_gate(
+        snippets: &[RuntimeContextRecallSelectedSnippet],
+        query_text: Option<&str>,
+        max_snippets: usize,
+        max_snippet_chars: usize,
+    ) -> RuntimeContextRecallSelectedSnippetSafety {
+        let bounded = snippets.len() <= max_snippets
+            && snippets
+                .iter()
+                .all(|snippet| snippet.text.chars().count() <= max_snippet_chars);
+        let control_marker_exposed = snippets
+            .iter()
+            .any(|snippet| snippet.text.contains("[hepta-memory:"));
+        let query_payload_exposed = query_text
+            .is_some_and(|query| snippets.iter().any(|snippet| snippet.text.contains(query)));
+        let origin_identifiers_exposed = false;
+        let raw_ranked_payload_exposed = false;
+        let rank_explanation_exposed = false;
+        let per_origin_list_exposed = false;
+        let ready_for_shadow_handoff = bounded
+            && !origin_identifiers_exposed
+            && !raw_ranked_payload_exposed
+            && !rank_explanation_exposed
+            && !control_marker_exposed
+            && !query_payload_exposed
+            && !per_origin_list_exposed;
+
+        RuntimeContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff,
+            bounded,
+            origin_identifiers_exposed,
+            raw_ranked_payload_exposed,
+            rank_explanation_exposed,
+            control_marker_exposed,
+            query_payload_exposed,
+            per_origin_list_exposed,
+        }
+    }
+
+    fn normalize_snippet_text(text: &str) -> String {
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn redact_shadow_snippet(text: &str, query_text: Option<&str>) -> (String, bool) {
+        let mut redacted = false;
+        let mut text = text.replace("[hepta-memory:tombstone]", "[redacted-memory-control]");
+        let control_redacted = text.contains("[redacted-memory-control]");
+        text = text.replace("[hepta-memory:conflict]", "[redacted-memory-control]");
+        redacted |= control_redacted || text.contains("[redacted-memory-control]");
+        if let Some(query_text) = query_text
+            && text.contains(query_text)
+        {
+            text = text.replace(query_text, "[redacted-query]");
+            redacted = true;
+        }
+        (text, redacted)
+    }
+
+    fn truncate_chars(text: &str, max_chars: usize) -> (String, bool) {
+        if max_chars == 0 {
+            return (String::new(), !text.is_empty());
+        }
+        let mut chars = text.chars();
+        let truncated = text.chars().count() > max_chars;
+        let text = chars.by_ref().take(max_chars).collect::<String>();
+        (text, truncated)
+    }
+
+    fn estimate_snippet_tokens(text: &str) -> u32 {
+        let token_estimate = text.len().saturating_add(3) / 4;
+        u32::try_from(token_estimate).unwrap_or(u32::MAX)
+    }
+
+    fn stable_snippet_hash(text: &str) -> String {
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in b"hepta-runtime-recall-snippet-v1:" {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        for byte in text.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        format!("{hash:016x}")
+    }
+}
+
+mod context_recall_turn_handoff {
+    use super::RuntimeContextRecallSelectedSnippetEnvelope;
+    use super::RuntimeContextRecallSlice;
+    use super::RuntimeContextRecallTurnHandoff;
+    use super::context_recall_provider_rollup;
+    use super::context_recall_selected_snippet_envelope;
+
+    pub(super) fn build(
+        slice: &RuntimeContextRecallSlice,
+        query_text: Option<&str>,
+        experimental_api_enabled: bool,
+    ) -> RuntimeContextRecallTurnHandoff {
+        let provider_rollup = context_recall_provider_rollup::build(slice);
+        let runtime_selected_snippets = experimental_api_enabled
+            .then(|| context_recall_selected_snippet_envelope::build(slice, query_text));
+        let selected_snippets =
+            RuntimeContextRecallSelectedSnippetEnvelope::into_core_envelope_for_experimental_client(
+                runtime_selected_snippets,
+                experimental_api_enabled,
+            );
+
+        RuntimeContextRecallTurnHandoff {
+            provider_rollup,
+            selected_snippets,
         }
     }
 }
@@ -1298,25 +2001,20 @@ fn attach_active_neurons_to_recall_bundle(
     }
 
     bundle.active_neurons = active_neurons;
-    bundle.ranked_items.sort_by(|left, right| {
-        right
-            .score
-            .final_score
-            .total_cmp(&left.score.final_score)
-            .then_with(|| left.source_id.cmp(&right.source_id))
-    });
-    let total_ranked = bundle.ranked_items.len();
-    if total_ranked > bundle.budget.max_items {
-        bundle.omitted_by_budget = bundle
-            .omitted_by_budget
-            .saturating_add(total_ranked - bundle.budget.max_items);
-        bundle.ranked_items.truncate(bundle.budget.max_items);
+    let (ranked_items, omitted_by_budget) = context_recall_support::select_ranked_items_for_budget(
+        std::mem::take(&mut bundle.ranked_items),
+        &bundle.budget,
+    );
+    bundle.ranked_items = ranked_items;
+    if omitted_by_budget > 0 {
+        bundle.omitted_by_budget = bundle.omitted_by_budget.saturating_add(omitted_by_budget);
         bundle.truncated = true;
     }
 }
 
 mod provenance_overview_rollup {
-    use hepta_core::{TopicSession, TopicSessionStatus};
+    use hepta_core::TopicSession;
+    use hepta_core::TopicSessionStatus;
 
     use super::RuntimeProvenanceOverview;
 
@@ -1324,6 +2022,10 @@ mod provenance_overview_rollup {
         pub session_id: String,
         pub last_user_intent_summary: Option<String>,
         pub topic_sessions: Vec<TopicSession>,
+        pub recall_ranked_items: usize,
+        pub recall_low_trust_ranked_items: usize,
+        pub recall_low_recency_ranked_items: usize,
+        pub recall_memory_control_omitted_items: usize,
         pub recall_transcript_evidence_spans: usize,
         pub recall_omitted_items: usize,
         pub intuition_transcript_evidence_spans: usize,
@@ -1343,6 +2045,10 @@ mod provenance_overview_rollup {
             active_topic_sessions_missing_transcript_provenance: topic_coverage
                 .active_topic_sessions
                 .saturating_sub(topic_coverage.active_topic_sessions_with_transcript_provenance),
+            recall_ranked_items: input.recall_ranked_items,
+            recall_low_trust_ranked_items: input.recall_low_trust_ranked_items,
+            recall_low_recency_ranked_items: input.recall_low_recency_ranked_items,
+            recall_memory_control_omitted_items: input.recall_memory_control_omitted_items,
             recall_transcript_evidence_spans: input.recall_transcript_evidence_spans,
             recall_omitted_items: input.recall_omitted_items,
             intuition_transcript_evidence_spans: input.intuition_transcript_evidence_spans,
@@ -1417,8 +2123,185 @@ pub(crate) struct RuntimeContextRecallSlice {
     pub memory_matched_count: usize,
     pub durable_memory_hit_count: usize,
     pub summary_hit_count: usize,
+    pub memory_control_omitted_count: usize,
     pub active_topic_session_count: usize,
     pub transcript_evidence: Vec<TranscriptSpanRef>,
+    pub low_trust_ranked_item_count: usize,
+    pub low_recency_ranked_item_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeContextRecallProviderRollup {
+    pub recall_selection: RuntimeContextRecallSelectionSummary,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RuntimeContextRecallTurnHandoff {
+    pub provider_rollup: RuntimeContextRecallProviderRollup,
+    pub selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
+}
+
+impl std::fmt::Debug for RuntimeContextRecallTurnHandoff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeContextRecallTurnHandoff")
+            .field("provider_rollup", &self.provider_rollup)
+            .field(
+                "selected_snippets_present",
+                &self.selected_snippets.is_some(),
+            )
+            .field(
+                "selected_snippet_count",
+                &self
+                    .selected_snippets
+                    .as_ref()
+                    .map(|envelope| envelope.selected_snippet_count),
+            )
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeContextRecallSelectedSnippetEnvelope {
+    pub version: u32,
+    pub max_snippets: usize,
+    pub max_snippet_chars: usize,
+    pub selected_snippet_count: usize,
+    pub omitted_snippet_count: usize,
+    pub redacted_snippet_count: usize,
+    pub truncated_snippet_count: usize,
+    pub snippets: Vec<RuntimeContextRecallSelectedSnippet>,
+    pub safety: RuntimeContextRecallSelectedSnippetSafety,
+}
+
+impl RuntimeContextRecallSelectedSnippetEnvelope {
+    pub fn into_core_envelope(self) -> Option<CoreTurnContextRecallSelectedSnippetEnvelope> {
+        let envelope = CoreTurnContextRecallSelectedSnippetEnvelope {
+            version: self.version,
+            max_snippets: u32::try_from(self.max_snippets).ok()?,
+            max_snippet_chars: u32::try_from(self.max_snippet_chars).ok()?,
+            selected_snippet_count: u32::try_from(self.selected_snippet_count).ok()?,
+            omitted_snippet_count: u32::try_from(self.omitted_snippet_count).ok()?,
+            redacted_snippet_count: u32::try_from(self.redacted_snippet_count).ok()?,
+            truncated_snippet_count: u32::try_from(self.truncated_snippet_count).ok()?,
+            snippets: self
+                .snippets
+                .into_iter()
+                .map(RuntimeContextRecallSelectedSnippet::into_core)
+                .collect(),
+            safety: self.safety.into_core(),
+        };
+
+        envelope.has_shadow_integrity().then_some(envelope)
+    }
+
+    pub fn into_core_envelope_for_experimental_client(
+        envelope: Option<Self>,
+        experimental_api_enabled: bool,
+    ) -> Option<CoreTurnContextRecallSelectedSnippetEnvelope> {
+        if !experimental_api_enabled {
+            return None;
+        }
+
+        envelope.and_then(Self::into_core_envelope)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeContextRecallSelectedSnippet {
+    pub snippet_hash: String,
+    pub text: String,
+    pub estimated_tokens: u32,
+    pub redacted: bool,
+    pub truncated: bool,
+}
+
+impl RuntimeContextRecallSelectedSnippet {
+    fn into_core(self) -> CoreTurnContextRecallSelectedSnippet {
+        CoreTurnContextRecallSelectedSnippet {
+            snippet_hash: self.snippet_hash,
+            text: self.text,
+            estimated_tokens: self.estimated_tokens,
+            redacted: self.redacted,
+            truncated: self.truncated,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeContextRecallSelectedSnippetSafety {
+    pub ready_for_shadow_handoff: bool,
+    pub bounded: bool,
+    pub origin_identifiers_exposed: bool,
+    pub raw_ranked_payload_exposed: bool,
+    pub rank_explanation_exposed: bool,
+    pub control_marker_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub per_origin_list_exposed: bool,
+}
+
+impl RuntimeContextRecallSelectedSnippetSafety {
+    fn into_core(self) -> CoreTurnContextRecallSelectedSnippetSafety {
+        CoreTurnContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: self.ready_for_shadow_handoff,
+            bounded: self.bounded,
+            origin_identifiers_exposed: self.origin_identifiers_exposed,
+            raw_ranked_payload_exposed: self.raw_ranked_payload_exposed,
+            rank_explanation_exposed: self.rank_explanation_exposed,
+            control_marker_exposed: self.control_marker_exposed,
+            query_payload_exposed: self.query_payload_exposed,
+            per_origin_list_exposed: self.per_origin_list_exposed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeContextRecallSelectionSummary {
+    pub returned_source_count: u32,
+    pub selected_source_count: u32,
+    pub ranked_source_count: u32,
+    pub returned_unselected_source_count: u32,
+    pub source_diversity_met: bool,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub source_diversity_target: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub max_per_source: u32,
+    pub ranked_item_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub omitted_by_budget_count: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub memory_control_omitted_count: u32,
+    pub low_trust_ranked_item_count: u32,
+    pub low_recency_ranked_item_count: u32,
+}
+
+impl RuntimeContextRecallSelectionSummary {
+    pub fn has_count_integrity(&self) -> bool {
+        self.selected_source_count <= self.returned_source_count
+            && self.ranked_source_count <= self.selected_source_count
+            && self.ranked_source_count <= self.ranked_item_count
+            && (self.ranked_item_count == 0 || self.ranked_source_count > 0)
+            && self.returned_unselected_source_count
+                == self
+                    .returned_source_count
+                    .saturating_sub(self.selected_source_count)
+            && (self.source_diversity_target == 0
+                || self.source_diversity_met
+                    == (self.selected_source_count >= self.source_diversity_target))
+            && self.low_trust_ranked_item_count <= self.ranked_item_count
+            && self.low_recency_ranked_item_count <= self.ranked_item_count
+    }
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn is_stable_manifest_replay_hash(value: &str) -> bool {
+    value.len() == 16 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1460,6 +2343,14 @@ pub struct RuntimeProvenanceOverview {
     pub active_topic_sessions: usize,
     pub active_topic_sessions_with_transcript_provenance: usize,
     pub active_topic_sessions_missing_transcript_provenance: usize,
+    #[serde(default)]
+    pub recall_ranked_items: usize,
+    #[serde(default)]
+    pub recall_low_trust_ranked_items: usize,
+    #[serde(default)]
+    pub recall_low_recency_ranked_items: usize,
+    #[serde(default)]
+    pub recall_memory_control_omitted_items: usize,
     pub recall_transcript_evidence_spans: usize,
     pub recall_omitted_items: usize,
     pub intuition_transcript_evidence_spans: usize,
@@ -1646,6 +2537,12 @@ pub struct RuntimeIntelligencePhase2Overview {
     pub neuron_compression_ready: bool,
     pub recall_ranked_items: usize,
     pub recall_source_count: usize,
+    #[serde(default)]
+    pub recall_low_trust_ranked_items: usize,
+    #[serde(default)]
+    pub recall_low_recency_ranked_items: usize,
+    #[serde(default)]
+    pub recall_memory_control_omitted_items: usize,
     pub recall_transcript_evidence_spans: usize,
     pub durable_memory_hits: usize,
     pub active_neurons: usize,
@@ -2436,6 +3333,10 @@ impl RuntimeKernel {
                 session_id: session_id.to_string(),
                 last_user_intent_summary: session.last_user_intent_summary,
                 topic_sessions,
+                recall_ranked_items: recall.bundle.ranked_items.len(),
+                recall_low_trust_ranked_items: recall.low_trust_ranked_item_count,
+                recall_low_recency_ranked_items: recall.low_recency_ranked_item_count,
+                recall_memory_control_omitted_items: recall.memory_control_omitted_count,
                 recall_transcript_evidence_spans: recall_inspection.source_transcript_spans.len(),
                 recall_omitted_items: recall_inspection.omitted_total_item_count(),
                 intuition_transcript_evidence_spans,
@@ -3143,8 +4044,29 @@ impl RuntimeKernel {
             Some("phase2 gate positive feedback for blended recall provenance memory semantic router neuron compression"),
         )?;
 
-        let recall_bundle =
-            self.recall_context(session_id, Some("hello adaptive memory"), 10, 10, 10, true)?;
+        let recall =
+            self.context_recall_slice(session_id, Some("hello adaptive memory"), 10, 10, 10, true)?;
+        let recall_memory_control_omitted_items = recall.memory_control_omitted_count;
+        let mut recall_bundle = recall.bundle;
+        let active_topic_session_ids = recall_bundle
+            .active_topic_sessions
+            .iter()
+            .map(|topic_session| topic_session.topic_session_id.clone())
+            .collect::<Vec<_>>();
+        if !active_topic_session_ids.is_empty() {
+            let topic_sessions = self.topic_session_overview(session_id)?.topic_sessions;
+            let active_neurons = self.resolve_active_neurons_for_routing(
+                session_id,
+                &topic_sessions,
+                &active_topic_session_ids,
+                active_topic_session_ids.len(),
+            )?;
+            attach_active_neurons_to_recall_bundle(&mut recall_bundle, active_neurons);
+        }
+        let recall_low_trust_ranked_items =
+            context_recall_support::low_trust_ranked_item_count(&recall_bundle.ranked_items);
+        let recall_low_recency_ranked_items =
+            context_recall_support::low_recency_ranked_item_count(&recall_bundle.ranked_items);
         let recall_source_count = recall_bundle
             .ranked_items
             .iter()
@@ -3194,9 +4116,12 @@ impl RuntimeKernel {
                     .into(),
                 ready: blended_recall_ready,
                 evidence: format!(
-                    "ranked_items={} source_count={} transcript_spans={} durable_memory_hits={} active_neurons={}",
+                    "ranked_items={} source_count={} low_trust={} low_recency={} control_omitted={} transcript_spans={} durable_memory_hits={} active_neurons={}",
                     recall_bundle.ranked_items.len(),
                     recall_source_count,
+                    recall_low_trust_ranked_items,
+                    recall_low_recency_ranked_items,
+                    recall_memory_control_omitted_items,
                     recall_transcript_evidence_spans,
                     recall_bundle.durable_memory_hits.len(),
                     recall_bundle.active_neurons.len()
@@ -3264,6 +4189,9 @@ impl RuntimeKernel {
             neuron_compression_ready,
             recall_ranked_items: recall_bundle.ranked_items.len(),
             recall_source_count,
+            recall_low_trust_ranked_items,
+            recall_low_recency_ranked_items,
+            recall_memory_control_omitted_items,
             recall_transcript_evidence_spans,
             durable_memory_hits: recall_bundle.durable_memory_hits.len(),
             active_neurons: recall_bundle.active_neurons.len(),
@@ -3427,6 +4355,73 @@ impl RuntimeKernel {
                 memory_report,
                 active_topic_sessions,
             },
+        ))
+    }
+
+    pub fn context_recall_provider_rollup(
+        &self,
+        session_id: &str,
+        query_text: Option<&str>,
+        recent_window_limit: usize,
+        transcript_limit: usize,
+        memory_limit: usize,
+        allow_cross_session: bool,
+    ) -> Result<RuntimeContextRecallProviderRollup, HeptaError> {
+        let recall = self.context_recall_slice(
+            session_id,
+            query_text,
+            recent_window_limit,
+            transcript_limit,
+            memory_limit,
+            allow_cross_session,
+        )?;
+        Ok(context_recall_provider_rollup::build(&recall))
+    }
+
+    pub fn context_recall_selected_snippet_envelope(
+        &self,
+        session_id: &str,
+        query_text: Option<&str>,
+        recent_window_limit: usize,
+        transcript_limit: usize,
+        memory_limit: usize,
+        allow_cross_session: bool,
+    ) -> Result<RuntimeContextRecallSelectedSnippetEnvelope, HeptaError> {
+        let recall = self.context_recall_slice(
+            session_id,
+            query_text,
+            recent_window_limit,
+            transcript_limit,
+            memory_limit,
+            allow_cross_session,
+        )?;
+        Ok(context_recall_selected_snippet_envelope::build(
+            &recall, query_text,
+        ))
+    }
+
+    pub fn context_recall_turn_handoff(
+        &self,
+        session_id: &str,
+        query_text: Option<&str>,
+        recent_window_limit: usize,
+        transcript_limit: usize,
+        memory_limit: usize,
+        allow_cross_session: bool,
+        experimental_api_enabled: bool,
+    ) -> Result<RuntimeContextRecallTurnHandoff, HeptaError> {
+        let recall = self.context_recall_slice(
+            session_id,
+            query_text,
+            recent_window_limit,
+            transcript_limit,
+            memory_limit,
+            allow_cross_session,
+        )?;
+        Ok(context_recall_turn_handoff::build(
+            &recall,
+            query_text,
+            experimental_api_enabled,
         ))
     }
 
@@ -5769,18 +6764,27 @@ fn merge_bootstrap_transcript_span_reasons(
 }
 
 mod bootstrap_planner {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
 
-    use hepta_core::{TopicLabel, TopicSession, TopicSessionStatus};
+    use hepta_core::TopicLabel;
+    use hepta_core::TopicSession;
+    use hepta_core::TopicSessionStatus;
 
-    use super::{
-        BOOTSTRAP_SEMANTIC_HINT_PREFIX, BootstrapTopicCandidateRoute,
-        BootstrapTopicGraphRouteCandidate, BootstrapTopicRoutePlan, MAX_BOOTSTRAP_SEMANTIC_HINTS,
-        SessionSnapshot, allocate_bootstrap_topic_id, allocate_bootstrap_topic_session_id,
-        bootstrap_topic_graph_edge, bootstrap_topic_graph_edge_relation,
-        detect_bootstrap_merge_marker, detect_bootstrap_split_marker, slugify_identifier,
-        topic_label_for_session,
-    };
+    use super::BOOTSTRAP_SEMANTIC_HINT_PREFIX;
+    use super::BootstrapTopicCandidateRoute;
+    use super::BootstrapTopicGraphRouteCandidate;
+    use super::BootstrapTopicRoutePlan;
+    use super::MAX_BOOTSTRAP_SEMANTIC_HINTS;
+    use super::SessionSnapshot;
+    use super::allocate_bootstrap_topic_id;
+    use super::allocate_bootstrap_topic_session_id;
+    use super::bootstrap_topic_graph_edge;
+    use super::bootstrap_topic_graph_edge_relation;
+    use super::detect_bootstrap_merge_marker;
+    use super::detect_bootstrap_split_marker;
+    use super::slugify_identifier;
+    use super::topic_label_for_session;
 
     pub(super) fn plan_bootstrap_topic_routes(
         existing_sessions: &[TopicSession],
@@ -6167,14 +7171,15 @@ mod bootstrap_planner {
     }
 
     mod bootstrap_topic_graph_routing {
-        use std::collections::{BTreeMap, BTreeSet};
+        use std::collections::BTreeMap;
+        use std::collections::BTreeSet;
 
         use hepta_core::TopicSession;
 
-        use super::{
-            BootstrapTopicCandidateRoute, BootstrapTopicGraphRouteCandidate,
-            bootstrap_topic_graph_edge, bootstrap_topic_graph_edge_relation,
-        };
+        use super::BootstrapTopicCandidateRoute;
+        use super::BootstrapTopicGraphRouteCandidate;
+        use super::bootstrap_topic_graph_edge;
+        use super::bootstrap_topic_graph_edge_relation;
 
         pub(super) fn infer_bootstrap_topic_graph_routes(
             existing_sessions: &[TopicSession],
@@ -6325,7 +7330,8 @@ mod bootstrap_planner {
     }
 
     mod bootstrap_candidate_matching {
-        use super::{TopicSession, slugify_identifier};
+        use super::TopicSession;
+        use super::slugify_identifier;
 
         pub(super) fn extract_bootstrap_semantic_hints_for_match(
             candidate_label: &str,
@@ -6406,12 +7412,15 @@ mod bootstrap_planner {
 mod bootstrap_graph_persistence {
     use std::collections::BTreeSet;
 
-    use hepta_core::{TopicGraphEdgeKind, TopicSession, TopicShiftKind};
+    use hepta_core::TopicGraphEdgeKind;
+    use hepta_core::TopicSession;
+    use hepta_core::TopicShiftKind;
 
-    use super::{
-        BootstrapTopicCandidateRoute, TopicGraphState, bootstrap_topic_graph_edge_weight,
-        bootstrap_topic_graph_relation_for_shift_kind, upsert_bootstrap_topic_graph_edge,
-    };
+    use super::BootstrapTopicCandidateRoute;
+    use super::TopicGraphState;
+    use super::bootstrap_topic_graph_edge_weight;
+    use super::bootstrap_topic_graph_relation_for_shift_kind;
+    use super::upsert_bootstrap_topic_graph_edge;
 
     pub(super) fn persist_bootstrap_topic_graph_semantics(
         topic_graph_state: &mut TopicGraphState,
@@ -6702,15 +7711,20 @@ struct BootstrapTopicRoutePersistInputs {
 }
 
 mod bootstrap_route_persistence {
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
 
-    use hepta_core::{SessionId, TopicSession, TopicSessionStatus, TranscriptSpanRef};
+    use hepta_core::SessionId;
+    use hepta_core::TopicSession;
+    use hepta_core::TopicSessionStatus;
+    use hepta_core::TranscriptSpanRef;
 
-    use super::{
-        BootstrapTopicCandidateRoute, BootstrapTopicRoutePersistInputs, bootstrap_memory_refs,
-        bootstrap_open_loops, bootstrap_planner::merge_bootstrap_topic_session_semantic_hints,
-        merge_bootstrap_topic_session_transcript_evidence,
-    };
+    use super::BootstrapTopicCandidateRoute;
+    use super::BootstrapTopicRoutePersistInputs;
+    use super::bootstrap_memory_refs;
+    use super::bootstrap_open_loops;
+    use super::bootstrap_planner::merge_bootstrap_topic_session_semantic_hints;
+    use super::merge_bootstrap_topic_session_transcript_evidence;
 
     pub(super) fn prepare_bootstrap_topic_route_persist_inputs(
         session_id: &str,
@@ -6830,17 +7844,20 @@ fn topic_label_for_session(session: &SessionSnapshot) -> String {
 mod bootstrap_route_stage {
     use std::collections::BTreeSet;
 
-    use hepta_core::{
-        TopicActivationScore, TopicId, TopicSession, TopicSessionStatus, TopicShiftEvent,
-    };
-    use hepta_intelligence::{
-        BootstrapTopicRouteOutcomeDraftInput, build_bootstrap_topic_route_outcome_draft,
-    };
+    use hepta_core::TopicActivationScore;
+    use hepta_core::TopicId;
+    use hepta_core::TopicSession;
+    use hepta_core::TopicSessionStatus;
+    use hepta_core::TopicShiftEvent;
+    use hepta_intelligence::BootstrapTopicRouteOutcomeDraftInput;
+    use hepta_intelligence::build_bootstrap_topic_route_outcome_draft;
 
-    use super::{
-        BootstrapTopicCandidateRoute, BootstrapTopicRouteOutcome, BootstrapTopicRoutePlan,
-        SessionSnapshot, apply_topic_route_shell_patch, bootstrap_planner,
-    };
+    use super::BootstrapTopicCandidateRoute;
+    use super::BootstrapTopicRouteOutcome;
+    use super::BootstrapTopicRoutePlan;
+    use super::SessionSnapshot;
+    use super::apply_topic_route_shell_patch;
+    use super::bootstrap_planner;
 
     #[derive(Debug, Clone, PartialEq)]
     pub(super) struct BootstrapTopicRouteReadStage {
@@ -7111,7 +8128,10 @@ impl EmptyStringFallback for String {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{EventKind, MessageRole};
+    use hepta_core::EventKind;
+    use hepta_core::MemoryRecord;
+    use hepta_core::MemoryScope;
+    use hepta_core::MessageRole;
 
     use super::*;
 
@@ -7199,6 +8219,7 @@ mod tests {
         assert_eq!(recall.memory_matched_count, 0);
         assert_eq!(recall.durable_memory_hit_count, 0);
         assert_eq!(recall.summary_hit_count, 0);
+        assert_eq!(recall.memory_control_omitted_count, 0);
         assert!(recall.bundle.recent_entries.is_empty());
         assert!(recall.bundle.transcript_hits.is_empty());
         assert!(recall.bundle.durable_memory_hits.is_empty());
@@ -7287,7 +8308,337 @@ mod tests {
         assert_eq!(recall.durable_memory_hit_count, 1);
         assert_eq!(recall.bundle.durable_memory_hits.len(), 1);
         assert_eq!(recall.summary_hit_count, 0);
+        assert_eq!(recall.memory_control_omitted_count, 0);
         assert!(!recall.bundle.truncated);
+        assert_eq!(recall.low_trust_ranked_item_count, 0);
+        assert_eq!(recall.low_recency_ranked_item_count, 0);
+    }
+
+    #[tokio::test]
+    async fn context_recall_slice_surfaces_memory_control_omission_pressure() {
+        let runtime = RuntimeKernel::new();
+        runtime
+            .switch_session("alpha")
+            .expect("switch should succeed");
+        runtime
+            .run_demo_turn("control pressure")
+            .await
+            .expect("turn should succeed");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "control-tombstone".into(),
+                scope: MemoryScope::LongTerm,
+                content: "[hepta-memory:tombstone] control pressure retired memory".into(),
+            })
+            .await
+            .expect("tombstone should store");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "control-conflict".into(),
+                scope: MemoryScope::Session,
+                content: "[hepta-memory:conflict] control pressure conflicting summary".into(),
+            })
+            .await
+            .expect("conflict should store");
+
+        let recall = runtime
+            .context_recall_slice("alpha", Some("control pressure"), 4, 4, 4, true)
+            .expect("context recall slice should succeed");
+        let overview = runtime
+            .provenance_overview("alpha")
+            .expect("provenance overview should succeed");
+        let serialized = serde_json::to_string(&overview).expect("overview should serialize");
+
+        assert_eq!(recall.memory_control_omitted_count, 2);
+        assert_eq!(overview.recall_memory_control_omitted_items, 2);
+        assert!(recall.memory_matched_count >= 1);
+        assert!(
+            recall
+                .bundle
+                .durable_memory_hits
+                .iter()
+                .all(|record| !record.content.contains("[hepta-memory:"))
+        );
+        assert!(!serialized.contains("[hepta-memory:tombstone]"));
+        assert!(!serialized.contains("[hepta-memory:conflict]"));
+    }
+
+    #[tokio::test]
+    async fn context_recall_provider_rollup_maps_runtime_recall_to_payload_light_counts() {
+        let runtime = RuntimeKernel::new();
+        runtime
+            .switch_session("alpha")
+            .expect("switch should succeed");
+        runtime
+            .run_demo_turn("provider rollup")
+            .await
+            .expect("turn should succeed");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "control-tombstone".into(),
+                scope: MemoryScope::LongTerm,
+                content: "[hepta-memory:tombstone] provider rollup retired memory".into(),
+            })
+            .await
+            .expect("tombstone should store");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "control-conflict".into(),
+                scope: MemoryScope::Session,
+                content: "[hepta-memory:conflict] provider rollup conflicting summary".into(),
+            })
+            .await
+            .expect("conflict should store");
+
+        let recall = runtime
+            .context_recall_slice("alpha", Some("provider rollup"), 4, 4, 4, true)
+            .expect("context recall slice should succeed");
+        let rollup = runtime
+            .context_recall_provider_rollup("alpha", Some("provider rollup"), 4, 4, 4, true)
+            .expect("provider rollup should build");
+        let summary = &rollup.recall_selection;
+        let serialized = serde_json::to_string(&rollup).expect("rollup should serialize");
+
+        assert!(summary.has_count_integrity());
+        assert_eq!(
+            summary.ranked_item_count,
+            u32::try_from(recall.bundle.ranked_items.len()).unwrap()
+        );
+        assert_eq!(
+            summary.omitted_by_budget_count,
+            u32::try_from(recall.bundle.omitted_by_budget).unwrap()
+        );
+        assert_eq!(summary.memory_control_omitted_count, 2);
+        assert_eq!(
+            summary.low_trust_ranked_item_count,
+            u32::try_from(recall.low_trust_ranked_item_count).unwrap()
+        );
+        assert_eq!(
+            summary.low_recency_ranked_item_count,
+            u32::try_from(recall.low_recency_ranked_item_count).unwrap()
+        );
+        assert!(summary.source_diversity_met);
+        assert!(!serialized.contains("source_id"));
+        assert!(!serialized.contains("summary"));
+        assert!(!serialized.contains("[hepta-memory:"));
+        assert!(!serialized.contains("provider rollup"));
+    }
+
+    #[tokio::test]
+    async fn context_recall_selected_snippet_envelope_redacts_and_bounds_shadow_snippets() {
+        let runtime = RuntimeKernel::new();
+        runtime
+            .switch_session("alpha")
+            .expect("switch should succeed");
+        let long_memory = format!("needle {}", "safe-context ".repeat(80));
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "memory-long-source-id".into(),
+                scope: MemoryScope::LongTerm,
+                content: long_memory,
+            })
+            .await
+            .expect("memory should store");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "control-tombstone".into(),
+                scope: MemoryScope::LongTerm,
+                content: "[hepta-memory:tombstone] needle retired memory".into(),
+            })
+            .await
+            .expect("tombstone should store");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "control-conflict".into(),
+                scope: MemoryScope::Session,
+                content: "[hepta-memory:conflict] needle conflicting summary".into(),
+            })
+            .await
+            .expect("conflict should store");
+
+        let envelope = runtime
+            .context_recall_selected_snippet_envelope(
+                "alpha",
+                Some("needle"),
+                /*recent_window_limit*/ 4,
+                /*transcript_limit*/ 4,
+                /*memory_limit*/ 4,
+                /*allow_cross_session*/ true,
+            )
+            .expect("snippet envelope should build");
+        let serialized = serde_json::to_string(&envelope).expect("envelope should serialize");
+        let protocol_envelope: CoreTurnContextRecallSelectedSnippetEnvelope =
+            serde_json::from_str(&serialized)
+                .expect("runtime envelope should match protocol shape");
+        let mapped_core_envelope = envelope
+            .clone()
+            .into_core_envelope()
+            .expect("runtime envelope should map to core protocol envelope");
+        let opted_in_core_envelope =
+            RuntimeContextRecallSelectedSnippetEnvelope::into_core_envelope_for_experimental_client(
+                Some(envelope.clone()),
+                true,
+            )
+            .expect("opted-in runtime envelope should map to core protocol envelope");
+
+        assert_eq!(envelope.version, 1);
+        assert_eq!(envelope.max_snippets, 4);
+        assert_eq!(envelope.max_snippet_chars, 120);
+        assert_eq!(envelope.selected_snippet_count, envelope.snippets.len());
+        assert!(protocol_envelope.has_shadow_integrity());
+        assert_eq!(mapped_core_envelope, protocol_envelope);
+        assert_eq!(opted_in_core_envelope, protocol_envelope);
+        assert!(
+            RuntimeContextRecallSelectedSnippetEnvelope::into_core_envelope_for_experimental_client(
+                Some(envelope.clone()),
+                false,
+            )
+            .is_none()
+        );
+        let mut invalid_envelope = envelope.clone();
+        invalid_envelope.selected_snippet_count += 1;
+        assert!(invalid_envelope.into_core_envelope().is_none());
+        assert_eq!(
+            protocol_envelope.selected_snippet_count,
+            u32::try_from(envelope.selected_snippet_count).unwrap()
+        );
+        assert_eq!(
+            envelope.safety,
+            RuntimeContextRecallSelectedSnippetSafety {
+                ready_for_shadow_handoff: true,
+                bounded: true,
+                origin_identifiers_exposed: false,
+                raw_ranked_payload_exposed: false,
+                rank_explanation_exposed: false,
+                control_marker_exposed: false,
+                query_payload_exposed: false,
+                per_origin_list_exposed: false,
+            }
+        );
+        assert!(envelope.selected_snippet_count > 0);
+        assert!(envelope.selected_snippet_count <= envelope.max_snippets);
+        assert!(envelope.redacted_snippet_count > 0);
+        assert!(envelope.truncated_snippet_count > 0);
+        assert!(envelope.snippets.iter().all(|snippet| {
+            snippet.text.chars().count() <= envelope.max_snippet_chars
+                && snippet.snippet_hash.len() == 16
+                && !snippet.text.contains("needle")
+                && !snippet.text.contains("[hepta-memory:")
+        }));
+        assert!(
+            envelope
+                .snippets
+                .iter()
+                .any(|snippet| snippet.text.contains("[redacted-query]"))
+        );
+        assert!(!serialized.contains("needle"));
+        assert!(!serialized.contains("memory-long-source-id"));
+        assert!(!serialized.contains("control-tombstone"));
+        assert!(!serialized.contains("control-conflict"));
+        assert!(!serialized.contains("[hepta-memory:"));
+        assert!(!serialized.contains("source_id"));
+        assert!(!serialized.contains("source_memory_ids"));
+        assert!(!serialized.contains("summary"));
+        assert!(!serialized.contains("reason"));
+    }
+
+    #[tokio::test]
+    async fn context_recall_turn_handoff_packages_rollup_and_opted_in_core_snippets() {
+        let runtime = RuntimeKernel::new();
+        runtime
+            .switch_session("alpha")
+            .expect("switch should succeed");
+        let long_memory = format!("needle {}", "safe-context ".repeat(80));
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "runtime-handoff-source-id".into(),
+                scope: MemoryScope::LongTerm,
+                content: long_memory,
+            })
+            .await
+            .expect("memory should store");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "runtime-handoff-control".into(),
+                scope: MemoryScope::LongTerm,
+                content: "[hepta-memory:tombstone] needle retired memory".into(),
+            })
+            .await
+            .expect("control memory should store");
+
+        let handoff = runtime
+            .context_recall_turn_handoff(
+                "alpha",
+                Some("needle"),
+                /*recent_window_limit*/ 4,
+                /*transcript_limit*/ 4,
+                /*memory_limit*/ 4,
+                /*allow_cross_session*/ true,
+                /*experimental_api_enabled*/ true,
+            )
+            .expect("turn handoff should build");
+        let selected_snippets = handoff
+            .selected_snippets
+            .as_ref()
+            .expect("opted-in handoff should include selected snippets");
+        let direct_selected_snippets = runtime
+            .context_recall_selected_snippet_envelope(
+                "alpha",
+                Some("needle"),
+                /*recent_window_limit*/ 4,
+                /*transcript_limit*/ 4,
+                /*memory_limit*/ 4,
+                /*allow_cross_session*/ true,
+            )
+            .expect("direct selected snippets should build")
+            .into_core_envelope()
+            .expect("direct selected snippets should map to core envelope");
+        let debug = format!("{handoff:?}");
+
+        assert!(
+            handoff
+                .provider_rollup
+                .recall_selection
+                .has_count_integrity()
+        );
+        assert!(selected_snippets.has_shadow_integrity());
+        assert_eq!(selected_snippets, &direct_selected_snippets);
+        assert!(selected_snippets.selected_snippet_count > 0);
+        assert!(!debug.contains("needle"));
+        assert!(!debug.contains("runtime-handoff-source-id"));
+        assert!(!debug.contains("[hepta-memory:"));
+        assert!(!debug.contains("source_id"));
+        assert!(!debug.contains("summary"));
+        assert!(!debug.contains("reason"));
+
+        let no_opt_in_handoff = runtime
+            .context_recall_turn_handoff(
+                "alpha",
+                Some("needle"),
+                /*recent_window_limit*/ 4,
+                /*transcript_limit*/ 4,
+                /*memory_limit*/ 4,
+                /*allow_cross_session*/ true,
+                /*experimental_api_enabled*/ false,
+            )
+            .expect("no-opt-in turn handoff should build");
+
+        assert!(
+            no_opt_in_handoff
+                .provider_rollup
+                .recall_selection
+                .has_count_integrity()
+        );
+        assert!(no_opt_in_handoff.selected_snippets.is_none());
     }
 
     #[tokio::test]
@@ -7963,9 +9314,38 @@ mod tests {
             0
         );
         assert!(overview.recall_transcript_evidence_spans > 0);
+        assert!(overview.recall_ranked_items > 0);
+        assert_eq!(overview.recall_low_trust_ranked_items, 0);
+        assert_eq!(overview.recall_low_recency_ranked_items, 0);
+        assert_eq!(overview.recall_memory_control_omitted_items, 0);
         assert_eq!(overview.recall_omitted_items, 0);
         assert!(overview.intuition_transcript_evidence_spans > 0);
         assert_eq!(overview.intuition_foreground_topic_sessions, 1);
+    }
+
+    #[test]
+    fn provenance_overview_rollup_surfaces_low_quality_recall_counts() {
+        let overview = provenance_overview_rollup::build(
+            provenance_overview_rollup::ProvenanceOverviewInputs {
+                session_id: "alpha".into(),
+                last_user_intent_summary: None,
+                topic_sessions: Vec::new(),
+                recall_ranked_items: 4,
+                recall_low_trust_ranked_items: 1,
+                recall_low_recency_ranked_items: 2,
+                recall_memory_control_omitted_items: 6,
+                recall_transcript_evidence_spans: 3,
+                recall_omitted_items: 5,
+                intuition_transcript_evidence_spans: 0,
+                intuition_foreground_topic_sessions: 0,
+            },
+        );
+
+        assert_eq!(overview.recall_ranked_items, 4);
+        assert_eq!(overview.recall_low_trust_ranked_items, 1);
+        assert_eq!(overview.recall_low_recency_ranked_items, 2);
+        assert_eq!(overview.recall_memory_control_omitted_items, 6);
+        assert_eq!(overview.recall_omitted_items, 5);
     }
 
     #[tokio::test]
@@ -8079,6 +9459,10 @@ mod tests {
             0
         );
         assert_eq!(overview.recall_transcript_evidence_spans, 0);
+        assert_eq!(overview.recall_ranked_items, 0);
+        assert_eq!(overview.recall_low_trust_ranked_items, 0);
+        assert_eq!(overview.recall_low_recency_ranked_items, 0);
+        assert_eq!(overview.recall_memory_control_omitted_items, 0);
         assert_eq!(overview.recall_omitted_items, 0);
         assert_eq!(overview.intuition_transcript_evidence_spans, 0);
         assert_eq!(overview.intuition_foreground_topic_sessions, 0);
@@ -8955,6 +10339,9 @@ mod tests {
         assert!(overview.neuron_compression_ready);
         assert!(overview.recall_source_count >= 4);
         assert!(overview.recall_ranked_items >= 4);
+        assert_eq!(overview.recall_low_trust_ranked_items, 0);
+        assert_eq!(overview.recall_low_recency_ranked_items, 0);
+        assert_eq!(overview.recall_memory_control_omitted_items, 0);
         assert!(overview.recall_transcript_evidence_spans > 0);
         assert!(overview.durable_memory_hits > 0);
         assert!(overview.active_neurons > 0);
@@ -8966,6 +10353,39 @@ mod tests {
         assert_eq!(overview.gates.len(), 4);
         assert!(overview.gates.iter().all(|gate| gate.ready));
         assert!(overview.findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn intelligence_phase2_gate_surfaces_memory_control_omission_pressure() {
+        let runtime = RuntimeKernel::new();
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "phase2-tombstone".into(),
+                scope: MemoryScope::LongTerm,
+                content: "[hepta-memory:tombstone] hello adaptive memory retired path".into(),
+            })
+            .await
+            .expect("tombstone should store");
+        runtime
+            .memory
+            .put(MemoryRecord {
+                id: "phase2-conflict".into(),
+                scope: MemoryScope::Session,
+                content: "[hepta-memory:conflict] hello adaptive memory stale summary".into(),
+            })
+            .await
+            .expect("conflict should store");
+
+        let overview = runtime
+            .intelligence_phase2_gate("phase2-control")
+            .await
+            .expect("phase2 gate should succeed");
+
+        assert_eq!(overview.recall_memory_control_omitted_items, 2);
+        assert!(overview.gates.iter().any(|gate| {
+            gate.id == "blended_recall" && gate.evidence.contains("control_omitted=2")
+        }));
     }
 
     #[tokio::test]

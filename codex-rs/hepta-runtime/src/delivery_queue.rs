@@ -1,12 +1,12 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    fs,
-    hash::{Hash, Hasher},
-    path::PathBuf,
-};
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::PathBuf;
 
 use hepta_core::HeptaError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::current_unix_ms;
 

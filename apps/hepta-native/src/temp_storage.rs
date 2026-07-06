@@ -1,6 +1,5 @@
 use std::{sync::OnceLock, path::PathBuf};
 
-
 /// Creates and returns the path to a temp directory for storage.
 ///
 /// This is very efficient to call multiple times because the result is cached

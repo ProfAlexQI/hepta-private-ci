@@ -84,9 +84,9 @@ pub fn sample_productization_snapshot() -> HeptaProductizationSnapshot {
             },
             HeptaProductizationItem {
                 key: "branding_metadata",
-                label: "Hepta packaging metadata",
+                label: "Hepta packaging and bundle probe",
                 status: HeptaProductizationStatus::Complete,
-                detail: "Bundle IDs, desktop metadata, macOS plist text, app icons, DMG background, and operator docs target Hepta Native; internal Robrix-derived widget identifiers remain only where preserving the Matrix-heart substrate is safer.",
+                detail: "Bundle IDs, desktop metadata, macOS plist text, app icons, DMG background, operator docs, and the local unsigned .app bundle probe target Hepta Native; internal Robrix-derived widget identifiers remain only where preserving the Matrix-heart substrate is safer.",
                 blocking: false,
             },
             HeptaProductizationItem {
@@ -139,17 +139,31 @@ mod tests {
         assert!(!native_runtime.blocking);
         assert!(native_runtime.detail.contains("M4 product-ready"));
         assert!(native_runtime.detail.contains("All 6 Hepta-unique domains"));
-        assert!(native_runtime.detail.contains("all 13 OpenClaw required absorb domains"));
-        assert!(native_runtime
-            .detail
-            .contains("live-adapter activation discipline"));
-        assert!(native_runtime.detail.contains("external live execution is still gated"));
-        assert!(native_runtime
-            .detail
-            .contains("Hepta-native capability replication"));
-        assert!(native_runtime
-            .detail
-            .contains("not a Gateway-backed integration path"));
+        assert!(
+            native_runtime
+                .detail
+                .contains("all 13 OpenClaw required absorb domains")
+        );
+        assert!(
+            native_runtime
+                .detail
+                .contains("live-adapter activation discipline")
+        );
+        assert!(
+            native_runtime
+                .detail
+                .contains("external live execution is still gated")
+        );
+        assert!(
+            native_runtime
+                .detail
+                .contains("Hepta-native capability replication")
+        );
+        assert!(
+            native_runtime
+                .detail
+                .contains("not a Gateway-backed integration path")
+        );
         assert!(native_runtime.detail.contains("readback evidence"));
 
         let release = snapshot.item("release_candidate").unwrap();

@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+shadow_adapter_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_shadow_adapter_readback_preview.rs
+)"
+shadow_adapter_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-shadow-adapter-readback-preview-report.sh
+)"
+shadow_adapter_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-shadow-adapter-readback-preview-gate.sh
+)"
+activation_blocker_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_activation_enforcement_blocker_preview.rs
+)"
+activation_blocker_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-activation-enforcement-blocker-preview-report.sh
+)"
+activation_blocker_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-activation-enforcement-blocker-preview-gate.sh
+)"
+adapter_fixture_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_adapter_projection_fixture.rs
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-report.sh
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-gate.sh
+)"
+
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-durable-identity-preview-report.sh"
+)"
+
+jq -n \
+  --argjson shadow_adapter_rust_module_present "$shadow_adapter_rust_module_present" \
+  --argjson shadow_adapter_report_script_present "$shadow_adapter_report_script_present" \
+  --argjson shadow_adapter_gate_script_present "$shadow_adapter_gate_script_present" \
+  --argjson activation_blocker_rust_module_present "$activation_blocker_rust_module_present" \
+  --argjson activation_blocker_report_script_present "$activation_blocker_report_script_present" \
+  --argjson activation_blocker_gate_script_present "$activation_blocker_gate_script_present" \
+  --argjson adapter_fixture_rust_module_present "$adapter_fixture_rust_module_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def shadow_ids: [
+    "shadow_update_plan_step_projection",
+    "shadow_multi_agent_thread_spawn_projection",
+    "shadow_agent_job_item_result_projection",
+    "shadow_runtime_worker_task_artifact_projection",
+    "shadow_scheduler_run_admission_projection",
+    "shadow_approval_broker_human_approval_projection",
+    "shadow_agent_harness_external_handoff_projection"
+  ];
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def shadow($id; $source; $fixture; $collections; $readbacks): {
+    id: $id,
+    source_surface_id: $source,
+    fixture_id: $fixture,
+    expected_collection_ids: $collections,
+    required_readback_ids: $readbacks,
+    match_policy: "all_projected_ids_and_hashes_must_match_shadow_readback",
+    shadow_execution_enabled: false,
+    enforcement_enabled: false
+  };
+  def collection_readback($id; $collection; $fields; $detectors): {
+    id: $id,
+    collection_id: $collection,
+    required_fields: (durable_fields + $fields),
+    mismatch_detector_ids: $detectors,
+    blocks_activation: true,
+    mutates_store: false
+  };
+  def detector($id; $fields; $severity): {
+    id: $id,
+    compared_fields: $fields,
+    severity: $severity,
+    blocks_adapter_enforcement: true
+  };
+  def evidence($id; $source): {
+    id: $id,
+    source_surface_id: $source,
+    required_fields: (durable_fields + ["traceId", "sourceSurfaceId", "fixtureId", "projectedHash", "readbackHash", "mismatchDetectorIds", "redactionState"]),
+    persistence_enabled: false,
+    external_delivery_enabled: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    shadow("shadow_update_plan_step_projection"; "update_plan_tool"; "update_plan_step_projection"; ["nodes", "edges", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_edges_shadow_match", "readback_timeline_events_shadow_match"]),
+    shadow("shadow_multi_agent_thread_spawn_projection"; "multi_agent_v2_thread_spawn"; "multi_agent_thread_spawn_projection"; ["nodes", "edges", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_edges_shadow_match", "readback_timeline_events_shadow_match"]),
+    shadow("shadow_agent_job_item_result_projection"; "agent_jobs_batch_workers"; "agent_job_item_result_projection"; ["nodes", "taskResults", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_task_results_shadow_match", "readback_timeline_events_shadow_match"]),
+    shadow("shadow_runtime_worker_task_artifact_projection"; "hepta_runtime_worker_tasks"; "runtime_worker_task_artifact_projection"; ["nodes", "taskResults", "artifacts", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_task_results_shadow_match", "readback_artifacts_shadow_match", "readback_timeline_events_shadow_match"]),
+    shadow("shadow_scheduler_run_admission_projection"; "hepta_runtime_scheduler_store"; "scheduler_run_admission_projection"; ["nodes", "edges", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_edges_shadow_match", "readback_timeline_events_shadow_match"]),
+    shadow("shadow_approval_broker_human_approval_projection"; "hepta_runtime_approval_broker"; "approval_broker_human_approval_projection"; ["nodes", "approvals", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_approvals_shadow_match", "readback_timeline_events_shadow_match"]),
+    shadow("shadow_agent_harness_external_handoff_projection"; "hepta_runtime_agent_harness"; "agent_harness_external_handoff_projection"; ["nodes", "edges", "artifacts", "timelineEvents"]; ["readback_nodes_shadow_match", "readback_edges_shadow_match", "readback_artifacts_shadow_match", "readback_timeline_events_shadow_match"])
+  ] as $adapter_shadows
+  | [
+    collection_readback("readback_nodes_shadow_match"; "nodes"; ["traceId", "nodeId", "nodeKind", "status", "sourceSurfaceId"]; ["detect_shadow_node_identity_mismatch"]),
+    collection_readback("readback_edges_shadow_match"; "edges"; ["traceId", "edgeId", "edgeKind", "fromNodeId", "toNodeId"]; ["detect_shadow_edge_link_mismatch"]),
+    collection_readback("readback_task_results_shadow_match"; "taskResults"; ["traceId", "taskId", "status", "summaryHash", "evidenceRefs"]; ["detect_shadow_task_result_contract_mismatch"]),
+    collection_readback("readback_artifacts_shadow_match"; "artifacts"; ["traceId", "artifactId", "producerNodeId", "artifactHash"]; ["detect_shadow_artifact_redaction_mismatch"]),
+    collection_readback("readback_approvals_shadow_match"; "approvals"; ["traceId", "approvalId", "operatorScopeHash", "expiresAtUnixMs"]; ["detect_shadow_approval_scope_mismatch"]),
+    collection_readback("readback_timeline_events_shadow_match"; "timelineEvents"; ["traceId", "eventId", "eventKind", "nodeId", "redactionState"]; ["detect_shadow_timeline_order_mismatch"])
+  ] as $collection_readbacks
+  | [
+    detector("detect_shadow_node_identity_mismatch"; ["nodeId", "nodeKind", "status", "sourceSurfaceId"]; "critical"),
+    detector("detect_shadow_edge_link_mismatch"; ["edgeId", "edgeKind", "fromNodeId", "toNodeId"]; "critical"),
+    detector("detect_shadow_task_result_contract_mismatch"; ["taskId", "status", "summaryHash", "evidenceRefs"]; "critical"),
+    detector("detect_shadow_artifact_redaction_mismatch"; ["artifactId", "artifactHash", "redactionState", "payloadHash"]; "critical"),
+    detector("detect_shadow_approval_scope_mismatch"; ["approvalId", "operatorScopeHash", "expiresAtUnixMs"]; "critical"),
+    detector("detect_shadow_timeline_order_mismatch"; ["traceId", "eventId", "eventKind", "eventSequence"]; "high")
+  ] as $mismatch_detectors
+  | [
+    evidence("update_plan_shadow_evidence"; "update_plan_tool"),
+    evidence("multi_agent_thread_spawn_shadow_evidence"; "multi_agent_v2_thread_spawn"),
+    evidence("agent_job_item_shadow_evidence"; "agent_jobs_batch_workers"),
+    evidence("worker_task_shadow_evidence"; "hepta_runtime_worker_tasks"),
+    evidence("scheduler_run_shadow_evidence"; "hepta_runtime_scheduler_store"),
+    evidence("approval_broker_shadow_evidence"; "hepta_runtime_approval_broker"),
+    evidence("agent_harness_shadow_evidence"; "hepta_runtime_agent_harness")
+  ] as $evidence_packets
+  | [
+    invariant("shadow_readback_requires_durable_identity_evidence"; "shadow adapter readback evidence must carry workflow, run, step, checkpoint, replay, rollback, and receipt hashes"),
+    invariant("shadow_readback_matches_projection_before_enforcement"; "adapter enforcement cannot be enabled until projected ids match shadow readback"),
+    invariant("shadow_readback_covers_every_projected_collection"; "nodes, edges, taskResults, artifacts, approvals, and timeline events must each have readback rules"),
+    invariant("mismatch_blocks_adapter_enforcement"; "any identity, edge, TaskResult, artifact, approval, or timeline mismatch blocks enforcement"),
+    invariant("shadow_evidence_is_redacted_and_non_persistent"; "shadow evidence packets carry hashes and refs only and cannot be persisted by this gate"),
+    invariant("shadow_adapter_does_not_execute_source_adapters"; "this preview describes shadow comparisons without running source adapters"),
+    invariant("shadow_adapter_readback_preview_has_no_side_effects"; "this gate cannot read live state, enforce adapters, activate persistence, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_shadow_adapter_readback_preview_gate",
+      schema_version: "work_graph_shadow_adapter_readback_preview_v1",
+      preview_mode: "read_only_shadow_adapter_readback_preview_no_adapter_execution",
+      adapter_shadow_count: ($adapter_shadows | length),
+      collection_readback_count: ($collection_readbacks | length),
+      mismatch_detector_count: ($mismatch_detectors | length),
+      evidence_packet_count: ($evidence_packets | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      adapter_shadows: $adapter_shadows,
+      collection_readbacks: $collection_readbacks,
+      mismatch_detectors: $mismatch_detectors,
+      evidence_packets: $evidence_packets,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+        required_field_ids: durable_fields,
+        required_for_adapter_shadow_ids: shadow_ids,
+        durable_field_count: $durable_identity_report.durable_field_count,
+        preview_binding_count: $durable_identity_report.preview_binding_count,
+        invariant_count: $durable_identity_report.invariant_count,
+        currently_satisfied: false
+      },
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_persistence_feature_flag_preview_gate",
+      ready_for_persistence_feature_flag_preview: true,
+      ready_for_adapter_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        shadow_adapter_readback: {
+          rust_module_present: $shadow_adapter_rust_module_present,
+          report_script_present: $shadow_adapter_report_script_present,
+          gate_script_present: $shadow_adapter_gate_script_present
+        },
+        activation_blocker: {
+          rust_module_present: $activation_blocker_rust_module_present,
+          report_script_present: $activation_blocker_report_script_present,
+          gate_script_present: $activation_blocker_gate_script_present
+        },
+        adapter_projection_fixture: {
+          rust_module_present: $adapter_fixture_rust_module_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        shadow_adapter_executed: false,
+        adapter_projection_enforced: false,
+        readback_performed: false,
+        mismatch_state_persisted: false,
+        activation_performed: false,
+        runtime_mutation_performed: false,
+        scheduler_cutover_performed: false,
+        approval_recorded: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

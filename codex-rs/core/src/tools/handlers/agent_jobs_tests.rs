@@ -60,3 +60,35 @@ fn ensure_unique_headers_rejects_duplicates() {
         FunctionCallError::RespondToModel("csv header path is duplicated".to_string())
     );
 }
+
+#[tokio::test]
+async fn spawn_agents_on_csv_role_manifest_allows_task_result_worker() {
+    let (_session, turn) = crate::session::tests::make_session_and_context().await;
+
+    let decision = build_spawn_agents_on_csv_role_manifest_shadow_decision(
+        4, &turn, /*output_schema_present*/ true,
+    );
+
+    assert_eq!(decision.decision, "allow_shadow_manifest_no_live_blocking");
+    assert_eq!(decision.definition_source, "explicit_agent_card_manifest");
+    assert_eq!(decision.manifest_version, "hepta.agent_card_manifest.v1");
+    assert_eq!(
+        decision.manifest_id,
+        "agent-card:spawn_agents_on_csv:agent_job_worker"
+    );
+    assert_eq!(decision.role_name.as_deref(), Some("agent_job_worker"));
+    assert_eq!(
+        decision.allowed_tools,
+        vec!["report_agent_job_result".to_string()]
+    );
+    assert_eq!(decision.attempted_tool, Some("report_agent_job_result"));
+    assert_eq!(decision.tool_allowed, Some(true));
+    assert_eq!(decision.lane, "agent_jobs");
+    assert_eq!(decision.observed_lane, Some("agent_jobs"));
+    assert_eq!(decision.lane_allowed, Some(true));
+    assert!(decision.result_contract_present);
+    assert!(decision.verifier_present);
+    assert!(decision.reducer_present);
+    assert!(!decision.live_blocking_enabled);
+    assert!(!decision.live_cutover_enabled);
+}

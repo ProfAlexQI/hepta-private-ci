@@ -71,9 +71,25 @@ pub(crate) async fn build_prompt_input_from_session(
     sess: &Session,
     input: Vec<UserInput>,
 ) -> CodexResult<Vec<ResponseItem>> {
+    build_prompt_input_from_session_with_manifest_options(sess, input, None).await
+}
+
+async fn build_prompt_input_from_session_with_manifest_options(
+    sess: &Session,
+    input: Vec<UserInput>,
+    manifest_options: Option<crate::context_manager::manifest::TurnContextManifestOptions>,
+) -> CodexResult<Vec<ResponseItem>> {
     let turn_context = sess.new_default_turn().await;
-    sess.record_context_updates_and_set_reference_context_item(turn_context.as_ref())
+    if let Some(manifest_options) = manifest_options {
+        sess.record_context_updates_and_set_reference_context_item_with_manifest_options(
+            turn_context.as_ref(),
+            manifest_options,
+        )
         .await;
+    } else {
+        sess.record_context_updates_and_set_reference_context_item(turn_context.as_ref())
+            .await;
+    }
 
     if !input.is_empty() {
         let input_item = ResponseInputItem::from(input);
@@ -104,4 +120,133 @@ pub(crate) async fn build_prompt_input_from_session(
     );
 
     Ok(prompt.get_formatted_input())
+}
+
+#[cfg(test)]
+mod tests {
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION;
+    use codex_protocol::protocol::TurnContextRecallSelectedSnippet;
+    use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope;
+    use codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety;
+    use codex_protocol::protocol::TurnContextRecallSelectionSummary;
+    use codex_protocol::user_input::UserInput;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn build_prompt_input_from_session_consumes_context_manifest_without_shadow_leak()
+    -> CodexResult<()> {
+        let (session, _turn_context) = crate::session::tests::make_session_and_context().await;
+        let selected_snippets = test_selected_snippet_envelope();
+        assert!(selected_snippets.has_shadow_integrity());
+
+        let input = build_prompt_input_from_session_with_manifest_options(
+            &session,
+            vec![UserInput::Text {
+                text: "hello with turn-scoped context manifest".to_string(),
+                text_elements: Vec::new(),
+            }],
+            Some(
+                crate::context_manager::manifest::TurnContextManifestOptions {
+                    recall_provider_rollup: Some(
+                        crate::context_manager::manifest::ContextRecallProviderRollup {
+                            recall_selection: test_recall_selection_summary(),
+                        },
+                    ),
+                    recall_selected_snippets: Some(
+                        crate::context_manager::manifest::ContextRecallSelectedSnippetEnvelope {
+                            envelope: selected_snippets,
+                        },
+                    ),
+                    ..Default::default()
+                },
+            ),
+        )
+        .await?;
+
+        let prompt_json = serde_json::to_string(&input).expect("prompt input should serialize");
+        assert!(prompt_json.contains("<selected_context_recall>"));
+        assert!(prompt_json.contains("fedcba9876543210"));
+        assert!(prompt_json.contains("[redacted-query] bounded memory"));
+        assert!(prompt_json.contains("hello with turn-scoped context manifest"));
+
+        for forbidden in [
+            "recall_selection",
+            "recall_selected_snippets",
+            "selected_snippet_count",
+            "returned_source_count",
+            "ranked_item_count",
+            "omitted_by_budget_count",
+            "source-memory-id",
+            "source_id",
+            "[hepta-memory:",
+            "needle",
+            "raw_ranked_payload_exposed",
+            "origin_identifiers_exposed",
+        ] {
+            assert!(
+                !prompt_json.contains(forbidden),
+                "prompt input leaked shadow manifest field or source payload: {forbidden}"
+            );
+        }
+
+        let user_message = ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "hello with turn-scoped context manifest".to_string(),
+            }],
+            phase: None,
+        };
+        assert_eq!(input.last(), Some(&user_message));
+
+        Ok(())
+    }
+
+    fn test_recall_selection_summary() -> TurnContextRecallSelectionSummary {
+        TurnContextRecallSelectionSummary {
+            returned_source_count: 4,
+            selected_source_count: 2,
+            ranked_source_count: 2,
+            returned_unselected_source_count: 2,
+            source_diversity_met: true,
+            source_diversity_target: 2,
+            max_per_source: 1,
+            ranked_item_count: 5,
+            omitted_by_budget_count: 1,
+            memory_control_omitted_count: 1,
+            low_trust_ranked_item_count: 1,
+            low_recency_ranked_item_count: 0,
+        }
+    }
+
+    fn test_selected_snippet_envelope() -> TurnContextRecallSelectedSnippetEnvelope {
+        TurnContextRecallSelectedSnippetEnvelope {
+            version: TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+            max_snippets: 4,
+            max_snippet_chars: 120,
+            selected_snippet_count: 1,
+            omitted_snippet_count: 2,
+            redacted_snippet_count: 1,
+            truncated_snippet_count: 0,
+            snippets: vec![TurnContextRecallSelectedSnippet {
+                snippet_hash: "fedcba9876543210".into(),
+                text: "[redacted-query] bounded memory".into(),
+                estimated_tokens: 8,
+                redacted: true,
+                truncated: false,
+            }],
+            safety: TurnContextRecallSelectedSnippetSafety {
+                ready_for_shadow_handoff: true,
+                bounded: true,
+                origin_identifiers_exposed: false,
+                raw_ranked_payload_exposed: false,
+                rank_explanation_exposed: false,
+                control_marker_exposed: false,
+                query_payload_exposed: false,
+                per_origin_list_exposed: false,
+            },
+        }
+    }
 }

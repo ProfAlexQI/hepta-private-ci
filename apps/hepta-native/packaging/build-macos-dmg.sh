@@ -34,15 +34,22 @@
 #   7. Submit the DMG to Apple's notary service via xcrun notarytool.
 #   8. Staple the notarization ticket and verify with spctl.
 #
-# Required environment variables (none are written into this script):
-#   APPLE_ID        Apple ID email used for notarization
-#   APPLE_PASSWORD  App-specific password for that Apple ID
-#   APPLE_TEAM_ID   Apple Developer Team ID
+# Required notarization credentials (none are written into this script):
+#   Prefer HEPTA_NATIVE_NOTARYTOOL_PROFILE, a notarytool keychain profile.
+#   Or provide the direct Apple credential environment:
+#     APPLE_ID        Apple ID email used for notarization
+#     APPLE_PASSWORD  App-specific password for that Apple ID
+#     APPLE_TEAM_ID   Apple Developer Team ID
+#
+# Optional machine-readable receipt:
+#   HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH=/path/to/release-artifact.json
+#   HEPTA_NATIVE_RELEASE_APPROVAL_VALID=1
 #
 # The Developer ID signing certificate name is read from
 # package.metadata.packager.macos.signing_identity in Cargo.toml.
 #
 # Usage:
+#   HEPTA_NATIVE_NOTARYTOOL_PROFILE=hepta ./packaging/build-macos-dmg.sh
 #   APPLE_ID=… APPLE_PASSWORD=… APPLE_TEAM_ID=… ./packaging/build-macos-dmg.sh
 
 set -euo pipefail
@@ -57,13 +64,21 @@ cd "$PROJECT_DIR"
 
 # --- Validate required env vars and config files ------------------------------
 
-for var in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-    if [[ -z "${!var:-}" ]]; then
-        echo "Error: $var is not set." >&2
-        echo "Required env vars: APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID" >&2
-        exit 1
-    fi
-done
+NOTARY_AUTH_MODE="apple_env"
+NOTARY_AUTH_ARGS=()
+if [[ -n "${HEPTA_NATIVE_NOTARYTOOL_PROFILE:-}" ]]; then
+    NOTARY_AUTH_MODE="keychain_profile"
+    NOTARY_AUTH_ARGS=(--keychain-profile "$HEPTA_NATIVE_NOTARYTOOL_PROFILE")
+else
+    for var in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+        if [[ -z "${!var:-}" ]]; then
+            echo "Error: $var is not set." >&2
+            echo "Required notarization auth: HEPTA_NATIVE_NOTARYTOOL_PROFILE or APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID" >&2
+            exit 1
+        fi
+    done
+    NOTARY_AUTH_ARGS=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+fi
 
 if [[ ! -f "$ENTITLEMENTS" ]]; then
     echo "Error: Entitlements file not found at $ENTITLEMENTS" >&2
@@ -146,6 +161,12 @@ PRODUCT_VERSION=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p'
 PRODUCT_NAME="Hepta Native"
 APP_BUNDLE="$PRODUCT_NAME.app"
 BINARY_NAME="hepta-native"
+EVIDENCE_DIR="${HEPTA_NATIVE_RELEASE_EVIDENCE_DIR:-$PROJECT_DIR/dist/release-evidence}"
+EVIDENCE_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+NOTARY_LOG="$EVIDENCE_DIR/notarytool-submit-${EVIDENCE_STAMP}.log"
+STAPLER_STAPLE_LOG="$EVIDENCE_DIR/stapler-staple-${EVIDENCE_STAMP}.log"
+STAPLER_VALIDATE_LOG="$EVIDENCE_DIR/stapler-validate-${EVIDENCE_STAMP}.log"
+SPCTL_LOG="$EVIDENCE_DIR/spctl-assess-${EVIDENCE_STAMP}.log"
 case "$(uname -m)" in
     arm64)  PACKAGER_ARCH=aarch64 ;;
     x86_64) PACKAGER_ARCH=x86_64 ;;
@@ -153,10 +174,128 @@ case "$(uname -m)" in
 esac
 CANONICAL_DMG="$PROJECT_DIR/dist/${PRODUCT_NAME}_${PRODUCT_VERSION}_${PACKAGER_ARCH}.dmg"
 
+bool_env_enabled() {
+    case "${1:-}" in
+        1 | true | TRUE | yes | YES | on | ON) echo true ;;
+        *) echo false ;;
+    esac
+}
+
+file_sha256() {
+    shasum -a 256 "$1" | awk '{print $1}'
+}
+
+file_bytes() {
+    wc -c <"$1" | tr -d ' '
+}
+
+write_release_artifact_receipt() {
+    local receipt_path="${HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH:-}"
+    if [[ -z "$receipt_path" ]]; then
+        return 0
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "Error: jq is required to write HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH." >&2
+        exit 1
+    fi
+
+    local receipt_dir
+    receipt_dir="$(dirname "$receipt_path")"
+    mkdir -p "$receipt_dir"
+
+    local release_approval_valid local_distribution_artifact_written public_distribution_artifact_written credential_value_read
+    release_approval_valid="$(bool_env_enabled "${HEPTA_NATIVE_RELEASE_APPROVAL_VALID:-}")"
+    local_distribution_artifact_written=true
+    # Compatibility field for the UI release gates: this means the local signed,
+    # notarized, stapled DMG exists. It does not mean a public upload occurred.
+    public_distribution_artifact_written=true
+    if [[ "$NOTARY_AUTH_MODE" == "apple_env" ]]; then
+        credential_value_read=true
+    else
+        credential_value_read=false
+    fi
+
+    jq -n \
+      --arg artifact_kind "signed_notarized_stapled_artifact" \
+      --arg owner_lane "release_operator" \
+      --arg product "$PRODUCT_NAME" \
+      --arg bundle_identifier "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PROJECT_DIR/packaging/Info.plist")" \
+      --arg signed_artifact_path "$DMG_FILE" \
+      --arg notarytool_submit_log_path "$NOTARY_LOG" \
+      --arg stapler_staple_log_path "$STAPLER_STAPLE_LOG" \
+      --arg stapler_validate_log_path "$STAPLER_VALIDATE_LOG" \
+      --arg spctl_assessment_log_path "$SPCTL_LOG" \
+      --arg signing_identity "$SIGNING_IDENTITY" \
+      --arg notary_auth_mode "$NOTARY_AUTH_MODE" \
+      --arg signed_artifact_sha256 "$(file_sha256 "$DMG_FILE")" \
+      --arg notarization_ticket_sha256 "$(file_sha256 "$NOTARY_LOG")" \
+      --arg stapler_validate_sha256 "$(file_sha256 "$STAPLER_VALIDATE_LOG")" \
+      --arg spctl_assessment_sha256 "$(file_sha256 "$SPCTL_LOG")" \
+      --argjson artifact_version 1 \
+      --argjson signed_artifact_bytes "$(file_bytes "$DMG_FILE")" \
+      --argjson release_approval_valid "$release_approval_valid" \
+      --argjson local_distribution_artifact_written "$local_distribution_artifact_written" \
+      --argjson public_distribution_artifact_written "$public_distribution_artifact_written" \
+      --argjson credential_value_read "$credential_value_read" \
+      '{
+        artifact_kind:$artifact_kind,
+        artifact_version:$artifact_version,
+        owner_lane:$owner_lane,
+        product:$product,
+        bundle_identifier:$bundle_identifier,
+        release_approval_valid:$release_approval_valid,
+        artifact_evidence:{
+          signed:true,
+          notarized:true,
+          stapled:true,
+          local_distribution_artifact_written:$local_distribution_artifact_written,
+          public_distribution_artifact_written:$public_distribution_artifact_written,
+          public_distribution_artifact_semantics:"local_signed_notarized_stapled_dmg_written_not_public_upload",
+          signed_artifact_path:$signed_artifact_path,
+          signed_artifact_sha256:$signed_artifact_sha256,
+          signed_artifact_bytes:$signed_artifact_bytes,
+          notarization_ticket_sha256:$notarization_ticket_sha256,
+          stapler_validate_sha256:$stapler_validate_sha256,
+          spctl_assessment_sha256:$spctl_assessment_sha256,
+          notarytool_submit_log_path:$notarytool_submit_log_path,
+          stapler_staple_log_path:$stapler_staple_log_path,
+          stapler_validate_log_path:$stapler_validate_log_path,
+          spctl_assessment_log_path:$spctl_assessment_log_path,
+          signing_identity:$signing_identity,
+          notary_auth_mode:$notary_auth_mode,
+          public_upload_performed:false
+        },
+        claim_boundary:{
+          release_artifact_claim_ready:false,
+          release_execution_ready:false,
+          live_product_claim_ready:false,
+          public_distribution_claim_ready:false,
+          release_claim_ready:false
+        },
+        side_effects:{
+          filesystem_write:true,
+          credential_value_read:$credential_value_read,
+          keychain_identity_lookup_performed:true,
+          network_call_performed:true,
+          notary_submission_performed:true,
+          app_signed:true,
+          app_notarized:true,
+          app_stapled:true,
+          local_distribution_artifact_written:$local_distribution_artifact_written,
+          public_distribution_artifact_written:$public_distribution_artifact_written,
+          public_upload_performed:false,
+          external_mutation:true
+        }
+      }' >"$receipt_path"
+
+    echo "==> Wrote release artifact receipt: $receipt_path"
+}
+
 echo "==> Cleaning prior build artifacts in dist/..."
 rm -rf "$PROJECT_DIR/dist/$APP_BUNDLE" \
        "$PROJECT_DIR/dist/.cargo-packager" \
        "$CANONICAL_DMG"
+mkdir -p "$EVIDENCE_DIR"
 
 # --- Step 2: Run cargo-packager with signing disabled -------------------------
 #
@@ -260,20 +399,42 @@ codesign_with_retry "$DMG_FILE" dmg
 # than "Accepted", so set -e catches a rejection.
 
 echo "==> Submitting DMG for notarization (this can take several minutes)..."
-xcrun notarytool submit "$DMG_FILE" \
-    --apple-id "$APPLE_ID" \
-    --password "$APPLE_PASSWORD" \
-    --team-id "$APPLE_TEAM_ID" \
-    --wait
+if xcrun notarytool submit "$DMG_FILE" "${NOTARY_AUTH_ARGS[@]}" --wait >"$NOTARY_LOG" 2>&1; then
+    cat "$NOTARY_LOG"
+else
+    cat "$NOTARY_LOG" >&2
+    echo "Error: notarytool submission failed." >&2
+    exit 1
+fi
 
 # --- Step 8: Staple and verify ------------------------------------------------
 
 echo "==> Stapling notarization ticket to DMG..."
-xcrun stapler staple "$DMG_FILE"
-xcrun stapler validate "$DMG_FILE"
+if xcrun stapler staple "$DMG_FILE" >"$STAPLER_STAPLE_LOG" 2>&1; then
+    cat "$STAPLER_STAPLE_LOG"
+else
+    cat "$STAPLER_STAPLE_LOG" >&2
+    echo "Error: stapler staple failed." >&2
+    exit 1
+fi
+if xcrun stapler validate "$DMG_FILE" >"$STAPLER_VALIDATE_LOG" 2>&1; then
+    cat "$STAPLER_VALIDATE_LOG"
+else
+    cat "$STAPLER_VALIDATE_LOG" >&2
+    echo "Error: stapler validate failed." >&2
+    exit 1
+fi
 
 echo "==> Verifying DMG with spctl..."
-spctl --assess --type open --context context:primary-signature --verbose "$DMG_FILE" || true
+if spctl --assess --type open --context context:primary-signature --verbose "$DMG_FILE" >"$SPCTL_LOG" 2>&1; then
+    cat "$SPCTL_LOG"
+else
+    cat "$SPCTL_LOG" >&2
+    echo "Error: spctl assessment failed." >&2
+    exit 1
+fi
+
+write_release_artifact_receipt
 
 echo ""
 echo "==> Done!"

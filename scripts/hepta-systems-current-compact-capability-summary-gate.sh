@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-current-compact-capability-summary-report.sh"
+PREFLIGHT_GATE="$ROOT/scripts/hepta-systems-compact-capability-matrix-restore-preflight-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_COMPACT_CAPABILITY_SUMMARY_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-compact-capability-summary-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current compact capability summary report: $REPORT"
+[[ -x "$PREFLIGHT_GATE" ]] || fail "missing executable compact capability restore preflight gate: $PREFLIGHT_GATE"
+[[ -f "$DOC" ]] || fail "missing current compact capability summary architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the current compact capability summary report"
+fi
+
+grep -q 'Current Compact Capability Summary' "$DOC" \
+  || fail "architecture note must document Current Compact Capability Summary"
+grep -q 'current checkout facts' "$DOC" \
+  || fail "architecture note must document current checkout facts"
+grep -q 'does not use the historical plugin fixture' "$DOC" \
+  || fail "architecture note must document no historical plugin fixture"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_compact_capability_summary"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_restore_preflight_surface == "compact_capability_matrix_restore_preflight"
+  and .source_restore_preflight_ready == true
+  and .source_selected_patch_call_id == "call_rFtWhyTEAmT4jByPkr8d7L3f"
+  and .source_selected_patch_replay_risk == "requires_missing_base_path_reconstruction"
+  and .source_selected_patch_missing_path_count == 5
+  and .source_manual_apply_check_missing_count == 5
+  and .source_plugin_fixture_fabrication_allowed == false
+  and .historical_patch_replay_allowed == false
+  and .plugin_fixture_fabrication_allowed == false
+  and .canonical_summary_mutation_allowed == false
+  and .canonical_gate_invocation_allowed == false
+  and .capability_matrix_gate_invocation_allowed == false
+  and .compact_capability_summary_ready == true
+  and .local_surface_count == 5
+  and .local_surface_ready_count == 5
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and (.capability_surfaces | length) == 5
+  and (.capability_surfaces | all(.local_ready == true and .live_enabled == false and .public_ga_enabled == false))
+  and (.summary_blockers | index("manual_operator_live_cutover_approval_required")) != null
+  and (.summary_blockers | index("plugin_fixture_fabrication_disabled")) != null
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "restore_canonical_gate_wrapper_around_current_compact_capability_summary_without_live_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$PREFLIGHT_GATE" >/dev/null
+
+printf 'hepta-systems-current-compact-capability-summary-gate: PASS: current compact capability summary is ready with live paths blocked\n'

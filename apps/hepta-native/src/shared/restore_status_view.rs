@@ -8,6 +8,8 @@
 use makepad_widgets::*;
 use crate::utils::RoomNameId;
 
+const RESTORE_STATUS_ALL_ROOMS_LOADED_LOCAL_UNKNOWN_EVIDENCE: &str = "Room restore keeps the all-rooms-loaded flag as a local unknown/false RoomsList state until room-list completeness is implemented; waiting status sends no room-list pagination, Matrix search, message, room-state, or membership request.";
+
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -39,14 +41,28 @@ script_mod! {
                 color: (TYPING_NOTICE_TEXT_COLOR),
             }
         }
+
+        restore_status_evidence_label := Label {
+            width: Fill, height: Fit,
+            align: Align{x: 0.5, y: 0.0},
+            padding: Inset{left: 5.0, right: 0.0}
+            margin: Inset{top: 8.0},
+            flow: Flow.Right{wrap: true},
+            draw_text +: {
+                color: (COLOR_TELEGRAM_MUTED),
+                text_style: REGULAR_TEXT { font_size: 9.0 }
+            }
+        }
     }
 }
 
 /// A view that displays a spinner and a label to indicate that a restore operation is in progress for a room.
 #[derive(Script, ScriptHook, Widget)]
 pub struct RestoreStatusView {
-    #[deref] view: View,
-    #[live(true)] visible: bool,
+    #[deref]
+    view: View,
+    #[live(true)]
+    visible: bool,
 }
 
 impl Widget for RestoreStatusView {
@@ -74,7 +90,9 @@ impl RestoreStatusViewRef {
         if let Some(mut inner) = self.borrow_mut() {
             inner.visible = visible;
             if !visible {
-                inner.label(cx, ids!(restore_status_label))
+                inner.label(cx, ids!(restore_status_label)).set_text(cx, "");
+                inner
+                    .label(cx, ids!(restore_status_evidence_label))
                     .set_text(cx, "");
             }
         }
@@ -91,15 +109,12 @@ impl RestoreStatusViewRef {
     ///
     /// The `room_name` parameter is used to fill in the room name in the error message.
     /// Its `Display` implementation automatically handles Empty names by falling back to the room ID.
-    pub fn set_content(
-        &self,
-        cx: &mut Cx,
-        all_rooms_loaded: bool,
-        room_name: &RoomNameId,
-    ) {
+    pub fn set_content(&self, cx: &mut Cx, all_rooms_loaded: bool, room_name: &RoomNameId) {
         let Some(inner) = self.borrow() else { return };
         let restore_status_spinner = inner.view.view(cx, ids!(restore_status_spinner));
         let restore_status_label = inner.view.label(cx, ids!(restore_status_label));
+        let restore_status_evidence_label =
+            inner.view.label(cx, ids!(restore_status_evidence_label));
         if all_rooms_loaded {
             restore_status_spinner.set_visible(cx, false);
             restore_status_label.set_text(
@@ -109,12 +124,14 @@ impl RestoreStatusViewRef {
                     of all rooms.\n\nYou may close this screen."
                 ),
             );
+            restore_status_evidence_label
+                .set_text(cx, RESTORE_STATUS_ALL_ROOMS_LOADED_LOCAL_UNKNOWN_EVIDENCE);
         } else {
             restore_status_spinner.set_visible(cx, true);
-            restore_status_label.set_text(
-                cx,
-                "Waiting for this room to be loaded from the homeserver",
-            );
+            restore_status_label
+                .set_text(cx, "Waiting for this room to be loaded from the homeserver");
+            restore_status_evidence_label
+                .set_text(cx, RESTORE_STATUS_ALL_ROOMS_LOADED_LOCAL_UNKNOWN_EVIDENCE);
         }
     }
 }

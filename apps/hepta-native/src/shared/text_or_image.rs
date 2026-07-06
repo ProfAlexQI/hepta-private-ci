@@ -54,7 +54,6 @@ script_mod! {
     }
 }
 
-
 /// A view that holds an image or text content, and can switch between the two.
 ///
 /// This is useful for displaying alternate text when an image is not (yet) available
@@ -62,10 +61,13 @@ script_mod! {
 /// is being fetched.
 #[derive(Script, Widget, ScriptHook)]
 pub struct TextOrImage {
-    #[deref] view: View,
-    #[rust] status: TextOrImageStatus,
+    #[deref]
+    view: View,
+    #[rust]
+    status: TextOrImageStatus,
     // #[rust(TextOrImageStatus::Text)] status: TextOrImageStatus,
-    #[rust] size_in_pixels: (usize, usize),
+    #[rust]
+    size_in_pixels: (usize, usize),
 }
 
 impl Widget for TextOrImage {
@@ -109,9 +111,12 @@ impl TextOrImage {
     ///   a message like "Loading..." or an error message.
     pub fn show_text<T: AsRef<str>>(&mut self, cx: &mut Cx, text: T) {
         self.view(cx, ids!(image_view)).set_visible(cx, false);
-        self.view(cx, ids!(default_image_view)).set_visible(cx, false);
+        self.view(cx, ids!(default_image_view))
+            .set_visible(cx, false);
         self.view(cx, ids!(text_view)).set_visible(cx, true);
-        self.view.label(cx, ids!(text_view.label)).set_text(cx, text.as_ref());
+        self.view
+            .label(cx, ids!(text_view.label))
+            .set_text(cx, text.as_ref());
         self.status = TextOrImageStatus::Text;
     }
 
@@ -124,8 +129,14 @@ impl TextOrImage {
     ///   * If successful, the `image_set_function` should return the size of the image
     ///     in pixels as a tuple, `(width, height)`.
     ///   * If `image_set_function` returns an error, no change is made to this `TextOrImage`.
-    pub fn show_image<F, E>(&mut self, cx: &mut Cx, source_url: Option<MediaSource>, image_set_function: F) -> Result<(), E>
-        where F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>
+    pub fn show_image<F, E>(
+        &mut self,
+        cx: &mut Cx,
+        source_url: Option<MediaSource>,
+        image_set_function: F,
+    ) -> Result<(), E>
+    where
+        F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>,
     {
         let image_ref = self.view.image(cx, ids!(image_view.image));
         match image_set_function(cx, image_ref) {
@@ -134,7 +145,8 @@ impl TextOrImage {
                 self.size_in_pixels = size_in_pixels;
                 self.view(cx, ids!(image_view)).set_visible(cx, true);
                 self.view(cx, ids!(text_view)).set_visible(cx, false);
-                self.view(cx, ids!(default_image_view)).set_visible(cx, false);
+                self.view(cx, ids!(default_image_view))
+                    .set_visible(cx, false);
                 Ok(())
             }
             Err(e) => {
@@ -151,7 +163,8 @@ impl TextOrImage {
 
     /// Displays the default image that is used when no image is available.
     pub fn show_default_image(&self, cx: &mut Cx) {
-        self.view(cx, ids!(default_image_view)).set_visible(cx, true);
+        self.view(cx, ids!(default_image_view))
+            .set_visible(cx, true);
         self.view(cx, ids!(text_view)).set_visible(cx, false);
         self.view(cx, ids!(image_view)).set_visible(cx, false);
     }
@@ -166,8 +179,14 @@ impl TextOrImageRef {
     }
 
     /// See [TextOrImage::show_image()].
-    pub fn show_image<F, E>(&self, cx: &mut Cx, source_url: Option<MediaSource>, image_set_function: F) -> Result<(), E>
-        where F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>
+    pub fn show_image<F, E>(
+        &self,
+        cx: &mut Cx,
+        source_url: Option<MediaSource>,
+        image_set_function: F,
+    ) -> Result<(), E>
+    where
+        F: FnOnce(&mut Cx, ImageRef) -> Result<(usize, usize), E>,
     {
         if let Some(mut inner) = self.borrow_mut() {
             inner.show_image(cx, source_url, image_set_function)
@@ -223,5 +242,5 @@ pub enum TextOrImageAction {
     /// The user has clicked the `TextOrImage`, with source URL stored in this variant.
     Clicked(Option<MediaSource>),
     #[default]
-    None
+    None,
 }

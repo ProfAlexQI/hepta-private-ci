@@ -1,9 +1,12 @@
-use hepta_core::{DoctorCheckOutcome, ModelRef};
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::ModelRef;
 
-use super::{
-    DoctorCheck, DoctorProviderProbe, DoctorStatus, check_outcomes, report_outputs,
-    runtime_metrics::DoctorRuntimeStats,
-};
+use super::DoctorCheck;
+use super::DoctorProviderProbe;
+use super::DoctorStatus;
+use super::check_outcomes;
+use super::report_outputs;
+use super::runtime_metrics::DoctorRuntimeStats;
 
 pub(super) struct DoctorReportBundle {
     active_model: ModelRef,
@@ -60,7 +63,8 @@ impl DoctorReportBundle {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{DoctorArea, DoctorStatus as CoreDoctorStatus};
+    use hepta_core::DoctorArea;
+    use hepta_core::DoctorStatus as CoreDoctorStatus;
 
     use super::*;
 

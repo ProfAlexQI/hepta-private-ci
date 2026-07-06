@@ -14,6 +14,7 @@ pub mod hepta_mobile_detail;
 pub mod hepta_mobile_packaging;
 pub mod hepta_mobile_safety;
 pub mod hepta_productization;
+pub mod hepta_telegram_base_contract;
 pub mod hepta_runtime_status;
 pub mod home_screen;
 pub mod invite_modal;

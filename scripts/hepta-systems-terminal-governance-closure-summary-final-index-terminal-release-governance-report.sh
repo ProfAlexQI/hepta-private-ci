@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+CLOSURE_FINAL_INDEX_REPORT="$ROOT/scripts/hepta-systems-terminal-governance-closure-summary-attachment-final-index-report.sh"
+CLOSURE_FINAL_INDEX_GATE="$ROOT/scripts/hepta-systems-terminal-governance-closure-summary-attachment-final-index-gate.sh"
+TERMINAL_RELEASE_GOVERNANCE_GATE="$ROOT/scripts/hepta-terminal-release-governance-final-audit-index-gate.sh"
+TERMINAL_RELEASE_GOVERNANCE_DOC="$ROOT/docs/architecture/HEPTA_TERMINAL_RELEASE_GOVERNANCE_FINAL_AUDIT_INDEX_GATE.md"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TERMINAL_GOVERNANCE_CLOSURE_SUMMARY_FINAL_INDEX_TERMINAL_RELEASE_GOVERNANCE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-terminal-governance-closure-summary-final-index-terminal-release-governance-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$CLOSURE_FINAL_INDEX_REPORT" ]] || fail "missing executable terminal governance closure summary attachment final index report: $CLOSURE_FINAL_INDEX_REPORT"
+[[ -x "$CLOSURE_FINAL_INDEX_GATE" ]] || fail "missing executable terminal governance closure summary attachment final index gate: $CLOSURE_FINAL_INDEX_GATE"
+[[ -x "$TERMINAL_RELEASE_GOVERNANCE_GATE" ]] || fail "missing executable terminal release governance final audit index gate: $TERMINAL_RELEASE_GOVERNANCE_GATE"
+[[ -f "$TERMINAL_RELEASE_GOVERNANCE_DOC" ]] || fail "missing terminal release governance final audit index doc: $TERMINAL_RELEASE_GOVERNANCE_DOC"
+[[ -f "$DOC" ]] || fail "missing terminal release governance attachment architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the terminal release governance attachment report"
+fi
+
+jq -n \
+  --slurpfile closure_final_index <("$CLOSURE_FINAL_INDEX_REPORT") \
+  --arg gate "scripts/hepta-systems-terminal-governance-closure-summary-final-index-terminal-release-governance-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TERMINAL_GOVERNANCE_CLOSURE_SUMMARY_FINAL_INDEX_TERMINAL_RELEASE_GOVERNANCE_2026-06-21.md" \
+  '
+  ($closure_final_index[0]) as $closure |
+  [
+    "manual_operator_live_cutover_approval_required",
+    "terminal_release_governance_final_audit_source_probed_not_invoked",
+    "terminal_governance_closure_summary_gate_not_invoked",
+    "terminal_summary_gates_not_invoked",
+    "terminal_live_gates_not_invoked",
+    "canonical_successor_consumer_cutover_disallowed",
+    "current_canonical_consumer_rollback_anchor_retained",
+    "canonical_gate_not_invoked",
+    "wrapper_target_not_invoked",
+    "live_url_not_contacted",
+    "long_soak_not_started",
+    "public_ga_disabled",
+    "release_publication_disabled"
+  ] as $attachment_blockers |
+  ($closure.terminal_governance_closure_summary_attachment_final_index_ready == true
+    and $closure.terminal_governance_closure_summary_attachment_final_index_blocked == true
+    and $closure.terminal_governance_closure_summary_gate_invoked == false
+    and $closure.terminal_summary_gates_invoked == false
+    and $closure.terminal_live_gates_invoked == false
+    and $closure.canonical_gate_wrapper_invoked == false
+    and $closure.wrapper_target_invoked == false
+    and $closure.source_successor_consumer_cutover_allowed == false
+    and $closure.source_canonical_governance_rollback_anchor == "current_canonical_consumer"
+    and $closure.tool_execution_live_cutover_allowed == false
+    and $closure.tool_execution_public_ga_allowed == false
+    and $closure.source_canonical_governance_tool_execution_closure_backfeed_ready == true
+    and $closure.source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+    and $closure.source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+    and $closure.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+    and $closure.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+    and $closure.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+    and ($closure.side_effects | to_entries | all(.value == false))) as $attachment_ready |
+  {
+    runtime:"hepta",
+    surface:"terminal_governance_closure_summary_final_index_terminal_release_governance",
+    plugin_id:$closure.plugin_id,
+    status:(if $attachment_ready then "ready_blocked" else "blocked" end),
+    source_terminal_governance_closure_summary_attachment_final_index_surface:$closure.surface,
+    source_terminal_governance_closure_summary_attachment_final_index_ready:$closure.terminal_governance_closure_summary_attachment_final_index_ready,
+    source_terminal_governance_closure_summary_attachment_final_index_blocked:$closure.terminal_governance_closure_summary_attachment_final_index_blocked,
+    terminal_release_governance_attachment_ready:$attachment_ready,
+    terminal_release_governance_attachment_blocked:true,
+    terminal_governance_closure_summary_attachment_final_index_attached:true,
+    terminal_release_governance_final_audit_gate_present:true,
+    terminal_release_governance_final_audit_doc_present:true,
+    terminal_release_governance_final_audit_gate_invoked:false,
+    terminal_governance_closure_summary_gate_invoked:false,
+    terminal_summary_gates_invoked:false,
+    terminal_live_gates_invoked:false,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    source_successor_consumer_cutover_allowed:false,
+    source_canonical_governance_rollback_anchor:$closure.source_canonical_governance_rollback_anchor,
+    source_canonical_governance_tool_execution_closure_backfeed_ready:$closure.source_canonical_governance_tool_execution_closure_backfeed_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_blocker_count:$closure.source_canonical_governance_tool_execution_closure_backfeed_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_count:$closure.source_canonical_governance_tool_execution_closure_backfeed_category_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_ready_count:$closure.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count:$closure.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_categorization_ready:$closure.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_categories:$closure.source_canonical_governance_tool_execution_closure_backfeed_categories,
+    attachment_blocker_count:($attachment_blockers | length),
+    attachment_blockers:$attachment_blockers,
+    manual_operator_live_cutover_approval_required:true,
+    terminal_live_url_required:false,
+    long_soak_required:false,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    release_publication_allowed:false,
+    release_artifact_write_allowed:false,
+    public_release_claim_allowed:false,
+    next_migration_step:"derive_terminal_release_governance_attachment_readback_without_release_gate_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      terminal_governance_closure_summary_attachment_final_index_report:"scripts/hepta-systems-terminal-governance-closure-summary-attachment-final-index-report.sh",
+      terminal_governance_closure_summary_attachment_final_index_gate:"scripts/hepta-systems-terminal-governance-closure-summary-attachment-final-index-gate.sh",
+      terminal_release_governance_final_audit_gate:"scripts/hepta-terminal-release-governance-final-audit-index-gate.sh",
+      terminal_release_governance_final_audit_doc:"docs/architecture/HEPTA_TERMINAL_RELEASE_GOVERNANCE_FINAL_AUDIT_INDEX_GATE.md"
+    },
+    side_effect_free:true,
+    side_effects:$closure.side_effects
+  }'

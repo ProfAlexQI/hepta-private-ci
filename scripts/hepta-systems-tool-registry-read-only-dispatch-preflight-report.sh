@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PLUGIN_LIFECYCLE_REPORT="$ROOT/scripts/hepta-systems-plugin-lifecycle-state-machine-report.sh"
+INVOCATION_SOURCE_REPORT="$ROOT/scripts/hepta-systems-tool-registry-invocation-source-of-truth-report.sh"
+LOOKUP_SHADOW_REPORT="$ROOT/scripts/hepta-systems-tool-registry-router-lookup-shadow-report.sh"
+LEDGER_APPROVAL_REPORT="$ROOT/scripts/hepta-systems-tool-invocation-ledger-approval-preflight-report.sh"
+RECEIPT_PROJECTION_REPORT="$ROOT/scripts/hepta-systems-tool-invocation-receipt-projection-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/tools/src/tool_registry_read_only_dispatch_preflight.rs"
+LIB_SOURCE="$ROOT/codex-rs/tools/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_REGISTRY_READ_ONLY_DISPATCH_PREFLIGHT_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-tool-registry-read-only-dispatch-preflight-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PLUGIN_LIFECYCLE_REPORT" ]] || fail "missing executable plugin lifecycle report: $PLUGIN_LIFECYCLE_REPORT"
+[[ -x "$INVOCATION_SOURCE_REPORT" ]] || fail "missing executable invocation source report: $INVOCATION_SOURCE_REPORT"
+[[ -x "$LOOKUP_SHADOW_REPORT" ]] || fail "missing executable lookup shadow report: $LOOKUP_SHADOW_REPORT"
+[[ -x "$LEDGER_APPROVAL_REPORT" ]] || fail "missing executable ledger approval preflight report: $LEDGER_APPROVAL_REPORT"
+[[ -x "$RECEIPT_PROJECTION_REPORT" ]] || fail "missing executable receipt projection report: $RECEIPT_PROJECTION_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing read-only dispatch preflight Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing codex-tools lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing read-only dispatch preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the read-only dispatch preflight report"
+fi
+
+lib_export_present=false
+if grep -q 'pub use tool_registry_read_only_dispatch_preflight::hepta_system_tool_registry_read_only_dispatch_preflight_plan;' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile lifecycle <("$PLUGIN_LIFECYCLE_REPORT") \
+  --slurpfile invocation <("$INVOCATION_SOURCE_REPORT") \
+  --slurpfile lookup <("$LOOKUP_SHADOW_REPORT") \
+  --slurpfile ledger <("$LEDGER_APPROVAL_REPORT") \
+  --slurpfile receipt <("$RECEIPT_PROJECTION_REPORT") \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-tool-registry-read-only-dispatch-preflight-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_REGISTRY_READ_ONLY_DISPATCH_PREFLIGHT_2026-06-27.md" \
+  '
+  def by_id($items; $id): ($items[] | select(.candidate_tool_id == $id));
+  def dispatch_entry($receipt_entry; $invocation; $lookup; $ledger):
+    (by_id($invocation.entries; $receipt_entry.candidate_tool_id)) as $invocation_entry |
+    (by_id($lookup.entries; $receipt_entry.candidate_tool_id)) as $lookup_entry |
+    (by_id($ledger.entries; $receipt_entry.candidate_tool_id)) as $ledger_entry |
+    ($invocation_entry.invocation_source_ready == true
+      and $lookup_entry.shadow_ready == true
+      and $ledger_entry.ledger_preflight_ready == true
+      and $receipt_entry.receipt_projection_ready == true) as $ready |
+    {
+      plugin_id:$receipt_entry.plugin_id,
+      candidate_tool_id:$receipt_entry.candidate_tool_id,
+      contribution_kind:$receipt_entry.contribution_kind,
+      source_invocation_route:$invocation_entry.invocation_source_route,
+      lookup_shadow_route:$lookup_entry.shadow_route,
+      ledger_preflight_route:$ledger_entry.preflight_route,
+      receipt_projection_route:$receipt_entry.receipt_projection_route,
+      dispatch_preflight_route:(if $ready then "read_only_dispatch_receipt_projection_ready" else "blocked_by_upstream_preflight" end),
+      dispatch_preflight_ready:$ready,
+      registry_lookup_preview_required:$ready,
+      ledger_preview_required:$ready,
+      approval_preflight_required:$ready,
+      receipt_projection_required:$ready,
+      dispatch_preflight_binding_present:true,
+      registry_dispatch_switch_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registry_source_of_truth_enabled:false,
+      tool_registration_enabled:false,
+      tool_invocation_enabled:false,
+      ledger_write_enabled:false,
+      approval_request_enabled:false,
+      result_receipt_write_enabled:false,
+      side_effect_free:true
+    };
+
+  ($lifecycle[0]) as $lifecycle |
+  ($invocation[0]) as $invocation |
+  ($lookup[0]) as $lookup |
+  ($ledger[0]) as $ledger |
+  ($receipt[0]) as $receipt |
+  ($receipt.entries | map(dispatch_entry(.; $invocation; $lookup; $ledger))) as $entries |
+  ($entries | map(select(.dispatch_preflight_ready == true)) | length) as $ready_count |
+  ($entries | map(select(.registry_lookup_preview_required == true)) | length) as $lookup_preview_count |
+  ($entries | map(select(.ledger_preview_required == true)) | length) as $ledger_preview_count |
+  ($entries | map(select(.approval_preflight_required == true)) | length) as $approval_preflight_count |
+  ($entries | map(select(.receipt_projection_required == true)) | length) as $receipt_projection_count |
+  ($lifecycle.lifecycle_state_machine_ready == true
+    and $lifecycle.source_of_truth_ready == true
+    and $invocation.invocation_source_of_truth_plan_ready == true
+    and $lookup.router_lookup_shadow_ready == true
+    and $ledger.tool_invocation_ledger_approval_preflight_ready == true
+    and $receipt.tool_invocation_receipt_projection_ready == true
+    and $ready_count == ($entries | length)
+    and $lookup_preview_count == ($entries | length)
+    and $ledger_preview_count == ($entries | length)
+    and $approval_preflight_count == ($entries | length)
+    and $receipt_projection_count == ($entries | length)
+    and ($entries | all(.dispatch_preflight_binding_present == true))
+    and ($entries | all(if .dispatch_preflight_route == "read_only_dispatch_receipt_projection_ready" then (.registry_dispatch_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end))) as $preflight_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_registry_read_only_dispatch_preflight",
+    plugin_id:$receipt.plugin_id,
+    status:(if $preflight_ready then "ready" else "blocked" end),
+    source_plugin_lifecycle_surface:$lifecycle.surface,
+    source_plugin_lifecycle_ready:$lifecycle.lifecycle_state_machine_ready,
+    source_plugin_lifecycle_phase_count:$lifecycle.lifecycle_phase_count,
+    source_invocation_surface:$invocation.surface,
+    source_invocation_ready:$invocation.invocation_source_of_truth_plan_ready,
+    source_lookup_shadow_surface:$lookup.surface,
+    source_lookup_shadow_ready:$lookup.router_lookup_shadow_ready,
+    source_ledger_approval_preflight_surface:$ledger.surface,
+    source_ledger_approval_preflight_ready:$ledger.tool_invocation_ledger_approval_preflight_ready,
+    source_receipt_projection_surface:$receipt.surface,
+    source_receipt_projection_ready:$receipt.tool_invocation_receipt_projection_ready,
+    lib_export_present:$lib_export_present,
+    dispatch_preflight_binding_present:true,
+    candidate_count:($entries | length),
+    dispatch_preflight_ready_count:$ready_count,
+    dispatch_preflight_blocked_count:(($entries | length) - $ready_count),
+    registry_lookup_preview_required_count:$lookup_preview_count,
+    ledger_preview_required_count:$ledger_preview_count,
+    approval_preflight_required_count:$approval_preflight_count,
+    receipt_projection_required_count:$receipt_projection_count,
+    all_entries_bound_to_plugin_lifecycle:($lifecycle.source_of_truth_ready == true and ($entries | all(.plugin_id == $lifecycle.plugin_id))),
+    all_entries_bound_to_read_only_dispatch_preflight:($ready_count == ($entries | length) and $lookup_preview_count == ($entries | length) and $ledger_preview_count == ($entries | length) and $approval_preflight_count == ($entries | length) and $receipt_projection_count == ($entries | length) and ($entries | all(.dispatch_preflight_binding_present == true))),
+    all_dispatch_entries_keep_no_invocation_guard:($entries | all(if .dispatch_preflight_route == "read_only_dispatch_receipt_projection_ready" then (.registry_dispatch_switch_enabled == false and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end)),
+    read_only_dispatch_preflight_ready:$preflight_ready,
+    read_only_dispatch_preflight_allowed:$preflight_ready,
+    registry_dispatch_switch_enabled:false,
+    router_registration_lookup_enabled:false,
+    registry_lookup_executed:false,
+    registry_source_of_truth_enabled:false,
+    tool_registration_enabled:false,
+    tool_invocation_enabled:false,
+    ledger_written:false,
+    approval_requested:false,
+    result_receipt_written:false,
+    live_mutation_ready:false,
+    next_migration_step:"phase3_rebuild_temporal_lite_event_log_adapter_behind_feature_gate",
+    entries:$entries,
+    blockers:[
+      "registry_dispatch_switch_disabled",
+      "router_registration_lookup_disabled",
+      "registry_lookup_execution_disabled",
+      "registry_source_of_truth_enablement_disabled",
+      "tool_registration_disabled",
+      "tool_invocation_disabled",
+      "tool_invocation_ledger_write_disabled",
+      "approval_broker_request_disabled",
+      "result_receipt_write_disabled",
+      "workflow_durable_event_log_adapter_pending"
+    ],
+    next_actions:[
+      "phase3_rebuild_temporal_lite_event_log_adapter_behind_feature_gate",
+      "keep_read_only_dispatch_preflight_as_tool_source_of_truth_for_thin_e2e",
+      "keep_registration_invocation_ledger_approval_receipts_and_live_mutation_disabled_until_explicit_cutover"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      rust_contract:"codex-rs/tools/src/tool_registry_read_only_dispatch_preflight.rs",
+      plugin_lifecycle_report:"scripts/hepta-systems-plugin-lifecycle-state-machine-report.sh",
+      invocation_source_report:"scripts/hepta-systems-tool-registry-invocation-source-of-truth-report.sh",
+      lookup_shadow_report:"scripts/hepta-systems-tool-registry-router-lookup-shadow-report.sh",
+      ledger_approval_preflight_report:"scripts/hepta-systems-tool-invocation-ledger-approval-preflight-report.sh",
+      receipt_projection_report:"scripts/hepta-systems-tool-invocation-receipt-projection-report.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      plugin_cache_mutated:false,
+      plugin_installed:false,
+      manifest_rewritten:false,
+      manifest_schema_written:false,
+      registry_dispatch_switch_enabled:false,
+      registry_source_of_truth_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registration_cutover_executed:false,
+      tool_registered:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      result_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      local_storage_created:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

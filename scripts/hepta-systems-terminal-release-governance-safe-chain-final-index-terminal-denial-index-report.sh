@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SAFE_CHAIN_FINAL_INDEX_REPORT="$ROOT/scripts/hepta-systems-terminal-release-governance-safe-chain-closure-final-index-report.sh"
+TERMINAL_DENIAL_INDEX_GATE="$ROOT/scripts/hepta-terminal-denial-index-gate.sh"
+TERMINAL_DENIAL_INDEX_DOC="$ROOT/docs/architecture/HEPTA_TERMINAL_DENIAL_INDEX_GATE.md"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TERMINAL_RELEASE_GOVERNANCE_SAFE_CHAIN_FINAL_INDEX_TERMINAL_DENIAL_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-terminal-release-governance-safe-chain-final-index-terminal-denial-index-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SAFE_CHAIN_FINAL_INDEX_REPORT" ]] || fail "missing executable terminal release governance safe chain closure final index report: $SAFE_CHAIN_FINAL_INDEX_REPORT"
+[[ -x "$TERMINAL_DENIAL_INDEX_GATE" ]] || fail "missing executable terminal denial index gate: $TERMINAL_DENIAL_INDEX_GATE"
+[[ -f "$TERMINAL_DENIAL_INDEX_DOC" ]] || fail "missing terminal denial index doc: $TERMINAL_DENIAL_INDEX_DOC"
+[[ -f "$DOC" ]] || fail "missing terminal denial index attachment architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the terminal denial index attachment report"
+fi
+
+jq -n \
+  --slurpfile safe_chain <("$SAFE_CHAIN_FINAL_INDEX_REPORT") \
+  --arg gate "scripts/hepta-systems-terminal-release-governance-safe-chain-final-index-terminal-denial-index-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TERMINAL_RELEASE_GOVERNANCE_SAFE_CHAIN_FINAL_INDEX_TERMINAL_DENIAL_INDEX_2026-06-21.md" \
+  '
+  ($safe_chain[0]) as $source |
+  ($source.side_effects + {
+    terminal_denial_index_gate_invoked:false,
+    terminal_denial_index_recorded:false,
+    terminal_denial_index_persisted:false,
+    terminal_denial_index_materialized:false,
+    terminal_denial_index_filesystem_written:false
+  }) as $side_effects |
+  ($source.final_blockers + [
+    "terminal_denial_index_not_invoked",
+    "terminal_denial_index_recording_disabled",
+    "terminal_denial_index_persistence_disabled",
+    "terminal_denial_index_materialization_disabled",
+    "terminal_denial_index_filesystem_write_disabled"
+  ]) as $attachment_blockers |
+  ($source.terminal_release_governance_safe_chain_closure_final_index_ready == true
+    and $source.terminal_release_governance_safe_chain_closure_final_index_blocked == true
+    and $source.terminal_release_governance_final_audit_gate_invoked == false
+    and $source.terminal_release_artifact_non_write_lock_gate_invoked == false
+    and $source.terminal_public_distribution_non_publication_lock_gate_invoked == false
+    and $source.terminal_non_activation_release_claim_index_gate_invoked == false
+    and $source.terminal_operator_readiness_non_approval_index_gate_invoked == false
+    and $source.terminal_summary_gates_invoked == false
+    and $source.terminal_live_gates_invoked == false
+    and $source.canonical_gate_wrapper_invoked == false
+    and $source.wrapper_target_invoked == false
+    and $source.source_successor_consumer_cutover_allowed == false
+    and $source.source_canonical_governance_rollback_anchor == "current_canonical_consumer"
+    and $source.public_distribution_publication_allowed == false
+    and $source.release_publication_allowed == false
+    and $source.release_artifact_write_allowed == false
+    and $source.public_release_claim_allowed == false
+    and $source.release_claim_index_persistence_allowed == false
+    and $source.package_or_release_write_allowed == false
+    and $source.operator_approval_recorded == false
+    and $source.operator_identity_accepted == false
+    and $source.rollback_execution_allowed == false
+    and $source.operator_readiness_index_persistence_allowed == false
+    and $source.source_canonical_governance_tool_execution_closure_backfeed_ready == true
+    and $source.source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+    and $source.source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+    and $source.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+    and $source.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+    and $source.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+    and ($side_effects | to_entries | all(.value == false))) as $attachment_ready |
+  {
+    runtime:"hepta",
+    surface:"terminal_release_governance_safe_chain_final_index_terminal_denial_index",
+    plugin_id:$source.plugin_id,
+    status:(if $attachment_ready then "ready_blocked" else "blocked" end),
+    source_terminal_release_governance_safe_chain_closure_final_index_surface:$source.surface,
+    source_terminal_release_governance_safe_chain_closure_final_index_ready:$source.terminal_release_governance_safe_chain_closure_final_index_ready,
+    source_terminal_release_governance_safe_chain_closure_final_index_blocked:$source.terminal_release_governance_safe_chain_closure_final_index_blocked,
+    terminal_denial_index_attachment_ready:$attachment_ready,
+    terminal_denial_index_attachment_blocked:true,
+    terminal_release_governance_safe_chain_closure_final_index_attached:true,
+    terminal_denial_index_gate_present:true,
+    terminal_denial_index_doc_present:true,
+    terminal_denial_index_gate_invoked:false,
+    terminal_denial_index_recorded:false,
+    terminal_denial_index_persisted:false,
+    terminal_denial_index_materialized:false,
+    terminal_denial_index_filesystem_written:false,
+    terminal_release_governance_final_audit_gate_invoked:false,
+    terminal_release_artifact_non_write_lock_gate_invoked:false,
+    terminal_public_distribution_non_publication_lock_gate_invoked:false,
+    terminal_non_activation_release_claim_index_gate_invoked:false,
+    terminal_operator_readiness_non_approval_index_gate_invoked:false,
+    terminal_summary_gates_invoked:false,
+    terminal_live_gates_invoked:false,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    source_successor_consumer_cutover_allowed:false,
+    source_canonical_governance_rollback_anchor:$source.source_canonical_governance_rollback_anchor,
+    source_canonical_governance_tool_execution_closure_backfeed_ready:$source.source_canonical_governance_tool_execution_closure_backfeed_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_blocker_count:$source.source_canonical_governance_tool_execution_closure_backfeed_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_count:$source.source_canonical_governance_tool_execution_closure_backfeed_category_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_ready_count:$source.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count:$source.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_categorization_ready:$source.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_categories:$source.source_canonical_governance_tool_execution_closure_backfeed_categories,
+    attachment_blocker_count:($attachment_blockers | length),
+    attachment_blockers:$attachment_blockers,
+    manual_operator_live_cutover_approval_required:true,
+    terminal_live_url_required:false,
+    long_soak_required:false,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    public_distribution_publication_allowed:false,
+    release_publication_allowed:false,
+    release_artifact_write_allowed:false,
+    public_release_claim_allowed:false,
+    release_claim_index_persistence_allowed:false,
+    package_or_release_write_allowed:false,
+    operator_approval_recorded:false,
+    operator_identity_accepted:false,
+    rollback_execution_allowed:false,
+    operator_readiness_index_persistence_allowed:false,
+    next_migration_step:"derive_terminal_denial_index_attachment_readback_without_terminal_denial_gate_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      terminal_release_governance_safe_chain_closure_final_index_report:"scripts/hepta-systems-terminal-release-governance-safe-chain-closure-final-index-report.sh",
+      terminal_denial_index_gate:"scripts/hepta-terminal-denial-index-gate.sh",
+      terminal_denial_index_doc:"docs/architecture/HEPTA_TERMINAL_DENIAL_INDEX_GATE.md"
+    },
+    side_effect_free:true,
+    side_effects:$side_effects
+  }'

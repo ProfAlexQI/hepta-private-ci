@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use hepta_core::EventKind;
 
-use super::{DoctorCheck, integrity};
+use super::DoctorCheck;
+use super::integrity;
 use crate::EventRecord;
 
 pub(super) const SESSION_REFS_KNOWN: &str = "event log session references known";
@@ -126,7 +127,8 @@ fn event_label(record: &EventRecord) -> String {
 
 #[cfg(test)]
 mod tests {
-    use hepta_core::{Event, SessionId};
+    use hepta_core::Event;
+    use hepta_core::SessionId;
 
     use super::super::DoctorStatus;
     use super::*;

@@ -1,23 +1,45 @@
 use std::collections::BTreeMap;
 
-use hepta_core::{
-    ContextRecallAvailability, HeptaError, IntuitionActionMode, MemoryRecord, MessageRole,
-    NeuronActivation, RiskTier, SkillActivationDecision, TopicActivationScore, TopicSession,
-    TopicShiftEvent, TranscriptEntry, TranscriptSpan, WorkflowPrior,
-};
+use hepta_core::ContextRecallAvailability;
+use hepta_core::HeptaError;
+use hepta_core::IntuitionActionMode;
+use hepta_core::MemoryRecord;
+use hepta_core::MessageRole;
+use hepta_core::NeuronActivation;
+use hepta_core::RiskTier;
+use hepta_core::SkillActivationDecision;
+use hepta_core::TopicActivationScore;
+use hepta_core::TopicSession;
+use hepta_core::TopicShiftEvent;
+use hepta_core::TranscriptEntry;
+use hepta_core::TranscriptSpan;
+use hepta_core::WorkflowPrior;
 use hepta_intelligence::recall_evidence_summary;
 
-use crate::events::{format_event_record, summarize_line};
-use crate::query::{
-    RuntimeContextRecallSlice, RuntimeIntelligenceEvalCase, RuntimeIntelligenceEvalOverview,
-    RuntimeIntelligencePhase2Overview, RuntimeIntuitionCalibrationFeedback,
-    RuntimeIntuitionCalibrationOverview, RuntimeIntuitionCalibrationTarget,
-    RuntimeIntuitionOverview, RuntimeNeuronActivationOverview, RuntimeNeuronLifecycleOverview,
-    RuntimeProvenanceOverview, RuntimeSessionActivityOverview, RuntimeSessionActivitySlice,
-    RuntimeTopicRoutingOverview, RuntimeTopicSessionOverview, RuntimeTranscriptQueryOverview,
-    RuntimeTranscriptQuerySessionTally,
-};
-use crate::{DoctorCheck, DoctorProviderProbe, DoctorStatus, RuntimeKernel, TurnRecord};
+use crate::DoctorCheck;
+use crate::DoctorProviderProbe;
+use crate::DoctorStatus;
+use crate::RuntimeKernel;
+use crate::TurnRecord;
+use crate::events::format_event_record;
+use crate::events::summarize_line;
+use crate::query::RuntimeContextRecallSlice;
+use crate::query::RuntimeIntelligenceEvalCase;
+use crate::query::RuntimeIntelligenceEvalOverview;
+use crate::query::RuntimeIntelligencePhase2Overview;
+use crate::query::RuntimeIntuitionCalibrationFeedback;
+use crate::query::RuntimeIntuitionCalibrationOverview;
+use crate::query::RuntimeIntuitionCalibrationTarget;
+use crate::query::RuntimeIntuitionOverview;
+use crate::query::RuntimeNeuronActivationOverview;
+use crate::query::RuntimeNeuronLifecycleOverview;
+use crate::query::RuntimeProvenanceOverview;
+use crate::query::RuntimeSessionActivityOverview;
+use crate::query::RuntimeSessionActivitySlice;
+use crate::query::RuntimeTopicRoutingOverview;
+use crate::query::RuntimeTopicSessionOverview;
+use crate::query::RuntimeTranscriptQueryOverview;
+use crate::query::RuntimeTranscriptQuerySessionTally;
 
 impl RuntimeKernel {
     pub async fn doctor_summary(&self) -> Result<Vec<String>, HeptaError> {
@@ -243,6 +265,7 @@ impl RuntimeKernel {
             total_recent_entry_count,
             transcript_matched_count,
             memory_matched_count,
+            memory_control_omitted_count,
             ..
         } = self.context_recall_slice(
             session_id,
@@ -283,6 +306,10 @@ impl RuntimeKernel {
                 evidence.durable_memory_hit_count
             ),
             format!("- summary hits: {}", evidence.summary_hit_count),
+            format!(
+                "- memory control omitted items: {}",
+                memory_control_omitted_count
+            ),
             format!(
                 "- active topic sessions: {}",
                 evidence.active_topic_session_count
@@ -480,6 +507,10 @@ impl RuntimeKernel {
             active_topic_sessions,
             active_topic_sessions_with_transcript_provenance,
             active_topic_sessions_missing_transcript_provenance,
+            recall_ranked_items,
+            recall_low_trust_ranked_items,
+            recall_low_recency_ranked_items,
+            recall_memory_control_omitted_items,
             recall_transcript_evidence_spans,
             recall_omitted_items,
             intuition_transcript_evidence_spans,
@@ -507,6 +538,19 @@ impl RuntimeKernel {
             format!(
                 "- recall transcript evidence spans: {}",
                 recall_transcript_evidence_spans
+            ),
+            format!("- recall ranked items: {}", recall_ranked_items),
+            format!(
+                "- recall low-trust ranked items: {}",
+                recall_low_trust_ranked_items
+            ),
+            format!(
+                "- recall low-recency ranked items: {}",
+                recall_low_recency_ranked_items
+            ),
+            format!(
+                "- recall memory control omitted items: {}",
+                recall_memory_control_omitted_items
             ),
             format!("- recall omitted items: {}", recall_omitted_items),
             format!(
@@ -536,6 +580,9 @@ impl RuntimeKernel {
             neuron_compression_ready,
             recall_ranked_items,
             recall_source_count,
+            recall_low_trust_ranked_items,
+            recall_low_recency_ranked_items,
+            recall_memory_control_omitted_items,
             recall_transcript_evidence_spans,
             durable_memory_hits,
             active_neurons,
@@ -564,6 +611,18 @@ impl RuntimeKernel {
             format!("- neuron compression ready: {}", neuron_compression_ready),
             format!("- recall ranked items: {}", recall_ranked_items),
             format!("- recall source count: {}", recall_source_count),
+            format!(
+                "- recall low-trust ranked items: {}",
+                recall_low_trust_ranked_items
+            ),
+            format!(
+                "- recall low-recency ranked items: {}",
+                recall_low_recency_ranked_items
+            ),
+            format!(
+                "- recall memory control omitted items: {}",
+                recall_memory_control_omitted_items
+            ),
             format!(
                 "- recall transcript evidence spans: {}",
                 recall_transcript_evidence_spans
@@ -4083,6 +4142,7 @@ mod tests {
         assert!(rendered.contains("- transcript matches: 2"));
         assert!(rendered.contains("- transcript hits returned: 2"));
         assert!(rendered.contains("- durable memory hits: 1"));
+        assert!(rendered.contains("- memory control omitted items: 0"));
         assert!(rendered.contains("- transcript evidence spans: "));
         assert!(rendered.contains("- omitted items: 0"));
         assert!(rendered.contains("- cross-session memory: allowed"));
@@ -4115,6 +4175,7 @@ mod tests {
         assert!(rendered.contains("- transcript hits returned: 0"));
         assert!(rendered.contains("- durable memory hits: 0"));
         assert!(rendered.contains("- summary hits: 0"));
+        assert!(rendered.contains("- memory control omitted items: 0"));
         assert!(rendered.contains("- transcript evidence spans: 1"));
         assert!(rendered.contains("- omitted items: 0"));
         assert!(rendered.contains("- cross-session memory: disabled"));
@@ -4214,9 +4275,30 @@ mod tests {
         assert!(rendered.contains("- active topic sessions with transcript provenance: 1/1"));
         assert!(rendered.contains("- active topic sessions missing transcript provenance: 0"));
         assert!(rendered.contains("- recall transcript evidence spans: "));
+        assert!(rendered.contains("- recall ranked items: "));
+        assert!(rendered.contains("- recall low-trust ranked items: 0"));
+        assert!(rendered.contains("- recall low-recency ranked items: 0"));
+        assert!(rendered.contains("- recall memory control omitted items: 0"));
         assert!(rendered.contains("- recall omitted items: 0"));
         assert!(rendered.contains("- intuition transcript evidence spans: "));
         assert!(rendered.contains("- intuition foreground topic sessions: 1"));
+    }
+
+    #[tokio::test]
+    async fn intelligence_phase2_summary_renders_low_quality_recall_counts() {
+        let runtime = RuntimeKernel::new();
+        let summary = runtime
+            .intelligence_phase2_summary("phase2")
+            .await
+            .expect("phase2 summary should succeed");
+        let rendered = summary.join("\n");
+
+        assert!(rendered.contains("Hepta intelligence phase2: complete"));
+        assert!(rendered.contains("- recall ranked items: "));
+        assert!(rendered.contains("- recall source count: "));
+        assert!(rendered.contains("- recall low-trust ranked items: 0"));
+        assert!(rendered.contains("- recall low-recency ranked items: 0"));
+        assert!(rendered.contains("- recall memory control omitted items: 0"));
     }
 
     #[tokio::test]

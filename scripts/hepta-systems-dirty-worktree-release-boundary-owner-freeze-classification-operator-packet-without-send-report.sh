@@ -1,0 +1,297 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_OWNER_FREEZE_CLASSIFICATION_OPERATOR_PACKET_WITHOUT_SEND_2026-06-29.md"
+
+fail() {
+  printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable owner/freeze/classification outcome readback report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing owner/freeze/classification operator packet Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing owner/freeze/classification operator packet architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the owner/freeze/classification operator packet report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$SOURCE_REPORT" >"$tmpdir/source.json" \
+  || fail "failed to render owner/freeze/classification outcome readback report"
+jq -e . "$tmpdir/source.json" >/dev/null \
+  || fail "invalid JSON rendered by owner/freeze/classification outcome readback report"
+
+lib_export_present=false
+if grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile source "$tmpdir/source.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_OWNER_FREEZE_CLASSIFICATION_OPERATOR_PACKET_WITHOUT_SEND_2026-06-29.md" \
+  '
+  def key_safe($value): ($value | gsub("[^A-Za-z0-9._-]"; "_") | gsub("-"; "_"));
+  def route_prefix($group_type):
+    if $group_type == "top_level" then "top-level"
+    elif $group_type == "scope" then "scope"
+    else $group_type
+    end;
+  def route_safe($value): ($value | gsub("_"; "-") | gsub("[^A-Za-z0-9.-]"; "-"));
+  def packet_section($category):
+    if $category == "owner_attribution_outcome_required" then "owner_attribution_packet_section"
+    elif $category == "targeted_gate_outcome_required" then "targeted_gate_packet_section"
+    elif $category == "owned_lane_freeze_outcome_required" then "owned_lane_freeze_packet_section"
+    elif $category == "artifact_classification_outcome_required" then "artifact_classification_packet_section"
+    else "bucket_review_packet_section"
+    end;
+  def packet_action($category):
+    if $category == "owner_attribution_outcome_required" then "include_owner_attribution_request_without_assignment"
+    elif $category == "targeted_gate_outcome_required" then "include_targeted_gate_request_without_probe_execution"
+    elif $category == "owned_lane_freeze_outcome_required" then "include_owned_lane_freeze_request_without_applying_freeze"
+    elif $category == "artifact_classification_outcome_required" then "include_artifact_classification_request_without_delete_or_relocation"
+    else "include_bucket_review_request_without_git_mutation"
+    end;
+  def packet_entry:
+    . as $entry
+    | {
+      source_outcome_key:$entry.outcome_key,
+      source_outcome_route:$entry.outcome_route,
+      packet_key:("dirty_worktree.owner_freeze_classification_operator_packet." + key_safe($entry.group_type) + "." + key_safe($entry.source_bucket)),
+      packet_route:("operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/" + route_prefix($entry.group_type) + "/" + route_safe($entry.source_bucket)),
+      non_send_readback_key:("dirty_worktree.owner_freeze_classification_operator_packet.non_send." + key_safe($entry.group_type) + "." + key_safe($entry.source_bucket)),
+      non_send_readback_route:("readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/non-send/" + route_prefix($entry.group_type) + "/" + route_safe($entry.source_bucket)),
+      source_bucket:$entry.source_bucket,
+      group_type:$entry.group_type,
+      source_entry_count:$entry.source_entry_count,
+      tracked_count:$entry.tracked_count,
+      untracked_count:$entry.untracked_count,
+      owner_route:$entry.owner_route,
+      owner_state:$entry.owner_state,
+      freeze_state:$entry.freeze_state,
+      classification_state:$entry.classification_state,
+      outcome_category:$entry.outcome_category,
+      outcome_action:$entry.outcome_action,
+      packet_section:packet_section($entry.outcome_category),
+      packet_action:packet_action($entry.outcome_category),
+      required_local_gate:$entry.required_local_gate,
+      release_disposition:$entry.release_disposition,
+      observed_state:"operator_packet_visible_unsent_unpersisted",
+      previous_send_state:"unsent",
+      current_send_state:"unsent",
+      send_state_delta:"unchanged_unsent",
+      previous_persistence_state:"unpersisted",
+      current_persistence_state:"unpersisted",
+      persistence_state_delta:"unchanged_unpersisted",
+      source_outcome_attached:(($entry.outcome_key | length) > 0 and ($entry.outcome_route | length) > 0),
+      packet_visible:true,
+      packet_payload_visible:true,
+      non_send_confirmed:true,
+      non_persistence_confirmed:true,
+      operator_visible:true,
+      queryable:$entry.queryable,
+      diffable:$entry.diffable,
+      operator_decision_required:true,
+      owner_assignment_blocked:true,
+      freeze_application_blocked:true,
+      classification_persistence_blocked:true,
+      test_probe_blocked:($entry.test_probe_executed == false),
+      packet_send_blocked:true,
+      packet_persistence_blocked:true,
+      readback_persistence_blocked:true,
+      approval_request_blocked:true,
+      approval_acceptance_blocked:($entry.approval_acceptance_allowed == false),
+      decision_recording_blocked:($entry.decision_recording_allowed == false),
+      evidence_recording_blocked:($entry.evidence_recording_allowed == false),
+      git_mutation_blocked:$entry.git_mutation_blocked,
+      cleanup_delete_blocked:$entry.cleanup_delete_blocked,
+      release_cutover_allowed:false,
+      canary_activation_allowed:false,
+      live_execution_allowed:false
+    };
+  ($source[0]) as $source_report |
+  ($source_report.entries | map(packet_entry)) as $entries |
+  ($entries | length) as $packet_entry_count |
+  ($entries | map(.packet_key) | unique | length) as $stable_packet_key_count |
+  ($entries | map(.packet_route) | unique | length) as $packet_route_count |
+  ($entries | map(select(.source_outcome_attached == true and .packet_visible == true and .packet_payload_visible == true and .non_send_confirmed == true and .non_persistence_confirmed == true and .operator_visible == true and .queryable == true and .diffable == true and .operator_decision_required == true and .owner_assignment_blocked == true and .freeze_application_blocked == true and .classification_persistence_blocked == true and .test_probe_blocked == true and .packet_send_blocked == true and .packet_persistence_blocked == true and .readback_persistence_blocked == true and .approval_request_blocked == true and .approval_acceptance_blocked == true and .decision_recording_blocked == true and .evidence_recording_blocked == true and .git_mutation_blocked == true and .cleanup_delete_blocked == true and .release_cutover_allowed == false and .canary_activation_allowed == false and .live_execution_allowed == false and (.packet_section | length) > 0 and (.packet_action | length) > 0 and (.required_local_gate | length) > 0)) | length) as $packet_ready_count |
+  ($entries | map(select(.observed_state == "operator_packet_visible_unsent_unpersisted" and .current_send_state == "unsent" and .current_persistence_state == "unpersisted")) | length) as $visible_unsent_unpersisted_count |
+  ($entries | map(select((.source_outcome_key | length) > 0 and (.source_outcome_route | length) > 0)) | length) as $attached_outcome_count |
+  ($entries | map(select(.packet_section == "owner_attribution_packet_section")) | length) as $owner_attribution_packet_count |
+  ($entries | map(select(.packet_section == "targeted_gate_packet_section")) | length) as $targeted_gate_packet_count |
+  ($entries | map(select(.packet_section == "owned_lane_freeze_packet_section")) | length) as $owned_lane_freeze_packet_count |
+  ($entries | map(select(.packet_section == "artifact_classification_packet_section")) | length) as $artifact_classification_packet_count |
+  ($entries | map(select(.owner_route == "owner://release-boundary/hepta-systems")) | length) as $hepta_systems_owner_route_count |
+  ($entries | map(select(.owner_route == "owner://release-boundary/cross-lane-review")) | length) as $cross_lane_owner_route_count |
+  ($entries | map(select(.operator_decision_required == true)) | length) as $operator_decision_required_count |
+  ($entries | map(select(.packet_send_blocked == true)) | length) as $packet_send_blocked_count |
+  ($entries | map(select(.packet_persistence_blocked == true)) | length) as $packet_persistence_blocked_count |
+  ($entries | map(select(.git_mutation_blocked == true)) | length) as $git_mutation_blocked_count |
+  ($entries | map(select(.cleanup_delete_blocked == true)) | length) as $cleanup_delete_blocked_count |
+  ($entries | map(select(.evidence_recording_blocked == true)) | length) as $evidence_recording_blocked_count |
+  ($entries | map(select(.approval_request_blocked == true)) | length) as $approval_request_blocked_count |
+  ($entries | map(select(.approval_acceptance_blocked == true)) | length) as $approval_acceptance_blocked_count |
+  ($entries | map(select(.decision_recording_blocked == true)) | length) as $decision_recording_blocked_count |
+  ($source_report.owner_freeze_classification_outcome_readback_ready == true
+    and $source_report.outcome_readback_visible == true
+    and $source_report.outcome_readback_persisted == false
+    and $source_report.operator_packet_sent == false
+    and $source_report.operator_packet_persisted == false
+    and $source_report.git_index_mutated == false
+    and $source_report.cleanup_allowed == false
+    and $source_report.delete_allowed == false
+    and $lib_export_present == true
+    and $packet_entry_count == $source_report.outcome_entry_count
+    and $stable_packet_key_count == $packet_entry_count
+    and $packet_route_count == $packet_entry_count
+    and $packet_ready_count == $packet_entry_count
+    and $visible_unsent_unpersisted_count == $packet_entry_count
+    and $attached_outcome_count == $packet_entry_count
+    and $owner_attribution_packet_count == $source_report.owner_attribution_outcome_required_count
+    and $targeted_gate_packet_count == $source_report.targeted_gate_outcome_required_count
+    and $owned_lane_freeze_packet_count == $source_report.owned_lane_freeze_outcome_required_count
+    and $artifact_classification_packet_count == $source_report.artifact_classification_outcome_required_count
+    and $hepta_systems_owner_route_count == $source_report.hepta_systems_owner_route_count
+    and $cross_lane_owner_route_count == $source_report.cross_lane_owner_route_count
+    and $operator_decision_required_count == $packet_entry_count
+    and $packet_send_blocked_count == $packet_entry_count
+    and $packet_persistence_blocked_count == $packet_entry_count
+    and $git_mutation_blocked_count == $packet_entry_count
+    and $cleanup_delete_blocked_count == $packet_entry_count
+    and $evidence_recording_blocked_count == $packet_entry_count
+    and $approval_request_blocked_count == $packet_entry_count
+    and $approval_acceptance_blocked_count == $packet_entry_count
+    and $decision_recording_blocked_count == $packet_entry_count) as $ready |
+  {
+    runtime:"hepta",
+    surface:"dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_gate",
+    schema_version:"dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_v1",
+    plugin_id:$source_report.plugin_id,
+    source_outcome_gate:$source_report.gate,
+    source_outcome_ready:$source_report.owner_freeze_classification_outcome_readback_ready,
+    source_outcome_visible:$source_report.outcome_readback_visible,
+    source_outcome_persisted:$source_report.outcome_readback_persisted,
+    source_outcome_entry_count:$source_report.outcome_entry_count,
+    source_tracked_change_count:$source_report.source_tracked_change_count,
+    source_untracked_change_count:$source_report.source_untracked_change_count,
+    lib_export_present:$lib_export_present,
+    packet_id:"dirty-worktree-owner-freeze-classification-operator-packet",
+    packet_route:"operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/v1",
+    packet_payload_hash:"sha256:dirty-worktree-owner-freeze-classification-operator-packet-no-send-no-live",
+    packet_entry_count:$packet_entry_count,
+    stable_packet_key_count:$stable_packet_key_count,
+    packet_route_count:$packet_route_count,
+    packet_ready_count:$packet_ready_count,
+    visible_unsent_unpersisted_count:$visible_unsent_unpersisted_count,
+    attached_outcome_count:$attached_outcome_count,
+    owner_attribution_packet_count:$owner_attribution_packet_count,
+    targeted_gate_packet_count:$targeted_gate_packet_count,
+    owned_lane_freeze_packet_count:$owned_lane_freeze_packet_count,
+    artifact_classification_packet_count:$artifact_classification_packet_count,
+    hepta_systems_owner_route_count:$hepta_systems_owner_route_count,
+    cross_lane_owner_route_count:$cross_lane_owner_route_count,
+    operator_decision_required_count:$operator_decision_required_count,
+    packet_send_blocked_count:$packet_send_blocked_count,
+    packet_persistence_blocked_count:$packet_persistence_blocked_count,
+    git_mutation_blocked_count:$git_mutation_blocked_count,
+    cleanup_delete_blocked_count:$cleanup_delete_blocked_count,
+    evidence_recording_blocked_count:$evidence_recording_blocked_count,
+    approval_request_blocked_count:$approval_request_blocked_count,
+    approval_acceptance_blocked_count:$approval_acceptance_blocked_count,
+    decision_recording_blocked_count:$decision_recording_blocked_count,
+    operator_packet_visible:$ready,
+    operator_packet_sent:false,
+    operator_packet_persisted:false,
+    packet_payload_persisted:false,
+    readback_persisted:false,
+    owner_assignment_persisted:false,
+    freeze_applied:false,
+    classification_persisted:false,
+    test_probe_executed:false,
+    evidence_recorded:false,
+    approval_requested:false,
+    approval_accepted:false,
+    decision_recorded:false,
+    strategy_applied:false,
+    git_index_mutated:false,
+    cleanup_allowed:false,
+    delete_allowed:false,
+    release_cutover_allowed:false,
+    package_or_release_allowed:false,
+    canary_activation_allowed:false,
+    live_activation_allowed:false,
+    live_execution_allowed:false,
+    operator_packet_without_send_ready:$ready,
+    entries:$entries,
+    blockers:[
+      "operator_packet_send_blocked",
+      "operator_packet_persistence_blocked",
+      "operator_packet_payload_persistence_blocked",
+      "operator_packet_readback_persistence_blocked",
+      "owner_assignment_persistence_blocked",
+      "freeze_application_blocked",
+      "classification_persistence_blocked",
+      "test_probe_execution_blocked",
+      "git_mutation_blocked",
+      "cleanup_and_delete_blocked",
+      "evidence_recording_blocked",
+      "approval_request_blocked",
+      "approval_acceptance_blocked",
+      "decision_recording_blocked",
+      "release_cutover_blocked",
+      "canary_activation_blocked",
+      "live_activation_blocked"
+    ],
+    next_actions:[
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation"
+    ],
+    recommended_next_gate:"dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      packet_sent:false,
+      packet_persisted:false,
+      packet_payload_persisted:false,
+      readback_persisted:false,
+      owner_assignment_persisted:false,
+      freeze_applied:false,
+      classification_persisted:false,
+      test_probe_executed:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      decision_recorded:false,
+      decision_recording_persisted:false,
+      git_add_performed:false,
+      git_index_mutated:false,
+      git_commit_created:false,
+      git_push_performed:false,
+      git_reset_performed:false,
+      git_checkout_performed:false,
+      git_revert_performed:false,
+      cleanup_performed:false,
+      unrelated_file_deleted:false,
+      strategy_applied:false,
+      blocker_waived:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      canary_activation_started:false,
+      live_activation_started:false,
+      live_execution_started:false
+    }
+  }'

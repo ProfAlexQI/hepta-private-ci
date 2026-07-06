@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-distribution-manifest-readback-report.sh"
+ATTACHMENT_GATE="$ROOT/scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-package-channel-final-index-delivery-receipt-signing-distribution-manifest-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_DISTRIBUTION_MANIFEST_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-terminal-public-claim-delivery-receipt-signing-distribution-manifest-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable artifact signing receipt distribution/manifest readback report: $REPORT"
+[[ -x "$ATTACHMENT_GATE" ]] || fail "missing executable artifact signing receipt distribution/manifest attachment gate: $ATTACHMENT_GATE"
+[[ -f "$DOC" ]] || fail "missing artifact signing receipt distribution/manifest readback architecture note: $DOC"
+
+grep -q 'Artifact Signing Receipt Distribution Artifact/Manifest Status Readback' "$DOC" \
+  || fail "architecture note must document Artifact Signing Receipt Distribution Artifact/Manifest Status Readback"
+grep -q 'ready-but-blocked' "$DOC" \
+  || fail "architecture note must document ready-but-blocked status"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that readback does not invoke distribution/manifest gates"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_readback"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_readback_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_readback_blocked == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_attachment_attached == true
+  and .artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_denial_gate_present == true
+  and .artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_denial_doc_present == true
+  and .artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_denial_gate_invoked == false
+  and .distribution_artifact_manifest_status_recorded == false
+  and .distribution_artifact_manifest_status_persisted == false
+  and .distribution_artifact_status_exposed == false
+  and .manifest_status_exposed == false
+  and .package_manifest_materialized == false
+  and .release_manifest_published == false
+  and .external_status_sent == false
+  and .telegram_status_sent == false
+  and .operator_approval_from_manifest_status_derived == false
+  and .release_publication_authority_from_manifest_status_derived == false
+  and .activation_authority_from_manifest_status_derived == false
+  and .install_from_manifest_status_executed == false
+  and .active_binary_from_manifest_status_mutated == false
+  and .provider_invoked == false
+  and .credential_read == false
+  and .readback_check_count == 144
+  and .readback_blocker_count == 144
+  and .terminal_live_url_required == false
+  and .long_soak_required == false
+  and .public_ga_claim_allowed == false
+  and .public_release_published == false
+  and .next_migration_step == "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_distribution_artifact_manifest_status_final_index_without_package_channel"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$ATTACHMENT_GATE" >/dev/null
+
+printf 'hepta-systems-terminal-public-claim-delivery-receipt-signing-distribution-manifest-readback-gate: PASS: artifact signing receipt distribution/manifest readback is ready but blocked\n'

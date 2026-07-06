@@ -1,9 +1,13 @@
-use hepta_core::{DoctorCheckOutcome, DoctorReportV2, ModelRef};
+use hepta_core::DoctorCheckOutcome;
+use hepta_core::DoctorReportV2;
+use hepta_core::ModelRef;
 
-use super::{
-    DoctorCheck, DoctorProviderProbe, DoctorReport, DoctorStatus,
-    runtime_metrics::DoctorRuntimeStats, v2,
-};
+use super::DoctorCheck;
+use super::DoctorProviderProbe;
+use super::DoctorReport;
+use super::DoctorStatus;
+use super::runtime_metrics::DoctorRuntimeStats;
+use super::v2;
 
 pub(super) fn build_legacy_report(
     overall_status: DoctorStatus,

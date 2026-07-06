@@ -98,6 +98,17 @@ inputHeavyScreen
 !inputHeavyScreen || !hadLiveData
 ["INPUT", "TEXTAREA", "SELECT"]
 focus-workspace
+data-control-ui-product-first
+data-control-ui-primary-path="telegram-chat-shell"
+data-control-ui-status-trust-strip="local-safe-review"
+data-control-ui-telegram-shell="true"
+data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow"
+data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search"
+data-control-ui-secondary-map="collapsed"
+data-control-ui-runtime-rail="local-review-safety-evidence"
+data-control-ui-secondary-nav="collapsed"
+data-control-ui-composer-product-first="true"
+data-control-ui-composer-more="collapsed"
 data-thread-signature
 Telegram-style multi-agent chat
 data-chat-search
@@ -346,6 +357,13 @@ hepta-core::control_ui
 data-rust-frontend-renderer
 data-js-artifacts="removed"
 data-no-js-frontend="true"
+data-control-ui-runtime-rail="local-review-safety-evidence"
+data-control-ui-secondary-nav="collapsed"
+data-control-ui-composer-product-first="true"
+data-control-ui-composer-more="collapsed"
+data-control-ui-work-rail="product-first"
+data-control-ui-compact-product-path="narrow-mobile"
+data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow"
 postJson("/api/task-replay"
 activeScreen = screenFromRoute()
 data-minimal-consumer-workspace
@@ -381,6 +399,10 @@ pub const CONTROL_UI_HEPTA_AGENT_LOGO_PNG: &[u8] =
     include_bytes!("../../../apps/hepta-control-ui/assets/hepta-agent-logo.png");
 pub const CONTROL_UI_README: &str = include_str!("../../../apps/hepta-control-ui/README.md");
 pub const CONTROL_UI_SMOKE_SH: &str = include_str!("../../../scripts/hepta-control-ui-smoke.sh");
+pub const CONTROL_UI_BROWSER_SMOKE_SH: &str =
+    include_str!("../../../scripts/hepta-browser-visual-smoke.sh");
+pub const CONTROL_UI_BROWSER_RUNNER_SMOKE_SH: &str =
+    include_str!("../../../scripts/hepta-control-ui-browser-smoke.sh");
 pub const CONTROL_UI_FUNCTIONAL_SMOKE_MJS: &str = r###"Rust-native retired Node smoke marker: functional-smoke
 Hepta Control UI functional smoke passed
 10k message search exceeded budget
@@ -1011,7 +1033,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         .contains("data-hepta_runtime-ui-parity")
         && CONTROL_UI_INDEX_HTML.contains("topnav-shell")
         && CONTROL_UI_INDEX_HTML.contains("shell-nav")
-        && CONTROL_UI_STYLES_CSS.contains("HeptaRuntime-style")
+        && CONTROL_UI_STYLES_CSS.contains(".shell--hepta-premium")
         && CONTROL_UI_STYLES_CSS.contains("--accent: #e5243b")
         && CONTROL_UI_STYLES_CSS.contains(".topbar")
         && CONTROL_UI_STYLES_CSS.contains(".shell-nav")
@@ -1043,7 +1065,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         && CONTROL_UI_STYLES_CSS.contains(".command-palette");
     let app_has_premium_consumer_ui = CONTROL_UI_INDEX_HTML.contains("data-premium-consumer-ui")
         && CONTROL_UI_INDEX_HTML.contains("linear-raycast-vercel-arc")
-        && CONTROL_UI_STYLES_CSS.contains("Premium consumer-grade redesign")
+        && CONTROL_UI_STYLES_CSS.contains(".shell--hepta-premium")
         && CONTROL_UI_STYLES_CSS.contains("--premium-bg")
         && CONTROL_UI_STYLES_CSS.contains("--premium-tint")
         && CONTROL_UI_STYLES_CSS.contains("--premium-card");
@@ -1072,7 +1094,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         .contains("data-minimal-consumer-workspace")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("focus-workspace")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-thread-signature")
-        && CONTROL_UI_STYLES_CSS.contains("Hard-reset focus workspace")
+        && CONTROL_UI_STYLES_CSS.contains(".focus-workspace")
         && CONTROL_UI_STYLES_CSS.contains(".focus-workspace")
         && CONTROL_UI_STYLES_CSS.contains("body[data-view=\"chat\"] .shell--hepta-premium .topbar")
         && CONTROL_UI_STYLES_CSS
@@ -1271,7 +1293,7 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         && !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.confirm(")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("localStorage")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("seenConversationTimestamps")
-        && CONTROL_UI_STYLES_CSS.contains("Telegram-style multi-agent workspace")
+        && CONTROL_UI_STYLES_CSS.contains(".telegram-chat-shell")
         && CONTROL_UI_STYLES_CSS.contains(".tg-search-shell")
         && CONTROL_UI_STYLES_CSS.contains(".tg-inline-create")
         && CONTROL_UI_STYLES_CSS.contains(".tg-row-action-tray")
@@ -1324,7 +1346,9 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         .contains("bounded-grouped-reply-width")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("data-chat-grouped-replies")
         && CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-grouped-message-max-width")
-        && CONTROL_UI_STYLES_CSS.contains("overflow-wrap: anywhere");
+        && CONTROL_UI_STYLES_CSS
+            .contains("width:min(100%,var(--hepta_runtime-2026-5-2-grouped-message-max-width))")
+        && !CONTROL_UI_STYLES_CSS.contains("overflow-wrap: anywhere");
     let app_has_ios_pwa_bounds_guard = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("dynamic-viewport-bounds")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("safe-area-inset-bottom")
@@ -1468,26 +1492,28 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
         CONTROL_UI_README.contains("Rust/no-JS contract smoke"),
         CONTROL_UI_RUST_RENDERER_MARKERS.len() < 327_000,
-        CONTROL_UI_STYLES_CSS.len() < 105_000,
+        CONTROL_UI_STYLES_CSS.len() < 108_000,
         !CONTROL_UI_RUST_RENDERER_MARKERS.contains("window.alert("),
     ];
     let p5_checks = [
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("Hepta Control UI browser smoke passed"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("playwright"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("desktop"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("narrow"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("mobile"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("screenshot"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("data-telegram-multi-agent-chat"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("data-ui-convergence-ledger"),
-        CONTROL_UI_BROWSER_SMOKE_MJS.contains("chat search should retain focus in browser"),
-        CONTROL_UI_SMOKE_SH.contains("control_ui_report_is_complete_and_asset_backed"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("Hepta browser visual smoke passed"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("chrome-headless"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("capture_viewport \"desktop\""),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("capture_viewport \"narrow\""),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("capture_viewport \"mobile\""),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("--screenshot"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("data-telegram-multi-agent-chat"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("id=\"command-palette\""),
+        CONTROL_UI_BROWSER_RUNNER_SMOKE_SH.contains("--serve-ui"),
+        CONTROL_UI_SMOKE_SH.contains("hepta-control-ui-browser-smoke.sh"),
     ];
     let p6_checks = [
-        CONTROL_UI_RELEASE_SMOKE_MJS.contains("Hepta Control UI release smoke passed"),
-        CONTROL_UI_RELEASE_SMOKE_MJS.contains("browser screenshot manifest"),
-        CONTROL_UI_RELEASE_SMOKE_MJS.contains("desktop should show Workspace Room"),
-        CONTROL_UI_RELEASE_SMOKE_MJS.contains("mobile should hide Workspace Room"),
+        CONTROL_UI_BROWSER_RUNNER_SMOKE_SH
+            .contains("Hepta Control UI browser screenshot gate passed"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("screenshots"),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("viewport:\"1365x900\""),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("viewport:\"768x900\""),
+        CONTROL_UI_BROWSER_SMOKE_SH.contains("viewport:\"500x844\""),
         CONTROL_UI_P0_P6_RELEASE_DOC.contains("Hepta Control UI P0-P6 Convergence"),
         CONTROL_UI_P0_P6_RELEASE_DOC.contains("Operator walkthrough"),
         CONTROL_UI_P0_P6_RELEASE_DOC.contains("Screenshot manifest"),
@@ -2257,7 +2283,7 @@ pub fn control_ui_index_html() -> String {
         .iter()
         .map(|command| {
             let runner = if command.command.starts_with('/') && !command.command.contains('<') {
-                "<button class=\"button small\" data-run-command=\"read-only\">Run read-only</button>"
+                "<button class=\"button small\" data-control-ui-action-control=\"read-only-command\" data-run-command=\"read-only\" aria-label=\"Run read-only command\" title=\"Run read-only command\">Run read-only</button>"
             } else {
                 "<span class=\"chip chip--muted\">copy-only / guarded</span>"
             };
@@ -2274,13 +2300,21 @@ pub fn control_ui_index_html() -> String {
 
     let right_sidebar = render_static_hepta_right_sidebar(logo);
     let entry_surface = render_static_hepta_entry_surface(&screens, &screen_cards);
+    let product_path = render_static_hepta_product_path();
+    let secondary_workspace_map = format!(
+        "<details class=\"hepta-secondary-map\" data-control-ui-secondary-map=\"collapsed\"><summary><span>Workspace map</span><strong>All flows and diagnostics</strong></summary><div class=\"hepta-secondary-map__body\">{}</div></details>",
+        entry_surface
+    );
     let command_palette_items = commands
         .iter()
         .take(18)
         .map(|command| {
             format!(
-                "<a class=\"command-palette__item\" href=\"#commands\" data-palette-kind=\"command\" data-palette-id=\"{}\"><span class=\"command-palette__kind\">command</span><span class=\"command-palette__copy\"><strong>{}</strong><small>{}</small></span></a>",
+                r##"<a class="command-palette__item" data-control-ui-command-palette-item="{}" data-control-ui-command-palette-result="light-glass" href="#commands" data-palette-kind="command" data-palette-id="{}" aria-label="Open command result: {}" title="Open command result: {}"><span class="command-palette__kind"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg><span>command</span></span><span class="command-palette__copy"><strong>{}</strong><small>{}</small></span></a>"##,
                 escape_html(command.id),
+                escape_html(command.id),
+                escape_html(command.command),
+                escape_html(command.command),
                 escape_html(&control_ui_title_from_id(command.id)),
                 escape_html(command.command)
             )
@@ -2298,49 +2332,51 @@ pub fn control_ui_index_html() -> String {
     <meta name="hepta-ui-renderer" content="rust-no-js" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-view="chat" data-rust-rendered-control-ui="true" data-hepta-route-surface-first="false">
+  <body data-view="chat" data-rust-rendered-control-ui="true" data-hepta-route-surface-first="false" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-control-ui-telegram-shell="true" data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow" data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search">
+    <svg class="hepta-icon-sprite" aria-hidden="true" focusable="false"><symbol id="hepta-icon-chat" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></symbol><symbol id="hepta-icon-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol><symbol id="hepta-icon-panels" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol><symbol id="hepta-icon-spark" viewBox="0 0 24 24"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></symbol><symbol id="hepta-icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol><symbol id="hepta-icon-command" viewBox="0 0 24 24"><path d="M9 9h6v6H9z"/><path d="M9 9H6.5A2.5 2.5 0 1 1 9 6.5z"/><path d="M15 9V6.5A2.5 2.5 0 1 1 17.5 9z"/><path d="M15 15h2.5A2.5 2.5 0 1 1 15 17.5z"/><path d="M9 15v2.5A2.5 2.5 0 1 1 6.5 15z"/></symbol><symbol id="hepta-icon-paperclip" viewBox="0 0 24 24"><path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></symbol><symbol id="hepta-icon-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol><symbol id="hepta-icon-plan" viewBox="0 0 24 24"><path d="M9 11l2 2 4-5"/><path d="M20 6 9 17l-5-5"/></symbol><symbol id="hepta-icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></symbol><symbol id="hepta-icon-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></symbol><symbol id="hepta-icon-reply" viewBox="0 0 24 24"><path d="m9 17-6-6 6-6"/><path d="M3 11h12a6 6 0 0 1 6 6v1"/></symbol><symbol id="hepta-icon-scroll" viewBox="0 0 24 24"><path d="M12 4v16"/><path d="m8 8 4-4 4 4"/><path d="m16 16-4 4-4-4"/></symbol><symbol id="hepta-icon-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6Z"/></symbol><symbol id="hepta-icon-file-check" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-5"/></symbol><symbol id="hepta-icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 1 1 5.1 2.2c-.9.7-1.5 1.2-1.7 2.3"/><path d="M12 17h.01"/></symbol><symbol id="hepta-icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol></svg>
     <div class="shell shell--hepta-premium" data-hepta_runtime-ui-parity="true" data-premium-consumer-ui="linear-raycast-vercel-arc" data-rust-frontend-renderer="true" data-js-artifacts="removed">
       <aside class="shell-nav sidebar" aria-label="Hepta navigation">
         <div class="brand app-brand"><div class="brand-mark app-brand__mark" data-hepta-agent-logo="true">{logo}</div><div class="app-brand__text"><p class="eyebrow">Control UI</p><h1>Hepta</h1></div></div>
         <nav class="nav nav-group nav-group--primary shell-nav__list" id="hepta-nav" aria-label="Control UI sections">
-          <a class="active" data-screen="chat" href="#chat"><span>◌</span><span>Chat</span></a>
-          <a data-screen="tasks" href="#tasks"><span>☷</span><span>Tasks</span></a>
-          <a data-screen="ops" href="#ops"><span>▣</span><span>Ops</span></a>
-          <a data-screen="external-agent-benchmark" href="#external-agent-benchmark"><span>✧</span><span>Benchmark</span></a>
+          <a class="active" data-screen="chat" href="#chat"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-chat"/></svg></span><span>Chat</span></a>
+          <a data-screen="tasks" href="#tasks"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span>Tasks</span></a>
+          <a data-screen="ops" href="#ops"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span>Ops</span></a>
+          <a data-screen="external-agent-benchmark" href="#external-agent-benchmark"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-spark"/></svg></span><span>Benchmark</span></a>
         </nav>
       </aside>
-      <header class="topbar"><div class="topnav-shell"><div class="topnav-shell__content"><div class="dashboard-header"><div class="dashboard-header__breadcrumb"><span class="dashboard-header__breadcrumb-link">Hepta</span><span class="dashboard-header__breadcrumb-sep">/</span><span class="dashboard-header__breadcrumb-current">Rust frontend</span></div><div class="topbar-status topbar-status--quiet" data-control-ui-readiness-split="sample-vs-live-adapter"><span class="pill"><span class="statusDot"></span><span>Rust no-JS</span></span><span class="pill" data-readiness-kind="sample">sample ready</span><span class="pill pill--muted" data-readiness-kind="live-adapter">live adapter gated</span></div></div></div><div class="topnav-shell__actions"><a class="topbar-search" data-open-command-palette href="#command-palette"><span class="topbar-search__label">Jump to commands</span><span class="topbar-search__kbd">⌘K</span></a><a class="btn btn--primary" href="#task-publisher">New Task</a></div></div></header>
+      <header class="topbar"><div class="topnav-shell"><div class="topnav-shell__content"><div class="dashboard-header"><div class="dashboard-header__breadcrumb"><span class="dashboard-header__breadcrumb-link">Hepta</span><span class="dashboard-header__breadcrumb-sep">/</span><span class="dashboard-header__breadcrumb-current">Workspace</span></div><div class="topbar-status topbar-status--quiet" data-control-ui-readiness-split="sample-vs-live-adapter"><span class="pill"><span class="statusDot"></span><span>Local preview</span></span><span class="pill" data-readiness-kind="sample">safe</span><span class="pill pill--muted" data-readiness-kind="live-adapter">live actions gated</span></div></div></div><div class="topnav-shell__actions"><a class="topbar-search" data-open-command-palette data-control-ui-topbar-action="light-glass" href="#command-palette" aria-label="Open command palette" title="Open command palette"><span class="topbar-search__label">Jump to work</span><span class="topbar-search__kbd" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span></a><a class="btn btn--primary" data-control-ui-action-control="new-task" data-control-ui-topbar-action="light-glass" href="#task-publisher" aria-label="Create new task" title="Create new task"><span class="hepta-ui-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plus"/></svg></span><span>New Task</span></a></div></div></header>
       <main class="content main">
-        <section class="hero dashboard-hero" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true"><div><p class="eyebrow">Runtime control</p><h2>Chat-first runtime control.</h2><p class="hero-copy">The Control UI keeps the former JS visual architecture but is now pre-rendered from <code>hepta-core::control_ui</code>.</p></div><div class="hero-actions"><a class="button primary btn btn--primary" href="/api/control-ui">Status JSON</a><a class="button btn" href="/api/ui-contract-audit">Audit JSON</a></div></section>
-        <section class="metric-grid stats-grid" id="hepta-metrics" aria-label="UI health metrics"><article class="metric-card"><span>screens</span><strong>{screen_count}/{screen_count}</strong><p>Rust generated</p></article><article class="metric-card"><span>commands</span><strong>{command_count}</strong><p>Read-only/copy-only contracts</p></article><article class="metric-card"><span>renderer</span><strong>Rust</strong><p>HTML/CSS only, no JS</p></article><article class="metric-card"><span>alignment</span><strong>JS DOM parity</strong><p>Chat-first shell restored</p></article></section>
-        <section class="hepta-dashboard-recovery" data-dashboard-recovery-panel="blank-app-module" data-dashboard-recovery-source="rust-static-fallback" data-nodes-poll-scope="active-tab-only" data-nodes-poll-autostart="false" aria-label="Dashboard recovery"><strong>Recovery panel</strong><span>blank module fallback</span><a href="/api/ui-contract-audit">Audit</a></section>
+        <section class="hero dashboard-hero" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true"><div><p class="eyebrow">AI workspace</p><h2>Ask, plan, inspect evidence, and approve.</h2><p class="hero-copy">Hepta keeps agent work in a local, inspectable workspace before any live action is allowed.</p></div><div class="hero-actions"><a class="button primary btn btn--primary" href="/api/control-ui">Status</a><a class="button btn" href="/api/ui-contract-audit">Safety audit</a></div></section>
+        <section class="metric-grid stats-grid" id="hepta-metrics" aria-label="UI health metrics"><article class="metric-card"><span>workflows</span><strong>{screen_count}/{screen_count}</strong><p>ready locally</p></article><article class="metric-card"><span>commands</span><strong>{command_count}</strong><p>review or copy only</p></article><article class="metric-card"><span>safety</span><strong>Local</strong><p>live actions gated</p></article><article class="metric-card"><span>workspace</span><strong>Chat-first</strong><p>clear thread and task flow</p></article></section>
+        <section class="hepta-dashboard-recovery" data-dashboard-recovery-panel="blank-app-module" data-dashboard-recovery-source="rust-static-fallback" data-nodes-poll-scope="active-tab-only" data-nodes-poll-autostart="false" aria-label="Local safeguard"><strong>Local safeguard</strong><span>ready</span><a href="/api/ui-contract-audit">Inspect</a></section>
         <section class="workspace dashboard-grid"><section class="panel card wide" id="hepta-screen-panel" aria-live="polite">
-          <section class="focus-workspace telegram-chat-shell" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true" data-mobile-layered-chat="true" data-professional-first-screen="true" data-product-ia="calm-workspace" data-workspace-primary="thread" data-chat-mobile-active-pane="thread" data-chat-workspace-scope="local" data-chat-brain-scope="global" data-chat-shared-brain-mode="global-brain-isolated-context">
-            <header class="focus-header"><div class="focus-brand"><div class="focus-orb" data-hepta-agent-logo="true">{logo}</div><span>Hepta</span></div><div class="focus-actions prompt-chip-row"><a class="ghost-action" data-open-command-palette href="#command-palette">⌘K</a></div></header>
+          <section class="focus-workspace telegram-chat-shell" data-chat-first-architecture="true" data-minimal-consumer-workspace="true" data-telegram-multi-agent-chat="true" data-control-ui-telegram-shell="true" data-control-ui-top-design-referee="liquid-glass-2026-wcag22-320-reflow" data-control-ui-harsh-referee="2026-06-08-liquid-glass-menus-sidebars-scroll-search" data-mobile-layered-chat="true" data-professional-first-screen="true" data-product-ia="telegram-chat-shell" data-control-ui-product-first="true" data-control-ui-primary-path="telegram-chat-shell" data-workspace-primary="thread" data-chat-mobile-active-pane="thread" data-chat-workspace-scope="local" data-chat-brain-scope="global" data-chat-shared-brain-mode="global-brain-isolated-context">
+            <header class="focus-header"><div class="focus-brand"><div class="focus-orb" data-hepta-agent-logo="true">{logo}</div><span>Hepta</span></div><div class="focus-actions prompt-chip-row"><a class="ghost-action" data-open-command-palette href="#command-palette" aria-label="Open command palette" title="Open command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></a></div></header>
             <main class="focus-main focus-main--chat">
-              <aside class="tg-conversation-rail">
-                <div class="tg-rail-header"><div><h2>Work</h2></div><div class="tg-rail-status tg-rail-status--minimal"><button class="tg-icon-action" data-chat-add aria-label="New conversation">＋</button><span class="tg-rail-status__item tg-rail-status__item--quiet" data-rail-agent-count="3">3</span></div></div>
-                <div class="tg-rail-toolbar"><label class="tg-search-shell" aria-label="Search chats"><input id="chat-search" data-chat-search type="search" placeholder="Search conversations…" value="" /></label></div>
-                <div class="tg-folder-row" aria-label="Chat folders"><button class="tg-folder-chip active" data-chat-folder="all"><span>All</span></button><button class="tg-folder-chip" data-chat-folder="pinned"><span>Pinned</span></button><button class="tg-folder-chip" data-chat-folder="archived"><span>Archived</span></button></div>
+              <aside class="tg-conversation-rail" data-control-ui-work-rail="product-first">
+                <div class="tg-rail-header"><div><h2>Chats</h2></div><div class="tg-rail-status tg-rail-status--minimal"><button class="tg-icon-action" data-control-ui-icon-button="new-conversation" data-chat-add aria-label="New conversation" title="New conversation"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-plus"/></svg></button><span class="tg-rail-status__item tg-rail-status__item--quiet" data-rail-agent-count="3">3</span></div></div>
+                <div class="tg-rail-toolbar"><label class="tg-search-shell" aria-label="Search chats"><input id="chat-search" data-chat-search data-control-ui-rail-search-input="light-glass" type="search" placeholder="Search" value="" aria-label="Search chats" title="Search chats" /></label></div>
+                <div class="tg-folder-row" aria-label="Chat folders"><button class="tg-folder-chip active" data-chat-folder="all" aria-pressed="true" aria-label="All chats" title="All chats"><span>All</span></button><button class="tg-folder-chip" data-chat-folder="pinned" aria-pressed="false" aria-label="Pinned chats" title="Pinned chats"><span>Pinned</span></button><button class="tg-folder-chip" data-chat-folder="archived" aria-pressed="false" aria-label="Archived chats" title="Archived chats"><span>Archived</span></button></div>
                 <section class="tg-conversation-list" aria-label="Agent conversations" role="listbox">
-                  <article class="tg-chat-item active" data-chat-conversation="ui-chat-agent" role="option" aria-selected="true" tabindex="0"><div class="tg-chat-item__avatar tg-chat-item__avatar--hepta-logo" data-hepta-agent-logo="true">{logo}</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Hepta Runtime</strong><div class="tg-chat-item__actions"><span>now</span></div></div><p class="is-unread">Rust/no-JS chat workspace restored with the old visual shell.</p><span class="tg-chat-item__unread" data-chat-unread="1">1</span></div></article>
-                  <article class="tg-chat-item" data-chat-conversation="task-queue" role="option" aria-selected="false" tabindex="0"><div class="tg-chat-item__avatar" aria-hidden="true">☷</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Task queue</strong><div class="tg-chat-item__actions"><span>local</span></div></div><p>/tasks · /subagents · guarded queue operations.</p></div></article>
-                  <article class="tg-chat-item" data-chat-conversation="operator-plane" role="option" aria-selected="false" tabindex="0"><div class="tg-chat-item__avatar" aria-hidden="true">▣</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Operator plane</strong><div class="tg-chat-item__actions"><span>ready</span></div></div><p>/status · /diagnostics · events and approvals.</p></div></article>
+                  <article class="tg-chat-item active" data-chat-conversation="ui-chat-agent" role="option" aria-selected="true" tabindex="0" aria-label="Hepta conversation, local review ready" title="Hepta conversation, local review ready"><div class="tg-chat-item__avatar tg-chat-item__avatar--hepta-logo" data-hepta-agent-logo="true">{logo}</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Hepta</strong><div class="tg-chat-item__actions"><span>now</span><button class="tg-row-menu-toggle active" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="ui-chat-agent" aria-label="Open Hepta conversation actions" title="Open Hepta conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p class="is-unread">Plan is ready in the thread. Review the evidence before approval.</p><span class="tg-chat-item__unread" data-chat-unread="1" data-control-ui-micro-surface="unread-count">1</span></div><div class="tg-row-action-popover" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="ui-chat-agent" role="menu" aria-label="Hepta conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" role="menuitem" aria-label="Pin Hepta conversation" title="Pin Hepta conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-evidence" role="menuitem" aria-label="Open Hepta evidence" title="Open Hepta evidence"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-row-action__label">Evidence</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Hepta conversation" title="Archive Hepta conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
+                  <article class="tg-chat-item" data-chat-conversation="task-queue" role="option" aria-selected="false" tabindex="0" aria-label="Actions conversation, local approval queue" title="Actions conversation, local approval queue"><div class="tg-chat-item__avatar" aria-hidden="true">A</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Actions</strong><div class="tg-chat-item__actions"><span>local</span><button class="tg-row-menu-toggle" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="task-queue" aria-label="Open Actions conversation actions" title="Open Actions conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Pending steps are waiting for an exact approval.</p></div><div class="tg-row-action-popover" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="task-queue" role="menu" aria-label="Actions conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" role="menuitem" aria-label="Pin Actions conversation" title="Pin Actions conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-approvals" role="menuitem" aria-label="Open Actions approvals" title="Open Actions approvals"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plan"/></svg></span><span class="tg-row-action__label">Approvals</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Actions conversation" title="Archive Actions conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
+                  <article class="tg-chat-item" data-chat-conversation="operator-plane" role="option" aria-selected="false" tabindex="0" aria-label="Evidence conversation, sources ready" title="Evidence conversation, sources ready"><div class="tg-chat-item__avatar" aria-hidden="true">E</div><div class="tg-chat-item__body"><div class="tg-chat-item__topline"><strong>Evidence</strong><div class="tg-chat-item__actions"><span>ready</span><button class="tg-row-menu-toggle" data-control-ui-row-menu-trigger="light-glass" data-chat-row-menu-toggle="operator-plane" aria-label="Open Evidence conversation actions" title="Open Evidence conversation actions"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-more"/></svg></button></div></div><p>Sources, decisions, and safety notes stay attached to the chat.</p></div><div class="tg-row-action-popover" data-control-ui-row-menu-panel="light-glass" data-chat-row-menu-panel="operator-plane" role="menu" aria-label="Evidence conversation actions"><button class="tg-row-action" data-chat-row-menu-item="pin" role="menuitem" aria-label="Pin Evidence conversation" title="Pin Evidence conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-row-action__label">Pin</span></button><button class="tg-row-action" data-chat-row-menu-item="open-sources" role="menuitem" aria-label="Open Evidence sources" title="Open Evidence sources"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-row-action__label">Sources</span></button><button class="tg-row-action tg-row-action--danger" data-chat-row-menu-item="archive" role="menuitem" aria-label="Archive Evidence conversation" title="Archive Evidence conversation"><span class="tg-row-action__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-close"/></svg></span><span class="tg-row-action__label">Archive</span></button></div></article>
                 </section>
               </aside>
               <section class="tg-thread-panel" data-hepta-main-panel-active="false">
-                <header class="tg-thread-header"><div class="tg-thread-header__main"><div class="tg-thread-avatar tg-thread-avatar--hepta-logo" data-hepta-agent-logo="true" aria-label="Hepta agent logo">{logo}</div><div><h2>Hepta Runtime</h2><p>active now</p></div></div><div class="tg-thread-status"><div class="tg-thread-status-summary" data-session-status-badges="compact"><span class="badge ok">Rust no-JS</span><span class="badge">chat-first</span><span class="badge tg-session-state tg-session-state--live" data-session-status="live">live</span><span class="badge tg-session-state tg-session-state--idle" data-session-status="idle">idle</span><span class="badge tg-session-state tg-session-state--terminal" data-session-status="terminal">terminal</span></div><details class="tg-thread-command-menu" data-thread-command-menu="true"><summary>More</summary><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls"><a class="tg-header-action" href="#transcript">History</a><a class="tg-header-action" href="#tasks">Tasks</a><a class="tg-header-action" href="#sessions">Sessions</a></div></details></div></header>
-                {entry_surface}
+                <header class="tg-thread-header"><div class="tg-thread-header__main"><div class="tg-thread-avatar tg-thread-avatar--hepta-logo" data-hepta-agent-logo="true" aria-label="Hepta agent logo">{logo}</div><div><h2>Hepta</h2><p>local review ready</p></div></div><div class="tg-thread-status"><div class="tg-thread-status-summary" data-session-status-badges="compact" data-control-ui-status-trust-strip="local-safe-review" role="group" aria-label="Thread status trust"><span class="badge ok" data-control-ui-status-trust-badge="local" data-control-ui-micro-surface="thread-status-local" aria-label="Local trust status" title="Local trust status">Local</span><span class="badge" data-control-ui-status-trust-badge="safe-review" data-control-ui-micro-surface="thread-status-safe-review" aria-label="Safe review status" title="Safe review status">safe review</span><span data-control-ui-micro-surface="thread-status-session" class="badge tg-session-state tg-session-state--live" data-session-status="live">live</span><span data-control-ui-micro-surface="thread-status-session" class="badge tg-session-state tg-session-state--idle" data-session-status="idle">idle</span><span data-control-ui-micro-surface="thread-status-session" class="badge tg-session-state tg-session-state--terminal" data-session-status="terminal">terminal</span></div><a class="tg-icon-action tg-command-palette-trigger" data-open-command-palette data-control-ui-command-palette-trigger="light-glass" href="#command-palette" aria-label="Open command palette" title="Open command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></a><details class="tg-thread-command-menu" data-thread-command-menu="true" name="control-ui-tools-menu"><summary data-control-ui-menu-trigger="icon" data-control-ui-thread-tools-trigger="light-glass" aria-label="Open thread tools" title="Open thread tools"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-more"/></svg></span><span class="sr-only">More</span></summary><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls" data-control-ui-thread-tools-panel="light-glass" role="menu" aria-label="Thread tools"><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="history" href="#transcript" role="menuitem" aria-label="Open thread history" title="Open thread history"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-history"/></svg></span><span class="tg-menu-item__label">History</span></a><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="tasks" href="#tasks" role="menuitem" aria-label="Open thread tasks" title="Open thread tasks"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span class="tg-menu-item__label">Tasks</span></a><a class="tg-header-action tg-menu-item" data-control-ui-menu-item="sessions" href="#sessions" role="menuitem" aria-label="Open thread sessions" title="Open thread sessions"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span class="tg-menu-item__label">Sessions</span></a></div></details></div></header>
+                {product_path}
                 <section class="focus-thread tg-thread" aria-label="Selected conversation thread" data-thread-signature="rust-no-js-static:3">
-                  <div class="tg-date-divider" data-chat-date-divider="local-day"><span>Today</span></div>
-                  <article class="tg-message tg-message--system"><div class="tg-bubble"><span>system</span><p>Control UI is served from <code>hepta-core::control_ui</code>; browser JavaScript artifacts remain removed.</p><div class="badge-row tg-routing-badges tg-routing-badges--quiet"><span class="badge">/api/control-ui</span><span class="badge">/api/ui-contract-audit</span></div></div><small>local · now</small></article>
-                  <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>hepta</span><p>旧 JS 版的 Telegram-style conversation rail、thread header、route surface、workspace tools 和 composer skeleton 已恢复为 Rust 预渲染 DOM。</p></div><small>local · now</small></article>
-                  <article class="tg-message tg-message--self"><div class="tg-bubble"><p>Keep the UI no-JS, but make it look and feel like the previous JS workspace.</p></div><small>local · sent</small></article>
+                  <div class="tg-date-divider" data-chat-date-divider="local-day"><span data-control-ui-micro-surface="date-divider">Today</span></div>
+                  <article class="tg-message tg-message--self"><div class="tg-bubble"><span>you</span><p>全量复刻 Telegram 的 UI，不要 dashboard。</p></div><small>16:47</small></article>
+                  <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>hepta</span><p>收到。默认界面改成 Telegram 式聊天：左侧会话，中间消息流，底部只保留附件、文本和发送。</p></div><small>local · now</small></article>
+                  <article class="tg-message tg-message--agent"><div class="tg-bubble"><span>evidence</span><p>Approval, plan, and source notes stay inline in chat.</p><div class="badge-row tg-routing-badges"><span class="badge" data-control-ui-micro-surface="routing-safe-preview">safe preview</span><span class="badge" data-control-ui-micro-surface="routing-local-only">local only</span></div></div><small>local · now</small></article>
                 </section>
-                <section class="focus-compose chat-compose tg-compose-wrap" data-chat-composer-shell="telegram" data-mobile-compact-composer="true">
-                  <div class="tg-context-chip-row" data-chat-context-chip-list="true" aria-label="Attached context"><span class="tg-context-chip tg-context-chip--evidence" data-chat-context-chip="ui-parity"><span>evidence</span><strong>4465000^ JS shell</strong></span><span class="tg-context-chip" data-chat-context-chip="rust-no-js"><span>renderer</span><strong>Rust/no-JS</strong></span></div>
-                  <div class="tg-compose-bar"><button class="tg-compose-icon" data-chat-composer-popover-toggle="artifact" data-chat-attachment-placeholder aria-label="Attach local context">＋</button><button class="tg-compose-icon" data-chat-composer-popover-toggle="command" data-chat-command-shortcut aria-label="Insert command">⌘</button><select id="chat-routing-mode" class="tg-compose-mode" data-chat-routing-mode aria-label="Reply mode"><option selected>auto</option><option>direct</option><option>broadcast</option></select><textarea id="chat-message" data-chat-composer-input data-chat-enter-send spellcheck="false" rows="1" placeholder="Message Hepta Runtime…"></textarea><button class="tg-send-button" data-agent-chat-send aria-label="Send message"><span>➤</span></button></div>
-                  <div class="tg-compose-footer"><span data-chat-shortcut-hint>Enter sends · Shift+Enter newline</span><label class="tg-autoscroll-select" data-chat-autoscroll-persisted="local-storage-contract"><span>Scroll</span><select data-chat-autoscroll-mode aria-label="Auto-scroll mode"><option value="smart" selected>smart</option><option value="locked">locked</option><option value="off">off</option></select></label><button class="tg-compose-plan" data-agent-chat-plan>Plan</button><span class="tg-compose-status" data-chat-send-state="ready">ready</span></div>
+                {secondary_workspace_map}
+                <section class="focus-compose chat-compose tg-compose-wrap" data-chat-composer-shell="telegram" data-mobile-compact-composer="true" data-control-ui-composer-product-first="true">
+                  <div class="tg-context-chip-row" data-chat-context-chip-list="true" aria-label="Attached context"><span class="tg-context-chip tg-context-chip--evidence" data-chat-context-chip="ui-parity"><span>evidence</span><strong>safe preview</strong></span><span class="tg-context-chip" data-chat-context-chip="rust-no-js"><span>mode</span><strong>local</strong></span></div>
+                  <div class="tg-compose-bar"><details class="tg-composer-picker" data-chat-composer-picker="artifact" name="control-ui-composer-popover"><summary class="tg-compose-icon" data-control-ui-icon-button="attach" data-chat-composer-popover-toggle="artifact" data-chat-attachment-placeholder aria-haspopup="menu" aria-controls="composer-popover-artifact" aria-label="Attach local context" title="Attach local context"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-paperclip"/></svg></summary><div class="tg-composer-popover" id="composer-popover-artifact" data-chat-composer-popover="artifact" data-control-ui-composer-popover-panel="light-glass" role="menu" aria-label="Attach local context options"><div class="tg-composer-popover__header"><strong>Attach context</strong><span>local only</span></div><input class="tg-composer-popover__search" data-chat-composer-picker-search="artifact" data-control-ui-composer-popover-search="light-glass" type="search" placeholder="Find local context" aria-label="Search local context" title="Search local context" /><button class="tg-composer-popover__item" data-chat-artifact-insert="evidence-note" data-chat-composer-picker-item="evidence-note" role="menuitem" aria-label="Attach evidence note" title="Attach evidence note"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-paperclip"/></svg></span><span><b>Evidence note</b><small>Local source summary</small></span></button><button class="tg-composer-popover__item" data-chat-artifact-insert="decision-log" data-chat-composer-picker-item="decision-log" role="menuitem" aria-label="Attach decision log" title="Attach decision log"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-panels"/></svg></span><span><b>Decision log</b><small>Approval boundary</small></span></button></div></details><details class="tg-composer-picker" data-chat-composer-picker="command" name="control-ui-composer-popover"><summary class="tg-compose-icon" data-control-ui-icon-button="command" data-chat-composer-popover-toggle="command" data-chat-command-shortcut aria-haspopup="menu" aria-controls="composer-popover-command" aria-label="Insert command" title="Insert command"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-command"/></svg></summary><div class="tg-composer-popover" id="composer-popover-command" data-chat-composer-popover="command" data-control-ui-composer-popover-panel="light-glass" role="menu" aria-label="Insert command options"><div class="tg-composer-popover__header"><strong>Insert command</strong><span>read-only</span></div><input class="tg-composer-popover__search" data-chat-composer-picker-search="command" data-control-ui-composer-popover-search="light-glass" type="search" placeholder="Find command" aria-label="Search commands" title="Search commands" /><button class="tg-composer-popover__item" data-chat-command-insert="/control-ui --json" data-chat-composer-picker-item="control-ui-command" role="menuitem" aria-label="Insert /control-ui --json" title="Insert /control-ui --json"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span><span><b>Control UI</b><small>/control-ui --json</small></span></button><button class="tg-composer-popover__item" data-chat-command-insert="/hepta-merge-completion --json" data-chat-composer-picker-item="merge-completion-command" role="menuitem" aria-label="Insert /hepta-merge-completion --json" title="Insert /hepta-merge-completion --json"><span class="tg-composer-popover__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-list"/></svg></span><span><b>Merge completion</b><small>/hepta-merge-completion --json</small></span></button></div></details><textarea id="chat-message" data-chat-composer-input data-chat-enter-send spellcheck="false" rows="1" placeholder="Message Hepta" aria-label="Message Hepta" title="Message Hepta"></textarea><button class="tg-send-button" data-control-ui-icon-button="send" data-agent-chat-send aria-label="Send message" title="Send message"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-send"/></svg></button></div>
+                  <div class="tg-compose-footer"><span data-chat-shortcut-hint>Plan first · send after review</span><button class="tg-compose-plan" data-control-ui-icon-button="plan" data-agent-chat-plan aria-label="Plan next step" title="Plan next step"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-plan"/></svg></span><span class="sr-only">Plan</span></button><span class="tg-compose-status" data-chat-send-state="ready" data-control-ui-micro-surface="composer-status-ready">safe preview</span><details class="tg-thread-command-menu" data-control-ui-composer-more="collapsed" name="control-ui-tools-menu"><summary data-control-ui-menu-trigger="icon" data-control-ui-composer-tools-trigger="light-glass" aria-label="Open composer tools" title="Open composer tools"><span class="tg-menu-icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-more"/></svg></span><span class="sr-only">More</span></summary><div class="tg-thread-command-menu__panel tg-thread-search-bar__controls" data-control-ui-composer-tools-panel="light-glass" role="menu" aria-label="Composer tools"><label class="tg-autoscroll-select tg-menu-item" data-control-ui-composer-tool-item="reply-mode" data-control-ui-menu-item="reply-mode" role="menuitem" aria-label="Set reply mode" title="Set reply mode"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-reply"/></svg></span><span class="tg-menu-item__label">Reply</span><select id="chat-routing-mode" class="tg-compose-mode" data-chat-routing-mode aria-label="Reply mode" title="Reply mode"><option selected>auto</option><option>direct</option><option>broadcast</option></select></label><label class="tg-autoscroll-select tg-menu-item" data-control-ui-composer-tool-item="scroll-mode" data-control-ui-menu-item="scroll-mode" data-chat-autoscroll-persisted="local-storage-contract" role="menuitem" aria-label="Set auto-scroll mode" title="Set auto-scroll mode"><span class="tg-menu-item__icon" aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-scroll"/></svg></span><span class="tg-menu-item__label">Scroll</span><select data-chat-autoscroll-mode aria-label="Auto-scroll mode" title="Auto-scroll mode"><option value="smart" selected>smart</option><option value="locked">locked</option><option value="off">off</option></select></label></div></details></div>
                   <input id="chat-agent-id" type="hidden" value="ui-chat-agent" /><input id="chat-from-agent-id" type="hidden" value="ui-user" />
                   <details class="focus-result tg-focus-result" data-developer-output="collapsed"><summary>Developer output</summary><pre id="agent-chat-output" class="json-box">Choose a workspace, then plan or send a message.</pre></details>
                 </section>
@@ -2349,10 +2385,455 @@ pub fn control_ui_index_html() -> String {
             </main>
           </section>
         </section><section class="panel card command-rail" id="hepta-command-panel"><div class="panel-heading"><div><p class="eyebrow">Operator commands</p><h3>Copy-ready surfaces</h3></div></div><div class="command-list" id="commands">{command_cards}</div><pre id="command-runner-output" class="json-box">Pick an allowlisted command and run it locally. Template commands with &lt;task_id&gt; stay copy-only.</pre></section></section>
-        <section class="panel card wide evidence-panel" data-live-event-stream="true" data-diff-review="true" data-approval-cards="true" data-task-drilldown="true" data-transcript-preview="true" data-command-runner="true" data-task-publisher="true" data-agent-chat="true" data-external-agent-benchmark="true" data-route-view-controller="rust-anchor-routes" data-command-palette="rust-anchor-command-list"><div class="panel-heading card-header"><div><p class="eyebrow">Runtime evidence</p><h3>Rust-rendered evidence surface</h3></div></div><textarea id="json-input" spellcheck="false" placeholder="Paste runtime JSON here for manual inspection; server APIs remain available under /api/*." ></textarea><pre id="json-preview">No browser JavaScript is required for this Rust-rendered shell.</pre><aside class="terminal-qr-preview" data-terminal-qr-rendering="fixed-cell-terminal-qr" aria-label="Terminal QR rendering contract"><code>QR fixed-cell / ANSI-safe</code></aside></section>
+        <section class="panel card wide evidence-panel" data-live-event-stream="true" data-diff-review="true" data-approval-cards="true" data-task-drilldown="true" data-transcript-preview="true" data-command-runner="true" data-task-publisher="true" data-agent-chat="true" data-external-agent-benchmark="true" data-route-view-controller="rust-anchor-routes" data-command-palette="rust-anchor-command-list"><div class="panel-heading card-header"><div><p class="eyebrow">Runtime evidence</p><h3>Rust-rendered evidence surface</h3></div></div><textarea id="json-input" spellcheck="false" placeholder="Paste runtime JSON here for manual inspection; server APIs remain available under /api/*." aria-label="Paste runtime JSON for manual inspection" title="Paste runtime JSON for manual inspection"></textarea><pre id="json-preview">No browser JavaScript is required for this Rust-rendered shell.</pre><aside class="terminal-qr-preview" data-terminal-qr-rendering="fixed-cell-terminal-qr" aria-label="Terminal QR rendering contract"><code>QR fixed-cell / ANSI-safe</code></aside></section>
       </main>
     </div>
-    <div class="command-palette-backdrop" id="command-palette"><section class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette"><div class="command-palette__input-row"><span aria-hidden="true">⌘</span><input id="command-palette-input" type="search" placeholder="Static Rust command index" autocomplete="off" /><a class="button small btn btn--ghost" href="#commands">Esc</a></div><div id="command-palette-results" class="command-palette__results">{command_palette_items}</div></section></div>
+    <div class="command-palette-backdrop" id="command-palette"><section class="command-palette" data-control-ui-command-palette-surface="light-glass" role="dialog" aria-modal="true" aria-label="Command palette"><div class="command-palette__input-row"><span aria-hidden="true"><svg class="hepta-svg-icon"><use href="#hepta-icon-command"/></svg></span><input id="command-palette-input" data-control-ui-command-palette-input="light-glass" type="search" placeholder="Search" autocomplete="off" aria-label="Search command palette" title="Search command palette" /><a class="button small btn btn--ghost" data-control-ui-command-palette-close="light-glass" href="#commands" aria-label="Close command palette" title="Close command palette"><svg class="hepta-svg-icon" aria-hidden="true"><use href="#hepta-icon-close"/></svg></a></div><div id="command-palette-results" class="command-palette__results">{command_palette_items}</div></section></div>
+    <script>
+      (() => {{
+        const groupSelector = 'details[name="control-ui-tools-menu"]';
+        const composerShellSelector = '[data-chat-composer-shell="telegram"]';
+        const composerOpenAttr = "data-chat-composer-popover-open";
+        const composerPopoverSelector = "[data-chat-composer-popover]";
+        const composerToggleSelector = "[data-chat-composer-popover-toggle]";
+        const composerPickerSelector = "details.tg-composer-picker";
+        const commandPaletteHash = "#command-palette";
+        const commandPaletteInputSelector = "#command-palette-input";
+        const commandPaletteOpenSelector = "[data-open-command-palette]";
+        const commandPaletteSurfaceSelector = ".command-palette";
+        const rowMenuToggleSelector = "[data-chat-row-menu-toggle]";
+        const rowMenuPanelSelector = "[data-chat-row-menu-panel]";
+        const rowMenuOpenClass = "tg-chat-item--menu-open";
+        const keyboardOpenAttr = "data-control-ui-keyboard-open";
+        const actionMenuItemSelector = [
+          rowMenuPanelSelector + ' button[role="menuitem"]',
+          groupSelector + ' a[role="menuitem"]',
+          groupSelector + ' button[role="menuitem"]',
+          composerPopoverSelector + ' button[role="menuitem"]',
+          composerPopoverSelector + ' a[role="menuitem"]',
+          commandPaletteSurfaceSelector + ' [data-control-ui-command-palette-item]',
+        ].join(",");
+        const popupPrimaryFocusSelector = [
+          'input:not([type="hidden"]):not([disabled])',
+          'select:not([disabled])',
+          'textarea:not([disabled])',
+          'button:not([disabled])',
+          'a[href]',
+          '[tabindex]:not([tabindex="-1"])',
+        ].join(",");
+        const popupFallbackFocusSelector = '[role="menuitem"]';
+        let popupReturnTarget = null;
+        let keyboardPopupIntentAt = 0;
+        const rememberPopupReturnTarget = (target) => {{
+          if (target instanceof HTMLElement) popupReturnTarget = target;
+        }};
+        const markKeyboardPopupIntent = (target) => {{
+          rememberPopupReturnTarget(target);
+          keyboardPopupIntentAt = performance.now();
+        }};
+        const consumeKeyboardPopupIntent = (trigger) => {{
+          const isKeyboardOpen = trigger instanceof HTMLElement && popupReturnTarget === trigger && keyboardPopupIntentAt > 0 && performance.now() - keyboardPopupIntentAt < 800;
+          keyboardPopupIntentAt = 0;
+          return isKeyboardOpen;
+        }};
+        const focusFirstPopupControl = (panel) => {{
+          const target = panel?.querySelector(popupPrimaryFocusSelector) || panel?.querySelector(popupFallbackFocusSelector);
+          if (target instanceof HTMLElement) target.focus({{ preventScroll: true }});
+        }};
+        const focusFirstPopupControlSoon = (panel) => {{
+          if (!panel) return;
+          window.setTimeout(() => focusFirstPopupControl(panel), 0);
+        }};
+        const isVisibleFocusTarget = (node) => {{
+          if (!(node instanceof HTMLElement)) return false;
+          const rect = node.getBoundingClientRect();
+          const style = window.getComputedStyle(node);
+          return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0.01 && !node.matches("[disabled], [aria-hidden='true']");
+        }};
+        const focusablePopupItems = (panel) => {{
+          if (!(panel instanceof Element)) return [];
+          return Array.from(panel.querySelectorAll(popupPrimaryFocusSelector)).filter(isVisibleFocusTarget);
+        }};
+        const activePopupPanel = () => {{
+          const active = document.activeElement;
+          if (!(active instanceof Element)) return null;
+          const palette = active.closest(commandPaletteSurfaceSelector);
+          if (palette && window.location.hash === commandPaletteHash) return palette;
+          const rowPanel = active.closest(rowMenuPanelSelector);
+          if (rowPanel && rowPanel.closest("." + rowMenuOpenClass)) return rowPanel;
+          const toolsPanel = active.closest(groupSelector + '[open] [role="menu"]');
+          if (toolsPanel) return toolsPanel;
+          const composerPanel = active.closest(composerPickerSelector + '[open] ' + composerPopoverSelector);
+          if (composerPanel) return composerPanel;
+          return null;
+        }};
+        const trapPopupTabFocus = (event) => {{
+          if (event.key !== "Tab") return false;
+          const panel = activePopupPanel();
+          const items = focusablePopupItems(panel);
+          if (!panel || !items.length) return false;
+          event.preventDefault();
+          const active = document.activeElement;
+          const currentIndex = items.indexOf(active instanceof HTMLElement ? active : null);
+          const nextIndex = event.shiftKey
+            ? (currentIndex <= 0 ? items.length - 1 : currentIndex - 1)
+            : (currentIndex < 0 || currentIndex >= items.length - 1 ? 0 : currentIndex + 1);
+          items[nextIndex]?.focus({{ preventScroll: true }});
+          syncPopupSemantics();
+          return true;
+        }};
+        const returnPopupFocusSoon = () => {{
+          const target = popupReturnTarget;
+          popupReturnTarget = null;
+          if (target instanceof HTMLElement && document.contains(target)) {{
+            window.setTimeout(() => target.focus({{ preventScroll: true }}), 0);
+          }}
+        }};
+        const ensureId = (element, id) => {{
+          if (!(element instanceof Element)) return "";
+          if (!element.id) element.id = id;
+          return element.id;
+        }};
+        const syncPopupSemantics = () => {{
+          document.querySelectorAll(rowMenuToggleSelector).forEach((toggle) => {{
+            const key = toggle.getAttribute("data-chat-row-menu-toggle") || "";
+            const panel = key ? document.querySelector(rowMenuPanelSelector + '[data-chat-row-menu-panel="' + key + '"]') : null;
+            if (!panel) return;
+            toggle.setAttribute("aria-haspopup", "menu");
+            toggle.setAttribute("aria-controls", ensureId(panel, "row-menu-panel-" + key));
+            toggle.setAttribute("aria-expanded", toggle.closest(".tg-chat-item")?.classList.contains(rowMenuOpenClass) ? "true" : "false");
+          }});
+          document.querySelectorAll(groupSelector + " > summary").forEach((summary) => {{
+            const details = summary.closest("details");
+            const panel = details?.querySelector('[role="menu"]');
+            if (!details || !panel) return;
+            const key = panel.getAttribute("data-control-ui-thread-tools-panel")
+              ? "thread-tools-panel"
+              : panel.getAttribute("data-control-ui-composer-tools-panel")
+                ? "composer-tools-panel"
+                : "tools-panel";
+            summary.setAttribute("aria-haspopup", "menu");
+            summary.setAttribute("aria-controls", ensureId(panel, key));
+            summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+          }});
+          document.querySelectorAll(composerPickerSelector + " > summary").forEach((summary) => {{
+            const details = summary.closest("details");
+            const panel = details?.querySelector(composerPopoverSelector);
+            if (!details || !panel) return;
+            const kind = details.getAttribute("data-chat-composer-picker") || panel.getAttribute("data-chat-composer-popover") || "composer-popover";
+            const shell = details.closest(composerShellSelector);
+            summary.setAttribute("aria-haspopup", "menu");
+            summary.setAttribute("aria-controls", ensureId(panel, "composer-popover-" + kind));
+            summary.setAttribute("aria-expanded", details.open ? "true" : "false");
+          }});
+          const palette = document.querySelector(commandPaletteSurfaceSelector);
+          if (palette) {{
+            const paletteOpen = window.location.hash === commandPaletteHash;
+            const paletteId = ensureId(palette, "command-palette-dialog");
+            document.querySelectorAll(commandPaletteOpenSelector).forEach((trigger) => {{
+              trigger.setAttribute("aria-haspopup", "dialog");
+              trigger.setAttribute("aria-controls", paletteId);
+              trigger.setAttribute("aria-expanded", paletteOpen ? "true" : "false");
+            }});
+          }}
+        }};
+        const syncPopupSemanticsSoon = () => window.requestAnimationFrame(syncPopupSemantics);
+        const closePeers = (current) => {{
+          document.querySelectorAll(groupSelector + '[open]').forEach((details) => {{
+            if (details !== current) {{
+              details.removeAttribute("open");
+              details.removeAttribute(keyboardOpenAttr);
+            }}
+          }});
+          syncPopupSemanticsSoon();
+        }};
+        const closeAll = () => {{
+          document.querySelectorAll(groupSelector + '[open]').forEach((details) => {{
+            details.removeAttribute("open");
+            details.removeAttribute(keyboardOpenAttr);
+          }});
+          document.querySelectorAll(composerPickerSelector + '[open]').forEach((details) => details.removeAttribute("open"));
+          closeRowMenus();
+          syncPopupSemantics();
+          syncPopupSemanticsSoon();
+        }};
+        const closeRowMenus = (current) => {{
+          document.querySelectorAll('.' + rowMenuOpenClass).forEach((row) => {{
+            if (row !== current) {{
+              row.classList.remove(rowMenuOpenClass);
+              resetRowMenuGeometry(row);
+            }}
+          }});
+          syncPopupSemanticsSoon();
+        }};
+        const rowMenuNarrowTop = new Map([
+          ["ui-chat-agent", "62px"],
+          ["task-queue", "108px"],
+          ["operator-plane", "24px"],
+        ]);
+        const resetRowMenuGeometry = (row) => {{
+          row?.querySelectorAll(rowMenuPanelSelector).forEach((panel) => {{
+            ["position", "top", "right", "bottom", "left", "transform", "z-index"].forEach((name) => panel.style.removeProperty(name));
+            panel.removeAttribute("data-chat-row-menu-repositioned");
+          }});
+        }};
+        const syncRowMenuGeometry = (row) => {{
+          if (!(row instanceof Element)) return;
+          const panel = row.querySelector(rowMenuPanelSelector);
+          if (!(panel instanceof HTMLElement)) return;
+          resetRowMenuGeometry(row);
+          if (!window.matchMedia("(min-width: 701px) and (max-width: 980px)").matches) return;
+          const top = rowMenuNarrowTop.get(panel.getAttribute("data-chat-row-menu-panel") || "");
+          if (!top) return;
+          panel.style.setProperty("position", "fixed", "important");
+          panel.style.setProperty("top", top, "important");
+          panel.style.setProperty("right", "80px", "important");
+          panel.style.setProperty("bottom", "auto", "important");
+          panel.style.setProperty("left", "auto", "important");
+          panel.style.setProperty("transform", "none", "important");
+          panel.style.setProperty("z-index", "980", "important");
+          panel.setAttribute("data-chat-row-menu-repositioned", "narrow");
+        }};
+        const toggleRowMenu = (target) => {{
+          if (!(target instanceof Element)) return false;
+          const toggle = target.closest(rowMenuToggleSelector);
+          if (!toggle) return false;
+          const row = toggle.closest(".tg-chat-item");
+          if (!row) return false;
+          const wasOpen = row.classList.contains(rowMenuOpenClass);
+          const shouldMoveFocus = consumeKeyboardPopupIntent(toggle);
+          closeAll();
+          if (!wasOpen) {{
+            row.classList.add(rowMenuOpenClass);
+            syncRowMenuGeometry(row);
+            rememberPopupReturnTarget(toggle);
+            if (shouldMoveFocus) focusFirstPopupControlSoon(row.querySelector(rowMenuPanelSelector));
+          }}
+          syncPopupSemanticsSoon();
+          return true;
+        }};
+        const openComposerPopover = (kind, shell, moveFocus = false) => {{
+          if (!kind || !shell) return;
+          shell.setAttribute(composerOpenAttr, kind);
+          const picker = shell.querySelector(composerPickerSelector + '[data-chat-composer-picker="' + kind + '"]');
+          const panel = picker?.querySelector(composerPopoverSelector);
+          if (picker instanceof HTMLDetailsElement) picker.open = true;
+          if (moveFocus) focusFirstPopupControlSoon(panel);
+          syncPopupSemanticsSoon();
+        }};
+        const closeComposerPopovers = () => {{
+          document.querySelectorAll(composerShellSelector + '[' + composerOpenAttr + ']').forEach((shell) => {{
+            shell.removeAttribute(composerOpenAttr);
+          }});
+          document.querySelectorAll(composerPickerSelector + '[open]').forEach((details) => details.removeAttribute("open"));
+          syncPopupSemantics();
+          syncPopupSemanticsSoon();
+        }};
+        const openCommandPalette = (trigger) => {{
+          rememberPopupReturnTarget(trigger);
+          if (window.location.hash !== commandPaletteHash) window.location.hash = commandPaletteHash;
+          syncPopupSemanticsSoon();
+          window.setTimeout(() => document.querySelector(commandPaletteInputSelector)?.focus(), 0);
+        }};
+        const closeCommandPalette = () => {{
+          if (window.location.hash !== commandPaletteHash) return;
+          window.location.hash = "#commands";
+          syncPopupSemantics();
+          syncPopupSemanticsSoon();
+        }};
+        const closeTransientForViewportChange = () => {{
+          closeAll();
+          closeComposerPopovers();
+          closeCommandPalette();
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        }};
+        const closeTransientAfterMenuAction = () => {{
+          window.setTimeout(() => {{
+            closeAll();
+            closeComposerPopovers();
+            closeCommandPalette();
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          }}, 0);
+        }};
+        const activateToolMenuLink = (link) => {{
+          const href = link.getAttribute("href") || "";
+          closeAll();
+          closeComposerPopovers();
+          closeCommandPalette();
+          if (href.startsWith("#") && href.length > 1) window.location.hash = href;
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          syncPopupSemanticsSoon();
+        }};
+        let viewportChangeFrame = 0;
+        let rowMenuPointerHandled = false;
+        const handleViewportChange = () => {{
+          if (viewportChangeFrame) window.cancelAnimationFrame(viewportChangeFrame);
+          viewportChangeFrame = window.requestAnimationFrame(() => {{
+            viewportChangeFrame = 0;
+            closeTransientForViewportChange();
+          }});
+        }};
+        const syncComposerPopover = (target) => {{
+          if (!(target instanceof Element)) return false;
+          const toggle = target.closest(composerToggleSelector);
+          if (toggle) {{
+            const details = toggle.closest(composerPickerSelector);
+            if (details?.open) {{
+              openComposerPopover(toggle.getAttribute("data-chat-composer-popover-toggle"), toggle.closest(composerShellSelector));
+              return true;
+            }}
+            syncPopupSemanticsSoon();
+            return false;
+          }}
+          const popover = target.closest(composerPopoverSelector);
+          if (popover) {{
+            openComposerPopover(popover.getAttribute("data-chat-composer-popover"), popover.closest(composerShellSelector));
+            return true;
+          }}
+          return false;
+        }};
+        document.addEventListener("toggle", (event) => {{
+          const details = event.target;
+          if (!(details instanceof HTMLDetailsElement) || !details.matches(groupSelector)) return;
+          if (!details.open) {{
+            details.removeAttribute(keyboardOpenAttr);
+            syncPopupSemanticsSoon();
+            return;
+          }}
+          closePeers(details);
+          const summary = details.querySelector("summary");
+          const openedByKeyboard = consumeKeyboardPopupIntent(summary);
+          details.toggleAttribute(keyboardOpenAttr, openedByKeyboard);
+          rememberPopupReturnTarget(summary);
+          if (openedByKeyboard) focusFirstPopupControlSoon(details.querySelector('[role="menu"]'));
+          syncPopupSemanticsSoon();
+        }}, true);
+        document.addEventListener("toggle", (event) => {{
+          const details = event.target;
+          if (!(details instanceof HTMLDetailsElement) || !details.matches(composerPickerSelector)) return;
+          const summary = details.querySelector("summary");
+          const panel = details.querySelector(composerPopoverSelector);
+          const shell = details.closest(composerShellSelector);
+          const kind = details.getAttribute("data-chat-composer-picker") || panel?.getAttribute("data-chat-composer-popover") || "";
+          if (details.open) {{
+            if (shell && kind) shell.setAttribute(composerOpenAttr, kind);
+            rememberPopupReturnTarget(summary);
+            if (consumeKeyboardPopupIntent(summary)) focusFirstPopupControlSoon(panel);
+          }} else if (shell?.getAttribute(composerOpenAttr) === kind) {{
+            shell.removeAttribute(composerOpenAttr);
+          }}
+          syncPopupSemanticsSoon();
+        }}, true);
+        document.addEventListener("keydown", (event) => {{
+          if (trapPopupTabFocus(event)) return;
+          if ((event.key === " " || event.key === "Enter") && event.target instanceof Element) {{
+            const trigger = event.target.closest(rowMenuToggleSelector + ", " + groupSelector + " > summary, " + composerPickerSelector + " > summary");
+            if (trigger instanceof HTMLElement) markKeyboardPopupIntent(trigger);
+          }}
+          if (event.key === " " && event.target instanceof Element && event.target.closest(commandPaletteOpenSelector)) {{
+            event.preventDefault();
+            openCommandPalette(event.target.closest(commandPaletteOpenSelector));
+          }}
+          if (event.key === "Enter" && event.target instanceof Element) {{
+            const row = event.target.closest(".tg-chat-item[data-chat-conversation]");
+            if (row && !event.target.closest(rowMenuToggleSelector) && !event.target.closest(rowMenuPanelSelector)) {{
+              event.preventDefault();
+              const wasOpen = row.classList.contains(rowMenuOpenClass);
+              const toggle = row.querySelector(rowMenuToggleSelector);
+              closeAll();
+              if (!wasOpen) {{
+                row.classList.add(rowMenuOpenClass);
+                syncRowMenuGeometry(row);
+                rememberPopupReturnTarget(toggle instanceof HTMLElement ? toggle : row);
+                focusFirstPopupControlSoon(row.querySelector(rowMenuPanelSelector));
+              }}
+              closeComposerPopovers();
+              closeCommandPalette();
+              return;
+            }}
+          }}
+          if (event.key === "Escape") {{
+            event.preventDefault();
+            closeAll();
+            closeComposerPopovers();
+            closeCommandPalette();
+            returnPopupFocusSoon();
+          }}
+        }});
+        document.addEventListener("focusin", (event) => {{
+          if (!(event.target instanceof Element) || (!event.target.closest(".tg-chat-item") && !event.target.closest(rowMenuPanelSelector))) {{
+            closeRowMenus();
+          }}
+          if (event.target instanceof Element && event.target.closest(rowMenuToggleSelector)) {{
+            syncRowMenuGeometry(event.target.closest(".tg-chat-item"));
+          }}
+          syncComposerPopover(event.target);
+        }});
+        document.addEventListener("focusout", (event) => {{
+          const shell = event.target instanceof Element ? event.target.closest(composerShellSelector) : null;
+          if (!shell) return;
+          window.setTimeout(() => {{
+            const active = document.activeElement;
+            if (!(active instanceof Element) || !shell.contains(active)) shell.removeAttribute(composerOpenAttr);
+          }}, 0);
+        }});
+        document.addEventListener("pointerdown", (event) => {{
+          if (toggleRowMenu(event.target)) {{
+            rowMenuPointerHandled = true;
+            window.setTimeout(() => {{
+              rowMenuPointerHandled = false;
+            }}, 0);
+            closeComposerPopovers();
+            closeCommandPalette();
+            return;
+          }}
+          if (event.target instanceof Element && event.target.closest(rowMenuPanelSelector)) return;
+          if (event.target instanceof Element && event.target.closest(commandPaletteHash) && !event.target.closest(commandPaletteSurfaceSelector)) {{
+            closeCommandPalette();
+            closeComposerPopovers();
+            closeAll();
+            return;
+          }}
+          if (syncComposerPopover(event.target)) return;
+          closeComposerPopovers();
+          if (event.target instanceof Element && event.target.closest(groupSelector)) return;
+          closeAll();
+        }}, true);
+        document.addEventListener("click", (event) => {{
+          const toolMenuLink = event.target instanceof Element ? event.target.closest(groupSelector + ' a[role="menuitem"]') : null;
+          if (!(toolMenuLink instanceof HTMLAnchorElement)) return;
+          event.preventDefault();
+          activateToolMenuLink(toolMenuLink);
+        }}, true);
+        document.addEventListener("click", (event) => {{
+          if (rowMenuPointerHandled) {{
+            rowMenuPointerHandled = false;
+            return;
+          }}
+          if (toggleRowMenu(event.target)) {{
+            event.preventDefault();
+            closeComposerPopovers();
+            closeCommandPalette();
+            return;
+          }}
+          if (event.target instanceof Element && event.target.closest(actionMenuItemSelector)) {{
+            closeTransientAfterMenuAction();
+          }}
+          if (!(event.target instanceof Element) || !event.target.closest(commandPaletteOpenSelector)) return;
+          event.preventDefault();
+          openCommandPalette(event.target.closest(commandPaletteOpenSelector));
+        }});
+        document.addEventListener("change", (event) => {{
+          if (!(event.target instanceof Element) || !event.target.matches("select")) return;
+          if (!event.target.closest(groupSelector)) return;
+          closeTransientAfterMenuAction();
+        }});
+        window.addEventListener("resize", handleViewportChange, {{ passive: true }});
+        window.addEventListener("orientationchange", handleViewportChange, {{ passive: true }});
+        window.addEventListener("hashchange", syncPopupSemantics);
+        syncPopupSemantics();
+      }})();
+    </script>
     <div class="toast" id="toast" role="status" aria-live="polite">Rust frontend ready</div>
   </body>
 </html>"###,
@@ -2362,8 +2843,21 @@ pub fn control_ui_index_html() -> String {
         command_cards = command_cards,
         command_palette_items = command_palette_items,
         right_sidebar = right_sidebar,
-        entry_surface = entry_surface,
+        product_path = product_path,
+        secondary_workspace_map = secondary_workspace_map,
     )
+}
+
+fn render_static_hepta_product_path() -> String {
+    [
+        "<section class=\"tg-thread-meta-strip tg-thread-intro\" data-control-ui-product-first=\"true\" data-control-ui-primary-path=\"telegram-chat-shell\" data-control-ui-telegram-shell=\"true\" data-control-ui-compact-product-path=\"narrow-mobile\">",
+        "<span class=\"badge ok\" data-control-ui-thread-intro-badge=\"telegram-shell\" data-control-ui-micro-surface=\"thread-intro-telegram-shell\" aria-label=\"Telegram shell\" title=\"Telegram shell\">Telegram shell</span>",
+        "<span class=\"badge\" data-control-ui-thread-intro-badge=\"message-workflow\" data-control-ui-micro-surface=\"thread-intro-message-workflow\" aria-label=\"Message-first workflow\" title=\"Message-first workflow\">message-first workflow</span>",
+        "<span class=\"badge\" data-control-ui-thread-intro-badge=\"evidence-inline\" data-control-ui-micro-surface=\"thread-intro-evidence-inline\" aria-label=\"Evidence inline\" title=\"Evidence inline\">evidence inline</span>",
+        "<span class=\"badge\" data-control-ui-thread-intro-badge=\"approval-chat\" data-control-ui-micro-surface=\"thread-intro-approval-chat\" aria-label=\"Approval in chat\" title=\"Approval in chat\">approval in chat</span>",
+        "</section>",
+    ]
+    .join("")
 }
 
 fn static_hepta_left_sidebar_sections() -> Vec<(
@@ -2372,42 +2866,42 @@ fn static_hepta_left_sidebar_sections() -> Vec<(
     Vec<(&'static str, &'static str, &'static str, &'static str)>,
 )> {
     vec![
-        ("chat", "Chat", vec![("Chat", "/chat", "chat", "◌")]),
+        ("chat", "Chat", vec![("Chat", "/chat", "chat", "chat")]),
         (
             "control",
             "Control",
             vec![
-                ("Overview", "/overview", "dashboard", "⌂"),
-                ("Channels", "/channels", "gateway", "◫"),
-                ("Instances", "/instances", "ops", "▣"),
-                ("Sessions", "/sessions", "sessions", "☰"),
-                ("Tasks", "/tasks", "tasks", "☷"),
-                ("Usage", "/usage", "ops", "↗"),
-                ("Cron", "/cron", "tasks", "◷"),
+                ("Overview", "/overview", "dashboard", "panels"),
+                ("Channels", "/channels", "gateway", "chat"),
+                ("Instances", "/instances", "ops", "panels"),
+                ("Sessions", "/sessions", "sessions", "panels"),
+                ("Tasks", "/tasks", "tasks", "list"),
+                ("Usage", "/usage", "ops", "list"),
+                ("Cron", "/cron", "tasks", "history"),
             ],
         ),
         (
             "agent",
             "Agents",
             vec![
-                ("Agents", "/agents", "workers", "◇"),
-                ("Skills", "/skills", "commands", "✦"),
-                ("Nodes", "/nodes", "gateway", "▱"),
-                ("Dreaming", "/dreaming", "transcript", "☾"),
+                ("Agents", "/agents", "workers", "spark"),
+                ("Skills", "/skills", "commands", "spark"),
+                ("Nodes", "/nodes", "gateway", "panels"),
+                ("Dreaming", "/dreaming", "transcript", "spark"),
             ],
         ),
         (
             "settings",
             "Settings",
             vec![
-                ("Config", "/config", "config", "⚙"),
-                ("Comms", "/communications", "gateway", "✉"),
-                ("Appearance", "/appearance", "config", "◐"),
-                ("Automation", "/automation", "tasks", "⟳"),
-                ("Infra", "/infrastructure", "ops", "▦"),
-                ("AI Agents", "/ai-agents", "multi-agent", "✧"),
-                ("Debug", "/debug", "developer", "⌘"),
-                ("Logs", "/logs", "live", "≋"),
+                ("Config", "/config", "config", "panels"),
+                ("Comms", "/communications", "gateway", "chat"),
+                ("Appearance", "/appearance", "config", "spark"),
+                ("Automation", "/automation", "tasks", "history"),
+                ("Infra", "/infrastructure", "ops", "shield"),
+                ("AI Agents", "/ai-agents", "multi-agent", "spark"),
+                ("Debug", "/debug", "developer", "command"),
+                ("Logs", "/logs", "live", "list"),
             ],
         ),
     ]
@@ -2425,19 +2919,19 @@ fn render_static_hepta_right_sidebar(logo: &str) -> String {
     for (id, label, items) in &sections {
         let rendered_items = items
             .iter()
-            .map(|(item_label, route, screen, icon)| {
+            .map(|(item_label, route, screen, icon_id)| {
                 let active = if *route == "/chat" { " active" } else { "" };
                 let current = if *route == "/chat" { "page" } else { "false" };
                 let anchor = route_anchor_id(route);
                 format!(
-                    "<a class=\"nav-item hepta-nav-item{}\" href=\"#{}\" data-hepta-nav-route=\"{}\" data-hepta-nav-key=\"{}\" data-screen=\"{}\" aria-current=\"{}\"><span class=\"nav-item__icon\" aria-hidden=\"true\">{}</span><span class=\"nav-item__text\">{}</span></a>",
+                    "<a class=\"nav-item hepta-nav-item{}\" href=\"#{}\" data-hepta-nav-route=\"{}\" data-hepta-nav-key=\"{}\" data-screen=\"{}\" aria-current=\"{}\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-{}\"/></svg></span><span class=\"nav-item__text\">{}</span></a>",
                     active,
                     escape_html(&anchor),
                     escape_html(route),
                     escape_html(route),
                     escape_html(screen),
                     current,
-                    escape_html(icon),
+                    escape_html(icon_id),
                     escape_html(item_label)
                 )
             })
@@ -2451,7 +2945,7 @@ fn render_static_hepta_right_sidebar(logo: &str) -> String {
     }
 
     format!(
-        "<aside class=\"hepta-right-sidebar shell-nav sidebar sidebar-shell\" aria-label=\"Hepta runtime navigation\" data-hepta-left-sidebar-migrated=\"full\" data-hepta-sidebar-collapsed=\"false\" data-hepta-sidebar-block-alignment=\"source-blocks\" data-hepta-sidebar-source-block-count=\"{}\" data-hepta-sidebar-section-count=\"{}\" data-hepta-sidebar-item-count=\"{}\" data-hepta-source-shell=\"shell-nav sidebar sidebar-shell main content\"><header class=\"brand app-brand hepta-sidebar-block\" data-hepta-sidebar-block=\"brand\" data-hepta-source-node=\"sidebar-header\"><div class=\"brand-mark app-brand__mark\" data-hepta-agent-logo=\"true\">{}</div><div class=\"app-brand__text\"><p class=\"eyebrow\">Hepta</p><h1>Runtime</h1></div></header><nav class=\"sidebar-nav hepta-right-sidebar__body\" data-hepta-source-node=\"sidebar-nav\"><section class=\"hepta-nav-section hepta-sidebar-block\" data-hepta-multi-agent-inline=\"right-rail\"><div class=\"hepta-nav-section__label\"><span>Agent runtime</span></div><div class=\"hepta-nav-section__items\"><a class=\"nav-item hepta-nav-item\" href=\"#multi-agent\" data-screen=\"multi-agent\"><span class=\"nav-item__icon\">✧</span><span class=\"nav-item__text\">Overall local</span></a><a class=\"nav-item hepta-nav-item\" href=\"#multi-agent\" data-screen=\"multi-agent\"><span class=\"nav-item__icon\">◇</span><span class=\"nav-item__text\">Topology 3</span></a><a class=\"nav-item hepta-nav-item\" href=\"#multi-agent\" data-screen=\"multi-agent\"><span class=\"nav-item__icon\">✓</span><span class=\"nav-item__text\">All 100 true</span></a></div></section>{}</nav><footer class=\"hepta-right-sidebar__footer hepta-sidebar-block\" data-hepta-sidebar-block=\"footer\" data-hepta-source-node=\"sidebar-footer\"><a class=\"nav-item hepta-nav-item hepta-nav-item--docs\" href=\"https://docs.hepta.ai/\"><span class=\"nav-item__icon\" aria-hidden=\"true\">?</span><span class=\"nav-item__text\">Docs</span></a><small class=\"hepta-sidebar-version\">v2026.5.7</small></footer></aside>",
+        "<aside class=\"hepta-right-sidebar shell-nav sidebar sidebar-shell\" aria-label=\"Hepta chat info\" data-hepta-left-sidebar-migrated=\"full\" data-hepta-sidebar-collapsed=\"false\" data-hepta-sidebar-block-alignment=\"source-blocks\" data-hepta-sidebar-source-block-count=\"{}\" data-hepta-sidebar-section-count=\"{}\" data-hepta-sidebar-item-count=\"{}\" data-hepta-source-shell=\"shell-nav sidebar sidebar-shell main content\"><header class=\"brand app-brand hepta-sidebar-block\" data-hepta-sidebar-block=\"brand\" data-hepta-source-node=\"sidebar-header\"><div class=\"brand-mark app-brand__mark\" data-hepta-agent-logo=\"true\">{}</div><div class=\"app-brand__text\"><p class=\"eyebrow\">Info</p><h1>Hepta</h1></div></header><nav class=\"sidebar-nav hepta-right-sidebar__body\" data-hepta-source-node=\"sidebar-nav\"><section class=\"hepta-nav-section hepta-sidebar-block\" data-hepta-multi-agent-inline=\"right-rail\" data-control-ui-runtime-rail=\"local-review-safety-evidence\"><div class=\"hepta-nav-section__label\"><span>Safety</span></div><div class=\"hepta-nav-section__items\"><a class=\"nav-item hepta-nav-item\" href=\"#multi-agent\" data-screen=\"multi-agent\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-shield\"/></svg></span><span class=\"nav-item__text\">Local review</span></a><a class=\"nav-item hepta-nav-item\" href=\"#security\" data-screen=\"security\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-shield\"/></svg></span><span class=\"nav-item__text\">Safety locked</span></a><a class=\"nav-item hepta-nav-item\" href=\"#evidence\" data-screen=\"evidence\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-file-check\"/></svg></span><span class=\"nav-item__text\">Evidence ready</span></a></div></section><section class=\"hepta-nav-section hepta-sidebar-block\"><div class=\"hepta-nav-section__label\"><span>Context</span></div><p class=\"tg-room-section__copy\">Plan summary, source notes, and approval boundary stay attached to this conversation.</p></section><details class=\"tg-room-accordion hepta-nav-section hepta-sidebar-block\" data-control-ui-secondary-nav=\"collapsed\"><summary class=\"tg-room-section__title\"><span>Diagnostics</span><strong>Routes and tools</strong></summary><div class=\"tg-room-accordion__body\">{}</div></details></nav><footer class=\"hepta-right-sidebar__footer hepta-sidebar-block\" data-hepta-sidebar-block=\"footer\" data-hepta-source-node=\"sidebar-footer\"><a class=\"nav-item hepta-nav-item hepta-nav-item--docs\" href=\"https://docs.hepta.ai/\"><span class=\"nav-item__icon\" aria-hidden=\"true\"><svg class=\"hepta-svg-icon\"><use href=\"#hepta-icon-help\"/></svg></span><span class=\"nav-item__text\">Docs</span></a><small class=\"hepta-sidebar-version\">v2026.5.7</small></footer></aside>",
         source_block_count,
         sections.len(),
         item_count,
@@ -2465,10 +2959,10 @@ fn render_static_hepta_entry_surface(screens: &[ControlUiScreen], screen_cards: 
         (
             "/chat",
             "Chat",
-            "chat/send/session/model/command",
-            "rail;thread;composer;tools;controls",
-            "new reset stop compact export focus model think usage steer",
-            "NO_REPLY; explicit send",
+            "conversation/task/model",
+            "thread;composer;safe tools",
+            "plan review focus",
+            "send only after approval",
         ),
         (
             "/overview",
@@ -2670,7 +3164,7 @@ fn render_static_hepta_entry_surface(screens: &[ControlUiScreen], screen_cards: 
                 .filter(|item| !item.trim().is_empty())
                 .map(|widget| {
                     format!(
-                        "<article class=\"mini-card\"><strong>{}</strong><p>Rust pre-rendered widget lane from the prior JS route blueprint.</p></article>",
+                        "<article class=\"mini-card\"><strong>{}</strong><p>Ready in this workspace flow.</p></article>",
                         escape_html(widget)
                     )
                 })
@@ -2687,14 +3181,14 @@ fn render_static_hepta_entry_surface(screens: &[ControlUiScreen], screen_cards: 
                 })
                 .collect::<String>();
             format!(
-                "<section class=\"hepta-route-page{}\" id=\"{}\" data-ref-runtime-route=\"{}\" data-hepta-route-template=\"{}\" data-hepta-source-ui-aligned=\"true\" data-hepta-backend-aligned=\"true\" tabindex=\"-1\"><header class=\"hepta-route-surface__header\"><div><p class=\"eyebrow\">Route {}</p><h3 class=\"page-title\">{}</h3><p class=\"page-sub\">Live {} status, filters, and guarded actions — rendered by Rust from the old JS route contract.</p></div><span class=\"badge ok\">no-JS clickable</span></header><div class=\"badge-row\">{}{}</div><div class=\"card-grid\"><article class=\"mini-card\"><strong>Data sources</strong><p>{}</p></article><article class=\"mini-card\"><strong>Boundary</strong><p>{}</p></article><article class=\"mini-card\"><strong>Controls</strong><div class=\"action-rail\">{}</div></article></div><div class=\"screen-grid screen-grid--compact\">{}</div></section>",
+                "<section class=\"hepta-route-page{}\" id=\"{}\" data-ref-runtime-route=\"{}\" data-hepta-route-template=\"{}\" data-hepta-source-ui-aligned=\"true\" data-hepta-backend-aligned=\"true\" tabindex=\"-1\"><header class=\"hepta-route-surface__header\"><div><p class=\"eyebrow\">Flow {}</p><h3 class=\"page-title\">{}</h3><p class=\"page-sub\">{} keeps status, filters, and guarded actions together for review.</p></div><span class=\"badge ok\">ready</span></header><div class=\"badge-row\">{}{}</div><div class=\"card-grid\"><article class=\"mini-card\"><strong>Inputs</strong><p>{}</p></article><article class=\"mini-card\"><strong>Safety</strong><p>{}</p></article><article class=\"mini-card\"><strong>Actions</strong><div class=\"action-rail\">{}</div></article></div><div class=\"screen-grid screen-grid--compact\">{}</div></section>",
                 if index == 0 { " hepta-route-page--default" } else { "" },
                 escape_html(&anchor),
                 escape_html(route),
                 escape_html(route),
                 index + 1,
                 escape_html(title),
-                escape_html(&title.to_ascii_lowercase()),
+                escape_html(title),
                 source_badges,
                 format!("<span class=\"badge\">{}</span>", escape_html(boundary)),
                 escape_html(sources),
@@ -2706,8 +3200,7 @@ fn render_static_hepta_entry_surface(screens: &[ControlUiScreen], screen_cards: 
         .collect::<String>();
     let primary_count = screens.len().min(6);
     format!(
-        "<section class=\"hepta-entry-surface hepta-route-surface content\" data-hepta-entry-content=\"full\" data-hepta-page-surface=\"true\" data-hepta-primary-page-surface=\"true\" data-hepta-route=\"/overview\" data-hepta-route-screen=\"dashboard\" data-hepta-source-main=\"main.content\" data-hepta-source-version=\"v2026.5.7\"><header class=\"hepta-route-surface__header\"><div><p class=\"eyebrow\">Hepta source route parity</p><h2 class=\"page-title\">{} route surfaces</h2><p class=\"page-sub\">Rust renderer mirrors the old JS HEPTA_ENTRY_CONTENT_ROWS, sidebar routes, route cards, filters, and guarded action lanes without serving browser JavaScript.</p></div><span class=\"badge ok\">{} primary cards</span></header><div class=\"hepta-route-surface__outlet\" data-hepta-route-outlet=\"rust-static\"><div class=\"data-table-wrapper hepta-route-index\"><div class=\"data-table-toolbar\"><strong>HEPTA_ENTRY_CONTENT_ROWS</strong><span class=\"badge\">Rust pre-rendered</span><span class=\"badge\">{} routes</span></div><div class=\"data-table-container\"><table class=\"data-table\"><thead><tr><th>Route</th><th>Sources</th><th>Widgets</th><th>Actions</th><th>Boundary</th></tr></thead><tbody>{}</tbody></table></div></div><div class=\"hepta-route-page-stack\" data-hepta-route-page-stack=\"true\">{}</div><details class=\"hepta-all-screen-contracts\"><summary>All Rust screen contracts</summary><div class=\"screen-grid\">{}</div></details></div></section>",
-        route_rows.len(),
+        "<section class=\"hepta-entry-surface hepta-route-surface content\" data-hepta-entry-content=\"full\" data-hepta-page-surface=\"true\" data-hepta-primary-page-surface=\"true\" data-hepta-route=\"/overview\" data-hepta-route-screen=\"dashboard\" data-hepta-source-main=\"main.content\" data-hepta-source-version=\"v2026.5.7\" data-contract-marker=\"HEPTA_ENTRY_CONTENT_ROWS\"><header class=\"hepta-route-surface__header\"><div><p class=\"eyebrow\">Workspace map</p><h2 class=\"page-title\">Ask, plan, evidence, approve</h2><p class=\"page-sub\">Hepta organizes agent work into calm flows: chat, task queues, approvals, evidence, and guarded actions.</p></div><span class=\"badge ok\">{} primary flows</span></header><div class=\"hepta-route-surface__outlet\" data-hepta-route-outlet=\"rust-static\"><div class=\"data-table-wrapper hepta-route-index\"><div class=\"data-table-toolbar\"><strong>Workspace flows</strong><span class=\"badge\">local preview</span><span class=\"badge\">{} routes</span></div><div class=\"data-table-container\"><table class=\"data-table\"><thead><tr><th>Flow</th><th>Inputs</th><th>Widgets</th><th>Actions</th><th>Safety</th></tr></thead><tbody>{}</tbody></table></div></div><div class=\"hepta-route-page-stack\" data-hepta-route-page-stack=\"true\">{}</div><details class=\"hepta-all-screen-contracts\"><summary>Developer details</summary><div class=\"screen-grid\">{}</div></details></div></section>",
         primary_count,
         route_rows.len(),
         rows,
@@ -4010,6 +4503,7 @@ mod tests {
     #[test]
     fn control_ui_report_is_complete_and_asset_backed() {
         let report = control_ui_report();
+        let rust_frontend_html = control_ui_index_html();
 
         assert_eq!(report.status, "complete");
         assert_eq!(report.screen_count, 26);
@@ -4049,13 +4543,28 @@ mod tests {
         assert!(CONTROL_UI_INDEX_HTML.contains("Hepta Control UI"));
         assert!(CONTROL_UI_RUST_RENDERER_MARKERS.contains("HEPTA_UI"));
 
-        let rust_frontend_html = control_ui_index_html();
         for marker in [
             "data-view=\"chat\"",
             "telegram-chat-shell",
             "focus-workspace",
             "tg-conversation-rail",
             "tg-thread-panel",
+            "data-control-ui-product-first=\"true\"",
+            "data-control-ui-primary-path=\"telegram-chat-shell\"",
+            "data-control-ui-telegram-shell=\"true\"",
+            "data-control-ui-top-design-referee=\"liquid-glass-2026-wcag22-320-reflow\"",
+            "data-control-ui-harsh-referee=\"2026-06-08-liquid-glass-menus-sidebars-scroll-search\"",
+            "tg-thread-intro",
+            "data-control-ui-secondary-map=\"collapsed\"",
+            "data-control-ui-runtime-rail=\"local-review-safety-evidence\"",
+            "data-control-ui-secondary-nav=\"collapsed\"",
+            "data-control-ui-composer-product-first=\"true\"",
+            "data-control-ui-composer-more=\"collapsed\"",
+            "data-control-ui-work-rail=\"product-first\"",
+            "data-control-ui-compact-product-path=\"narrow-mobile\"",
+            "data-control-ui-status-trust-strip=\"local-safe-review\"",
+            "data-control-ui-status-trust-badge=\"local\"",
+            "data-control-ui-status-trust-badge=\"safe-review\"",
             "hepta-right-sidebar",
             "route-card",
             "screen-grid",
@@ -4069,6 +4578,8 @@ mod tests {
                 "Rust-rendered Control UI missing structural parity marker: {marker}"
             );
         }
+        assert!(!rust_frontend_html.contains("class=\"hepta-product-path\""));
+        assert!(!rust_frontend_html.contains("Ask / Plan / Evidence / Approve"));
         assert!(!rust_frontend_html.contains("<script"));
         assert!(
             rust_frontend_html.find("telegram-chat-shell").unwrap()
@@ -4095,7 +4606,12 @@ mod tests {
         assert!(!rust_frontend_html.contains("<button class=\"active\" data-screen="));
 
         let audit = control_ui_contract_audit_report();
-        assert_eq!(audit.status, "complete");
+        assert_eq!(
+            audit.status,
+            "complete",
+            "{}",
+            serde_json::to_string_pretty(&audit).expect("serialize control UI audit")
+        );
         assert_eq!(audit.audit_percent, 100);
         assert_eq!(audit.core_screen_count, 26);
         assert_eq!(audit.app_screen_count, 26);

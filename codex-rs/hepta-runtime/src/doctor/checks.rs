@@ -1,7 +1,14 @@
-use hepta_core::{MemoryRecord, ModelRef, SessionRecord};
+use hepta_core::MemoryRecord;
+use hepta_core::ModelRef;
+use hepta_core::SessionRecord;
 
-use super::{DoctorCheck, state_checks};
-use crate::{EventRecord, RuntimeKernel, RuntimeSnapshot, SessionApprovalState, TurnRecord};
+use super::DoctorCheck;
+use super::state_checks;
+use crate::EventRecord;
+use crate::RuntimeKernel;
+use crate::RuntimeSnapshot;
+use crate::SessionApprovalState;
+use crate::TurnRecord;
 
 impl RuntimeKernel {
     pub(super) fn session_integrity_checks(

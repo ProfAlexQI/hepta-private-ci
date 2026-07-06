@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use super::{DoctorCheck, DoctorStatus};
+use super::DoctorCheck;
+use super::DoctorStatus;
 
 pub(super) const ACTIVE_MODEL_REGISTERED: &str = "active model registered";
 pub(super) const ACTIVE_SESSION_EXISTS: &str = "active session exists";

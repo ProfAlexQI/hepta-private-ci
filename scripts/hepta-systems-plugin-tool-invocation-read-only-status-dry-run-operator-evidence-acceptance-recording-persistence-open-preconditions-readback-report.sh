@@ -1,0 +1,346 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-acceptance-recording-persistence-denial-receipt-readback-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_open_preconditions_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_READ_ONLY_STATUS_DRY_RUN_OPERATOR_EVIDENCE_ACCEPTANCE_RECORDING_PERSISTENCE_OPEN_PRECONDITIONS_READBACK_2026-07-01.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-acceptance-recording-persistence-open-preconditions-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable persistence denial receipt readback report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing persistence open preconditions Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing persistence open preconditions architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the persistence open preconditions report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$SOURCE_REPORT" >"$tmpdir/source.json" || fail "failed to render persistence denial receipt readback report"
+jq -e . "$tmpdir/source.json" >/dev/null || fail "persistence denial receipt readback report did not render valid JSON"
+
+lib_export_present=false
+if grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_open_preconditions_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile source "$tmpdir/source.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-acceptance-recording-persistence-open-preconditions-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_READ_ONLY_STATUS_DRY_RUN_OPERATOR_EVIDENCE_ACCEPTANCE_RECORDING_PERSISTENCE_OPEN_PRECONDITIONS_READBACK_2026-07-01.md" \
+  '
+  def suffix($kind):
+    if $kind == "mcp_server" then "local-mcp:read-only-status-dry-run"
+    elif $kind == "app_connector" then "local-app:not-selected"
+    else "unknown:not-selected"
+    end;
+  def set_id($kind):
+    "operator-evidence-acceptance-recording-persistence-open-preconditions:hepta-system:" + suffix($kind);
+  def open_denial_receipt($kind):
+    "operator-evidence-acceptance-recording-persistence-open-denial-receipt:hepta-system:" + suffix($kind) + ":open-preconditions-unsatisfied";
+  def open_idempotency($kind):
+    "operator-evidence-acceptance-recording-persistence-open-idempotency:hepta-system:" + suffix($kind);
+  def precondition($name; $kind):
+    "operator-evidence-acceptance-recording-persistence-open-precondition:" + $name + ":hepta-system:" + suffix($kind);
+  def entry($source_entry):
+    ($source_entry.contribution_kind) as $kind |
+    {
+      candidate_tool_id:$source_entry.candidate_tool_id,
+      contribution_kind:$kind,
+      dry_run_path_selected:$source_entry.dry_run_path_selected,
+      source_persistence_denial_receipt_id:$source_entry.persistence_denial_receipt_id,
+      source_persistence_denial_receipt_digest:$source_entry.persistence_denial_receipt_digest,
+      source_persistence_idempotency_key:$source_entry.persistence_idempotency_key,
+      source_non_recording_denial_receipt_anchor_id:$source_entry.non_recording_denial_receipt_anchor_id,
+      source_acceptance_recording_open_denial_receipt_anchor_id:$source_entry.acceptance_recording_open_denial_receipt_anchor_id,
+      source_ledger_persistence_denial_anchor_id:$source_entry.ledger_persistence_denial_anchor_id,
+      source_receipt_persistence_denial_anchor_id:$source_entry.receipt_persistence_denial_anchor_id,
+      source_tool_invocation_denial_anchor_id:$source_entry.tool_invocation_denial_anchor_id,
+      source_runtime_write_denial_anchor_id:$source_entry.runtime_write_denial_anchor_id,
+      source_live_execution_denial_anchor_id:$source_entry.live_execution_denial_anchor_id,
+      persistence_open_precondition_set_id:set_id($kind),
+      persistence_open_denial_receipt_id:open_denial_receipt($kind),
+      persistence_open_idempotency_key:open_idempotency($kind),
+      first_persistence_open_precondition_set_id:set_id($kind),
+      second_persistence_open_precondition_set_id:set_id($kind),
+      first_persistence_open_denial_receipt_id:open_denial_receipt($kind),
+      second_persistence_open_denial_receipt_id:open_denial_receipt($kind),
+      first_persistence_open_idempotency_key:open_idempotency($kind),
+      second_persistence_open_idempotency_key:open_idempotency($kind),
+      evidence_artifact_presence_precondition_id:precondition("evidence-artifact-presence"; $kind),
+      operator_identity_precondition_id:precondition("operator-identity"; $kind),
+      operator_acceptance_precondition_id:precondition("operator-acceptance"; $kind),
+      operator_evidence_record_store_binding_precondition_id:precondition("operator-evidence-record-store-binding"; $kind),
+      acceptance_record_schema_precondition_id:precondition("acceptance-record-schema"; $kind),
+      acceptance_record_store_binding_precondition_id:precondition("acceptance-record-store-binding"; $kind),
+      acceptance_record_idempotency_index_precondition_id:precondition("acceptance-record-idempotency-index"; $kind),
+      ledger_store_binding_precondition_id:precondition("ledger-store-binding"; $kind),
+      receipt_store_binding_precondition_id:precondition("receipt-store-binding"; $kind),
+      runtime_event_log_store_binding_precondition_id:precondition("runtime-event-log-store-binding"; $kind),
+      rollback_anchor_precondition_id:precondition("rollback-anchor"; $kind),
+      kill_switch_precondition_id:precondition("kill-switch"; $kind),
+      retention_policy_precondition_id:precondition("retention-policy"; $kind),
+      readback_query_precondition_id:precondition("readback-query"; $kind),
+      controlled_live_evidence_precondition_id:precondition("controlled-live-evidence"; $kind),
+      feature_gate_precondition_id:precondition("feature-gate"; $kind),
+      persistence_open_precondition_set_projected:true,
+      source_persistence_denial_receipt_linked:true,
+      source_persistence_denial_receipt_digest_linked:true,
+      source_persistence_idempotency_key_linked:true,
+      evidence_artifact_presence_precondition_projected:true,
+      operator_identity_precondition_projected:true,
+      operator_acceptance_precondition_projected:true,
+      operator_evidence_record_store_binding_precondition_projected:true,
+      acceptance_record_schema_precondition_projected:true,
+      acceptance_record_store_binding_precondition_projected:true,
+      acceptance_record_idempotency_index_precondition_projected:true,
+      ledger_store_binding_precondition_projected:true,
+      receipt_store_binding_precondition_projected:true,
+      runtime_event_log_store_binding_precondition_projected:true,
+      rollback_anchor_precondition_projected:true,
+      kill_switch_precondition_projected:true,
+      retention_policy_precondition_projected:true,
+      readback_query_precondition_projected:true,
+      controlled_live_evidence_precondition_projected:true,
+      feature_gate_precondition_projected:true,
+      stable_persistence_open_precondition_set:true,
+      unique_persistence_open_precondition_set:true,
+      stable_persistence_open_denial_receipt:true,
+      unique_persistence_open_denial_receipt:true,
+      stable_persistence_open_idempotency_key:true,
+      unique_persistence_open_idempotency_key:true,
+      feature_gate_opened:$source_entry.feature_gate_opened,
+      dry_run_executed:$source_entry.dry_run_executed,
+      operator_evidence_packet_sent:$source_entry.operator_evidence_packet_sent,
+      operator_evidence_packet_persisted:$source_entry.operator_evidence_packet_persisted,
+      operator_evidence_recorded:$source_entry.operator_evidence_recorded,
+      operator_acceptance_recorded:$source_entry.operator_acceptance_recorded,
+      acceptance_record_persisted:$source_entry.acceptance_record_persisted,
+      persistence_open_denial_receipt_persisted:false,
+      persistence_denial_receipt_persisted:$source_entry.persistence_denial_receipt_persisted,
+      non_recording_denial_receipt_persisted:$source_entry.non_recording_denial_receipt_persisted,
+      idempotency_index_written:$source_entry.idempotency_index_written,
+      ledger_written:$source_entry.ledger_written,
+      receipt_persisted:$source_entry.receipt_persisted,
+      tool_registered:$source_entry.tool_registered,
+      registry_lookup_executed:$source_entry.registry_lookup_executed,
+      tool_invoked:$source_entry.tool_invoked,
+      mcp_server_started:$source_entry.mcp_server_started,
+      app_connector_started:$source_entry.app_connector_started,
+      runtime_event_log_written:$source_entry.runtime_event_log_written,
+      sqlite_written:$source_entry.sqlite_written,
+      live_execution_started:$source_entry.live_execution_started
+    };
+  ($source[0]) as $source_report |
+  ($source_report.entries | map(entry(.))) as $entries |
+  ($entries | length) as $entry_count |
+  ($entries | map(select(.dry_run_path_selected == true)) | length) as $selected_count |
+  ($entries | map(select(.dry_run_path_selected == false)) | length) as $non_selected_count |
+  ($entries | map(.first_persistence_open_precondition_set_id) | unique | length) as $unique_set_count |
+  ($entries | map(.first_persistence_open_denial_receipt_id) | unique | length) as $unique_receipt_count |
+  ($entries | map(.first_persistence_open_idempotency_key) | unique | length) as $unique_idempotency_count |
+  ($source_report.persistence_denial_receipt_readback_ready == true
+    and $source_report.candidate_count == 2
+    and $source_report.persistence_denial_entry_count == 2
+    and $source_report.stable_persistence_denial_receipt_count == 2
+    and $source_report.unique_persistence_denial_receipt_count == 2
+    and $source_report.stable_persistence_idempotency_key_count == 2
+    and $source_report.unique_persistence_idempotency_key_count == 2
+    and $source_report.acceptance_record_persisted_count == 0
+    and $source_report.persistence_denial_receipt_persisted_count == 0
+    and $source_report.idempotency_index_written_count == 0
+    and $entry_count == 2
+    and $selected_count == 1
+    and $non_selected_count == 1
+    and ($entries | map(select(.persistence_open_precondition_set_projected == true)) | length) == 2
+    and ($entries | map(select(.source_persistence_denial_receipt_linked == true)) | length) == 2
+    and ($entries | map(select(.source_persistence_denial_receipt_digest_linked == true)) | length) == 2
+    and ($entries | map(select(.source_persistence_idempotency_key_linked == true)) | length) == 2
+    and ($entries | map(select(.evidence_artifact_presence_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.operator_identity_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.operator_acceptance_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.operator_evidence_record_store_binding_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.acceptance_record_schema_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.acceptance_record_store_binding_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.acceptance_record_idempotency_index_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.ledger_store_binding_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.receipt_store_binding_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.runtime_event_log_store_binding_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.rollback_anchor_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.kill_switch_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.retention_policy_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.readback_query_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.controlled_live_evidence_precondition_projected == true)) | length) == 2
+    and ($entries | map(select(.feature_gate_precondition_projected == true)) | length) == 2
+    and ($entry_count * 16) == 32
+    and ($entries | map(select(.stable_persistence_open_precondition_set == true)) | length) == 2
+    and $unique_set_count == 2
+    and ($entries | map(select(.stable_persistence_open_denial_receipt == true)) | length) == 2
+    and $unique_receipt_count == 2
+    and ($entries | map(select(.stable_persistence_open_idempotency_key == true)) | length) == 2
+    and $unique_idempotency_count == 2
+    and ($entries | map(select(.feature_gate_opened == true or .dry_run_executed == true or .operator_evidence_packet_sent == true or .operator_evidence_packet_persisted == true or .operator_evidence_recorded == true or .operator_acceptance_recorded == true or .acceptance_record_persisted == true or .persistence_open_denial_receipt_persisted == true or .persistence_denial_receipt_persisted == true or .non_recording_denial_receipt_persisted == true or .idempotency_index_written == true or .ledger_written == true or .receipt_persisted == true or .tool_registered == true or .registry_lookup_executed == true or .tool_invoked == true or .mcp_server_started == true or .app_connector_started == true or .runtime_event_log_written == true or .sqlite_written == true or .live_execution_started == true)) | length) == 0) as $ready |
+  {
+    runtime:"hepta",
+    surface:"hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_open_preconditions_readback",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_open_preconditions_readback_gate",
+    schema_version:"hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_open_preconditions_readback_v1",
+    plugin_id:"hepta-system@hepta-local",
+    manifest_name:$source_report.manifest_name,
+    manifest_version:$source_report.manifest_version,
+    source_persistence_denial_receipt_readback_ready:$source_report.persistence_denial_receipt_readback_ready,
+    lib_export_present:$lib_export_present,
+    candidate_count:$source_report.candidate_count,
+    precondition_entry_count:$entry_count,
+    selected_read_only_status_tool_count:$selected_count,
+    non_selected_preflight_boundary_count:$non_selected_count,
+    persistence_open_precondition_set_projected_count:($entries | map(select(.persistence_open_precondition_set_projected == true)) | length),
+    source_persistence_denial_receipt_linked_count:($entries | map(select(.source_persistence_denial_receipt_linked == true)) | length),
+    source_persistence_denial_receipt_digest_linked_count:($entries | map(select(.source_persistence_denial_receipt_digest_linked == true)) | length),
+    source_persistence_idempotency_key_linked_count:($entries | map(select(.source_persistence_idempotency_key_linked == true)) | length),
+    evidence_artifact_presence_precondition_projected_count:($entries | map(select(.evidence_artifact_presence_precondition_projected == true)) | length),
+    operator_identity_precondition_projected_count:($entries | map(select(.operator_identity_precondition_projected == true)) | length),
+    operator_acceptance_precondition_projected_count:($entries | map(select(.operator_acceptance_precondition_projected == true)) | length),
+    operator_evidence_record_store_binding_precondition_projected_count:($entries | map(select(.operator_evidence_record_store_binding_precondition_projected == true)) | length),
+    acceptance_record_schema_precondition_projected_count:($entries | map(select(.acceptance_record_schema_precondition_projected == true)) | length),
+    acceptance_record_store_binding_precondition_projected_count:($entries | map(select(.acceptance_record_store_binding_precondition_projected == true)) | length),
+    acceptance_record_idempotency_index_precondition_projected_count:($entries | map(select(.acceptance_record_idempotency_index_precondition_projected == true)) | length),
+    ledger_store_binding_precondition_projected_count:($entries | map(select(.ledger_store_binding_precondition_projected == true)) | length),
+    receipt_store_binding_precondition_projected_count:($entries | map(select(.receipt_store_binding_precondition_projected == true)) | length),
+    runtime_event_log_store_binding_precondition_projected_count:($entries | map(select(.runtime_event_log_store_binding_precondition_projected == true)) | length),
+    rollback_anchor_precondition_projected_count:($entries | map(select(.rollback_anchor_precondition_projected == true)) | length),
+    kill_switch_precondition_projected_count:($entries | map(select(.kill_switch_precondition_projected == true)) | length),
+    retention_policy_precondition_projected_count:($entries | map(select(.retention_policy_precondition_projected == true)) | length),
+    readback_query_precondition_projected_count:($entries | map(select(.readback_query_precondition_projected == true)) | length),
+    controlled_live_evidence_precondition_projected_count:($entries | map(select(.controlled_live_evidence_precondition_projected == true)) | length),
+    feature_gate_precondition_projected_count:($entries | map(select(.feature_gate_precondition_projected == true)) | length),
+    persistence_open_precondition_item_count:($entry_count * 16),
+    stable_persistence_open_precondition_set_count:($entries | map(select(.stable_persistence_open_precondition_set == true)) | length),
+    unique_persistence_open_precondition_set_count:$unique_set_count,
+    stable_persistence_open_denial_receipt_count:($entries | map(select(.stable_persistence_open_denial_receipt == true)) | length),
+    unique_persistence_open_denial_receipt_count:$unique_receipt_count,
+    stable_persistence_open_idempotency_key_count:($entries | map(select(.stable_persistence_open_idempotency_key == true)) | length),
+    unique_persistence_open_idempotency_key_count:$unique_idempotency_count,
+    persistence_open_precondition_set_mismatch_count:($entries | map(select(.stable_persistence_open_precondition_set == false)) | length),
+    duplicate_persistence_open_precondition_set_count:($entry_count - $unique_set_count),
+    persistence_open_denial_receipt_mismatch_count:($entries | map(select(.stable_persistence_open_denial_receipt == false)) | length),
+    duplicate_persistence_open_denial_receipt_count:($entry_count - $unique_receipt_count),
+    persistence_open_idempotency_mismatch_count:($entries | map(select(.stable_persistence_open_idempotency_key == false)) | length),
+    duplicate_persistence_open_idempotency_key_count:($entry_count - $unique_idempotency_count),
+    feature_gate_opened_count:($entries | map(select(.feature_gate_opened == true)) | length),
+    dry_run_executed_count:($entries | map(select(.dry_run_executed == true)) | length),
+    operator_evidence_packet_sent_count:($entries | map(select(.operator_evidence_packet_sent == true)) | length),
+    operator_evidence_packet_persisted_count:($entries | map(select(.operator_evidence_packet_persisted == true)) | length),
+    operator_evidence_recorded_count:($entries | map(select(.operator_evidence_recorded == true)) | length),
+    operator_acceptance_recorded_count:($entries | map(select(.operator_acceptance_recorded == true)) | length),
+    acceptance_record_persisted_count:($entries | map(select(.acceptance_record_persisted == true)) | length),
+    persistence_open_denial_receipt_persisted_count:($entries | map(select(.persistence_open_denial_receipt_persisted == true)) | length),
+    persistence_denial_receipt_persisted_count:($entries | map(select(.persistence_denial_receipt_persisted == true)) | length),
+    non_recording_denial_receipt_persisted_count:($entries | map(select(.non_recording_denial_receipt_persisted == true)) | length),
+    idempotency_index_written_count:($entries | map(select(.idempotency_index_written == true)) | length),
+    ledger_written_count:($entries | map(select(.ledger_written == true)) | length),
+    receipt_persisted_count:($entries | map(select(.receipt_persisted == true)) | length),
+    tool_registered_count:($entries | map(select(.tool_registered == true)) | length),
+    registry_lookup_executed_count:($entries | map(select(.registry_lookup_executed == true)) | length),
+    tool_invoked_count:($entries | map(select(.tool_invoked == true)) | length),
+    mcp_server_started_count:($entries | map(select(.mcp_server_started == true)) | length),
+    app_connector_started_count:($entries | map(select(.app_connector_started == true)) | length),
+    runtime_event_log_written_count:($entries | map(select(.runtime_event_log_written == true)) | length),
+    sqlite_written_count:($entries | map(select(.sqlite_written == true)) | length),
+    live_execution_started_count:($entries | map(select(.live_execution_started == true)) | length),
+    persistence_open_preconditions_readback_ready:$ready,
+    feature_gate_open_allowed:false,
+    dry_run_execution_allowed:false,
+    operator_evidence_packet_send_allowed:false,
+    operator_evidence_packet_persistence_allowed:false,
+    operator_evidence_recording_allowed:false,
+    operator_acceptance_recording_allowed:false,
+    acceptance_record_persistence_allowed:false,
+    persistence_open_denial_receipt_persistence_allowed:false,
+    persistence_denial_receipt_persistence_allowed:false,
+    non_recording_denial_receipt_persistence_allowed:false,
+    idempotency_index_write_allowed:false,
+    ledger_persistence_allowed:false,
+    receipt_persistence_allowed:false,
+    tool_registry_registration_allowed:false,
+    registry_lookup_execution_allowed:false,
+    tool_invocation_allowed:false,
+    connector_start_allowed:false,
+    runtime_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    live_execution_allowed:false,
+    entries:$entries,
+    blockers:[
+      "feature_gate_closed",
+      "operator_evidence_artifact_absent",
+      "operator_identity_unverified",
+      "operator_acceptance_unrecorded",
+      "operator_evidence_record_store_binding_absent",
+      "acceptance_record_schema_unaccepted",
+      "acceptance_record_store_binding_absent",
+      "acceptance_record_idempotency_index_absent",
+      "ledger_store_binding_absent",
+      "receipt_store_binding_absent",
+      "runtime_event_log_store_binding_absent",
+      "rollback_anchor_absent",
+      "kill_switch_unrehearsed",
+      "retention_policy_unaccepted",
+      "readback_query_unverified",
+      "controlled_live_evidence_absent",
+      "tool_registry_registration_disabled",
+      "registry_lookup_execution_disabled",
+      "tool_invocation_disabled",
+      "connector_start_disabled",
+      "runtime_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback"
+    ],
+    recommended_next_gate:"hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      filesystem_written:false,
+      feature_gate_opened:false,
+      dry_run_executed:false,
+      operator_evidence_packet_sent:false,
+      operator_evidence_packet_persisted:false,
+      operator_evidence_recorded:false,
+      operator_acceptance_recorded:false,
+      acceptance_record_persisted:false,
+      persistence_open_denial_receipt_persisted:false,
+      persistence_denial_receipt_persisted:false,
+      non_recording_denial_receipt_persisted:false,
+      idempotency_index_written:false,
+      ledger_persisted:false,
+      receipt_persisted:false,
+      tool_registered:false,
+      tool_registry_mutated:false,
+      registry_lookup_executed:false,
+      tool_invoked:false,
+      connector_started:false,
+      runtime_event_log_written:false,
+      sqlite_written:false,
+      credential_read:false,
+      external_network_used:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      telegram_transport_mutated:false,
+      package_or_release_written:false,
+      live_execution_started:false
+    }
+  }'

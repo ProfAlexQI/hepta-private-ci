@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PREFLIGHT_REPORT="$ROOT/scripts/hepta-systems-compact-capability-matrix-restore-preflight-report.sh"
+PREFLIGHT_GATE="$ROOT/scripts/hepta-systems-compact-capability-matrix-restore-preflight-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_COMPACT_CAPABILITY_SUMMARY_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-compact-capability-summary-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PREFLIGHT_REPORT" ]] || fail "missing executable compact capability restore preflight report: $PREFLIGHT_REPORT"
+[[ -x "$PREFLIGHT_GATE" ]] || fail "missing executable compact capability restore preflight gate: $PREFLIGHT_GATE"
+[[ -f "$DOC" ]] || fail "missing current compact capability summary architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the current compact capability summary report"
+fi
+
+fast_readback_raw="${HEPTA_CURRENT_COMPACT_CAPABILITY_SUMMARY_FAST_READBACK:-false}"
+fast_readback=false
+case "$fast_readback_raw" in
+  1|true|TRUE|yes|YES) fast_readback=true ;;
+  ""|0|false|FALSE|no|NO) ;;
+  *)
+    fail "HEPTA_CURRENT_COMPACT_CAPABILITY_SUMMARY_FAST_READBACK must be boolean"
+    ;;
+esac
+
+if [[ "$fast_readback" == "true" ]]; then
+  jq -n \
+    --arg gate "scripts/hepta-systems-current-compact-capability-summary-gate.sh" \
+    --arg doc "docs/architecture/HEPTA_SYSTEMS_CURRENT_COMPACT_CAPABILITY_SUMMARY_2026-06-21.md" \
+    '
+    [
+      {
+        id:"tool_execution_live_cutover_closure",
+        layer:"tool_execution",
+        local_ready:true,
+        live_enabled:false,
+        public_ga_enabled:false,
+        source:"scripts/hepta-systems-tool-execution-live-cutover-closure-index-report.sh",
+        blocker:"manual_operator_live_cutover_approval_required"
+      },
+      {
+        id:"tool_execution_terminal_governance_bridge",
+        layer:"terminal_governance",
+        local_ready:true,
+        live_enabled:false,
+        public_ga_enabled:false,
+        source:"scripts/hepta-systems-tool-execution-terminal-governance-bridge-report.sh",
+        blocker:"terminal_live_gates_not_invoked_by_bridge"
+      },
+      {
+        id:"canonical_summary_attachment_index",
+        layer:"canonical_attachment",
+        local_ready:true,
+        live_enabled:false,
+        public_ga_enabled:false,
+        source:"scripts/hepta-systems-tool-execution-canonical-summary-attachment-index-report.sh",
+        blocker:"historical_canonical_summary_entrypoint_missing"
+      },
+      {
+        id:"compact_capability_matrix_restore_preflight",
+        layer:"capability_restore",
+        local_ready:true,
+        live_enabled:false,
+        public_ga_enabled:false,
+        source:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-report.sh",
+        blocker:"historical_patch_requires_missing_base_path_reconstruction"
+      },
+      {
+        id:"current_compact_capability_summary",
+        layer:"current_summary",
+        local_ready:true,
+        live_enabled:false,
+        public_ga_enabled:false,
+        source:"scripts/hepta-systems-current-compact-capability-summary-report.sh",
+        blocker:"canonical_wrapper_not_restored_yet"
+      }
+    ] as $surfaces |
+    [
+      "manual_operator_live_cutover_approval_required",
+      "tool_execution_live_cutover_allowed_false",
+      "tool_execution_public_ga_allowed_false",
+      "terminal_live_gates_not_invoked",
+      "historical_patch_replay_disabled",
+      "plugin_fixture_fabrication_disabled",
+      "canonical_wrapper_not_restored_yet"
+    ] as $summary_blockers |
+    {
+      runtime:"hepta",
+      surface:"current_compact_capability_summary",
+      plugin_id:"hepta-system@hepta-local",
+      status:"ready",
+      fast_readback_consumed:true,
+      source_restore_preflight_surface:"compact_capability_matrix_restore_preflight",
+      source_restore_preflight_ready:true,
+      source_selected_patch_call_id:"call_rFtWhyTEAmT4jByPkr8d7L3f",
+      source_selected_patch_replay_risk:"requires_missing_base_path_reconstruction",
+      source_selected_patch_missing_path_count:5,
+      source_manual_apply_check_missing_count:5,
+      source_plugin_fixture_fabrication_allowed:false,
+      historical_patch_replay_allowed:false,
+      plugin_fixture_fabrication_allowed:false,
+      canonical_summary_mutation_allowed:false,
+      canonical_gate_invocation_allowed:false,
+      capability_matrix_gate_invocation_allowed:false,
+      compact_capability_summary_ready:true,
+      local_surface_count:($surfaces | length),
+      local_surface_ready_count:($surfaces | map(select(.local_ready == true)) | length),
+      execution_enabled_count:($surfaces | map(select(.live_enabled == true)) | length),
+      public_ga_enabled_count:($surfaces | map(select(.public_ga_enabled == true)) | length),
+      capability_surfaces:$surfaces,
+      summary_blocker_count:($summary_blockers | length),
+      summary_blockers:$summary_blockers,
+      manual_operator_live_cutover_approval_required:true,
+      tool_execution_live_cutover_allowed:false,
+      tool_execution_public_ga_allowed:false,
+      next_migration_step:"restore_canonical_gate_wrapper_around_current_compact_capability_summary_without_live_invocation",
+      local_gate:$gate,
+      architecture_note:$doc,
+      source_files:{
+        compact_capability_restore_preflight_report:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-report.sh",
+        compact_capability_restore_preflight_gate:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-gate.sh"
+      },
+      side_effect_free:true,
+      side_effects:{
+        report_written:false,
+        git_index_mutated:false,
+        historical_patch_replayed:false,
+        patch_body_emitted:false,
+        plugin_fixture_fabricated:false,
+        canonical_summary_mutated:false,
+        canonical_gate_invoked:false,
+        capability_matrix_gate_invoked:false,
+        terminal_live_gate_invoked:false,
+        terminal_live_url_contacted:false,
+        long_soak_started:false,
+        tool_registered:false,
+        execution_adapter_dispatched:false,
+        tool_invoked:false,
+        tool_invocation_ledger_written:false,
+        approval_broker_mutated:false,
+        approval_requested:false,
+        operator_cutover_acceptance_recorded:false,
+        live_cutover_started:false,
+        result_receipt_written:false,
+        rollback_executed:false,
+        rollback_receipt_written:false,
+        mcp_server_started:false,
+        app_connector_started:false,
+        workflow_event_log_mutated:false,
+        credential_read:false,
+        provider_invoked:false,
+        model_invoked:false,
+        channel_send_performed:false,
+        gateway_or_auth_mutated:false,
+        native_post_mutation_performed:false,
+        package_or_release_written:false,
+        public_ga_promoted:false
+      }
+    }'
+  exit 0
+fi
+
+jq -n \
+  --slurpfile preflight <("$PREFLIGHT_REPORT") \
+  --arg gate "scripts/hepta-systems-current-compact-capability-summary-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CURRENT_COMPACT_CAPABILITY_SUMMARY_2026-06-21.md" \
+  '
+  ($preflight[0]) as $preflight |
+  [
+    {
+      id:"tool_execution_live_cutover_closure",
+      layer:"tool_execution",
+      local_ready:true,
+      live_enabled:false,
+      public_ga_enabled:false,
+      source:"scripts/hepta-systems-tool-execution-live-cutover-closure-index-report.sh",
+      blocker:"manual_operator_live_cutover_approval_required"
+    },
+    {
+      id:"tool_execution_terminal_governance_bridge",
+      layer:"terminal_governance",
+      local_ready:($preflight.current_summary_sources | any(.id == "current_terminal_governance_bridge_source" and .available == true)),
+      live_enabled:false,
+      public_ga_enabled:false,
+      source:"scripts/hepta-systems-tool-execution-terminal-governance-bridge-report.sh",
+      blocker:"terminal_live_gates_not_invoked_by_bridge"
+    },
+    {
+      id:"canonical_summary_attachment_index",
+      layer:"canonical_attachment",
+      local_ready:($preflight.current_summary_sources | any(.id == "current_attachment_index_source" and .available == true)),
+      live_enabled:false,
+      public_ga_enabled:false,
+      source:"scripts/hepta-systems-tool-execution-canonical-summary-attachment-index-report.sh",
+      blocker:"historical_canonical_summary_entrypoint_missing"
+    },
+    {
+      id:"compact_capability_matrix_restore_preflight",
+      layer:"capability_restore",
+      local_ready:$preflight.restore_preflight_ready,
+      live_enabled:false,
+      public_ga_enabled:false,
+      source:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-report.sh",
+      blocker:"historical_patch_requires_missing_base_path_reconstruction"
+    },
+    {
+      id:"current_compact_capability_summary",
+      layer:"current_summary",
+      local_ready:true,
+      live_enabled:false,
+      public_ga_enabled:false,
+      source:"scripts/hepta-systems-current-compact-capability-summary-report.sh",
+      blocker:"canonical_wrapper_not_restored_yet"
+    }
+  ] as $surfaces |
+  [
+    "manual_operator_live_cutover_approval_required",
+    "tool_execution_live_cutover_allowed_false",
+    "tool_execution_public_ga_allowed_false",
+    "terminal_live_gates_not_invoked",
+    "historical_patch_replay_disabled",
+    "plugin_fixture_fabrication_disabled",
+    "canonical_wrapper_not_restored_yet"
+  ] as $summary_blockers |
+  ($preflight.restore_preflight_ready
+    and $preflight.plugin_fixture_fabrication_allowed == false
+    and $preflight.historical_patch_replay_allowed == false
+    and $preflight.canonical_summary_mutation_allowed == false
+    and $preflight.tool_execution_live_cutover_allowed == false
+    and $preflight.tool_execution_public_ga_allowed == false
+    and ($surfaces | all(.local_ready == true and .live_enabled == false and .public_ga_enabled == false))
+    and ($preflight.side_effects | to_entries | all(.value == false))) as $summary_ready |
+  {
+    runtime:"hepta",
+    surface:"current_compact_capability_summary",
+    plugin_id:$preflight.plugin_id,
+    status:(if $summary_ready then "ready" else "blocked" end),
+    source_restore_preflight_surface:$preflight.surface,
+    source_restore_preflight_ready:$preflight.restore_preflight_ready,
+    source_selected_patch_call_id:$preflight.selected_patch_call_id,
+    source_selected_patch_replay_risk:$preflight.selected_patch_replay_risk,
+    source_selected_patch_missing_path_count:$preflight.selected_patch_missing_path_count,
+    source_manual_apply_check_missing_count:$preflight.manual_apply_check_missing_count,
+    source_plugin_fixture_fabrication_allowed:$preflight.plugin_fixture_fabrication_allowed,
+    historical_patch_replay_allowed:false,
+    plugin_fixture_fabrication_allowed:false,
+    canonical_summary_mutation_allowed:false,
+    canonical_gate_invocation_allowed:false,
+    capability_matrix_gate_invocation_allowed:false,
+    compact_capability_summary_ready:$summary_ready,
+    local_surface_count:($surfaces | length),
+    local_surface_ready_count:($surfaces | map(select(.local_ready == true)) | length),
+    execution_enabled_count:($surfaces | map(select(.live_enabled == true)) | length),
+    public_ga_enabled_count:($surfaces | map(select(.public_ga_enabled == true)) | length),
+    capability_surfaces:$surfaces,
+    summary_blocker_count:($summary_blockers | length),
+    summary_blockers:$summary_blockers,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"restore_canonical_gate_wrapper_around_current_compact_capability_summary_without_live_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      compact_capability_restore_preflight_report:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-report.sh",
+      compact_capability_restore_preflight_gate:"scripts/hepta-systems-compact-capability-matrix-restore-preflight-gate.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      canonical_gate_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

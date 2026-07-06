@@ -1,7 +1,9 @@
-use super::{DoctorCheck, DoctorStatus, integrity};
-use crate::{
-    RuntimeIntelligenceEvalOverview, RuntimeKernel, query::RuntimeNeuronLifecycleOverview,
-};
+use super::DoctorCheck;
+use super::DoctorStatus;
+use super::integrity;
+use crate::RuntimeIntelligenceEvalOverview;
+use crate::RuntimeKernel;
+use crate::query::RuntimeNeuronLifecycleOverview;
 
 const DOCTOR_REPLAY_CASE_LIMIT: usize = 12;
 const DOCTOR_REPLAY_RECENT_WINDOW_LIMIT: usize = 12;

@@ -54,6 +54,20 @@ script_mod! {
                 }
             }
 
+            cancel_evidence := Label {
+                visible: false
+                width: Fill
+                margin: Inset{top: 0, bottom: 5}
+                align: Align{x: 0.0, y: 0.0}
+                flow: Flow.Right{wrap: true}
+                draw_text +: {
+                    text_style: REGULAR_TEXT {
+                        font_size: 10.0,
+                    },
+                    color: #444
+                }
+            }
+
             View {
                 width: Fill,
                 height: Fit,
@@ -75,7 +89,8 @@ script_mod! {
 /// A modal dialog that displays the status of a login attempt.
 #[derive(Script, ScriptHook, Widget)]
 pub struct LoginStatusModal {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -113,7 +128,7 @@ impl WidgetMatchEvent for LoginStatusModal {
             // a `LoginStatusModalAction::Close` action, as that would cause
             // an infinite action feedback loop.
             if !modal_dismissed {
-                cx.widget_action(widget_uid,  LoginStatusModalAction::Close);
+                cx.widget_action(widget_uid, LoginStatusModalAction::Close);
             }
         }
     }
@@ -128,6 +143,20 @@ impl LoginStatusModal {
     /// Sets the status text displayed in the body of the modal.
     fn set_status(&mut self, cx: &mut Cx, status: &str) {
         self.label(cx, ids!(status)).set_text(cx, status);
+    }
+
+    /// Sets and shows the login cancel evidence text displayed in the modal.
+    fn set_cancel_evidence(&mut self, cx: &mut Cx, evidence: &str) {
+        let evidence_label = self.label(cx, ids!(cancel_evidence));
+        evidence_label.set_text(cx, evidence);
+        evidence_label.set_visible(cx, true);
+    }
+
+    /// Hides the login cancel evidence row.
+    fn hide_cancel_evidence(&mut self, cx: &mut Cx) {
+        let evidence_label = self.label(cx, ids!(cancel_evidence));
+        evidence_label.set_text(cx, "");
+        evidence_label.set_visible(cx, false);
     }
 
     /// Returns a reference to the modal's button, enabling you to set its properties.
@@ -148,6 +177,20 @@ impl LoginStatusModalRef {
     pub fn set_status(&self, cx: &mut Cx, status: &str) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.set_status(cx, status);
+        }
+    }
+
+    /// See [`LoginStatusModal::set_cancel_evidence()`].
+    pub fn set_cancel_evidence(&self, cx: &mut Cx, evidence: &str) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.set_cancel_evidence(cx, evidence);
+        }
+    }
+
+    /// See [`LoginStatusModal::hide_cancel_evidence()`].
+    pub fn hide_cancel_evidence(&self, cx: &mut Cx) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.hide_cancel_evidence(cx);
         }
     }
 

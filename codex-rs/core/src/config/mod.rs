@@ -1877,6 +1877,24 @@ pub fn set_default_oss_provider(codex_home: &Path, provider: &str) -> std::io::R
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentCardManifestConfig {
+    /// AgentCard document schema version.
+    pub schema_version: Option<String>,
+    /// Tool or lifecycle surface governed by this manifest.
+    pub source_surface_id: Option<String>,
+    /// Capabilities granted to the role for this surface.
+    pub capabilities: Vec<String>,
+    /// Tools allowed for this role on this surface.
+    pub allowed_tools: Vec<String>,
+    /// WorkGraph lane expected for this surface.
+    pub lane: Option<String>,
+    /// Optional configured maximum number of threads for this role.
+    pub max_threads: Option<usize>,
+    /// Optional configured maximum child depth for this role.
+    pub max_depth: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AgentRoleConfig {
     /// Human-facing role documentation used in spawn tool guidance.
     /// Required for loaded user-defined roles after deprecated/new metadata precedence resolves.
@@ -1885,6 +1903,12 @@ pub struct AgentRoleConfig {
     pub config_file: Option<PathBuf>,
     /// Candidate nicknames for agents spawned with this role.
     pub nickname_candidates: Option<Vec<String>>,
+    /// Optional configured AgentCard manifest source for WorkGraph shadow governance.
+    pub agent_card_manifest_source: Option<String>,
+    /// Optional configured AgentCard manifest version for WorkGraph shadow drift detection.
+    pub agent_card_manifest_version: Option<String>,
+    /// Optional structured AgentCard manifest for WorkGraph shadow registry overlay checks.
+    pub agent_card_manifest: Option<AgentCardManifestConfig>,
 }
 
 fn resolve_tool_suggest_config(

@@ -1,14 +1,15 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    fs,
-    hash::{Hash, Hasher},
-    path::PathBuf,
-};
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::PathBuf;
 
 use hepta_core::HeptaError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{current_unix_ms, delivery_queue::ReadbackEvidenceLedger};
+use crate::current_unix_ms;
+use crate::delivery_queue::ReadbackEvidenceLedger;
 
 pub const DEFAULT_SESSION_TRANSCRIPT_PATH: &str = ".hepta/session-transcripts-v0.json";
 pub const DEFAULT_SESSION_TRANSCRIPT_STORE_ID: &str = "hepta-native-session-transcripts";
@@ -349,7 +350,7 @@ impl SessionTranscriptStore {
             sequence,
             role: role.to_string(),
             turn_kind,
-            text_preview: redact_preview(&text),
+            text_preview: redact_preview(text),
             provenance_hash: stable_hash(&format!("{session_id}\n{sequence}\n{text}\n{now}")),
             created_at_unix_ms: now,
         };

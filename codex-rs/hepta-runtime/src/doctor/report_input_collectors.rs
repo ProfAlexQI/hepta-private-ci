@@ -1,9 +1,14 @@
-use hepta_core::{HeptaError, MemoryRecord, SessionRecord};
+use hepta_core::HeptaError;
+use hepta_core::MemoryRecord;
+use hepta_core::SessionRecord;
 
 use super::DoctorProviderProbe;
-use crate::{
-    EventRecord, ModelSelection, RuntimeKernel, RuntimeSnapshot, SessionApprovalState, TurnRecord,
-};
+use crate::EventRecord;
+use crate::ModelSelection;
+use crate::RuntimeKernel;
+use crate::RuntimeSnapshot;
+use crate::SessionApprovalState;
+use crate::TurnRecord;
 
 pub(super) struct CollectedDoctorRuntimeInputs {
     pub active_session_id: String,

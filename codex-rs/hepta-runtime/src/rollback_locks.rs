@@ -6,10 +6,10 @@ mod diagnostics;
 mod report_bundle;
 
 pub(crate) use diagnostics::collect_rollback_group_lock_diagnostics;
-pub(crate) use report_bundle::{
-    build_write_group_lock_report, build_write_lock_prune_report, build_write_lock_report,
-    build_write_target_lock_report,
-};
+pub(crate) use report_bundle::build_write_group_lock_report;
+pub(crate) use report_bundle::build_write_lock_prune_report;
+pub(crate) use report_bundle::build_write_lock_report;
+pub(crate) use report_bundle::build_write_target_lock_report;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RollbackGroupLockDiagnosticsReport {

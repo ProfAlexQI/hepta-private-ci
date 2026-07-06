@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-current-canonical-wrapper-report.sh"
+SUMMARY_GATE="$ROOT/scripts/hepta-systems-current-compact-capability-summary-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_WRAPPER_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-wrapper-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current canonical wrapper report: $REPORT"
+[[ -x "$SUMMARY_GATE" ]] || fail "missing executable current compact capability summary gate: $SUMMARY_GATE"
+[[ -f "$DOC" ]] || fail "missing current canonical wrapper architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the current canonical wrapper report"
+fi
+
+grep -q 'Current Canonical Wrapper' "$DOC" \
+  || fail "architecture note must document Current Canonical Wrapper"
+grep -q 'thin wrapper claim' "$DOC" \
+  || fail "architecture note must document historical canonical thin wrapper claim"
+grep -q 'without live invocation' "$DOC" \
+  || fail "architecture note must document without live invocation"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_canonical_wrapper"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_compact_capability_summary_surface == "current_compact_capability_summary"
+  and .source_compact_capability_summary_ready == true
+  and .source_local_surface_count == 5
+  and .source_local_surface_ready_count == 5
+  and .source_execution_enabled_count == 0
+  and .source_public_ga_enabled_count == 0
+  and .source_manual_operator_live_cutover_approval_required == true
+  and .source_tool_execution_live_cutover_allowed == false
+  and .source_tool_execution_public_ga_allowed == false
+  and .current_canonical_wrapper_ready == true
+  and .wrapper_plan_step_count == 3
+  and (.wrapper_plan | all(.required == true and .runnable_locally == true and .invoked_by_report == false))
+  and .historical_canonical_gate_name_claimed == true
+  and .historical_canonical_gate_created == true
+  and .historical_canonical_gate_executable == true
+  and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .historical_canonical_gate_wrapper_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+  and .historical_canonical_gate_wrapper_target_matches == true
+  and .historical_canonical_gate_wrapper_exec_count == 1
+  and .historical_canonical_gate_mutated == true
+  and .historical_canonical_gate_mutated_by_report == false
+  and .canonical_gate_wrapper_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "validate_historical_canonical_gate_thin_wrapper_without_live_invocation"
+  and (.wrapper_blockers | index("historical_canonical_gate_thin_wrapper_validation_pending")) != null
+  and (.wrapper_blockers | index("manual_operator_live_cutover_approval_required")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SUMMARY_GATE" >/dev/null
+
+printf 'hepta-systems-current-canonical-wrapper-gate: PASS: current canonical wrapper is ready with historical thin wrapper claim and without live invocation\n'

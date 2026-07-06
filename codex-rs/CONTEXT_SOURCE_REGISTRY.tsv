@@ -1,0 +1,21 @@
+# version=1
+source_id	tier	owner_lane	privacy_class	budget_class	ttl	volatility	trust_class	redaction_policy	quality_metric	activation_guard	rollback_policy	omit_priority	allowed_compression_actions
+apps	tool	hepta-context	prompt_visible	tool_inventory	turn	medium	runtime_observed	prompt_hash_only	inventory_digest	candidate_only	rebuild_from_source	30	defragment
+available_plugins	tool	hepta-context	prompt_visible	tool_inventory	turn	medium	system_owned	prompt_hash_only	inventory_digest	candidate_only	rebuild_from_source	20	defragment
+available_skills	tool	hepta-context	prompt_visible	tool_inventory	turn	medium	system_owned	prompt_hash_only	inventory_digest	candidate_only	rebuild_from_source	40	defragment
+collaboration_mode	developer	hepta-context	prompt_visible	protected_developer	session	low	system_owned	prompt_hash_only	policy_digest	protected	restore_previous	-	-
+context	runtime	hepta-context	prompt_visible	fallback_context	turn	high	runtime_observed	metadata_only	freshness	candidate_only	drop_turn_fragment	-	-
+contextual_user	user	hepta-context	prompt_visible	protected_user	turn	medium	user_owned	prompt_hash_only	presence	protected	drop_turn_fragment	-	-
+developer_instructions	developer	hepta-context	prompt_visible	protected_developer	session	low	developer_owned	prompt_hash_only	policy_digest	protected	not_mutable	-	-
+environment	runtime	hepta-context	prompt_visible	runtime_state	turn	high	runtime_observed	metadata_only	freshness	candidate_only	rebuild_from_source	-	-
+extension_contextual_user	user	hepta-context	prompt_visible	protected_user	turn	medium	extension_owned	prompt_hash_only	extension_digest	protected	drop_turn_fragment	-	-
+extension_developer_capabilities	tool	hepta-context	prompt_visible	tool_capability	turn	medium	extension_owned	prompt_hash_only	extension_digest	candidate_only	drop_turn_fragment	10	prune
+extension_developer_policy	developer	hepta-context	prompt_visible	protected_developer	turn	medium	extension_owned	prompt_hash_only	extension_digest	protected	drop_turn_fragment	-	-
+extension_separate_developer	developer	hepta-context	prompt_visible	protected_developer	turn	medium	extension_owned	prompt_hash_only	extension_digest	protected	drop_turn_fragment	-	-
+model_switch	session_state	hepta-context	prompt_visible	session_state	turn	low	system_owned	metadata_only	presence	protected	restore_previous	-	-
+non_text_content	runtime	hepta-context	prompt_visible	non_text_context	turn	high	runtime_observed	metadata_only	presence	protected	drop_turn_fragment	-	-
+permissions	system	hepta-context	prompt_visible	protected_system	session	low	system_owned	prompt_hash_only	policy_digest	protected	not_mutable	-	-
+personality	developer	hepta-context	prompt_visible	protected_developer	session	low	developer_owned	prompt_hash_only	policy_digest	protected	restore_previous	-	-
+realtime	runtime	hepta-context	prompt_visible	runtime_state	turn	high	runtime_observed	metadata_only	freshness	candidate_only	rebuild_from_source	-	-
+selected_context_recall	retrieved_snippets	hepta-context	bounded_recall_payload	bounded_recall	turn	high	retrieved_memory	guarded_envelope	recall_quality	operator_approval_required	rerun_recall	50	summary
+user_instructions	user	hepta-context	prompt_visible	protected_user	session	low	user_owned	prompt_hash_only	policy_digest	protected	restore_previous	-	-

@@ -1,9 +1,16 @@
 use std::collections::HashSet;
 
-use hepta_core::{MemoryRecord, ModelRef, SessionRecord, TopicSessionStatus};
+use hepta_core::MemoryRecord;
+use hepta_core::ModelRef;
+use hepta_core::SessionRecord;
+use hepta_core::TopicSessionStatus;
 
 use super::integrity;
-use crate::{RuntimeKernel, RuntimeSnapshot, SessionApprovalState, SessionExport, TurnRecord};
+use crate::RuntimeKernel;
+use crate::RuntimeSnapshot;
+use crate::SessionApprovalState;
+use crate::SessionExport;
+use crate::TurnRecord;
 
 pub(super) struct RuntimeStateFindings {
     pub(super) known_session_ids: HashSet<String>,

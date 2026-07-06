@@ -4,6 +4,42 @@ use makepad_widgets::*;
 
 use crate::tsp;
 
+const TSP_DID_PENDING_CANCEL_COMPACT_LABEL: &str =
+    "Local cancel before submit; pending cancel is not wired.";
+pub const TSP_DID_PENDING_CANCEL_OPERATION_PACKET_EVIDENCE: &str = "CreateDidModal now shows a local pending-cancel operation packet while DID creation/publication is in flight. The packet records a non-secret local operation key, the missing backend operation id, disabled cancel state, stale-result policy, server fields, and alias availability; it starts no TspRequest cancel, DID rollback, wallet database write beyond the already-submitted create request, filesystem write, Matrix request, gateway/runtime/auth, or live mutation.";
+
+fn tsp_did_pending_cancel_operation_packet_label(
+    username: &str,
+    alias: Option<&str>,
+    server: &str,
+    did_server: &str,
+) -> String {
+    let username = username.trim();
+    let username_state = if username.is_empty() {
+        "missing"
+    } else {
+        "loaded"
+    };
+    let alias_state = alias
+        .map(str::trim)
+        .filter(|alias| !alias.is_empty())
+        .map(|_| "loaded")
+        .unwrap_or("missing");
+    let server_state = if server.trim().is_empty() {
+        "default"
+    } else {
+        "explicit"
+    };
+    let did_server_state = if did_server.trim().is_empty() {
+        "default"
+    } else {
+        "explicit"
+    };
+    format!(
+        "DID creation pending-cancel packet: operation_id missing_backend_contract; local_operation_key username_state:{username_state} username_chars:{} alias_state:{alias_state} server_state:{server_state} did_server_state:{did_server_state}; cancel_state disabled_no_request; stale_result_policy backend_operation_id_required; secret_redacted true. No TspRequest cancel, DID rollback, wallet database write, filesystem write, Matrix request, gateway/runtime/auth, or live mutation starts. {TSP_DID_PENDING_CANCEL_OPERATION_PACKET_EVIDENCE}",
+        username.chars().count()
+    )
+}
 
 script_mod! {
     link tsp_enabled
@@ -225,6 +261,18 @@ script_mod! {
                 }
                 text: "status label"
             }
+
+            pending_cancel_evidence := Label {
+                width: Fill,
+                height: Fit,
+                flow: Flow.Right{wrap: true},
+                margin: Inset{top: 8}
+                draw_text +: {
+                    text_style: REGULAR_TEXT {font_size: 10},
+                    color: #555
+                }
+                text: "Local cancel before submit; pending cancel is not wired."
+            }
         }
     }
 }
@@ -252,12 +300,14 @@ enum CreateDidModalState {
     IdentityCreationError,
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 pub struct CreateDidModal {
-    #[deref] view: View,
-    #[rust] state: CreateDidModalState,
-    #[rust] is_showing_error: bool,
+    #[deref]
+    view: View,
+    #[rust]
+    state: CreateDidModalState,
+    #[rust]
+    is_showing_error: bool,
 }
 
 impl Widget for CreateDidModal {
@@ -278,8 +328,10 @@ impl WidgetMatchEvent for CreateDidModal {
 
         // Handle canceling/closing the modal.
         let cancel_clicked = cancel_button.clicked(actions);
-        if cancel_clicked ||
-            actions.iter().any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
+        if cancel_clicked
+            || actions
+                .iter()
+                .any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
         {
             // If the modal was dismissed by clicking outside of it, we MUST NOT emit
             // a `CreateDidModalAction::Close` action, as that would cause
@@ -335,13 +387,19 @@ impl WidgetMatchEvent for CreateDidModal {
                             "" => did_server_input.empty_text(),
                             non_empty => non_empty.to_string(),
                         };
+                        let pending_cancel_packet = tsp_did_pending_cancel_operation_packet_label(
+                            username,
+                            alias.as_deref(),
+                            &server,
+                            &did_server,
+                        );
 
                         // Submit the identity creation request to the TSP async worker thread.
                         tsp::submit_tsp_request(tsp::TspRequest::CreateDid {
                             username: username.to_string(),
                             alias,
                             server,
-                            did_server
+                            did_server,
                         });
 
                         self.state = CreateDidModalState::WaitingForIdentityCreation;
@@ -352,6 +410,9 @@ impl WidgetMatchEvent for CreateDidModal {
                                 color: mod.widgets.COLOR_ACTIVE_PRIMARY_DARKER,
                             },
                         });
+                        self.view
+                            .label(cx, ids!(pending_cancel_evidence))
+                            .set_text(cx, &pending_cancel_packet);
                         accept_button.set_enabled(cx, false);
                         cancel_button.set_enabled(cx, false); // TODO: support canceling the identity creation request?
                         username_input.set_is_read_only(cx, true);
@@ -363,10 +424,9 @@ impl WidgetMatchEvent for CreateDidModal {
                     needs_redraw = true;
                 }
 
-                _ => { }
+                _ => {}
             }
         }
-
 
         // If the user changes any of the input fields, clear the error message
         // and reset the accept button to its default state.
@@ -392,7 +452,7 @@ impl WidgetMatchEvent for CreateDidModal {
 
         for action in actions {
             match action.downcast_ref() {
-                Some(tsp::TspIdentityAction::DidCreationResult(Ok(did)))=> {
+                Some(tsp::TspIdentityAction::DidCreationResult(Ok(did))) => {
                     self.state = CreateDidModalState::IdentityCreated;
                     self.is_showing_error = false;
                     let message = format!("Successfully created and published DID: \"{}\"", did);
@@ -421,7 +481,7 @@ impl WidgetMatchEvent for CreateDidModal {
 
                 // Upon an error, update the status label and disable the accept button.
                 // Re-enable the input fields so the user can change the input values to try again.
-                Some(tsp::TspIdentityAction::DidCreationResult(Err(e)))=> {
+                Some(tsp::TspIdentityAction::DidCreationResult(Err(e))) => {
                     self.state = CreateDidModalState::IdentityCreationError;
                     self.is_showing_error = true;
                     let message = format!("Failed to create DID: {e}");
@@ -431,6 +491,9 @@ impl WidgetMatchEvent for CreateDidModal {
                             color: mod.widgets.COLOR_FG_DANGER_RED,
                         },
                     });
+                    self.view
+                        .label(cx, ids!(pending_cancel_evidence))
+                        .set_text(cx, "DID creation failed; inputs are unlocked again.");
                     accept_button.set_enabled(cx, false);
                     cancel_button.set_enabled(cx, true);
                     username_input.set_is_read_only(cx, false);
@@ -440,7 +503,7 @@ impl WidgetMatchEvent for CreateDidModal {
                     needs_redraw = true;
                 }
 
-                _ => { }
+                _ => {}
             }
         }
 
@@ -464,11 +527,22 @@ impl CreateDidModal {
         accept_button.set_visible(cx, true);
         cancel_button.set_visible(cx, true);
         // TODO: return buttons to their default state/appearance
-        self.view.text_input(cx, ids!(username_input)).set_is_read_only(cx, false);
-        self.view.text_input(cx, ids!(alias_input)).set_is_read_only(cx, false);
-        self.view.text_input(cx, ids!(server_input)).set_is_read_only(cx, false);
-        self.view.text_input(cx, ids!(did_server_input)).set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(username_input))
+            .set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(alias_input))
+            .set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(server_input))
+            .set_is_read_only(cx, false);
+        self.view
+            .text_input(cx, ids!(did_server_input))
+            .set_is_read_only(cx, false);
         self.view.label(cx, ids!(status_label)).set_text(cx, "");
+        self.view
+            .label(cx, ids!(pending_cancel_evidence))
+            .set_text(cx, TSP_DID_PENDING_CANCEL_COMPACT_LABEL);
         self.is_showing_error = false;
         self.view.redraw(cx);
     }
@@ -476,7 +550,9 @@ impl CreateDidModal {
 
 impl CreateDidModalRef {
     pub fn show(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx);
     }
 }

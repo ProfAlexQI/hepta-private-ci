@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_readback_preview.rs
+)"
+readback_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-readback-preview-report.sh
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-readback-preview-gate.sh
+)"
+fixture_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_fixture_preview.rs
+)"
+fixture_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview-gate.sh
+)"
+
+jq -n \
+  --argjson readback_rust_module_present "$readback_rust_module_present" \
+  --argjson readback_report_script_present "$readback_report_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  --argjson fixture_rust_module_present "$fixture_rust_module_present" \
+  --argjson fixture_gate_script_present "$fixture_gate_script_present" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_fixture_preview_gate"
+  ];
+  def drift_ids: [
+    "detect_fixture_identity_drift",
+    "detect_fixture_status_drift",
+    "detect_fixture_evidence_drift",
+    "detect_fixture_verifier_drift",
+    "detect_fixture_redaction_drift"
+  ];
+  def plan($id; $fixture; $wrapper; $source; $evidence): {
+    id: $id,
+    fixture_id: $fixture,
+    wrapper_id: $wrapper,
+    source_surface_id: $source,
+    expected_task_result_collection_id: "taskResults",
+    expected_timeline_collection_id: "timelineEvents",
+    expected_evidence_contract_id: $evidence,
+    required_collection_assertion_ids: [
+      "assert_fixture_task_result_collection_hash_matches",
+      "assert_fixture_timeline_collection_hash_matches",
+      "assert_fixture_verifier_refs_match"
+    ],
+    drift_detector_ids: drift_ids,
+    readback_state: "preview_contract_defined_readback_execution_disabled",
+    redaction_policy: "compare ids, hashes, refs, and redaction state without raw payload",
+    performs_readback: false,
+    persists_drift: false,
+    mutates_store: false,
+    enforces_task_result: false
+  };
+  def assertion($id; $collection; $inputs; $evidence): {
+    id: $id,
+    collection_id: $collection,
+    required_inputs: $inputs,
+    evidence_fields: $evidence,
+    blocks_wrapper_execution: true,
+    performs_readback: false,
+    mutates_store: false
+  };
+  def detector($id; $fields): {
+    id: $id,
+    compared_fields: $fields,
+    severity: "critical",
+    blocks_wrapper_execution: true,
+    persists_drift: false
+  };
+  def blocker($id; $severity; $plans; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_readback_plan_ids: $plans,
+    required_before_readback_execution: true,
+    recommended_fix: $fix
+  };
+  [
+    plan("readback_fixture_multi_agent_thread_spawn_success"; "fixture_multi_agent_thread_spawn_success"; "multi_agent_thread_spawn_terminal_task_result_wrapper"; "multi_agent_v2_thread_spawn"; "thread_spawn_completion_evidence"),
+    plan("readback_fixture_multi_agent_mailbox_wait_success"; "fixture_multi_agent_mailbox_wait_success"; "multi_agent_mailbox_wait_terminal_task_result_wrapper"; "multi_agent_v2_mailbox_wait"; "mailbox_wait_delivery_evidence"),
+    plan("readback_fixture_multi_agent_reducer_ok"; "fixture_multi_agent_reducer_ok"; "multi_agent_reducer_terminal_task_result_wrapper"; "hepta_runtime_multi_agent_reducer"; "reducer_consensus_evidence"),
+    plan("readback_fixture_agent_job_item_failed"; "fixture_agent_job_item_failed"; "agent_job_item_terminal_task_result_wrapper"; "agent_jobs_batch_workers"; "agent_job_result_schema_evidence"),
+    plan("readback_fixture_worker_task_blocked"; "fixture_worker_task_blocked"; "worker_task_terminal_task_result_wrapper"; "hepta_runtime_worker_tasks"; "worker_task_artifact_gate_evidence"),
+    plan("readback_fixture_task_board_success"; "fixture_task_board_success"; "task_board_terminal_task_result_wrapper"; "hepta_runtime_task_board"; "task_board_lease_readback_evidence"),
+    plan("readback_fixture_scheduler_run_superseded"; "fixture_scheduler_run_superseded"; "scheduler_run_terminal_task_result_wrapper"; "hepta_runtime_scheduler_store"; "scheduler_admission_decision_evidence"),
+    plan("readback_fixture_agent_harness_cancelled"; "fixture_agent_harness_cancelled"; "agent_harness_terminal_task_result_wrapper"; "hepta_runtime_agent_harness"; "agent_harness_handoff_evidence")
+  ] as $readback_plans
+  | [
+    assertion("assert_fixture_task_result_collection_hash_matches"; "taskResults"; ["taskId", "status", "summaryHash", "evidenceHash", "traceId"]; ["taskResultHash", "terminalStatusObserved", "evidenceRefs"]),
+    assertion("assert_fixture_timeline_collection_hash_matches"; "timelineEvents"; ["traceId", "eventKind", "taskId", "wrapperId"]; ["timelineHash", "eventCount", "redactionState"]),
+    assertion("assert_fixture_verifier_refs_match"; "verifierRefs"; ["verifierRef", "gateReportHash", "schemaVersion"]; ["verifierHash", "schemaVersion", "redactionState"]),
+    assertion("assert_fixture_artifact_refs_match"; "artifacts"; ["taskId", "artifactHash", "producerNodeId"]; ["artifactHash", "artifactCount", "redactionState"]),
+    assertion("assert_fixture_scheduler_refs_match"; "schedulerRefs"; ["schedulerRunId", "leaseId", "admissionDecision"]; ["schedulerRefHash", "leaseState", "decisionHash"])
+  ] as $collection_assertions
+  | [
+    detector("detect_fixture_identity_drift"; ["taskId", "traceId", "wrapperId"]),
+    detector("detect_fixture_status_drift"; ["status", "terminalStatusObserved"]),
+    detector("detect_fixture_evidence_drift"; ["evidenceHash", "evidenceRefs"]),
+    detector("detect_fixture_verifier_drift"; ["verifierRef", "gateReportHash"]),
+    detector("detect_fixture_redaction_drift"; ["summaryHash", "redactionState"])
+  ] as $drift_detectors
+  | [
+    blocker("readback_execution_disabled"; "high"; ($readback_plans | map(.id)); "keep readback as contract-only until fixture runner output is reviewed"),
+    blocker("drift_persistence_disabled"; "high"; ($readback_plans | map(.id)); "do not persist drift state before operator-readable drift budget preview exists"),
+    blocker("wrapper_execution_disabled"; "medium"; ($readback_plans | map(.id)); "do not execute wrappers until readback and drift budget previews pass"),
+    blocker("task_result_enforcement_disabled"; "medium"; ($readback_plans | map(.id)); "keep TaskResult enforcement disabled until readback proves all terminal fixture outputs")
+  ] as $blockers
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_terminal_task_result_wrapper_readback_preview_gate",
+      schema_version: "work_graph_terminal_task_result_wrapper_readback_preview_v1",
+      preview_mode: "read_only_terminal_task_result_wrapper_readback_preview_no_execution",
+      readback_plan_count: ($readback_plans | length),
+      collection_assertion_count: ($collection_assertions | length),
+      drift_detector_count: ($drift_detectors | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: (prior_gates | length),
+      readback_plans: $readback_plans,
+      collection_assertions: $collection_assertions,
+      drift_detectors: $drift_detectors,
+      blockers: $blockers,
+      required_prior_gates: prior_gates,
+      recommended_next_gate: "hepta_work_graph_terminal_task_result_wrapper_drift_budget_preview_gate",
+      ready_for_drift_budget_preview: true,
+      ready_for_readback_execution: false,
+      ready_for_wrapper_execution: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_store_enablement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        terminal_task_result_wrapper_readback: {
+          rust_module_present: $readback_rust_module_present,
+          report_script_present: $readback_report_script_present,
+          gate_script_present: $readback_gate_script_present
+        },
+        terminal_task_result_wrapper_fixture: {
+          rust_module_present: $fixture_rust_module_present,
+          gate_script_present: $fixture_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        fixture_executed: false,
+        wrapper_executed: false,
+        readback_performed: false,
+        drift_state_persisted: false,
+        event_record_persisted: false,
+        task_result_persisted: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        replay_executed: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

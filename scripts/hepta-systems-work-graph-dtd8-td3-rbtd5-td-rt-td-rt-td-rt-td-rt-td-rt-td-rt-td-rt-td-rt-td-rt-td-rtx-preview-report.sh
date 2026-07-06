@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+prior_report_script="scripts/hepta-systems-work-graph-dtd8-td3-rbtd5-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rp-preview-report.sh"
+prior_gate_script="scripts/hepta-systems-work-graph-dtd8-td3-rbtd5-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rp-preview-gate.sh"
+prior_report="$("$ROOT/$prior_report_script")"
+GATE="$(jq -r '.recommended_next_gate' <<<"$prior_report")"
+BASE="${GATE%_receipt_retention_expiry_preview_gate}"
+SCHEMA="${GATE#hepta_}"
+SCHEMA="${SCHEMA%_gate}_v1"
+NEXT="${BASE}_receipt_retention_expiry_readback_receipt_preview_gate"
+required_prior_gates="$(jq -c '.required_prior_gates + [.gate]' <<<"$prior_report")"
+
+path_exists() { [[ -e "$1" ]]; }
+bool_for() {
+  if "$@"; then printf 'true\n'; else printf 'false\n'; fi
+}
+
+rust_module="codex-rs/hepta-runtime/src/wg_dtd8_td3_rbtd_rbtd_rbtd_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_expiry_preview.rs"
+report_script="scripts/hepta-systems-work-graph-dtd8-td3-rbtd5-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rtx-preview-report.sh"
+gate_script="scripts/hepta-systems-work-graph-dtd8-td3-rbtd5-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rt-td-rtx-preview-gate.sh"
+
+jq -n \
+  --arg gate "$GATE" \
+  --arg schema "$SCHEMA" \
+  --arg next "$NEXT" \
+  --argjson required_prior_gates "$required_prior_gates" \
+  --argjson rust_module_present "$(bool_for path_exists "$rust_module")" \
+  --argjson report_script_present "$(bool_for path_exists "$report_script")" \
+  --argjson gate_script_present "$(bool_for path_exists "$gate_script")" \
+  --argjson prior_report_script_present "$(bool_for path_exists "$prior_report_script")" \
+  --argjson prior_gate_script_present "$(bool_for path_exists "$prior_gate_script")" \
+  '
+  def item($prefix; $count): [range(0; $count) | {
+    id: "\($prefix)_\(.)",
+    required_fields: ["priorGate", "receiptHash", "zeroEffectHash"],
+    mutation_allowed: false,
+    required: true
+  }];
+  {
+    product: "Hepta",
+    runtime: "hepta",
+    status: "ready",
+    gate: $gate,
+    schema_version: $schema,
+    preview_mode: "read_only_deep_td8_td3_rbackack_td24_receipt_retention_expiry_preview_no_retention_mutation",
+    retention_policy_count: 6,
+    expiry_guard_count: 6,
+    supersession_guard_count: 5,
+    garbage_collection_denial_count: 6,
+    local_view_count: 4,
+    invariant_count: 6,
+    required_prior_gates: $required_prior_gates,
+    retention_policies: item("deep_td8_td3_rbackack_td24_rcptret_policy"; 6),
+    expiry_guards: item("deep_td8_td3_rbackack_td24_rcptret_expiry_guard"; 6),
+    supersession_guards: item("deep_td8_td3_rbackack_td24_rcptret_supersession_guard"; 5),
+    garbage_collection_denials: item("deep_td8_td3_rbackack_td24_rcptret_gc_denial"; 6),
+    local_views: item("deep_td8_td3_rbackack_td24_rcptret_local_view"; 4),
+    invariants: item("deep_td8_td3_rbackack_td24_rcptret_invariant"; 6),
+    recommended_next_gate: $next,
+    ready_for_readback_receipt_preview: true,
+    ready_for_operator_acceptance: false,
+    ready_for_live_persistence: false,
+    side_effects: {
+      filesystem_written: false,
+      graph_state_persisted: false,
+      retention_state_persisted: false,
+      garbage_collection_mutated: false,
+      receipt_recorded: false,
+      acknowledgement_recorded: false,
+      operator_acceptance_recorded: false,
+      approval_recorded: false,
+      authority_granted: false,
+      live_persistence_enabled: false,
+      wal_written: false,
+      checkpoint_written: false,
+      rollout_started: false,
+      release_published: false,
+      public_claim_recorded: false,
+      external_send_performed: false,
+      model_invoked: false
+    },
+    source_probes: {
+      deep_td8_td3_rbackack_td24_receipt_retention_expiry: {
+        rust_module_present: $rust_module_present,
+        report_script_present: $report_script_present,
+        gate_script_present: $gate_script_present
+      },
+      prior_deep_td8_td3_rbackack_td23_terminal_decision_receipt_ack_replay: {
+        report_script_present: $prior_report_script_present,
+        gate_script_present: $prior_gate_script_present
+      }
+    }
+  }
+'

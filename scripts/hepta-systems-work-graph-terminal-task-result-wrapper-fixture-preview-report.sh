@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+fixture_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_fixture_preview.rs
+)"
+fixture_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview-report.sh
+)"
+fixture_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-fixture-preview-gate.sh
+)"
+wrapper_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_preview.rs
+)"
+wrapper_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-task-result-wrapper-preview-gate.sh
+)"
+
+jq -n \
+  --argjson fixture_rust_module_present "$fixture_rust_module_present" \
+  --argjson fixture_report_script_present "$fixture_report_script_present" \
+  --argjson fixture_gate_script_present "$fixture_gate_script_present" \
+  --argjson wrapper_rust_module_present "$wrapper_rust_module_present" \
+  --argjson wrapper_gate_script_present "$wrapper_gate_script_present" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_preview_gate"
+  ];
+  def fields: [
+    "taskId",
+    "status",
+    "summary",
+    "artifacts",
+    "evidence",
+    "risks",
+    "nextActions",
+    "verifier",
+    "reducer",
+    "usage",
+    "traceId"
+  ];
+  def terminal_fields: ["taskId", "status", "summary", "evidence", "verifier", "traceId"];
+  def fixture($id; $wrapper; $source; $ref; $source_status; $status; $node; $evidence): {
+    id: $id,
+    wrapper_id: $wrapper,
+    source_surface_id: $source,
+    source_fixture_ref: $ref,
+    source_status: $source_status,
+    expected_task_result_id_formula: "sha256(traceId || taskId || sourceSurfaceId || status || evidenceHash)",
+    expected_canonical_status: $status,
+    expected_task_result_node_kind: $node,
+    expected_event_contract_id: "task_result_event_intake",
+    required_evidence_contract_id: $evidence,
+    expected_wire_fields: fields,
+    expected_terminal_fields: terminal_fields,
+    fixture_state: "fixture_declared_not_executed",
+    redaction_policy: "fixture payload is referenced by hash and never executed or persisted",
+    executes_fixture: false,
+    persists_task_result: false,
+    enforces_task_result: false,
+    mutates_store: false
+  };
+  def field($wire; $terminal): {
+    wire_name: $wire,
+    required: true,
+    terminal_required: $terminal,
+    assertion_id: "task_result_fixture_field_present_and_redacted"
+  };
+  def verifier($id; $source): {
+    id: $id,
+    source_surface_id: $source,
+    verifier_ref_fields: ["verifierRef", "gateReportHash", "schemaVersion"],
+    golden_hash_fields: ["taskId", "status", "summaryHash", "evidenceHash"],
+    stores_raw_payload: false,
+    performs_readback: false,
+    mutates_store: false
+  };
+  def blocker($id; $severity; $fixtures; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_fixture_ids: $fixtures,
+    required_before_wrapper_execution: true,
+    recommended_fix: $fix
+  };
+  [
+    fixture("fixture_multi_agent_thread_spawn_success"; "multi_agent_thread_spawn_terminal_task_result_wrapper"; "multi_agent_v2_thread_spawn"; "fixtures/work_graph/task_result/thread_spawn_success.json"; "success"; "succeeded"; "agent_task"; "thread_spawn_completion_evidence"),
+    fixture("fixture_multi_agent_mailbox_wait_success"; "multi_agent_mailbox_wait_terminal_task_result_wrapper"; "multi_agent_v2_mailbox_wait"; "fixtures/work_graph/task_result/mailbox_wait_success.json"; "success"; "succeeded"; "agent_task"; "mailbox_wait_delivery_evidence"),
+    fixture("fixture_multi_agent_reducer_ok"; "multi_agent_reducer_terminal_task_result_wrapper"; "hepta_runtime_multi_agent_reducer"; "fixtures/work_graph/task_result/reducer_ok.json"; "ok"; "succeeded"; "agent_task"; "reducer_consensus_evidence"),
+    fixture("fixture_agent_job_item_failed"; "agent_job_item_terminal_task_result_wrapper"; "agent_jobs_batch_workers"; "fixtures/work_graph/task_result/agent_job_failed.json"; "failed"; "failed"; "worker_task"; "agent_job_result_schema_evidence"),
+    fixture("fixture_worker_task_blocked"; "worker_task_terminal_task_result_wrapper"; "hepta_runtime_worker_tasks"; "fixtures/work_graph/task_result/worker_task_blocked.json"; "blocked"; "blocked"; "worker_task"; "worker_task_artifact_gate_evidence"),
+    fixture("fixture_task_board_success"; "task_board_terminal_task_result_wrapper"; "hepta_runtime_task_board"; "fixtures/work_graph/task_result/task_board_success.json"; "success"; "succeeded"; "worker_task"; "task_board_lease_readback_evidence"),
+    fixture("fixture_scheduler_run_superseded"; "scheduler_run_terminal_task_result_wrapper"; "hepta_runtime_scheduler_store"; "fixtures/work_graph/task_result/scheduler_run_superseded.json"; "superseded"; "superseded"; "scheduler_run"; "scheduler_admission_decision_evidence"),
+    fixture("fixture_agent_harness_cancelled"; "agent_harness_terminal_task_result_wrapper"; "hepta_runtime_agent_harness"; "fixtures/work_graph/task_result/agent_harness_cancelled.json"; "cancelled"; "cancelled"; "external_handoff"; "agent_harness_handoff_evidence")
+  ] as $fixtures
+  | [
+    field("taskId"; true),
+    field("status"; true),
+    field("summary"; true),
+    field("artifacts"; false),
+    field("evidence"; true),
+    field("risks"; false),
+    field("nextActions"; false),
+    field("verifier"; true),
+    field("reducer"; false),
+    field("usage"; false),
+    field("traceId"; true)
+  ] as $field_assertions
+  | ($fixtures | map(verifier(.required_evidence_contract_id; .source_surface_id))) as $verifier_contracts
+  | [
+    blocker("fixture_runner_disabled"; "high"; ($fixtures | map(.id)); "add a fixture runner that produces redacted TaskResult JSON without touching runtime state"),
+    blocker("golden_task_result_hashes_preview_only"; "high"; ($fixtures | map(.id)); "record expected hashes only after fixture runner output is stable and reviewed"),
+    blocker("wrapper_execution_disabled"; "medium"; ($fixtures | map(.id)); "keep runtime wrapper execution disabled until fixture and readback previews pass"),
+    blocker("task_result_enforcement_disabled"; "medium"; ($fixtures | map(.id)); "do not enforce TaskResult validation until fixtures cover every terminal source")
+  ] as $blockers
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_terminal_task_result_wrapper_fixture_preview_gate",
+      schema_version: "work_graph_terminal_task_result_wrapper_fixture_preview_v1",
+      preview_mode: "read_only_terminal_task_result_wrapper_fixture_preview_no_execution",
+      fixture_count: ($fixtures | length),
+      expected_task_result_count: ($fixtures | length),
+      field_assertion_count: ($field_assertions | length),
+      terminal_required_field_count: ($field_assertions | map(select(.terminal_required == true)) | length),
+      verifier_contract_count: ($verifier_contracts | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: (prior_gates | length),
+      fixtures: $fixtures,
+      field_assertions: $field_assertions,
+      verifier_contracts: $verifier_contracts,
+      blockers: $blockers,
+      required_prior_gates: prior_gates,
+      recommended_next_gate: "hepta_work_graph_terminal_task_result_wrapper_readback_preview_gate",
+      ready_for_wrapper_readback_preview: true,
+      ready_for_wrapper_execution: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_store_enablement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        terminal_task_result_wrapper_fixture: {
+          rust_module_present: $fixture_rust_module_present,
+          report_script_present: $fixture_report_script_present,
+          gate_script_present: $fixture_gate_script_present
+        },
+        terminal_task_result_wrapper: {
+          rust_module_present: $wrapper_rust_module_present,
+          gate_script_present: $wrapper_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        fixture_executed: false,
+        wrapper_executed: false,
+        event_record_persisted: false,
+        task_result_persisted: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        readback_performed: false,
+        replay_executed: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

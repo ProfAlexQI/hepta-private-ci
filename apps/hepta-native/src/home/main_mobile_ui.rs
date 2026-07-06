@@ -24,7 +24,7 @@ script_mod! {
 
         show_bg: true
         draw_bg +: {
-            color: COLOR_PRIMARY_DARKER
+            color: COLOR_TELEGRAM_BG
         }
 
         welcome := mod.widgets.WelcomeScreen {}
@@ -34,17 +34,23 @@ script_mod! {
             align: Align{x: 0.5, y: 0.5}
             width: Fill, height: Fill
             flow: Down
+            show_bg: true
+            draw_bg.color: #x070B1200
             hepta_mobile_safety := mod.widgets.HeptaMobileSafetyBar {}
             room_screen := mod.widgets.RoomScreen {}
         }
         invite_view := View {
             align: Align{x: 0.5, y: 0.5}
             width: Fill, height: Fill
+            show_bg: true
+            draw_bg.color: #x070B1200
             invite_screen := mod.widgets.InviteScreen {}
         }
         space_lobby_view := View {
             align: Align{x: 0.5, y: 0.5}
             width: Fill, height: Fill
+            show_bg: true
+            draw_bg.color: #x070B1200
             space_lobby_screen := mod.widgets.SpaceLobbyScreen {}
         }
     }

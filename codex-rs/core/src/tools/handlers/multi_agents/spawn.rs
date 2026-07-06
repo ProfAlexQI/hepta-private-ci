@@ -8,6 +8,14 @@ use crate::agent::role::DEFAULT_ROLE_NAME;
 use crate::agent::role::apply_role_to_config;
 use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;
 use crate::tools::handlers::multi_agents_spec::create_spawn_agent_tool_v1;
+use crate::tools::handlers::work_graph_admission::WorkGraphAdmissionShadowDecision;
+use crate::tools::handlers::work_graph_admission::WorkGraphAdmissionShadowInput;
+use crate::tools::handlers::work_graph_admission::WorkGraphAgentCardManifestObservation;
+use crate::tools::handlers::work_graph_admission::WorkGraphRoleManifestShadowDecision;
+use crate::tools::handlers::work_graph_admission::build_agent_card_manifest_shadow_decision;
+use crate::tools::handlers::work_graph_admission::build_work_graph_admission_shadow_decision;
+use crate::tools::handlers::work_graph_admission::configured_agent_role_manifest_source;
+use crate::tools::handlers::work_graph_admission::subagent_spawn_agent_card_manifest;
 use crate::turn_timing::now_unix_timestamp_ms;
 use codex_tools::ToolSpec;
 
@@ -62,6 +70,34 @@ async fn handle_spawn_agent(
     let session_source = turn.session_source.clone();
     let child_depth = next_thread_spawn_depth(&session_source);
     let max_depth = turn.config.agent_max_depth;
+    let role_manifest_shadow_decision = build_spawn_agent_role_manifest_shadow_decision(
+        "spawn_agent",
+        role_name,
+        turn.as_ref(),
+        child_depth,
+    );
+    let admission_shadow_decision =
+        build_work_graph_admission_shadow_decision(WorkGraphAdmissionShadowInput {
+            source_surface_id: "spawn_agent",
+            task_id: Some(format!("spawn-agent:{}:{call_id}", session.conversation_id)),
+            job_id: None,
+            role_manifest_shadow_decision,
+            requested_concurrency: 1,
+            item_count: Some(1),
+            child_depth,
+            max_depth,
+            max_threads: turn.config.agent_max_threads,
+            enforce_depth_limit: true,
+            state_db_required: false,
+            state_db_available: session.state_db().is_some(),
+            output_contract_required: false,
+            output_contract_present: false,
+            result_contract_required: true,
+            result_contract_present: false,
+            reducer_required: false,
+            reducer_present: false,
+            side_effect_class: "local_subagent_spawn",
+        });
     if exceeds_thread_spawn_depth_limit(child_depth, max_depth) {
         return Err(FunctionCallError::RespondToModel(
             "Agent depth limit reached. Solve the task yourself.".to_string(),
@@ -196,7 +232,52 @@ async fn handle_spawn_agent(
     Ok(SpawnAgentResult {
         agent_id: new_thread_id.to_string(),
         nickname,
+        admission_shadow_decision,
     })
+}
+
+fn build_spawn_agent_role_manifest_shadow_decision(
+    source_surface_id: &'static str,
+    role_name: Option<&str>,
+    turn: &TurnContext,
+    child_depth: i32,
+) -> WorkGraphRoleManifestShadowDecision {
+    let requested_role = role_name.map(str::to_string);
+    let configured_role = role_name.and_then(|role| turn.config.agent_roles.get(role));
+    let role_declared = role_name.is_none() || configured_role.is_some();
+    let role_description_present = role_name.is_none()
+        || configured_role
+            .and_then(|role| role.description.as_deref())
+            .is_some_and(|description| !description.trim().is_empty());
+    build_agent_card_manifest_shadow_decision(
+        subagent_spawn_agent_card_manifest(source_surface_id),
+        WorkGraphAgentCardManifestObservation {
+            role_name: requested_role,
+            role_declared,
+            role_description_present,
+            configured_manifest_source: configured_agent_role_manifest_source(
+                role_name,
+                configured_role.is_some(),
+                configured_role.is_some_and(|role| role.config_file.is_some()),
+                configured_role.and_then(|role| role.agent_card_manifest_source.as_deref()),
+            ),
+            configured_manifest_version: configured_role
+                .and_then(|role| role.agent_card_manifest_version.clone()),
+            configured_manifest_overlay: configured_role
+                .and_then(|role| role.agent_card_manifest.clone()),
+            budget_present: child_depth <= turn.config.agent_max_depth
+                && turn
+                    .config
+                    .agent_max_threads
+                    .is_none_or(|max_threads| max_threads > 0),
+            output_contract_present: None,
+            result_contract_present: None,
+            verifier_present: None,
+            reducer_present: None,
+            attempted_tool: None,
+            observed_lane: Some("subagent"),
+        },
+    )
 }
 
 impl CoreToolRuntime for Handler {
@@ -221,6 +302,7 @@ struct SpawnAgentArgs {
 pub(crate) struct SpawnAgentResult {
     agent_id: String,
     nickname: Option<String>,
+    admission_shadow_decision: WorkGraphAdmissionShadowDecision,
 }
 
 impl ToolOutput for SpawnAgentResult {

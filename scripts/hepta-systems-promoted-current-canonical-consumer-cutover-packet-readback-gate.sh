@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-promoted-current-canonical-consumer-cutover-packet-readback-report.sh"
+PACKET_REPORT="$ROOT/scripts/hepta-systems-promoted-current-canonical-consumer-cutover-packet-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PROMOTED_CURRENT_CANONICAL_CONSUMER_CUTOVER_PACKET_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-promoted-current-canonical-consumer-cutover-packet-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable promoted current canonical consumer cutover packet readback report: $REPORT"
+[[ -x "$PACKET_REPORT" ]] || fail "missing executable promoted current canonical consumer cutover packet report: $PACKET_REPORT"
+[[ -f "$DOC" ]] || fail "missing promoted current canonical consumer cutover packet readback architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the promoted current canonical consumer cutover packet readback report"
+fi
+
+grep -q 'Promoted Current Canonical Consumer Cutover Packet Readback' "$DOC" \
+  || fail "architecture note must document Promoted Current Canonical Consumer Cutover Packet Readback"
+grep -q 'static report readback' "$DOC" \
+  || fail "architecture note must document static report readback"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that readback does not invoke the alias"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "promoted_current_canonical_consumer_cutover_packet_readback"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_cutover_packet_surface == "promoted_current_canonical_consumer_cutover_packet"
+  and .source_cutover_packet_ready == true
+  and .source_cutover_packet_kind == "report_only_non_authorizing_packet"
+  and .source_cutover_preflight_basis == "verified_preflight_report_snapshot"
+  and .source_cutover_preflight_report_reexecuted == false
+  and .terminal_successor_canonical_consumer_cutover_packet_readback_ready == true
+  and .readback_mode == "static_report_readback_only"
+  and .readback_check_count == 5
+  and (.readback_checks | all(.required == true and .source_ready == true and .readback_ok == true))
+  and .packet_field_count == 10
+  and .packet_present_required_field_count == 7
+  and .packet_missing_required_field_count == 3
+  and .packet_blocker_count == 10
+  and .readback_blocker_count == 10
+  and (.readback_blockers | index("manual_operator_live_cutover_approval_missing")) != null
+  and (.readback_blockers | index("successor_consumer_cutover_allowed_false")) != null
+  and .cutover_packet_recorded == false
+  and .cutover_packet_accepted == false
+  and .operator_live_cutover_approval_recorded == false
+  and .successor_consumer_cutover_allowed == false
+  and .rollback_anchor == "current_canonical_consumer"
+  and .current_canonical_consumer_replaced_in_place == false
+  and .current_canonical_consumer_mutated == false
+  and .promoted_current_canonical_consumer_mutated == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "derive_terminal_successor_canonical_consumer_cutover_packet_acceptance_preflight_without_live_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$PACKET_REPORT" | jq -e '
+  .surface == "promoted_current_canonical_consumer_cutover_packet"
+  and .terminal_successor_canonical_consumer_cutover_packet_ready == true
+  and .cutover_packet_recorded == false
+  and .cutover_packet_accepted == false
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+' >/dev/null
+
+printf 'hepta-systems-promoted-current-canonical-consumer-cutover-packet-readback-gate: PASS: terminal successor consumer cutover packet readback is static and non-authorizing\n'

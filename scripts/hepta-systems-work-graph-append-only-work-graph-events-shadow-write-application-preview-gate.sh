@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-append-only-work-graph-events-shadow-write-application-preview-report.sh"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-work-graph-events-shadow-write-application-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_append_only_work_graph_events_shadow_write_application_preview_gate"
+  and .schema_version == "work_graph_append_only_work_graph_events_shadow_write_application_preview_v1"
+  and .preview_mode == "read_only_append_only_work_graph_events_shadow_write_application_preview_no_mutation"
+  and .readback_plan_count == 12
+  and .application_plan_count == 12
+  and .source_outcome_count == 12
+  and .shadow_write_contract_ready_preview_count == 12
+  and .event_schema_application_count == 11
+  and .stage_application_count == 6
+  and .source_mapping_application_count == 12
+  and .event_binding_application_count == 27
+  and .idempotency_key_application_count == 12
+  and .guard_application_count == 10
+  and .blocker_application_count == 4
+  and .application_guard_count == 10
+  and .blocker_count == 5
+  and .required_prior_gate_count == 15
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.application_plans | all(
+    .application_state == "work_graph_events_shadow_write_contract_ready_preview_after_application"
+    and .readback_verified_by_preview == true
+    and .shadow_write_contract_ready_preview == true
+    and .applies_to_runtime == false
+    and .persists_work_graph_events == false
+    and .writes_wal == false
+    and .writes_checkpoint == false
+    and .executes_replay == false
+    and .executes_readback == false
+    and .mutates_idempotency_index == false
+    and .enforces_adapter_projection == false
+    and .mutates_scheduler_admission == false
+    and .mutates_task_result_enforcement == false
+    and .mutates_role_manifest_enforcement == false
+  ))
+  and (.source_outcomes | all(
+    .shadow_write_contract_ready_preview == true
+    and .ready_for_shadow_write_readiness_rerun_preview == true
+    and .ready_for_append_only_work_graph_events == false
+    and .applies_to_runtime == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.event_schema_applications | length == 11 and all(.persists_event_schema == false))
+  and (.stage_applications | length == 6 and all(
+    .contract_ready_preview == true
+    and .persists_work_graph_events == false
+    and .executes_replay == false
+    and .executes_readback == false
+  ))
+  and (.source_mapping_applications | length == 12 and all(
+    .source_mapping_ready_preview == true
+    and .persists_mapping == false
+  ))
+  and (.event_binding_applications | length == 27 and all(
+    .binding_ready_preview == true
+    and .persists_event_binding == false
+  ))
+  and (.idempotency_key_applications | length == 12 and all(
+    .idempotency_key_ready_preview == true
+    and .mutates_idempotency_index == false
+  ))
+  and (.guard_applications | length == 10 and all(
+    .required_before_shadow_write == true
+    and .mutates_runtime == false
+  ))
+  and (.blocker_applications | length == 4 and all(
+    .readback_verified_by_preview == true
+    and .mutates_runtime == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.blocker_applications | map(select(.clears_application_missing_blocker == true)) | length) == 1
+  and (.blockers | map(.id) == [
+    "append_only_work_graph_events_disabled",
+    "runtime_canonical_adapter_enforcement_disabled",
+    "canonical_adapter_projection_partial_or_gap",
+    "replay_readback_execution_disabled",
+    "work_graph_events_shadow_write_readiness_rerun_missing"
+  ])
+  and (.blockers | map(select(.id == "canonical_adapter_projection_partial_or_gap"))[0].affected_source_surface_ids | length) == 7
+  and (.application_guards | all(
+    .required_before_append_only_events == true
+    and .satisfied_by_preview == true
+  ))
+  and (.required_prior_gates[-1] == "hepta_work_graph_append_only_work_graph_events_shadow_write_readback_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview_gate"
+  and .ready_for_shadow_write_readiness_rerun_preview == true
+  and .ready_for_append_only_work_graph_events == false
+  and .ready_for_replay_readback == false
+  and .ready_for_runtime_adapter_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_task_result_enforcement == false
+  and .ready_for_role_manifest_enforcement == false
+  and .ready_for_live_execution == false
+' >/dev/null <<<"$report"
+
+jq -e '
+  .source_probes.append_only_work_graph_events_shadow_write_application.rust_module_present == true
+  and .source_probes.append_only_work_graph_events_shadow_write_application.report_script_present == true
+  and .source_probes.append_only_work_graph_events_shadow_write_application.gate_script_present == true
+  and .source_probes.append_only_work_graph_events_shadow_write_readback.rust_module_present == true
+  and .source_probes.append_only_work_graph_events_shadow_write_readback.gate_script_present == true
+  and .source_probes.append_only_work_graph_events_shadow_write_readback.upstream_gate == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_work_graph_events_shadow_write_application --lib
+
+echo "Hepta WorkGraph append-only WorkGraph events shadow-write application preview gate passed"

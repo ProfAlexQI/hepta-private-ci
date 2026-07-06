@@ -1,69 +1,117 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
+use std::time::SystemTime;
 
 #[cfg(feature = "codex-in-process-runner")]
 use codex_arg0::Arg0DispatchPaths;
-pub(crate) use hepta_gateway::{
-    NativeTelegramConfigStatus, NativeTelegramConfigStatusInput, NativeTelegramCursorPlan,
-    NativeTelegramCursorStatus, NativeTelegramDeliveryLedgerStatus,
-    NativeTelegramDrainOnceApiResultInput, NativeTelegramDrainOncePreflightInput,
-    NativeTelegramDrainOnceShellReadinessInput, NativeTelegramDrainOnceStatus,
-    NativeTelegramDrainOnceStatusInput, NativeTelegramDrainPipelineInput,
-    NativeTelegramGatewayGateSummary, NativeTelegramGatewayGateSummaryInput,
-    NativeTelegramLiveSoakObservationReport, NativeTelegramLiveSoakObservationState,
-    NativeTelegramLiveSoakStatus, NativeTelegramLiveSoakStatusInput,
-    NativeTelegramModelBridgeStatus, NativeTelegramModelBridgeStatusInput,
-    NativeTelegramModelRunnerPlan, NativeTelegramModelTurnPlanStatus,
-    NativeTelegramModelTurnPlanStatusInput, NativeTelegramPluginStatus,
-    NativeTelegramPluginStatusInput, NativeTelegramPollLoopStatus,
-    NativeTelegramPollLoopStatusInput, NativeTelegramProductionGuardPolicyInput,
-    NativeTelegramProductionGuardStatus, NativeTelegramProductionReadinessInput,
-    NativeTelegramProductionReadinessStatus, NativeTelegramReceiveOnceApiResultInput,
-    NativeTelegramReceiveOnceErrorInput, NativeTelegramReceiveOncePreflightInput,
-    NativeTelegramReceiveOnceShellReadinessInput, NativeTelegramReceiveOnceStatus,
-    NativeTelegramReplyTargetMaterial, NativeTelegramSendPlanStatus,
-    NativeTelegramSendPlanStatusInput, NativeTelegramTokenObservationInput,
-    TelegramTypingKeepalive,
-};
-use hepta_gateway::{
-    TELEGRAM_ALLOWED_UPDATES, build_native_telegram_config_status,
-    build_telegram_drain_once_status, build_telegram_gateway_gate_summary,
-    build_telegram_live_soak_status, build_telegram_model_bridge_status,
-    build_telegram_model_turn_plan_status, build_telegram_plugin_status,
-    build_telegram_poll_loop_status, build_telegram_production_guard_status_from_policy,
-    build_telegram_production_readiness_status, build_telegram_receive_once_error_status,
-    build_telegram_receive_once_status_from_api_result, build_telegram_send_plan_status,
-    execute_telegram_drain_pipeline_for_updates, extract_native_telegram_config_metadata,
-    extract_native_telegram_exec_child_final_message,
-    extract_native_telegram_openai_chat_completion_text, finalize_telegram_drain_pipeline_status,
-    invoke_native_telegram_model_runner_with_plan, native_telegram_exec_child_args,
-    native_telegram_exec_child_status_error, native_telegram_hepta_kernel_prompt,
-    native_telegram_mlx_chat_completion_body, native_telegram_model_failure_fallback_message,
-    native_telegram_model_timeout, parse_telegram_env_truthy_value, parse_telegram_env_u64_value,
-    plan_telegram_drain_once_api_result, plan_telegram_drain_once_preflight,
-    plan_telegram_drain_once_shell_readiness, plan_telegram_receive_once_preflight_status,
-    plan_telegram_receive_once_shell_readiness, resolve_native_telegram_token_observation,
-    select_native_telegram_model_runner, telegram_bot_token_shape_ok as token_shape_ok,
-    telegram_call_get_updates_once as gateway_telegram_call_get_updates_once,
-    telegram_call_send_chat_action,
-    telegram_call_send_message as gateway_telegram_call_send_message,
-    telegram_cursor_status as gateway_telegram_cursor_status, telegram_cursor_status_from_path,
-    telegram_get_updates_with_retry, telegram_poll_loop_interval_ms_policy,
-    telegram_poll_loop_should_spawn, telegram_read_max_attempts_policy,
-    telegram_read_retry_backoff_policy, telegram_receive_limit_policy,
-    telegram_redact_token_like_text as redact_token_like_text, telegram_send_max_attempts_policy,
-    telegram_send_min_interval_policy, telegram_send_retry_backoff_policy,
-    telegram_soak_max_attention_count_policy, telegram_soak_max_observed_age_ms_policy,
-    telegram_soak_min_poll_iterations_policy, telegram_start_typing_keepalive,
-    telegram_system_time_unix_ms, telegram_transport_plan_for_config_status,
-    telegram_typing_keepalive_interval_policy, telegram_wait_for_send_rate_limit,
-    wait_for_native_telegram_model_child,
-};
+pub(crate) use hepta_gateway::NativeTelegramConfigStatus;
+pub(crate) use hepta_gateway::NativeTelegramConfigStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramCursorPlan;
+pub(crate) use hepta_gateway::NativeTelegramCursorStatus;
+pub(crate) use hepta_gateway::NativeTelegramDeliveryLedgerStatus;
+pub(crate) use hepta_gateway::NativeTelegramDrainOnceApiResultInput;
+pub(crate) use hepta_gateway::NativeTelegramDrainOncePreflightInput;
+pub(crate) use hepta_gateway::NativeTelegramDrainOnceShellReadinessInput;
+pub(crate) use hepta_gateway::NativeTelegramDrainOnceStatus;
+pub(crate) use hepta_gateway::NativeTelegramDrainOnceStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramDrainPipelineInput;
+pub(crate) use hepta_gateway::NativeTelegramGatewayGateSummary;
+pub(crate) use hepta_gateway::NativeTelegramGatewayGateSummaryInput;
+pub(crate) use hepta_gateway::NativeTelegramLiveSoakObservationReport;
+pub(crate) use hepta_gateway::NativeTelegramLiveSoakObservationState;
+pub(crate) use hepta_gateway::NativeTelegramLiveSoakStatus;
+pub(crate) use hepta_gateway::NativeTelegramLiveSoakStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramModelBridgeStatus;
+pub(crate) use hepta_gateway::NativeTelegramModelBridgeStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramModelRunnerPlan;
+pub(crate) use hepta_gateway::NativeTelegramModelTurnPlanStatus;
+pub(crate) use hepta_gateway::NativeTelegramModelTurnPlanStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramPluginStatus;
+pub(crate) use hepta_gateway::NativeTelegramPluginStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramPollLoopStatus;
+pub(crate) use hepta_gateway::NativeTelegramPollLoopStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramProductionGuardPolicyInput;
+pub(crate) use hepta_gateway::NativeTelegramProductionGuardStatus;
+pub(crate) use hepta_gateway::NativeTelegramProductionReadinessInput;
+pub(crate) use hepta_gateway::NativeTelegramProductionReadinessStatus;
+pub(crate) use hepta_gateway::NativeTelegramReceiveOnceApiResultInput;
+pub(crate) use hepta_gateway::NativeTelegramReceiveOnceErrorInput;
+pub(crate) use hepta_gateway::NativeTelegramReceiveOncePreflightInput;
+pub(crate) use hepta_gateway::NativeTelegramReceiveOnceShellReadinessInput;
+pub(crate) use hepta_gateway::NativeTelegramReceiveOnceStatus;
+pub(crate) use hepta_gateway::NativeTelegramReplyTargetMaterial;
+pub(crate) use hepta_gateway::NativeTelegramSendPlanStatus;
+pub(crate) use hepta_gateway::NativeTelegramSendPlanStatusInput;
+pub(crate) use hepta_gateway::NativeTelegramTokenObservationInput;
+use hepta_gateway::TELEGRAM_ALLOWED_UPDATES;
+pub(crate) use hepta_gateway::TelegramTypingKeepalive;
+use hepta_gateway::build_native_telegram_config_status;
+use hepta_gateway::build_telegram_drain_once_status;
+use hepta_gateway::build_telegram_gateway_gate_summary;
+use hepta_gateway::build_telegram_live_soak_status;
+use hepta_gateway::build_telegram_model_bridge_status;
+use hepta_gateway::build_telegram_model_turn_plan_status;
+use hepta_gateway::build_telegram_plugin_status;
+use hepta_gateway::build_telegram_poll_loop_status;
+use hepta_gateway::build_telegram_production_guard_status_from_policy;
+use hepta_gateway::build_telegram_production_readiness_status;
+use hepta_gateway::build_telegram_receive_once_error_status;
+use hepta_gateway::build_telegram_receive_once_status_from_api_result;
+use hepta_gateway::build_telegram_send_plan_status;
+use hepta_gateway::execute_telegram_drain_pipeline_for_updates;
+use hepta_gateway::extract_native_telegram_config_metadata;
+use hepta_gateway::extract_native_telegram_exec_child_final_message;
+use hepta_gateway::extract_native_telegram_openai_chat_completion_text;
+use hepta_gateway::finalize_telegram_drain_pipeline_status;
+use hepta_gateway::invoke_native_telegram_model_runner_with_plan;
+use hepta_gateway::native_telegram_exec_child_args;
+use hepta_gateway::native_telegram_exec_child_status_error;
+use hepta_gateway::native_telegram_hepta_kernel_prompt;
+use hepta_gateway::native_telegram_mlx_chat_completion_body;
+use hepta_gateway::native_telegram_model_failure_fallback_message;
+use hepta_gateway::native_telegram_model_timeout;
+use hepta_gateway::parse_telegram_env_truthy_value;
+use hepta_gateway::parse_telegram_env_u64_value;
+use hepta_gateway::plan_telegram_drain_once_api_result;
+use hepta_gateway::plan_telegram_drain_once_preflight;
+use hepta_gateway::plan_telegram_drain_once_shell_readiness;
+use hepta_gateway::plan_telegram_receive_once_preflight_status;
+use hepta_gateway::plan_telegram_receive_once_shell_readiness;
+use hepta_gateway::resolve_native_telegram_token_observation;
+use hepta_gateway::select_native_telegram_model_runner;
+use hepta_gateway::telegram_bot_token_shape_ok as token_shape_ok;
+use hepta_gateway::telegram_call_get_updates_once as gateway_telegram_call_get_updates_once;
+use hepta_gateway::telegram_call_send_chat_action;
+use hepta_gateway::telegram_call_send_message as gateway_telegram_call_send_message;
+use hepta_gateway::telegram_cursor_status as gateway_telegram_cursor_status;
+use hepta_gateway::telegram_cursor_status_from_path;
+use hepta_gateway::telegram_get_updates_with_retry;
+use hepta_gateway::telegram_poll_loop_interval_ms_policy;
+use hepta_gateway::telegram_poll_loop_should_spawn;
+use hepta_gateway::telegram_read_max_attempts_policy;
+use hepta_gateway::telegram_read_retry_backoff_policy;
+use hepta_gateway::telegram_receive_limit_policy;
+use hepta_gateway::telegram_redact_token_like_text as redact_token_like_text;
+use hepta_gateway::telegram_send_max_attempts_policy;
+use hepta_gateway::telegram_send_min_interval_policy;
+use hepta_gateway::telegram_send_retry_backoff_policy;
+use hepta_gateway::telegram_soak_max_attention_count_policy;
+use hepta_gateway::telegram_soak_max_observed_age_ms_policy;
+use hepta_gateway::telegram_soak_min_poll_iterations_policy;
+use hepta_gateway::telegram_start_typing_keepalive;
+use hepta_gateway::telegram_system_time_unix_ms;
+use hepta_gateway::telegram_transport_plan_for_config_status;
+use hepta_gateway::telegram_typing_keepalive_interval_policy;
+use hepta_gateway::telegram_wait_for_send_rate_limit;
+use hepta_gateway::wait_for_native_telegram_model_child;
 use serde_json::Value;
 use sha2::Digest;
 use sha2::Sha256;

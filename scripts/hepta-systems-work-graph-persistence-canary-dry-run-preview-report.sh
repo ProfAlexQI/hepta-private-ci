@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+canary_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_persistence_canary_dry_run_preview.rs
+)"
+canary_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-canary-dry-run-preview-report.sh
+)"
+canary_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-canary-dry-run-preview-gate.sh
+)"
+feature_flag_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-persistence-feature-flag-preview-gate.sh
+)"
+shadow_adapter_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-shadow-adapter-readback-preview-gate.sh
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-report.sh
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-durable-identity-preview-gate.sh
+)"
+
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-durable-identity-preview-report.sh"
+)"
+
+jq -n \
+  --argjson canary_rust_module_present "$canary_rust_module_present" \
+  --argjson canary_report_script_present "$canary_report_script_present" \
+  --argjson canary_gate_script_present "$canary_gate_script_present" \
+  --argjson feature_flag_gate_script_present "$feature_flag_gate_script_present" \
+  --argjson shadow_adapter_gate_script_present "$shadow_adapter_gate_script_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  def scenario_ids: [
+    "canary_store_persistence_dry_run",
+    "canary_wal_append_dry_run",
+    "canary_checkpoint_write_dry_run",
+    "canary_readback_receipt_dry_run",
+    "canary_idempotency_index_dry_run",
+    "canary_replay_execution_dry_run"
+  ];
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_persistence_feature_flag_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def lane_guard($id; $env; $scope): {
+    id: $id,
+    lane_id: "hepta-backend",
+    required_env: $env,
+    scope: $scope,
+    blocks_cross_lane_execution: true,
+    live_execution_allowed: false
+  };
+  def scenario($id; $flag; $fixture; $evidence): {
+    id: $id,
+    source_feature_flag_id: $flag,
+    input_fixture_id: $fixture,
+    expected_evidence_ids: $evidence,
+    max_runtime_ms: 30000,
+    traffic_ppm: 0,
+    writes_allowed: false,
+    promotion_allowed: false
+  };
+  def traffic_guard($id; $stages): {
+    id: $id,
+    applies_to_stage_ids: $stages,
+    max_traffic_ppm: 0,
+    blocks_live_traffic: true
+  };
+  def write_guard($id; $collection): {
+    id: $id,
+    target_collection_id: $collection,
+    allowed_write_mode: "none",
+    blocks_live_writes: true,
+    mutates_store: false
+  };
+  def rollback_receipt($id; $trigger): {
+    id: $id,
+    trigger_guard_id: $trigger,
+    required_fields: (durable_fields + ["receiptId", "triggerGuardId", "featureFlagId", "laneId", "evidenceHash", "redactionState"]),
+    persistence_enabled: false,
+    external_delivery_enabled: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    lane_guard("hepta_backend_lane_lock_required"; "HEPTA_LANE=hepta-backend"; "backend_preview_canary_only"),
+    lane_guard("cargo_target_dir_isolated"; "CARGO_TARGET_DIR=/Users/qianqi/.openclaw/tmp/cargo-targets/hepta-backend"; "build_artifact_isolation"),
+    lane_guard("no_cross_lane_runtime_write"; "HEPTA_AGENT_ID=hepta-backend"; "runtime_state_write_blocked"),
+    lane_guard("no_external_delivery_lane"; "OPENCLAW_DELIVERY=disabled"; "external_side_effect_blocked"),
+    lane_guard("no_operator_approval_recording_lane"; "HEPTA_APPROVAL_RECORDING=preview-only"; "operator_receipt_write_blocked")
+  ] as $lane_guards
+  | [
+    scenario("canary_store_persistence_dry_run"; "work_graph_store_persistence_flag"; "fixture_graph_collections_snapshot"; ["durable_identity_evidence_packet", "prior_gate_digest", "shadow_readback_digest", "zero_live_write_evidence"]),
+    scenario("canary_wal_append_dry_run"; "work_graph_wal_append_flag"; "fixture_wal_record_batch"; ["durable_identity_evidence_packet", "wal_schema_digest", "idempotency_guard_digest", "zero_wal_write_evidence"]),
+    scenario("canary_checkpoint_write_dry_run"; "work_graph_checkpoint_write_flag"; "fixture_checkpoint_hash_plan"; ["durable_identity_evidence_packet", "checkpoint_hash_plan", "disk_budget_packet", "zero_checkpoint_write_evidence"]),
+    scenario("canary_readback_receipt_dry_run"; "work_graph_readback_receipt_persistence_flag"; "fixture_readback_receipt"; ["durable_identity_evidence_packet", "redaction_packet", "shadow_readback_digest", "zero_receipt_persistence_evidence"]),
+    scenario("canary_idempotency_index_dry_run"; "work_graph_idempotency_index_write_flag"; "fixture_idempotency_index"; ["durable_identity_evidence_packet", "idempotency_guard_digest", "collision_policy_evidence", "zero_index_write_evidence"]),
+    scenario("canary_replay_execution_dry_run"; "work_graph_replay_execution_feature_flag"; "fixture_replay_stage_plan"; ["durable_identity_evidence_packet", "drift_budget_packet", "rollback_plan", "zero_replay_execution_evidence"])
+  ] as $dry_run_scenarios
+  | [
+    traffic_guard("disabled_stage_traffic_guard"; ["disabled"]),
+    traffic_guard("local_dry_run_traffic_guard"; ["local_dry_run"]),
+    traffic_guard("shadow_write_fixture_traffic_guard"; ["shadow_write_fixture_only"]),
+    traffic_guard("shadow_readback_compare_traffic_guard"; ["shadow_readback_compare"]),
+    traffic_guard("canary_lane_dry_run_traffic_guard"; ["canary_lane_dry_run"])
+  ] as $traffic_guards
+  | [
+    write_guard("nodes_no_live_write"; "nodes"),
+    write_guard("edges_no_live_write"; "edges"),
+    write_guard("task_results_no_live_write"; "taskResults"),
+    write_guard("artifacts_no_live_write"; "artifacts"),
+    write_guard("approvals_no_live_write"; "approvals"),
+    write_guard("timeline_events_no_live_write"; "timelineEvents")
+  ] as $write_guards
+  | [
+    rollback_receipt("operator_kill_switch_receipt"; "operator_kill_switch"),
+    rollback_receipt("wal_checksum_mismatch_receipt"; "wal_checksum_mismatch"),
+    rollback_receipt("shadow_readback_drift_receipt"; "shadow_readback_drift"),
+    rollback_receipt("idempotency_collision_receipt"; "idempotency_collision"),
+    rollback_receipt("disk_budget_exceeded_receipt"; "disk_budget_exceeded"),
+    rollback_receipt("operator_approval_expired_receipt"; "operator_approval_expired")
+  ] as $rollback_receipts
+  | [
+    invariant("canary_dry_run_requires_durable_identity_evidence"; "every canary dry-run scenario requires workflow, run, step, checkpoint, replay, rollback, and receipt evidence"),
+    invariant("canary_dry_run_requires_feature_flags_default_off"; "canary dry-run cannot start unless persistence feature flags remain disabled"),
+    invariant("canary_dry_run_is_lane_scoped"; "dry-run evidence is scoped to the hepta-backend lane and cannot cross into live runtime lanes"),
+    invariant("canary_dry_run_has_zero_live_traffic"; "all canary stages remain at 0 traffic ppm in this preview"),
+    invariant("canary_dry_run_has_zero_live_writes"; "nodes, edges, TaskResults, artifacts, approvals, and timeline events cannot be persisted"),
+    invariant("rollback_receipts_are_redacted_and_non_persistent"; "rollback receipt previews carry hashes and fields only and cannot be stored by this gate"),
+    invariant("persistence_canary_dry_run_preview_has_no_side_effects"; "this gate cannot execute canaries, mutate flags, write WAL/checkpoints, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+      schema_version: "work_graph_persistence_canary_dry_run_preview_v1",
+      preview_mode: "read_only_persistence_canary_dry_run_preview_no_canary_execution",
+      lane_guard_count: ($lane_guards | length),
+      dry_run_scenario_count: ($dry_run_scenarios | length),
+      traffic_guard_count: ($traffic_guards | length),
+      write_guard_count: ($write_guards | length),
+      rollback_receipt_count: ($rollback_receipts | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      lane_guards: $lane_guards,
+      dry_run_scenarios: $dry_run_scenarios,
+      traffic_guards: $traffic_guards,
+      write_guards: $write_guards,
+      rollback_receipts: $rollback_receipts,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        required_prior_gate: "hepta_work_graph_durable_identity_preview_gate",
+        required_field_ids: durable_fields,
+        required_for_dry_run_scenario_ids: scenario_ids,
+        durable_field_count: $durable_identity_report.durable_field_count,
+        preview_binding_count: $durable_identity_report.preview_binding_count,
+        invariant_count: $durable_identity_report.invariant_count,
+        currently_satisfied: false
+      },
+      invariants: $invariants,
+      recommended_next_gate: "hepta_work_graph_persistence_canary_readback_receipt_preview_gate",
+      ready_for_canary_readback_receipt_preview: true,
+      ready_for_canary_execution: false,
+      ready_for_live_persistence: false,
+      source_probes: {
+        persistence_canary_dry_run: {
+          rust_module_present: $canary_rust_module_present,
+          report_script_present: $canary_report_script_present,
+          gate_script_present: $canary_gate_script_present
+        },
+        persistence_feature_flag: {
+          gate_script_present: $feature_flag_gate_script_present
+        },
+        shadow_adapter_readback: {
+          gate_script_present: $shadow_adapter_gate_script_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        feature_flag_mutated: false,
+        canary_executed: false,
+        live_traffic_routed: false,
+        wal_written: false,
+        checkpoint_written: false,
+        receipt_persisted: false,
+        rollback_performed: false,
+        scheduler_cutover_performed: false,
+        approval_recorded: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

@@ -29,6 +29,11 @@ pub(crate) mod tool_search_spec;
 pub(crate) mod unified_exec;
 mod view_image;
 pub(crate) mod view_image_spec;
+pub(crate) mod work_graph_admission;
+pub(crate) mod work_graph_agent_card_manifest;
+pub(crate) mod work_graph_promotion_readiness;
+pub(crate) mod work_graph_promotion_review;
+pub(crate) mod work_graph_surface_audit;
 
 use codex_sandboxing::policy_transforms::intersect_permission_profiles;
 use codex_sandboxing::policy_transforms::merge_permission_profiles;

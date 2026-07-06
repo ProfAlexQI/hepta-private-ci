@@ -2,6 +2,7 @@ use codex_protocol::openai_models::ModelPreset;
 use codex_tools::JsonSchema;
 use codex_tools::ResponsesApiTool;
 use codex_tools::ToolSpec;
+use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -448,17 +449,440 @@ fn wait_output_schema_v1() -> Value {
 fn wait_output_schema_v2() -> Value {
     json!({
         "type": "object",
+        "properties": wait_output_schema_v2_properties(),
+        "required": [
+            "message",
+            "timed_out",
+            "barrier_id",
+            "task_id",
+            "task_name",
+            "task_thread_id",
+            "task_status",
+            "task_result",
+            "result_required",
+            "wait_condition",
+            "durable_mailbox",
+            "work_graph_lifecycle_shadow_decision"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn wait_output_schema_v2_properties() -> Map<String, Value> {
+    let mut properties = Map::new();
+    properties.insert(
+        "message".to_string(),
+        json!({
+            "type": "string",
+            "description": "Brief wait summary without the agent's final content."
+        }),
+    );
+    properties.insert(
+        "timed_out".to_string(),
+        json!({
+            "type": "boolean",
+            "description": "Whether the wait call returned because no mailbox update arrived before the timeout."
+        }),
+    );
+    properties.insert(
+        "barrier_id".to_string(),
+        json!({
+            "type": "string",
+            "description": "Durable wait barrier identifier recorded for this wait call."
+        }),
+    );
+    properties.insert(
+        "task_id".to_string(),
+        json!({
+            "type": ["string", "null"],
+            "description": "Optional durable task id this wait barrier is associated with."
+        }),
+    );
+    properties.insert(
+        "task_name".to_string(),
+        json!({
+            "type": ["string", "null"],
+            "description": "Optional task name this wait barrier is associated with."
+        }),
+    );
+    properties.insert(
+        "task_thread_id".to_string(),
+        json!({
+            "type": ["string", "null"],
+            "description": "Resolved task thread id when result_required task waiting is active."
+        }),
+    );
+    properties.insert(
+        "task_status".to_string(),
+        json!({
+            "anyOf": [
+                agent_status_output_schema(),
+                {"type": "null"}
+            ],
+            "description": "Terminal task status when result_required task waiting is active. Completed statuses are redacted to avoid returning child final content."
+        }),
+    );
+    properties.insert(
+        "task_result".to_string(),
+        json!({
+            "type": ["object", "null"],
+            "description": "Terminal TaskResult envelope when result_required task waiting is satisfied by durable TaskResult evidence."
+        }),
+    );
+    properties.insert(
+        "result_required".to_string(),
+        json!({
+            "type": "boolean",
+            "description": "Whether this barrier expects a terminal TaskResult envelope before later result-aware waits can satisfy it."
+        }),
+    );
+    properties.insert(
+        "wait_condition".to_string(),
+        json!({
+            "type": "string",
+            "enum": ["mailbox_change", "task_terminal_status", "task_result_evidence"],
+            "description": "Condition that satisfied or timed out for this wait call."
+        }),
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "task_result_delivery_shadow",
+        "Shadow-only TaskResultEnvelope delivery evidence for result_required waits. This does not mutate live parent state.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "parent_reducer_shadow_receipt",
+        "Shadow-only parent reducer receipt based on TaskResultEnvelope delivery evidence. This does not reduce into live parent WorkGraph state.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_wait_task_result_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision comparing direct wait tool output with durable latest delivery and reducer events.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_wait_surface_audit_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision comparing direct wait surface-audit packet output with durable latest surface-audit packet event.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_wait_task_result_readback",
+        "Durable readback summary for result_required wait TaskResult delivery, parent reducer, replay consistency, and surface-audit shadow events.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_wait_operator_matrix_row",
+        "Operator-facing matrix row for direct wait TaskResult delivery, parent reducer readiness, and the next canonical WorkGraph blocker.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_wait_surface_audit_packet",
+        "Operator-facing surface-audit packet for direct wait TaskResult delivery, parent reducer, and replay/readback segments.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_global_surface_audit_packet",
+        "Global WorkGraph surface-audit summary for direct wait, using the same operatorMatrixRows shape as agent_jobs surface audit output.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_receipt",
+        "Shadow-only canonical WorkGraph write/read projection receipt built from the global surface-audit operator matrix. Canonical writes and live read-model cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision comparing the canonical WorkGraph projection receipt in the tool output with the durable latest projection receipt payload. Mismatch only fails shadow readiness.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_closeout_receipt",
+        "Terminal no-cutover closeout receipt for the shadow-only canonical WorkGraph projection path. Canonical writes, reads, feature flags, canary, live blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection terminal closeout receipt. Mismatch only fails shadow readiness.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_audit_chain_closeout_receipt",
+        "Final terminal no-cutover receipt closing the canonical WorkGraph projection audit chain after projection, replay, closeout, and closeout replay evidence are read back.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_audit_chain_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the final canonical WorkGraph projection audit-chain closeout receipt. Mismatch only fails shadow readiness.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_operator_review_packet",
+        "Shadow-only operator-review packet preparing canonical WorkGraph projection enablement evidence from the full projection receipt/replay/closeout chain. It records no approval and keeps reviewed flag, feature flag, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_operator_review_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement operator-review packet. Mismatch only fails shadow readiness; approval, reviewed flag, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_receipt",
+        "Shadow-only no-live closeout receipt for canonical WorkGraph projection enablement rehearsal. It requires operator-review packet replay consistency while keeping approval, reviewed flag, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement no-live rehearsal closeout receipt. Mismatch only fails shadow readiness; approval, reviewed flag, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_audit_chain_closeout_receipt",
+        "Final shadow-only audit-chain closeout receipt for canonical WorkGraph projection enablement rehearsal. It consumes operator-review packet/replay and no-live closeout/replay evidence while keeping approval, reviewed flag, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_audit_chain_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement final audit-chain closeout receipt. Mismatch only fails shadow readiness; approval, reviewed flag, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_precondition_operator_packet",
+        "Shadow-only activation-precondition operator packet for canonical WorkGraph projection enablement. It consumes the final enablement audit-chain closeout replay evidence while keeping activationAllowed=false, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_precondition_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation-precondition operator packet. Mismatch only fails shadow readiness; activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_no_live_closeout_receipt",
+        "Shadow-only no-live closeout receipt for canonical WorkGraph projection enablement activation preconditions. It consumes activation-precondition packet/replay evidence while keeping activationAllowed=false, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation no-live closeout receipt. Mismatch only fails shadow readiness; activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_receipt",
+        "Shadow-only final activation audit-chain closeout receipt for canonical WorkGraph projection enablement. It consumes activation-precondition packet/replay plus activation no-live closeout/replay evidence while keeping activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement final activation audit-chain closeout receipt. Mismatch only fails shadow readiness; activation, approval recording, reviewed flag, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet",
+        "Shadow-only operator-approval/readiness preflight packet for canonical WorkGraph projection enablement activation. It consumes final activation closeout replay evidence, requires future approval record and reviewed flag prerequisites, and keeps activation, approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation operator-approval/readiness preflight packet. Mismatch only fails shadow readiness; approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet",
+        "Shadow-only approval/review side-effect lock closeout packet for canonical WorkGraph projection enablement activation. It consumes operator-approval/readiness preflight replay evidence and proves approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled.",
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_decision",
+        "Shadow-only replay/readback consistency decision for the canonical WorkGraph projection enablement activation approval/review side-effect lock closeout packet. Mismatch only fails shadow readiness; approval recording, reviewed flag mutation, canonical WorkGraph write/read, canary, blocking, and cutover remain disabled.",
+    );
+    properties.insert(
+        "durable_mailbox".to_string(),
+        durable_mailbox_wait_metadata_schema(),
+    );
+    insert_wait_shadow_object_property(
+        &mut properties,
+        "work_graph_lifecycle_shadow_decision",
+        "Shadow-only AgentCard lifecycle decision for allowed tool, budget, and lane checks. This is not live-blocking.",
+    );
+    properties
+}
+
+fn insert_wait_shadow_object_property(
+    properties: &mut Map<String, Value>,
+    name: &'static str,
+    description: &'static str,
+) {
+    properties.insert(
+        name.to_string(),
+        json!({
+            "type": "object",
+            "additionalProperties": true,
+            "description": description,
+        }),
+    );
+}
+
+fn durable_mailbox_wait_metadata_schema() -> Value {
+    json!({
+        "type": "object",
         "properties": {
-            "message": {
-                "type": "string",
-                "description": "Brief wait summary without the agent's final content."
-            },
-            "timed_out": {
+            "opened_event_recorded": {
                 "type": "boolean",
-                "description": "Whether the wait call returned because no mailbox update arrived before the timeout."
+                "description": "Whether the durable wait_barrier_opened shadow event was recorded."
+            },
+            "terminal_event_recorded": {
+                "type": "boolean",
+                "description": "Whether a durable satisfied/timed_out shadow event was recorded."
+            },
+            "task_result_delivery_shadow_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait TaskResult delivery shadow evidence was written to the durable mailbox stream."
+            },
+            "parent_reducer_shadow_receipt_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait parent reducer shadow evidence was written to the durable mailbox stream."
+            },
+            "task_result_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait replay/readback consistency evidence was written to the durable mailbox stream."
+            },
+            "wait_surface_audit_packet_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait surface-audit packet shadow evidence was written to the durable mailbox stream."
+            },
+            "wait_surface_audit_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait surface-audit replay consistency evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_receipt_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection receipt evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection replay consistency evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_closeout_receipt_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection terminal no-cutover closeout evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection terminal closeout replay consistency evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_audit_chain_closeout_receipt_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection final audit-chain closeout receipt evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_audit_chain_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection final audit-chain closeout replay consistency evidence was written to the durable mailbox stream."
+            },
+            "wait_canonical_projection_enablement_operator_review_packet_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement operator-review packet evidence was written to the durable mailbox stream without approval or cutover."
+            },
+            "wait_canonical_projection_enablement_operator_review_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement operator-review replay consistency evidence was written to the durable mailbox stream without approval or cutover."
+            },
+            "wait_canonical_projection_enablement_no_live_rehearsal_closeout_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement no-live rehearsal closeout evidence was written to the durable mailbox stream without approval or cutover."
+            },
+            "wait_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement no-live rehearsal closeout replay consistency evidence was written to the durable mailbox stream without approval or cutover."
+            },
+            "wait_canonical_projection_enablement_audit_chain_closeout_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement final audit-chain closeout evidence was written to the durable mailbox stream without approval or cutover."
+            },
+            "wait_canonical_projection_enablement_audit_chain_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement final audit-chain closeout replay consistency evidence was written to the durable mailbox stream without approval or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_precondition_operator_packet_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation-precondition operator packet evidence was written to the durable mailbox stream without approval, activation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_precondition_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation-precondition replay consistency evidence was written to the durable mailbox stream without approval, activation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_no_live_closeout_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation no-live closeout evidence was written to the durable mailbox stream without approval, activation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation no-live closeout replay consistency evidence was written to the durable mailbox stream without approval, activation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_audit_chain_closeout_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement final activation audit-chain closeout evidence was written to the durable mailbox stream without approval, activation, reviewed flag mutation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement final activation audit-chain closeout replay consistency evidence was written to the durable mailbox stream without approval, activation, reviewed flag mutation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation operator-approval/readiness preflight evidence was written to the durable mailbox stream while requiring future approval record and reviewed flag prerequisites without approval recording, activation, reviewed flag mutation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation operator-approval/readiness preflight replay consistency evidence was written to the durable mailbox stream without approval recording, activation, reviewed flag mutation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation approval/review side-effect lock closeout evidence was written to the durable mailbox stream without approval recording, reviewed flag mutation, activation, or cutover."
+            },
+            "wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_event_recorded": {
+                "type": "boolean",
+                "description": "Whether result_required wait canonical WorkGraph projection enablement activation approval/review side-effect lock closeout replay consistency evidence was written to the durable mailbox stream without approval recording, reviewed flag mutation, activation, or cutover."
+            },
+            "live_blocking_enabled": {
+                "type": "boolean",
+                "description": "Always false while durable wait barriers are shadow-only."
+            },
+            "live_cutover_enabled": {
+                "type": "boolean",
+                "description": "Always false while durable wait barriers are shadow-only."
             }
         },
-        "required": ["message", "timed_out"],
+        "required": [
+            "opened_event_recorded",
+            "terminal_event_recorded",
+            "task_result_delivery_shadow_event_recorded",
+            "parent_reducer_shadow_receipt_event_recorded",
+            "task_result_replay_consistency_event_recorded",
+            "wait_surface_audit_packet_event_recorded",
+            "wait_surface_audit_replay_consistency_event_recorded",
+            "wait_canonical_projection_receipt_event_recorded",
+            "wait_canonical_projection_replay_consistency_event_recorded",
+            "wait_canonical_projection_closeout_receipt_event_recorded",
+            "wait_canonical_projection_closeout_replay_consistency_event_recorded",
+            "wait_canonical_projection_audit_chain_closeout_receipt_event_recorded",
+            "wait_canonical_projection_audit_chain_closeout_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_operator_review_packet_event_recorded",
+            "wait_canonical_projection_enablement_operator_review_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_no_live_rehearsal_closeout_event_recorded",
+            "wait_canonical_projection_enablement_no_live_rehearsal_closeout_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_audit_chain_closeout_event_recorded",
+            "wait_canonical_projection_enablement_audit_chain_closeout_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_activation_precondition_operator_packet_event_recorded",
+            "wait_canonical_projection_enablement_activation_precondition_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_activation_no_live_closeout_event_recorded",
+            "wait_canonical_projection_enablement_activation_no_live_closeout_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_activation_audit_chain_closeout_event_recorded",
+            "wait_canonical_projection_enablement_activation_audit_chain_closeout_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_packet_event_recorded",
+            "wait_canonical_projection_enablement_activation_operator_approval_readiness_preflight_replay_consistency_event_recorded",
+            "wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_packet_event_recorded",
+            "wait_canonical_projection_enablement_activation_approval_review_side_effect_lock_closeout_replay_consistency_event_recorded",
+            "live_blocking_enabled",
+            "live_cutover_enabled"
+        ],
         "additionalProperties": false
     })
 }
@@ -470,9 +894,14 @@ fn close_agent_output_schema() -> Value {
             "previous_status": {
                 "description": "The agent status observed before shutdown was requested.",
                 "allOf": [agent_status_output_schema()]
+            },
+            "work_graph_lifecycle_shadow_decision": {
+                "description": "Shadow-only AgentCard lifecycle decision for allowed tool, budget, and lane checks. This is not live-blocking.",
+                "type": "object",
+                "additionalProperties": true
             }
         },
-        "required": ["previous_status"],
+        "required": ["previous_status", "work_graph_lifecycle_shadow_decision"],
         "additionalProperties": false
     })
 }
@@ -782,13 +1211,41 @@ fn wait_agent_tool_parameters_v1(options: WaitAgentTimeoutOptions) -> JsonSchema
 }
 
 fn wait_agent_tool_parameters_v2(options: WaitAgentTimeoutOptions) -> JsonSchema {
-    let properties = BTreeMap::from([(
-        "timeout_ms".to_string(),
-        JsonSchema::number(Some(format!(
-            "Optional timeout in milliseconds. Defaults to {}, min {}, max {}.",
-            options.default_timeout_ms, options.min_timeout_ms, options.max_timeout_ms,
-        ))),
-    )]);
+    let properties = BTreeMap::from([
+        (
+            "timeout_ms".to_string(),
+            JsonSchema::number(Some(format!(
+                "Optional timeout in milliseconds. Defaults to {}, min {}, max {}.",
+                options.default_timeout_ms, options.min_timeout_ms, options.max_timeout_ms,
+            ))),
+        ),
+        (
+            "task_name".to_string(),
+            JsonSchema::string(Some(
+                "Optional task name to associate with the durable wait barrier.".to_string(),
+            )),
+        ),
+        (
+            "task_id".to_string(),
+            JsonSchema::string(Some(
+                "Optional durable task id to associate with the wait barrier.".to_string(),
+            )),
+        ),
+        (
+            "barrier_id".to_string(),
+            JsonSchema::string(Some(
+                "Optional durable barrier id. Defaults to a generated wait-agent barrier id."
+                    .to_string(),
+            )),
+        ),
+        (
+            "result_required".to_string(),
+            JsonSchema::boolean(Some(
+                "Whether this wait requires a terminal TaskResult envelope in future result-aware waits."
+                    .to_string(),
+            )),
+        ),
+    ]);
 
     JsonSchema::object(properties, /*required*/ None, Some(false.into()))
 }

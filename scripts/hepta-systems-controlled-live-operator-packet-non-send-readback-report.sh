@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PACKET_PREVIEW_REPORT="$ROOT/scripts/hepta-systems-controlled-live-operator-packet-preview-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_operator_packet_non_send_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_OPERATOR_PACKET_NON_SEND_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-operator-packet-non-send-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PACKET_PREVIEW_REPORT" ]] || fail "missing executable Phase 5b operator packet preview report: $PACKET_PREVIEW_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5c Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 5c architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 5c non-send readback report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_operator_packet_non_send_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+packet_json="${HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON:-}"
+if [[ -n "$packet_json" ]]; then
+  [[ -f "$packet_json" ]] || fail "missing cached Phase 5b operator packet preview report: $packet_json"
+else
+  packet_json="$tmpdir/packet.json"
+  "$PACKET_PREVIEW_REPORT" >"$packet_json" || fail "failed to render Phase 5b operator packet preview report"
+fi
+
+jq -n \
+  --slurpfile packet "$packet_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-operator-packet-non-send-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_OPERATOR_PACKET_NON_SEND_READBACK_2026-06-27.md" \
+  '
+  def entry($id; $query_key; $route; $source; $state): {
+    id:$id,
+    query_key:$query_key,
+    readback_route:$route,
+    source:$source,
+    observed_state:$state,
+    operator_visible:true,
+    non_send_confirmed:true,
+    persistence_blocked:true,
+    approval_request_blocked:true,
+    live_mutation_allowed:false
+  };
+  ($packet[0]) as $packet |
+  [
+    entry("packet_preview_visible"; "controlled_live.operator_packet.visible"; "controlled-live/operator-packet/visibility"; "operator packet preview report"; "packet_preview_available_from_local_report"),
+    entry("approval_request_not_sent"; "controlled_live.operator_packet.approval_request_not_sent"; "controlled-live/operator-packet/approval-request/non-send"; "operator packet preview report"; "approval_request_sent_false"),
+    entry("packet_not_persisted"; "controlled_live.operator_packet.packet_not_persisted"; "controlled-live/operator-packet/persistence/non-write"; "operator packet preview report"; "packet_persisted_false"),
+    entry("transport_not_used"; "controlled_live.operator_packet.transport_not_used"; "controlled-live/operator-packet/transport/non-send"; "operator packet preview report"; "native_post_and_telegram_transport_false"),
+    entry("cutover_not_promoted"; "controlled_live.operator_packet.cutover_not_promoted"; "controlled-live/operator-packet/cutover/non-promotion"; "controlled-live readiness audit"; "controlled_live_cutover_false"),
+    entry("blocker_readback_integrity_retained"; "controlled_live.operator_packet.blocker_readback_integrity_retained"; "controlled-live/operator-packet/blocker-readbacks/integrity"; "controlled-live denial readback index"; "seven_blocker_readbacks_retained")
+  ] as $entries |
+  ($entries | map(select(.operator_visible == true and .non_send_confirmed == true and .persistence_blocked == true and .approval_request_blocked == true and .live_mutation_allowed == false)) | length) as $readback_ready_count |
+  ($packet.operator_packet_preview_ready == true
+    and $packet.approval_request_sent == false
+    and $packet.approval_recorded == false
+    and $packet.packet_persisted == false
+    and $packet.controlled_live_cutover_ready == false
+    and $packet.live_execution_allowed == false
+    and $packet.blocker_readback_count == 7
+    and $lib_export_present == true
+    and ($entries | length) == 6
+    and $readback_ready_count == 6) as $non_send_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_operator_packet_non_send_readback",
+    status:(if $non_send_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_operator_packet_non_send_readback_gate",
+    schema_version:"controlled_live_operator_packet_non_send_readback_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_operator_packet_preview_ready:$packet.operator_packet_preview_ready,
+    source_packet_id:$packet.packet_id,
+    source_payload_hash:$packet.payload_hash,
+    source_blocker_readback_count:$packet.blocker_readback_count,
+    lib_export_present:$lib_export_present,
+    readback_entry_count:($entries | length),
+    readback_ready_count:$readback_ready_count,
+    packet_visible_to_operator:$non_send_ready,
+    packet_send_attempted:false,
+    approval_request_ready:false,
+    approval_request_sent:false,
+    approval_recorded:false,
+    packet_persisted:false,
+    readback_persisted:false,
+    controlled_live_cutover_ready:false,
+    live_execution_allowed:false,
+    non_send_readback_ready:$non_send_ready,
+    entries:$entries,
+    next_actions:[
+      "phase5d_controlled_live_required_evidence_collection_plan_without_recording",
+      "keep_operator_packet_unsent_unpersisted_and_not_an_approval_request"
+    ],
+    next_migration_step:"phase5d_controlled_live_required_evidence_collection_plan_without_recording",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      approval_requested:false,
+      approval_recorded:false,
+      packet_sent:false,
+      packet_persisted:false,
+      readback_persisted:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

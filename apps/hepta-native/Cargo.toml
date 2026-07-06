@@ -45,6 +45,7 @@ futures-util = "0.3"
 hashbrown = { version = "0.16", features = ["raw-entry"] }
 htmlize = "1.0.5"
 indexmap = "2.6.0"
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 imghdr = "0.7.0"
 libc = "0.2"
 linkify = "0.10.0"
@@ -61,6 +62,8 @@ matrix-sdk = { git = "https://github.com/project-robius/matrix-rust-sdk", branch
 matrix-sdk-ui = { git = "https://github.com/project-robius/matrix-rust-sdk", branch = "space_room_suggested", default-features = false, features = [
     "rustls-tls",
 ] }
+mime = "0.3.17"
+mime_guess = "2.0.5"
 ## Use the same ruma version as what's specified in matrix-sdk's Cargo.toml.
 ## Enable a few extra features:
 ## * "compat-optional" feature to allow missing body field in m.room.tombstone event.
@@ -111,6 +114,9 @@ reqwest = { version = "0.12", default-features = false, optional = true, feature
 ## For OAuth/SSO login on iOS, via `ASWebAuthenticationSession`. Ugh....
 [target.'cfg(target_os = "ios")'.dependencies]
 robius-web-auth-session = { git = "https://github.com/project-robius/robius" }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+rfd = "0.17.2"
 
 
 [features]

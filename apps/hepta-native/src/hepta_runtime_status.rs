@@ -358,25 +358,37 @@ mod tests {
         assert_eq!(snapshot.gated_count(), 2);
         assert_eq!(snapshot.blocked_count(), 0);
         assert!(snapshot.capability_maturity_summary.contains("23/23"));
-        assert!(snapshot
-            .capability_maturity_summary
-            .contains("at least M2-local-adapter"));
-        assert!(snapshot
-            .capability_maturity_summary
-            .contains("20/23 are M4 product-ready"));
-        assert!(snapshot
-            .capability_maturity_summary
-            .contains("7/7 Hepta-unique domains"));
-        assert!(snapshot
-            .capability_maturity_summary
-            .contains("13/13 OpenClaw required absorb domains"));
-        assert!(snapshot
-            .items
-            .iter()
-            .all(|item| !item.external_mutation_enabled));
-        assert!(snapshot
-            .summary_line()
-            .contains("6 ready · 2 preview-only · 2 gated · 0 blocked"));
+        assert!(
+            snapshot
+                .capability_maturity_summary
+                .contains("at least M2-local-adapter")
+        );
+        assert!(
+            snapshot
+                .capability_maturity_summary
+                .contains("20/23 are M4 product-ready")
+        );
+        assert!(
+            snapshot
+                .capability_maturity_summary
+                .contains("7/7 Hepta-unique domains")
+        );
+        assert!(
+            snapshot
+                .capability_maturity_summary
+                .contains("13/13 OpenClaw required absorb domains")
+        );
+        assert!(
+            snapshot
+                .items
+                .iter()
+                .all(|item| !item.external_mutation_enabled)
+        );
+        assert!(
+            snapshot
+                .summary_line()
+                .contains("6 ready · 2 preview-only · 2 gated · 0 blocked")
+        );
     }
 
     #[test]
@@ -390,12 +402,16 @@ mod tests {
 
         assert_eq!(smoke.kind, HeptaRuntimeStatusKind::Ready);
         assert!(!smoke.external_mutation_enabled);
-        assert!(smoke
-            .evidence
-            .contains("current codex-rs runtime bridge event"));
-        assert!(smoke
-            .evidence
-            .contains("false Gateway/provider/channel/process"));
+        assert!(
+            smoke
+                .evidence
+                .contains("current codex-rs runtime bridge event")
+        );
+        assert!(
+            smoke
+                .evidence
+                .contains("false Gateway/provider/channel/process")
+        );
     }
 
     #[test]
@@ -433,12 +449,16 @@ mod tests {
         assert_eq!(snapshot.m4_product_readiness.len(), 20);
         assert_eq!(snapshot.m4_product_ready_count(), 20);
         assert_eq!(snapshot.m4_missing_gate_count("live_adapter"), 0);
-        assert!(snapshot
-            .m4_readiness_line()
-            .contains("20/20 M4 product-ready"));
-        assert!(snapshot
-            .m4_readiness_line()
-            .contains("visible_in_native=true"));
+        assert!(
+            snapshot
+                .m4_readiness_line()
+                .contains("20/20 M4 product-ready")
+        );
+        assert!(
+            snapshot
+                .m4_readiness_line()
+                .contains("visible_in_native=true")
+        );
 
         let m4 = snapshot
             .items
@@ -584,8 +604,10 @@ mod tests {
             .expect("mobile packaging blocker should be present");
         assert_eq!(blocker.kind, HeptaRuntimeStatusKind::Ready);
         assert!(blocker.evidence.contains("cargo-makepad installed"));
-        assert!(blocker
-            .evidence
-            .contains("Android APK and iOS simulator build smokes validated"));
+        assert!(
+            blocker
+                .evidence
+                .contains("Android APK and iOS simulator build smokes validated")
+        );
     }
 }

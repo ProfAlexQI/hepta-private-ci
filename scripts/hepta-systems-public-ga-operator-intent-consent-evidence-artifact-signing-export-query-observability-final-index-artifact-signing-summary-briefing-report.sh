@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-export-query-observability-final-index-report.sh"
+SUMMARY_GATE="$ROOT/scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-summary-briefing-denial-gate.sh"
+SUMMARY_DOC="$ROOT/docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_SUMMARY_BRIEFING_DENIAL_GATE.md"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable Public GA operator identity/session intent consent evidence artifact signing export/query/observability final index report: $SOURCE_REPORT" >&2
+  exit 1
+}
+[[ -f "$SUMMARY_GATE" ]] || {
+  echo "missing operator identity/session intent consent evidence artifact signing summary/briefing denial gate: $SUMMARY_GATE" >&2
+  exit 1
+}
+[[ -f "$SUMMARY_DOC" ]] || {
+  echo "missing operator identity/session intent consent evidence artifact signing summary/briefing denial doc: $SUMMARY_DOC" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the Public GA operator identity/session intent consent evidence artifact signing summary/briefing report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_blocked == true
+  and .query_registered == false
+  and .export_file_written == false
+  and .observability_metric_recorded == false
+  and .activation_authority_from_export_query_observability_derived == false
+  and .public_ga_claimed == false
+' <<<"$source_json" >/dev/null
+
+summary_static_mention_count="$(
+  grep -Eci 'summary|briefing|readback|status|banner|card|timeline|narrative|memo|delivery|ack|acknowledgement|authority|download|install|restart|active-binary|credential|secret|provider|model|telegram|external|live' "$SUMMARY_GATE" || true
+)"
+
+jq -n \
+  --argjson source "$source_json" \
+  --argjson summary_static_mention_count "$summary_static_mention_count" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_attachment",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_ready: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_blocked,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_final_index_attached: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_attachment_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_attachment_blocked: true,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_denial_gate_present: true,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_denial_doc_present: true,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_static_mention_count: $summary_static_mention_count,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_denial_gate_invoked: false,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_denial_gate_invoked: false,
+    long_soak_started: false,
+    public_status_claimed: false,
+    public_release_claimed: false,
+    public_ga_claimed: false,
+    artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_allowed: false,
+    artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_accepted: false,
+    artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_recorded: false,
+    artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_persisted: false,
+    artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_materialized: false,
+    artifact_distribution_signing_notarization_receipt_operator_facing_summary_briefing_filesystem_written: false,
+    operator_summary_recorded: false,
+    operator_summary_persisted: false,
+    operator_briefing_recorded: false,
+    operator_briefing_persisted: false,
+    signing_receipt_readback_recorded: false,
+    signing_receipt_readback_persisted: false,
+    status_banner_recorded: false,
+    exported_summary_recorded: false,
+    briefing_card_recorded: false,
+    notification_timeline_recorded: false,
+    dashboard_narrative_recorded: false,
+    audit_narrative_recorded: false,
+    briefing_delivery_recorded: false,
+    final_summary_recorded: false,
+    operator_memo_recorded: false,
+    approval_summary_recorded: false,
+    external_briefing_delivered: false,
+    telegram_briefing_delivered: false,
+    authority_briefing_recorded: false,
+    live_status_briefing_recorded: false,
+    signing_receipt_query_registered: false,
+    signing_receipt_query_executed: false,
+    signing_receipt_query_result_recorded: false,
+    signing_receipt_export_accepted: false,
+    signing_receipt_export_file_written: false,
+    signing_receipt_export_stream_opened: false,
+    signing_receipt_observability_recorded: false,
+    signing_receipt_dashboard_recorded: false,
+    signing_receipt_alert_recorded: false,
+    signing_receipt_result_receipt_recorded: false,
+    signing_receipt_result_receipt_persisted: false,
+    signing_receipt_completion_ack_recorded: false,
+    operator_acceptance_from_summary_recorded: false,
+    operator_acceptance_from_briefing_recorded: false,
+    operator_approval_from_summary_derived: false,
+    operator_approval_from_briefing_derived: false,
+    release_publication_authority_from_summary_briefing_derived: false,
+    activation_authority_from_summary_briefing_derived: false,
+    download_link_from_summary_briefing_rendered: false,
+    install_command_from_summary_briefing_rendered: false,
+    install_from_summary_briefing_executed: false,
+    service_restart_from_summary_briefing_performed: false,
+    launchd_from_summary_briefing_mutated: false,
+    active_binary_from_summary_briefing_mutated: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    provider_invoked: false,
+    model_invoked: false,
+    credential_read: false,
+    secret_file_read: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    attachment_blocker_count: 82,
+    manual_operator_live_cutover_approval_required: true,
+    public_ga_claim_allowed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_readback_without_export",
+    local_gate: "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-export-query-observability-final-index-artifact-signing-summary-briefing-gate.sh",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_EXPORT_QUERY_OBSERVABILITY_FINAL_INDEX_ARTIFACT_SIGNING_SUMMARY_BRIEFING_2026-06-21.md",
+    source_files: {
+      public_ga_operator_identity_session_intent_consent_evidence_artifact_signing_export_query_observability_final_index_report: "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-export-query-observability-final-index-report.sh",
+      operator_identity_session_intent_consent_evidence_artifact_signing_summary_briefing_denial_gate: "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-summary-briefing-denial-gate.sh",
+      operator_identity_session_intent_consent_evidence_artifact_signing_summary_briefing_denial_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_SUMMARY_BRIEFING_DENIAL_GATE.md"
+    },
+    side_effect_free: true,
+    side_effects: {
+      report_written: false,
+      git_index_mutated: false,
+      operator_identity_session_operator_intent_consent_evidence_artifact_signing_summary_briefing_denial_gate_invoked: false,
+      operator_identity_session_operator_intent_consent_evidence_artifact_signing_export_query_observability_denial_gate_invoked: false,
+      operator_summary_recorded: false,
+      operator_summary_persisted: false,
+      operator_briefing_recorded: false,
+      operator_briefing_persisted: false,
+      readback_recorded: false,
+      status_banner_recorded: false,
+      exported_summary_recorded: false,
+      briefing_card_recorded: false,
+      notification_timeline_recorded: false,
+      dashboard_narrative_recorded: false,
+      audit_narrative_recorded: false,
+      briefing_delivery_recorded: false,
+      final_summary_recorded: false,
+      operator_memo_recorded: false,
+      approval_summary_recorded: false,
+      external_briefing_delivered: false,
+      telegram_briefing_delivered: false,
+      authority_briefing_recorded: false,
+      live_status_briefing_recorded: false,
+      summary_briefing_acceptance_recorded: false,
+      operator_approval_from_summary_briefing_derived: false,
+      release_publication_authority_from_summary_briefing_derived: false,
+      activation_authority_from_summary_briefing_derived: false,
+      download_link_from_summary_briefing_rendered: false,
+      install_command_from_summary_briefing_rendered: false,
+      install_from_summary_briefing_executed: false,
+      service_restart_from_summary_briefing_performed: false,
+      launchd_from_summary_briefing_mutated: false,
+      active_binary_from_summary_briefing_mutated: false,
+      memory_store_write_performed: false,
+      live_kg_write_performed: false,
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      secret_file_read: false,
+      telegram_send_performed: false,
+      external_send_performed: false,
+      long_soak_started: false,
+      terminal_live_gate_invoked: false,
+      terminal_live_url_contacted: false,
+      public_ga_readiness_script_invoked: false,
+      public_claim_non_promotion_denial_gate_invoked: false,
+      public_ga_claim_recorded: false,
+      public_ga_promoted: false,
+      public_release_published: false,
+      rollback_executed: false,
+      external_network_read: false,
+      release_artifact_written: false,
+      public_artifact_written: false,
+      filesystem_written: false
+    }
+  }'

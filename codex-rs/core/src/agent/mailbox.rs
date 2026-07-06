@@ -9,14 +9,20 @@ use tokio::sync::watch;
 use codex_protocol::AgentPath;
 
 pub(crate) struct Mailbox {
-    tx: mpsc::UnboundedSender<InterAgentCommunication>,
+    tx: mpsc::UnboundedSender<MailboxDelivery>,
     next_seq: AtomicU64,
     seq_tx: watch::Sender<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MailboxDelivery {
+    pub(crate) sequence: u64,
+    pub(crate) communication: InterAgentCommunication,
+}
+
 pub(crate) struct MailboxReceiver {
-    rx: mpsc::UnboundedReceiver<InterAgentCommunication>,
-    pending_mails: VecDeque<InterAgentCommunication>,
+    rx: mpsc::UnboundedReceiver<MailboxDelivery>,
+    pending_mails: VecDeque<MailboxDelivery>,
 }
 
 impl Mailbox {
@@ -42,7 +48,10 @@ impl Mailbox {
 
     pub(crate) fn send(&self, communication: InterAgentCommunication) -> u64 {
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed) + 1;
-        let _ = self.tx.send(communication);
+        let _ = self.tx.send(MailboxDelivery {
+            sequence: seq,
+            communication,
+        });
         self.seq_tx.send_replace(seq);
         seq
     }
@@ -50,8 +59,8 @@ impl Mailbox {
 
 impl MailboxReceiver {
     fn sync_pending_mails(&mut self) {
-        while let Ok(mail) = self.rx.try_recv() {
-            self.pending_mails.push_back(mail);
+        while let Ok(delivery) = self.rx.try_recv() {
+            self.pending_mails.push_back(delivery);
         }
     }
 
@@ -62,10 +71,20 @@ impl MailboxReceiver {
 
     pub(crate) fn has_pending_trigger_turn(&mut self) -> bool {
         self.sync_pending_mails();
-        self.pending_mails.iter().any(|mail| mail.trigger_turn)
+        self.pending_mails
+            .iter()
+            .any(|mail| mail.communication.trigger_turn)
     }
 
+    #[cfg(test)]
     pub(crate) fn drain(&mut self) -> Vec<InterAgentCommunication> {
+        self.drain_deliveries()
+            .into_iter()
+            .map(|delivery| delivery.communication)
+            .collect()
+    }
+
+    pub(crate) fn drain_deliveries(&mut self) -> Vec<MailboxDelivery> {
         self.sync_pending_mails();
         self.pending_mails.drain(..).collect()
     }
@@ -117,6 +136,41 @@ mod tests {
 
     #[tokio::test]
     async fn mailbox_drains_in_delivery_order() {
+        let (mailbox, mut receiver) = Mailbox::new();
+        let mail_one = make_mail(
+            AgentPath::root(),
+            AgentPath::try_from("/root/worker").expect("agent path"),
+            "one",
+            /*trigger_turn*/ false,
+        );
+        let mail_two = make_mail(
+            AgentPath::try_from("/root/worker").expect("agent path"),
+            AgentPath::root(),
+            "two",
+            /*trigger_turn*/ false,
+        );
+
+        mailbox.send(mail_one.clone());
+        mailbox.send(mail_two.clone());
+
+        assert_eq!(
+            receiver.drain_deliveries(),
+            vec![
+                MailboxDelivery {
+                    sequence: 1,
+                    communication: mail_one,
+                },
+                MailboxDelivery {
+                    sequence: 2,
+                    communication: mail_two,
+                },
+            ]
+        );
+        assert!(!receiver.has_pending());
+    }
+
+    #[tokio::test]
+    async fn mailbox_drains_legacy_messages_in_delivery_order() {
         let (mailbox, mut receiver) = Mailbox::new();
         let mail_one = make_mail(
             AgentPath::root(),

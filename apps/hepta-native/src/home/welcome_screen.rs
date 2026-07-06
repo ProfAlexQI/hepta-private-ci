@@ -81,6 +81,16 @@ script_mod! {
                         text_style: theme.font_regular { font_size: 12.0 }
                     }
                 }
+                desktop_dock_restore_evidence := Label {
+                    width: Fill,
+                    height: Fit,
+                    flow: Flow.Right{wrap: true},
+                    text: "Desktop continuity: dock restore loads saved tabs locally, initializes only visible tabs, defers hidden tab content until tab press/drop/close, and sends no Matrix request."
+                    draw_text +: {
+                        color: (mod.widgets.WELCOME_TEXT_COLOR)
+                        text_style: theme.font_regular { font_size: 12.0 }
+                    }
+                }
                 event_runtime := Label {
                     text: "• m.hepta.runtime_event → runtime status / wake / gateway signals"
                     draw_text +: { color: (mod.widgets.WELCOME_TEXT_COLOR), text_style: theme.font_regular { font_size: 12.0 } }

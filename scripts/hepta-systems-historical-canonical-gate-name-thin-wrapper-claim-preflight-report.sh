@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+MIGRATION_REPORT="$ROOT/scripts/hepta-systems-strict-missing-consumer-phase-migration-report.sh"
+MIGRATION_GATE="$ROOT/scripts/hepta-systems-strict-missing-consumer-phase-migration-gate.sh"
+SNAPSHOT_REPORT="$ROOT/scripts/hepta-systems-historical-canonical-missing-path-snapshot-evidence-report.sh"
+SNAPSHOT_GATE="$ROOT/scripts/hepta-systems-historical-canonical-missing-path-snapshot-evidence-gate.sh"
+WRAPPER_GATE="$ROOT/scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_NAME_THIN_WRAPPER_CLAIM_PREFLIGHT_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-gate-name-thin-wrapper-claim-preflight-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$MIGRATION_REPORT" ]] || fail "missing executable strict-missing consumer phase migration report: $MIGRATION_REPORT"
+[[ -x "$MIGRATION_GATE" ]] || fail "missing executable strict-missing consumer phase migration gate: $MIGRATION_GATE"
+[[ -x "$SNAPSHOT_REPORT" ]] || fail "missing executable historical canonical missing path snapshot evidence report: $SNAPSHOT_REPORT"
+[[ -x "$SNAPSHOT_GATE" ]] || fail "missing executable historical canonical missing path snapshot evidence gate: $SNAPSHOT_GATE"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -f "$DOC" ]] || fail "missing historical canonical gate name thin wrapper claim preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the historical canonical gate name thin wrapper claim preflight report"
+fi
+
+jq -n \
+  --slurpfile migration <("$MIGRATION_REPORT") \
+  --slurpfile snapshot <("$SNAPSHOT_REPORT") \
+  --arg gate "scripts/hepta-systems-historical-canonical-gate-name-thin-wrapper-claim-preflight-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_NAME_THIN_WRAPPER_CLAIM_PREFLIGHT_2026-06-21.md" \
+  '
+  ($migration[0]) as $migration |
+  ($snapshot[0]) as $snapshot |
+  [
+    {
+      id:"historical_canonical_gate_path_absent",
+      required:true,
+      satisfied:($snapshot.historical_canonical_gate_path_present_at_snapshot == false),
+      detail:"scripts/hepta-systems-canonical-gate.sh was absent in historical snapshot evidence"
+    },
+    {
+      id:"strict_missing_consumer_phase_migration_ready",
+      required:true,
+      satisfied:$migration.strict_missing_consumer_phase_migration_ready,
+      detail:"strict-missing consumers have phase successors"
+    },
+    {
+      id:"strict_missing_blockers_cleared_for_next_preflight",
+      required:true,
+      satisfied:($migration.blocking_consumer_count_after_phase_migration == 0),
+      detail:"phase successors clear the strict-missing blocker count for the next name-claim step"
+    },
+    {
+      id:"current_wrapper_target_ready",
+      required:true,
+      satisfied:$migration.current_wrapper_active_summary_source,
+      detail:"current canonical wrapper remains the active summary source"
+    },
+    {
+      id:"live_and_public_ga_still_disabled",
+      required:true,
+      satisfied:($migration.execution_enabled_count == 0 and $migration.public_ga_enabled_count == 0 and $migration.tool_execution_live_cutover_allowed == false and $migration.tool_execution_public_ga_allowed == false),
+      detail:"the claim preflight does not open execution, live cutover, or Public GA"
+    }
+  ] as $claim_checks |
+  ($migration.strict_missing_consumer_phase_migration_ready == true
+    and $migration.ready_to_prepare_historical_name_claim_preflight == true
+    and $migration.blocking_consumer_count_after_phase_migration == 0
+    and $migration.phase_successor_available_count == 2
+    and $migration.strict_missing_consumers_mutated == false
+    and $migration.historical_missing_path_evidence_preserved == true
+    and $migration.source_historical_missing_path_evidence_basis == "historical_snapshot_evidence"
+    and $migration.source_historical_missing_path_current_filesystem_probe_used == false
+    and $migration.source_historical_snapshot_missing_canonical_summary == true
+    and $snapshot.historical_missing_path_snapshot_evidence_ready == true
+    and $snapshot.snapshot_current_filesystem_probe_used == false
+    and $snapshot.snapshot_decouples_from_current_filesystem_state == true
+    and $migration.current_wrapper_active_summary_source == true
+    and $migration.proposed_historical_canonical_gate_path == "scripts/hepta-systems-canonical-gate.sh"
+    and $migration.proposed_alias_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+    and $migration.proposed_alias_kind == "thin_local_wrapper"
+    and $snapshot.historical_canonical_gate_path_present_at_snapshot == false
+    and $migration.historical_canonical_gate_name_reintroduction_allowed == true
+    and $migration.historical_canonical_gate_name_claimed == true
+    and $migration.historical_canonical_gate_created == true
+    and $migration.historical_canonical_gate_executable == true
+    and $migration.historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+    and $migration.historical_canonical_gate_wrapper_target == "scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+    and $migration.historical_canonical_gate_wrapper_exec_count == 1
+    and $migration.historical_canonical_gate_mutated == true
+    and $migration.historical_canonical_gate_mutated_by_report == false
+    and $migration.canonical_gate_wrapper_invoked == false
+    and $migration.execution_enabled_count == 0
+    and $migration.public_ga_enabled_count == 0
+    and $migration.tool_execution_live_cutover_allowed == false
+    and $migration.tool_execution_public_ga_allowed == false
+    and ($claim_checks | all(.required == true and .satisfied == true))
+    and ($migration.side_effects | to_entries | all(.value == false))) as $claim_preflight_ready |
+  {
+    runtime:"hepta",
+    surface:"historical_canonical_gate_name_thin_wrapper_claim_preflight",
+    plugin_id:$migration.plugin_id,
+    status:(if $claim_preflight_ready then "ready" else "blocked" end),
+    source_migration_surface:$migration.surface,
+    source_migration_ready:$migration.strict_missing_consumer_phase_migration_ready,
+    source_strict_missing_consumer_count:$migration.strict_missing_consumer_count,
+    source_phase_successor_available_count:$migration.phase_successor_available_count,
+    source_blocking_consumer_count_after_phase_migration:$migration.blocking_consumer_count_after_phase_migration,
+    source_strict_missing_consumers_mutated:$migration.strict_missing_consumers_mutated,
+    source_historical_missing_path_evidence_preserved:$migration.historical_missing_path_evidence_preserved,
+    source_historical_missing_path_evidence_basis:$migration.source_historical_missing_path_evidence_basis,
+    source_historical_missing_path_current_filesystem_probe_used:$migration.source_historical_missing_path_current_filesystem_probe_used,
+    source_historical_snapshot_missing_canonical_summary:$migration.source_historical_snapshot_missing_canonical_summary,
+    source_current_wrapper_active_summary_source:$migration.current_wrapper_active_summary_source,
+    source_snapshot_surface:$snapshot.surface,
+    source_snapshot_ready:$snapshot.historical_missing_path_snapshot_evidence_ready,
+    source_snapshot_decouples_from_current_filesystem_state:$snapshot.snapshot_decouples_from_current_filesystem_state,
+    proposed_historical_canonical_gate_path:$migration.proposed_historical_canonical_gate_path,
+    proposed_alias_target:$migration.proposed_alias_target,
+    proposed_alias_kind:$migration.proposed_alias_kind,
+    proposed_alias_would_invoke_live_gates:false,
+    historical_canonical_gate_path_present:false,
+    historical_canonical_gate_path_present_at_snapshot:$snapshot.historical_canonical_gate_path_present_at_snapshot,
+    historical_canonical_gate_path_probe_basis:"historical_snapshot_evidence",
+    historical_canonical_gate_path_current_filesystem_probe_used:false,
+    claim_check_count:($claim_checks | length),
+    claim_checks:$claim_checks,
+    historical_canonical_gate_name_thin_wrapper_claim_preflight_ready:$claim_preflight_ready,
+    historical_canonical_gate_name_claim_allowed:$claim_preflight_ready,
+    historical_canonical_gate_name_claimed:true,
+    historical_canonical_gate_created:true,
+    historical_canonical_gate_executable:true,
+    historical_canonical_gate_wrapper_kind:"thin_local_exec_wrapper",
+    historical_canonical_gate_wrapper_target:"scripts/hepta-systems-current-canonical-wrapper-gate.sh",
+    historical_canonical_gate_wrapper_exec_count:1,
+    historical_canonical_gate_mutated:true,
+    historical_canonical_gate_mutated_by_report:false,
+    wrapper_creation_performed:true,
+    wrapper_creation_performed_by_report:false,
+    wrapper_body_present:true,
+    wrapper_body_emitted:false,
+    wrapper_target_invoked:false,
+    canonical_gate_invoked:false,
+    capability_matrix_gate_invoked:false,
+    terminal_live_gate_invoked:false,
+    live_url_required:false,
+    long_soak_required:false,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"validate_historical_canonical_gate_thin_wrapper_without_live_invocation",
+    claim_blockers:[
+      "historical_canonical_gate_thin_wrapper_validation_pending",
+      "manual_operator_live_cutover_approval_required",
+      "tool_execution_live_cutover_allowed_false",
+      "tool_execution_public_ga_allowed_false"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      strict_missing_consumer_phase_migration_report:"scripts/hepta-systems-strict-missing-consumer-phase-migration-report.sh",
+      strict_missing_consumer_phase_migration_gate:"scripts/hepta-systems-strict-missing-consumer-phase-migration-gate.sh",
+      historical_canonical_missing_path_snapshot_evidence_report:"scripts/hepta-systems-historical-canonical-missing-path-snapshot-evidence-report.sh",
+      historical_canonical_missing_path_snapshot_evidence_gate:"scripts/hepta-systems-historical-canonical-missing-path-snapshot-evidence-gate.sh",
+      current_canonical_wrapper_gate:"scripts/hepta-systems-current-canonical-wrapper-gate.sh"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      strict_missing_consumer_mutated:false,
+      historical_canonical_gate_mutated:false,
+      historical_canonical_gate_name_claimed:false,
+      wrapper_creation_performed:false,
+      canonical_gate_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

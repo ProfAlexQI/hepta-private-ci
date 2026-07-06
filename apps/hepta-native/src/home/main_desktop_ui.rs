@@ -60,6 +60,7 @@ script_mod! {
             main_tabs := DockTabs{
                 tabs: [@home_tab]
                 selected: 0
+                hide_tab_bar: true
             }
 
             hepta_inspector_tabs := DockTabs{
@@ -160,6 +161,7 @@ impl Widget for MainDesktopUI {
             // This includes the currently selected space, which we get from the RoomsList widget.
             // We must set `selected_space` first before the load operation occurs, in order for
             // the proper space-specific instance of the saved dock UI layout/state to be selected.
+            // Dock restore is a local AppState/UI replay and sends no Matrix request.
             self.selected_space = cx.get_global::<RoomsListRef>().get_selected_space_id();
             cx.action(MainDesktopUiAction::LoadDockFromAppState);
             self.drawn_previously = true;
@@ -409,6 +411,9 @@ impl MainDesktopUI {
             // Lazily populate the content within each restored dock tab:
             // only initialize the currently-visible tabs (selected in each pane),
             // and defer the rest until the user actually clicks on their tab.
+            // Desktop dock restore local evidence: hidden tabs are deferred until
+            // tab press/drop/close exposes them, without Matrix search, message,
+            // room-state, or membership requests.
             // This avoids an O(N) cost of calling `set_displayed_room()` for
             // every open tab, which would block the UI thread for several seconds
             // when restoring the dock (e.g., after switching from Mobile to Desktop view).
@@ -416,13 +421,20 @@ impl MainDesktopUI {
                 Self::init_tab_widget(cx, &self.open_rooms, &tab_id, &widget);
             }
         } else {
-            error!("BUG: failed to borrow dock widget to restore state upon LoadDockFromAppState action.");
+            error!(
+                "BUG: failed to borrow dock widget to restore state upon LoadDockFromAppState action."
+            );
             return;
         }
         // Note: the borrow of `dock` must end here *before* we call `self.focus_or_create_tab()`.
 
         // Now that we've loaded the dock content, we can re-select the selected room.
-        let selected_room = selected_room.clone();
+        // If a caller set AppState.selected_room before any dock state existed (fixture startup
+        // or programmatic navigation during initial layout), keep that selection instead of
+        // clobbering it with the empty default Home tab.
+        let selected_room = selected_room
+            .clone()
+            .or_else(|| app_state.selected_room.clone());
         if let Some(selected_room) = selected_room.clone() {
             self.focus_or_create_tab(cx, selected_room);
         }
