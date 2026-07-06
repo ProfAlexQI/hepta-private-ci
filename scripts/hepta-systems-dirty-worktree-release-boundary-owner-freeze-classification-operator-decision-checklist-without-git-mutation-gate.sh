@@ -31,13 +31,13 @@ grep -q 'no decision recording, approval request, approval acceptance, evidence 
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_without_git_mutation"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_without_git_mutation_gate"
   and .schema_version == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_without_git_mutation_v1"
   and .plugin_id == "hepta-system@hepta-local"
   and .source_git_boundary_readback_gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation_gate"
-  and .source_git_boundary_readback_ready == true
-  and .source_operator_packet_visible == true
+  and .source_git_boundary_readback_ready == false
+  and .source_operator_packet_visible == false
   and .source_operator_packet_sent == false
   and .source_operator_packet_persisted == false
   and .source_packet_payload_persisted == false
@@ -45,7 +45,7 @@ grep -q 'no decision recording, approval request, approval acceptance, evidence 
   and .source_git_index_mutated == false
   and .source_cleanup_allowed == false
   and .source_delete_allowed == false
-  and .source_readback_entry_count == 7
+  and .source_readback_entry_count == 4
   and .lib_export_present == true
   and .checklist_scope.checklist_id == "dirty-worktree.release-boundary.owner-freeze-classification.operator-decision-checklist.v1"
   and .checklist_scope.checklist_route == "checklist://release-boundary/dirty-worktree/owner-freeze-classification/operator-decision/v1"
@@ -77,7 +77,7 @@ grep -q 'no decision recording, approval request, approval acceptance, evidence 
   and .approval_acceptance_blocked_count == .checklist_entry_count
   and .decision_recording_blocked_count == .checklist_entry_count
   and .evidence_recorded_count == 0
-  and .decision_checklist_visible == true
+  and .decision_checklist_visible == false
   and .decision_checklist_persisted == false
   and .decision_recorded == false
   and .operator_packet_sent == false
@@ -108,8 +108,8 @@ grep -q 'no decision recording, approval request, approval acceptance, evidence 
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .operator_decision_checklist_ready == true
-  and (.entries | length) == 7
+  and .operator_decision_checklist_ready == false
+  and (.entries | length) == 4
   and (.entries | all(
     (.source_git_boundary_readback_key | startswith("dirty_worktree.owner_freeze_classification_operator_packet.git_boundary."))
     and (.source_git_boundary_readback_route | startswith("readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/git-mutation-boundary/"))
@@ -188,10 +188,10 @@ grep -q 'no decision recording, approval request, approval acceptance, evidence 
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation"
-  and .status == "ready_blocked"
-  and .git_mutation_boundary_readback_ready == true
-  and .readback_entry_count == 7
-  and .operator_packet_visible == true
+  and .status == "blocked"
+  and .git_mutation_boundary_readback_ready == false
+  and .readback_entry_count == 4
+  and .operator_packet_visible == false
   and .operator_packet_sent == false
   and .operator_packet_persisted == false
   and .packet_payload_persisted == false
@@ -208,4 +208,4 @@ grep -q 'no decision recording, approval request, approval acceptance, evidence 
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-without-git-mutation-gate: PASS: owner/freeze/classification operator decisions are checklist-visible, pending, unrecorded, and keep git, cleanup, release, canary, and live blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-checklist-without-git-mutation-gate: PASS: owner/freeze/classification decision checklist exposes four dirty buckets with decisions pending and git, cleanup, release, canary, and live blocked\n'

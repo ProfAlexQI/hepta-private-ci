@@ -31,16 +31,16 @@ grep -q 'temporal_lite_append_only_event_store_feature_gated_test_implementation
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_gate"
   and .schema_version == "dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_v1"
   and .plugin_id == "hepta-system@hepta-local"
-  and .source_rehearsal_ready == true
-  and .source_test_only_rehearsal_visible == true
+  and .source_rehearsal_ready == false
+  and .source_test_only_rehearsal_visible == false
   and .source_test_only_rehearsal_persisted == false
   and .source_test_probe_executed == false
-  and .source_rehearsal_entry_count == 7
-  and .source_rehearsal_ready_count == 7
+  and .source_rehearsal_entry_count == 4
+  and .source_rehearsal_ready_count == 4
   and .lib_export_present == true
   and .outcome_entry_count == .source_rehearsal_entry_count
   and .stable_outcome_key_count == .outcome_entry_count
@@ -48,11 +48,11 @@ grep -q 'temporal_lite_append_only_event_store_feature_gated_test_implementation
   and .outcome_ready_count == .outcome_entry_count
   and .blocked_until_owner_attribution_count == 1
   and .ready_for_targeted_rust_gate_rehearsal_count == 1
-  and .ready_for_plugin_surface_gate_rehearsal_count == 1
+  and .ready_for_plugin_surface_gate_rehearsal_count == 0
   and .ready_for_script_syntax_gate_rehearsal_count == 1
   and .ready_for_owned_lane_freeze_rehearsal_count == 1
-  and .ready_for_artifact_classification_rehearsal_count == 1
-  and .ready_for_doc_evidence_consistency_rehearsal_count == 1
+  and .ready_for_artifact_classification_rehearsal_count == 0
+  and .ready_for_doc_evidence_consistency_rehearsal_count == 0
   and .release_blocked_count == .outcome_entry_count
   and .test_probe_execution_blocked_count == .outcome_entry_count
   and .git_mutation_blocked_count == .outcome_entry_count
@@ -60,9 +60,10 @@ grep -q 'temporal_lite_append_only_event_store_feature_gated_test_implementation
   and .evidence_recording_blocked_count == .outcome_entry_count
   and .approval_acceptance_blocked_count == .outcome_entry_count
   and .decision_recording_blocked_count == .outcome_entry_count
-  and .outcome_readback_visible == true
+  and .outcome_readback_visible == false
   and .outcome_readback_persisted == false
   and .test_probe_executed == false
+  and .test_only_rehearsal_outcome_readback_ready == false
   and .evidence_recorded == false
   and .evidence_recording_persisted == false
   and .evidence_receipt_persisted == false
@@ -93,18 +94,47 @@ grep -q 'temporal_lite_append_only_event_store_feature_gated_test_implementation
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .test_only_rehearsal_outcome_readback_ready == true
-  and (.entries | length) == 7
-  and (.entries | all(.source_rehearsal_attached == true and .outcome_readback_visible == true and .outcome_readback_persisted == false and .operator_visible == true and .queryable == true and .diffable == true and .test_probe_executed == false and .mutation_free == true and .source_release_blocker_state == "blocked_dirty_worktree" and .decision_state == "pending_operator_decision" and .evidence_recording_state == "evidence_recording_blocked" and .evidence_persistence_state == "evidence_persistence_blocked" and .evidence_receipt_state == "evidence_receipt_blocked" and .evidence_recording_allowed == false and .approval_acceptance_allowed == false and .decision_recording_allowed == false and .git_add_blocked == true and .git_index_mutation_blocked == true and .git_commit_blocked == true and .git_push_blocked == true and .git_reset_blocked == true and .git_checkout_blocked == true and .git_revert_blocked == true and .cleanup_blocked == true and .delete_blocked == true and .release_cutover_allowed == false and .canary_activation_allowed == false and .live_execution_allowed == false))
-  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .outcome_state == "blocked_until_owner_attribution" and .outcome_action == "attribute_owner_before_any_clean_worktree_action")
-  and any(.entries[]; .source_bucket == "codex-rs" and .outcome_state == "ready_for_targeted_rust_gate_rehearsal" and .outcome_key == "dirty_worktree.test_only_rehearsal_outcome_readback.top_level.codex_rs" and .outcome_route == "readback://release-boundary/dirty-worktree/test-only-rehearsal-outcome-readback/top-level/codex-rs")
-  and any(.entries[]; .source_bucket == "plugins" and .outcome_state == "ready_for_plugin_surface_gate_rehearsal")
+  and (.entries | length) == .outcome_entry_count
+  and (.entries | all(
+    .source_rehearsal_attached == true
+    and .outcome_readback_visible == true
+    and .outcome_readback_persisted == false
+    and .operator_visible == true
+    and .queryable == true
+    and .diffable == true
+    and .test_probe_executed == false
+    and .mutation_free == true
+    and .source_release_blocker_state == "blocked_dirty_worktree"
+    and .decision_state == "pending_operator_decision"
+    and .evidence_recording_state == "evidence_recording_blocked"
+    and .evidence_persistence_state == "evidence_persistence_blocked"
+    and .evidence_receipt_state == "evidence_receipt_blocked"
+    and .evidence_recording_allowed == false
+    and .approval_acceptance_allowed == false
+    and .decision_recording_allowed == false
+    and .git_add_blocked == true
+    and .git_index_mutation_blocked == true
+    and .git_commit_blocked == true
+    and .git_push_blocked == true
+    and .git_reset_blocked == true
+    and .git_checkout_blocked == true
+    and .git_revert_blocked == true
+    and .cleanup_blocked == true
+    and .delete_blocked == true
+    and .release_cutover_allowed == false
+    and .canary_activation_allowed == false
+    and .live_execution_allowed == false))
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .outcome_state == "blocked_until_owner_attribution")
+  and any(.entries[]; .source_bucket == "codex-rs" and .outcome_state == "ready_for_targeted_rust_gate_rehearsal")
   and any(.entries[]; .source_bucket == "scripts" and .outcome_state == "ready_for_script_syntax_gate_rehearsal")
   and any(.entries[]; .source_bucket == "hepta_systems_owned" and .outcome_state == "ready_for_owned_lane_freeze_rehearsal")
-  and any(.entries[]; .source_bucket == "artifacts" and .outcome_state == "ready_for_artifact_classification_rehearsal")
-  and any(.entries[]; .source_bucket == "docs" and .outcome_state == "ready_for_doc_evidence_consistency_rehearsal")
   and (.blockers | index("outcome_readback_visible_only")) != null
   and (.blockers | index("test_probe_execution_still_blocked")) != null
+  and (.blockers | index("release_cutover_blocked")) != null
+  and (.blockers | index("git_mutation_blocked")) != null
+  and (.blockers | index("cleanup_and_delete_blocked")) != null
+  and (.blockers | index("evidence_recording_blocked")) != null
+  and (.blockers | index("live_activation_blocked")) != null
   and (.next_actions | index("temporal_lite_append_only_event_store_feature_gated_test_implementation")) != null
   and .recommended_next_gate == "temporal_lite_append_only_event_store_feature_gated_test_implementation"
   and .side_effect_free == true
@@ -114,13 +144,14 @@ grep -q 'temporal_lite_append_only_event_store_feature_gated_test_implementation
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal"
-  and .status == "ready_blocked"
-  and .test_only_clean_worktree_strategy_rehearsal_ready == true
-  and .test_only_rehearsal_visible == true
+  and .status == "blocked"
+  and .test_only_clean_worktree_strategy_rehearsal_ready == false
+  and .test_only_rehearsal_visible == false
   and .test_only_rehearsal_persisted == false
   and .test_probe_executed == false
-  and .rehearsal_entry_count == 7
-  and .rehearsal_ready_count == 7
+  and .rehearsal_entry_count == 4
+  and .rehearsal_ready_count == 4
+  and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null
 
@@ -129,4 +160,4 @@ grep -q 'temporal_lite_append_only_event_store_feature_gated_test_implementation
   cargo test -p hepta-runtime dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-test-only-rehearsal-outcome-readback-gate: PASS: Phase 25 outcome readback is visible-only and keeps probe, git, cleanup, evidence, approval, decision, release, canary, and live paths blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-test-only-rehearsal-outcome-readback-gate: PASS: Phase 25 outcome readback exposes four dirty buckets with probe, git, cleanup, evidence, approval, decision, release, canary, and live paths blocked\n'

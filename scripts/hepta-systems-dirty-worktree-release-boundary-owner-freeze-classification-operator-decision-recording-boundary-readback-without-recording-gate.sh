@@ -33,13 +33,13 @@ grep -q 'no decision recording, decision persistence, decision receipt persisten
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback_without_recording"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback_without_recording_gate"
   and .schema_version == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback_without_recording_v1"
   and .plugin_id == "hepta-system@hepta-local"
   and .source_packet_readback_gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_packet_readback_without_git_mutation_gate"
-  and .source_packet_readback_ready == true
-  and .source_packet_readback_visible == true
+  and .source_packet_readback_ready == false
+  and .source_packet_readback_visible == false
   and .source_packet_readback_persisted == false
   and .source_decision_checklist_persisted == false
   and .source_decision_recorded == false
@@ -51,7 +51,7 @@ grep -q 'no decision recording, decision persistence, decision receipt persisten
   and .source_freeze_applied == false
   and .source_classification_persisted == false
   and .source_test_probe_executed == false
-  and .source_packet_readback_entry_count == 7
+  and .source_packet_readback_entry_count == 4
   and .lib_export_present == true
   and .decision_recording_boundary_scope.boundary_readback_id == "dirty-worktree.release-boundary.owner-freeze-classification.operator-decision-recording-boundary-readback.v1"
   and .decision_recording_boundary_scope.boundary_readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-decision-recording-boundary/v1"
@@ -92,7 +92,7 @@ grep -q 'no decision recording, decision persistence, decision receipt persisten
   and .packet_send_blocked_count == .boundary_entry_count
   and .packet_persistence_blocked_count == .boundary_entry_count
   and .readback_persistence_blocked_count == .boundary_entry_count
-  and .decision_recording_boundary_readback_visible == true
+  and .decision_recording_boundary_readback_visible == false
   and .decision_recording_boundary_readback_persisted == false
   and .decision_recorded == false
   and .decision_recording_persisted == false
@@ -126,8 +126,8 @@ grep -q 'no decision recording, decision persistence, decision receipt persisten
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .operator_decision_recording_boundary_readback_ready == true
-  and (.entries | length) == 7
+  and .operator_decision_recording_boundary_readback_ready == false
+  and (.entries | length) == 4
   and (.entries | all(
     (.source_packet_key | startswith("dirty_worktree.owner_freeze_classification_operator_decision_checklist_packet."))
     and (.source_packet_route | startswith("operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/operator-decision-checklist/"))
@@ -208,10 +208,10 @@ grep -q 'no decision recording, decision persistence, decision receipt persisten
 "$PACKET_READBACK_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_packet_readback_without_git_mutation"
-  and .status == "ready_blocked"
-  and .operator_decision_checklist_packet_readback_ready == true
-  and .packet_readback_entry_count == 7
-  and .packet_readback_visible == true
+  and .status == "blocked"
+  and .operator_decision_checklist_packet_readback_ready == false
+  and .packet_readback_entry_count == 4
+  and .packet_readback_visible == false
   and .packet_readback_persisted == false
   and .decision_recorded == false
   and .operator_packet_sent == false
@@ -234,4 +234,4 @@ grep -q 'no decision recording, decision persistence, decision receipt persisten
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording-gate: PASS: owner/freeze/classification decision recording boundary is visible-only while decision recording, persistence, receipts, approval, evidence, owner/freeze/classification/test mutation, git, cleanup, release, canary, and live remain blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-decision-recording-boundary-readback-without-recording-gate: PASS: owner/freeze/classification decision recording boundary exposes four dirty buckets with decision recording, receipts, approval, evidence, git, release, canary, and live blocked\n'

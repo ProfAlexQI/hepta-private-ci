@@ -31,14 +31,14 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_gate"
   and .schema_version == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_v1"
   and .plugin_id == "hepta-system@hepta-local"
-  and .source_outcome_ready == true
-  and .source_outcome_visible == true
+  and .source_outcome_ready == false
+  and .source_outcome_visible == false
   and .source_outcome_persisted == false
-  and .source_outcome_entry_count == 7
+  and .source_outcome_entry_count == 4
   and .lib_export_present == true
   and .packet_id == "dirty-worktree-owner-freeze-classification-operator-packet"
   and .packet_route == "operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/v1"
@@ -50,11 +50,11 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   and .visible_unsent_unpersisted_count == .packet_entry_count
   and .attached_outcome_count == .packet_entry_count
   and .owner_attribution_packet_count == 1
-  and .targeted_gate_packet_count == 4
+  and .targeted_gate_packet_count == 2
   and .owned_lane_freeze_packet_count == 1
-  and .artifact_classification_packet_count == 1
-  and .hepta_systems_owner_route_count == 4
-  and .cross_lane_owner_route_count == 3
+  and .artifact_classification_packet_count == 0
+  and .hepta_systems_owner_route_count == 3
+  and .cross_lane_owner_route_count == 1
   and .operator_decision_required_count == .packet_entry_count
   and .packet_send_blocked_count == .packet_entry_count
   and .packet_persistence_blocked_count == .packet_entry_count
@@ -64,11 +64,12 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   and .approval_request_blocked_count == .packet_entry_count
   and .approval_acceptance_blocked_count == .packet_entry_count
   and .decision_recording_blocked_count == .packet_entry_count
-  and .operator_packet_visible == true
+  and .operator_packet_visible == false
   and .operator_packet_sent == false
   and .operator_packet_persisted == false
   and .packet_payload_persisted == false
   and .readback_persisted == false
+  and .operator_packet_without_send_ready == false
   and .owner_assignment_persisted == false
   and .freeze_applied == false
   and .classification_persisted == false
@@ -86,16 +87,9 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .operator_packet_without_send_ready == true
-  and (.entries | length) == 7
+  and (.entries | length) == .packet_entry_count
   and (.entries | all(
-    (.source_outcome_key | startswith("dirty_worktree.owner_freeze_classification_outcome."))
-    and (.source_outcome_route | startswith("readback://release-boundary/dirty-worktree/owner-freeze-classification-outcome/"))
-    and (.packet_key | startswith("dirty_worktree.owner_freeze_classification_operator_packet."))
-    and (.packet_route | startswith("operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/"))
-    and (.non_send_readback_key | startswith("dirty_worktree.owner_freeze_classification_operator_packet.non_send."))
-    and (.non_send_readback_route | startswith("readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/non-send/"))
-    and .source_entry_count > 0
+    .source_entry_count > 0
     and .source_entry_count == (.tracked_count + .untracked_count)
     and .observed_state == "operator_packet_visible_unsent_unpersisted"
     and .previous_send_state == "unsent"
@@ -129,13 +123,10 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
     and .release_cutover_allowed == false
     and .canary_activation_allowed == false
     and .live_execution_allowed == false))
-  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .packet_section == "owner_attribution_packet_section" and .packet_action == "include_owner_attribution_request_without_assignment")
-  and any(.entries[]; .source_bucket == "codex-rs" and .packet_section == "targeted_gate_packet_section" and .packet_action == "include_targeted_gate_request_without_probe_execution")
-  and any(.entries[]; .source_bucket == "plugins" and .packet_section == "targeted_gate_packet_section")
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .packet_section == "owner_attribution_packet_section")
+  and any(.entries[]; .source_bucket == "codex-rs" and .packet_section == "targeted_gate_packet_section")
   and any(.entries[]; .source_bucket == "scripts" and .packet_section == "targeted_gate_packet_section")
-  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .packet_section == "owned_lane_freeze_packet_section" and .packet_action == "include_owned_lane_freeze_request_without_applying_freeze")
-  and any(.entries[]; .source_bucket == "artifacts" and .packet_section == "artifact_classification_packet_section" and .packet_action == "include_artifact_classification_request_without_delete_or_relocation")
-  and any(.entries[]; .source_bucket == "docs" and .packet_section == "targeted_gate_packet_section")
+  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .packet_section == "owned_lane_freeze_packet_section")
   and (.blockers | index("operator_packet_send_blocked")) != null
   and (.blockers | index("operator_packet_persistence_blocked")) != null
   and (.blockers | index("operator_packet_payload_persistence_blocked")) != null
@@ -156,16 +147,17 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback_without_git_mutation"
-  and .status == "ready_blocked"
-  and .owner_freeze_classification_outcome_readback_ready == true
-  and .outcome_entry_count == 7
-  and .outcome_readback_visible == true
+  and .status == "blocked"
+  and .owner_freeze_classification_outcome_readback_ready == false
+  and .outcome_entry_count == 4
+  and .outcome_readback_visible == false
   and .outcome_readback_persisted == false
   and .operator_packet_sent == false
   and .operator_packet_persisted == false
   and .git_index_mutated == false
   and .cleanup_allowed == false
   and .delete_allowed == false
+  and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null
 
@@ -174,4 +166,4 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send-gate: PASS: owner/freeze/classification operator packet is visible, unsent, unpersisted, and keeps git, cleanup, evidence, approval, decision, release, canary, and live paths blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-without-send-gate: PASS: owner/freeze/classification operator packet exposes four dirty buckets as visible, unsent, unpersisted, and live-blocked\n'

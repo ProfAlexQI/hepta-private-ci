@@ -31,13 +31,13 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_approval_acceptance_boundary_readback_without_acceptance"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_approval_acceptance_boundary_readback_without_acceptance_gate"
   and .schema_version == "dirty_worktree_release_boundary_owner_freeze_classification_operator_approval_acceptance_boundary_readback_without_acceptance_v1"
   and .plugin_id == "hepta-system@hepta-local"
   and .source_decision_recording_boundary_gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback_without_recording_gate"
-  and .source_decision_recording_boundary_ready == true
-  and .source_decision_recording_boundary_visible == true
+  and .source_decision_recording_boundary_ready == false
+  and .source_decision_recording_boundary_visible == false
   and .source_decision_recording_boundary_persisted == false
   and .source_decision_recorded == false
   and .source_decision_recording_persisted == false
@@ -50,7 +50,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .source_freeze_applied == false
   and .source_classification_persisted == false
   and .source_test_probe_executed == false
-  and .source_boundary_entry_count == 7
+  and .source_boundary_entry_count == 4
   and .lib_export_present == true
   and .approval_acceptance_boundary_scope.boundary_readback_id == "dirty-worktree.release-boundary.owner-freeze-classification.operator-approval-acceptance-boundary-readback.v1"
   and .approval_acceptance_boundary_scope.boundary_readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-approval-acceptance-boundary/v1"
@@ -91,7 +91,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .packet_send_blocked_count == .boundary_entry_count
   and .packet_persistence_blocked_count == .boundary_entry_count
   and .readback_persistence_blocked_count == .boundary_entry_count
-  and .approval_acceptance_boundary_readback_visible == true
+  and .approval_acceptance_boundary_readback_visible == false
   and .approval_acceptance_boundary_readback_persisted == false
   and .approval_request_sent == false
   and .approval_accepted == false
@@ -127,8 +127,8 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .operator_approval_acceptance_boundary_readback_ready == true
-  and (.entries | length) == 7
+  and .operator_approval_acceptance_boundary_readback_ready == false
+  and (.entries | length) == 4
   and (.entries | all(
     (.source_boundary_key | startswith("dirty_worktree.owner_freeze_classification_operator_decision_recording_boundary."))
     and (.source_boundary_route | startswith("readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-decision-recording-boundary/"))
@@ -217,10 +217,10 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback_without_recording"
-  and .status == "ready_blocked"
-  and .operator_decision_recording_boundary_readback_ready == true
-  and .boundary_entry_count == 7
-  and .decision_recording_boundary_readback_visible == true
+  and .status == "blocked"
+  and .operator_decision_recording_boundary_readback_ready == false
+  and .boundary_entry_count == 4
+  and .decision_recording_boundary_readback_visible == false
   and .decision_recording_boundary_readback_persisted == false
   and .decision_recorded == false
   and .decision_recording_persisted == false
@@ -247,4 +247,4 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_operator_approval_acceptance_boundary_readback --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance-gate: PASS: owner/freeze/classification approval boundary is visible-only while approval request, acceptance, recording, receipts, evidence, owner/freeze/classification/test mutation, git, cleanup, release, canary, and live remain blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-approval-acceptance-boundary-readback-without-acceptance-gate: PASS: owner/freeze/classification approval boundary exposes four dirty buckets with approval, evidence, git, release, canary, and live blocked\n'

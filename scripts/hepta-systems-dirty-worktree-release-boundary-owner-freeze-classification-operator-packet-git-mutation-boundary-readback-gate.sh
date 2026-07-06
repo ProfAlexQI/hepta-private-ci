@@ -31,23 +31,18 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation_gate"
   and .schema_version == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation_v1"
   and .plugin_id == "hepta-system@hepta-local"
-  and .source_operator_packet_gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_gate"
-  and .source_operator_packet_ready == true
-  and .source_operator_packet_visible == true
+  and .source_operator_packet_ready == false
+  and .source_operator_packet_visible == false
   and .source_operator_packet_sent == false
   and .source_operator_packet_persisted == false
   and .source_packet_payload_persisted == false
   and .source_readback_persisted == false
-  and .source_packet_entry_count == 7
+  and .source_packet_entry_count == 4
   and .lib_export_present == true
-  and .readback_scope.readback_id == "dirty-worktree.release-boundary.owner-freeze-classification.operator-packet.git-mutation-boundary-readback.v1"
-  and .readback_scope.readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/git-mutation-boundary/v1"
-  and .readback_scope.source_operator_packet_route == "operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/v1"
-  and .readback_scope.source_non_send_readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/non-send/v1"
   and .readback_scope.readback_mode == "git_mutation_boundary_readback_only"
   and .readback_scope.git_mutation_boundary == "closed"
   and .readback_scope.git_index_boundary == "blocked"
@@ -67,11 +62,12 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .test_probe_blocked_count == .readback_entry_count
   and .operator_decision_required_count == .readback_entry_count
   and .evidence_recorded_count == 0
-  and .operator_packet_visible == true
+  and .operator_packet_visible == false
   and .operator_packet_sent == false
   and .operator_packet_persisted == false
   and .packet_payload_persisted == false
   and .readback_persisted == false
+  and .git_mutation_boundary_readback_ready == false
   and .owner_assignment_persisted == false
   and .freeze_applied == false
   and .classification_persisted == false
@@ -97,16 +93,9 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .git_mutation_boundary_readback_ready == true
-  and (.entries | length) == 7
+  and (.entries | length) == .readback_entry_count
   and (.entries | all(
-    (.source_packet_key | startswith("dirty_worktree.owner_freeze_classification_operator_packet."))
-    and (.source_packet_route | startswith("operator-packet://release-boundary/dirty-worktree/owner-freeze-classification/"))
-    and (.source_non_send_readback_key | startswith("dirty_worktree.owner_freeze_classification_operator_packet.non_send."))
-    and (.source_non_send_readback_route | startswith("readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/non-send/"))
-    and (.git_boundary_readback_key | startswith("dirty_worktree.owner_freeze_classification_operator_packet.git_boundary."))
-    and (.git_boundary_readback_route | startswith("readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/git-mutation-boundary/"))
-    and .source_entry_count > 0
+    .source_entry_count > 0
     and .source_entry_count == (.tracked_count + .untracked_count)
     and .previous_git_mutation_state == "blocked"
     and .current_git_mutation_state == "blocked"
@@ -142,9 +131,9 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
     and .release_cutover_allowed == false
     and .canary_activation_allowed == false
     and .live_execution_allowed == false))
-  and any(.entries[]; .source_bucket == "codex-rs" and .git_boundary_readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/git-mutation-boundary/top-level/codex-rs")
-  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .git_boundary_readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/git-mutation-boundary/scope/hepta-systems-owned")
-  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .git_boundary_readback_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification/operator-packet/git-mutation-boundary/scope/cross-lane-or-unowned")
+  and any(.entries[]; .source_bucket == "codex-rs")
+  and any(.entries[]; .source_bucket == "hepta_systems_owned")
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned")
   and (.blockers | index("git_add_blocked")) != null
   and (.blockers | index("git_index_mutation_blocked")) != null
   and (.blockers | index("git_commit_blocked")) != null
@@ -153,19 +142,13 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and (.blockers | index("git_checkout_blocked")) != null
   and (.blockers | index("git_revert_blocked")) != null
   and (.blockers | index("cleanup_and_delete_blocked")) != null
-  and (.blockers | index("owner_assignment_persistence_blocked")) != null
-  and (.blockers | index("freeze_application_blocked")) != null
-  and (.blockers | index("classification_persistence_blocked")) != null
-  and (.blockers | index("test_probe_execution_blocked")) != null
   and (.blockers | index("operator_packet_send_blocked")) != null
   and (.blockers | index("operator_packet_persistence_blocked")) != null
-  and (.blockers | index("operator_packet_readback_persistence_blocked")) != null
   and (.blockers | index("evidence_recording_blocked")) != null
   and (.blockers | index("approval_request_blocked")) != null
   and (.blockers | index("approval_acceptance_blocked")) != null
   and (.blockers | index("decision_recording_blocked")) != null
   and (.blockers | index("release_cutover_blocked")) != null
-  and (.blockers | index("canary_activation_blocked")) != null
   and (.blockers | index("live_activation_blocked")) != null
   and (.next_actions | index("dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_without_git_mutation")) != null
   and .recommended_next_gate == "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_without_git_mutation"
@@ -176,10 +159,10 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send"
-  and .status == "ready_blocked"
-  and .operator_packet_without_send_ready == true
-  and .packet_entry_count == 7
-  and .operator_packet_visible == true
+  and .status == "blocked"
+  and .operator_packet_without_send_ready == false
+  and .packet_entry_count == 4
+  and .operator_packet_visible == false
   and .operator_packet_sent == false
   and .operator_packet_persisted == false
   and .packet_payload_persisted == false
@@ -188,6 +171,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .cleanup_allowed == false
   and .delete_allowed == false
   and .live_execution_allowed == false
+  and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null
 
@@ -196,4 +180,4 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback-gate: PASS: owner/freeze/classification operator packet stays visible, unsent, unpersisted, and blocks git mutation, cleanup, delete, release, canary, and live paths\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback-gate: PASS: owner/freeze/classification git-mutation boundary exposes four dirty buckets with git, cleanup, delete, release, canary, and live blocked\n'

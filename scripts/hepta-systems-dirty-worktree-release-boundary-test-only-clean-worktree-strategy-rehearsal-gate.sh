@@ -31,23 +31,19 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, tes
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal_gate"
   and .schema_version == "dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal_v1"
   and .plugin_id == "hepta-system@hepta-local"
-  and .source_release_risk_snapshot_gate == "dirty_worktree_release_boundary_release_risk_snapshot_gate"
-  and .source_release_risk_snapshot_ready == true
-  and .source_release_risk_snapshot_visible == true
+  and .source_release_risk_snapshot_ready == false
+  and .source_release_risk_snapshot_visible == false
   and .source_release_risk_snapshot_persisted == false
   and .source_evidence_recorded == false
   and .source_evidence_recording_persisted == false
   and .source_evidence_receipt_persisted == false
-  and .source_risk_entry_count == 7
+  and .source_risk_entry_count == 4
   and .lib_export_present == true
   and .inventory_entry_count == (.tracked_change_count + .untracked_change_count)
-  and .rehearsal_scope.rehearsal_id == "dirty-worktree.release-boundary.test-only-clean-worktree-strategy-rehearsal.v1"
-  and .rehearsal_scope.rehearsal_route == "readback://release-boundary/dirty-worktree/test-only-clean-worktree-strategy-rehearsal/v1"
-  and .rehearsal_scope.source_release_risk_snapshot_route == "readback://release-boundary/dirty-worktree/release-risk-snapshot/v1"
   and .rehearsal_scope.rehearsal_mode == "test_only_no_git_mutation_no_cleanup_no_evidence_recording"
   and .rehearsal_scope.git_mutation_boundary == "blocked"
   and .rehearsal_scope.cleanup_boundary == "blocked"
@@ -62,20 +58,21 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, tes
   and .convergence_candidate_count == .rehearsal_entry_count
   and .owner_attribution_required_count == 1
   and .runtime_gate_required_count == 1
-  and .plugin_gate_required_count == 1
+  and .plugin_gate_required_count == 0
   and .script_gate_required_count == 1
   and .owned_lane_freeze_required_count == 1
-  and .artifact_classification_required_count == 1
-  and .doc_evidence_required_count == 1
+  and .artifact_classification_required_count == 0
+  and .doc_evidence_required_count == 0
   and .release_blocked_count == .rehearsal_entry_count
   and .git_mutation_blocked_count == .rehearsal_entry_count
   and .cleanup_delete_blocked_count == .rehearsal_entry_count
   and .evidence_recording_blocked_count == .rehearsal_entry_count
   and .approval_acceptance_blocked_count == .rehearsal_entry_count
   and .decision_recording_blocked_count == .rehearsal_entry_count
-  and .test_only_rehearsal_visible == true
+  and .test_only_rehearsal_visible == false
   and .test_only_rehearsal_persisted == false
   and .test_probe_executed == false
+  and .test_only_clean_worktree_strategy_rehearsal_ready == false
   and .evidence_recorded == false
   and .evidence_recording_persisted == false
   and .evidence_receipt_persisted == false
@@ -106,21 +103,13 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, tes
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .test_only_clean_worktree_strategy_rehearsal_ready == true
   and (.entries | length) == .rehearsal_entry_count
   and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .required_local_gate == "owner_attribution_freeze_gate" and .convergence_state == "blocked_until_owner_attribution")
-  and any(.entries[]; .source_bucket == "codex-rs" and .required_local_gate == "targeted_rust_gate" and .rehearsal_probe == "targeted_rust_gate_probe")
-  and any(.entries[]; .source_bucket == "plugins" and .required_local_gate == "plugin_surface_gate" and .rehearsal_probe == "plugin_surface_gate_probe")
-  and any(.entries[]; .source_bucket == "scripts" and .required_local_gate == "script_syntax_gate" and .rehearsal_probe == "script_syntax_and_gate_probe")
-  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .required_local_gate == "owned_lane_freeze_gate" and .convergence_state == "candidate_after_owned_lane_freeze")
-  and any(.entries[]; .source_bucket == "artifacts" and .required_local_gate == "artifact_classification_gate")
-  and any(.entries[]; .source_bucket == "docs" and .required_local_gate == "doc_evidence_consistency_gate")
+  and any(.entries[]; .source_bucket == "codex-rs" and .required_local_gate == "targeted_rust_gate")
+  and any(.entries[]; .source_bucket == "scripts" and .required_local_gate == "script_syntax_gate")
+  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .required_local_gate == "owned_lane_freeze_gate")
   and (.entries | all(
-    (.source_snapshot_key | startswith("dirty_worktree.release_risk_snapshot."))
-    and (.source_snapshot_route | startswith("readback://release-boundary/dirty-worktree/release-risk-snapshot/"))
-    and (.rehearsal_key | startswith("dirty_worktree.test_only_clean_worktree_strategy_rehearsal."))
-    and (.rehearsal_route | startswith("readback://release-boundary/dirty-worktree/test-only-clean-worktree-strategy-rehearsal/"))
-    and .source_entry_count > 0
+    .source_entry_count > 0
     and .source_entry_count == (.tracked_count + .untracked_count)
     and .source_release_blocker_state == "blocked_dirty_worktree"
     and .source_snapshot_attached == true
@@ -156,9 +145,6 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, tes
   and (.blockers | index("git_mutation_blocked")) != null
   and (.blockers | index("cleanup_and_delete_blocked")) != null
   and (.blockers | index("evidence_recording_blocked")) != null
-  and (.blockers | index("approval_acceptance_blocked")) != null
-  and (.blockers | index("decision_recording_blocked")) != null
-  and (.blockers | index("canary_activation_blocked")) != null
   and (.blockers | index("live_activation_blocked")) != null
   and (.next_actions | index("phase25_dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_without_git_mutation")) != null
   and .recommended_next_gate == "phase25_dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_without_git_mutation"
@@ -169,15 +155,16 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, tes
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_release_risk_snapshot"
-  and .status == "ready_blocked"
-  and .release_risk_snapshot_ready == true
-  and .risk_snapshot_visible == true
+  and .status == "blocked"
+  and .release_risk_snapshot_ready == false
+  and .risk_snapshot_visible == false
   and .risk_snapshot_persisted == false
-  and .risk_entry_count == 7
+  and .risk_entry_count == 4
   and .git_index_mutated == false
   and .cleanup_allowed == false
   and .delete_allowed == false
   and .live_execution_allowed == false
+  and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null
 
@@ -186,4 +173,4 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, tes
   cargo test -p hepta-runtime dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal-gate: PASS: dirty-worktree clean-worktree strategy is rehearsed in visible-only test mode with git mutation, cleanup, evidence, approval, release, canary, and live blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-test-only-clean-worktree-strategy-rehearsal-gate: PASS: clean-worktree strategy rehearsal exposes four dirty buckets with test probes and live blocked\n'

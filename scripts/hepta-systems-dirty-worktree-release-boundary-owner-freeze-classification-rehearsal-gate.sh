@@ -31,15 +31,15 @@ grep -q 'temporal_lite_lease_idempotency_index_feature_gated_readback' "$DOC" \
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_rehearsal_without_git_mutation"
-  and .status == "ready_blocked"
+  and .status == "blocked"
   and .gate == "dirty_worktree_release_boundary_owner_freeze_classification_rehearsal_without_git_mutation_gate"
   and .schema_version == "dirty_worktree_release_boundary_owner_freeze_classification_rehearsal_v1"
   and .plugin_id == "hepta-system@hepta-local"
-  and .source_outcome_ready == true
-  and .source_outcome_readback_visible == true
+  and .source_outcome_ready == false
+  and .source_outcome_readback_visible == false
   and .source_outcome_readback_persisted == false
   and .source_test_probe_executed == false
-  and .source_outcome_entry_count == 7
+  and .source_outcome_entry_count == 4
   and .lib_export_present == true
   and .classification_entry_count == .source_outcome_entry_count
   and .stable_classification_key_count == .classification_entry_count
@@ -47,10 +47,10 @@ grep -q 'temporal_lite_lease_idempotency_index_feature_gated_readback' "$DOC" \
   and .classification_ready_count == .classification_entry_count
   and .owner_attribution_required_count == 1
   and .owner_hint_projected_count == .classification_entry_count
-  and .hepta_systems_owner_route_count == 4
-  and .cross_lane_owner_route_count == 3
+  and .hepta_systems_owner_route_count == 3
+  and .cross_lane_owner_route_count == 1
   and .owned_lane_freeze_candidate_count == 1
-  and .artifact_classification_required_count == 1
+  and .artifact_classification_required_count == 0
   and .local_gate_required_count == .classification_entry_count
   and .release_blocked_count == .classification_entry_count
   and .test_probe_execution_blocked_count == .classification_entry_count
@@ -59,8 +59,9 @@ grep -q 'temporal_lite_lease_idempotency_index_feature_gated_readback' "$DOC" \
   and .evidence_recording_blocked_count == .classification_entry_count
   and .approval_acceptance_blocked_count == .classification_entry_count
   and .decision_recording_blocked_count == .classification_entry_count
-  and .owner_freeze_classification_readback_visible == true
+  and .owner_freeze_classification_readback_visible == false
   and .owner_freeze_classification_readback_persisted == false
+  and .owner_freeze_classification_rehearsal_ready == false
   and .owner_assignment_persisted == false
   and .freeze_applied == false
   and .classification_persisted == false
@@ -95,16 +96,49 @@ grep -q 'temporal_lite_lease_idempotency_index_feature_gated_readback' "$DOC" \
   and .canary_activation_allowed == false
   and .live_activation_allowed == false
   and .live_execution_allowed == false
-  and .owner_freeze_classification_rehearsal_ready == true
-  and (.entries | length) == 7
-  and (.entries | all(.source_outcome_attached == true and .owner_freeze_classification_readback_visible == true and .owner_freeze_classification_readback_persisted == false and .owner_projection_visible == true and .freeze_projection_visible == true and .classification_projection_visible == true and .queryable == true and .diffable == true and .test_probe_executed == false and .mutation_free == true and .owner_assignment_persisted == false and .freeze_applied == false and .classification_persisted == false and .source_outcome_state != "unknown" and .owner_state != "unknown" and .freeze_state != "unknown" and .classification_state != "unknown" and (.local_gate | length) > 0 and .decision_state == "pending_operator_decision" and .evidence_recording_state == "evidence_recording_blocked" and .evidence_persistence_state == "evidence_persistence_blocked" and .evidence_receipt_state == "evidence_receipt_blocked" and .evidence_recording_allowed == false and .approval_acceptance_allowed == false and .decision_recording_allowed == false and .git_add_blocked == true and .git_index_mutation_blocked == true and .git_commit_blocked == true and .git_push_blocked == true and .git_reset_blocked == true and .git_checkout_blocked == true and .git_revert_blocked == true and .cleanup_blocked == true and .delete_blocked == true and .release_cutover_allowed == false and .canary_activation_allowed == false and .live_execution_allowed == false))
-  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .owner_state == "owner_attribution_required" and .freeze_state == "freeze_blocked_until_owner_attribution" and .classification_state == "owner_attribution_required" and .local_gate == "owner_attribution_freeze_gate")
-  and any(.entries[]; .source_bucket == "codex-rs" and .owner_route == "owner://release-boundary/hepta-systems" and .classification_state == "targeted_rust_gate_required" and .classification_route == "readback://release-boundary/dirty-worktree/owner-freeze-classification-rehearsal/top-level/codex-rs")
-  and any(.entries[]; .source_bucket == "plugins" and .owner_route == "owner://release-boundary/cross-lane-review" and .classification_state == "plugin_surface_gate_required")
+  and (.entries | length) == .classification_entry_count
+  and (.entries | all(
+    .source_outcome_attached == true
+    and .owner_freeze_classification_readback_visible == true
+    and .owner_freeze_classification_readback_persisted == false
+    and .owner_projection_visible == true
+    and .freeze_projection_visible == true
+    and .classification_projection_visible == true
+    and .queryable == true
+    and .diffable == true
+    and .test_probe_executed == false
+    and .mutation_free == true
+    and .owner_assignment_persisted == false
+    and .freeze_applied == false
+    and .classification_persisted == false
+    and .source_outcome_state != "unknown"
+    and .owner_state != "unknown"
+    and .freeze_state != "unknown"
+    and .classification_state != "unknown"
+    and (.local_gate | length) > 0
+    and .decision_state == "pending_operator_decision"
+    and .evidence_recording_state == "evidence_recording_blocked"
+    and .evidence_persistence_state == "evidence_persistence_blocked"
+    and .evidence_receipt_state == "evidence_receipt_blocked"
+    and .evidence_recording_allowed == false
+    and .approval_acceptance_allowed == false
+    and .decision_recording_allowed == false
+    and .git_add_blocked == true
+    and .git_index_mutation_blocked == true
+    and .git_commit_blocked == true
+    and .git_push_blocked == true
+    and .git_reset_blocked == true
+    and .git_checkout_blocked == true
+    and .git_revert_blocked == true
+    and .cleanup_blocked == true
+    and .delete_blocked == true
+    and .release_cutover_allowed == false
+    and .canary_activation_allowed == false
+    and .live_execution_allowed == false))
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .owner_state == "owner_attribution_required" and .local_gate == "owner_attribution_freeze_gate")
+  and any(.entries[]; .source_bucket == "codex-rs" and .owner_route == "owner://release-boundary/hepta-systems" and .classification_state == "targeted_rust_gate_required")
   and any(.entries[]; .source_bucket == "scripts" and .owner_route == "owner://release-boundary/hepta-systems" and .classification_state == "script_syntax_gate_required")
-  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .owner_route == "owner://release-boundary/hepta-systems" and .freeze_state == "owned_lane_freeze_candidate" and .classification_state == "owned_lane_freeze_required")
-  and any(.entries[]; .source_bucket == "artifacts" and .owner_route == "owner://release-boundary/cross-lane-review" and .classification_state == "artifact_classification_required" and .release_disposition == "blocked_until_artifact_classification")
-  and any(.entries[]; .source_bucket == "docs" and .owner_route == "owner://release-boundary/hepta-systems" and .classification_state == "doc_evidence_consistency_required")
+  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .owner_route == "owner://release-boundary/hepta-systems" and .freeze_state == "owned_lane_freeze_candidate")
   and (.blockers | index("owner_freeze_classification_rehearsal_visible_only")) != null
   and (.blockers | index("owner_assignment_persistence_blocked")) != null
   and (.blockers | index("freeze_application_blocked")) != null
@@ -120,12 +154,13 @@ grep -q 'temporal_lite_lease_idempotency_index_feature_gated_readback' "$DOC" \
 "$SOURCE_REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback"
-  and .status == "ready_blocked"
-  and .test_only_rehearsal_outcome_readback_ready == true
-  and .outcome_readback_visible == true
+  and .status == "blocked"
+  and .test_only_rehearsal_outcome_readback_ready == false
+  and .outcome_readback_visible == false
   and .outcome_readback_persisted == false
   and .test_probe_executed == false
-  and .outcome_entry_count == 7
+  and .outcome_entry_count == 4
+  and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null
 
@@ -134,4 +169,4 @@ grep -q 'temporal_lite_lease_idempotency_index_feature_gated_readback' "$DOC" \
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_rehearsal --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-rehearsal-gate: PASS: owner/freeze/classification readback is visible-only and keeps git, cleanup, evidence, approval, decision, release, canary, and live paths blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-rehearsal-gate: PASS: owner/freeze/classification rehearsal exposes four dirty buckets with git, cleanup, evidence, approval, decision, release, canary, and live blocked\n'
