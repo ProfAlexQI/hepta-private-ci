@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 export HEPTA_AUTOLOAD=0
 export HEPTA_AUTOSAVE=0
 export CARGO_INCREMENTAL=0
+export RUST_MIN_STACK="${RUST_MIN_STACK:-33554432}"
 
 MANIFEST="codex-rs/Cargo.toml"
 

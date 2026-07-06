@@ -681,6 +681,57 @@ run_density_qa() {
 	  };
   const railVisible = elementVisible(document.querySelector(".tg-conversation-rail"));
   const submenuAuditSelector = ".tg-composer-popover,.tg-row-action-popover,.tg-thread-command-menu__panel,.command-palette-backdrop,.command-palette";
+  const resetComposerPopoverAuditGeometry = (node) => {
+    [
+      "position",
+      "left",
+      "right",
+      "top",
+      "bottom",
+      "width",
+      "min-width",
+      "max-width",
+      "box-sizing",
+      "margin",
+      "transform",
+    ].forEach((property) => node.style.removeProperty(property));
+  };
+  const applyComposerPopoverAuditGeometry = ({ showAll = false } = {}) => {
+    const narrow = window.innerWidth <= 980;
+    const compact = window.innerWidth <= 700;
+    const inset = compact ? 14 : 24;
+    const width = Math.max(0, window.innerWidth - (inset * 2));
+    document.querySelectorAll(".tg-composer-popover").forEach((node) => {
+      if (showAll) {
+        node.style.setProperty("display", "grid", "important");
+      }
+      if (!narrow) {
+        return;
+      }
+      const key = node.getAttribute("data-chat-composer-popover") || "";
+      node.style.setProperty("position", "fixed", "important");
+      node.style.setProperty("left", inset + "px", "important");
+      node.style.setProperty("right", "auto", "important");
+      node.style.setProperty("width", width + "px", "important");
+      node.style.setProperty("min-width", "0", "important");
+      node.style.setProperty("max-width", width + "px", "important");
+      node.style.setProperty("box-sizing", "border-box", "important");
+      node.style.setProperty("margin", "0", "important");
+      node.style.setProperty("transform", "none", "important");
+      if (key === "artifact") {
+        node.style.setProperty("top", "auto", "important");
+        node.style.setProperty("bottom", "300px", "important");
+      } else if (key === "command") {
+        node.style.setProperty("top", "auto", "important");
+        node.style.setProperty("bottom", "84px", "important");
+      }
+      const rect = node.getBoundingClientRect();
+      const delta = rect.left - inset;
+      if (Math.abs(delta) > 1) {
+        node.style.setProperty("left", (inset - delta) + "px", "important");
+      }
+    });
+  };
   const closeAllSubmenusForSingleAudit = () => {
     document.body.removeAttribute("data-control-ui-submenu-audit-open");
     document.querySelectorAll(".tg-thread-command-menu").forEach((node) => {
@@ -691,6 +742,7 @@ run_density_qa() {
     });
     document.querySelectorAll(".tg-composer-popover").forEach((node) => {
       node.style.display = "";
+      resetComposerPopoverAuditGeometry(node);
     });
     if (window.location.hash === "#command-palette") {
       window.location.hash = "chat";
@@ -714,6 +766,7 @@ run_density_qa() {
     if (document.querySelector("#command-palette")) {
       window.location.hash = "command-palette";
     }
+    applyComposerPopoverAuditGeometry({ showAll: true });
     const hoverItem = document.querySelector("[data-control-ui-command-palette-result='light-glass']");
     if (hoverItem) {
       hoverItem.classList.add("command-palette__item--audit-hover");
@@ -738,6 +791,8 @@ run_density_qa() {
       const rect = richRect(node);
       return {
         selector: node.id ? ("#" + node.id) : (node.className ? "." + String(node.className).split(/\s+/).filter(Boolean).join(".") : node.tagName.toLowerCase()),
+        window_width: window.innerWidth,
+        inline_style: node.getAttribute("style") || "",
         role: node.getAttribute("role") || "",
         aria_label: node.getAttribute("aria-label") || "",
         item_count: spec.itemSelector ? node.querySelectorAll(spec.itemSelector).length : 0,
@@ -863,10 +918,11 @@ run_density_qa() {
       open: () => {
         document.body.setAttribute("data-control-ui-submenu-audit-open", "true");
         document.querySelectorAll(".tg-composer-popover").forEach((node) => {
-          node.style.display = "none";
+          node.style.setProperty("display", "none", "important");
         });
         const node = document.querySelector('[data-chat-composer-popover="' + key + '"]');
-        if (node) node.style.display = "grid";
+        if (node) node.style.setProperty("display", "grid", "important");
+        applyComposerPopoverAuditGeometry();
       },
     })),
     {
@@ -3117,6 +3173,8 @@ run_density_qa() {
     const verticalInViewport = rect.top >= -1 && rect.bottom <= window.innerHeight + 1 && rect.height <= window.innerHeight - 16;
     return {
       key: node.getAttribute("data-chat-composer-popover") || "",
+      window_width: window.innerWidth,
+      inline_style: node.getAttribute("style") || "",
       role: node.getAttribute("role") || "",
       marker: node.getAttribute("data-control-ui-composer-popover-panel") || "",
       aria_label: node.getAttribute("aria-label") || "",
