@@ -5,6 +5,9 @@ use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::to_response;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ClientInfo;
+use codex_app_server_protocol::ContextRecallSelectedSnippet;
+use codex_app_server_protocol::ContextRecallSelectedSnippetEnvelope;
+use codex_app_server_protocol::ContextRecallSelectedSnippetSafety;
 use codex_app_server_protocol::InitializeCapabilities;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCMessage;
@@ -17,6 +20,8 @@ use codex_app_server_protocol::ThreadRealtimeStartParams;
 use codex_app_server_protocol::ThreadRealtimeStartTransport;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
+use codex_app_server_protocol::TurnStartParams;
+use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_protocol::protocol::RealtimeOutputModality;
 use pretty_assertions::assert_eq;
 use std::path::Path;
@@ -207,6 +212,46 @@ async fn thread_start_mock_field_requires_experimental_api_capability() -> Resul
 }
 
 #[tokio::test]
+async fn turn_start_context_recall_selected_snippets_requires_experimental_api_capability()
+-> Result<()> {
+    let codex_home = TempDir::new()?;
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    let init = mcp
+        .initialize_with_capabilities(
+            default_client_info(),
+            Some(InitializeCapabilities {
+                experimental_api: false,
+                request_attestation: false,
+                opt_out_notification_methods: None,
+            }),
+        )
+        .await?;
+    let JSONRPCMessage::Response(_) = init else {
+        anyhow::bail!("expected initialize response, got {init:?}");
+    };
+
+    let request_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: "thread_missing".to_string(),
+            input: vec![V2UserInput::Text {
+                text: "hello".to_string(),
+                text_elements: Vec::new(),
+            }],
+            context_recall_selected_snippets: Some(test_context_recall_selected_snippets()),
+            ..Default::default()
+        })
+        .await?;
+
+    let error = timeout(
+        DEFAULT_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    assert_experimental_capability_error(error, "turn/start.contextRecallSelectedSnippets");
+    Ok(())
+}
+
+#[tokio::test]
 async fn thread_start_without_dynamic_tools_allows_without_experimental_api_capability()
 -> Result<()> {
     let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
@@ -292,6 +337,35 @@ fn default_client_info() -> ClientInfo {
         name: DEFAULT_CLIENT_NAME.to_string(),
         title: None,
         version: "0.1.0".to_string(),
+    }
+}
+
+fn test_context_recall_selected_snippets() -> ContextRecallSelectedSnippetEnvelope {
+    ContextRecallSelectedSnippetEnvelope {
+        version: codex_protocol::protocol::TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION,
+        max_snippets: 4,
+        max_snippet_chars: 120,
+        selected_snippet_count: 1,
+        omitted_snippet_count: 2,
+        redacted_snippet_count: 1,
+        truncated_snippet_count: 0,
+        snippets: vec![ContextRecallSelectedSnippet {
+            snippet_hash: "fedcba9876543210".to_string(),
+            text: "[redacted-query] bounded memory".to_string(),
+            estimated_tokens: 8,
+            redacted: true,
+            truncated: false,
+        }],
+        safety: ContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: true,
+            bounded: true,
+            origin_identifiers_exposed: false,
+            raw_ranked_payload_exposed: false,
+            rank_explanation_exposed: false,
+            control_marker_exposed: false,
+            query_payload_exposed: false,
+            per_origin_list_exposed: false,
+        },
     }
 }
 

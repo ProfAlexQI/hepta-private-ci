@@ -553,6 +553,134 @@
         }
       ]
     },
+    "ContextRecallSelectedSnippet": {
+      "properties": {
+        "estimatedTokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "snippetHash": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "estimatedTokens",
+        "redacted",
+        "snippetHash",
+        "text",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "ContextRecallSelectedSnippetEnvelope": {
+      "properties": {
+        "maxSnippetChars": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "maxSnippets": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "omittedSnippetCount": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "redactedSnippetCount": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "safety": {
+          "$ref": "#/definitions/ContextRecallSelectedSnippetSafety"
+        },
+        "selectedSnippetCount": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "snippets": {
+          "items": {
+            "$ref": "#/definitions/ContextRecallSelectedSnippet"
+          },
+          "type": "array"
+        },
+        "truncatedSnippetCount": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "version": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxSnippetChars",
+        "maxSnippets",
+        "omittedSnippetCount",
+        "redactedSnippetCount",
+        "safety",
+        "selectedSnippetCount",
+        "snippets",
+        "truncatedSnippetCount",
+        "version"
+      ],
+      "type": "object"
+    },
+    "ContextRecallSelectedSnippetSafety": {
+      "properties": {
+        "bounded": {
+          "type": "boolean"
+        },
+        "controlMarkerExposed": {
+          "type": "boolean"
+        },
+        "originIdentifiersExposed": {
+          "type": "boolean"
+        },
+        "perOriginListExposed": {
+          "type": "boolean"
+        },
+        "queryPayloadExposed": {
+          "type": "boolean"
+        },
+        "rankExplanationExposed": {
+          "type": "boolean"
+        },
+        "rawRankedPayloadExposed": {
+          "type": "boolean"
+        },
+        "readyForShadowHandoff": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "bounded",
+        "controlMarkerExposed",
+        "originIdentifiersExposed",
+        "perOriginListExposed",
+        "queryPayloadExposed",
+        "rankExplanationExposed",
+        "rawRankedPayloadExposed",
+        "readyForShadowHandoff"
+      ],
+      "type": "object"
+    },
     "DynamicToolSpec": {
       "properties": {
         "deferLoading": {

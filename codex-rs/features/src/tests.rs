@@ -140,6 +140,22 @@ fn remote_compaction_v2_is_under_development() {
 }
 
 #[test]
+fn source_aware_compression_canary_is_under_development() {
+    assert_eq!(
+        Feature::SourceAwareCompressionCanary.stage(),
+        Stage::UnderDevelopment
+    );
+    assert_eq!(
+        Feature::SourceAwareCompressionCanary.default_enabled(),
+        false
+    );
+    assert_eq!(
+        feature_for_key("source_aware_compression_canary"),
+        Some(Feature::SourceAwareCompressionCanary)
+    );
+}
+
+#[test]
 fn responses_websocket_response_processed_is_under_development() {
     assert_eq!(
         Feature::ResponsesWebsocketResponseProcessed.stage(),

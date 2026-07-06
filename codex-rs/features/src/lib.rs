@@ -196,6 +196,8 @@ pub enum Feature {
     ResponsesWebsocketResponseProcessed,
     /// Enable remote compaction v2 over the normal Responses API.
     RemoteCompactionV2,
+    /// Allow turn-scoped opt-in to source-aware context compression.
+    SourceAwareCompressionCanary,
     /// Enable workspace dependency support.
     WorkspaceDependencies,
 
@@ -1183,6 +1185,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::RemoteCompactionV2,
         key: "remote_compaction_v2",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::SourceAwareCompressionCanary,
+        key: "source_aware_compression_canary",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

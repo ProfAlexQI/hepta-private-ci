@@ -22,6 +22,7 @@ use codex_app_server_client::InProcessClientStartArgs;
 use codex_app_server_client::InProcessServerEvent;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ConfigWarningNotification;
+use codex_app_server_protocol::ContextRecallSelectedSnippetEnvelope;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::McpServerElicitationRequestResponse;
@@ -91,6 +92,7 @@ use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionConfiguredEvent;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope as CoreTurnContextRecallSelectedSnippetEnvelope;
 use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::canonicalize_existing_preserving_symlinks;
@@ -158,11 +160,13 @@ use crate::cli::Command as ExecCommand;
 use crate::event_processor::EventProcessor;
 
 const DEFAULT_ANALYTICS_ENABLED: bool = true;
+const CONTEXT_RECALL_SELECTED_SNIPPETS_EXPERIMENTAL_API_ENABLED: bool = true;
 const EXEC_DEFAULT_LOG_FILTER: &str = "error,opentelemetry_sdk=off,opentelemetry_otlp=off";
 
 enum InitialOperation {
     UserTurn {
         items: Vec<UserInput>,
+        context_recall_selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
         output_schema: Option<Value>,
     },
     Review {
@@ -761,6 +765,7 @@ async fn run_exec_session(
             (
                 InitialOperation::UserTurn {
                     items,
+                    context_recall_selected_snippets: None,
                     output_schema,
                 },
                 prompt_text,
@@ -781,6 +786,7 @@ async fn run_exec_session(
             (
                 InitialOperation::UserTurn {
                     items,
+                    context_recall_selected_snippets: None,
                     output_schema,
                 },
                 prompt_text,
@@ -891,6 +897,7 @@ async fn run_exec_session(
     let task_id = match initial_operation {
         InitialOperation::UserTurn {
             items,
+            context_recall_selected_snippets,
             output_schema,
         } => {
             let response: TurnStartResponse = send_request_with_response(
@@ -901,6 +908,10 @@ async fn run_exec_session(
                         thread_id: primary_thread_id_for_span.clone(),
                         input: items.into_iter().map(Into::into).collect(),
                         responsesapi_client_metadata: None,
+                        context_recall_selected_snippets:
+                            context_recall_selected_snippets_for_turn_start(
+                                context_recall_selected_snippets,
+                            ),
                         environments: None,
                         cwd: Some(default_cwd),
                         runtime_workspace_roots: None,
@@ -1806,6 +1817,25 @@ fn load_output_schema(path: Option<PathBuf>) -> Option<Value> {
             std::process::exit(1);
         }
     }
+}
+
+fn context_recall_selected_snippets_for_turn_start(
+    selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
+) -> Option<ContextRecallSelectedSnippetEnvelope> {
+    context_recall_selected_snippets_for_turn_start_with_opt_in(
+        selected_snippets,
+        CONTEXT_RECALL_SELECTED_SNIPPETS_EXPERIMENTAL_API_ENABLED,
+    )
+}
+
+fn context_recall_selected_snippets_for_turn_start_with_opt_in(
+    selected_snippets: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
+    experimental_api_enabled: bool,
+) -> Option<ContextRecallSelectedSnippetEnvelope> {
+    ContextRecallSelectedSnippetEnvelope::from_core_for_experimental_client(
+        selected_snippets,
+        experimental_api_enabled,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -111,6 +111,7 @@ use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::TurnContextNetworkItem;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::request_permissions::PermissionGrantScope;
@@ -222,6 +223,9 @@ use self::turn_context::TurnContext;
 use self::turn_context::TurnSkillsContext;
 #[cfg(test)]
 mod rollout_reconstruction_tests;
+
+const SELECTED_CONTEXT_RECALL_OPEN_TAG: &str = "<selected_context_recall>";
+const SELECTED_CONTEXT_RECALL_CLOSE_TAG: &str = "</selected_context_recall>";
 
 #[derive(Debug, PartialEq)]
 pub enum SteerInputError {
@@ -2858,6 +2862,39 @@ impl Session {
         items
     }
 
+    fn build_context_recall_selected_snippets_item(
+        turn_context: &TurnContext,
+    ) -> Option<ResponseItem> {
+        let selected_snippets = turn_context
+            .extension_data
+            .get::<TurnContextRecallSelectedSnippetEnvelope>()?;
+        if !selected_snippets.has_shadow_integrity() {
+            return None;
+        }
+
+        let mut text = format!(
+            "{SELECTED_CONTEXT_RECALL_OPEN_TAG}\nversion: {}\nselected_snippet_count: {}\nomitted_snippet_count: {}\nredacted_snippet_count: {}\ntruncated_snippet_count: {}",
+            selected_snippets.version,
+            selected_snippets.selected_snippet_count,
+            selected_snippets.omitted_snippet_count,
+            selected_snippets.redacted_snippet_count,
+            selected_snippets.truncated_snippet_count,
+        );
+        for snippet in &selected_snippets.snippets {
+            text.push_str(&format!(
+                "\n- snippet_hash: {}\n  estimated_tokens: {}\n  redacted: {}\n  truncated: {}\n  text: {}",
+                snippet.snippet_hash,
+                snippet.estimated_tokens,
+                snippet.redacted,
+                snippet.truncated,
+                snippet.text,
+            ));
+        }
+        text.push_str(&format!("\n{SELECTED_CONTEXT_RECALL_CLOSE_TAG}"));
+
+        crate::context_manager::updates::build_developer_update_item(vec![text])
+    }
+
     pub(crate) async fn persist_rollout_items(&self, items: &[RolloutItem]) {
         if let Some(live_thread) = self.live_thread()
             && let Err(e) = live_thread.append_items(items).await
@@ -2898,13 +2935,18 @@ impl Session {
             state.reference_context_item()
         };
         let should_inject_full_context = reference_context_item.is_none();
-        let context_items = if should_inject_full_context {
+        let mut context_items = if should_inject_full_context {
             self.build_initial_context(turn_context).await
         } else {
             // Steady-state path: append only context diffs to minimize token overhead.
             self.build_settings_update_items(reference_context_item.as_ref(), turn_context)
                 .await
         };
+        if let Some(selected_snippets_item) =
+            Self::build_context_recall_selected_snippets_item(turn_context)
+        {
+            context_items.push(selected_snippets_item);
+        }
         let turn_context_item = turn_context.to_turn_context_item();
         if !context_items.is_empty() {
             self.record_conversation_items(turn_context, &context_items)

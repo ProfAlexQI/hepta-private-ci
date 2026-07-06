@@ -11,6 +11,9 @@ use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::plan_tool::PlanItemArg as CorePlanItemArg;
 use codex_protocol::plan_tool::StepStatus as CorePlanStepStatus;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippet as CoreTurnContextRecallSelectedSnippet;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope as CoreTurnContextRecallSelectedSnippetEnvelope;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetSafety as CoreTurnContextRecallSelectedSnippetSafety;
 use codex_protocol::user_input::ByteRange as CoreByteRange;
 use codex_protocol::user_input::TextElement as CoreTextElement;
 use codex_protocol::user_input::UserInput as CoreUserInput;
@@ -42,6 +45,146 @@ pub struct TurnEnvironmentParams {
     pub cwd: AbsolutePathBuf,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContextRecallSelectedSnippetEnvelope {
+    pub version: u32,
+    pub max_snippets: u32,
+    pub max_snippet_chars: u32,
+    pub selected_snippet_count: u32,
+    pub omitted_snippet_count: u32,
+    pub redacted_snippet_count: u32,
+    pub truncated_snippet_count: u32,
+    pub snippets: Vec<ContextRecallSelectedSnippet>,
+    pub safety: ContextRecallSelectedSnippetSafety,
+}
+
+impl ContextRecallSelectedSnippetEnvelope {
+    pub fn from_core(envelope: CoreTurnContextRecallSelectedSnippetEnvelope) -> Self {
+        Self {
+            version: envelope.version,
+            max_snippets: envelope.max_snippets,
+            max_snippet_chars: envelope.max_snippet_chars,
+            selected_snippet_count: envelope.selected_snippet_count,
+            omitted_snippet_count: envelope.omitted_snippet_count,
+            redacted_snippet_count: envelope.redacted_snippet_count,
+            truncated_snippet_count: envelope.truncated_snippet_count,
+            snippets: envelope
+                .snippets
+                .into_iter()
+                .map(ContextRecallSelectedSnippet::from_core)
+                .collect(),
+            safety: ContextRecallSelectedSnippetSafety::from_core(envelope.safety),
+        }
+    }
+
+    pub fn from_core_for_experimental_client(
+        envelope: Option<CoreTurnContextRecallSelectedSnippetEnvelope>,
+        experimental_api_enabled: bool,
+    ) -> Option<Self> {
+        if !experimental_api_enabled {
+            return None;
+        }
+        envelope
+            .filter(CoreTurnContextRecallSelectedSnippetEnvelope::has_shadow_integrity)
+            .map(Self::from_core)
+    }
+
+    pub fn into_core(self) -> CoreTurnContextRecallSelectedSnippetEnvelope {
+        CoreTurnContextRecallSelectedSnippetEnvelope {
+            version: self.version,
+            max_snippets: self.max_snippets,
+            max_snippet_chars: self.max_snippet_chars,
+            selected_snippet_count: self.selected_snippet_count,
+            omitted_snippet_count: self.omitted_snippet_count,
+            redacted_snippet_count: self.redacted_snippet_count,
+            truncated_snippet_count: self.truncated_snippet_count,
+            snippets: self
+                .snippets
+                .into_iter()
+                .map(ContextRecallSelectedSnippet::into_core)
+                .collect(),
+            safety: self.safety.into_core(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContextRecallSelectedSnippet {
+    pub snippet_hash: String,
+    pub text: String,
+    pub estimated_tokens: u32,
+    pub redacted: bool,
+    pub truncated: bool,
+}
+
+impl ContextRecallSelectedSnippet {
+    fn from_core(snippet: CoreTurnContextRecallSelectedSnippet) -> Self {
+        Self {
+            snippet_hash: snippet.snippet_hash,
+            text: snippet.text,
+            estimated_tokens: snippet.estimated_tokens,
+            redacted: snippet.redacted,
+            truncated: snippet.truncated,
+        }
+    }
+
+    fn into_core(self) -> CoreTurnContextRecallSelectedSnippet {
+        CoreTurnContextRecallSelectedSnippet {
+            snippet_hash: self.snippet_hash,
+            text: self.text,
+            estimated_tokens: self.estimated_tokens,
+            redacted: self.redacted,
+            truncated: self.truncated,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ContextRecallSelectedSnippetSafety {
+    pub ready_for_shadow_handoff: bool,
+    pub bounded: bool,
+    pub origin_identifiers_exposed: bool,
+    pub raw_ranked_payload_exposed: bool,
+    pub rank_explanation_exposed: bool,
+    pub control_marker_exposed: bool,
+    pub query_payload_exposed: bool,
+    pub per_origin_list_exposed: bool,
+}
+
+impl ContextRecallSelectedSnippetSafety {
+    fn from_core(safety: CoreTurnContextRecallSelectedSnippetSafety) -> Self {
+        Self {
+            ready_for_shadow_handoff: safety.ready_for_shadow_handoff,
+            bounded: safety.bounded,
+            origin_identifiers_exposed: safety.origin_identifiers_exposed,
+            raw_ranked_payload_exposed: safety.raw_ranked_payload_exposed,
+            rank_explanation_exposed: safety.rank_explanation_exposed,
+            control_marker_exposed: safety.control_marker_exposed,
+            query_payload_exposed: safety.query_payload_exposed,
+            per_origin_list_exposed: safety.per_origin_list_exposed,
+        }
+    }
+
+    fn into_core(self) -> CoreTurnContextRecallSelectedSnippetSafety {
+        CoreTurnContextRecallSelectedSnippetSafety {
+            ready_for_shadow_handoff: self.ready_for_shadow_handoff,
+            bounded: self.bounded,
+            origin_identifiers_exposed: self.origin_identifiers_exposed,
+            raw_ranked_payload_exposed: self.raw_ranked_payload_exposed,
+            rank_explanation_exposed: self.rank_explanation_exposed,
+            control_marker_exposed: self.control_marker_exposed,
+            query_payload_exposed: self.query_payload_exposed,
+            per_origin_list_exposed: self.per_origin_list_exposed,
+        }
+    }
+}
+
 #[derive(
     Serialize, Deserialize, Debug, Default, Clone, PartialEq, JsonSchema, TS, ExperimentalApi,
 )]
@@ -54,6 +197,10 @@ pub struct TurnStartParams {
     #[experimental("turn/start.responsesapiClientMetadata")]
     #[ts(optional = nullable)]
     pub responsesapi_client_metadata: Option<HashMap<String, String>>,
+    /// Optional bounded recall snippets selected for this turn.
+    #[experimental("turn/start.contextRecallSelectedSnippets")]
+    #[ts(optional = nullable)]
+    pub context_recall_selected_snippets: Option<ContextRecallSelectedSnippetEnvelope>,
     /// Optional turn-scoped environments.
     ///
     /// Omitted uses the thread sticky environments. Empty disables

@@ -43,6 +43,7 @@ use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::ThreadRolledBackEvent;
 use codex_protocol::protocol::TurnAbortReason;
+use codex_protocol::protocol::TurnContextRecallSelectedSnippetEnvelope;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
@@ -112,7 +113,8 @@ pub(super) async fn user_input_or_turn_inner(
     op: Op,
     mirror_user_text_to_realtime: Option<()>,
 ) {
-    let (items, updates, responsesapi_client_metadata) = match op {
+    let (items, updates, responsesapi_client_metadata, context_recall_selected_snippets) = match op
+    {
         Op::UserTurn {
             cwd,
             approval_policy,
@@ -161,6 +163,7 @@ pub(super) async fn user_input_or_turn_inner(
                     app_server_client_version: None,
                 },
                 None,
+                None,
             )
         }
         Op::UserInputWithTurnContext {
@@ -180,6 +183,7 @@ pub(super) async fn user_input_or_turn_inner(
             final_output_json_schema,
             items,
             responsesapi_client_metadata,
+            context_recall_selected_snippets,
             collaboration_mode,
             personality,
             environments,
@@ -217,6 +221,7 @@ pub(super) async fn user_input_or_turn_inner(
                     app_server_client_version: None,
                 },
                 responsesapi_client_metadata,
+                context_recall_selected_snippets,
             )
         }
         Op::UserInput {
@@ -232,6 +237,7 @@ pub(super) async fn user_input_or_turn_inner(
                 ..Default::default()
             },
             responsesapi_client_metadata,
+            None,
         ),
         _ => unreachable!(),
     };
@@ -240,6 +246,10 @@ pub(super) async fn user_input_or_turn_inner(
         // new_turn_with_sub_id already emits the error event.
         return;
     };
+    attach_context_recall_selected_snippets_for_turn(
+        current_context.as_ref(),
+        context_recall_selected_snippets,
+    );
     sess.maybe_emit_unknown_model_warning_for_turn(current_context.as_ref())
         .await;
     let accepted_items = match sess
@@ -286,6 +296,17 @@ pub(super) async fn user_input_or_turn_inner(
     };
     if let (Some(items), Some(())) = (accepted_items, mirror_user_text_to_realtime) {
         self::mirror_user_text_to_realtime(sess, &items).await;
+    }
+}
+
+fn attach_context_recall_selected_snippets_for_turn(
+    turn_context: &crate::session::turn_context::TurnContext,
+    selected_snippets: Option<TurnContextRecallSelectedSnippetEnvelope>,
+) {
+    if let Some(selected_snippets) = selected_snippets
+        && selected_snippets.has_shadow_integrity()
+    {
+        turn_context.extension_data.insert(selected_snippets);
     }
 }
 

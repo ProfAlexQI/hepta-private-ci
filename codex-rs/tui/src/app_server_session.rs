@@ -578,6 +578,7 @@ impl AppServerSession {
                     thread_id: thread_id.to_string(),
                     input: items,
                     responsesapi_client_metadata: None,
+                    context_recall_selected_snippets: None,
                     environments: None,
                     cwd: Some(cwd),
                     runtime_workspace_roots: Some(

@@ -341,6 +341,18 @@ impl TurnRequestProcessor {
             );
             return Err(error);
         }
+        let context_recall_selected_snippets = params
+            .context_recall_selected_snippets
+            .map(ContextRecallSelectedSnippetEnvelope::into_core);
+        if let Some(selected_snippets) = &context_recall_selected_snippets
+            && !selected_snippets.has_shadow_integrity()
+        {
+            let error = invalid_request(
+                "contextRecallSelectedSnippets must be bounded and source-safe".to_string(),
+            );
+            self.track_error_response(&request_id, &error, /*error_type*/ None);
+            return Err(error);
+        }
         let (thread_id, thread) =
             self.load_thread(&params.thread_id)
                 .await
@@ -389,6 +401,8 @@ impl TurnRequestProcessor {
             || params.summary.is_some()
             || collaboration_mode.is_some()
             || params.personality.is_some();
+        let has_turn_context_handoff =
+            has_any_overrides || context_recall_selected_snippets.is_some();
 
         if params.sandbox_policy.is_some() && params.permissions.is_some() {
             return Err(invalid_request(
@@ -504,12 +518,13 @@ impl TurnRequestProcessor {
         }
 
         // Start the turn by submitting the user input. Return its submission id as turn_id.
-        let turn_op = if has_any_overrides {
+        let turn_op = if has_turn_context_handoff {
             Op::UserInputWithTurnContext {
                 items: mapped_items,
                 environments: environment_selections,
                 final_output_json_schema: params.output_schema,
                 responsesapi_client_metadata: params.responsesapi_client_metadata,
+                context_recall_selected_snippets,
                 cwd,
                 workspace_roots: runtime_workspace_roots,
                 profile_workspace_roots,
