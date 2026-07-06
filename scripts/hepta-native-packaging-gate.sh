@@ -236,8 +236,13 @@ else
   BASE_URL="http://${BIND_ADDR}"
 
   mkdir -p "$SERVER_CARGO_TARGET_DIR"
-  CARGO_TARGET_DIR="$SERVER_CARGO_TARGET_DIR" cargo run --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
-    >"$SERVER_LOG" 2>&1 &
+  CARGO_TARGET_DIR="$SERVER_CARGO_TARGET_DIR" cargo build --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta
+  SERVER_BINARY_PATH="$SERVER_CARGO_TARGET_DIR/debug/hepta"
+  if [[ ! -x "$SERVER_BINARY_PATH" ]]; then
+    echo "missing built Hepta serve-ui binary for native packaging gate: $SERVER_BINARY_PATH" >&2
+    exit 1
+  fi
+  "$SERVER_BINARY_PATH" --serve-ui "$BIND_ADDR" >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
 
   cleanup() {
@@ -252,11 +257,13 @@ else
   until curl -fsS "$BASE_URL/health" >/dev/null 2>&1; do
     if ! kill -0 "$server_pid" 2>/dev/null; then
       echo "Hepta Native packaging gate server exited before readiness checks" >&2
+      echo "server binary: ${SERVER_BINARY_PATH:-not_built}" >&2
       tail -n 80 "$SERVER_LOG" >&2 || true
       exit 1
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "timed out waiting for Hepta Native packaging gate server at $BASE_URL" >&2
+      echo "server binary: ${SERVER_BINARY_PATH:-not_built}" >&2
       tail -n 80 "$SERVER_LOG" >&2 || true
       exit 1
     fi
@@ -395,6 +402,7 @@ report="$(jq -n \
       server_mode:$runner_server_mode,
       server_log:$server_log,
       server_cargo_target_dir:$server_cargo_target_dir,
+      server_binary_path:($server_cargo_target_dir + "/debug/hepta"),
       bundle_cargo_target_dir:$unsigned_app_bundle.cargo_target_dir,
       startup_timeout_sec:$startup_timeout_sec,
       local_loopback_spawned:($runner_server_mode == "local-loopback"),
