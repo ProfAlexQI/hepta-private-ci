@@ -69,11 +69,14 @@ use crate::{
 /// and to have something to immediately show when a user first opens a room.
 const PREPAGINATE_VISIBLE_ROOMS: bool = true;
 
+#[allow(dead_code)]
 const ROOMS_LIST_SECTION_UNREAD_AGGREGATE_LOCAL_ZERO_EVIDENCE: &str = "People/Rooms section unread/mention aggregate packet keeps header badges on local zero placeholders until a running aggregate is maintained; it may summarize loaded row unread state locally, but header rendering sends no aggregate scan, read receipt, message, room-state, or membership request.";
+#[allow(dead_code)]
 const ROOMS_LIST_LOAD_MORE_PAGINATION_PACKET_EVIDENCE: &str = "Room-list Load More pagination packet records current RoomListService loaded counts, server max hint, selected-space child pagination status, and missing explicit load-more cursor/result/retry slots locally. Existing service-driven SpaceService pagination and visible-row latest-message prefetch stay read-only; no user-triggered room-list pagination, message, room-state, or membership request is emitted.";
 const ROOMS_LIST_SPACE_PARENT_CACHE_LOCAL_EVIDENCE: &str = "Selected-space filtering uses cached SpaceService child/subspace maps recursively; room rows do not store every parent chain yet, and filter rendering sends no Matrix search, message, room-state, or membership request.";
 const ROOMS_LIST_NAME_UPDATE_SELECTED_STATE_LOCAL_EVIDENCE: &str = "Room-name updates refresh loaded list rows and filters locally; Dock tabs and StackNav headers still need SelectedRoom broadcast plumbing, and the evidence sends no Matrix room-state, message, or membership request.";
 const ROOMS_LIST_REMOVED_ROOM_SELECTED_STATE_LOCAL_EVIDENCE: &str = "Selected-room removed/rejoin packet waits for RoomListService RemoveRoom, then records removed room id, membership state, active selection match, focus clear, replacement UI slot, rejoin request slot, stale-event policy, and selected-space scope locally. Until a backend contract provides an exact replacement/rejoin request and result taxonomy, it sends no JoinRoom, LeaveRoom, Knock, message, room-state, or membership request.";
+#[allow(dead_code)]
 const ROOMS_LIST_UNSUPPORTED_HEADER_TOGGLE_EVIDENCE: &str = "RoomsList ignores unsupported CollapsibleHeader categories that are not rendered in the current Telegram shell instead of panicking; only Invites, People, and Rooms toggle local expansion state, and no Matrix search, room-list pagination, message, room-state, membership, or live mutation request is sent.";
 
 thread_local! {

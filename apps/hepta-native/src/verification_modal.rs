@@ -7,6 +7,7 @@ use crate::verification::{
     VerificationAction, VerificationRequestActionState, VerificationUserResponse,
 };
 
+#[allow(dead_code)]
 pub const VERIFICATION_REQUEST_METADATA_EVIDENCE: &str = "VerificationModal shows loaded Matrix verification metadata from VerificationRequest plus local modal stage: own user, other user, room/to-device scope, flow id availability, self-verification, local/remote origin, passive/ready state, and supported-method count. Rendering metadata starts no Matrix verification accept, cancel, SAS confirm, device trust write, account/profile, gateway/runtime/auth, or live mutation; Accept, Cancel, and SAS confirmation keep the existing response_sender and async verification handler paths unchanged.";
 
 fn bool_label(value: bool) -> &'static str {

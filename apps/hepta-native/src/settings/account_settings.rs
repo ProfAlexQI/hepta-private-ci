@@ -1095,6 +1095,7 @@ fn account_avatar_image_dimensions_label(path: &Path, mime_type: &mime::Mime) ->
         .unwrap_or_else(|| "dimensions: unavailable from image header".to_string())
 }
 
+#[allow(dead_code)]
 fn account_avatar_thumbnail_target_dimensions(
     width: u32,
     height: u32,

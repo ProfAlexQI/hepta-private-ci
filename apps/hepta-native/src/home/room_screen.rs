@@ -187,8 +187,11 @@ pub const ATTACHMENT_TIMELINE_SEND_STATE_COMPACT_LABEL: &str =
 /// This is a safety measure to prevent the main UI thread
 /// from getting into a long-running loop if an event cannot be found quickly.
 const MAX_ITEMS_TO_SEARCH_THROUGH: usize = 100;
+#[allow(dead_code)]
 const ROOM_MEMBERS_READ_EVIDENCE: &str = "Member count uses existing SyncRoomMemberList plus GetRoomMembers local_only local cache; this info strip sends no JoinRoom, LeaveRoom, InviteUser, Knock, message, room-state, or membership mutation request.";
+#[allow(dead_code)]
 const ROOM_MEMBER_SYNC_READ_EVIDENCE: &str = "Member sync uses existing SyncRoomMemberList before local GetRoomMembers; it only refreshes local member profiles and sends no JoinRoom, LeaveRoom, InviteUser, Knock, message, room-state, or membership mutation request from Room info.";
+#[allow(dead_code)]
 const ROOM_POWER_LEVELS_READ_EVIDENCE: &str = "Permissions use existing GetRoomPowerLevels to display local UserPowerLevels for send, react, and @room permission state; this settings strip sends no power-level, room-state, message, or membership mutation request.";
 const ROOM_MEMBERS_COMPACT_LABEL: &str = "members from local SDK cache";
 const ROOM_POWER_LEVELS_COMPACT_LABEL: &str = "Permissions read-only from loaded power levels";
@@ -236,8 +239,11 @@ pub const ROOM_SETTINGS_POWER_MEMBER_RESULT_TAXONOMY_PACKET_EVIDENCE: &str = "Ro
 pub const ROOM_SETTINGS_POWER_MEMBER_RESULT_TAXONOMY_PACKET_LABEL: &str =
     "Room settings Taxonomy maps power/member permission denial and result slots locally.";
 pub const ROOM_SETTINGS_COMPACT_LABEL: &str = "Settings partial-live: Name/Topic/Alias, avatar, history, join-rule, and tombstone writes run after confirmation; power/member edits stay blocked.";
+#[allow(dead_code)]
 const PINNED_EVENTS_SUBSCRIPTION_READ_EVIDENCE: &str = "Pinned event count uses existing SubscribeToPinnedEvents for local pinned-event updates; this info strip sends no PinEvent, message, room-state, or membership request.";
+#[allow(dead_code)]
 const TYPING_NOTICES_SUBSCRIPTION_READ_EVIDENCE: &str = "Incoming typing notice display uses existing SubscribeToTypingNotices for local typing-user updates; this info strip sends no typing notice, message, room-state, or membership request.";
+#[allow(dead_code)]
 const OWN_READ_RECEIPT_SUBSCRIPTION_READ_EVIDENCE: &str = "Own read marker uses existing SubscribeToOwnUserReadReceiptsChanged for local marker updates; this info strip sends no ReadReceipt, message, room-state, or membership request.";
 const ROOM_PINNED_COMPACT_LABEL: &str = "Pinned count follows the live timeline subscription.";
 const ROOM_TYPING_COMPACT_LABEL: &str = "Typing display follows the live typing subscription.";
@@ -22101,6 +22107,7 @@ fn media_playback_result_taxonomy_link(
     )
 }
 
+#[allow(dead_code)]
 fn media_result_control_url(
     action: &str,
     action_label: &str,
@@ -22152,6 +22159,7 @@ fn media_result_control_url_with_source(
     format!("{MEDIA_RESULT_CONTROL_URL_SCHEME}://media?{query}")
 }
 
+#[allow(dead_code)]
 fn media_save_preflight_control_url(
     action: &str,
     action_label: &str,
@@ -22233,6 +22241,7 @@ fn media_codec_transcode_control_url(
     format!("{MEDIA_CODEC_TRANSCODE_CONTROL_URL_SCHEME}://media?{query}")
 }
 
+#[allow(dead_code)]
 fn media_save_preflight_detail_controls_preview(
     action_label: &str,
     filename: &str,
@@ -22340,6 +22349,7 @@ fn media_codec_transcode_controls_preview(
     )
 }
 
+#[allow(dead_code)]
 fn media_save_result_recovery_controls_preview(
     action_label: &str,
     filename: &str,
@@ -28471,6 +28481,7 @@ struct EditHistoryLoadedDiffModalSnapshot {
     loaded_full_body: bool,
 }
 
+#[allow(dead_code)]
 fn edit_history_loaded_side_by_side_diff_modal_json(
     event_id: &str,
     replacement_count: Option<usize>,

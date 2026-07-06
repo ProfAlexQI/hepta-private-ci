@@ -23,6 +23,7 @@ use crate::{
     utils,
 };
 
+#[allow(dead_code)]
 const ADD_ROOM_RESTRICTED_JOIN_RULE_LOCAL_EVIDENCE: &str = "Join rule edge: Restricted or unknown previews keep membership actions disabled locally until newer Matrix join-rule handling is wired; no JoinRoom, Knock, cancel-prior-knock, message, room-state, or membership request is sent.";
 const ADD_ROOM_COMPACT_CONFIRMATION_LABEL: &str =
     "Confirmation required before any join or knock request.";

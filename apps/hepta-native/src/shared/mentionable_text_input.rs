@@ -2624,6 +2624,7 @@ fn mention_picker_lifecycle_metadata_label(
     )
 }
 
+#[allow(dead_code)]
 fn mention_picker_rich_popup_boundary_label(
     active_query: Option<&str>,
     suggestion_count: usize,
@@ -2643,6 +2644,7 @@ fn mention_picker_rich_popup_boundary_label(
     )
 }
 
+#[allow(dead_code)]
 fn mention_picker_directory_disambiguation_boundary_label(
     active_query: Option<&str>,
     suggestion_count: usize,
