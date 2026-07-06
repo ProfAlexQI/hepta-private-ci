@@ -1,7 +1,12 @@
+pub mod contribution_point_abi;
+pub mod contribution_point_loader_binding;
 pub mod installed_marketplaces;
+pub mod lifecycle_phase_summary;
+pub mod lifecycle_state_machine;
 pub mod loader;
 mod manager;
 pub mod manifest;
+mod manifest_tool_declarations;
 pub mod marketplace;
 pub mod marketplace_add;
 pub mod marketplace_remove;

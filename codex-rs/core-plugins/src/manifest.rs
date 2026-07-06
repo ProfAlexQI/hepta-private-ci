@@ -1,3 +1,7 @@
+pub use crate::manifest_tool_declarations::PluginManifestToolDeclarations;
+pub use crate::manifest_tool_declarations::PluginManifestToolPolicyDeclaration;
+pub use crate::manifest_tool_declarations::PluginManifestToolSchemaDeclaration;
+use crate::manifest_tool_declarations::resolve_tool_declarations;
 use codex_config::HooksFile;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::find_plugin_manifest_path;
@@ -31,6 +35,14 @@ struct RawPluginManifest {
     #[serde(default)]
     hooks: Option<RawPluginManifestHooks>,
     #[serde(default)]
+    tool_schemas: Option<JsonValue>,
+    #[serde(default)]
+    permissions: Option<JsonValue>,
+    #[serde(default)]
+    activation_events: Option<JsonValue>,
+    #[serde(default)]
+    tool_policies: Option<JsonValue>,
+    #[serde(default)]
     interface: Option<RawPluginManifestInterface>,
 }
 
@@ -41,6 +53,7 @@ pub struct PluginManifest {
     pub description: Option<String>,
     pub keywords: Vec<String>,
     pub paths: PluginManifestPaths,
+    pub tool_declarations: PluginManifestToolDeclarations,
     pub interface: Option<PluginManifestInterface>,
 }
 
@@ -151,6 +164,10 @@ pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
                 mcp_servers,
                 apps,
                 hooks,
+                tool_schemas,
+                permissions,
+                activation_events,
+                tool_policies,
                 interface,
             } = manifest;
             let name = plugin_root
@@ -247,6 +264,12 @@ pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
                     apps: resolve_manifest_path(plugin_root, "apps", apps.as_deref()),
                     hooks: resolve_manifest_hooks(plugin_root, hooks),
                 },
+                tool_declarations: resolve_tool_declarations(
+                    tool_schemas.as_ref(),
+                    permissions.as_ref(),
+                    activation_events.as_ref(),
+                    tool_policies.as_ref(),
+                ),
                 interface,
             })
         }
@@ -592,6 +615,55 @@ mod tests {
         assert_eq!(
             manifest.keywords,
             vec!["api-key".to_string(), "developer tools".to_string()]
+        );
+    }
+
+    #[test]
+    fn plugin_manifest_tool_declaration_parser_reads_manifest_metadata_fields() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("demo-plugin");
+        fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("create manifest dir");
+        fs::write(
+            plugin_root.join(".codex-plugin/plugin.json"),
+            r#"{
+  "name": "demo-plugin",
+  "toolSchemas": {
+    "preview:mcp:demo@local:server": {
+      "inputSchema": { "type": "object" },
+      "outputSchema": { "type": "object" }
+    }
+  },
+  "permissions": {
+    "preview:mcp:demo@local:server": { "network": "local" }
+  },
+  "activationEvents": {
+    "preview:mcp:demo@local:server": [{ "type": "manual" }]
+  },
+  "toolPolicies": {
+    "preview:mcp:demo@local:server": {
+      "approval": { "kind": "onUse" },
+      "ledger": { "required": true },
+      "timeoutMs": 30000
+    }
+  }
+}"#,
+        )
+        .expect("write manifest");
+
+        let manifest = load_manifest(&plugin_root);
+        let expected_candidate_ids = vec!["preview:mcp:demo@local:server".to_string()];
+
+        assert_eq!(
+            manifest.tool_declarations.declared_candidate_ids(),
+            expected_candidate_ids
+        );
+        assert_eq!(
+            manifest.tool_declarations.schema_complete_candidate_ids(),
+            expected_candidate_ids
+        );
+        assert_eq!(
+            manifest.tool_declarations.policy_complete_candidate_ids(),
+            expected_candidate_ids
         );
     }
 
