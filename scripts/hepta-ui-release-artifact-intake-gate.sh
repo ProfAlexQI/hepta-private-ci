@@ -121,10 +121,23 @@ jq -n \
         local_distribution_artifact_written:false,
         public_distribution_artifact_written:false,
         public_upload_performed:false,
+        signed_artifact_path:"",
         signed_artifact_sha256:"",
+        signed_artifact_bytes:0,
         notarization_ticket_sha256:"",
+        codesign_verify_app_sha256:"",
+        codesign_verify_dmg_sha256:"",
+        stapler_staple_sha256:"",
         stapler_validate_sha256:"",
-        spctl_assessment_sha256:""
+        spctl_assessment_sha256:"",
+        notarytool_submit_log_path:"",
+        codesign_verify_app_log_path:"",
+        codesign_verify_dmg_log_path:"",
+        stapler_staple_log_path:"",
+        stapler_validate_log_path:"",
+        spctl_assessment_log_path:"",
+        signing_identity:"",
+        notary_auth_mode:""
       },
       claim_boundary:{
         release_artifact_claim_ready:false,
@@ -159,6 +172,8 @@ jq -r '
   + "- signed app artifact\n"
   + "- notarized app artifact\n"
   + "- stapled app artifact\n"
+  + "- codesign verify app/DMG output hashes\n"
+  + "- notarytool submit, stapler, and spctl output hashes\n"
   + "- local signed/notarized/stapled DMG artifact-write evidence\n"
   + "- no public upload/public claim from the artifact receipt alone\n"
   + "- post-artifact UI readiness refresh\n"
@@ -208,7 +223,7 @@ jq -n \
   | ($evidence_archive_file[0]) as $archive
   | ($template_file[0]) as $template
   | ($artifact_file[0]) as $artifact
-  | def sha_ready($sha): ($sha | test("^[0-9a-f]{64}$"));
+  | def sha_ready($sha): (($sha // "") | test("^[0-9a-f]{64}$"));
     def source_chain_ready:
       $distribution.distribution_preflight_gate_ready == true
       and $distribution.distribution_static_contract_ready == true
@@ -278,10 +293,23 @@ jq -n \
       and ($artifact.claim_boundary.release_artifact_claim_ready // false) == false
       and ($artifact.claim_boundary.public_distribution_claim_ready // false) == false
       and ($artifact.claim_boundary.release_claim_ready // false) == false
-      and ($artifact.artifact_evidence.signed_artifact_sha256 | test("^[0-9a-f]{64}$"))
-      and ($artifact.artifact_evidence.notarization_ticket_sha256 | test("^[0-9a-f]{64}$"))
-      and ($artifact.artifact_evidence.stapler_validate_sha256 | test("^[0-9a-f]{64}$"))
-      and ($artifact.artifact_evidence.spctl_assessment_sha256 | test("^[0-9a-f]{64}$"));
+      and (($artifact.artifact_evidence.signed_artifact_path // "") | length) > 0
+      and (($artifact.artifact_evidence.signed_artifact_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and ($artifact.artifact_evidence.signed_artifact_bytes // 0) > 0
+      and (($artifact.artifact_evidence.notarization_ticket_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and (($artifact.artifact_evidence.codesign_verify_app_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and (($artifact.artifact_evidence.codesign_verify_dmg_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and (($artifact.artifact_evidence.stapler_staple_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and (($artifact.artifact_evidence.stapler_validate_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and (($artifact.artifact_evidence.spctl_assessment_sha256 // "") | test("^[0-9a-f]{64}$"))
+      and (($artifact.artifact_evidence.notarytool_submit_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.codesign_verify_app_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.codesign_verify_dmg_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.stapler_staple_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.stapler_validate_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.spctl_assessment_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.signing_identity // "") | length) > 0
+      and (($artifact.artifact_evidence.notary_auth_mode // "") | IN("apple_env", "keychain_profile"));
     (
       source_chain_ready
       and template_ready
@@ -335,6 +363,14 @@ jq -n \
         public_distribution_artifact_written:($artifact.artifact_evidence.public_distribution_artifact_written // false),
         public_upload_performed:($artifact.artifact_evidence.public_upload_performed // false),
         public_distribution_artifact_semantics:($artifact.artifact_evidence.public_distribution_artifact_semantics // "missing_release_artifact_distribution_semantics"),
+        signed_artifact_path_present:(($artifact.artifact_evidence.signed_artifact_path // "") | length > 0),
+        signed_artifact_bytes:($artifact.artifact_evidence.signed_artifact_bytes // 0),
+        codesign_verify_app_ready:(($artifact.artifact_evidence.codesign_verify_app_sha256 // "") | test("^[0-9a-f]{64}$")),
+        codesign_verify_dmg_ready:(($artifact.artifact_evidence.codesign_verify_dmg_sha256 // "") | test("^[0-9a-f]{64}$")),
+        stapler_staple_ready:(($artifact.artifact_evidence.stapler_staple_sha256 // "") | test("^[0-9a-f]{64}$")),
+        stapler_validate_ready:(($artifact.artifact_evidence.stapler_validate_sha256 // "") | test("^[0-9a-f]{64}$")),
+        spctl_assessment_ready:(($artifact.artifact_evidence.spctl_assessment_sha256 // "") | test("^[0-9a-f]{64}$")),
+        notary_auth_mode:($artifact.artifact_evidence.notary_auth_mode // ""),
         next_required_step:"post_artifact_ui_readiness_refresh"
       },
       release_artifact_source_side_effects:{
@@ -421,6 +457,14 @@ jq -e '
   and .root_report_replay_required_count_after_intake == 37
   and .release_artifact_state.next_required_step == "post_artifact_ui_readiness_refresh"
   and (.release_artifact_state.public_distribution_artifact_semantics | type) == "string"
+  and (.release_artifact_state.signed_artifact_path_present | type) == "boolean"
+  and (.release_artifact_state.signed_artifact_bytes | type) == "number"
+  and (.release_artifact_state.codesign_verify_app_ready | type) == "boolean"
+  and (.release_artifact_state.codesign_verify_dmg_ready | type) == "boolean"
+  and (.release_artifact_state.stapler_staple_ready | type) == "boolean"
+  and (.release_artifact_state.stapler_validate_ready | type) == "boolean"
+  and (.release_artifact_state.spctl_assessment_ready | type) == "boolean"
+  and (.release_artifact_state.notary_auth_mode | type) == "string"
   and (.release_artifact_source_side_effects.credential_value_read | type) == "boolean"
   and (.release_artifact_source_side_effects.keychain_identity_lookup_performed | type) == "boolean"
   and (.release_artifact_source_side_effects.network_call_performed | type) == "boolean"
@@ -497,6 +541,13 @@ jq -e '
       and .release_artifact_state.public_distribution_artifact_written == false
       and .release_artifact_state.public_upload_performed == false
       and .release_artifact_state.public_distribution_artifact_semantics == "missing_release_artifact_distribution_semantics"
+      and .release_artifact_state.signed_artifact_path_present == false
+      and .release_artifact_state.signed_artifact_bytes == 0
+      and .release_artifact_state.codesign_verify_app_ready == false
+      and .release_artifact_state.codesign_verify_dmg_ready == false
+      and .release_artifact_state.stapler_staple_ready == false
+      and .release_artifact_state.stapler_validate_ready == false
+      and .release_artifact_state.spctl_assessment_ready == false
       and (.release_artifact_blockers | index("signed_notarized_stapled_artifact_missing") != null)
       and (.release_artifact_blockers | index("public_distribution_artifact_not_written") != null)
     )
@@ -513,6 +564,14 @@ jq -e '
       and .release_artifact_state.local_distribution_artifact_written == true
       and .release_artifact_state.public_distribution_artifact_written == true
       and .release_artifact_state.public_upload_performed == false
+      and .release_artifact_state.signed_artifact_path_present == true
+      and .release_artifact_state.signed_artifact_bytes > 0
+      and .release_artifact_state.codesign_verify_app_ready == true
+      and .release_artifact_state.codesign_verify_dmg_ready == true
+      and .release_artifact_state.stapler_staple_ready == true
+      and .release_artifact_state.stapler_validate_ready == true
+      and .release_artifact_state.spctl_assessment_ready == true
+      and (.release_artifact_state.notary_auth_mode == "apple_env" or .release_artifact_state.notary_auth_mode == "keychain_profile")
       and (
         .release_artifact_state.public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
         or .release_artifact_state.public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"

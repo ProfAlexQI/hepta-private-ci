@@ -164,6 +164,8 @@ BINARY_NAME="hepta-native"
 EVIDENCE_DIR="${HEPTA_NATIVE_RELEASE_EVIDENCE_DIR:-$PROJECT_DIR/dist/release-evidence}"
 EVIDENCE_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 NOTARY_LOG="$EVIDENCE_DIR/notarytool-submit-${EVIDENCE_STAMP}.log"
+APP_CODESIGN_VERIFY_LOG="$EVIDENCE_DIR/codesign-verify-app-${EVIDENCE_STAMP}.log"
+DMG_CODESIGN_VERIFY_LOG="$EVIDENCE_DIR/codesign-verify-dmg-${EVIDENCE_STAMP}.log"
 STAPLER_STAPLE_LOG="$EVIDENCE_DIR/stapler-staple-${EVIDENCE_STAMP}.log"
 STAPLER_VALIDATE_LOG="$EVIDENCE_DIR/stapler-validate-${EVIDENCE_STAMP}.log"
 SPCTL_LOG="$EVIDENCE_DIR/spctl-assess-${EVIDENCE_STAMP}.log"
@@ -222,6 +224,8 @@ write_release_artifact_receipt() {
       --arg bundle_identifier "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PROJECT_DIR/packaging/Info.plist")" \
       --arg signed_artifact_path "$DMG_FILE" \
       --arg notarytool_submit_log_path "$NOTARY_LOG" \
+      --arg app_codesign_verify_log_path "$APP_CODESIGN_VERIFY_LOG" \
+      --arg dmg_codesign_verify_log_path "$DMG_CODESIGN_VERIFY_LOG" \
       --arg stapler_staple_log_path "$STAPLER_STAPLE_LOG" \
       --arg stapler_validate_log_path "$STAPLER_VALIDATE_LOG" \
       --arg spctl_assessment_log_path "$SPCTL_LOG" \
@@ -229,6 +233,9 @@ write_release_artifact_receipt() {
       --arg notary_auth_mode "$NOTARY_AUTH_MODE" \
       --arg signed_artifact_sha256 "$(file_sha256 "$DMG_FILE")" \
       --arg notarization_ticket_sha256 "$(file_sha256 "$NOTARY_LOG")" \
+      --arg app_codesign_verify_sha256 "$(file_sha256 "$APP_CODESIGN_VERIFY_LOG")" \
+      --arg dmg_codesign_verify_sha256 "$(file_sha256 "$DMG_CODESIGN_VERIFY_LOG")" \
+      --arg stapler_staple_sha256 "$(file_sha256 "$STAPLER_STAPLE_LOG")" \
       --arg stapler_validate_sha256 "$(file_sha256 "$STAPLER_VALIDATE_LOG")" \
       --arg spctl_assessment_sha256 "$(file_sha256 "$SPCTL_LOG")" \
       --argjson artifact_version 1 \
@@ -255,9 +262,14 @@ write_release_artifact_receipt() {
           signed_artifact_sha256:$signed_artifact_sha256,
           signed_artifact_bytes:$signed_artifact_bytes,
           notarization_ticket_sha256:$notarization_ticket_sha256,
+          codesign_verify_app_sha256:$app_codesign_verify_sha256,
+          codesign_verify_dmg_sha256:$dmg_codesign_verify_sha256,
+          stapler_staple_sha256:$stapler_staple_sha256,
           stapler_validate_sha256:$stapler_validate_sha256,
           spctl_assessment_sha256:$spctl_assessment_sha256,
           notarytool_submit_log_path:$notarytool_submit_log_path,
+          codesign_verify_app_log_path:$app_codesign_verify_log_path,
+          codesign_verify_dmg_log_path:$dmg_codesign_verify_log_path,
           stapler_staple_log_path:$stapler_staple_log_path,
           stapler_validate_log_path:$stapler_validate_log_path,
           spctl_assessment_log_path:$spctl_assessment_log_path,
@@ -332,7 +344,13 @@ echo "==> Codesigning $APP_PATH..."
 xattr -cr "$APP_PATH"
 codesign_with_retry "$APP_PATH/Contents/MacOS/$BINARY_NAME" app
 codesign_with_retry "$APP_PATH" app
-codesign --verify --verbose=2 "$APP_PATH"
+if codesign --verify --verbose=2 "$APP_PATH" >"$APP_CODESIGN_VERIFY_LOG" 2>&1; then
+    cat "$APP_CODESIGN_VERIFY_LOG"
+else
+    cat "$APP_CODESIGN_VERIFY_LOG" >&2
+    echo "Error: app codesign verification failed." >&2
+    exit 1
+fi
 
 # --- Step 4: Apply Applications-folder icon fix to DMG ------------------------
 
@@ -392,6 +410,13 @@ trap 'mv "$CARGO_TOML.bak" "$CARGO_TOML" 2>/dev/null && echo "Restored Cargo.tom
 
 echo "==> Codesigning DMG..."
 codesign_with_retry "$DMG_FILE" dmg
+if codesign --verify --verbose=2 "$DMG_FILE" >"$DMG_CODESIGN_VERIFY_LOG" 2>&1; then
+    cat "$DMG_CODESIGN_VERIFY_LOG"
+else
+    cat "$DMG_CODESIGN_VERIFY_LOG" >&2
+    echo "Error: DMG codesign verification failed." >&2
+    exit 1
+fi
 
 # --- Step 7: Notarize ---------------------------------------------------------
 #

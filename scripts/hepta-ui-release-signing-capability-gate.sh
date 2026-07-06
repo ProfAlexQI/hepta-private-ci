@@ -376,12 +376,33 @@ jq -n \
           }
         },
         receipt_contract:{
+          receipt_contract_version:2,
           release_artifact_receipt_output_env_name:"HEPTA_NATIVE_RELEASE_ARTIFACT_RECEIPT_PATH",
           release_artifact_receipt_output_supported:$build_script_writes_artifact_receipt,
           release_artifact_intake_input_env_name:"HEPTA_UI_RELEASE_ARTIFACT_INPUT_PATH",
           release_artifact_intake_gate:"scripts/hepta-ui-release-artifact-intake-gate.sh",
           post_artifact_refresh_gate:"scripts/hepta-ui-product-readiness-gate.sh",
           expected_artifact_kind:"signed_notarized_stapled_artifact",
+          required_artifact_evidence_fields:[
+            "signed_artifact_path",
+            "signed_artifact_sha256",
+            "signed_artifact_bytes",
+            "notarization_ticket_sha256",
+            "codesign_verify_app_sha256",
+            "codesign_verify_dmg_sha256",
+            "stapler_staple_sha256",
+            "stapler_validate_sha256",
+            "spctl_assessment_sha256",
+            "notary_auth_mode"
+          ],
+          required_command_log_paths:[
+            "notarytool_submit_log_path",
+            "codesign_verify_app_log_path",
+            "codesign_verify_dmg_log_path",
+            "stapler_staple_log_path",
+            "stapler_validate_log_path",
+            "spctl_assessment_log_path"
+          ],
           public_upload_performed_must_be_false:true,
           public_distribution_claim_requires_intake_refresh:true
         },
@@ -512,6 +533,9 @@ jq -e '
   and .release_execution_handoff.receipt_contract.release_artifact_intake_gate == "scripts/hepta-ui-release-artifact-intake-gate.sh"
   and .release_execution_handoff.receipt_contract.post_artifact_refresh_gate == "scripts/hepta-ui-product-readiness-gate.sh"
   and .release_execution_handoff.receipt_contract.expected_artifact_kind == "signed_notarized_stapled_artifact"
+  and .release_execution_handoff.receipt_contract.receipt_contract_version == 2
+  and .release_execution_handoff.receipt_contract.required_artifact_evidence_fields == ["signed_artifact_path","signed_artifact_sha256","signed_artifact_bytes","notarization_ticket_sha256","codesign_verify_app_sha256","codesign_verify_dmg_sha256","stapler_staple_sha256","stapler_validate_sha256","spctl_assessment_sha256","notary_auth_mode"]
+  and .release_execution_handoff.receipt_contract.required_command_log_paths == ["notarytool_submit_log_path","codesign_verify_app_log_path","codesign_verify_dmg_log_path","stapler_staple_log_path","stapler_validate_log_path","spctl_assessment_log_path"]
   and .release_execution_handoff.receipt_contract.public_upload_performed_must_be_false == true
   and (.release_execution_handoff.local_verification_commands | index("apps/hepta-native/packaging/build-macos-dmg.sh") != null)
   and (.release_execution_handoff.side_effects_must_remain_false_until_explicit_release_command | index("credential_value_captured") != null)

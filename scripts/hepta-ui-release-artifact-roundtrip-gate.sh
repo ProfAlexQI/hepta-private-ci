@@ -78,6 +78,7 @@ if [[ "$main_intake_waiting" == "true" ]]; then
     --slurpfile intake_file "$RELEASE_ARTIFACT_INTAKE_REPORT_PATH" \
     --arg template_sha "$template_sha" \
     --arg markdown_sha "$markdown_sha" \
+    --argjson template_bytes "$template_bytes" \
     '
     ($template_file[0]) as $template
     | ($intake_file[0]) as $intake
@@ -109,10 +110,23 @@ if [[ "$main_intake_waiting" == "true" ]]; then
           public_distribution_artifact_written:true,
           public_distribution_artifact_semantics:"local_simulated_signed_notarized_stapled_dmg_written_not_public_upload",
           public_upload_performed:false,
+          signed_artifact_path:"/tmp/hepta-simulated-release-artifact-roundtrip.dmg",
           signed_artifact_sha256:$template_sha,
+          signed_artifact_bytes:$template_bytes,
           notarization_ticket_sha256:$intake.source_report_sha256.release_artifact_boundary,
+          codesign_verify_app_sha256:$intake.source_report_sha256.native_distribution_preflight,
+          codesign_verify_dmg_sha256:$intake.source_report_sha256.release_approval_intake,
+          stapler_staple_sha256:$intake.source_report_sha256.release_artifact_boundary,
           stapler_validate_sha256:$intake.source_report_sha256.evidence_archive,
-          spctl_assessment_sha256:$markdown_sha
+          spctl_assessment_sha256:$markdown_sha,
+          notarytool_submit_log_path:"/tmp/hepta-simulated-notarytool-submit.log",
+          codesign_verify_app_log_path:"/tmp/hepta-simulated-codesign-verify-app.log",
+          codesign_verify_dmg_log_path:"/tmp/hepta-simulated-codesign-verify-dmg.log",
+          stapler_staple_log_path:"/tmp/hepta-simulated-stapler-staple.log",
+          stapler_validate_log_path:"/tmp/hepta-simulated-stapler-validate.log",
+          spctl_assessment_log_path:"/tmp/hepta-simulated-spctl-assess.log",
+          signing_identity:"simulated-developer-id-application",
+          notary_auth_mode:"keychain_profile"
         },
         claim_boundary:{
           release_artifact_claim_ready:false,
@@ -229,10 +243,23 @@ jq -n \
       and $artifact.artifact_evidence.public_distribution_artifact_written == true
       and $artifact.artifact_evidence.public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
       and $artifact.artifact_evidence.public_upload_performed == false
+      and (($artifact.artifact_evidence.signed_artifact_path // "") | length) > 0
       and sha_ready($artifact.artifact_evidence.signed_artifact_sha256)
+      and ($artifact.artifact_evidence.signed_artifact_bytes // 0) > 0
       and sha_ready($artifact.artifact_evidence.notarization_ticket_sha256)
+      and sha_ready($artifact.artifact_evidence.codesign_verify_app_sha256)
+      and sha_ready($artifact.artifact_evidence.codesign_verify_dmg_sha256)
+      and sha_ready($artifact.artifact_evidence.stapler_staple_sha256)
       and sha_ready($artifact.artifact_evidence.stapler_validate_sha256)
       and sha_ready($artifact.artifact_evidence.spctl_assessment_sha256)
+      and (($artifact.artifact_evidence.notarytool_submit_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.codesign_verify_app_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.codesign_verify_dmg_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.stapler_staple_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.stapler_validate_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.spctl_assessment_log_path // "") | length) > 0
+      and (($artifact.artifact_evidence.signing_identity // "") | length) > 0
+      and (($artifact.artifact_evidence.notary_auth_mode // "") | IN("apple_env", "keychain_profile"))
       and (($artifact.simulated_provenance.release_operator_execution_performed // false) == false)
       and (($artifact.simulated_provenance.credential_value_read // false) == false)
       and (($artifact.simulated_provenance.network_call_performed // false) == false)
@@ -361,6 +388,11 @@ jq -n \
         present_branch_public_distribution_artifact_written:$present.release_artifact_state.public_distribution_artifact_written,
         present_branch_public_upload_performed:$present.release_artifact_state.public_upload_performed,
         present_branch_public_distribution_artifact_semantics:$present.release_artifact_state.public_distribution_artifact_semantics,
+        present_branch_codesign_verify_app_ready:$present.release_artifact_state.codesign_verify_app_ready,
+        present_branch_codesign_verify_dmg_ready:$present.release_artifact_state.codesign_verify_dmg_ready,
+        present_branch_stapler_staple_ready:$present.release_artifact_state.stapler_staple_ready,
+        present_branch_stapler_validate_ready:$present.release_artifact_state.stapler_validate_ready,
+        present_branch_spctl_assessment_ready:$present.release_artifact_state.spctl_assessment_ready,
         present_branch_source_public_upload_performed:($present.release_artifact_source_side_effects.public_upload_performed // false),
         present_branch_release_approval_valid:$present.source_alignment.release_approval_valid,
         present_branch_operator_release_approval_required:(($present.release_artifact_blockers | index("operator_release_approval_required")) != null),
@@ -424,6 +456,11 @@ jq -e '
   and .source_alignment.present_branch_local_distribution_artifact_written == true
   and .source_alignment.present_branch_public_distribution_artifact_written == true
   and .source_alignment.present_branch_public_upload_performed == false
+  and .source_alignment.present_branch_codesign_verify_app_ready == true
+  and .source_alignment.present_branch_codesign_verify_dmg_ready == true
+  and .source_alignment.present_branch_stapler_staple_ready == true
+  and .source_alignment.present_branch_stapler_validate_ready == true
+  and .source_alignment.present_branch_spctl_assessment_ready == true
   and (
     .source_alignment.present_branch_public_distribution_artifact_semantics == "local_signed_notarized_stapled_dmg_written_not_public_upload"
     or .source_alignment.present_branch_public_distribution_artifact_semantics == "local_simulated_signed_notarized_stapled_dmg_written_not_public_upload"
