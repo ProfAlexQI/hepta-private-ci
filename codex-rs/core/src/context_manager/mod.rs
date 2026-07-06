@@ -1,10 +1,13 @@
 pub(crate) mod budget_planner;
+pub(crate) mod controller;
 mod history;
 pub(crate) mod manifest;
 mod normalize;
 pub(crate) mod source_registry;
 pub(crate) mod updates;
 
+pub(crate) use controller::ContextController;
+pub(crate) use controller::ContextControllerAssembly;
 pub(crate) use history::ContextManager;
 pub(crate) use history::TotalTokenUsageBreakdown;
 pub(crate) use history::estimate_response_item_model_visible_bytes;

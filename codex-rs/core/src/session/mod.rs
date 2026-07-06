@@ -1564,10 +1564,11 @@ impl Session {
         reference_context_item: Option<&TurnContextItem>,
         current_context: &TurnContext,
     ) -> Vec<ResponseItem> {
-        // TODO: Make context updates a pure diff of persisted previous/current TurnContextItem
-        // state so replay/backtracking is deterministic. Runtime inputs that affect model-visible
-        // context (shell, exec policy, feature gates, previous-turn bridge) should be persisted
-        // state or explicit non-state replay events.
+        // TODO: Finish making context updates a pure diff of persisted previous/current
+        // TurnContextItem state. Model-switch and permissions diffs now prefer the persisted
+        // manifest baseline when available; remaining runtime inputs such as shell fallback,
+        // feature gates, and contributor sections should become persisted state or explicit
+        // non-state replay events.
         let previous_turn_settings = {
             let state = self.state.lock().await;
             state.previous_turn_settings()
@@ -1579,14 +1580,16 @@ impl Session {
             .await;
         let extension_sections = self.build_extension_context_sections().await;
         crate::context_manager::updates::build_settings_update_items(
-            reference_context_item,
-            previous_turn_settings.as_ref(),
-            current_context,
-            shell.as_ref(),
-            exec_policy.as_ref(),
-            self.features.enabled(Feature::Personality),
-            capability_sections,
-            extension_sections,
+            crate::context_manager::updates::SettingsUpdateInput {
+                previous: reference_context_item,
+                previous_turn_settings: previous_turn_settings.as_ref(),
+                next: current_context,
+                shell: shell.as_ref(),
+                exec_policy: exec_policy.as_ref(),
+                personality_feature_enabled: self.features.enabled(Feature::Personality),
+                capability_sections,
+                extension_sections,
+            },
         )
     }
 
@@ -2774,6 +2777,7 @@ impl Session {
         };
         if let Some(model_switch_message) =
             crate::context_manager::updates::build_model_instructions_update_item(
+                reference_context_item.as_ref(),
                 previous_turn_settings.as_ref(),
                 turn_context,
             )
@@ -3098,15 +3102,17 @@ impl Session {
         let previous_manifest = reference_context_item
             .as_ref()
             .and_then(|item| item.context_manifest.as_ref());
-        let assembly_result = crate::context_manager::manifest::assemble_turn_context_with_policy(
-            &context_items,
-            previous_manifest,
-            &manifest_options,
-            &assembly_policy,
+        let controller_decision = crate::context_manager::ContextController::assemble_turn_context(
+            turn_context,
+            crate::context_manager::ContextControllerAssembly {
+                context_items,
+                previous_manifest,
+                manifest_options: &manifest_options,
+                assembly_policy: &assembly_policy,
+            },
         );
-        let context_items = assembly_result.context_items;
-        let mut turn_context_item = turn_context.to_turn_context_item();
-        turn_context_item.context_manifest = assembly_result.context_manifest;
+        let context_items = controller_decision.context_items;
+        let turn_context_item = controller_decision.turn_context_item;
         if !context_items.is_empty() {
             self.record_conversation_items(turn_context, &context_items)
                 .await;

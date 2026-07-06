@@ -125,6 +125,7 @@ codex-rs/core/src/context/contextual_user_message_tests.rs
 codex-rs/core/src/context/extension_prompt_fragment.rs
 codex-rs/core/src/context/mod.rs
 codex-rs/core/src/context_manager/budget_planner.rs
+codex-rs/core/src/context_manager/controller.rs
 codex-rs/core/src/context_manager/history.rs
 codex-rs/core/src/context_manager/history_tests.rs
 codex-rs/core/src/context_manager/manifest.rs

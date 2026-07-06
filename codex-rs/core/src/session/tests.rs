@@ -35,6 +35,7 @@ use codex_protocol::AgentPath;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
 use codex_protocol::account::PlanType as AccountPlanType;
+use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::config_types::TrustLevel;
 use codex_protocol::exec_output::ExecToolCallOutput;
@@ -6607,6 +6608,201 @@ async fn build_settings_update_items_manifest_uses_semantic_contribution_sources
     assert_eq!(manifest.omitted_entries, 0);
     assert!(manifest.omitted_sources.is_empty());
     assert!(!manifest.truncated);
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_persisted_reference_model_for_model_switch_diff() {
+    let (session, previous_context) = make_session_and_context().await;
+    let next_model = if previous_context.model_info.slug == "gpt-5.4" {
+        "gpt-5.2"
+    } else {
+        "gpt-5.4"
+    };
+    let current_context = previous_context
+        .with_model(next_model.to_string(), &session.services.models_manager)
+        .await;
+    let mut previous_context_item = previous_context.to_turn_context_item();
+    let previous_context_items = session.build_initial_context(&previous_context).await;
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&previous_context_items);
+    session
+        .set_previous_turn_settings(Some(PreviousTurnSettings {
+            model: current_context.model_info.slug.clone(),
+            realtime_active: Some(current_context.realtime_active),
+        }))
+        .await;
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("model switch update should produce a manifest");
+
+    assert!(
+        developer_texts
+            .iter()
+            .any(|text| text.contains("<model_switch>")),
+        "expected persisted reference context model to drive model-switch diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:model_switch:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_permissions_exec_policy_diff() {
+    let (mut session, mut previous_context) = make_session_and_context().await;
+    previous_context.approval_policy =
+        codex_config::Constrained::allow_any(AskForApproval::OnRequest);
+    let mut previous_context_item = previous_context.to_turn_context_item();
+    let previous_context_items = session.build_initial_context(&previous_context).await;
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&previous_context_items);
+
+    let mut exec_policy = Policy::empty();
+    exec_policy
+        .add_prefix_rule(&["git".to_string(), "pull".to_string()], Decision::Allow)
+        .expect("add approved prefix rule");
+    session.services.exec_policy = Arc::new(ExecPolicyManager::new(Arc::new(exec_policy)));
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &previous_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("permissions update should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("Approved command prefixes") && text.contains(r#"["git", "pull"]"#)
+        }),
+        "expected exec-policy prefix update from manifest hash diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:permissions:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_personality_spec_diff() {
+    let (session, turn_context, _rx_event) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::from_api_key("Test API Key"),
+        Vec::new(),
+        |config| {
+            config.model = Some("exp-codex-personality".to_string());
+            config.personality = Some(Personality::Pragmatic);
+            config
+                .features
+                .enable(Feature::Personality)
+                .expect("personality feature should be enableable in tests");
+        },
+    )
+    .await;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let stale_personality_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: crate::context::PersonalitySpecInstructions::new("stale personality guidance")
+                .render(),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_personality_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), turn_context.as_ref())
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("personality update should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<personality_spec>")
+                && text.contains("deeply pragmatic, effective software engineer")
+        }),
+        "expected personality spec update from manifest hash diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:personality:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_environment_shell_diff() {
+    let (session, turn_context) = make_session_and_context().await;
+    let session_shell = session.user_shell();
+    let current_environment_text = crate::context::EnvironmentContext::from_turn_context(
+        &turn_context,
+        session_shell.as_ref(),
+    )
+    .render();
+    let current_shell_tag = format!("<shell>{}</shell>", session_shell.name());
+    assert!(
+        current_environment_text.contains(&current_shell_tag),
+        "expected rendered environment to contain current shell tag, got {current_environment_text}"
+    );
+    let stale_environment_text =
+        current_environment_text.replace(&current_shell_tag, "<shell>stale-shell</shell>");
+    assert_ne!(stale_environment_text, current_environment_text);
+
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let stale_environment_item = ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: stale_environment_text,
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_environment_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let user_texts = user_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("environment update should produce a manifest");
+
+    assert!(
+        user_texts.iter().any(|text| {
+            text.contains("<environment_context>")
+                && text.contains(&current_shell_tag)
+                && !text.contains("stale-shell")
+        }),
+        "expected environment shell update from manifest hash diff, got {user_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:contextual_user:environment:0"]
+    );
     assert!(manifest.has_replay_integrity());
 }
 

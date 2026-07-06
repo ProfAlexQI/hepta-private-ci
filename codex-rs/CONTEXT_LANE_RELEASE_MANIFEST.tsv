@@ -10,6 +10,7 @@ codex-rs/core/src/context/contextual_user_message_tests.rs	rust_context	hepta-co
 codex-rs/core/src/context/extension_prompt_fragment.rs	rust_context	hepta-context	required
 codex-rs/core/src/context/mod.rs	rust_context	hepta-context	required
 codex-rs/core/src/context_manager/budget_planner.rs	rust_context_manager	hepta-context	required
+codex-rs/core/src/context_manager/controller.rs	rust_context_manager	hepta-context	required
 codex-rs/core/src/context_manager/history.rs	rust_context_manager	hepta-context	required
 codex-rs/core/src/context_manager/history_tests.rs	rust_context_manager	hepta-context	required
 codex-rs/core/src/context_manager/manifest.rs	rust_context_manager	hepta-context	required

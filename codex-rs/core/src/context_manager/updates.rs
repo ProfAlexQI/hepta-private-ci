@@ -18,6 +18,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::TurnContextItem;
+use codex_protocol::protocol::TurnContextManifestItem;
 use codex_protocol::protocol::stable_turn_context_manifest_replay_hash;
 
 mod capability;
@@ -38,8 +39,16 @@ fn build_environment_update_item(
     }
 
     let prev = previous?;
-    let prev_context = EnvironmentContext::from_turn_context_item(prev, shell.name().to_string());
     let next_context = EnvironmentContext::from_turn_context(next, shell);
+    if let Some(previous_manifest) = prev.context_manifest.as_ref()
+        && let Some(previous_hash) = previous_manifest_source_hash(previous_manifest, "environment")
+    {
+        let next_text = next_context.render();
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
+    }
+
+    let prev_context = EnvironmentContext::from_turn_context_item(prev, shell.name().to_string());
     if prev_context.equals_except_shell(&next_context) {
         return None;
     }
@@ -56,6 +65,14 @@ fn build_permissions_update_item(
         return None;
     }
 
+    let next_text = build_permissions_update_text(next, exec_policy);
+    if let Some(previous_manifest) = previous.and_then(|item| item.context_manifest.as_ref())
+        && let Some(previous_hash) = previous_manifest_source_hash(previous_manifest, "permissions")
+    {
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
+    }
+
     let prev = previous?;
     if prev.permission_profile() == next.permission_profile()
         && prev.approval_policy == next.approval_policy.value()
@@ -63,19 +80,21 @@ fn build_permissions_update_item(
         return None;
     }
 
-    Some(
-        PermissionsInstructions::from_permission_profile(
-            &next.permission_profile,
-            next.approval_policy.value(),
-            next.config.approvals_reviewer,
-            exec_policy,
-            #[allow(deprecated)]
-            &next.cwd,
-            next.features.enabled(Feature::ExecPermissionApprovals),
-            next.features.enabled(Feature::RequestPermissionsTool),
-        )
-        .render(),
+    Some(next_text)
+}
+
+fn build_permissions_update_text(next: &TurnContext, exec_policy: &Policy) -> String {
+    PermissionsInstructions::from_permission_profile(
+        &next.permission_profile,
+        next.approval_policy.value(),
+        next.config.approvals_reviewer,
+        exec_policy,
+        #[allow(deprecated)]
+        &next.cwd,
+        next.features.enabled(Feature::ExecPermissionApprovals),
+        next.features.enabled(Feature::RequestPermissionsTool),
     )
+    .render()
 }
 
 fn build_collaboration_mode_update_item(
@@ -153,15 +172,21 @@ fn build_personality_update_item(
         return None;
     }
 
-    if let Some(personality) = next.personality
-        && next.personality != previous.personality
+    let next_text = build_personality_update_text(next)?;
+    if let Some(previous_manifest) = previous.context_manifest.as_ref()
+        && let Some(previous_hash) = previous_manifest_source_hash(previous_manifest, "personality")
     {
-        let model_info = &next.model_info;
-        let personality_message = personality_message_for(model_info, personality);
-        personality_message.map(|message| PersonalitySpecInstructions::new(message).render())
-    } else {
-        None
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
     }
+
+    (next.personality != previous.personality).then_some(next_text)
+}
+
+fn build_personality_update_text(next: &TurnContext) -> Option<String> {
+    let personality = next.personality?;
+    personality_message_for(&next.model_info, personality)
+        .map(|message| PersonalitySpecInstructions::new(message).render())
 }
 
 pub(crate) fn personality_message_for(
@@ -176,11 +201,15 @@ pub(crate) fn personality_message_for(
 }
 
 pub(crate) fn build_model_instructions_update_item(
+    previous: Option<&TurnContextItem>,
     previous_turn_settings: Option<&PreviousTurnSettings>,
     next: &TurnContext,
 ) -> Option<String> {
-    let previous_turn_settings = previous_turn_settings?;
-    if previous_turn_settings.model == next.model_info.slug {
+    let previous_model = previous
+        .filter(|item| item.context_manifest.is_some())
+        .map(|item| item.model.as_str())
+        .or_else(|| previous_turn_settings.map(|settings| settings.model.as_str()))?;
+    if previous_model == next.model_info.slug {
         return None;
     }
 
@@ -255,12 +284,42 @@ fn manifest_text_hash(text: &str) -> String {
     stable_turn_context_manifest_replay_hash(&format!("text:{text}\n"))
 }
 
+fn previous_manifest_source_hash(
+    previous_manifest: &TurnContextManifestItem,
+    source_id: &str,
+) -> Option<String> {
+    previous_manifest
+        .entries
+        .iter()
+        .find(|entry| manifest_source_id(&entry.source) == Some(source_id))
+        .map(|entry| entry.text_hash.clone())
+}
+
+fn manifest_source_id(source: &str) -> Option<&str> {
+    let mut parts = source.split(':');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some("turn_context"), Some(_slot), Some(source_id)) => Some(source_id),
+        _ => None,
+    }
+}
+
 pub(crate) fn build_developer_update_item(text_sections: Vec<String>) -> Option<ResponseItem> {
     build_text_message("developer", text_sections)
 }
 
 pub(crate) fn build_contextual_user_message(text_sections: Vec<String>) -> Option<ResponseItem> {
     build_text_message("user", text_sections)
+}
+
+pub(crate) struct SettingsUpdateInput<'a> {
+    pub(crate) previous: Option<&'a TurnContextItem>,
+    pub(crate) previous_turn_settings: Option<&'a PreviousTurnSettings>,
+    pub(crate) next: &'a TurnContext,
+    pub(crate) shell: &'a Shell,
+    pub(crate) exec_policy: &'a Policy,
+    pub(crate) personality_feature_enabled: bool,
+    pub(crate) capability_sections: CapabilityContextSections,
+    pub(crate) extension_sections: ExtensionContextSections,
 }
 
 fn build_text_message(role: &str, text_sections: Vec<String>) -> Option<ResponseItem> {
@@ -281,20 +340,21 @@ fn build_text_message(role: &str, text_sections: Vec<String>) -> Option<Response
     })
 }
 
-pub(crate) fn build_settings_update_items(
-    previous: Option<&TurnContextItem>,
-    previous_turn_settings: Option<&PreviousTurnSettings>,
-    next: &TurnContext,
-    shell: &Shell,
-    exec_policy: &Policy,
-    personality_feature_enabled: bool,
-    capability_sections: CapabilityContextSections,
-    extension_sections: ExtensionContextSections,
-) -> Vec<ResponseItem> {
+pub(crate) fn build_settings_update_items(input: SettingsUpdateInput<'_>) -> Vec<ResponseItem> {
     // TODO(ccunningham): build_settings_update_items still does not cover every
     // model-visible item emitted by build_initial_context. Persist the remaining
     // inputs or add explicit replay events so fork/resume can diff everything
     // deterministically.
+    let SettingsUpdateInput {
+        previous,
+        previous_turn_settings,
+        next,
+        shell,
+        exec_policy,
+        personality_feature_enabled,
+        capability_sections,
+        extension_sections,
+    } = input;
     let mut contextual_user_sections: Vec<String> = [
         build_user_instructions_update_item(previous, next),
         build_environment_update_item(previous, next, shell),
@@ -305,7 +365,7 @@ pub(crate) fn build_settings_update_items(
     let mut developer_update_sections: Vec<String> = [
         // Keep model-switch instructions first so model-specific guidance is read before
         // any other context diffs on this turn.
-        build_model_instructions_update_item(previous_turn_settings, next),
+        build_model_instructions_update_item(previous, previous_turn_settings, next),
         build_permissions_update_item(previous, next, exec_policy),
         build_developer_instructions_update_item(previous, next),
         build_collaboration_mode_update_item(previous, next),
