@@ -17,6 +17,7 @@ mod tool_discovery;
 mod tool_executor;
 mod tool_output;
 mod tool_payload;
+mod tool_registry_inventory;
 mod tool_spec;
 
 #[cfg(feature = "code-mode-v8")]
@@ -89,6 +90,15 @@ pub use tool_executor::ToolExposure;
 pub use tool_output::JsonToolOutput;
 pub use tool_output::ToolOutput;
 pub use tool_payload::ToolPayload;
+pub use tool_registry_inventory::ToolRegistryInventory;
+pub use tool_registry_inventory::ToolRegistryInventoryApprovalKind;
+pub use tool_registry_inventory::ToolRegistryInventoryEntry;
+pub use tool_registry_inventory::ToolRegistryInventorySideEffectLevel;
+pub use tool_registry_inventory::ToolRegistryInventorySource;
+pub use tool_registry_inventory::ToolRegistryInvocationGuardDecision;
+pub use tool_registry_inventory::ToolRegistryInvocationGuardEntry;
+pub use tool_registry_inventory::ToolRegistryInvocationGuardReport;
+pub use tool_registry_inventory::ToolRegistryInvocationGuardRoute;
 pub use tool_spec::ResponsesApiWebSearchFilters;
 pub use tool_spec::ResponsesApiWebSearchUserLocation;
 pub use tool_spec::ToolSpec;
