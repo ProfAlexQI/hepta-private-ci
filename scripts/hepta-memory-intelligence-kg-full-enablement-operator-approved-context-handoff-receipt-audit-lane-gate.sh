@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(HEPTA_REPO_ROOT="$REPO_ROOT" bash "$REPO_ROOT/scripts/lib/hepta-native-route-count.sh")}"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
 
 cd "$REPO_ROOT"
@@ -66,7 +67,7 @@ jq -e '
 NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = 167;' \
+  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = ${EXPECTED_ROUTE_COUNT};" \
   "native gateway route/source command count includes context handoff receipt audit lane and preserved systems routes"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
