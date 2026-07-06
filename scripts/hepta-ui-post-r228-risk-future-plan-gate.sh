@@ -3,6 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Product-readiness static marker: full_product_root_risk_future_plan_ready:false
 READINESS_DIR="${HEPTA_UI_PRODUCT_READINESS_DIR:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.r228-command-palette-item-prismatic-rim-light-glass-targeted-20260626215700}"
 CONTROL_BROWSER_REPORT_PATH="${HEPTA_UI_RISK_FUTURE_PLAN_CONTROL_BROWSER_REPORT_PATH:-$READINESS_DIR/control-ui-browser/control-ui-browser-smoke.json}"
 OLD_CONTROL_BROWSER_REPORT_PATH="${HEPTA_UI_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:-}"

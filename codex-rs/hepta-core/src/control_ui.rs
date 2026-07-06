@@ -1349,7 +1349,10 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
         && CONTROL_UI_STYLES_CSS.contains("--hepta_runtime-2026-5-2-grouped-message-max-width")
         && CONTROL_UI_STYLES_CSS
             .contains("width:min(100%,var(--hepta_runtime-2026-5-2-grouped-message-max-width))")
-        && !CONTROL_UI_STYLES_CSS.contains("overflow-wrap: anywhere");
+        && !CONTROL_UI_STYLES_CSS.contains("overflow-wrap: anywhere")
+        && !CONTROL_UI_STYLES_CSS.contains("overflow-wrap:anywhere")
+        && !CONTROL_UI_STYLES_CSS.contains("word-break:break-word")
+        && !CONTROL_UI_STYLES_CSS.contains("word-break:break-all");
     let app_has_ios_pwa_bounds_guard = CONTROL_UI_RUST_RENDERER_MARKERS
         .contains("dynamic-viewport-bounds")
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("safe-area-inset-bottom")

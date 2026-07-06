@@ -136,7 +136,8 @@ RISK_FUTURE_PLAN_MARKDOWN_PATH="$RISK_FUTURE_PLAN_DIR/risk-future-plan.md"
 POST_R228_RISK_FUTURE_PLAN_REPORT_PATH="$OUT_DIR/ui-risk-future-plan-post-r228-gate.json"
 POST_R228_RISK_FUTURE_PLAN_DIR="$OUT_DIR/risk-future-plan-post-r228"
 POST_R228_RISK_FUTURE_PLAN_MARKDOWN_PATH="$POST_R228_RISK_FUTURE_PLAN_DIR/risk-future-plan-post-r228.md"
-POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH="${HEPTA_UI_POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:-/Users/qianqi/.openclaw/tmp/hepta-ui-product-readiness.r227-command-palette-input-icon-prismatic-light-glass-targeted-20260626214700/control-ui-browser/control-ui-browser-smoke.json}"
+POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH_SUPPLIED="${HEPTA_UI_POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:+1}"
+POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH="${HEPTA_UI_POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:-$OUT_DIR/post-r228-old-evidence-rejected/control-ui-browser-smoke.json}"
 NATIVE_WINDOW_REPORT_PATH="$OUT_DIR/native-window-smoke.json"
 NATIVE_WINDOW_ROUTE_REPORT_PATH="$OUT_DIR/native-window-routes-smoke.json"
 NATIVE_WINDOW_SECONDARY_REPORT_PATH="$OUT_DIR/native-window-secondary-smoke.json"
@@ -366,8 +367,8 @@ STATIC_MARKERS=(
 	  'apps/hepta-control-ui/styles.css|stslg'
 	  'apps/hepta-control-ui/index.html|data-control-ui-composer-popover-search="light-glass"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-composer-popover-search="light-glass"'
-	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-input="light-glass" type="search" placeholder="Static Rust command index"'
-	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-input="light-glass" type="search" placeholder="Static Rust command index"'
+	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-input="light-glass" type="search" placeholder="Search"'
+	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-input="light-glass" type="search" placeholder="Search"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-command-palette-result="light-glass"'
 	  'codex-rs/hepta-core/src/control_ui.rs|data-control-ui-command-palette-result="light-glass"'
 	  'apps/hepta-control-ui/index.html|data-control-ui-micro-surface="routing-safe-preview"'
@@ -8600,7 +8601,33 @@ run_risk_future_plan_gate() {
   ' "$RISK_FUTURE_PLAN_REPORT_PATH" >/dev/null
 }
 
+prepare_post_r228_old_control_browser_report() {
+  if [[ -n "$POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH_SUPPLIED" ]]; then
+    return
+  fi
+
+  mkdir -p "$(dirname "$POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH")"
+  cat >"$POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH" <<'JSON'
+{
+  "status": "ready",
+  "evidence_mode": "local_r227_rejected_sentinel",
+  "control_ui_command_palette_item_prismatic_rim_light_glass_ready": false,
+  "density_qa": {
+    "command_palette_item_prismatic_rim_light_glass_ready": false
+  },
+  "claim_boundary": {
+    "old_r227_evidence_rejected": true,
+    "live_product_claim_ready": false,
+    "public_distribution_claim_ready": false,
+    "release_claim_ready": false
+  }
+}
+JSON
+}
+
 run_post_r228_risk_future_plan_gate() {
+  prepare_post_r228_old_control_browser_report
+
   run_logged_gate \
     "UI post-r228 risk future plan gate" \
     "$POST_R228_RISK_FUTURE_PLAN_LOG" \

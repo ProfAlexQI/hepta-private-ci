@@ -614,7 +614,7 @@ body[data-view=chat] [data-control-ui-command-palette-result=light-glass]:is(:ho
 .command-palette__kind .hepta-svg-icon{width:14px;height:14px;flex:0 0 14px}
 .command-palette__copy{display:grid;gap:3px;min-width:0}
 .command-palette__copy strong{font-size:13px}
-.command-palette__copy small{white-space:normal;overflow-wrap:anywhere;line-height:1.18}
+.command-palette__copy small{white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.18}
 textarea,
 input[type="search"],
 input[type="text"]{

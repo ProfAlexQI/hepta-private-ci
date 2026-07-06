@@ -679,7 +679,7 @@ if ! grep -Fq 'data-control-ui-command-palette-result=light-glass' "$CONTROL_STY
 fi
 
 for source in "$CONTROL_HTML_SOURCE" "$CONTROL_RUST_SOURCE"; do
-  if ! grep -Fq 'data-control-ui-command-palette-input="light-glass" type="search" placeholder="Static Rust command index"' "$source"; then
+  if ! grep -Fq 'data-control-ui-command-palette-input="light-glass" type="search" placeholder="Search"' "$source"; then
     echo "Control UI source is missing command palette input light-glass marker: $source" >&2
     exit 1
   fi
