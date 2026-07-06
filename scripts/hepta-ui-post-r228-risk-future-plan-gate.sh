@@ -191,10 +191,16 @@ jq -n \
       and ($full_root_artifact_summary.backend_delivery_audit_delivery_receipt_present // false) == true
       and ($full_root_artifact_summary.backend_delivery_audit_delivery_receipt_valid // false) == true
       and ($full_root_artifact_summary.backend_delivery_audit_backend_delivery_claim_ready // false) == true;
-    def backend_real_receipt_ready:
+    def backend_real_receipt_returned:
       full_root_post_r228_wiring_ready
       and ($full_root_artifact_summary.backend_receipt_valid // false) == true
-      and ($full_root_artifact_summary.backend_receipt_present // false) == true;
+      and ($full_root_artifact_summary.backend_receipt_present // false) == true
+      and ($full_root_artifact_summary.backend_receipt_refresh_lock_real_receipt_present // false) == true
+      and $full_root_artifact_summary.backend_receipt_refresh_lock_simulated_receipt_input_present == false;
+    def backend_receipt_full_hard_refresh_ready:
+      backend_real_receipt_returned
+      and ($full_root_artifact_summary.backend_receipt_refresh_lock_hard_true_window_ready // false) == true
+      and (($full_root_artifact_summary.ui_backend_receipt_refresh_lock.claim_boundary.backend_receipt_claim_ready // false) == true);
     def release_artifact_roundtrip_ready:
       full_root_post_r228_wiring_ready
       and ($full_root_artifact_summary.release_artifact_valid_for_release_claim // false) == true
@@ -211,11 +217,16 @@ jq -n \
         owner_lane:"backend_contract",
         state:"not_claimed_by_ui_lane"
       } end),
-      (if backend_real_receipt_ready then empty else {
+      (if backend_real_receipt_returned then empty else {
         id:"backend_real_receipt_return",
         owner_lane:"backend_contract",
         state:"not_claimed_by_ui_lane"
       } end),
+      (if (backend_real_receipt_returned and (backend_receipt_full_hard_refresh_ready | not)) then {
+        id:"ui_refresh_after_real_receipt",
+        owner_lane:"hepta-ui",
+        state:"real_backend_receipt_returned_full_hard_refresh_required"
+      } else empty end),
       (if release_artifact_roundtrip_ready then empty else {
         id:"release_artifact_roundtrip_and_signed_artifact_gate",
         owner_lane:"release_operator",
@@ -228,8 +239,8 @@ jq -n \
       if full_root_post_r228_wiring_ready then
         [
           (if backend_delivery_receipt_ready then empty else "return_backend_delivery_receipt_bound_to_dispatch_archive" end),
-          (if backend_real_receipt_ready then empty else "execute_backend_dispatch_packet_for_first_five_contracts_and_return_real_receipt" end),
-          (if backend_real_receipt_ready then empty else "rerun_ui_after_real_backend_receipt" end),
+          (if backend_real_receipt_returned then empty else "execute_backend_dispatch_packet_for_first_five_contracts_and_return_real_receipt" end),
+          (if (backend_real_receipt_returned and (backend_receipt_full_hard_refresh_ready | not)) then "rerun_ui_after_real_backend_receipt" else empty end),
           (if release_artifact_roundtrip_ready then empty else "collect_real_signed_notarized_stapled_artifact_before_public_distribution" end)
         ]
       else
@@ -359,7 +370,8 @@ jq -n \
         full_root_readiness_post_r228_fields_ready:artifact_post_r228_ready($full_root_readiness.artifact_summary),
         full_root_artifact_summary_post_r228_fields_ready:artifact_post_r228_ready($full_root_artifact_summary),
         backend_delivery_receipt_ready:backend_delivery_receipt_ready,
-        backend_real_receipt_ready:backend_real_receipt_ready,
+        backend_real_receipt_ready:backend_real_receipt_returned,
+        backend_receipt_full_hard_refresh_ready:backend_receipt_full_hard_refresh_ready,
         release_artifact_roundtrip_ready:release_artifact_roundtrip_ready
       },
       claim_boundary:{
@@ -367,8 +379,8 @@ jq -n \
         local_control_ui_targeted_evidence_ready:current_required_fields_ready,
         full_product_root_risk_future_plan_ready:full_root_post_r228_wiring_ready,
         backend_delivery_claim_ready:backend_delivery_receipt_ready,
-        real_backend_receipt_claim_ready:backend_real_receipt_ready,
-        backend_receipt_claim_ready:backend_real_receipt_ready,
+        real_backend_receipt_claim_ready:backend_real_receipt_returned,
+        backend_receipt_claim_ready:backend_receipt_full_hard_refresh_ready,
         backend_adapter_promoted:false,
         live_runtime_mutation:false,
         live_product_claim_ready:false,
@@ -463,7 +475,8 @@ jq -e '
   and .source_alignment.four_viewport_ready == true
   and .source_alignment.full_root_post_r228_wiring_ready == .claim_boundary.full_product_root_risk_future_plan_ready
   and .source_alignment.backend_delivery_receipt_ready == .claim_boundary.backend_delivery_claim_ready
-  and .source_alignment.backend_real_receipt_ready == .claim_boundary.backend_receipt_claim_ready
+  and .source_alignment.backend_real_receipt_ready == .claim_boundary.real_backend_receipt_claim_ready
+  and .source_alignment.backend_receipt_full_hard_refresh_ready == .claim_boundary.backend_receipt_claim_ready
   and (.source_alignment.release_artifact_roundtrip_ready | type) == "boolean"
   and .claim_boundary.local_post_r228_risk_future_plan_ready == true
   and .claim_boundary.live_product_claim_ready == false

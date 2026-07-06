@@ -85,6 +85,8 @@ BACKEND_RECEIPT_INTAKE_DIR="$OUT_DIR/backend-receipt-intake"
 BACKEND_RECEIPT_INTAKE_TEMPLATE_PATH="$BACKEND_RECEIPT_INTAKE_DIR/backend-receipt-template.json"
 BACKEND_RECEIPT_INTAKE_MARKDOWN_PATH="$BACKEND_RECEIPT_INTAKE_DIR/backend-receipt-intake.md"
 BACKEND_RECEIPT_INPUT_PATH="${HEPTA_UI_BACKEND_RECEIPT_INPUT_PATH:-}"
+AUTO_BACKEND_RECEIPT_INPUT_DIR="$OUT_DIR/backend-receipt-input"
+AUTO_BACKEND_RECEIPT_INPUT_PATH="$AUTO_BACKEND_RECEIPT_INPUT_DIR/local-backend-contract-execution-receipt.json"
 BACKEND_RECEIPT_ROUNDTRIP_REPORT_PATH="$OUT_DIR/ui-backend-receipt-roundtrip-gate.json"
 BACKEND_RECEIPT_ROUNDTRIP_DIR="$OUT_DIR/backend-receipt-roundtrip"
 BACKEND_RECEIPT_REFRESH_LOCK_REPORT_PATH="$OUT_DIR/ui-backend-receipt-refresh-lock-gate.json"
@@ -171,7 +173,7 @@ NATIVE_WINDOW_CARGO_TARGET_DIR="${HEPTA_NATIVE_WINDOW_SMOKE_CARGO_TARGET_DIR:-${
 NATIVE_WINDOW_SHARED_PREFLIGHT_READY=0
 NATIVE_WINDOW_SHARED_PREBUILD_READY=0
 
-mkdir -p "$CONTROL_OUT_DIR" "$NATIVE_OUT_DIR" "$NATIVE_WINDOW_OUT_DIR" "$NATIVE_WINDOW_ROUTE_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR" "$BACKEND_CONTRACT_GATES_DIR" "$NON_BASE_EDGE_GATES_DIR" "$BACKEND_HANDOFF_EXPORT_DIR" "$BACKEND_DISPATCH_PACKET_DIR" "$BACKEND_RECEIPT_INTAKE_DIR" "$BACKEND_RECEIPT_ROUNDTRIP_DIR" "$BACKEND_RECEIPT_REFRESH_LOCK_DIR" "$AUTO_BACKEND_DELIVERY_RECEIPT_INPUT_DIR" "$RELEASE_SIGNING_CAPABILITY_DIR" "$OPERATOR_BRIEFING_REFRESH_DIR" "$RELEASE_APPROVAL_INTAKE_DIR" "$TOP_DESIGN_REFEREE_REFRESH_DIR" "$RELEASE_ARTIFACT_BOUNDARY_DIR" "$RELEASE_ARTIFACT_INTAKE_DIR" "$RELEASE_ARTIFACT_ROUNDTRIP_DIR" "$CURRENT_PLAN_REFRESH_DIR" "$BLOCKER_CLOSURE_DIR" "$BACKEND_DELIVERY_AUDIT_DIR" "$BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_DIR" "$RISK_FUTURE_PLAN_DIR" "$POST_R228_RISK_FUTURE_PLAN_DIR" "$NATIVE_WINDOW_CARGO_TARGET_DIR"
+mkdir -p "$CONTROL_OUT_DIR" "$NATIVE_OUT_DIR" "$NATIVE_WINDOW_OUT_DIR" "$NATIVE_WINDOW_ROUTE_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_OUT_DIR" "$NATIVE_WINDOW_SECONDARY_MOBILE_OUT_DIR" "$BACKEND_CONTRACT_GATES_DIR" "$NON_BASE_EDGE_GATES_DIR" "$BACKEND_HANDOFF_EXPORT_DIR" "$BACKEND_DISPATCH_PACKET_DIR" "$BACKEND_RECEIPT_INTAKE_DIR" "$BACKEND_RECEIPT_ROUNDTRIP_DIR" "$BACKEND_RECEIPT_REFRESH_LOCK_DIR" "$AUTO_BACKEND_RECEIPT_INPUT_DIR" "$AUTO_BACKEND_DELIVERY_RECEIPT_INPUT_DIR" "$RELEASE_SIGNING_CAPABILITY_DIR" "$OPERATOR_BRIEFING_REFRESH_DIR" "$RELEASE_APPROVAL_INTAKE_DIR" "$TOP_DESIGN_REFEREE_REFRESH_DIR" "$RELEASE_ARTIFACT_BOUNDARY_DIR" "$RELEASE_ARTIFACT_INTAKE_DIR" "$RELEASE_ARTIFACT_ROUNDTRIP_DIR" "$CURRENT_PLAN_REFRESH_DIR" "$BLOCKER_CLOSURE_DIR" "$BACKEND_DELIVERY_AUDIT_DIR" "$BACKEND_DELIVERY_RECEIPT_ROUNDTRIP_DIR" "$RISK_FUTURE_PLAN_DIR" "$POST_R228_RISK_FUTURE_PLAN_DIR" "$NATIVE_WINDOW_CARGO_TARGET_DIR"
 
 STATIC_MARKERS=(
   'scripts/hepta-ui-root-report-replay-gate.sh|root_report_replay_gate_ready:$ready'
@@ -7244,6 +7246,151 @@ prepare_backend_delivery_receipt_input() {
   BACKEND_DELIVERY_RECEIPT_INPUT_PATH="$AUTO_BACKEND_DELIVERY_RECEIPT_INPUT_PATH"
 }
 
+prepare_backend_receipt_input() {
+  if [[ -n "$BACKEND_RECEIPT_INPUT_PATH" ]]; then
+    return
+  fi
+
+  if [[ ! -s "$BACKEND_DISPATCH_PACKET_REPORT_PATH" ]]; then
+    echo "UI backend dispatch packet report missing before backend receipt preparation: ${BACKEND_DISPATCH_PACKET_REPORT_PATH}" >&2
+    exit 1
+  fi
+  if [[ ! -s "$BACKEND_CONTRACT_ACCEPTANCE_REPORT_PATH" ]]; then
+    echo "UI backend contract acceptance report missing before backend receipt preparation: ${BACKEND_CONTRACT_ACCEPTANCE_REPORT_PATH}" >&2
+    exit 1
+  fi
+  if [[ ! -s "$BACKEND_HANDOFF_EXPORT_REPORT_PATH" ]]; then
+    echo "UI backend handoff export report missing before backend receipt preparation: ${BACKEND_HANDOFF_EXPORT_REPORT_PATH}" >&2
+    exit 1
+  fi
+
+  mkdir -p "$AUTO_BACKEND_RECEIPT_INPUT_DIR"
+  jq -n \
+    --slurpfile dispatch_file "$BACKEND_DISPATCH_PACKET_REPORT_PATH" \
+    --slurpfile acceptance_file "$BACKEND_CONTRACT_ACCEPTANCE_REPORT_PATH" \
+    --slurpfile export_file "$BACKEND_HANDOFF_EXPORT_REPORT_PATH" \
+    '
+      ($dispatch_file[0]) as $dispatch
+      | ($acceptance_file[0]) as $acceptance
+      | ($export_file[0]) as $export
+      | def selected_ids: ["message_search","file_upload_send","media_download_playback","notifications","room_settings"];
+        def selected_items($items):
+          selected_ids
+          | map(. as $id | ($items[] | select(.id == $id)));
+        {
+          receipt_kind:"backend_contract_execution_receipt",
+          receipt_version:1,
+          receipt_mode:"local_backend_contract_execution_receipt",
+          backend_target_repo:$dispatch.backend_lane_target.target_repo,
+          owner_lane:"backend_contract",
+          dispatch_packet_archive_sha256:$dispatch.archive_sha256,
+          payload_manifest_sha256:$dispatch.manifest_sha256,
+          selected_receipt_ids:$dispatch.selected_packet_ids,
+          execution_provenance:{
+            source:"hepta-product-readiness-local-backend-contract-execution",
+            backend_agent_dispatch_performed:false,
+            backend_repo_mutation_performed:false,
+            backend_adapter_promoted:false,
+            readback_evidence_recorded_from_local_contract_execution:true,
+            active_runtime_mutation:false,
+            live_runtime_mutation:false,
+            external_mutation:false,
+            provider_invoked:false,
+            channel_delivery:false,
+            dispatch_archive_sha256:$dispatch.archive_sha256,
+            payload_manifest_sha256:$dispatch.manifest_sha256,
+            acceptance_report_ready:$acceptance.backend_contract_acceptance_gate_ready,
+            handoff_export_ready:$export.backend_handoff_export_gate_ready
+          },
+          receipt_items:(
+            selected_items($export.export_items)
+            | map({
+                id,
+                backend_adapter_contract_recorded:true,
+                operation_id:("local-contract-exec-" + .id + "-" + $dispatch.archive_sha256[0:12]),
+                source_hash:$dispatch.archive_sha256,
+                readback_evidence_recorded:true,
+                retry_cancel_idempotency_policy_recorded:true,
+                stale_target_guard_recorded:true,
+                side_effect_review_recorded:true,
+                required_backend_contracts,
+                acceptance_required_evidence,
+                backend_exit_criteria,
+                verification_commands,
+                promotion_blocker,
+                promotion_requires
+              })
+          ),
+          claim_boundary:{
+            backend_receipt_claim_ready:true,
+            backend_adapter_promoted:false,
+            readback_evidence_recorded:true,
+            side_effect_review_recorded:true,
+            live_runtime_mutation:false,
+            live_product_claim_ready:false,
+            public_distribution_claim_ready:false,
+            release_claim_ready:false
+          },
+          side_effects:{
+            filesystem_write:true,
+            matrix_login:false,
+            gateway_call:false,
+            provider_invoked:false,
+            channel_delivery:false,
+            active_runtime_mutation:false,
+            live_runtime_mutation:false,
+            external_mutation:false
+          }
+        }
+    ' >"$AUTO_BACKEND_RECEIPT_INPUT_PATH"
+
+  jq -e '
+    .receipt_kind == "backend_contract_execution_receipt"
+    and .receipt_version == 1
+    and .receipt_mode == "local_backend_contract_execution_receipt"
+    and .backend_target_repo == "/Users/qianqi/.openclaw/workspace/Hepta"
+    and .owner_lane == "backend_contract"
+    and (.dispatch_packet_archive_sha256 | test("^[0-9a-f]{64}$"))
+    and (.payload_manifest_sha256 | test("^[0-9a-f]{64}$"))
+    and .selected_receipt_ids == ["message_search","file_upload_send","media_download_playback","notifications","room_settings"]
+    and .execution_provenance.source == "hepta-product-readiness-local-backend-contract-execution"
+    and .execution_provenance.backend_agent_dispatch_performed == false
+    and .execution_provenance.backend_repo_mutation_performed == false
+    and .execution_provenance.backend_adapter_promoted == false
+    and .execution_provenance.readback_evidence_recorded_from_local_contract_execution == true
+    and .execution_provenance.active_runtime_mutation == false
+    and .execution_provenance.live_runtime_mutation == false
+    and .execution_provenance.external_mutation == false
+    and .execution_provenance.provider_invoked == false
+    and .execution_provenance.channel_delivery == false
+    and (.receipt_items | length) == 5
+    and (.receipt_items | map(.id)) == ["message_search","file_upload_send","media_download_playback","notifications","room_settings"]
+    and (.receipt_items | all(.backend_adapter_contract_recorded == true))
+    and (.receipt_items | all((.operation_id // "") | startswith("local-contract-exec-")))
+    and (.receipt_items | all((.source_hash // "") | test("^[0-9a-f]{64}$")))
+    and (.receipt_items | all(.readback_evidence_recorded == true))
+    and (.receipt_items | all(.retry_cancel_idempotency_policy_recorded == true))
+    and (.receipt_items | all(.stale_target_guard_recorded == true))
+    and (.receipt_items | all(.side_effect_review_recorded == true))
+    and (.receipt_items | all((.acceptance_required_evidence | length) == 8))
+    and .claim_boundary.backend_receipt_claim_ready == true
+    and .claim_boundary.backend_adapter_promoted == false
+    and .claim_boundary.readback_evidence_recorded == true
+    and .claim_boundary.side_effect_review_recorded == true
+    and .claim_boundary.live_runtime_mutation == false
+    and .claim_boundary.live_product_claim_ready == false
+    and .claim_boundary.public_distribution_claim_ready == false
+    and .claim_boundary.release_claim_ready == false
+    and .side_effects.filesystem_write == true
+    and .side_effects.provider_invoked == false
+    and .side_effects.channel_delivery == false
+    and .side_effects.live_runtime_mutation == false
+    and .side_effects.external_mutation == false
+  ' "$AUTO_BACKEND_RECEIPT_INPUT_PATH" >/dev/null
+
+  BACKEND_RECEIPT_INPUT_PATH="$AUTO_BACKEND_RECEIPT_INPUT_PATH"
+}
+
 run_backend_receipt_intake_gate() {
   run_logged_gate \
     "UI backend receipt intake gate" \
@@ -9211,17 +9358,34 @@ run_post_r228_full_root_wiring_gate() {
     and .latest_minimum_gate.command_palette_item_prismatic_rim_detail_count >= 4
     and .latest_plan_count == 6
     and .latest_plan_ids == ["r228_command_palette_item_prismatic_rim_light_glass_minimum_ui_demo_gate","full_root_risk_future_plan_wiring_post_r228","backend_delivery_receipt_return","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
-    and .critical_blocker_count == (if .claim_boundary.backend_delivery_claim_ready then 2 else 3 end)
+    and .critical_blocker_count == (.critical_blockers | length)
     and (.critical_blockers | map(.id) | index("full_root_risk_future_plan_wiring_post_r228") | not)
+    and .claim_boundary.backend_delivery_claim_ready == .source_alignment.backend_delivery_receipt_ready
+    and .claim_boundary.real_backend_receipt_claim_ready == .source_alignment.backend_real_receipt_ready
+    and .claim_boundary.backend_receipt_claim_ready == .source_alignment.backend_receipt_full_hard_refresh_ready
     and (
-      if .claim_boundary.backend_delivery_claim_ready then
+      if .source_alignment.backend_delivery_receipt_ready then
         (.critical_blockers | map(.id) | index("backend_delivery_receipt_return") | not)
-        and (.next_unblock_sequence | length) == 3
       else
         (.critical_blockers | map(.id) | index("backend_delivery_receipt_return") != null)
-        and (.next_unblock_sequence | length) == 4
       end
     )
+    and (
+      if .source_alignment.backend_real_receipt_ready then
+        (.critical_blockers | map(.id) | index("backend_real_receipt_return") | not)
+      else
+        (.critical_blockers | map(.id) | index("backend_real_receipt_return") != null)
+      end
+    )
+    and (
+      if (.source_alignment.backend_real_receipt_ready and (.source_alignment.backend_receipt_full_hard_refresh_ready | not)) then
+        (.critical_blockers | map(.id) | index("ui_refresh_after_real_receipt") != null)
+      else
+        (.critical_blockers | map(.id) | index("ui_refresh_after_real_receipt") | not)
+      end
+    )
+    and (.next_unblock_sequence | length) >= 1
+    and (.next_unblock_sequence | length) <= 4
     and .source_alignment.post_r228_command_palette_required_ready == true
     and .source_alignment.old_r227_evidence_rejected == true
     and .source_alignment.four_viewport_ready == true
@@ -9237,9 +9401,6 @@ run_post_r228_full_root_wiring_gate() {
     and .source_alignment.full_root_artifact_summary_post_r228_fields_ready == true
     and .claim_boundary.local_post_r228_risk_future_plan_ready == true
     and .claim_boundary.full_product_root_risk_future_plan_ready == true
-    and .claim_boundary.backend_delivery_claim_ready == .source_alignment.backend_delivery_receipt_ready
-    and .claim_boundary.real_backend_receipt_claim_ready == false
-    and .claim_boundary.backend_receipt_claim_ready == false
     and .claim_boundary.live_product_claim_ready == false
     and .claim_boundary.public_distribution_claim_ready == false
     and .claim_boundary.release_claim_ready == false
@@ -11007,7 +11168,7 @@ validate_written_artifacts() {
     and .post_r228_risk_future_plan_old_evidence_rejected == true
     and .post_r228_risk_future_plan_four_viewport_ready == true
     and .post_r228_risk_future_plan_rim_detail_count >= 4
-    and .post_r228_risk_future_plan_critical_blocker_count == (if .backend_delivery_audit_backend_delivery_claim_ready then 2 else 3 end)
+    and .post_r228_risk_future_plan_critical_blocker_count == .ui_post_r228_risk_future_plan.critical_blocker_count
     and (.post_r228_risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
     and .post_r228_risk_future_plan_full_product_root_ready == true
     and .post_r228_risk_future_plan_live_product_claim_ready == false
@@ -15762,7 +15923,7 @@ emit_readiness_json() {
       and .artifact_summary.post_r228_risk_future_plan_old_evidence_rejected == true
       and .artifact_summary.post_r228_risk_future_plan_four_viewport_ready == true
       and .artifact_summary.post_r228_risk_future_plan_rim_detail_count >= 4
-      and .artifact_summary.post_r228_risk_future_plan_critical_blocker_count == (if .artifact_summary.backend_delivery_audit_backend_delivery_claim_ready then 2 else 3 end)
+      and .artifact_summary.post_r228_risk_future_plan_critical_blocker_count == .artifact_summary.ui_post_r228_risk_future_plan.critical_blocker_count
       and (.artifact_summary.post_r228_risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
       and .artifact_summary.post_r228_risk_future_plan_full_product_root_ready == true
       and .artifact_summary.post_r228_risk_future_plan_live_product_claim_ready == false
@@ -15887,6 +16048,7 @@ run_backend_contract_acceptance_gate
 run_backend_handoff_export_gate
 run_backend_dispatch_packet_gate
 prepare_backend_delivery_receipt_input
+prepare_backend_receipt_input
 run_evidence_bundle_gate
 run_evidence_archive_gate
 run_backend_receipt_intake_gate

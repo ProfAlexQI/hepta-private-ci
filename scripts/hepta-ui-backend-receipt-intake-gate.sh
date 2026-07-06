@@ -256,6 +256,8 @@ jq -n \
       and ($receipt.side_effects.external_mutation // false) == false
       and sha_ready($receipt_sha)
       and $receipt_bytes > 0;
+    def receipt_claim($name):
+      if $receipt_present then (($receipt.claim_boundary[$name] // false) == true) else false end;
     (source_chain_ready and intake_contract_ready and (($receipt_present == false) or receipt_present_ready)) as $ready
   | {
       product:$product,
@@ -312,9 +314,9 @@ jq -n \
         local_backend_receipt_intake_ready:$ready,
         local_backend_dispatch_packet_ready:$dispatch.claim_boundary.local_backend_dispatch_packet_ready,
         backend_receipt_claim_ready:(if $receipt_present then receipt_present_ready else false end),
-        backend_adapter_promoted:(if $receipt_present then receipt_present_ready else false end),
-        readback_evidence_recorded:(if $receipt_present then receipt_present_ready else false end),
-        side_effect_review_recorded:(if $receipt_present then receipt_present_ready else false end),
+        backend_adapter_promoted:receipt_claim("backend_adapter_promoted"),
+        readback_evidence_recorded:(if $receipt_present then (receipt_present_ready and (($receipt.claim_boundary.readback_evidence_recorded // true) == true)) else false end),
+        side_effect_review_recorded:(if $receipt_present then (receipt_present_ready and (($receipt.claim_boundary.side_effect_review_recorded // true) == true)) else false end),
         live_runtime_mutation:false,
         live_product_claim_ready:false,
         public_distribution_claim_ready:false,
