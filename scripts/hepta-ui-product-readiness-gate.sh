@@ -136,6 +136,7 @@ RISK_FUTURE_PLAN_MARKDOWN_PATH="$RISK_FUTURE_PLAN_DIR/risk-future-plan.md"
 POST_R228_RISK_FUTURE_PLAN_REPORT_PATH="$OUT_DIR/ui-risk-future-plan-post-r228-gate.json"
 POST_R228_RISK_FUTURE_PLAN_DIR="$OUT_DIR/risk-future-plan-post-r228"
 POST_R228_RISK_FUTURE_PLAN_MARKDOWN_PATH="$POST_R228_RISK_FUTURE_PLAN_DIR/risk-future-plan-post-r228.md"
+POST_R228_FULL_ROOT_READINESS_INPUT_PATH="$OUT_DIR/post-r228-full-root-readiness-input.json"
 POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH_SUPPLIED="${HEPTA_UI_POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:+1}"
 POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH="${HEPTA_UI_POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH:-$OUT_DIR/post-r228-old-evidence-rejected/control-ui-browser-smoke.json}"
 NATIVE_WINDOW_REPORT_PATH="$OUT_DIR/native-window-smoke.json"
@@ -272,6 +273,7 @@ STATIC_MARKERS=(
   'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|plan_kind:"local_ui_post_r228_command_palette_item_prismatic_rim_risk_future_plan_refresh"'
   'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|r228_command_palette_item_prismatic_rim_light_glass_minimum_ui_demo_gate'
   'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|full_product_root_risk_future_plan_ready:false'
+  'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|full_product_root_risk_future_plan_ready:true'
   'scripts/hepta-ui-post-r228-risk-future-plan-gate.sh|local_post_r228_risk_future_plan_ready:$ready'
   'scripts/hepta-ui-release-operator-dry-run-gate.sh|release_operator_dry_run_gate_ready:$ready'
   'scripts/hepta-ui-release-operator-dry-run-gate.sh|release_operator_dry_run_mode:"local_manifest_denial_matrix_only"'
@@ -9040,6 +9042,127 @@ run_root_report_replay_gate() {
   ' "$ROOT_REPORT_REPLAY_REPORT_PATH" >/dev/null
 }
 
+write_post_r228_full_root_readiness_input() {
+  jq -n \
+    --slurpfile artifact_summary_file "$ARTIFACT_SUMMARY_PATH" \
+    --slurpfile root_report_replay_file "$ROOT_REPORT_REPLAY_REPORT_PATH" \
+    '
+      ($artifact_summary_file[0]) as $artifact_summary
+      | ($root_report_replay_file[0]) as $root_report_replay
+      | {
+          status:"ready",
+          ui_product_readiness_gate_ready:true,
+          artifact_summary_ready:($artifact_summary.artifact_summary_ready == true),
+          local_root_report_replay_ready:(
+            ($artifact_summary.local_root_report_replay_ready == true)
+            and ($root_report_replay.claim_boundary.local_root_report_replay_ready == true)
+          ),
+          root_report_replay_count:($root_report_replay.root_report_count // $artifact_summary.root_report_replay_count),
+          live_product_claim_ready:($artifact_summary.live_product_claim_ready == true),
+          public_distribution_claim_ready:($artifact_summary.public_distribution_claim_ready == true),
+          release_claim_ready:($artifact_summary.release_claim_ready == true),
+          artifact_summary:$artifact_summary,
+          source_alignment:{
+            root_report_replay_gate_ready:($root_report_replay.root_report_replay_gate_ready == true),
+            root_report_count:($root_report_replay.root_report_count // 0),
+            artifact_summary_post_r228_ready:($artifact_summary.ui_post_r228_risk_future_plan_gate_ready == true),
+            post_r228_full_root_ready_before_second_pass:($artifact_summary.post_r228_risk_future_plan_full_product_root_ready == true)
+          },
+          side_effects:{
+            local_loopback_server_spawned:($artifact_summary.side_effects.local_loopback_server_spawned == true),
+            matrix_login:false,
+            gateway_call:false,
+            provider_invoked:false,
+            channel_delivery:false,
+            external_mutation:false
+          }
+        }
+    ' >"$POST_R228_FULL_ROOT_READINESS_INPUT_PATH"
+
+  jq -e '
+    .status == "ready"
+    and .artifact_summary_ready == true
+    and .local_root_report_replay_ready == true
+    and .root_report_replay_count == 43
+    and .live_product_claim_ready == false
+    and .public_distribution_claim_ready == false
+    and .release_claim_ready == false
+    and .artifact_summary.ui_post_r228_risk_future_plan_gate_ready == true
+    and .artifact_summary.post_r228_risk_future_plan_old_evidence_rejected == true
+    and .artifact_summary.post_r228_risk_future_plan_four_viewport_ready == true
+    and .artifact_summary.post_r228_risk_future_plan_live_product_claim_ready == false
+    and .artifact_summary.post_r228_risk_future_plan_public_distribution_claim_ready == false
+    and .artifact_summary.post_r228_risk_future_plan_release_claim_ready == false
+    and .source_alignment.root_report_replay_gate_ready == true
+    and .source_alignment.root_report_count == 43
+    and .side_effects.external_mutation == false
+  ' "$POST_R228_FULL_ROOT_READINESS_INPUT_PATH" >/dev/null
+}
+
+run_post_r228_full_root_wiring_gate() {
+  run_logged_gate \
+    "UI post-r228 full-root risk future plan gate" \
+    "$POST_R228_RISK_FUTURE_PLAN_LOG" \
+    env \
+      HEPTA_UI_PRODUCT_READINESS_DIR="$OUT_DIR" \
+      HEPTA_UI_RISK_FUTURE_PLAN_CONTROL_BROWSER_REPORT_PATH="$CONTROL_BROWSER_REPORT_PATH" \
+      HEPTA_UI_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH="$POST_R228_RISK_FUTURE_PLAN_OLD_CONTROL_BROWSER_REPORT_PATH" \
+      HEPTA_UI_RISK_FUTURE_PLAN_FULL_ROOT_READINESS_REPORT_PATH="$POST_R228_FULL_ROOT_READINESS_INPUT_PATH" \
+      HEPTA_UI_RISK_FUTURE_PLAN_FULL_ROOT_ARTIFACT_SUMMARY_PATH="$ARTIFACT_SUMMARY_PATH" \
+      HEPTA_UI_RISK_FUTURE_PLAN_POST_R228_REPORT_PATH="$POST_R228_RISK_FUTURE_PLAN_REPORT_PATH" \
+      HEPTA_UI_RISK_FUTURE_PLAN_POST_R228_DIR="$POST_R228_RISK_FUTURE_PLAN_DIR" \
+      ./scripts/hepta-ui-post-r228-risk-future-plan-gate.sh
+
+  jq -e '
+    .status == "ready"
+    and .risk_future_plan_post_r228_gate_ready == true
+    and .plan_kind == "local_ui_post_r228_command_palette_item_prismatic_rim_risk_future_plan_refresh"
+    and .plan_version == 1
+    and .latest_minimum_gate.gate_id == "r228_command_palette_item_prismatic_rim_light_glass_minimum_ui_demo_gate"
+    and .latest_minimum_gate.current_artifact_evidence_ready == true
+    and .latest_minimum_gate.old_evidence_rejected == true
+    and .latest_minimum_gate.four_viewport_ready == true
+    and .latest_minimum_gate.command_palette_item_prismatic_rim_ready == true
+    and .latest_minimum_gate.command_palette_item_prismatic_rim_detail_count >= 4
+    and .latest_plan_count == 6
+    and .latest_plan_ids == ["r228_command_palette_item_prismatic_rim_light_glass_minimum_ui_demo_gate","full_root_risk_future_plan_wiring_post_r228","backend_delivery_receipt_return","backend_real_receipt_return","ui_refresh_after_real_receipt","release_artifact_roundtrip_and_signed_artifact_gate"]
+    and .critical_blocker_count == 3
+    and (.critical_blockers | map(.id) | index("full_root_risk_future_plan_wiring_post_r228") | not)
+    and (.next_unblock_sequence | length) == 2
+    and .source_alignment.post_r228_command_palette_required_ready == true
+    and .source_alignment.old_r227_evidence_rejected == true
+    and .source_alignment.four_viewport_ready == true
+    and .source_alignment.full_root_inputs_supplied == true
+    and .source_alignment.full_root_post_r228_wiring_ready == true
+    and .source_alignment.full_root_readiness_json_sha256_ready == true
+    and .source_alignment.full_root_artifact_summary_json_sha256_ready == true
+    and .source_alignment.full_root_readiness_ready == true
+    and .source_alignment.full_root_artifact_summary_ready == true
+    and .source_alignment.full_root_readiness_root_replay_ready == true
+    and .source_alignment.full_root_artifact_summary_root_replay_ready == true
+    and .source_alignment.full_root_readiness_post_r228_fields_ready == true
+    and .source_alignment.full_root_artifact_summary_post_r228_fields_ready == true
+    and .claim_boundary.local_post_r228_risk_future_plan_ready == true
+    and .claim_boundary.full_product_root_risk_future_plan_ready == true
+    and .claim_boundary.backend_delivery_claim_ready == false
+    and .claim_boundary.real_backend_receipt_claim_ready == false
+    and .claim_boundary.backend_receipt_claim_ready == false
+    and .claim_boundary.live_product_claim_ready == false
+    and .claim_boundary.public_distribution_claim_ready == false
+    and .claim_boundary.release_claim_ready == false
+    and .claim_boundary.external_actions_allowed == false
+    and .side_effects.backend_agent_spawned == false
+    and .side_effects.backend_repo_write == false
+    and .side_effects.external_mutation == false
+    and (.source_report_sha256.control_browser | test("^[0-9a-f]{64}$"))
+    and (.source_report_sha256.old_control_browser | test("^[0-9a-f]{64}$"))
+    and (.source_report_sha256.full_root_readiness | test("^[0-9a-f]{64}$"))
+    and (.source_report_sha256.full_root_artifact_summary | test("^[0-9a-f]{64}$"))
+    and (.risk_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
+    and .risk_plan_markdown_bytes > 0
+  ' "$POST_R228_RISK_FUTURE_PLAN_REPORT_PATH" >/dev/null
+}
+
 write_artifact_summary() {
   artifact_summary_json="$(
     jq -n \
@@ -10791,9 +10914,9 @@ validate_written_artifacts() {
     and .post_r228_risk_future_plan_old_evidence_rejected == true
     and .post_r228_risk_future_plan_four_viewport_ready == true
     and .post_r228_risk_future_plan_rim_detail_count >= 4
-    and .post_r228_risk_future_plan_critical_blocker_count == 4
+    and .post_r228_risk_future_plan_critical_blocker_count == 3
     and (.post_r228_risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
-    and .post_r228_risk_future_plan_full_product_root_ready == false
+    and .post_r228_risk_future_plan_full_product_root_ready == true
     and .post_r228_risk_future_plan_live_product_claim_ready == false
     and .post_r228_risk_future_plan_public_distribution_claim_ready == false
     and .post_r228_risk_future_plan_release_claim_ready == false
@@ -15546,9 +15669,9 @@ emit_readiness_json() {
       and .artifact_summary.post_r228_risk_future_plan_old_evidence_rejected == true
       and .artifact_summary.post_r228_risk_future_plan_four_viewport_ready == true
       and .artifact_summary.post_r228_risk_future_plan_rim_detail_count >= 4
-      and .artifact_summary.post_r228_risk_future_plan_critical_blocker_count == 4
+      and .artifact_summary.post_r228_risk_future_plan_critical_blocker_count == 3
       and (.artifact_summary.post_r228_risk_future_plan_markdown_sha256 | test("^[0-9a-f]{64}$"))
-      and .artifact_summary.post_r228_risk_future_plan_full_product_root_ready == false
+      and .artifact_summary.post_r228_risk_future_plan_full_product_root_ready == true
       and .artifact_summary.post_r228_risk_future_plan_live_product_claim_ready == false
       and .artifact_summary.post_r228_risk_future_plan_public_distribution_claim_ready == false
       and .artifact_summary.post_r228_risk_future_plan_release_claim_ready == false
@@ -15690,6 +15813,9 @@ run_backend_delivery_receipt_roundtrip_gate
 run_risk_future_plan_gate
 run_post_r228_risk_future_plan_gate
 run_root_report_replay_gate
+write_artifact_summary
+write_post_r228_full_root_readiness_input
+run_post_r228_full_root_wiring_gate
 write_artifact_summary
 validate_written_artifacts
 write_handoff_report "$key_screenshots_json"
