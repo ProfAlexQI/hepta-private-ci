@@ -226,7 +226,9 @@ use self::turn_context::TurnSkillsContext;
 #[cfg(test)]
 mod rollout_reconstruction_tests;
 
+#[allow(dead_code)]
 const SELECTED_CONTEXT_RECALL_OPEN_TAG: &str = "<selected_context_recall>";
+#[allow(dead_code)]
 const SELECTED_CONTEXT_RECALL_CLOSE_TAG: &str = "</selected_context_recall>";
 
 #[derive(Debug, PartialEq)]
@@ -2954,6 +2956,7 @@ impl Session {
         items
     }
 
+    #[allow(dead_code)]
     fn build_context_recall_selected_snippets_item(
         turn_context: &TurnContext,
     ) -> Option<ResponseItem> {

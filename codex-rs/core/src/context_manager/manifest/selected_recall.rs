@@ -141,6 +141,7 @@ pub(crate) enum SelectedRecallControllerReadbackSurface {
 }
 
 impl SelectedRecallControllerReadbackSurface {
+    #[allow(dead_code)]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::PromptInput => "prompt-input",
