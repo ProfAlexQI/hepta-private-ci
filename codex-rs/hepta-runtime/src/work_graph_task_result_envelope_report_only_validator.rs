@@ -219,6 +219,13 @@ pub fn work_graph_task_result_envelope_source_adapters()
             rules.clone(),
         ),
         adapter(
+            "multi_agent_v2_thread_spawn",
+            "thread_spawn_edge.status",
+            "spawn_agent",
+            fields.clone(),
+            rules.clone(),
+        ),
+        adapter(
             "hepta_runtime_worker_tasks",
             "WorkerTaskRecord.terminal_status",
             "worker_task_run",
@@ -236,6 +243,20 @@ pub fn work_graph_task_result_envelope_source_adapters()
             "hepta_runtime_task_board",
             "TaskBoardTerminalEvent.status",
             "task_board_terminal_event",
+            fields.clone(),
+            rules.clone(),
+        ),
+        adapter(
+            "hepta_runtime_scheduler_store",
+            "SchedulerRunRecord.status",
+            "scheduler_run_record",
+            fields.clone(),
+            rules.clone(),
+        ),
+        adapter(
+            "hepta_runtime_agent_harness",
+            "AgentHarnessRunRecord.status",
+            "agent_harness_ledger",
             fields,
             rules,
         ),
@@ -257,6 +278,20 @@ pub fn work_graph_task_result_envelope_source_envelopes() -> Vec<WorkGraphTaskRe
             "trace-agent-job-preview-001",
             "agent_job_result_verifier",
             "agent_job_item_report_only_reducer",
+            "single",
+        ),
+        envelope(
+            "multi_agent_v2_thread_spawn",
+            "wg-task-result-spawn-agent-preview-001",
+            "succeeded",
+            "spawn_agent emitted a trace-bound report-only TaskResult envelope",
+            vec!["artifact:agent-card-preview"],
+            vec!["spawn:thread-spawn-edge-preview"],
+            vec!["risk:subagent-output-contract-report-only"],
+            vec!["next:scheduler-admission-dry-run"],
+            "trace-spawn-agent-preview-001",
+            "spawn_agent_thread_verifier",
+            "spawn_agent_report_only_reducer",
             "single",
         ),
         envelope(
@@ -299,6 +334,34 @@ pub fn work_graph_task_result_envelope_source_envelopes() -> Vec<WorkGraphTaskRe
             "trace-task-board-preview-001",
             "task_board_terminal_verifier",
             "task_board_terminal_reducer",
+            "single",
+        ),
+        envelope(
+            "hepta_runtime_scheduler_store",
+            "wg-task-result-scheduler-run-preview-001",
+            "succeeded",
+            "scheduler store projected a terminal run result into a report-only TaskResult envelope",
+            vec!["artifact:scheduler-run-record-preview"],
+            vec!["readback:scheduler-run-record-preview"],
+            vec!["risk:scheduler-live-blocking-disabled"],
+            vec!["next:source-id-alignment-readback"],
+            "trace-scheduler-run-preview-001",
+            "scheduler_run_terminal_verifier",
+            "scheduler_run_terminal_reducer",
+            "single",
+        ),
+        envelope(
+            "hepta_runtime_agent_harness",
+            "wg-task-result-agent-harness-preview-001",
+            "succeeded",
+            "agent harness ledger projected an external handoff result into a report-only TaskResult envelope",
+            vec!["artifact:agent-harness-ledger-preview"],
+            vec!["readback:agent-harness-ledger-preview"],
+            vec!["risk:external-handoff-report-only"],
+            vec!["next:source-id-alignment-readback"],
+            "trace-agent-harness-preview-001",
+            "agent_harness_terminal_verifier",
+            "agent_harness_terminal_reducer",
             "single",
         ),
     ]
@@ -445,12 +508,15 @@ mod tests {
             adapter_ids,
             [
                 "agent_jobs_batch_workers",
+                "multi_agent_v2_thread_spawn",
                 "hepta_runtime_worker_tasks",
                 "hepta_runtime_multi_agent_reducer",
                 "hepta_runtime_task_board",
+                "hepta_runtime_scheduler_store",
+                "hepta_runtime_agent_harness",
             ]
         );
-        assert_eq!(report.source_adapter_count, 4);
+        assert_eq!(report.source_adapter_count, 7);
         assert!(
             report
                 .source_adapters
@@ -472,13 +538,16 @@ mod tests {
             source_ids,
             [
                 "agent_jobs_batch_workers",
+                "multi_agent_v2_thread_spawn",
                 "hepta_runtime_worker_tasks",
                 "hepta_runtime_multi_agent_reducer",
                 "hepta_runtime_task_board",
+                "hepta_runtime_scheduler_store",
+                "hepta_runtime_agent_harness",
             ]
         );
-        assert_eq!(report.source_envelope_count, 4);
-        assert_eq!(report.report_only_valid_source_count, 4);
+        assert_eq!(report.source_envelope_count, 7);
+        assert_eq!(report.report_only_valid_source_count, 7);
         assert!(
             report
                 .source_envelopes

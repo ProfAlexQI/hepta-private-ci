@@ -1,7 +1,15 @@
 use serde::Serialize;
 
-use crate::work_graph_persistent_mailbox_handoff_event_mapping::WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_GATE;
-use crate::work_graph_role_manifest_contract::WORK_GRAPH_ROLE_MANIFEST_CONTRACT_PREVIEW_GATE;
+use crate::work_graph_persistent_mailbox_handoff_event_mapping::{
+    WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_GATE,
+    WorkGraphPersistentMailboxHandoffEventMappingSideEffects,
+    hepta_work_graph_persistent_mailbox_handoff_event_mapping_report,
+};
+use crate::work_graph_role_manifest_contract::{
+    WORK_GRAPH_ROLE_MANIFEST_CONTRACT_PREVIEW_GATE,
+    WorkGraphRoleManifestContractPreviewSideEffects,
+    hepta_work_graph_role_manifest_contract_preview_report,
+};
 
 pub const WORK_GRAPH_AGENT_ROLE_AGENT_CARD_MANIFEST_REPORT_ONLY_GATE: &str =
     "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate";
@@ -22,11 +30,24 @@ pub struct WorkGraphAgentRoleAgentCardManifestReportOnlyReport {
     pub agent_card_count: usize,
     pub source_binding_count: usize,
     pub required_prior_gate_count: usize,
+    pub source_persistent_mailbox_handoff_required_prior_gate_count: usize,
+    pub source_role_manifest_required_field_count: usize,
+    pub source_role_manifest_capability_count: usize,
+    pub source_role_manifest_permission_mode_count: usize,
+    pub source_role_manifest_invariant_count: usize,
+    pub source_role_manifest_adapter_preview_count: usize,
     pub required_wire_fields: Vec<&'static str>,
     pub agent_cards: Vec<WorkGraphAgentRoleAgentCardPreview>,
     pub source_bindings: Vec<WorkGraphAgentRoleSourceBindingPreview>,
     pub required_prior_gates: Vec<&'static str>,
+    pub source_persistent_mailbox_handoff_gate: &'static str,
+    pub source_role_manifest_contract_gate: &'static str,
     pub recommended_next_gate: &'static str,
+    pub source_persistent_mailbox_handoff_readiness_complete: bool,
+    pub source_persistent_mailbox_handoff_no_persistence_confirmed: bool,
+    pub source_role_manifest_contract_ready: bool,
+    pub source_role_manifest_no_enforcement_confirmed: bool,
+    pub agent_role_agent_card_manifest_readiness_complete: bool,
     pub capability_tool_budget_lane_ready: bool,
     pub side_effect_class_ready: bool,
     pub handoff_output_verifier_ready: bool,
@@ -89,6 +110,39 @@ pub fn hepta_work_graph_agent_role_agent_card_manifest_report_only_report()
     let source_bindings = work_graph_agent_role_source_bindings();
     let required_prior_gates =
         work_graph_agent_role_agent_card_manifest_report_only_required_prior_gates();
+    let persistent_mailbox = hepta_work_graph_persistent_mailbox_handoff_event_mapping_report();
+    let role_manifest_contract = hepta_work_graph_role_manifest_contract_preview_report();
+    let source_persistent_mailbox_handoff_no_persistence_confirmed = !persistent_mailbox
+        .persistent_mailbox_store_enabled
+        && !persistent_mailbox.live_wait_agent_behavior_changed
+        && !persistent_mailbox.ready_for_live_execution
+        && persistent_mailbox.side_effects
+            == WorkGraphPersistentMailboxHandoffEventMappingSideEffects::none();
+    let source_persistent_mailbox_handoff_readiness_complete = persistent_mailbox.gate
+        == WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_GATE
+        && persistent_mailbox.persistent_mailbox_handoff_mapping_readiness_complete
+        && persistent_mailbox.ready_for_agent_role_agent_card_manifest
+        && source_persistent_mailbox_handoff_no_persistence_confirmed;
+    let source_role_manifest_no_enforcement_confirmed = !role_manifest_contract
+        .ready_for_role_enforcement
+        && !role_manifest_contract.ready_for_live_execution
+        && role_manifest_contract.side_effects
+            == WorkGraphRoleManifestContractPreviewSideEffects::none();
+    let source_role_manifest_contract_ready = role_manifest_contract.gate
+        == WORK_GRAPH_ROLE_MANIFEST_CONTRACT_PREVIEW_GATE
+        && role_manifest_contract.required_field_count == 12
+        && role_manifest_contract.capability_count == 7
+        && role_manifest_contract.permission_mode_count == 5
+        && role_manifest_contract.invariant_count == 6
+        && role_manifest_contract.adapter_preview_count == 4
+        && role_manifest_contract.ready_for_unified_state_store_preview
+        && source_role_manifest_no_enforcement_confirmed;
+    let agent_role_agent_card_manifest_readiness_complete =
+        source_persistent_mailbox_handoff_readiness_complete
+            && source_role_manifest_contract_ready
+            && !required_wire_fields.is_empty()
+            && !agent_cards.is_empty()
+            && !source_bindings.is_empty();
 
     WorkGraphAgentRoleAgentCardManifestReportOnlyReport {
         product: "Hepta",
@@ -101,18 +155,32 @@ pub fn hepta_work_graph_agent_role_agent_card_manifest_report_only_report()
         agent_card_count: agent_cards.len(),
         source_binding_count: source_bindings.len(),
         required_prior_gate_count: required_prior_gates.len(),
+        source_persistent_mailbox_handoff_required_prior_gate_count: persistent_mailbox
+            .required_prior_gate_count,
+        source_role_manifest_required_field_count: role_manifest_contract.required_field_count,
+        source_role_manifest_capability_count: role_manifest_contract.capability_count,
+        source_role_manifest_permission_mode_count: role_manifest_contract.permission_mode_count,
+        source_role_manifest_invariant_count: role_manifest_contract.invariant_count,
+        source_role_manifest_adapter_preview_count: role_manifest_contract.adapter_preview_count,
         required_wire_fields,
         agent_cards,
         source_bindings,
         required_prior_gates,
+        source_persistent_mailbox_handoff_gate: persistent_mailbox.gate,
+        source_role_manifest_contract_gate: role_manifest_contract.gate,
         recommended_next_gate:
             WORK_GRAPH_AGENT_ROLE_AGENT_CARD_MANIFEST_REPORT_ONLY_RECOMMENDED_NEXT_GATE,
+        source_persistent_mailbox_handoff_readiness_complete,
+        source_persistent_mailbox_handoff_no_persistence_confirmed,
+        source_role_manifest_contract_ready,
+        source_role_manifest_no_enforcement_confirmed,
+        agent_role_agent_card_manifest_readiness_complete,
         capability_tool_budget_lane_ready: true,
         side_effect_class_ready: true,
         handoff_output_verifier_ready: true,
-        report_only_manifest_attached: true,
+        report_only_manifest_attached: agent_role_agent_card_manifest_readiness_complete,
         role_enforcement_enabled: false,
-        ready_for_trace_guardrail_span: true,
+        ready_for_trace_guardrail_span: agent_role_agent_card_manifest_readiness_complete,
         ready_for_live_execution: false,
         side_effects: WorkGraphAgentRoleAgentCardManifestReportOnlySideEffects::none(),
     }
@@ -377,8 +445,31 @@ mod tests {
                 WORK_GRAPH_ROLE_MANIFEST_CONTRACT_PREVIEW_GATE,
             ]
         );
+        assert_eq!(
+            report.source_persistent_mailbox_handoff_gate,
+            WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_GATE
+        );
+        assert_eq!(
+            report.source_role_manifest_contract_gate,
+            WORK_GRAPH_ROLE_MANIFEST_CONTRACT_PREVIEW_GATE
+        );
+        assert_eq!(
+            report.source_persistent_mailbox_handoff_required_prior_gate_count,
+            1
+        );
+        assert_eq!(report.source_role_manifest_required_field_count, 12);
+        assert_eq!(report.source_role_manifest_capability_count, 7);
+        assert_eq!(report.source_role_manifest_permission_mode_count, 5);
+        assert_eq!(report.source_role_manifest_invariant_count, 6);
+        assert_eq!(report.source_role_manifest_adapter_preview_count, 4);
+        assert!(report.source_persistent_mailbox_handoff_readiness_complete);
+        assert!(report.source_persistent_mailbox_handoff_no_persistence_confirmed);
+        assert!(report.source_role_manifest_contract_ready);
+        assert!(report.source_role_manifest_no_enforcement_confirmed);
+        assert!(report.agent_role_agent_card_manifest_readiness_complete);
         assert!(report.report_only_manifest_attached);
         assert!(!report.role_enforcement_enabled);
+        assert!(report.ready_for_trace_guardrail_span);
         assert!(!report.ready_for_live_execution);
         assert_eq!(
             report.side_effects,

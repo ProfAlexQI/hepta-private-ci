@@ -76,19 +76,35 @@ jq -e '
     "shadow_replay_redaction_hash_stability_diff"
   ])
   and (.replay_diffs | all(.replay_executed == false and .diff_persisted == false))
+  and .scheduler_prior_gates == [
+    "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+    "hepta_work_graph_adapter_task_result_index_gate",
+    "hepta_work_graph_terminal_envelope_readback_gate",
+    "hepta_work_graph_source_id_alignment_readback_gate",
+    "hepta_work_graph_task_result_contract_field_gap_readback_gate"
+  ]
+  and .scheduler_prior_gate_count == 5
   and .required_prior_gates == [
+    "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+    "hepta_work_graph_adapter_task_result_index_gate",
+    "hepta_work_graph_terminal_envelope_readback_gate",
+    "hepta_work_graph_source_id_alignment_readback_gate",
+    "hepta_work_graph_task_result_contract_field_gap_readback_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate",
     "hepta_work_graph_append_only_event_intake_preview_gate",
     "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate",
     "hepta_work_graph_append_only_work_graph_events_shadow_write_readback_preview_gate"
   ]
-  and .required_prior_gate_count == 4
+  and .required_prior_gate_count == 9
   and .recommended_next_gate == "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate"
   and .redacted_payload_policy_ready == true
   and .deterministic_event_ids_ready == true
   and .projection_index_ready == true
   and .readback_evidence_ready == true
   and .replay_diff_ready == true
+  and .scheduler_prior_chain_ready == true
+  and .task_result_contract_field_gap_readback_ready == true
+  and .append_only_shadow_path_readiness_complete == true
   and .shadow_store_write_enabled == false
   and .live_cutover_enabled == false
   and .ready_for_persistent_mailbox_handoff == true
@@ -96,7 +112,14 @@ jq -e '
   and .source_probes.append_only_event_store_shadow_path.rust_module_present == true
   and .source_probes.append_only_event_store_shadow_path.report_script_present == true
   and .source_probes.append_only_event_store_shadow_path.gate_script_present == true
+  and .source_probes.task_result_envelope_report_only_validator.gate_script_present == true
+  and .source_probes.adapter_task_result_index.gate_script_present == true
+  and .source_probes.terminal_envelope_readback.gate_script_present == true
+  and .source_probes.source_id_alignment_readback.gate_script_present == true
+  and .source_probes.task_result_contract_field_gap_readback.gate_script_present == true
+  and .source_probes.task_result_contract_field_gap_readback.report_gate == "hepta_work_graph_task_result_contract_field_gap_readback_gate"
   and .source_probes.scheduler_admission_dry_run_enforcement.gate_script_present == true
+  and .source_probes.scheduler_admission_dry_run_enforcement.report_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   and .source_probes.append_only_event_intake.gate_script_present == true
   and .source_probes.append_only_work_graph_events_shadow_write.gate_script_present == true
   and .source_probes.append_only_work_graph_events_shadow_write_readback.gate_script_present == true

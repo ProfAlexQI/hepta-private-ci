@@ -64,6 +64,13 @@ jq -e '
   and (.wait_agent_targets | map(select(.wait_target_type == "barrier")) | all(.returns_barrier_ref == true))
   and .required_prior_gates == ["hepta_work_graph_append_only_event_store_shadow_path_gate"]
   and .required_prior_gate_count == 1
+  and .source_shadow_path_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+  and .source_shadow_path_scheduler_prior_gate_count == 5
+  and .source_shadow_path_required_prior_gate_count == 9
+  and .source_shadow_path_readiness_complete == true
+  and .source_shadow_path_ready_for_persistent_mailbox_handoff == true
+  and .source_shadow_path_no_persistence_confirmed == true
+  and .persistent_mailbox_handoff_mapping_readiness_complete == true
   and .recommended_next_gate == "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate"
   and .mailbox_events_map_to_work_graph_events == true
   and .ack_deadline_parent_child_artifact_refs_ready == true
@@ -76,6 +83,15 @@ jq -e '
   and .source_probes.persistent_mailbox_handoff_event_mapping.report_script_present == true
   and .source_probes.persistent_mailbox_handoff_event_mapping.gate_script_present == true
   and .source_probes.append_only_event_store_shadow_path.gate_script_present == true
+  and .source_probes.append_only_event_store_shadow_path.report_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+  and .source_probes.append_only_event_store_shadow_path.scheduler_prior_gate_count == 5
+  and .source_probes.append_only_event_store_shadow_path.required_prior_gate_count == 9
+  and .source_probes.append_only_event_store_shadow_path.append_only_shadow_path_readiness_complete == true
+  and .source_probes.append_only_event_store_shadow_path.ready_for_persistent_mailbox_handoff == true
+  and .source_probes.append_only_event_store_shadow_path.shadow_store_write_enabled == false
+  and .source_probes.append_only_event_store_shadow_path.live_cutover_enabled == false
+  and .source_probes.append_only_event_store_shadow_path.ready_for_live_execution == false
+  and .source_probes.append_only_event_store_shadow_path.side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

@@ -1,9 +1,20 @@
 use serde::Serialize;
 
+use crate::work_graph_adapter_task_result_index::WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE;
 use crate::work_graph_append_only_event_intake_preview::WORK_GRAPH_APPEND_ONLY_EVENT_INTAKE_PREVIEW_GATE;
 use crate::work_graph_append_only_work_graph_events_shadow_write_preview::WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_SHADOW_WRITE_PREVIEW_GATE;
 use crate::work_graph_append_only_work_graph_events_shadow_write_readback_preview::WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_SHADOW_WRITE_READBACK_PREVIEW_GATE;
-use crate::work_graph_scheduler_admission_dry_run_enforcement::WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::{
+    WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE,
+    hepta_work_graph_scheduler_admission_dry_run_enforcement_report,
+};
+use crate::work_graph_source_id_alignment_readback::WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE;
+use crate::work_graph_task_result_contract_field_gap_readback::{
+    WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
+    hepta_work_graph_task_result_contract_field_gap_readback_report,
+};
+use crate::work_graph_task_result_envelope_report_only_validator::WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE;
+use crate::work_graph_terminal_envelope_readback::WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE;
 
 pub const WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE: &str =
     "hepta_work_graph_append_only_event_store_shadow_path_gate";
@@ -24,11 +35,13 @@ pub struct WorkGraphAppendOnlyEventStoreShadowPathReport {
     pub projection_index_count: usize,
     pub readback_evidence_count: usize,
     pub replay_diff_count: usize,
+    pub scheduler_prior_gate_count: usize,
     pub required_prior_gate_count: usize,
     pub event_records: Vec<WorkGraphShadowEventRecordPreview>,
     pub projection_indexes: Vec<WorkGraphShadowProjectionIndexPreview>,
     pub readback_evidence: Vec<WorkGraphShadowReadbackEvidencePreview>,
     pub replay_diffs: Vec<WorkGraphShadowReplayDiffPreview>,
+    pub scheduler_prior_gates: Vec<&'static str>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
     pub redacted_payload_policy_ready: bool,
@@ -36,6 +49,9 @@ pub struct WorkGraphAppendOnlyEventStoreShadowPathReport {
     pub projection_index_ready: bool,
     pub readback_evidence_ready: bool,
     pub replay_diff_ready: bool,
+    pub scheduler_prior_chain_ready: bool,
+    pub task_result_contract_field_gap_readback_ready: bool,
+    pub append_only_shadow_path_readiness_complete: bool,
     pub shadow_store_write_enabled: bool,
     pub live_cutover_enabled: bool,
     pub ready_for_persistent_mailbox_handoff: bool,
@@ -116,8 +132,28 @@ pub fn hepta_work_graph_append_only_event_store_shadow_path_report()
     let projection_indexes = work_graph_append_only_event_store_shadow_projection_indexes();
     let readback_evidence = work_graph_append_only_event_store_shadow_readback_evidence();
     let replay_diffs = work_graph_append_only_event_store_shadow_replay_diffs();
+    let scheduler_admission = hepta_work_graph_scheduler_admission_dry_run_enforcement_report();
+    let field_gap_readback = hepta_work_graph_task_result_contract_field_gap_readback_report();
+    let scheduler_prior_gates =
+        work_graph_append_only_event_store_shadow_path_scheduler_prior_gates();
     let required_prior_gates =
         work_graph_append_only_event_store_shadow_path_required_prior_gates();
+    let scheduler_prior_chain_ready = scheduler_admission.required_prior_gates
+        == scheduler_prior_gates
+        && scheduler_admission.ready_for_append_only_event_store_shadow_path
+        && !scheduler_admission.live_blocking_enforcement_enabled;
+    let task_result_contract_field_gap_readback_ready = field_gap_readback
+        .ready_for_append_only_event_store_shadow_path
+        && field_gap_readback.gap_source_count == 0
+        && field_gap_readback.contract_required_field_gap_count == 0
+        && field_gap_readback.contract_terminal_field_gap_count == 0
+        && !field_gap_readback.ready_for_task_result_enforcement;
+    let append_only_shadow_path_readiness_complete = scheduler_prior_chain_ready
+        && task_result_contract_field_gap_readback_ready
+        && !event_records.is_empty()
+        && !projection_indexes.is_empty()
+        && !readback_evidence.is_empty()
+        && !replay_diffs.is_empty();
 
     WorkGraphAppendOnlyEventStoreShadowPathReport {
         product: "Hepta",
@@ -130,11 +166,13 @@ pub fn hepta_work_graph_append_only_event_store_shadow_path_report()
         projection_index_count: projection_indexes.len(),
         readback_evidence_count: readback_evidence.len(),
         replay_diff_count: replay_diffs.len(),
+        scheduler_prior_gate_count: scheduler_prior_gates.len(),
         required_prior_gate_count: required_prior_gates.len(),
         event_records,
         projection_indexes,
         readback_evidence,
         replay_diffs,
+        scheduler_prior_gates,
         required_prior_gates,
         recommended_next_gate: WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_RECOMMENDED_NEXT_GATE,
         redacted_payload_policy_ready: true,
@@ -142,9 +180,12 @@ pub fn hepta_work_graph_append_only_event_store_shadow_path_report()
         projection_index_ready: true,
         readback_evidence_ready: true,
         replay_diff_ready: true,
+        scheduler_prior_chain_ready,
+        task_result_contract_field_gap_readback_ready,
+        append_only_shadow_path_readiness_complete,
         shadow_store_write_enabled: false,
         live_cutover_enabled: false,
-        ready_for_persistent_mailbox_handoff: true,
+        ready_for_persistent_mailbox_handoff: append_only_shadow_path_readiness_complete,
         ready_for_live_execution: false,
         side_effects: WorkGraphAppendOnlyEventStoreShadowPathSideEffects::none(),
     }
@@ -349,11 +390,23 @@ pub fn work_graph_append_only_event_store_shadow_replay_diffs()
 }
 
 pub fn work_graph_append_only_event_store_shadow_path_required_prior_gates() -> Vec<&'static str> {
-    vec![
+    let mut gates = work_graph_append_only_event_store_shadow_path_scheduler_prior_gates();
+    gates.extend([
         WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE,
         WORK_GRAPH_APPEND_ONLY_EVENT_INTAKE_PREVIEW_GATE,
         WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_SHADOW_WRITE_PREVIEW_GATE,
         WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_SHADOW_WRITE_READBACK_PREVIEW_GATE,
+    ]);
+    gates
+}
+
+pub fn work_graph_append_only_event_store_shadow_path_scheduler_prior_gates() -> Vec<&'static str> {
+    vec![
+        WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
+        WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE,
+        WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE,
+        WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
+        WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
     ]
 }
 
@@ -521,8 +574,23 @@ mod tests {
         let report = hepta_work_graph_append_only_event_store_shadow_path_report();
 
         assert_eq!(
+            report.scheduler_prior_gates,
+            vec![
+                WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
+                WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE,
+                WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE,
+                WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
+                WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
+            ]
+        );
+        assert_eq!(
             report.required_prior_gates,
             vec![
+                WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
+                WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE,
+                WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE,
+                WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
+                WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
                 WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE,
                 WORK_GRAPH_APPEND_ONLY_EVENT_INTAKE_PREVIEW_GATE,
                 WORK_GRAPH_APPEND_ONLY_WORK_GRAPH_EVENTS_SHADOW_WRITE_PREVIEW_GATE,
@@ -533,6 +601,11 @@ mod tests {
             report.recommended_next_gate,
             WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_RECOMMENDED_NEXT_GATE
         );
+        assert_eq!(report.scheduler_prior_gate_count, 5);
+        assert_eq!(report.required_prior_gate_count, 9);
+        assert!(report.scheduler_prior_chain_ready);
+        assert!(report.task_result_contract_field_gap_readback_ready);
+        assert!(report.append_only_shadow_path_readiness_complete);
         assert!(report.ready_for_persistent_mailbox_handoff);
         assert!(!report.ready_for_live_execution);
     }

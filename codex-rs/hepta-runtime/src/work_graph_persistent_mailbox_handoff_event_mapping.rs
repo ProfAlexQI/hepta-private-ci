@@ -1,6 +1,10 @@
 use serde::Serialize;
 
-use crate::work_graph_append_only_event_store_shadow_path::WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE;
+use crate::work_graph_append_only_event_store_shadow_path::{
+    WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE,
+    WorkGraphAppendOnlyEventStoreShadowPathSideEffects,
+    hepta_work_graph_append_only_event_store_shadow_path_report,
+};
 
 pub const WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_GATE: &str =
     "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate";
@@ -22,12 +26,19 @@ pub struct WorkGraphPersistentMailboxHandoffEventMappingReport {
     pub ack_deadline_contract_count: usize,
     pub wait_agent_target_count: usize,
     pub required_prior_gate_count: usize,
+    pub source_shadow_path_scheduler_prior_gate_count: usize,
+    pub source_shadow_path_required_prior_gate_count: usize,
     pub mailbox_event_mappings: Vec<WorkGraphMailboxEventMappingPreview>,
     pub handoff_event_mappings: Vec<WorkGraphHandoffEventMappingPreview>,
     pub ack_deadline_contracts: Vec<WorkGraphMailboxAckDeadlineContractPreview>,
     pub wait_agent_targets: Vec<WorkGraphWaitAgentTargetPreview>,
     pub required_prior_gates: Vec<&'static str>,
+    pub source_shadow_path_gate: &'static str,
     pub recommended_next_gate: &'static str,
+    pub source_shadow_path_readiness_complete: bool,
+    pub source_shadow_path_ready_for_persistent_mailbox_handoff: bool,
+    pub source_shadow_path_no_persistence_confirmed: bool,
+    pub persistent_mailbox_handoff_mapping_readiness_complete: bool,
     pub mailbox_events_map_to_work_graph_events: bool,
     pub ack_deadline_parent_child_artifact_refs_ready: bool,
     pub wait_agent_named_task_result_barrier_ready: bool,
@@ -114,8 +125,30 @@ pub fn hepta_work_graph_persistent_mailbox_handoff_event_mapping_report()
     let handoff_event_mappings = work_graph_persistent_handoff_event_mappings();
     let ack_deadline_contracts = work_graph_persistent_mailbox_ack_deadline_contracts();
     let wait_agent_targets = work_graph_wait_agent_named_task_result_barrier_targets();
+    let source_shadow_path = hepta_work_graph_append_only_event_store_shadow_path_report();
     let required_prior_gates =
         work_graph_persistent_mailbox_handoff_event_mapping_required_prior_gates();
+    let source_shadow_path_no_persistence_confirmed = !source_shadow_path
+        .shadow_store_write_enabled
+        && !source_shadow_path.live_cutover_enabled
+        && !source_shadow_path.ready_for_live_execution
+        && source_shadow_path.side_effects
+            == WorkGraphAppendOnlyEventStoreShadowPathSideEffects::none();
+    let source_shadow_path_readiness_complete = source_shadow_path.gate
+        == WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        && source_shadow_path.scheduler_prior_gate_count == 5
+        && source_shadow_path.required_prior_gate_count == 9
+        && source_shadow_path.scheduler_prior_chain_ready
+        && source_shadow_path.task_result_contract_field_gap_readback_ready
+        && source_shadow_path.append_only_shadow_path_readiness_complete
+        && source_shadow_path.ready_for_persistent_mailbox_handoff
+        && source_shadow_path_no_persistence_confirmed;
+    let persistent_mailbox_handoff_mapping_readiness_complete =
+        source_shadow_path_readiness_complete
+            && !mailbox_event_mappings.is_empty()
+            && !handoff_event_mappings.is_empty()
+            && !ack_deadline_contracts.is_empty()
+            && !wait_agent_targets.is_empty();
 
     WorkGraphPersistentMailboxHandoffEventMappingReport {
         product: "Hepta",
@@ -129,19 +162,29 @@ pub fn hepta_work_graph_persistent_mailbox_handoff_event_mapping_report()
         ack_deadline_contract_count: ack_deadline_contracts.len(),
         wait_agent_target_count: wait_agent_targets.len(),
         required_prior_gate_count: required_prior_gates.len(),
+        source_shadow_path_scheduler_prior_gate_count: source_shadow_path
+            .scheduler_prior_gate_count,
+        source_shadow_path_required_prior_gate_count: source_shadow_path.required_prior_gate_count,
         mailbox_event_mappings,
         handoff_event_mappings,
         ack_deadline_contracts,
         wait_agent_targets,
         required_prior_gates,
+        source_shadow_path_gate: source_shadow_path.gate,
         recommended_next_gate:
             WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_RECOMMENDED_NEXT_GATE,
+        source_shadow_path_readiness_complete,
+        source_shadow_path_ready_for_persistent_mailbox_handoff: source_shadow_path
+            .ready_for_persistent_mailbox_handoff,
+        source_shadow_path_no_persistence_confirmed,
+        persistent_mailbox_handoff_mapping_readiness_complete,
         mailbox_events_map_to_work_graph_events: true,
         ack_deadline_parent_child_artifact_refs_ready: true,
         wait_agent_named_task_result_barrier_ready: true,
         persistent_mailbox_store_enabled: false,
         live_wait_agent_behavior_changed: false,
-        ready_for_agent_role_agent_card_manifest: true,
+        ready_for_agent_role_agent_card_manifest:
+            persistent_mailbox_handoff_mapping_readiness_complete,
         ready_for_live_execution: false,
         side_effects: WorkGraphPersistentMailboxHandoffEventMappingSideEffects::none(),
     }
@@ -473,8 +516,19 @@ mod tests {
             report.required_prior_gates,
             vec![WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE]
         );
+        assert_eq!(
+            report.source_shadow_path_gate,
+            WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        );
+        assert_eq!(report.source_shadow_path_scheduler_prior_gate_count, 5);
+        assert_eq!(report.source_shadow_path_required_prior_gate_count, 9);
+        assert!(report.source_shadow_path_readiness_complete);
+        assert!(report.source_shadow_path_ready_for_persistent_mailbox_handoff);
+        assert!(report.source_shadow_path_no_persistence_confirmed);
+        assert!(report.persistent_mailbox_handoff_mapping_readiness_complete);
         assert!(!report.persistent_mailbox_store_enabled);
         assert!(!report.live_wait_agent_behavior_changed);
+        assert!(report.ready_for_agent_role_agent_card_manifest);
         assert!(!report.ready_for_live_execution);
         assert_eq!(
             report.side_effects,

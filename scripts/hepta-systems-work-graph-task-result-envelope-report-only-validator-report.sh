@@ -111,15 +111,21 @@ jq -n \
   | ($rules | map(.id)) as $rule_ids
   | [
     adapter("agent_jobs_batch_workers"; "report_agent_job_result.accepted"; "report_agent_job_result"; $fields; $rule_ids),
+    adapter("multi_agent_v2_thread_spawn"; "thread_spawn_edge.status"; "spawn_agent"; $fields; $rule_ids),
     adapter("hepta_runtime_worker_tasks"; "WorkerTaskRecord.terminal_status"; "worker_task_run"; $fields; $rule_ids),
     adapter("hepta_runtime_multi_agent_reducer"; "AgentRuntimeRunReport.reducer_passed"; "multi_agent_reducer"; $fields; $rule_ids),
-    adapter("hepta_runtime_task_board"; "TaskBoardTerminalEvent.status"; "task_board_terminal_event"; $fields; $rule_ids)
+    adapter("hepta_runtime_task_board"; "TaskBoardTerminalEvent.status"; "task_board_terminal_event"; $fields; $rule_ids),
+    adapter("hepta_runtime_scheduler_store"; "SchedulerRunRecord.status"; "scheduler_run_record"; $fields; $rule_ids),
+    adapter("hepta_runtime_agent_harness"; "AgentHarnessRunRecord.status"; "agent_harness_ledger"; $fields; $rule_ids)
   ] as $adapters
   | [
     envelope("agent_jobs_batch_workers"; "wg-task-result-agent-job-item-preview-001"; "succeeded"; "agent job item reported a structured result object"; ["artifact:agent-job-output-csv-preview"]; ["gate:report-agent-job-result-json-object"]; []; ["next:scheduler-admission-dry-run"]; "trace-agent-job-preview-001"; "agent_job_result_verifier"; "agent_job_item_report_only_reducer"; "single"),
+    envelope("multi_agent_v2_thread_spawn"; "wg-task-result-spawn-agent-preview-001"; "succeeded"; "spawn_agent emitted a trace-bound report-only TaskResult envelope"; ["artifact:agent-card-preview"]; ["spawn:thread-spawn-edge-preview"]; ["risk:subagent-output-contract-report-only"]; ["next:scheduler-admission-dry-run"]; "trace-spawn-agent-preview-001"; "spawn_agent_thread_verifier"; "spawn_agent_report_only_reducer"; "single"),
     envelope("hepta_runtime_worker_tasks"; "wg-task-result-worker-task-preview-001"; "succeeded"; "worker task reached a terminal status with artifact and evidence refs"; ["artifact:worker-task-output-preview"]; ["readback:worker-task-record-preview"]; []; ["next:task-board-terminal-event"]; "trace-worker-task-preview-001"; "worker_task_terminal_verifier"; "worker_task_terminal_reducer"; "single"),
     envelope("hepta_runtime_multi_agent_reducer"; "wg-task-result-multi-agent-reducer-preview-001"; "succeeded"; "multi-agent reducer selected a consensus result from child outputs"; ["artifact:reducer-summary-preview"]; ["reducer:quorum-preview"]; ["risk:child-output-drift-watch"]; ["next:parent-agent-merge"]; "trace-multi-agent-reducer-preview-001"; "multi_agent_reducer_verifier"; "multi_agent_quorum_reducer"; "quorum"),
-    envelope("hepta_runtime_task_board"; "wg-task-result-task-board-terminal-preview-001"; "blocked"; "task board terminal event recorded a blocked result for scheduler readback"; []; ["task-board:terminal-event-preview"]; ["risk:operator-review-required"]; ["next:surface-deny-explanation"]; "trace-task-board-preview-001"; "task_board_terminal_verifier"; "task_board_terminal_reducer"; "single")
+    envelope("hepta_runtime_task_board"; "wg-task-result-task-board-terminal-preview-001"; "blocked"; "task board terminal event recorded a blocked result for scheduler readback"; []; ["task-board:terminal-event-preview"]; ["risk:operator-review-required"]; ["next:surface-deny-explanation"]; "trace-task-board-preview-001"; "task_board_terminal_verifier"; "task_board_terminal_reducer"; "single"),
+    envelope("hepta_runtime_scheduler_store"; "wg-task-result-scheduler-run-preview-001"; "succeeded"; "scheduler store projected a terminal run result into a report-only TaskResult envelope"; ["artifact:scheduler-run-record-preview"]; ["readback:scheduler-run-record-preview"]; ["risk:scheduler-live-blocking-disabled"]; ["next:source-id-alignment-readback"]; "trace-scheduler-run-preview-001"; "scheduler_run_terminal_verifier"; "scheduler_run_terminal_reducer"; "single"),
+    envelope("hepta_runtime_agent_harness"; "wg-task-result-agent-harness-preview-001"; "succeeded"; "agent harness ledger projected an external handoff result into a report-only TaskResult envelope"; ["artifact:agent-harness-ledger-preview"]; ["readback:agent-harness-ledger-preview"]; ["risk:external-handoff-report-only"]; ["next:source-id-alignment-readback"]; "trace-agent-harness-preview-001"; "agent_harness_terminal_verifier"; "agent_harness_terminal_reducer"; "single")
   ] as $envelopes
   | {
       product: "Hepta",

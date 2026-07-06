@@ -48,22 +48,28 @@ jq -e '
     "trace_id_joins_plan_spawn_mailbox_tool_result"
   ])
   and (.validation_rules | all(.required == true and .report_only_blocks_promotion == false))
-  and .source_adapter_count == 4
+  and .source_adapter_count == 7
   and (.source_adapters | map(.source_surface_id) == [
     "agent_jobs_batch_workers",
+    "multi_agent_v2_thread_spawn",
     "hepta_runtime_worker_tasks",
     "hepta_runtime_multi_agent_reducer",
-    "hepta_runtime_task_board"
+    "hepta_runtime_task_board",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
   ])
   and (.source_adapters | all(.report_only_attached == true and .live_enforcement_enabled == false))
   and (.source_adapters | all((.covered_wire_fields | length) == 11 and (.validation_rule_ids | length) == 8))
-  and .source_envelope_count == 4
-  and .report_only_valid_source_count == 4
+  and .source_envelope_count == 7
+  and .report_only_valid_source_count == 7
   and (.source_envelopes | map(.source_surface_id) == [
     "agent_jobs_batch_workers",
+    "multi_agent_v2_thread_spawn",
     "hepta_runtime_worker_tasks",
     "hepta_runtime_multi_agent_reducer",
-    "hepta_runtime_task_board"
+    "hepta_runtime_task_board",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
   ])
   and (.source_envelopes | all(.validation_decision == "allow_report_only" and .live_promotion_allowed == false and (.trace_id | length) > 0))
   and (.required_prior_gates == [

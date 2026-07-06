@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -26,6 +28,21 @@ report_script_present="$(
 gate_script_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-append-only-event-store-shadow-path-gate.sh
 )"
+task_result_envelope_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-task-result-envelope-report-only-validator-gate.sh
+)"
+adapter_task_result_index_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-adapter-task-result-index-gate.sh
+)"
+terminal_envelope_readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-envelope-readback-gate.sh
+)"
+source_id_alignment_readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-source-id-alignment-readback-gate.sh
+)"
+task_result_contract_field_gap_readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-task-result-contract-field-gap-readback-gate.sh
+)"
 scheduler_gate_script_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-gate.sh
 )"
@@ -39,14 +56,32 @@ shadow_write_readback_gate_script_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-append-only-work-graph-events-shadow-write-readback-preview-gate.sh
 )"
 
+scheduler="$(
+  capture_json_report \
+    "hepta-work-graph-scheduler-admission-dry-run-enforcement-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-report.sh"
+)"
+field_gap="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-contract-field-gap-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-task-result-contract-field-gap-readback-report.sh"
+)"
+
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
   --argjson gate_script_present "$gate_script_present" \
+  --argjson task_result_envelope_gate_script_present "$task_result_envelope_gate_script_present" \
+  --argjson adapter_task_result_index_gate_script_present "$adapter_task_result_index_gate_script_present" \
+  --argjson terminal_envelope_readback_gate_script_present "$terminal_envelope_readback_gate_script_present" \
+  --argjson source_id_alignment_readback_gate_script_present "$source_id_alignment_readback_gate_script_present" \
+  --argjson task_result_contract_field_gap_readback_gate_script_present "$task_result_contract_field_gap_readback_gate_script_present" \
   --argjson scheduler_gate_script_present "$scheduler_gate_script_present" \
   --argjson append_only_intake_gate_script_present "$append_only_intake_gate_script_present" \
   --argjson shadow_write_gate_script_present "$shadow_write_gate_script_present" \
   --argjson shadow_write_readback_gate_script_present "$shadow_write_readback_gate_script_present" \
+  --argjson scheduler "$scheduler" \
+  --argjson field_gap "$field_gap" \
   '
   def event($source; $kind; $id; $trace; $index; $readback; $diff): {
     source_surface_id: $source,
@@ -123,11 +158,32 @@ jq -n \
     replay_diff("shadow_replay_redaction_hash_stability_diff"; "redaction_hash_stability"; ["redactedPayloadRef", "payloadHash", "evidenceRef"]; "hash_stable_preview")
   ] as $replay_diffs
   | [
-    "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate",
-    "hepta_work_graph_append_only_event_intake_preview_gate",
-    "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate",
-    "hepta_work_graph_append_only_work_graph_events_shadow_write_readback_preview_gate"
-  ] as $required_prior_gates
+    "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+    "hepta_work_graph_adapter_task_result_index_gate",
+    "hepta_work_graph_terminal_envelope_readback_gate",
+    "hepta_work_graph_source_id_alignment_readback_gate",
+    "hepta_work_graph_task_result_contract_field_gap_readback_gate"
+  ] as $scheduler_prior_gates
+  | ($scheduler_prior_gates + [
+      "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate",
+      "hepta_work_graph_append_only_event_intake_preview_gate",
+      "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate",
+      "hepta_work_graph_append_only_work_graph_events_shadow_write_readback_preview_gate"
+    ]) as $required_prior_gates
+  | ($scheduler.required_prior_gates == $scheduler_prior_gates
+      and $scheduler.ready_for_append_only_event_store_shadow_path == true
+      and $scheduler.live_blocking_enforcement_enabled == false) as $scheduler_prior_chain_ready
+  | ($field_gap.ready_for_append_only_event_store_shadow_path == true
+      and $field_gap.gap_source_count == 0
+      and $field_gap.contract_required_field_gap_count == 0
+      and $field_gap.contract_terminal_field_gap_count == 0
+      and $field_gap.ready_for_task_result_enforcement == false) as $task_result_contract_field_gap_readback_ready
+  | ($scheduler_prior_chain_ready
+      and $task_result_contract_field_gap_readback_ready
+      and ($events | length) > 0
+      and ($indexes | length) > 0
+      and ($readback_evidence | length) > 0
+      and ($replay_diffs | length) > 0) as $append_only_shadow_path_readiness_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -139,11 +195,13 @@ jq -n \
       projection_index_count: ($indexes | length),
       readback_evidence_count: ($readback_evidence | length),
       replay_diff_count: ($replay_diffs | length),
+      scheduler_prior_gate_count: ($scheduler_prior_gates | length),
       required_prior_gate_count: ($required_prior_gates | length),
       event_records: $events,
       projection_indexes: $indexes,
       readback_evidence: $readback_evidence,
       replay_diffs: $replay_diffs,
+      scheduler_prior_gates: $scheduler_prior_gates,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate",
       redacted_payload_policy_ready: true,
@@ -151,9 +209,12 @@ jq -n \
       projection_index_ready: true,
       readback_evidence_ready: true,
       replay_diff_ready: true,
+      scheduler_prior_chain_ready: $scheduler_prior_chain_ready,
+      task_result_contract_field_gap_readback_ready: $task_result_contract_field_gap_readback_ready,
+      append_only_shadow_path_readiness_complete: $append_only_shadow_path_readiness_complete,
       shadow_store_write_enabled: false,
       live_cutover_enabled: false,
-      ready_for_persistent_mailbox_handoff: true,
+      ready_for_persistent_mailbox_handoff: $append_only_shadow_path_readiness_complete,
       ready_for_live_execution: false,
       source_probes: {
         append_only_event_store_shadow_path: {
@@ -161,8 +222,25 @@ jq -n \
           report_script_present: $report_script_present,
           gate_script_present: $gate_script_present
         },
+        task_result_envelope_report_only_validator: {
+          gate_script_present: $task_result_envelope_gate_script_present
+        },
+        adapter_task_result_index: {
+          gate_script_present: $adapter_task_result_index_gate_script_present
+        },
+        terminal_envelope_readback: {
+          gate_script_present: $terminal_envelope_readback_gate_script_present
+        },
+        source_id_alignment_readback: {
+          gate_script_present: $source_id_alignment_readback_gate_script_present
+        },
+        task_result_contract_field_gap_readback: {
+          gate_script_present: $task_result_contract_field_gap_readback_gate_script_present,
+          report_gate: $field_gap.gate
+        },
         scheduler_admission_dry_run_enforcement: {
-          gate_script_present: $scheduler_gate_script_present
+          gate_script_present: $scheduler_gate_script_present,
+          report_gate: $scheduler.gate
         },
         append_only_event_intake: {
           gate_script_present: $append_only_intake_gate_script_present

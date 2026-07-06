@@ -86,7 +86,20 @@ jq -e '
     "hepta_runtime_agent_harness"
   ])
   and (.adapter_previews | all(.enforcement_enabled == false))
-  and (.adapter_previews | all((.covered_wire_fields | index("taskId")) and (.covered_wire_fields | index("status")) and (.covered_wire_fields | index("traceId"))))
+  and (.adapter_previews | all(.covered_wire_fields == [
+    "taskId",
+    "status",
+    "summary",
+    "artifacts",
+    "evidence",
+    "risks",
+    "nextActions",
+    "verifier",
+    "reducer",
+    "usage",
+    "traceId"
+  ]))
+  and (.adapter_previews | all(.blocker_ids | all(endswith("_report_only_not_enforced"))))
   and .recommended_next_gate == "hepta_work_graph_scheduler_admission_controller_preview_gate"
   and .ready_for_scheduler_admission_preview == true
   and .ready_for_task_result_enforcement == false

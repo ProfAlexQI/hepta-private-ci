@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -30,11 +32,18 @@ shadow_path_gate_script_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-append-only-event-store-shadow-path-gate.sh
 )"
 
+shadow_path="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-event-store-shadow-path-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-append-only-event-store-shadow-path-report.sh"
+)"
+
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
   --argjson gate_script_present "$gate_script_present" \
   --argjson shadow_path_gate_script_present "$shadow_path_gate_script_present" \
+  --argjson shadow_path "$shadow_path" \
   '
   def mailbox_mapping($id; $kind; $ack; $deadline; $artifacts): {
     id: $id,
@@ -122,6 +131,23 @@ jq -n \
     wait_target("wait_agent_mailbox_barrier_target"; "barrier"; ["barrierId", "parentTaskId", "childTaskIds", "traceId"]; "all child task barriers have acked or terminal results"; "deadline expires before barrier quorum"; false; true)
   ] as $wait_targets
   | ["hepta_work_graph_append_only_event_store_shadow_path_gate"] as $required_prior_gates
+  | ($shadow_path.shadow_store_write_enabled == false
+      and $shadow_path.live_cutover_enabled == false
+      and $shadow_path.ready_for_live_execution == false
+      and ($shadow_path.side_effects | to_entries | all(.value == false))) as $source_shadow_path_no_persistence_confirmed
+  | ($shadow_path.gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+      and $shadow_path.scheduler_prior_gate_count == 5
+      and $shadow_path.required_prior_gate_count == 9
+      and $shadow_path.scheduler_prior_chain_ready == true
+      and $shadow_path.task_result_contract_field_gap_readback_ready == true
+      and $shadow_path.append_only_shadow_path_readiness_complete == true
+      and $shadow_path.ready_for_persistent_mailbox_handoff == true
+      and $source_shadow_path_no_persistence_confirmed) as $source_shadow_path_readiness_complete
+  | ($source_shadow_path_readiness_complete
+      and ($mailbox_mappings | length) > 0
+      and ($handoff_mappings | length) > 0
+      and ($ack_deadlines | length) > 0
+      and ($wait_targets | length) > 0) as $persistent_mailbox_handoff_mapping_readiness_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -134,18 +160,25 @@ jq -n \
       ack_deadline_contract_count: ($ack_deadlines | length),
       wait_agent_target_count: ($wait_targets | length),
       required_prior_gate_count: ($required_prior_gates | length),
+      source_shadow_path_scheduler_prior_gate_count: $shadow_path.scheduler_prior_gate_count,
+      source_shadow_path_required_prior_gate_count: $shadow_path.required_prior_gate_count,
       mailbox_event_mappings: $mailbox_mappings,
       handoff_event_mappings: $handoff_mappings,
       ack_deadline_contracts: $ack_deadlines,
       wait_agent_targets: $wait_targets,
       required_prior_gates: $required_prior_gates,
+      source_shadow_path_gate: $shadow_path.gate,
       recommended_next_gate: "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate",
+      source_shadow_path_readiness_complete: $source_shadow_path_readiness_complete,
+      source_shadow_path_ready_for_persistent_mailbox_handoff: $shadow_path.ready_for_persistent_mailbox_handoff,
+      source_shadow_path_no_persistence_confirmed: $source_shadow_path_no_persistence_confirmed,
+      persistent_mailbox_handoff_mapping_readiness_complete: $persistent_mailbox_handoff_mapping_readiness_complete,
       mailbox_events_map_to_work_graph_events: true,
       ack_deadline_parent_child_artifact_refs_ready: true,
       wait_agent_named_task_result_barrier_ready: true,
       persistent_mailbox_store_enabled: false,
       live_wait_agent_behavior_changed: false,
-      ready_for_agent_role_agent_card_manifest: true,
+      ready_for_agent_role_agent_card_manifest: $persistent_mailbox_handoff_mapping_readiness_complete,
       ready_for_live_execution: false,
       source_probes: {
         persistent_mailbox_handoff_event_mapping: {
@@ -154,7 +187,16 @@ jq -n \
           gate_script_present: $gate_script_present
         },
         append_only_event_store_shadow_path: {
-          gate_script_present: $shadow_path_gate_script_present
+          gate_script_present: $shadow_path_gate_script_present,
+          report_gate: $shadow_path.gate,
+          scheduler_prior_gate_count: $shadow_path.scheduler_prior_gate_count,
+          required_prior_gate_count: $shadow_path.required_prior_gate_count,
+          append_only_shadow_path_readiness_complete: $shadow_path.append_only_shadow_path_readiness_complete,
+          ready_for_persistent_mailbox_handoff: $shadow_path.ready_for_persistent_mailbox_handoff,
+          shadow_store_write_enabled: $shadow_path.shadow_store_write_enabled,
+          live_cutover_enabled: $shadow_path.live_cutover_enabled,
+          ready_for_live_execution: $shadow_path.ready_for_live_execution,
+          side_effects_all_false: ($shadow_path.side_effects | to_entries | all(.value == false))
         }
       },
       side_effects: {

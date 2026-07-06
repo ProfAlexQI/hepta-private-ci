@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+current="$(
+  capture_json_report \
+    "hepta-work-graph-current-state-inventory-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-current-state-inventory-report.sh"
+)"
+index="$(
+  capture_json_report \
+    "hepta-work-graph-adapter-task-result-index-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-adapter-task-result-index-report.sh"
+)"
+terminal="$(
+  capture_json_report \
+    "hepta-work-graph-terminal-envelope-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-terminal-envelope-readback-report.sh"
+)"
+
+rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_source_id_alignment_readback.rs
+)"
+report_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-source-id-alignment-readback-report.sh
+)"
+gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-source-id-alignment-readback-gate.sh
+)"
+scheduler_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-gate.sh
+)"
+
+jq -n \
+  --argjson current "$current" \
+  --argjson index "$index" \
+  --argjson terminal "$terminal" \
+  --argjson rust_module_present "$rust_module_present" \
+  --argjson report_script_present "$report_script_present" \
+  --argjson gate_script_present "$gate_script_present" \
+  --argjson scheduler_gate_script_present "$scheduler_gate_script_present" \
+  '
+  def alignment($current; $canonical; $kind; $current_present; $canonical_present; $resolved; $rationale; $next): {
+    current_state_source_id: $current,
+    canonical_adapter_source_id: $canonical,
+    alignment_kind: $kind,
+    current_state_present: $current_present,
+    canonical_adapter_present: $canonical_present,
+    drift_resolved: $resolved,
+    live_enforcement_enabled: false,
+    rationale: $rationale,
+    next_alignment_step: $next
+  };
+  def blocker($id; $severity; $sources; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_source_surface_ids: $sources,
+    blocks_live_execution: true,
+    recommended_fix: $fix
+  };
+  ($index.source_index | map(.source_surface_id)) as $canonical_ids
+  | ["hepta_runtime_approval_broker"] as $canonical_shadow_only_ids
+  | (
+      $current.source_surfaces
+      | map(
+          .id as $id
+          | if ($canonical_ids | index($id)) then
+            alignment($id; $id; "direct_match"; true; true; true; "current-state inventory and canonical adapter inventory use the same source id"; "keep_read_only_alignment_until_task_result_contract_field_gap_readback")
+          elif $id == "plan_mode_proposed_plan" then
+            alignment("plan_mode_proposed_plan"; "plan_mode_proposed_plan_blocks"; "renamed_alias"; true; ($canonical_ids | index("plan_mode_proposed_plan_blocks") != null); ($canonical_ids | index("plan_mode_proposed_plan_blocks") != null); "canonical adapter inventory represents Plan Mode proposed plans as normalized plan block rows"; "document_alias_before_event_store_shadow_path")
+          elif $id == "codex_agent_graph_store" then
+            alignment("codex_agent_graph_store"; "multi_agent_v2_thread_spawn"; "covered_by_canonical_surface"; true; ($canonical_ids | index("multi_agent_v2_thread_spawn") != null); ($canonical_ids | index("multi_agent_v2_thread_spawn") != null); "agent graph store is the backing edge store for multi-agent thread spawn rather than a separate canonical WorkGraph source"; "keep_backing_store_read_only_until_append_only_event_store_shadow_path")
+          else
+            alignment($id; null; "unresolved_current_state_only"; true; false; false; "current-state source has no canonical adapter mapping"; "add_canonical_adapter_source_or_explicit_alias")
+          end
+        )
+    ) as $current_alignments
+  | ($current_alignments | map(.canonical_adapter_source_id) | map(select(. != null)) | unique) as $mapped_canonical_ids
+  | (
+      $canonical_ids
+      | map(
+          . as $id
+          | select((($mapped_canonical_ids | index($id)) | not) and (($canonical_shadow_only_ids | index($id)) != null))
+          | alignment(null; $id; "canonical_shadow_only"; false; true; true; "canonical adapter surface is intentionally represented as shadow/operator-control evidence before live current-state ownership exists"; "keep_shadow_only_until_operator_control_projection_is_read_back")
+        )
+    ) as $shadow_alignments
+  | ($current_alignments + $shadow_alignments) as $alignments
+  | ($alignments | map(.canonical_adapter_source_id) | map(select(. != null)) | unique) as $all_mapped_canonical_ids
+  | ($alignments | map(select(.current_state_present == true and .drift_resolved != true) | .current_state_source_id)) as $unresolved_current
+  | ($canonical_ids | map(. as $id | select(($all_mapped_canonical_ids | index($id)) | not))) as $unresolved_canonical
+  | ($alignments | map(select(.alignment_kind == "direct_match")) | length) as $direct_count
+  | ($alignments | map(select(.current_state_present == true and .alignment_kind != "direct_match")) | length) as $alias_count
+  | ($alignments | map(select(.alignment_kind == "canonical_shadow_only")) | length) as $shadow_only_count
+  | ($terminal.terminal_sources | map(select((.missing_contract_required_wire_fields | length) > 0) | .source_surface_id)) as $contract_gap_sources
+  | (
+      (if (($unresolved_current + $unresolved_canonical) | length) > 0 then
+        [blocker("source_id_alignment_unresolved"; "medium"; ($unresolved_current + $unresolved_canonical); "add a direct adapter source id, a documented alias, or a shadow-only classification before promotion")]
+      else [] end)
+      + (if $shadow_only_count > 0 then
+        [blocker("canonical_approval_broker_shadow_only"; "medium"; ($shadow_alignments | map(.canonical_adapter_source_id)); "read back the approval broker as an explicit operator-control current-state surface before enabling enforcement")]
+      else [] end)
+      + (if $terminal.task_result_contract_required_field_gap_count > 0 then
+        [blocker("task_result_contract_required_fields_partial"; "medium"; $contract_gap_sources; "fill missing TaskResult contract field projections before enabling validator enforcement")]
+      else [] end)
+      + [blocker("source_id_alignment_live_enforcement_disabled"; "high"; ($alignments | map(.canonical_adapter_source_id // .current_state_source_id) | unique); "keep source-id aliases report-only until TaskResult fields, append-only event-store shadow path, replay, and operator review pass")]
+    ) as $blockers
+  | (($unresolved_current | length) == 0
+      and ($unresolved_canonical | length) == 0
+      and $terminal.ready_for_source_id_alignment_readback == true) as $complete
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_source_id_alignment_readback_gate",
+      schema_version: "work_graph_source_id_alignment_readback_v1",
+      preview_mode: "read_only_source_id_alignment_readback_no_live_enforcement",
+      current_state_source_surface_count: $current.source_surface_count,
+      canonical_adapter_source_surface_count: $index.canonical_adapter_source_surface_count,
+      alignment_entry_count: ($alignments | length),
+      direct_alignment_count: $direct_count,
+      current_state_alias_alignment_count: $alias_count,
+      canonical_shadow_only_alignment_count: $shadow_only_count,
+      unresolved_current_state_source_count: ($unresolved_current | length),
+      unresolved_canonical_adapter_source_count: ($unresolved_canonical | length),
+      terminal_envelope_readback_consistent_source_count: $terminal.readback_consistent_source_count,
+      task_result_contract_required_field_gap_count: $terminal.task_result_contract_required_field_gap_count,
+      task_result_contract_terminal_field_gap_count: $terminal.task_result_contract_terminal_field_gap_count,
+      alignments: $alignments,
+      unresolved_current_state_source_ids: $unresolved_current,
+      unresolved_canonical_adapter_source_ids: $unresolved_canonical,
+      blockers: $blockers,
+      required_prior_gates: [
+        "hepta_work_graph_current_state_inventory_gate",
+        "hepta_work_graph_adapter_task_result_index_gate",
+        "hepta_work_graph_terminal_envelope_readback_gate"
+      ],
+      recommended_next_gate: "hepta_work_graph_task_result_contract_field_gap_readback_gate",
+      source_id_alignment_readback_complete: $complete,
+      ready_for_task_result_contract_field_gap_readback: $complete,
+      ready_for_append_only_event_store_shadow_path: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        source_id_alignment_readback: {
+          rust_module_present: $rust_module_present,
+          report_script_present: $report_script_present,
+          gate_script_present: $gate_script_present
+        },
+        priors: {
+          current_state_inventory_gate: $current.gate,
+          adapter_task_result_index_gate: $index.gate,
+          terminal_envelope_readback_gate: $terminal.gate
+        },
+        scheduler_admission_dry_run: {
+          gate_script_present: $scheduler_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_event_persisted: false,
+        source_id_alias_enforced: false,
+        adapter_projection_enforced: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        live_admission_enforcement_enabled: false,
+        runtime_mutation_performed: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

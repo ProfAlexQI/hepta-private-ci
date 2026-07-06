@@ -1,7 +1,11 @@
 use serde::Serialize;
 
+use crate::work_graph_adapter_task_result_index::WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE;
 use crate::work_graph_scheduler_admission_controller::work_graph_scheduler_admission_checks;
+use crate::work_graph_source_id_alignment_readback::WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE;
+use crate::work_graph_task_result_contract_field_gap_readback::WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE;
 use crate::work_graph_task_result_envelope_report_only_validator::WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE;
+use crate::work_graph_terminal_envelope_readback::WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE;
 
 pub const WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE: &str =
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate";
@@ -110,7 +114,13 @@ pub fn hepta_work_graph_scheduler_admission_dry_run_enforcement_report()
         checks,
         decisions,
         explanations,
-        required_prior_gates: vec![WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE],
+        required_prior_gates: vec![
+            WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
+            WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE,
+            WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE,
+            WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
+            WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
+        ],
         recommended_next_gate:
             WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_RECOMMENDED_NEXT_GATE,
         dry_run_enforcement_enabled: true,
@@ -485,5 +495,15 @@ mod tests {
         assert!(!report.live_blocking_enforcement_enabled);
         assert!(report.ready_for_append_only_event_store_shadow_path);
         assert!(!report.ready_for_live_execution);
+        assert_eq!(
+            report.required_prior_gates,
+            [
+                WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
+                WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE,
+                WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE,
+                WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
+                WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
+            ]
+        );
     }
 }

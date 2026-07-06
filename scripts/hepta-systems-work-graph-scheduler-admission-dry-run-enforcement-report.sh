@@ -29,12 +29,28 @@ gate_script_present="$(
 task_result_envelope_gate_script_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-task-result-envelope-report-only-validator-gate.sh
 )"
+adapter_task_result_index_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-adapter-task-result-index-gate.sh
+)"
+terminal_envelope_readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-terminal-envelope-readback-gate.sh
+)"
+source_id_alignment_readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-source-id-alignment-readback-gate.sh
+)"
+task_result_contract_field_gap_readback_gate_script_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-task-result-contract-field-gap-readback-gate.sh
+)"
 
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
   --argjson gate_script_present "$gate_script_present" \
   --argjson task_result_envelope_gate_script_present "$task_result_envelope_gate_script_present" \
+  --argjson adapter_task_result_index_gate_script_present "$adapter_task_result_index_gate_script_present" \
+  --argjson terminal_envelope_readback_gate_script_present "$terminal_envelope_readback_gate_script_present" \
+  --argjson source_id_alignment_readback_gate_script_present "$source_id_alignment_readback_gate_script_present" \
+  --argjson task_result_contract_field_gap_readback_gate_script_present "$task_result_contract_field_gap_readback_gate_script_present" \
   '
   def check($id; $evidence): {
     id: $id,
@@ -115,7 +131,13 @@ jq -n \
       checks: $checks,
       decisions: $decisions,
       explanations: $explanations,
-      required_prior_gates: ["hepta_work_graph_task_result_envelope_report_only_validator_gate"],
+      required_prior_gates: [
+        "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+        "hepta_work_graph_adapter_task_result_index_gate",
+        "hepta_work_graph_terminal_envelope_readback_gate",
+        "hepta_work_graph_source_id_alignment_readback_gate",
+        "hepta_work_graph_task_result_contract_field_gap_readback_gate"
+      ],
       recommended_next_gate: "hepta_work_graph_append_only_event_store_shadow_path_gate",
       dry_run_enforcement_enabled: true,
       live_blocking_enforcement_enabled: false,
@@ -129,6 +151,18 @@ jq -n \
         },
         task_result_envelope_report_only_validator: {
           gate_script_present: $task_result_envelope_gate_script_present
+        },
+        adapter_task_result_index: {
+          gate_script_present: $adapter_task_result_index_gate_script_present
+        },
+        terminal_envelope_readback: {
+          gate_script_present: $terminal_envelope_readback_gate_script_present
+        },
+        source_id_alignment_readback: {
+          gate_script_present: $source_id_alignment_readback_gate_script_present
+        },
+        task_result_contract_field_gap_readback: {
+          gate_script_present: $task_result_contract_field_gap_readback_gate_script_present
         }
       },
       side_effects: {

@@ -517,6 +517,7 @@ mod wg_upe_tnc_r14_rerun_preview;
 mod wg_upe_tnc_r15_rerun_preview;
 mod work_graph_activation_enforcement_blocker_preview;
 mod work_graph_adapter_projection_fixture;
+mod work_graph_adapter_task_result_index;
 mod work_graph_agent_jobs_task_board_canary_readback_replay;
 mod work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only;
 mod work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index;
@@ -754,12 +755,15 @@ mod work_graph_scheduler_admission_enforcement_gap_closure_application_preview;
 mod work_graph_scheduler_admission_enforcement_gap_closure_preview;
 mod work_graph_scheduler_admission_enforcement_gap_closure_readback_preview;
 mod work_graph_shadow_adapter_readback_preview;
+mod work_graph_source_id_alignment_readback;
 mod work_graph_state_store_persistence_preview;
 mod work_graph_store_idempotency_guard_gap_closure_application_preview;
 mod work_graph_store_idempotency_guard_gap_closure_preview;
 mod work_graph_store_idempotency_guard_gap_closure_readback_preview;
 mod work_graph_task_result_contract;
+mod work_graph_task_result_contract_field_gap_readback;
 mod work_graph_task_result_envelope_report_only_validator;
+mod work_graph_terminal_envelope_readback;
 mod work_graph_terminal_task_result_enforcement_gap_closure_application_preview;
 mod work_graph_terminal_task_result_enforcement_gap_closure_preview;
 mod work_graph_terminal_task_result_enforcement_gap_closure_readback_preview;
@@ -2839,6 +2843,7 @@ pub use work_graph_append_only_event_store_shadow_path::{
     hepta_work_graph_append_only_event_store_shadow_path_report,
     work_graph_append_only_event_store_shadow_path_records,
     work_graph_append_only_event_store_shadow_path_required_prior_gates,
+    work_graph_append_only_event_store_shadow_path_scheduler_prior_gates,
     work_graph_append_only_event_store_shadow_projection_indexes,
     work_graph_append_only_event_store_shadow_readback_evidence,
     work_graph_append_only_event_store_shadow_replay_diffs,
@@ -6705,6 +6710,13 @@ pub use work_graph_adapter_projection_fixture::{
     work_graph_adapter_projection_collection_coverage, work_graph_adapter_projection_fixtures,
     work_graph_adapter_projection_invariants,
 };
+pub use work_graph_adapter_task_result_index::{
+    WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE,
+    WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_RECOMMENDED_NEXT_GATE,
+    WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_SCHEMA_VERSION, WorkGraphAdapterTaskResultIndexBlocker,
+    WorkGraphAdapterTaskResultIndexEntry, WorkGraphAdapterTaskResultIndexReport,
+    WorkGraphAdapterTaskResultIndexSideEffects, hepta_work_graph_adapter_task_result_index_report,
+};
 pub use work_graph_contract_preview::{
     WORK_GRAPH_CONTRACT_PREVIEW_GATE, WORK_GRAPH_CONTRACT_PREVIEW_RECOMMENDED_NEXT_GATE,
     WORK_GRAPH_CONTRACT_PREVIEW_SCHEMA_VERSION, WorkGraphAdapterPreview,
@@ -8135,6 +8147,14 @@ pub use work_graph_shadow_adapter_readback_preview::{
     work_graph_shadow_adapter_readback_required_prior_gates, work_graph_shadow_adapter_shadow_ids,
     work_graph_shadow_adapter_shadows,
 };
+pub use work_graph_source_id_alignment_readback::{
+    WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
+    WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_RECOMMENDED_NEXT_GATE,
+    WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_SCHEMA_VERSION,
+    WorkGraphSourceIdAlignmentReadbackBlocker, WorkGraphSourceIdAlignmentReadbackEntry,
+    WorkGraphSourceIdAlignmentReadbackReport, WorkGraphSourceIdAlignmentReadbackSideEffects,
+    hepta_work_graph_source_id_alignment_readback_report,
+};
 pub use work_graph_state_store_persistence_preview::{
     WORK_GRAPH_STATE_STORE_PERSISTENCE_PREVIEW_GATE,
     WORK_GRAPH_STATE_STORE_PERSISTENCE_RECOMMENDED_NEXT_GATE,
@@ -8158,6 +8178,16 @@ pub use work_graph_task_result_contract::{
     work_graph_task_result_adapter_previews, work_graph_task_result_required_fields,
     work_graph_task_result_statuses, work_graph_task_result_validators,
 };
+pub use work_graph_task_result_contract_field_gap_readback::{
+    WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE,
+    WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_RECOMMENDED_NEXT_GATE,
+    WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_SCHEMA_VERSION,
+    WorkGraphTaskResultContractFieldGapReadbackBlocker,
+    WorkGraphTaskResultContractFieldGapReadbackReport,
+    WorkGraphTaskResultContractFieldGapReadbackSideEffects,
+    WorkGraphTaskResultContractFieldGapReadbackSource,
+    hepta_work_graph_task_result_contract_field_gap_readback_report,
+};
 pub use work_graph_task_result_envelope_report_only_validator::{
     WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
     WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_RECOMMENDED_NEXT_GATE,
@@ -8174,6 +8204,14 @@ pub use work_graph_task_result_envelope_report_only_validator::{
     work_graph_task_result_envelope_source_adapters,
     work_graph_task_result_envelope_source_envelopes,
     work_graph_task_result_envelope_validation_rules,
+};
+pub use work_graph_terminal_envelope_readback::{
+    WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE,
+    WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_RECOMMENDED_NEXT_GATE,
+    WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_SCHEMA_VERSION,
+    WorkGraphTerminalEnvelopeReadbackBlocker, WorkGraphTerminalEnvelopeReadbackReport,
+    WorkGraphTerminalEnvelopeReadbackSideEffects, WorkGraphTerminalEnvelopeReadbackSource,
+    hepta_work_graph_terminal_envelope_readback_report,
 };
 pub use work_graph_terminal_task_result_wrapper_preview::{
     WORK_GRAPH_TERMINAL_TASK_RESULT_WRAPPER_PREVIEW_GATE,

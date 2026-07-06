@@ -78,6 +78,19 @@ jq -e '
     "hepta_work_graph_role_manifest_contract_preview_gate"
   ]
   and .required_prior_gate_count == 2
+  and .source_persistent_mailbox_handoff_gate == "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate"
+  and .source_role_manifest_contract_gate == "hepta_work_graph_role_manifest_contract_preview_gate"
+  and .source_persistent_mailbox_handoff_required_prior_gate_count == 1
+  and .source_role_manifest_required_field_count == 12
+  and .source_role_manifest_capability_count == 7
+  and .source_role_manifest_permission_mode_count == 5
+  and .source_role_manifest_invariant_count == 6
+  and .source_role_manifest_adapter_preview_count == 4
+  and .source_persistent_mailbox_handoff_readiness_complete == true
+  and .source_persistent_mailbox_handoff_no_persistence_confirmed == true
+  and .source_role_manifest_contract_ready == true
+  and .source_role_manifest_no_enforcement_confirmed == true
+  and .agent_role_agent_card_manifest_readiness_complete == true
   and .recommended_next_gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
   and .capability_tool_budget_lane_ready == true
   and .side_effect_class_ready == true
@@ -90,7 +103,23 @@ jq -e '
   and .source_probes.agent_role_agent_card_manifest_report_only.report_script_present == true
   and .source_probes.agent_role_agent_card_manifest_report_only.gate_script_present == true
   and .source_probes.persistent_mailbox_handoff_event_mapping.gate_script_present == true
+  and .source_probes.persistent_mailbox_handoff_event_mapping.report_gate == "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate"
+  and .source_probes.persistent_mailbox_handoff_event_mapping.persistent_mailbox_handoff_mapping_readiness_complete == true
+  and .source_probes.persistent_mailbox_handoff_event_mapping.ready_for_agent_role_agent_card_manifest == true
+  and .source_probes.persistent_mailbox_handoff_event_mapping.persistent_mailbox_store_enabled == false
+  and .source_probes.persistent_mailbox_handoff_event_mapping.live_wait_agent_behavior_changed == false
+  and .source_probes.persistent_mailbox_handoff_event_mapping.ready_for_live_execution == false
+  and .source_probes.persistent_mailbox_handoff_event_mapping.side_effects_all_false == true
   and .source_probes.role_manifest_contract.gate_script_present == true
+  and .source_probes.role_manifest_contract.report_gate == "hepta_work_graph_role_manifest_contract_preview_gate"
+  and .source_probes.role_manifest_contract.required_field_count == 12
+  and .source_probes.role_manifest_contract.capability_count == 7
+  and .source_probes.role_manifest_contract.permission_mode_count == 5
+  and .source_probes.role_manifest_contract.invariant_count == 6
+  and .source_probes.role_manifest_contract.adapter_preview_count == 4
+  and .source_probes.role_manifest_contract.ready_for_role_enforcement == false
+  and .source_probes.role_manifest_contract.ready_for_live_execution == false
+  and .source_probes.role_manifest_contract.side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

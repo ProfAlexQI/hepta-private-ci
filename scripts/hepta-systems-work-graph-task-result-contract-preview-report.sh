@@ -84,6 +84,7 @@ jq -n \
     field("usage"; "usage"; "object"; true; false; "model, tool, command, budget, and token usage accounting"),
     field("traceId"; "trace_id"; "stable_id"; true; true; "join key across plan, spawn, mailbox, tools, artifacts, gates, and result")
   ] as $required_fields
+  | ($required_fields | map(.wire_name)) as $required_wire_fields
   | [
     status("queued"; false; false; false),
     status("running"; false; false; false),
@@ -103,12 +104,12 @@ jq -n \
     validator("adapter_projection_is_preview_only"; "existing agent, worker, and scheduler result stores are only projected, not enforced")
   ] as $validators
   | [
-    adapter("agent_jobs_batch_workers"; "AgentJobItem.status"; "worker_task"; ["taskId", "status", "summary", "evidence", "nextActions", "traceId"]; ["agent_job_result_json_is_not_task_result_schema"]),
-    adapter("hepta_runtime_worker_tasks"; "WorkerTaskRecord.status"; "worker_task"; ["taskId", "status", "summary", "artifacts", "evidence", "risks", "nextActions", "usage", "traceId"]; ["worker_task_missing_verifier_and_reducer_projection"]),
-    adapter("hepta_runtime_multi_agent_reducer"; "AgentRuntimeRunReport.reducer_passed"; "agent_task"; ["taskId", "status", "summary", "evidence", "risks", "reducer", "traceId"]; ["reducer_output_missing_task_result_wrapper"]),
-    adapter("multi_agent_v2_thread_spawn"; "thread_spawn_edge.status"; "agent_task"; ["taskId", "status", "summary", "evidence", "traceId"]; ["thread_spawn_edge_missing_terminal_task_result"]),
-    adapter("hepta_runtime_scheduler_store"; "SchedulerRunRecord.status"; "scheduler_run"; ["taskId", "status", "summary", "evidence", "risks", "nextActions", "traceId"]; ["scheduler_run_missing_task_result_projection"]),
-    adapter("hepta_runtime_agent_harness"; "AgentHarnessRunRecord.status"; "external_handoff"; ["taskId", "status", "summary", "artifacts", "evidence", "risks", "traceId"]; ["agent_harness_ledger_missing_task_result_projection"])
+    adapter("agent_jobs_batch_workers"; "AgentJobItem.status"; "worker_task"; $required_wire_fields; ["agent_job_task_result_projection_report_only_not_enforced"]),
+    adapter("hepta_runtime_worker_tasks"; "WorkerTaskRecord.status"; "worker_task"; $required_wire_fields; ["worker_task_task_result_projection_report_only_not_enforced"]),
+    adapter("hepta_runtime_multi_agent_reducer"; "AgentRuntimeRunReport.reducer_passed"; "agent_task"; $required_wire_fields; ["multi_agent_reducer_task_result_projection_report_only_not_enforced"]),
+    adapter("multi_agent_v2_thread_spawn"; "thread_spawn_edge.status"; "agent_task"; $required_wire_fields; ["thread_spawn_task_result_projection_report_only_not_enforced"]),
+    adapter("hepta_runtime_scheduler_store"; "SchedulerRunRecord.status"; "scheduler_run"; $required_wire_fields; ["scheduler_run_task_result_projection_report_only_not_enforced"]),
+    adapter("hepta_runtime_agent_harness"; "AgentHarnessRunRecord.status"; "external_handoff"; $required_wire_fields; ["agent_harness_task_result_projection_report_only_not_enforced"])
   ] as $adapter_previews
   | {
       product: "Hepta",

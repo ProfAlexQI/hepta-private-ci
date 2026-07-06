@@ -63,7 +63,13 @@ jq -e '
     ["worker_task_run", "deny_side_effect_boundary_open"]
   ])
   and (.explanations | all((.trace_id | length) > 0))
-  and (.required_prior_gates == ["hepta_work_graph_task_result_envelope_report_only_validator_gate"])
+  and (.required_prior_gates == [
+    "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+    "hepta_work_graph_adapter_task_result_index_gate",
+    "hepta_work_graph_terminal_envelope_readback_gate",
+    "hepta_work_graph_source_id_alignment_readback_gate",
+    "hepta_work_graph_task_result_contract_field_gap_readback_gate"
+  ])
   and .recommended_next_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
   and .dry_run_enforcement_enabled == true
   and .live_blocking_enforcement_enabled == false
@@ -73,6 +79,10 @@ jq -e '
   and .source_probes.scheduler_admission_dry_run_enforcement.report_script_present == true
   and .source_probes.scheduler_admission_dry_run_enforcement.gate_script_present == true
   and .source_probes.task_result_envelope_report_only_validator.gate_script_present == true
+  and .source_probes.adapter_task_result_index.gate_script_present == true
+  and .source_probes.terminal_envelope_readback.gate_script_present == true
+  and .source_probes.source_id_alignment_readback.gate_script_present == true
+  and .source_probes.task_result_contract_field_gap_readback.gate_script_present == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

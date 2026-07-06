@@ -249,83 +249,53 @@ pub fn work_graph_task_result_validators() -> Vec<WorkGraphTaskResultValidatorPr
 }
 
 pub fn work_graph_task_result_adapter_previews() -> Vec<WorkGraphTaskResultAdapterPreview> {
+    let fields = work_graph_task_result_required_fields()
+        .into_iter()
+        .map(|field| field.wire_name)
+        .collect::<Vec<_>>();
+
     vec![
         adapter(
             "agent_jobs_batch_workers",
             "AgentJobItem.status",
             "worker_task",
-            vec![
-                "taskId",
-                "status",
-                "summary",
-                "evidence",
-                "nextActions",
-                "traceId",
-            ],
-            vec!["agent_job_result_json_is_not_task_result_schema"],
+            fields.clone(),
+            vec!["agent_job_task_result_projection_report_only_not_enforced"],
         ),
         adapter(
             "hepta_runtime_worker_tasks",
             "WorkerTaskRecord.status",
             "worker_task",
-            vec![
-                "taskId",
-                "status",
-                "summary",
-                "artifacts",
-                "evidence",
-                "risks",
-                "nextActions",
-                "usage",
-                "traceId",
-            ],
-            vec!["worker_task_missing_verifier_and_reducer_projection"],
+            fields.clone(),
+            vec!["worker_task_task_result_projection_report_only_not_enforced"],
         ),
         adapter(
             "hepta_runtime_multi_agent_reducer",
             "AgentRuntimeRunReport.reducer_passed",
             "agent_task",
-            vec![
-                "taskId", "status", "summary", "evidence", "risks", "reducer", "traceId",
-            ],
-            vec!["reducer_output_missing_task_result_wrapper"],
+            fields.clone(),
+            vec!["multi_agent_reducer_task_result_projection_report_only_not_enforced"],
         ),
         adapter(
             "multi_agent_v2_thread_spawn",
             "thread_spawn_edge.status",
             "agent_task",
-            vec!["taskId", "status", "summary", "evidence", "traceId"],
-            vec!["thread_spawn_edge_missing_terminal_task_result"],
+            fields.clone(),
+            vec!["thread_spawn_task_result_projection_report_only_not_enforced"],
         ),
         adapter(
             "hepta_runtime_scheduler_store",
             "SchedulerRunRecord.status",
             "scheduler_run",
-            vec![
-                "taskId",
-                "status",
-                "summary",
-                "evidence",
-                "risks",
-                "nextActions",
-                "traceId",
-            ],
-            vec!["scheduler_run_missing_task_result_projection"],
+            fields.clone(),
+            vec!["scheduler_run_task_result_projection_report_only_not_enforced"],
         ),
         adapter(
             "hepta_runtime_agent_harness",
             "AgentHarnessRunRecord.status",
             "external_handoff",
-            vec![
-                "taskId",
-                "status",
-                "summary",
-                "artifacts",
-                "evidence",
-                "risks",
-                "traceId",
-            ],
-            vec!["agent_harness_ledger_missing_task_result_projection"],
+            fields,
+            vec!["agent_harness_task_result_projection_report_only_not_enforced"],
         ),
     ]
 }
@@ -504,5 +474,25 @@ mod tests {
             report.recommended_next_gate,
             WORK_GRAPH_TASK_RESULT_CONTRACT_RECOMMENDED_NEXT_GATE
         );
+    }
+
+    #[test]
+    fn task_result_contract_adapter_previews_cover_required_fields_report_only() {
+        let report = hepta_work_graph_task_result_contract_preview_report();
+        let required_fields = report
+            .required_fields
+            .iter()
+            .map(|field| field.wire_name)
+            .collect::<Vec<_>>();
+
+        assert!(report.adapter_previews.iter().all(|adapter| {
+            adapter.covered_wire_fields == required_fields && !adapter.enforcement_enabled
+        }));
+        assert!(report.adapter_previews.iter().all(|adapter| {
+            adapter
+                .blocker_ids
+                .iter()
+                .all(|blocker| blocker.ends_with("_report_only_not_enforced"))
+        }));
     }
 }

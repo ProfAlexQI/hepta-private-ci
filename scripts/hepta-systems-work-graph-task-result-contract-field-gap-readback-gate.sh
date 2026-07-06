@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-task-result-contract-field-gap-readback-report.sh"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-contract-field-gap-readback-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_task_result_contract_field_gap_readback_gate"
+  and .schema_version == "work_graph_task_result_contract_field_gap_readback_v1"
+  and .preview_mode == "read_only_task_result_contract_field_gap_readback_no_enforcement"
+  and .required_wire_field_count == 11
+  and .terminal_source_count == 6
+  and .terminal_source_full_contract_count == 6
+  and .gap_source_count == 0
+  and .contract_required_field_gap_count == 0
+  and .contract_terminal_field_gap_count == 0
+  and (.field_readbacks | map(.source_surface_id) == [
+    "multi_agent_v2_thread_spawn",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.field_readbacks | all(
+    .task_result_contract_adapter_state == "present_report_only"
+    and .covered_contract_wire_fields == [
+      "taskId",
+      "status",
+      "summary",
+      "artifacts",
+      "evidence",
+      "risks",
+      "nextActions",
+      "verifier",
+      "reducer",
+      "usage",
+      "traceId"
+    ]
+    and (.missing_contract_required_wire_fields | length) == 0
+    and (.missing_contract_terminal_wire_fields | length) == 0
+    and .readback_decision == "task_result_contract_fields_complete_report_only"
+    and .live_enforcement_enabled == false
+    and .next_gap_step == "append_only_event_store_shadow_path"
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  ((.blockers | map(.id) | index("task_result_contract_field_gap_remaining")) | not)
+  and (.blockers | map(.id) | index("append_only_event_store_shadow_path_not_enabled"))
+  and (.blockers | map(.id) | index("task_result_contract_live_enforcement_disabled"))
+  and (.blockers | all(.blocks_live_execution == true))
+  and (.required_prior_gates == [
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_terminal_envelope_readback_gate",
+    "hepta_work_graph_source_id_alignment_readback_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+  and .task_result_contract_field_gap_readback_complete == true
+  and .ready_for_append_only_event_store_shadow_path == true
+  and .ready_for_task_result_enforcement == false
+  and .ready_for_live_execution == false
+' >/dev/null <<<"$report"
+
+jq -e '
+  .source_probes.task_result_contract_field_gap_readback.rust_module_present == true
+  and .source_probes.task_result_contract_field_gap_readback.report_script_present == true
+  and .source_probes.task_result_contract_field_gap_readback.gate_script_present == true
+  and .source_probes.priors.task_result_contract_gate == "hepta_work_graph_task_result_contract_preview_gate"
+  and .source_probes.priors.terminal_envelope_readback_gate == "hepta_work_graph_terminal_envelope_readback_gate"
+  and .source_probes.priors.source_id_alignment_readback_gate == "hepta_work_graph_source_id_alignment_readback_gate"
+  and .source_probes.scheduler_admission_dry_run.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_task_result_contract_field_gap_readback --lib
+
+echo "Hepta WorkGraph TaskResult contract field-gap readback gate passed"
