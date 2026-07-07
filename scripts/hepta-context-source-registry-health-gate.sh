@@ -70,7 +70,7 @@ cargo test --manifest-path "$manifest" -p codex-core \
 
 echo "context-source-registry-health=pass"
 echo "context-source-registry-health.descriptor-fields=14"
-echo "context-source-registry-health.entry-count=19"
+echo "context-source-registry-health.entry-count=20"
 echo "context-source-registry-health.live-activation-routes=0"
 echo "context-source-registry-health.runtime-activation=disabled"
 echo "Hepta context source registry health gate passed"

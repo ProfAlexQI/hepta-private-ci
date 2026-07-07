@@ -9,6 +9,7 @@ use crate::context::RealtimeStartInstructions;
 use crate::context::RealtimeStartWithInstructions;
 use crate::context::UserInstructions;
 use crate::session::PreviousTurnSettings;
+use crate::session::multi_agents;
 use crate::session::turn_context::TurnContext;
 use crate::shell::Shell;
 use codex_execpolicy::Policy;
@@ -28,6 +29,9 @@ pub(crate) use capability::CapabilityContextSections;
 use capability::build_capability_inventory_update_items;
 pub(crate) use extension::ExtensionContextSections;
 use extension::build_extension_context_update_items;
+
+const DEVELOPER_INSTRUCTIONS_CLEAR_TEXT: &str = "Developer instructions were cleared. Do not continue applying previously injected developer instructions.";
+const USER_INSTRUCTIONS_CLEAR_TEXT: &str = "Workspace/user instructions were cleared. Do not continue applying previously injected workspace or user instructions.";
 
 fn build_environment_update_item(
     previous: Option<&TurnContextItem>,
@@ -105,15 +109,23 @@ fn build_collaboration_mode_update_item(
         return None;
     }
 
+    if let Some(previous_manifest) = previous.and_then(|item| item.context_manifest.as_ref())
+        && let Some(previous_hash) =
+            previous_manifest_source_hash(previous_manifest, "collaboration_mode")
+    {
+        let next_text = build_collaboration_mode_update_text(next)
+            .unwrap_or_else(|| CollaborationModeInstructions::cleared().render());
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
+    }
+
     let prev = previous?;
     if prev.collaboration_mode.as_ref() == Some(&next.collaboration_mode) {
         return None;
     }
 
-    if let Some(next_instructions) =
-        CollaborationModeInstructions::from_collaboration_mode(&next.collaboration_mode)
-    {
-        return Some(next_instructions.render());
+    if let Some(next_instructions) = build_collaboration_mode_update_text(next) {
+        return Some(next_instructions);
     }
 
     prev.collaboration_mode
@@ -122,32 +134,66 @@ fn build_collaboration_mode_update_item(
         .map(|_| CollaborationModeInstructions::cleared().render())
 }
 
+fn build_collaboration_mode_update_text(next: &TurnContext) -> Option<String> {
+    CollaborationModeInstructions::from_collaboration_mode(&next.collaboration_mode)
+        .map(|instructions| instructions.render())
+}
+
 pub(crate) fn build_realtime_update_item(
     previous: Option<&TurnContextItem>,
     previous_turn_settings: Option<&PreviousTurnSettings>,
     next: &TurnContext,
 ) -> Option<String> {
-    match (
-        previous.and_then(|item| item.realtime_active),
-        next.realtime_active,
-    ) {
-        (Some(true), false) => Some(RealtimeEndInstructions::new("inactive").render()),
-        (Some(false), true) | (None, true) => Some(
-            if let Some(instructions) = next
-                .config
-                .experimental_realtime_start_instructions
-                .as_deref()
+    let previous_realtime_active = previous.and_then(|item| item.realtime_active);
+
+    if next.realtime_active {
+        let next_text = build_realtime_start_update_text(next);
+        match previous_realtime_active {
+            Some(false) => return Some(next_text),
+            Some(true) | None => {
+                if let Some(previous_manifest) =
+                    previous.and_then(|item| item.context_manifest.as_ref())
+                    && let Some(previous_hash) =
+                        previous_manifest_source_hash(previous_manifest, "realtime")
+                {
+                    let next_hash = manifest_text_hash(&next_text);
+                    return (previous_hash != next_hash).then_some(next_text);
+                }
+                if previous_realtime_active.is_none() {
+                    return Some(next_text);
+                }
+                return None;
+            }
+        }
+    }
+
+    match previous_realtime_active {
+        Some(true) => Some(RealtimeEndInstructions::new("inactive").render()),
+        Some(false) => None,
+        None => {
+            if previous
+                .and_then(|item| item.context_manifest.as_ref())
+                .is_some()
             {
-                RealtimeStartWithInstructions::new(instructions).render()
-            } else {
-                RealtimeStartInstructions.render()
-            },
-        ),
-        (Some(true), true) | (Some(false), false) => None,
-        (None, false) => previous_turn_settings
-            .and_then(|settings| settings.realtime_active)
-            .filter(|realtime_active| *realtime_active)
-            .map(|_| RealtimeEndInstructions::new("inactive").render()),
+                return None;
+            }
+            previous_turn_settings
+                .and_then(|settings| settings.realtime_active)
+                .filter(|realtime_active| *realtime_active)
+                .map(|_| RealtimeEndInstructions::new("inactive").render())
+        }
+    }
+}
+
+fn build_realtime_start_update_text(next: &TurnContext) -> String {
+    if let Some(instructions) = next
+        .config
+        .experimental_realtime_start_instructions
+        .as_deref()
+    {
+        RealtimeStartWithInstructions::new(instructions).render()
+    } else {
+        RealtimeStartInstructions.render()
     }
 }
 
@@ -205,6 +251,19 @@ pub(crate) fn build_model_instructions_update_item(
     previous_turn_settings: Option<&PreviousTurnSettings>,
     next: &TurnContext,
 ) -> Option<String> {
+    let model_instructions = next.model_info.get_model_instructions(next.personality);
+    let next_text = (!model_instructions.is_empty())
+        .then(|| ModelSwitchInstructions::new(model_instructions).render());
+
+    if let Some(previous_manifest) = previous.and_then(|item| item.context_manifest.as_ref())
+        && let Some(previous_hash) =
+            previous_manifest_source_hash(previous_manifest, "model_switch")
+    {
+        let next_text = next_text.unwrap_or_else(|| ModelSwitchInstructions::cleared().render());
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
+    }
+
     let previous_model = previous
         .filter(|item| item.context_manifest.is_some())
         .map(|item| item.model.as_str())
@@ -213,71 +272,126 @@ pub(crate) fn build_model_instructions_update_item(
         return None;
     }
 
-    let model_instructions = next.model_info.get_model_instructions(next.personality);
-    if model_instructions.is_empty() {
-        return None;
-    }
+    next_text
+}
 
-    Some(ModelSwitchInstructions::new(model_instructions).render())
+fn build_multi_agent_usage_hint_update_item(
+    previous: Option<&TurnContextItem>,
+    next_usage_hint: Option<&str>,
+) -> Option<String> {
+    let next_text = next_usage_hint.map(multi_agents::render_usage_hint);
+    let previous_hash = previous
+        .and_then(|item| item.context_manifest.as_ref())
+        .and_then(|previous_manifest| {
+            previous_manifest_source_hash(
+                previous_manifest,
+                multi_agents::MULTI_AGENT_USAGE_HINT_SOURCE_ID,
+            )
+        });
+
+    match (previous_hash, next_text) {
+        (Some(previous_hash), Some(next_text)) => {
+            let next_hash = manifest_text_hash(&next_text);
+            (previous_hash != next_hash).then_some(next_text)
+        }
+        (Some(previous_hash), None) => {
+            let clear_text = multi_agents::render_usage_hint_clear();
+            let clear_hash = manifest_text_hash(&clear_text);
+            (previous_hash != clear_hash).then_some(clear_text)
+        }
+        (None, Some(next_text)) => Some(next_text),
+        (None, None) => None,
+    }
 }
 
 fn build_developer_instructions_update_item(
     previous: Option<&TurnContextItem>,
     next: &TurnContext,
 ) -> Option<String> {
+    if let Some(previous_manifest) = previous.and_then(|item| item.context_manifest.as_ref())
+        && let Some(previous_hash) =
+            previous_manifest_source_hash(previous_manifest, "developer_instructions")
+    {
+        let next_text = build_developer_instructions_update_text(next)
+            .unwrap_or_else(|| DEVELOPER_INSTRUCTIONS_CLEAR_TEXT.to_string());
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
+    }
+
     let prev = previous?;
     let previous_instructions = prev
         .developer_instructions
         .as_deref()
         .filter(|instructions| !instructions.is_empty());
-    let next_instructions = next
-        .developer_instructions
-        .as_deref()
-        .filter(|instructions| !instructions.is_empty());
+    let next_instructions = build_developer_instructions_update_text(next);
 
-    if previous_instructions == next_instructions {
+    if previous_instructions == next_instructions.as_deref() {
         return None;
     }
 
-    next_instructions.map_or_else(
-        || {
-            previous_instructions.map(|_| {
-                "Developer instructions were cleared. Do not continue applying previously injected developer instructions.".to_string()
-            })
-        },
-        |instructions| Some(instructions.to_string()),
-    )
+    next_instructions
+        .or_else(|| previous_instructions.map(|_| DEVELOPER_INSTRUCTIONS_CLEAR_TEXT.to_string()))
+}
+
+fn build_developer_instructions_update_text(next: &TurnContext) -> Option<String> {
+    next.developer_instructions
+        .as_deref()
+        .filter(|instructions| !instructions.is_empty())
+        .map(str::to_string)
 }
 
 fn build_user_instructions_update_item(
     previous: Option<&TurnContextItem>,
     next: &TurnContext,
 ) -> Option<String> {
+    if let Some(previous_manifest) = previous.and_then(|item| item.context_manifest.as_ref())
+        && let Some(previous_hash) =
+            previous_manifest_source_hash(previous_manifest, "user_instructions")
+    {
+        let next_text = build_user_instructions_update_text(next)
+            .unwrap_or_else(|| build_user_instructions_clear_text(next));
+        let next_hash = manifest_text_hash(&next_text);
+        return (previous_hash != next_hash).then_some(next_text);
+    }
+
     let prev = previous?;
-    let previous_instructions = prev
-        .user_instructions
-        .as_deref()
-        .filter(|instructions| !instructions.is_empty());
-    let next_instructions = next
-        .user_instructions
-        .as_deref()
-        .filter(|instructions| !instructions.is_empty());
+    let previous_instructions = prev.user_instructions.as_deref().and_then(|instructions| {
+        (!instructions.is_empty()).then(|| {
+            UserInstructions {
+                directory: prev.cwd.to_string_lossy().into_owned(),
+                text: instructions.to_string(),
+            }
+            .render()
+        })
+    });
+    let next_instructions = build_user_instructions_update_text(next);
 
     if previous_instructions == next_instructions {
         return None;
     }
 
-    let text = next_instructions.unwrap_or(
-        "Workspace/user instructions were cleared. Do not continue applying previously injected workspace or user instructions.",
-    );
-    Some(
-        UserInstructions {
-            text: text.to_string(),
-            #[allow(deprecated)]
-            directory: next.cwd.to_string_lossy().into_owned(),
-        }
-        .render(),
-    )
+    next_instructions
+        .or_else(|| previous_instructions.map(|_| build_user_instructions_clear_text(next)))
+}
+
+fn build_user_instructions_update_text(next: &TurnContext) -> Option<String> {
+    next.user_instructions
+        .as_deref()
+        .filter(|instructions| !instructions.is_empty())
+        .map(|instructions| build_user_instructions_text(next, instructions))
+}
+
+fn build_user_instructions_clear_text(next: &TurnContext) -> String {
+    build_user_instructions_text(next, USER_INSTRUCTIONS_CLEAR_TEXT)
+}
+
+fn build_user_instructions_text(next: &TurnContext, text: &str) -> String {
+    UserInstructions {
+        text: text.to_string(),
+        #[allow(deprecated)]
+        directory: next.cwd.to_string_lossy().into_owned(),
+    }
+    .render()
 }
 
 fn manifest_text_hash(text: &str) -> String {
@@ -320,6 +434,7 @@ pub(crate) struct SettingsUpdateInput<'a> {
     pub(crate) personality_feature_enabled: bool,
     pub(crate) capability_sections: CapabilityContextSections,
     pub(crate) extension_sections: ExtensionContextSections,
+    pub(crate) multi_agent_usage_hint: Option<String>,
 }
 
 fn build_text_message(role: &str, text_sections: Vec<String>) -> Option<ResponseItem> {
@@ -354,6 +469,7 @@ pub(crate) fn build_settings_update_items(input: SettingsUpdateInput<'_>) -> Vec
         personality_feature_enabled,
         capability_sections,
         extension_sections,
+        multi_agent_usage_hint,
     } = input;
     let mut contextual_user_sections: Vec<String> = [
         build_user_instructions_update_item(previous, next),
@@ -371,6 +487,7 @@ pub(crate) fn build_settings_update_items(input: SettingsUpdateInput<'_>) -> Vec
         build_collaboration_mode_update_item(previous, next),
         build_realtime_update_item(previous, previous_turn_settings, next),
         build_personality_update_item(previous, next, personality_feature_enabled),
+        build_multi_agent_usage_hint_update_item(previous, multi_agent_usage_hint.as_deref()),
     ]
     .into_iter()
     .flatten()

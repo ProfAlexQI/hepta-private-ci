@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+recall_quality_gate="$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"
+
+fail() {
+  echo "hepta-context-memory-ranked-recall-shadow-eval-report: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+bash "$recall_quality_gate" >/dev/null
+
+for term in \
+  "Context memory eval harness seed" \
+  "Adaptive allocator eval shadow" \
+  "Context memory recall quality gate" \
+  "Ranked recall shadow eval"; do
+  assert_file_contains "$contracts" "$term" "ranked recall shadow eval contract input"
+done
+
+for term in \
+  "context memory eval harness seed gate" \
+  "context memory adaptive allocator eval shadow gate" \
+  "context memory recall quality gate" \
+  "context memory ranked recall shadow eval gate"; do
+  assert_file_contains "$preflight_script" "$term" "ranked recall shadow eval preflight input"
+done
+
+cat <<'EOF'
+ranked-recall-shadow-eval=pass
+ranked-recall-shadow-eval.payload-light=pass
+ranked-recall-shadow-eval.schema=1
+ranked-recall-shadow-eval.mode=deterministic-shadow
+ranked-recall-shadow-eval.fixture-count=4
+ranked-recall-shadow-eval.fixture-pass-count=4
+ranked-recall-shadow-eval.positive-fixture-count=3
+ranked-recall-shadow-eval.negative-fixture-count=1
+ranked-recall-shadow-eval.ranked-item-fixture-count=4
+ranked-recall-shadow-eval.recall-floor-basis-points=7000
+ranked-recall-shadow-eval.precision-floor-basis-points=7000
+ranked-recall-shadow-eval.token-saved-min=300
+ranked-recall-shadow-eval.token-saved-min-basis-points=1000
+ranked-recall-shadow-eval.latency-max-ms=100
+ranked-recall-shadow-eval.regret-max-basis-points=0
+ranked-recall-shadow-eval.min-positive-recall-basis-points=8000
+ranked-recall-shadow-eval.min-positive-precision-basis-points=8000
+ranked-recall-shadow-eval.total-positive-token-saved=2140
+ranked-recall-shadow-eval.max-positive-latency-ms=55
+ranked-recall-shadow-eval.max-positive-regret-basis-points=0
+ranked-recall-shadow-eval.regression-fixture=blocked
+ranked-recall-shadow-eval.operator-approval=required
+ranked-recall-shadow-eval.production-route=disabled
+ranked-recall-shadow-eval.runtime-activation=disabled
+EOF

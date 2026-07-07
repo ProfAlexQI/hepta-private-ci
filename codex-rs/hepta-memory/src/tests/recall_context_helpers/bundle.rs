@@ -58,6 +58,72 @@ async fn store_recall_context_matches_snapshot_helper() {
 }
 
 #[tokio::test]
+async fn store_recall_context_populates_payload_light_ranked_items() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .put(memory_record(
+            "memory-2",
+            MemoryScope::Session,
+            "session timeout summary",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            1,
+            TranscriptEntryKind::Message,
+            "timeout surfaced during tool run",
+        ))
+        .await
+        .expect("append should succeed");
+
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout".into()),
+        recent_window_limit: 4,
+        transcript_limit: 2,
+        memory_limit: 4,
+        allow_cross_session: true,
+    };
+
+    let bundle = store
+        .recall_context(request)
+        .expect("context recall should succeed");
+
+    assert_eq!(bundle.ranked_items.len(), 4);
+    assert_eq!(
+        bundle.ranked_items[0].source,
+        ContextRecallSource::DurableMemory
+    );
+    assert_eq!(bundle.ranked_items[0].source_id, "durable_memory:memory-1");
+    assert!(bundle.ranked_items[0].score.final_score >= bundle.ranked_items[1].score.final_score);
+    assert!(
+        bundle
+            .ranked_items
+            .iter()
+            .all(|item| !item.summary.contains("timeout")
+                && !item.summary.contains("retry guidance")
+                && item.summary.contains("content_bytes="))
+    );
+    assert!(
+        bundle
+            .ranked_items
+            .iter()
+            .all(|item| item.score.reason.is_some())
+    );
+    assert_eq!(bundle.omitted_by_budget, 0);
+}
+
+#[tokio::test]
 async fn store_recall_context_report_matches_snapshot_helper() {
     let store = InMemoryStore::default();
     store

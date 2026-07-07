@@ -3,6 +3,7 @@ use crate::StoreSnapshot;
 use hepta_core::ContextMemoryAdaptiveAllocatorEvalShadowReport;
 use hepta_core::ContextMemoryEvalHarnessReport;
 use hepta_core::ContextMemoryFormationQueueReport;
+use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
@@ -36,6 +37,14 @@ impl StoreSnapshot {
         ContextMemoryRecallQualityGateReport::from_shadow(
             &self.context_memory_adaptive_allocator_eval_shadow_report(),
         )
+    }
+
+    /// Builds the offline ranked-recall shadow eval report without exporting
+    /// ranked payloads, activating runtime routes, or changing prompt assembly.
+    pub fn context_memory_ranked_recall_shadow_eval_report(
+        &self,
+    ) -> ContextMemoryRankedRecallShadowEvalReport {
+        ContextMemoryRankedRecallShadowEvalReport::seeded()
     }
 
     /// Builds the offline selected-recall summary canary eval replay report
@@ -116,6 +125,14 @@ impl InMemoryStore {
         &self,
     ) -> Result<ContextMemoryRecallQualityGateReport, hepta_core::MemoryError> {
         Ok(self.snapshot()?.context_memory_recall_quality_gate_report())
+    }
+
+    pub fn context_memory_ranked_recall_shadow_eval_report(
+        &self,
+    ) -> Result<ContextMemoryRankedRecallShadowEvalReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_ranked_recall_shadow_eval_report())
     }
 
     pub fn context_memory_selected_recall_summary_canary_eval_report(

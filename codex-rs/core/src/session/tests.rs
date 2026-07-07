@@ -6658,6 +6658,137 @@ async fn build_settings_update_items_uses_persisted_reference_model_for_model_sw
 }
 
 #[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_model_switch_instruction_diff() {
+    let (session, previous_context) = make_session_and_context().await;
+    let next_model = if previous_context.model_info.slug == "gpt-5.4" {
+        "gpt-5.2"
+    } else {
+        "gpt-5.4"
+    };
+    let current_context = previous_context
+        .with_model(next_model.to_string(), &session.services.models_manager)
+        .await;
+    let current_model_instructions = current_context
+        .model_info
+        .get_model_instructions(current_context.personality);
+    assert!(
+        !current_model_instructions.is_empty(),
+        "test model should expose model-switch instructions"
+    );
+
+    let mut previous_context_item = current_context.to_turn_context_item();
+    let stale_model_switch_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: crate::context::ModelSwitchInstructions::new("stale model guidance").render(),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_model_switch_item]);
+    session
+        .set_previous_turn_settings(Some(PreviousTurnSettings {
+            model: current_context.model_info.slug.clone(),
+            realtime_active: Some(current_context.realtime_active),
+        }))
+        .await;
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("model switch update should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<model_switch>")
+                && text.contains(&current_model_instructions)
+                && !text.contains("stale model guidance")
+        }),
+        "expected model switch update from manifest hash diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:model_switch:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_clears_model_switch_when_current_model_instructions_disappear_once()
+ {
+    let (session, mut current_context) = make_session_and_context().await;
+    current_context.model_info.base_instructions = String::new();
+    current_context.model_info.model_messages = None;
+    assert!(
+        current_context
+            .model_info
+            .get_model_instructions(current_context.personality)
+            .is_empty(),
+        "test model should expose no current model-switch instructions"
+    );
+    let mut previous_context_item = current_context.to_turn_context_item();
+    let previous_model_switch_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: crate::context::ModelSwitchInstructions::new("previous model guidance").render(),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[
+            previous_model_switch_item,
+        ]);
+    session
+        .set_previous_turn_settings(Some(PreviousTurnSettings {
+            model: current_context.model_info.slug.clone(),
+            realtime_active: Some(current_context.realtime_active),
+        }))
+        .await;
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("model switch clear should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<model_switch>")
+                && text.contains("Model-specific switch instructions were cleared")
+                && !text.contains("previous model guidance")
+        }),
+        "expected model switch clear from missing current instructions, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:model_switch:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+
+    previous_context_item.context_manifest = Some(manifest);
+    let repeated_update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    assert!(
+        repeated_update_items.is_empty(),
+        "already-cleared model switch should not emit again: {repeated_update_items:?}"
+    );
+}
+
+#[tokio::test]
 async fn build_settings_update_items_uses_manifest_hash_for_permissions_exec_policy_diff() {
     let (mut session, mut previous_context) = make_session_and_context().await;
     previous_context.approval_policy =
@@ -6802,6 +6933,170 @@ async fn build_settings_update_items_uses_manifest_hash_for_environment_shell_di
             .map(|entry| entry.source.as_str())
             .collect::<Vec<_>>(),
         vec!["turn_context:contextual_user:environment:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_developer_instruction_diff() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context.developer_instructions = Some("Use current developer guidance.".to_string());
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let stale_developer_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "Use stale developer guidance.".to_string(),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_developer_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("developer-instruction update should produce a manifest");
+
+    assert!(
+        developer_texts
+            .iter()
+            .any(|text| text.contains("Use current developer guidance.")),
+        "expected developer instruction update from manifest hash diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:developer_instructions:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_collaboration_mode_diff() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context.collaboration_mode = CollaborationMode {
+        mode: ModeKind::Plan,
+        settings: Settings {
+            model: turn_context.model_info.slug.clone(),
+            reasoning_effort: turn_context.reasoning_effort,
+            developer_instructions: Some("Use current plan-mode guidance.".to_string()),
+        },
+    };
+    let stale_collaboration_mode = CollaborationMode {
+        mode: ModeKind::Plan,
+        settings: Settings {
+            model: turn_context.model_info.slug.clone(),
+            reasoning_effort: turn_context.reasoning_effort,
+            developer_instructions: Some("Use stale plan-mode guidance.".to_string()),
+        },
+    };
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let stale_collaboration_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: crate::context::CollaborationModeInstructions::from_collaboration_mode(
+                &stale_collaboration_mode,
+            )
+            .expect("stale collaboration mode should render")
+            .render(),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_collaboration_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("collaboration-mode update should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<collaboration_mode>")
+                && text.contains("Use current plan-mode guidance.")
+        }),
+        "expected collaboration-mode update from manifest hash diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:collaboration_mode:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_user_instruction_directory_diff() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context.user_instructions = Some("Use the current workspace guidance.".to_string());
+    #[allow(deprecated)]
+    let current_directory = turn_context.cwd.to_string_lossy().into_owned();
+    let stale_directory = "/tmp/stale-workspace";
+    let current_user_text = crate::context::UserInstructions {
+        directory: current_directory.clone(),
+        text: turn_context
+            .user_instructions
+            .clone()
+            .expect("user instructions should be set"),
+    }
+    .render();
+    let stale_user_text = crate::context::UserInstructions {
+        directory: stale_directory.to_string(),
+        text: turn_context
+            .user_instructions
+            .clone()
+            .expect("user instructions should be set"),
+    }
+    .render();
+    assert_ne!(stale_user_text, current_user_text);
+
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let stale_user_item = ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: stale_user_text,
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_user_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let user_texts = user_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("user-instruction update should produce a manifest");
+
+    assert!(
+        user_texts.iter().any(|text| {
+            text.contains("# AGENTS.md instructions for ")
+                && text.contains(&current_directory)
+                && text.contains("Use the current workspace guidance.")
+                && !text.contains(stale_directory)
+        }),
+        "expected user instruction update from manifest hash diff, got {user_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:contextual_user:user_instructions:0"]
     );
     assert!(manifest.has_replay_integrity());
 }
@@ -7158,6 +7453,93 @@ async fn build_settings_update_items_uses_previous_turn_settings_for_realtime_en
 }
 
 #[tokio::test]
+async fn build_settings_update_items_ignores_previous_turn_settings_for_realtime_end_when_manifest_baseline_exists()
+ {
+    let (session, previous_context) = make_session_and_context().await;
+    let mut previous_context_item = previous_context.to_turn_context_item();
+    previous_context_item.realtime_active = None;
+    let previous_context_items = session.build_initial_context(&previous_context).await;
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&previous_context_items);
+    let previous_turn_settings = PreviousTurnSettings {
+        model: previous_context.model_info.slug.clone(),
+        realtime_active: Some(true),
+    };
+    let mut current_context = previous_context
+        .with_model(
+            previous_context.model_info.slug.clone(),
+            &session.services.models_manager,
+        )
+        .await;
+    current_context.realtime_active = false;
+
+    session
+        .set_previous_turn_settings(Some(previous_turn_settings))
+        .await;
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &current_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    assert!(
+        !developer_texts.iter().any(|text| {
+            text.contains("<realtime_conversation>") || text.contains("Reason: inactive")
+        }),
+        "did not expect stale previous turn settings to override a durable manifest baseline, got {developer_texts:?}"
+    );
+}
+
+#[tokio::test]
+async fn build_settings_update_items_uses_manifest_hash_for_realtime_start_instruction_diff() {
+    let (session, mut turn_context) = make_session_and_context().await;
+    turn_context.realtime_active = true;
+    let mut config = (*turn_context.config).clone();
+    config.experimental_realtime_start_instructions =
+        Some("Use current realtime guidance.".to_string());
+    turn_context.config = Arc::new(config);
+
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    previous_context_item.realtime_active = Some(true);
+    let stale_realtime_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: crate::context::RealtimeStartWithInstructions::new(
+                "Use stale realtime guidance.",
+            )
+            .render(),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_realtime_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("realtime update should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<realtime_conversation>")
+                && text.contains("Use current realtime guidance.")
+                && !text.contains("Use stale realtime guidance.")
+        }),
+        "expected realtime start update from manifest hash diff, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:realtime:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
 async fn build_initial_context_uses_previous_realtime_state() {
     let (session, mut turn_context) = make_session_and_context().await;
     turn_context.realtime_active = true;
@@ -7434,16 +7816,27 @@ async fn build_initial_context_adds_multi_agent_v2_root_usage_hint_as_developer_
 
     let developer_messages = developer_message_texts(&initial_context);
     assert!(
-        developer_messages
-            .iter()
-            .any(|message| message.as_slice() == ["Root guidance."]),
+        developer_messages.iter().any(|message| {
+            message.len() == 1
+                && message[0].contains("<multi_agent_usage_hint>")
+                && message[0].contains("Root guidance.")
+        }),
         "expected standalone root usage hint developer message, got {developer_messages:?}"
     );
     assert!(
-        !developer_messages
+        !developer_messages.iter().any(|message| message
             .iter()
-            .any(|message| message.as_slice() == ["Subagent guidance."]),
+            .any(|text| text.contains("Subagent guidance."))),
         "did not expect subagent usage hint for root thread, got {developer_messages:?}"
+    );
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&initial_context)
+        .expect("initial context should produce a manifest");
+    assert!(
+        manifest
+            .entries
+            .iter()
+            .any(|entry| entry.source.contains(":multi_agent_usage_hint:")),
+        "expected multi-agent usage hint source in manifest, got {manifest:?}"
     );
 }
 
@@ -7472,16 +7865,27 @@ async fn build_initial_context_adds_multi_agent_v2_subagent_usage_hint_as_develo
 
     let developer_messages = developer_message_texts(&initial_context);
     assert!(
-        developer_messages
-            .iter()
-            .any(|message| message.as_slice() == ["Subagent guidance."]),
+        developer_messages.iter().any(|message| {
+            message.len() == 1
+                && message[0].contains("<multi_agent_usage_hint>")
+                && message[0].contains("Subagent guidance.")
+        }),
         "expected standalone subagent usage hint developer message, got {developer_messages:?}"
     );
     assert!(
         !developer_messages
             .iter()
-            .any(|message| message.as_slice() == ["Root guidance."]),
+            .any(|message| message.iter().any(|text| text.contains("Root guidance."))),
         "did not expect root usage hint for subagent thread, got {developer_messages:?}"
+    );
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&initial_context)
+        .expect("initial context should produce a manifest");
+    assert!(
+        manifest
+            .entries
+            .iter()
+            .any(|entry| entry.source.contains(":multi_agent_usage_hint:")),
+        "expected multi-agent usage hint source in manifest, got {manifest:?}"
     );
 }
 
@@ -7501,6 +7905,98 @@ async fn build_initial_context_omits_multi_agent_v2_usage_hints_when_feature_dis
             )
         }),
         "did not expect multi-agent v2 usage hint developer messages, got {developer_messages:?}"
+    );
+}
+
+#[tokio::test]
+async fn build_settings_update_items_diffs_multi_agent_v2_usage_hint_changes() {
+    let (session, turn_context) =
+        make_multi_agent_v2_usage_hint_test_session(/*enable_multi_agent_v2*/ true).await;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let stale_hint_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: multi_agents::render_usage_hint("Stale root guidance."),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[stale_hint_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("multi-agent usage hint update should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<multi_agent_usage_hint>")
+                && text.contains("Root guidance.")
+                && !text.contains("Stale root guidance.")
+        }),
+        "expected current multi-agent usage hint update, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:multi_agent_usage_hint:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+}
+
+#[tokio::test]
+async fn build_settings_update_items_diffs_cleared_multi_agent_v2_usage_hint_once() {
+    let (session, turn_context) =
+        make_multi_agent_v2_usage_hint_test_session(/*enable_multi_agent_v2*/ false).await;
+    let mut previous_context_item = turn_context.to_turn_context_item();
+    let previous_hint_item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: multi_agents::render_usage_hint("Previously active root guidance."),
+        }],
+        phase: None,
+    };
+    previous_context_item.context_manifest =
+        crate::context_manager::manifest::build_turn_context_manifest(&[previous_hint_item]);
+
+    let update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    let developer_texts = developer_input_texts(&update_items);
+    let manifest = crate::context_manager::manifest::build_turn_context_manifest(&update_items)
+        .expect("multi-agent usage hint clear should produce a manifest");
+
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("<multi_agent_usage_hint>")
+                && text.contains("Multi-agent usage hint was cleared")
+        }),
+        "expected multi-agent usage hint clear, got {developer_texts:?}"
+    );
+    assert_eq!(
+        manifest
+            .entries
+            .iter()
+            .map(|entry| entry.source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["turn_context:developer:multi_agent_usage_hint:0"]
+    );
+    assert!(manifest.has_replay_integrity());
+
+    previous_context_item.context_manifest = Some(manifest);
+    let repeated_update_items = session
+        .build_settings_update_items(Some(&previous_context_item), &turn_context)
+        .await;
+    assert!(
+        repeated_update_items.is_empty(),
+        "already-cleared multi-agent usage hint should not emit again: {repeated_update_items:?}"
     );
 }
 

@@ -197,7 +197,7 @@ use codex_protocol::exec_output::StreamOutput;
 mod config_lock;
 mod handlers;
 mod mcp;
-mod multi_agents;
+pub(crate) mod multi_agents;
 mod review;
 mod rollout_reconstruction;
 #[allow(clippy::module_inception)]
@@ -273,9 +273,13 @@ impl SteerInputError {
 /// Notes from the previous real user turn.
 ///
 /// Conceptually this is the same role that `previous_model` used to fill, but
-/// it can carry other prior-turn settings that matter when constructing
-/// sensible state-change diffs or full-context reinjection, such as model
-/// switches or detecting a prior `realtime_active -> false` transition.
+/// it is now a legacy bridge for cases where no durable manifest-backed
+/// reference context item exists yet. Model-visible settings diffs should prefer
+/// persisted `TurnContextItem` baselines and only fall back here for older
+/// partial rollouts, such as detecting a prior `realtime_active -> false`
+/// transition when the reference item is missing. Pre-turn model-downshift
+/// compaction should also prefer the reference item model and only fall back here
+/// when that baseline is absent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PreviousTurnSettings {
     pub(crate) model: String,
@@ -1565,10 +1569,9 @@ impl Session {
         current_context: &TurnContext,
     ) -> Vec<ResponseItem> {
         // TODO: Finish making context updates a pure diff of persisted previous/current
-        // TurnContextItem state. Model-switch and permissions diffs now prefer the persisted
-        // manifest baseline when available; remaining runtime inputs such as shell fallback,
-        // feature gates, and contributor sections should become persisted state or explicit
-        // non-state replay events.
+        // TurnContextItem state. Core instruction/runtime diffs now prefer the persisted
+        // manifest baseline when available; remaining non-state runtime inputs should become
+        // persisted state or explicit non-state replay events.
         let previous_turn_settings = {
             let state = self.state.lock().await;
             state.previous_turn_settings()
@@ -1579,6 +1582,9 @@ impl Session {
             .build_capability_context_sections(current_context, SkillRenderSideEffects::None)
             .await;
         let extension_sections = self.build_extension_context_sections().await;
+        let multi_agent_usage_hint =
+            multi_agents::usage_hint_text(current_context, &current_context.session_source)
+                .map(str::to_string);
         crate::context_manager::updates::build_settings_update_items(
             crate::context_manager::updates::SettingsUpdateInput {
                 previous: reference_context_item,
@@ -1589,6 +1595,53 @@ impl Session {
                 personality_feature_enabled: self.features.enabled(Feature::Personality),
                 capability_sections,
                 extension_sections,
+                multi_agent_usage_hint,
+            },
+        )
+    }
+
+    async fn build_pending_context_update_items(
+        &self,
+        turn_context: &TurnContext,
+        manifest_options: &crate::context_manager::manifest::TurnContextManifestOptions,
+        skill_render_side_effects: SkillRenderSideEffects<'_>,
+    ) -> crate::context_manager::ContextControllerPendingContextItems {
+        let reference_context_item = {
+            let state = self.state.lock().await;
+            state.reference_context_item()
+        };
+        let context_update_mode = crate::context_manager::ContextController::context_update_mode(
+            reference_context_item.as_ref(),
+        );
+        let context_items = match context_update_mode {
+            crate::context_manager::ContextControllerUpdateMode::FullInitialContext => {
+                self.build_initial_context_with_skill_side_effects(
+                    turn_context,
+                    skill_render_side_effects,
+                )
+                .await
+            }
+            crate::context_manager::ContextControllerUpdateMode::SettingsDiff => {
+                // Steady-state path: append only context diffs to minimize token overhead.
+                self.build_settings_update_items(reference_context_item.as_ref(), turn_context)
+                    .await
+            }
+        };
+        let existing_history_items = if manifest_options.recall_selected_snippets.is_some() {
+            {
+                let state = self.state.lock().await;
+                state.clone_history().raw_items().to_vec()
+            }
+        } else {
+            Vec::new()
+        };
+
+        crate::context_manager::ContextController::plan_pending_context_items(
+            crate::context_manager::ContextControllerPendingContextInput {
+                reference_context_item,
+                context_items,
+                manifest_options,
+                existing_history_items: &existing_history_items,
             },
         )
     }
@@ -2756,6 +2809,20 @@ impl Session {
         &self,
         turn_context: &TurnContext,
     ) -> Vec<ResponseItem> {
+        self.build_initial_context_with_skill_side_effects(
+            turn_context,
+            SkillRenderSideEffects::ThreadStart {
+                session_telemetry: &self.services.session_telemetry,
+            },
+        )
+        .await
+    }
+
+    async fn build_initial_context_with_skill_side_effects(
+        &self,
+        turn_context: &TurnContext,
+        skill_render_side_effects: SkillRenderSideEffects<'_>,
+    ) -> Vec<ResponseItem> {
         let mut developer_sections = Vec::<String>::with_capacity(8);
         let mut contextual_user_sections = Vec::<String>::with_capacity(2);
         let mut separate_developer_sections = Vec::<String>::new();
@@ -2858,14 +2925,17 @@ impl Session {
             let available_skills = build_available_skills(
                 &turn_context.turn_skills.outcome,
                 default_skill_metadata_budget(turn_context.model_info.context_window),
-                SkillRenderSideEffects::ThreadStart {
-                    session_telemetry: &self.services.session_telemetry,
-                },
+                skill_render_side_effects,
             );
             if let Some(available_skills) = available_skills {
                 let warning_message = available_skills.warning_message.clone();
                 let skills_instructions = AvailableSkillsInstructions::from(available_skills);
-                if let Some(warning_message) = warning_message {
+                if let Some(warning_message) = warning_message
+                    && matches!(
+                        skill_render_side_effects,
+                        SkillRenderSideEffects::ThreadStart { .. }
+                    )
+                {
                     self.send_event_raw(Event {
                         id: String::new(),
                         msg: EventMsg::Warning(WarningEvent {
@@ -2935,7 +3005,7 @@ impl Session {
         if let Some(usage_hint_text) = multi_agent_v2_usage_hint_text
             && let Some(usage_hint_message) =
                 crate::context_manager::updates::build_developer_update_item(vec![
-                    usage_hint_text.to_string(),
+                    multi_agents::render_usage_hint(usage_hint_text),
                 ])
         {
             items.push(usage_hint_message);
@@ -3040,22 +3110,28 @@ impl Session {
         .await;
     }
 
-    pub(crate) async fn record_context_updates_and_set_reference_context_item_with_manifest_options(
+    fn turn_context_assembly_policy(
         &self,
         turn_context: &TurnContext,
-        manifest_options: crate::context_manager::manifest::TurnContextManifestOptions,
-    ) {
+    ) -> crate::context_manager::manifest::ContextAssemblyPolicy {
         let opt_in_gate = if self.features.enabled(Feature::SourceAwareCompressionCanary) {
             crate::context_manager::manifest::TurnContextAssemblyPolicyOptInGate::SourceAwareCompressionCanary
         } else {
             crate::context_manager::manifest::TurnContextAssemblyPolicyOptInGate::Disabled
         };
-        let assembly_policy =
-            crate::context_manager::manifest::turn_context_assembly_policy_from_extension_data(
-                turn_context.extension_data.as_ref(),
-                turn_context.model_context_window(),
-                opt_in_gate,
-            );
+        crate::context_manager::manifest::turn_context_assembly_policy_from_extension_data(
+            turn_context.extension_data.as_ref(),
+            turn_context.model_context_window(),
+            opt_in_gate,
+        )
+    }
+
+    pub(crate) async fn record_context_updates_and_set_reference_context_item_with_manifest_options(
+        &self,
+        turn_context: &TurnContext,
+        manifest_options: crate::context_manager::manifest::TurnContextManifestOptions,
+    ) {
+        let assembly_policy = self.turn_context_assembly_policy(turn_context);
         self.record_context_updates_and_set_reference_context_item_with_policy(
             turn_context,
             manifest_options,
@@ -3070,49 +3146,29 @@ impl Session {
         manifest_options: crate::context_manager::manifest::TurnContextManifestOptions,
         assembly_policy: crate::context_manager::manifest::ContextAssemblyPolicy,
     ) {
-        let reference_context_item = {
-            let state = self.state.lock().await;
-            state.reference_context_item()
-        };
-        let should_inject_full_context = reference_context_item.is_none();
-        let mut context_items = if should_inject_full_context {
-            self.build_initial_context(turn_context).await
-        } else {
-            // Steady-state path: append only context diffs to minimize token overhead.
-            self.build_settings_update_items(reference_context_item.as_ref(), turn_context)
-                .await
-        };
-        if let Some(selected_snippets_context_item) =
-            crate::context_manager::manifest::build_recall_selected_snippets_live_context_item(
-                manifest_options.recall_selected_snippets.as_ref(),
+        let crate::context_manager::ContextControllerPendingContextItems {
+            reference_context_item,
+            context_items,
+        } = self
+            .build_pending_context_update_items(
+                turn_context,
+                &manifest_options,
+                SkillRenderSideEffects::ThreadStart {
+                    session_telemetry: &self.services.session_telemetry,
+                },
             )
-        {
-            let selected_snippets_already_in_history = {
-                let state = self.state.lock().await;
-                state
-                    .clone_history()
-                    .raw_items()
-                    .iter()
-                    .any(|item| item == &selected_snippets_context_item)
-            };
-            if !selected_snippets_already_in_history {
-                context_items.push(selected_snippets_context_item);
-            }
-        }
-        let previous_manifest = reference_context_item
-            .as_ref()
-            .and_then(|item| item.context_manifest.as_ref());
-        let controller_decision = crate::context_manager::ContextController::assemble_turn_context(
+            .await;
+        let controller_plan = crate::context_manager::ContextController::plan_turn_context(
             turn_context,
-            crate::context_manager::ContextControllerAssembly {
+            crate::context_manager::ContextControllerPlanInput {
                 context_items,
-                previous_manifest,
+                reference_context_item: reference_context_item.as_ref(),
                 manifest_options: &manifest_options,
                 assembly_policy: &assembly_policy,
             },
         );
-        let context_items = controller_decision.context_items;
-        let turn_context_item = controller_decision.turn_context_item;
+        let context_items = controller_plan.context_items;
+        let turn_context_item = controller_plan.turn_context_item;
         if !context_items.is_empty() {
             self.record_conversation_items(turn_context, &context_items)
                 .await;
@@ -3126,6 +3182,38 @@ impl Session {
         // context items. This keeps later runtime diffing aligned with the current turn state.
         let mut state = self.state.lock().await;
         state.set_reference_context_item(Some(turn_context_item));
+    }
+
+    pub(crate) async fn estimate_pending_context_update_tokens(
+        &self,
+        turn_context: &TurnContext,
+    ) -> i64 {
+        let manifest_options =
+            crate::context_manager::manifest::turn_context_manifest_options_from_extension_data(
+                turn_context.extension_data.as_ref(),
+            );
+        let assembly_policy = self.turn_context_assembly_policy(turn_context);
+        let crate::context_manager::ContextControllerPendingContextItems {
+            reference_context_item,
+            context_items,
+        } = self
+            .build_pending_context_update_items(
+                turn_context,
+                &manifest_options,
+                SkillRenderSideEffects::None,
+            )
+            .await;
+        let controller_plan = crate::context_manager::ContextController::plan_turn_context(
+            turn_context,
+            crate::context_manager::ContextControllerPlanInput {
+                context_items,
+                reference_context_item: reference_context_item.as_ref(),
+                manifest_options: &manifest_options,
+                assembly_policy: &assembly_policy,
+            },
+        );
+
+        controller_plan.estimated_context_update_tokens
     }
 
     pub(crate) async fn update_token_usage_info(

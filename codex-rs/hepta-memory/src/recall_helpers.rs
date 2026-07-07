@@ -1,4 +1,5 @@
 mod query;
+mod ranking;
 mod snapshot;
 mod store;
 

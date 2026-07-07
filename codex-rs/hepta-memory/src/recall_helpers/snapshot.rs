@@ -25,6 +25,7 @@ use hepta_core::TranscriptQueryReport;
 
 use super::query::memory_records_matching_recall_query;
 use super::query::transcript_query_hits;
+use super::ranking::ranked_recall_items;
 
 impl StoreSnapshot {
     /// Builds the portable memory query report directly from the snapshot.
@@ -131,21 +132,26 @@ impl StoreSnapshot {
             .filter(|record| record.scope == MemoryScope::Session)
             .collect();
 
+        let mut bundle = ContextRecallBundle {
+            request: request.clone(),
+            recent_entries,
+            transcript_hits,
+            durable_memory_hits,
+            summary_hits,
+            active_topic_sessions: vec![],
+            active_neurons: Vec::new(),
+            budget: ContextBudget::from_request(request),
+            ranked_items: Vec::new(),
+            omitted_by_budget: 0,
+            truncated: total_transcript_match_count > transcript_query.limit
+                || total_memory_match_count > memory_query.limit,
+        };
+        let (ranked_items, omitted_by_budget) = ranked_recall_items(&bundle);
+        bundle.ranked_items = ranked_items;
+        bundle.omitted_by_budget = omitted_by_budget;
+
         (
-            ContextRecallBundle {
-                request: request.clone(),
-                recent_entries,
-                transcript_hits,
-                durable_memory_hits,
-                summary_hits,
-                active_topic_sessions: vec![],
-                active_neurons: Vec::new(),
-                budget: ContextBudget::from_request(request),
-                ranked_items: Vec::new(),
-                omitted_by_budget: 0,
-                truncated: total_transcript_match_count > transcript_query.limit
-                    || total_memory_match_count > memory_query.limit,
-            },
+            bundle,
             ContextRecallAvailability {
                 total_recent_entry_count,
                 total_transcript_match_count,

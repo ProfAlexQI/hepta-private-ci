@@ -68,14 +68,28 @@
 //! stitches those read-only memory/eval surfaces into one operator-facing
 //! readiness summary; its activation-blocker matrix and operator approval
 //! packet explain why promotion remains blocked without enabling runtime
-//! behavior. The selected-recall summary canary eval replay is likewise exposed
-//! as a fixed, payload-light helper so readiness gates can validate replay
-//! counts, rollback-readback coverage, proof coverage, thresholds, and disabled
-//! runtime activation without hard-coding a live production route.
+//! behavior. The ranked-recall shadow eval is likewise exposed as a fixed,
+//! payload-light helper so readiness gates can validate recall, precision,
+//! token-saved, latency, regret, and disabled runtime activation. The
+//! selected-recall summary canary eval replay is likewise exposed as a fixed,
+//! payload-light helper so readiness gates can validate replay counts,
+//! rollback-readback coverage, proof coverage, thresholds, and disabled runtime
+//! activation without hard-coding a live production route.
+//! The reference store also implements the Hepta-native `MemoryProvider`
+//! boundary as a shadow-only provider: query returns the existing recall bundle,
+//! update/report return guarded payload-light envelopes, and clear attempts are
+//! dry-run or blocked reports without mutating the store.
 
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use hepta_core::ContextRecallBundle;
+use hepta_core::ContextRecallRequest;
+use hepta_core::MemoryProviderClearReport;
+use hepta_core::MemoryProviderClearRequest;
+use hepta_core::MemoryProviderContextUpdateEnvelope;
+use hepta_core::MemoryProviderDescriptor;
+use hepta_core::MemoryProviderReport;
 use hepta_core::MemoryQuery;
 use hepta_core::MemoryQueryReport;
 use hepta_core::MemoryRecord;
@@ -280,6 +294,49 @@ impl MemoryReportStore for InMemoryStore {
         query: MemoryQuery,
     ) -> Result<MemoryQueryReport, hepta_core::MemoryError> {
         InMemoryStore::search_report(self, query)
+    }
+}
+
+impl hepta_core::MemoryProvider for InMemoryStore {
+    async fn query(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextRecallBundle, hepta_core::MemoryError> {
+        self.recall_context(request)
+    }
+
+    async fn update_context(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<MemoryProviderContextUpdateEnvelope, hepta_core::MemoryError> {
+        let bundle = self.recall_context(request.clone())?;
+        let limit_pressure = self.recall_context_limit_pressure(request)?;
+        Ok(MemoryProviderContextUpdateEnvelope::from_bundle(
+            "builtin",
+            &bundle,
+            limit_pressure,
+        ))
+    }
+
+    async fn report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<MemoryProviderReport, hepta_core::MemoryError> {
+        Ok(MemoryProviderReport::from_update(
+            MemoryProviderDescriptor::builtin(),
+            self.update_context(request).await?,
+        ))
+    }
+
+    async fn clear(
+        &self,
+        request: MemoryProviderClearRequest,
+    ) -> Result<MemoryProviderClearReport, hepta_core::MemoryError> {
+        if request.dry_run {
+            Ok(MemoryProviderClearReport::dry_run("builtin", request.scope))
+        } else {
+            Ok(MemoryProviderClearReport::blocked("builtin", request.scope))
+        }
     }
 }
 

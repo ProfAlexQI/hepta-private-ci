@@ -97,11 +97,13 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::PlanDeltaEvent;
 use codex_protocol::protocol::ReasoningContentDeltaEvent;
 use codex_protocol::protocol::ReasoningRawContentDeltaEvent;
+use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::TurnDiffEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
 use codex_tools::ToolName;
 use codex_tools::filter_request_plugin_install_discoverable_tools_for_client;
+use codex_utils_output_truncation::approx_tokens_from_byte_count_i64;
 use codex_utils_stream_parser::AssistantTextChunk;
 use codex_utils_stream_parser::AssistantTextStreamParser;
 use codex_utils_stream_parser::ProposedPlanSegment;
@@ -154,12 +156,8 @@ pub(crate) async fn run_turn(
     let auto_compact_limit = model_info.auto_compact_token_limit().unwrap_or(i64::MAX);
     let mut client_session =
         prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
-    // TODO(ccunningham): Pre-turn compaction runs before context updates and the
-    // new user message are recorded. Estimate pending incoming items (context
-    // diffs/full reinjection + user input) and trigger compaction preemptively
-    // when they would push the thread over the compaction threshold.
     let pre_sampling_compact =
-        match run_pre_sampling_compact(&sess, &turn_context, &mut client_session).await {
+        match run_pre_sampling_compact(&sess, &turn_context, &input, &mut client_session).await {
             Ok(pre_sampling_compact) => pre_sampling_compact,
             Err(_) => {
                 error!("Failed to run pre-sampling compact");
@@ -730,24 +728,46 @@ struct PreSamplingCompactResult {
 async fn run_pre_sampling_compact(
     sess: &Arc<Session>,
     turn_context: &Arc<TurnContext>,
+    input: &[UserInput],
     client_session: &mut ModelClientSession,
 ) -> CodexResult<PreSamplingCompactResult> {
     let total_usage_tokens_before_compaction = sess.get_total_token_usage().await;
+    let pending_context_update_tokens = sess
+        .estimate_pending_context_update_tokens(turn_context.as_ref())
+        .await;
+    let pending_user_input_tokens = estimate_pending_user_input_tokens(input);
+    let projected_total_usage_tokens_before_compaction = project_pre_sampling_total_usage_tokens(
+        total_usage_tokens_before_compaction,
+        pending_context_update_tokens,
+        pending_user_input_tokens,
+    );
+    trace!(
+        total_usage_tokens_before_compaction,
+        pending_context_update_tokens,
+        pending_user_input_tokens,
+        projected_total_usage_tokens_before_compaction,
+        "projected pre-sampling token usage before context updates"
+    );
     let mut pre_sampling_compacted = maybe_run_previous_model_inline_compact(
         sess,
         turn_context,
         client_session,
-        total_usage_tokens_before_compaction,
+        projected_total_usage_tokens_before_compaction,
     )
     .await?;
     let mut reset_client_session = pre_sampling_compacted;
     let total_usage_tokens = sess.get_total_token_usage().await;
+    let projected_total_usage_tokens = project_pre_sampling_total_usage_tokens(
+        total_usage_tokens,
+        pending_context_update_tokens,
+        pending_user_input_tokens,
+    );
     let auto_compact_limit = turn_context
         .model_info
         .auto_compact_token_limit()
         .unwrap_or(i64::MAX);
-    // Compact if the total usage tokens are greater than the auto compact limit
-    if total_usage_tokens >= auto_compact_limit {
+    // Compact if the current thread plus pending context/user items would cross the limit.
+    if total_usage_tokens > 0 && projected_total_usage_tokens >= auto_compact_limit {
         reset_client_session |= run_auto_compact(
             sess,
             turn_context,
@@ -764,6 +784,57 @@ async fn run_pre_sampling_compact(
     })
 }
 
+fn project_pre_sampling_total_usage_tokens(
+    current_usage_tokens: i64,
+    pending_context_update_tokens: i64,
+    pending_user_input_tokens: i64,
+) -> i64 {
+    current_usage_tokens
+        .saturating_add(pending_context_update_tokens.max(0))
+        .saturating_add(pending_user_input_tokens.max(0))
+}
+
+fn estimate_pending_user_input_tokens(input: &[UserInput]) -> i64 {
+    input
+        .iter()
+        .map(estimate_pending_user_input_item_tokens)
+        .sum()
+}
+
+fn estimate_pending_user_input_item_tokens(input: &UserInput) -> i64 {
+    match input {
+        UserInput::Text { .. } | UserInput::Image { .. } => {
+            let response_item = ResponseItem::from(ResponseInputItem::from(vec![input.clone()]));
+            approx_tokens_from_byte_count_i64(
+                crate::context_manager::estimate_response_item_model_visible_bytes(&response_item)
+                    .max(0),
+            )
+        }
+        UserInput::LocalImage { path, .. } => {
+            let path_bytes = i64::try_from(path.to_string_lossy().len()).unwrap_or(i64::MAX);
+            approx_tokens_from_byte_count_i64(
+                LOCAL_IMAGE_PENDING_INPUT_BYTES_ESTIMATE.saturating_add(path_bytes),
+            )
+        }
+        UserInput::Skill { name, path } => {
+            let bytes = name
+                .len()
+                .saturating_add(path.to_string_lossy().len())
+                .saturating_add(64);
+            approx_tokens_from_byte_count_i64(i64::try_from(bytes).unwrap_or(i64::MAX))
+        }
+        UserInput::Mention { name, path } => {
+            let bytes = name.len().saturating_add(path.len()).saturating_add(64);
+            approx_tokens_from_byte_count_i64(i64::try_from(bytes).unwrap_or(i64::MAX))
+        }
+        _ => 0,
+    }
+}
+
+// Mirrors the resized-image byte estimate used by the history estimator without reading local
+// image files before request serialization.
+const LOCAL_IMAGE_PENDING_INPUT_BYTES_ESTIMATE: i64 = 7373;
+
 /// Runs pre-sampling compaction against the previous model when switching to a smaller
 /// context-window model.
 ///
@@ -776,12 +847,21 @@ async fn maybe_run_previous_model_inline_compact(
     client_session: &mut ModelClientSession,
     total_usage_tokens: i64,
 ) -> CodexResult<bool> {
-    let Some(previous_turn_settings) = sess.previous_turn_settings().await else {
+    let reference_context_item = sess.reference_context_item().await;
+    let previous_turn_settings = if reference_context_item.is_none() {
+        sess.previous_turn_settings().await
+    } else {
+        None
+    };
+    let Some(previous_model) = previous_model_for_pre_sampling_compact(
+        reference_context_item.as_ref(),
+        previous_turn_settings.as_ref(),
+    ) else {
         return Ok(false);
     };
     let previous_model_turn_context = Arc::new(
         turn_context
-            .with_model(previous_turn_settings.model, &sess.services.models_manager)
+            .with_model(previous_model, &sess.services.models_manager)
             .await,
     );
 
@@ -811,6 +891,15 @@ async fn maybe_run_previous_model_inline_compact(
         return Ok(true);
     }
     Ok(false)
+}
+
+fn previous_model_for_pre_sampling_compact(
+    reference_context_item: Option<&TurnContextItem>,
+    previous_turn_settings: Option<&PreviousTurnSettings>,
+) -> Option<String> {
+    reference_context_item
+        .map(|item| item.model.clone())
+        .or_else(|| previous_turn_settings.map(|settings| settings.model.clone()))
 }
 
 async fn run_auto_compact(

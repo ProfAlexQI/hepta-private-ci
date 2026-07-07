@@ -15,7 +15,9 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
-use hepta_core::{MemoryQuery, MemoryRecord, MemoryScope};
+use hepta_core::MemoryQuery;
+use hepta_core::MemoryRecord;
+use hepta_core::MemoryScope;
 use hepta_gateway::DEFAULT_NATIVE_POST_EXECUTION_STORE_DIR;
 use hepta_gateway::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
 use hepta_gateway::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
@@ -86,6 +88,10 @@ const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inven
 const HEPTA_PROVIDER_METADATA_INVENTORY_ENDPOINT: &str = "/api/hepta-provider-metadata-inventory";
 const HEPTA_RUNTIME_SESSION_DRY_RUN_INVENTORY_ENDPOINT: &str =
     "/api/hepta-runtime-session-dry-run-inventory";
+const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT: &str =
+    "/api/hepta-context-recall-worker-scheduler-handoff";
+const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV: &str =
+    "HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED";
 const HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT: &str =
     "/api/hepta-channel-adapter-status-inventory";
 const HEPTA_LOCAL_TOOLING_CONTENT_INVENTORY_ENDPOINT: &str =
@@ -656,6 +662,13 @@ const CONTROL_UI_ROUTE_SPECS: &[ControlUiRouteSpec] = &[
         source_command: "/hepta-runtime-session-dry-run-inventory --json",
         capability: "hepta-runtime-session-dry-run-inventory",
         side_effect_boundary: "read-only runtime/task/session dry-run migration inventory",
+    },
+    ControlUiRouteSpec {
+        method: "GET",
+        pattern: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,
+        source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json",
+        capability: "hepta-context-recall-worker-scheduler-handoff",
+        side_effect_boundary: "read-only selected-snippet worker scheduler handoff route contract; exposes explicit operator gate status without running workers, invoking models, injecting snippets, writing registries, or promoting stable schema",
     },
     ControlUiRouteSpec {
         method: "GET",
@@ -2861,6 +2874,13 @@ fn route_native_gateway_request_with_body(
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&hepta_runtime_session_dry_run_inventory_report()),
+                );
+            }
+            HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT => {
+                return (
+                    "200 OK",
+                    "application/json; charset=utf-8",
+                    json_or_error(&hepta_context_recall_worker_scheduler_handoff_report()),
                 );
             }
             HEPTA_CHANNEL_ADAPTER_STATUS_INVENTORY_ENDPOINT => {
@@ -8186,6 +8206,58 @@ struct HeptaRuntimeSessionDryRunInventorySideEffects {
     telegram_read_performed: bool,
     message_sent: bool,
     native_post_mutation_performed: bool,
+    filesystem_written: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaContextRecallWorkerSchedulerHandoffResponse {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    source_command: &'static str,
+    native_route: bool,
+    compatibility_mode: &'static str,
+    side_effect_free: bool,
+    endpoint: &'static str,
+    operator_approval_env: &'static str,
+    operator_approval_enabled: bool,
+    default_worker_policy: &'static str,
+    operator_approved_policy: &'static str,
+    route_executes_scheduler: bool,
+    route_runs_worker_task: bool,
+    route_invokes_model: bool,
+    route_injects_selected_snippets: bool,
+    ready_due_scheduler_variants_available: bool,
+    legacy_ready_due_scheduler_defaults_disabled: bool,
+    stable_schema_promoted: bool,
+    tui_exec_app_server_defaults_none: bool,
+    selected_snippet_text_exposed: bool,
+    source_ids_exposed: bool,
+    query_payload_exposed: bool,
+    report_shape: &'static str,
+    allowed_runtime_entrypoints: &'static [&'static str],
+    next_runtime_step: &'static str,
+    blockers: Vec<&'static str>,
+    side_effects: HeptaContextRecallWorkerSchedulerHandoffSideEffects,
+}
+
+#[derive(Debug, Serialize)]
+struct HeptaContextRecallWorkerSchedulerHandoffSideEffects {
+    task_registry_mutated: bool,
+    session_store_mutated: bool,
+    worker_task_ran: bool,
+    ready_scheduler_ran: bool,
+    due_scheduler_ran: bool,
+    provider_invoked: bool,
+    model_invoked: bool,
+    selected_snippets_injected: bool,
+    credential_read: bool,
+    external_network_read: bool,
+    gateway_mutation_performed: bool,
+    telegram_read_performed: bool,
+    message_sent: bool,
+    native_post_mutation_performed: bool,
+    stable_schema_mutated: bool,
     filesystem_written: bool,
 }
 
@@ -122604,6 +122676,72 @@ fn hepta_runtime_session_dry_run_inventory_report() -> HeptaRuntimeSessionDryRun
     }
 }
 
+fn hepta_context_recall_worker_scheduler_handoff_report()
+-> HeptaContextRecallWorkerSchedulerHandoffResponse {
+    let operator_approval_enabled =
+        env_truthy(HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV);
+    let mut blockers = Vec::new();
+    if !operator_approval_enabled {
+        blockers.push("context_recall_worker_scheduler_operator_approval_env_disabled");
+    }
+    blockers.push("native_gateway_route_is_plan_only_no_worker_execution");
+
+    HeptaContextRecallWorkerSchedulerHandoffResponse {
+        product: "Hepta",
+        runtime: "hepta",
+        status: if operator_approval_enabled {
+            "operator_gate_visible"
+        } else {
+            "blocked"
+        },
+        source_command: "/hepta-context-recall-worker-scheduler-handoff --dry-run --json",
+        native_route: true,
+        compatibility_mode: "native_context_recall_worker_scheduler_handoff_dry_run",
+        side_effect_free: true,
+        endpoint: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,
+        operator_approval_env: HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV,
+        operator_approval_enabled,
+        default_worker_policy: "Disabled",
+        operator_approved_policy: "ExperimentalOperatorApproved",
+        route_executes_scheduler: false,
+        route_runs_worker_task: false,
+        route_invokes_model: false,
+        route_injects_selected_snippets: false,
+        ready_due_scheduler_variants_available: true,
+        legacy_ready_due_scheduler_defaults_disabled: true,
+        stable_schema_promoted: false,
+        tui_exec_app_server_defaults_none: true,
+        selected_snippet_text_exposed: false,
+        source_ids_exposed: false,
+        query_payload_exposed: false,
+        report_shape: "policy plus aggregate selected-snippet presence/count and per-run provider rollup only",
+        allowed_runtime_entrypoints: &[
+            "run_ready_worker_tasks_with_context_recall_handoff",
+            "run_due_worker_tasks_with_context_recall_handoff",
+        ],
+        next_runtime_step: "wire an explicitly approved native/operator caller to these runtime entrypoints outside this read-only route",
+        blockers,
+        side_effects: HeptaContextRecallWorkerSchedulerHandoffSideEffects {
+            task_registry_mutated: false,
+            session_store_mutated: false,
+            worker_task_ran: false,
+            ready_scheduler_ran: false,
+            due_scheduler_ran: false,
+            provider_invoked: false,
+            model_invoked: false,
+            selected_snippets_injected: false,
+            credential_read: false,
+            external_network_read: false,
+            gateway_mutation_performed: false,
+            telegram_read_performed: false,
+            message_sent: false,
+            native_post_mutation_performed: false,
+            stable_schema_mutated: false,
+            filesystem_written: false,
+        },
+    }
+}
+
 fn hepta_provider_metadata_inventory_report() -> HeptaProviderMetadataInventoryResponse {
     let route_matrix = control_ui_route_parity_report();
     let credentialed_smoke_verified = env_truthy(HEPTA_PROVIDER_CREDENTIALED_SMOKE_VERIFIED_ENV);
@@ -126183,6 +126321,90 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"task_registry_live_mutation_not_operator_approved"));
         assert!(blockers.contains(&"gateway_event_enqueue_not_operator_approved"));
+    }
+
+    #[test]
+    fn hepta_context_recall_worker_scheduler_handoff_endpoint_is_plan_only_without_leaks() {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let (status, content_type, body) = route_native_gateway_request(
+            "GET",
+            HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT,
+            &options,
+        );
+        assert_eq!(status, "200 OK");
+        assert_eq!(content_type, "application/json; charset=utf-8");
+        assert!(!body.contains("operator-ready-safe-context"));
+        assert!(!body.contains("operator-due-safe-context"));
+        assert!(!body.contains("worker-ready-source-id"));
+        assert!(!body.contains("worker-due-source-id"));
+        assert!(!body.contains("<selected_context_recall>"));
+        assert!(!body.contains("[redacted-query]"));
+
+        let value: serde_json::Value =
+            serde_json::from_str(&body).expect("context recall worker scheduler handoff json");
+        assert_eq!(value["runtime"], "hepta");
+        assert_eq!(
+            value["source_command"],
+            "/hepta-context-recall-worker-scheduler-handoff --dry-run --json"
+        );
+        assert_eq!(
+            value["compatibility_mode"],
+            "native_context_recall_worker_scheduler_handoff_dry_run"
+        );
+        assert_eq!(
+            value["endpoint"],
+            HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_ENDPOINT
+        );
+        assert_eq!(
+            value["operator_approval_env"],
+            HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV
+        );
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(value["native_route"], true);
+        assert_eq!(value["default_worker_policy"], "Disabled");
+        assert_eq!(
+            value["operator_approved_policy"],
+            "ExperimentalOperatorApproved"
+        );
+        assert_eq!(value["route_executes_scheduler"], false);
+        assert_eq!(value["route_runs_worker_task"], false);
+        assert_eq!(value["route_invokes_model"], false);
+        assert_eq!(value["route_injects_selected_snippets"], false);
+        assert_eq!(value["ready_due_scheduler_variants_available"], true);
+        assert_eq!(value["legacy_ready_due_scheduler_defaults_disabled"], true);
+        assert_eq!(value["stable_schema_promoted"], false);
+        assert_eq!(value["tui_exec_app_server_defaults_none"], true);
+        assert_eq!(value["selected_snippet_text_exposed"], false);
+        assert_eq!(value["source_ids_exposed"], false);
+        assert_eq!(value["query_payload_exposed"], false);
+        assert_eq!(value["side_effects"]["task_registry_mutated"], false);
+        assert_eq!(value["side_effects"]["session_store_mutated"], false);
+        assert_eq!(value["side_effects"]["worker_task_ran"], false);
+        assert_eq!(value["side_effects"]["ready_scheduler_ran"], false);
+        assert_eq!(value["side_effects"]["due_scheduler_ran"], false);
+        assert_eq!(value["side_effects"]["provider_invoked"], false);
+        assert_eq!(value["side_effects"]["model_invoked"], false);
+        assert_eq!(value["side_effects"]["selected_snippets_injected"], false);
+        assert_eq!(value["side_effects"]["stable_schema_mutated"], false);
+        let entrypoints = value["allowed_runtime_entrypoints"]
+            .as_array()
+            .expect("runtime entrypoints")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(entrypoints.contains(&"run_ready_worker_tasks_with_context_recall_handoff"));
+        assert!(entrypoints.contains(&"run_due_worker_tasks_with_context_recall_handoff"));
+        let blockers = value["blockers"]
+            .as_array()
+            .expect("blockers")
+            .iter()
+            .filter_map(|item| item.as_str())
+            .collect::<Vec<_>>();
+        assert!(blockers.contains(&"native_gateway_route_is_plan_only_no_worker_execution"));
     }
 
     #[test]

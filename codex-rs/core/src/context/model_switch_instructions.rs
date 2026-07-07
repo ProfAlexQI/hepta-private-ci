@@ -11,6 +11,12 @@ impl ModelSwitchInstructions {
             model_instructions: model_instructions.into(),
         }
     }
+
+    pub(crate) fn cleared() -> Self {
+        Self {
+            model_instructions: "Model-specific switch instructions were cleared. Do not continue applying previously injected model-switch guidance.".to_string(),
+        }
+    }
 }
 
 impl ContextualUserFragment for ModelSwitchInstructions {

@@ -124,6 +124,7 @@ codex-rs/core/src/context/contextual_user_message.rs
 codex-rs/core/src/context/contextual_user_message_tests.rs
 codex-rs/core/src/context/extension_prompt_fragment.rs
 codex-rs/core/src/context/mod.rs
+codex-rs/core/src/context/model_switch_instructions.rs
 codex-rs/core/src/context_manager/budget_planner.rs
 codex-rs/core/src/context_manager/controller.rs
 codex-rs/core/src/context_manager/history.rs
@@ -151,6 +152,7 @@ codex-rs/core/src/context_manager/updates/capability.rs
 codex-rs/core/src/context_manager/updates/extension.rs
 codex-rs/core/src/session/handlers.rs
 codex-rs/core/src/session/mod.rs
+codex-rs/core/src/session/multi_agents.rs
 codex-rs/core/src/session/rollout_reconstruction_tests.rs
 codex-rs/core/src/session/tests.rs
 codex-rs/core/src/session/turn_context.rs
@@ -171,6 +173,7 @@ codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/comparison.rs
 codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/report.rs
 codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/result.rs
 codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs
+codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs
 codex-rs/hepta-core/src/memory/eval_harness/selected_recall_canary.rs
 codex-rs/hepta-core/src/memory/formation.rs
 codex-rs/hepta-core/src/memory/provider_plane.rs
@@ -263,6 +266,7 @@ codex-rs/hepta-memory/src/context_plane_helpers.rs
 codex-rs/hepta-memory/src/lib.rs
 codex-rs/hepta-memory/src/recall_helpers.rs
 codex-rs/hepta-memory/src/recall_helpers/query.rs
+codex-rs/hepta-memory/src/recall_helpers/ranking.rs
 codex-rs/hepta-memory/src/recall_helpers/snapshot.rs
 codex-rs/hepta-memory/src/recall_helpers/store.rs
 codex-rs/hepta-memory/src/snapshot_helpers.rs

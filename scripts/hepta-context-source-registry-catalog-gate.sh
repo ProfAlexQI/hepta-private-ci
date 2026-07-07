@@ -83,6 +83,7 @@ extension_developer_capabilities	tool	hepta-context	prompt_visible	tool_capabili
 extension_developer_policy	developer	hepta-context	prompt_visible	protected_developer	turn	medium	extension_owned	prompt_hash_only	extension_digest	protected	drop_turn_fragment	-	-
 extension_separate_developer	developer	hepta-context	prompt_visible	protected_developer	turn	medium	extension_owned	prompt_hash_only	extension_digest	protected	drop_turn_fragment	-	-
 model_switch	session_state	hepta-context	prompt_visible	session_state	turn	low	system_owned	metadata_only	presence	protected	restore_previous	-	-
+multi_agent_usage_hint	developer	hepta-context	prompt_visible	protected_developer	session	low	system_owned	prompt_hash_only	policy_digest	protected	restore_previous	-	-
 non_text_content	runtime	hepta-context	prompt_visible	non_text_context	turn	high	runtime_observed	metadata_only	presence	protected	drop_turn_fragment	-	-
 permissions	system	hepta-context	prompt_visible	protected_system	session	low	system_owned	prompt_hash_only	policy_digest	protected	not_mutable	-	-
 personality	developer	hepta-context	prompt_visible	protected_developer	session	low	developer_owned	prompt_hash_only	policy_digest	protected	restore_previous	-	-
@@ -168,8 +169,8 @@ awk -F '\t' '
     count++;
   }
   END {
-    if (count != 19) {
-      printf("expected 19 source registry entries, got %d\n", count) > "/dev/stderr";
+    if (count != 20) {
+      printf("expected 20 source registry entries, got %d\n", count) > "/dev/stderr";
       exit 1;
     }
   }
@@ -272,7 +273,7 @@ assert_line_before \
 
 echo "context-source-registry=pass"
 echo "context-source-registry.version=1"
-echo "context-source-registry.entry-count=19"
+echo "context-source-registry.entry-count=20"
 echo "context-source-registry.owner-lane=hepta-context"
 echo "context-source-registry.runtime-activation=disabled"
 echo "Hepta context source registry catalog gate passed"

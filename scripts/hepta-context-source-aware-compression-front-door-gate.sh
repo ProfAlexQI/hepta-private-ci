@@ -87,6 +87,7 @@ memory_temporal_fact_graph_gate_script="hepta-context-memory-temporal-fact-graph
 memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gate.sh"
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
+memory_ranked_recall_shadow_eval_gate_script="hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -304,6 +305,23 @@ required_contract_terms=(
   "side_effect_flag_enabled"
   "codex-rs/hepta-core/src/memory/recall_quality_gate.rs"
   "hepta-context-memory-recall-quality-gate.sh"
+  "Ranked recall shadow eval"
+  "ranked-recall-shadow-eval=pass"
+  "ranked-recall-shadow-eval.payload-light=pass"
+  "deterministic-shadow"
+  "query_match"
+  "recency_tie_break"
+  "budget_pressure"
+  "ranked item counts"
+  "recall-floor-basis-points"
+  "precision-floor-basis-points"
+  "token-saved-min-basis-points"
+  "latency-max-ms"
+  "regret-max-basis-points"
+  "ContextMemoryRankedRecallShadowEvalReport"
+  "context_memory_ranked_recall_shadow_eval_report"
+  "hepta-context-memory-ranked-recall-shadow-eval-report.sh"
+  "hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -572,6 +590,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_ranked_recall_shadow_eval_gate_script" \
+  "memory ranked recall shadow eval debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$context_plane_status_report_gate_script" \
   "context plane status report debug gate"
 
@@ -779,6 +802,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory recall quality gate" \
   "memory recall quality gate preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory ranked recall shadow eval gate" \
+  "memory ranked recall shadow eval preflight stage"
 
 assert_file_contains \
   "$preflight_script" \

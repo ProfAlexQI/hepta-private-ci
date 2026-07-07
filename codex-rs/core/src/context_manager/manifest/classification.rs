@@ -4,6 +4,7 @@ use crate::context::EXTENSION_DEVELOPER_POLICY_OPEN_TAG;
 use crate::context::EXTENSION_SEPARATE_DEVELOPER_OPEN_TAG;
 use crate::context_manager::estimate_response_item_model_visible_bytes;
 use crate::context_manager::source_registry::context_source_registry_entry;
+use crate::session::multi_agents;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::APPS_INSTRUCTIONS_OPEN_TAG;
@@ -105,6 +106,13 @@ pub(super) fn classify_contribution(
             "model_switch",
             "session_state_diff",
             "model_instructions_changed",
+        );
+    }
+    if trimmed.starts_with(multi_agents::MULTI_AGENT_USAGE_HINT_OPEN_TAG) {
+        return registered_contribution_classification(
+            multi_agents::MULTI_AGENT_USAGE_HINT_SOURCE_ID,
+            "always_include_developer",
+            "multi_agent_usage_hint",
         );
     }
     if trimmed.starts_with("<permissions instructions>") {

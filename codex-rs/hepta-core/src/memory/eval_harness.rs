@@ -1,5 +1,6 @@
 mod adaptive_shadow;
 mod eval_seed;
+mod ranked_recall_shadow;
 mod selected_recall_canary;
 
 pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalArm;
@@ -12,6 +13,11 @@ pub use eval_seed::ContextMemoryEvalFixtureKind;
 pub use eval_seed::ContextMemoryEvalFixtureResult;
 pub use eval_seed::ContextMemoryEvalHarnessReport;
 pub use eval_seed::ContextMemoryEvalMetric;
+pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalFixtureKind;
+pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalFixtureResult;
+pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalMetric;
+pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalMode;
+pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalReport;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixtureKind;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixtureResult;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMetric;

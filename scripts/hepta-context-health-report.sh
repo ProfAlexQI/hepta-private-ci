@@ -67,8 +67,8 @@ IFS=$'\t' read -r selected_redaction selected_quality selected_guard selected_ro
 if [ "$descriptor_field_count" != "14" ]; then
   fail "expected 14 source-registry descriptor fields, got $descriptor_field_count"
 fi
-if [ "$source_count" != "19" ]; then
-  fail "expected 19 context source registry rows, got $source_count"
+if [ "$source_count" != "20" ]; then
+  fail "expected 20 context source registry rows, got $source_count"
 fi
 if [ "$live_activation_routes" != "0" ]; then
   fail "expected zero live activation routes, got $live_activation_routes"

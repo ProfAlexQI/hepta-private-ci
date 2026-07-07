@@ -68,7 +68,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "context-health-report=pass"
 assert_report_line "context-health-report.schema=1"
-assert_report_line "context-health-report.source-registry.entries=19"
+assert_report_line "context-health-report.source-registry.entries=20"
 assert_report_line "context-health-report.source-registry.descriptor-fields=14"
 assert_report_line "context-health-report.source-registry.live-activation-routes=0"
 assert_report_line "context-health-report.source-registry.runtime-activation=disabled"

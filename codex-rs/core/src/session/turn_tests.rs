@@ -65,3 +65,72 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
         Some("plan contributed assistant text")
     );
 }
+
+#[tokio::test]
+async fn previous_model_for_pre_sampling_compact_prefers_reference_context_item() {
+    let (_, turn_context) = crate::session::tests::make_session_and_context().await;
+    let mut reference_context_item = turn_context.to_turn_context_item();
+    reference_context_item.model = "durable-reference-model".to_string();
+    let previous_turn_settings = PreviousTurnSettings {
+        model: "stale-previous-settings-model".to_string(),
+        realtime_active: Some(false),
+    };
+
+    let previous_model = previous_model_for_pre_sampling_compact(
+        Some(&reference_context_item),
+        Some(&previous_turn_settings),
+    );
+
+    assert_eq!(previous_model.as_deref(), Some("durable-reference-model"));
+}
+
+#[tokio::test]
+async fn previous_model_for_pre_sampling_compact_falls_back_to_previous_turn_settings() {
+    let previous_turn_settings = PreviousTurnSettings {
+        model: "legacy-previous-settings-model".to_string(),
+        realtime_active: Some(false),
+    };
+
+    let previous_model =
+        previous_model_for_pre_sampling_compact(None, Some(&previous_turn_settings));
+
+    assert_eq!(
+        previous_model.as_deref(),
+        Some("legacy-previous-settings-model")
+    );
+}
+
+#[test]
+fn project_pre_sampling_total_usage_tokens_counts_pending_context_and_user_input() {
+    let current_usage_tokens = 90;
+    let pending_context_update_tokens = 7;
+    let pending_user_input_tokens = 5;
+
+    let projected_total_usage_tokens = project_pre_sampling_total_usage_tokens(
+        current_usage_tokens,
+        pending_context_update_tokens,
+        pending_user_input_tokens,
+    );
+
+    assert!(current_usage_tokens < 100);
+    assert!(projected_total_usage_tokens >= 100);
+    assert_eq!(projected_total_usage_tokens, 102);
+}
+
+#[test]
+fn estimate_pending_user_input_tokens_counts_text_without_reading_local_images() {
+    let input = vec![
+        UserInput::Text {
+            text: "Summarize the current context state.".to_string(),
+            text_elements: Vec::new(),
+        },
+        UserInput::LocalImage {
+            path: "/tmp/hepta-context-nonexistent-image.png".into(),
+            detail: None,
+        },
+    ];
+
+    let estimated_tokens = estimate_pending_user_input_tokens(&input);
+
+    assert!(estimated_tokens > 0);
+}

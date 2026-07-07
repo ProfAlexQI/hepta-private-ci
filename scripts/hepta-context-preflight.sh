@@ -106,6 +106,12 @@ run_stage "context memory adaptive allocator eval shadow gate" \
 run_stage "context memory recall quality gate" \
   bash "$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"
 
+run_stage "context memory ranked recall shadow eval gate" \
+  bash "$repo_root/scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+
+run_stage "context memory provider boundary gate" \
+  bash "$repo_root/scripts/hepta-context-memory-provider-boundary-gate.sh"
+
 run_stage "context plane status/export report gate" \
   bash "$repo_root/scripts/hepta-context-plane-status-report-gate.sh"
 

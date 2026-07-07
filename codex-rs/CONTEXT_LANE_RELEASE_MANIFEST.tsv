@@ -9,6 +9,7 @@ codex-rs/core/src/context/contextual_user_message.rs	rust_context	hepta-context	
 codex-rs/core/src/context/contextual_user_message_tests.rs	rust_context	hepta-context	required
 codex-rs/core/src/context/extension_prompt_fragment.rs	rust_context	hepta-context	required
 codex-rs/core/src/context/mod.rs	rust_context	hepta-context	required
+codex-rs/core/src/context/model_switch_instructions.rs	rust_context	hepta-context	required
 codex-rs/core/src/context_manager/budget_planner.rs	rust_context_manager	hepta-context	required
 codex-rs/core/src/context_manager/controller.rs	rust_context_manager	hepta-context	required
 codex-rs/core/src/context_manager/history.rs	rust_context_manager	hepta-context	required
@@ -36,6 +37,7 @@ codex-rs/core/src/context_manager/updates/capability.rs	rust_context_manager	hep
 codex-rs/core/src/context_manager/updates/extension.rs	rust_context_manager	hepta-context	required
 codex-rs/core/src/session/handlers.rs	rust_session	hepta-context	required
 codex-rs/core/src/session/mod.rs	rust_session	hepta-context	required
+codex-rs/core/src/session/multi_agents.rs	rust_session	hepta-context	required
 codex-rs/core/src/session/rollout_reconstruction_tests.rs	rust_session	hepta-context	required
 codex-rs/core/src/session/tests.rs	rust_session	hepta-context	required
 codex-rs/core/src/session/turn_context.rs	rust_session	hepta-context	required
@@ -56,6 +58,7 @@ codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/comparison.rs	rust_m
 codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/report.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/result.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs	rust_memory	hepta-context	required
+codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/eval_harness/selected_recall_canary.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/formation.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/provider_plane.rs	rust_memory	hepta-context	required
@@ -148,6 +151,7 @@ codex-rs/hepta-memory/src/context_plane_helpers.rs	rust_memory	hepta-context	req
 codex-rs/hepta-memory/src/lib.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/recall_helpers.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/recall_helpers/query.rs	rust_memory	hepta-context	required
+codex-rs/hepta-memory/src/recall_helpers/ranking.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/recall_helpers/snapshot.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/recall_helpers/store.rs	rust_memory	hepta-context	required
 codex-rs/hepta-memory/src/snapshot_helpers.rs	rust_memory	hepta-context	required
@@ -217,6 +221,10 @@ scripts/hepta-context-memory-eval-harness-seed-gate.sh	gate_script	hepta-context
 scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-formation-queue-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-formation-receipt-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-provider-boundary-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-provider-boundary-report.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-helper-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-manifest-payload-light-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-quality-gate.sh	gate_script	hepta-context	required

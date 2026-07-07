@@ -477,6 +477,7 @@ done < <(
     | sort
 )
 selected_snippet_core_protocol_source_marker_allowed_paths=(
+  "$repo_root/codex-rs/core/src/context_manager/controller.rs"
   "$repo_root/codex-rs/core/src/context_manager/history_tests.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest.rs"
   "$repo_root/codex-rs/core/src/context_manager/manifest/classification.rs"

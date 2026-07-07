@@ -222,6 +222,134 @@ fn context_memory_adaptive_allocator_eval_shadow_compares_without_activation() {
 }
 
 #[test]
+fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() {
+    let report = ContextMemoryRankedRecallShadowEvalReport::seeded();
+
+    assert!(report.has_ranked_recall_shadow_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_RANKED_RECALL_SHADOW_EVAL_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.mode,
+        ContextMemoryRankedRecallShadowEvalMode::DeterministicShadow
+    );
+    assert_eq!(
+        report.metrics,
+        vec![
+            ContextMemoryRankedRecallShadowEvalMetric::Recall,
+            ContextMemoryRankedRecallShadowEvalMetric::Precision,
+            ContextMemoryRankedRecallShadowEvalMetric::TokenSaved,
+            ContextMemoryRankedRecallShadowEvalMetric::Latency,
+            ContextMemoryRankedRecallShadowEvalMetric::Regret,
+        ]
+    );
+    assert_eq!(report.fixture_count(), 4);
+    assert_eq!(report.fixture_pass_count(), 4);
+    assert_eq!(report.positive_fixture_count(), 3);
+    assert_eq!(report.negative_fixture_count(), 1);
+    assert_eq!(report.ranked_item_fixture_count(), 4);
+    assert_eq!(report.regression_blocked_count(), 1);
+    assert_eq!(report.min_positive_recall_basis_points(), 8000);
+    assert_eq!(report.min_positive_precision_basis_points(), 8000);
+    assert_eq!(report.total_positive_token_saved(), 2_140);
+    assert_eq!(report.max_positive_latency_ms(), 55);
+    assert_eq!(report.max_positive_regret_basis_points(), 0);
+    assert_eq!(report.recall_floor_basis_points, 7_000);
+    assert_eq!(report.precision_floor_basis_points, 7_000);
+    assert_eq!(report.token_saved_min, 300);
+    assert_eq!(report.token_saved_min_basis_points, 1_000);
+    assert_eq!(report.latency_max_ms, 100);
+    assert_eq!(report.regret_max_basis_points, 0);
+    assert!(report.operator_approval_required);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+
+    let query_match = report
+        .fixture(ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch)
+        .expect("query-match fixture should exist");
+    assert!(query_match.positive_fixture);
+    assert_eq!(query_match.ranked_item_count, 5);
+    assert_eq!(query_match.expected_relevant_count, 4);
+    assert_eq!(query_match.recalled_relevant_count, 4);
+    assert_eq!(query_match.predicted_relevant_count, 5);
+    assert_eq!(query_match.false_positive_count, 1);
+    assert_eq!(query_match.recall_basis_points, 10_000);
+    assert_eq!(query_match.precision_basis_points, 8_000);
+    assert_eq!(query_match.token_saved, 700);
+    assert_eq!(query_match.token_saved_basis_points, 3_500);
+    assert_eq!(query_match.latency_ms, 42);
+    assert_eq!(query_match.regret_basis_points, 0);
+
+    let regression = report
+        .fixture(ContextMemoryRankedRecallShadowEvalFixtureKind::RegressionGuard)
+        .expect("regression guard fixture should exist");
+    assert!(regression.negative_fixture);
+    assert!(regression.regression_fixture);
+    assert!(regression.regression_blocked);
+    assert_eq!(regression.recall_basis_points, 5_000);
+    assert_eq!(regression.precision_basis_points, 3_333);
+    assert_eq!(regression.token_saved, 0);
+    assert_eq!(regression.latency_ms, 125);
+    assert_eq!(regression.regret_basis_points, 500);
+
+    let json = serde_json::to_string(&report).expect("ranked recall report should serialize");
+    assert!(json.contains("deterministic_shadow"));
+    assert!(json.contains("query_match"));
+    assert!(json.contains("recency_tie_break"));
+    assert!(json.contains("budget_pressure"));
+    assert!(json.contains("regression_guard"));
+    assert!(json.contains("recall"));
+    assert!(json.contains("precision"));
+    assert!(json.contains("token_saved"));
+    assert!(json.contains("latency"));
+    assert!(json.contains("regret"));
+    assert!(json.contains("ranked_item_count"));
+    assert!(json.contains("token_saved_min_basis_points"));
+    assert!(!json.contains("session-"));
+    assert!(!json.contains("memory-"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("query_payload"));
+    assert!(!json.contains("raw_ranked_payload"));
+    assert!(!json.contains("rank_explanation"));
+    assert!(!json.contains("score_reason"));
+    assert!(!json.contains("tool_args"));
+    assert!(!json.contains("tool_outputs"));
+    assert!(!json.contains("trace_id"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+    assert!(!json.contains("\"prompt_assembly_change\":true"));
+    assert!(!json.contains("\"operator_activation_allowed\":true"));
+}
+
+#[test]
+fn context_memory_ranked_recall_shadow_eval_blocks_regression_drift() {
+    let mut report = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let regression = report
+        .fixtures
+        .iter_mut()
+        .find(|fixture| {
+            fixture.fixture_kind == ContextMemoryRankedRecallShadowEvalFixtureKind::RegressionGuard
+        })
+        .expect("regression guard fixture should exist");
+
+    regression.regression_blocked = false;
+
+    assert!(!report.has_ranked_recall_shadow_integrity());
+}
+
+#[test]
 fn context_memory_selected_recall_summary_canary_eval_replays_without_activation() {
     let report = ContextMemorySelectedRecallSummaryCanaryEvalReport::seeded();
 

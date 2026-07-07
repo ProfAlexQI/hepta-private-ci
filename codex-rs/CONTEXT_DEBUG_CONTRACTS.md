@@ -46,6 +46,16 @@ must cover
 and `turn_context_manifest_resolves_selected_snippets_as_guarded_payload`; it
 must remain `runtime-activation=disabled`.
 
+Memory recall ranking: `hepta-memory` may populate
+`ContextRecallBundle.ranked_items` as a deterministic, payload-light shadow
+ranking for local eval and inspection. Ranked summaries may include source
+class, byte counts, booleans, stable source references, and explainable score
+components, but must not carry raw memory text, transcript text, query payloads,
+prompt text, selected snippet text, tool payloads, or provider output. Ranked
+items must not be promoted into `TurnContextManifestItem`, model-visible prompt
+context, production memory writes, or runtime activation paths without a
+separate approval-gated contract.
+
 Allowed manifest fields include:
 
 - `version`
@@ -629,9 +639,10 @@ Known source ids include `permissions`, `environment`, `model_switch`,
 `collaboration_mode`, `realtime`, `personality`, `apps`, `available_skills`,
 `available_plugins`, `extension_developer_policy`,
 `extension_developer_capabilities`, `extension_separate_developer`,
-`extension_contextual_user`, `user_instructions`, `developer_instructions`, and
-`selected_context_recall`. Pure positional entries are not sufficient for new
-context producers because they cannot explain which policy surface changed.
+`extension_contextual_user`, `user_instructions`, `developer_instructions`,
+`multi_agent_usage_hint`, and `selected_context_recall`. Pure positional entries
+are not sufficient for new context producers because they cannot explain which
+policy surface changed.
 Context lane release manifest: `codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv` is
 the required file-set manifest for the Hepta context lane. It must list every
 context-lane contract, registry, Rust context/memory/protocol handoff module,
@@ -665,7 +676,7 @@ include the manifest classifier sources
 `context`, `contextual_user`, `developer_instructions`, `environment`,
 `extension_contextual_user`, `extension_developer_capabilities`,
 `extension_developer_policy`, `extension_separate_developer`, `model_switch`,
-`non_text_content`, `permissions`, `personality`, `realtime`,
+`multi_agent_usage_hint`, `non_text_content`, `permissions`, `personality`, `realtime`,
 `selected_context_recall`, and `user_instructions` in stable sorted order. The
 catalog is for audit/debug/export and future budget-planner input only; it must
 not change prompt assembly, must not write turn-scoped opt-in markers, and must
@@ -690,7 +701,7 @@ path is implemented. The context debug gate and preflight must run
 `scripts/hepta-context-source-registry-rust-gate.sh` after the catalog gate and
 `scripts/hepta-context-source-registry-health-gate.sh` after the Rust resolver
 gate and before the source-aware compression front-door report. The health gate
-must report descriptor coverage for all 19 sources, must keep
+must report descriptor coverage for all 20 sources, must keep
 `live-activation-routes=0`, and must keep `runtime-activation=disabled`.
 Context health/meta report: `scripts/hepta-context-health-report.sh` is the
 payload-light rollup for the context lane's gate surface. It may aggregate only
@@ -999,6 +1010,79 @@ must run `scripts/hepta-context-memory-recall-quality-gate.sh` after
 `scripts/hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh` and
 before `scripts/hepta-context-plane-status-report-gate.sh`. It must keep
 `runtime-activation=disabled`.
+Ranked recall shadow eval: recall diagnostics may expose an offline,
+behavior-neutral deterministic-shadow scoreboard for ranked recall output. The
+report may contain only fixed metric names (`recall`, `precision`,
+`token_saved`, `latency`, and `regret`), controlled fixture kinds
+(`query_match`, `recency_tie_break`, `budget_pressure`, and
+`regression_guard`), stable fixture hashes, ranked item counts, expected/
+recalled/predicted relevant counts, false-positive counts, recall and precision
+basis points, baseline/ranked token counts, token-saved counts and basis
+points, latency milliseconds and latency budget, regret basis points, a blocked
+regression fixture, fixed threshold labels (`recall-floor-basis-points`,
+`precision-floor-basis-points`, `token-saved-min-basis-points`,
+`latency-max-ms`, and `regret-max-basis-points`), and explicit side-effect
+booleans. It must not contain prompt text, transcript text, memory text, answer
+text, query payloads, ranked payloads, raw ranked payloads, rank explanations,
+score reasons, source ids, session ids, memory ids, trace ids, tool arguments,
+tool outputs, raw fact/entity values, email-shaped strings, phone-shaped
+strings, or user identifiers. Shadow integrity requires schema version 1,
+`deterministic-shadow` mode, exactly four fixtures, three positive fixtures,
+one negative regression fixture, ranked item counts on every fixture, minimum
+positive recall and precision of 8000 basis points, total positive
+token-saved count 2140, maximum positive latency 55 ms, zero positive regret,
+and the regression fixture blocked. It must not write production memory, must
+not write graph facts, must not alter prompt assembly, must not enable runtime
+activation, must not enable a production route, and must not allow operator
+activation. The Rust-backed fixture is
+`ContextMemoryRankedRecallShadowEvalReport` in
+`codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs`, exposed
+through `context_memory_ranked_recall_shadow_eval_report` on both
+`StoreSnapshot` and `InMemoryStore`.
+
+`scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh` emits the
+payload-light scoreboard, and
+`scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` verifies the
+report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
+debug/preflight wiring, source-aware front-door static check, release manifest
+entries, and no-leak constraints. The context debug gate and preflight must run
+`scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` after
+`scripts/hepta-context-memory-recall-quality-gate.sh` and before
+`scripts/hepta-context-plane-status-report-gate.sh`. The gate output must
+include `ranked-recall-shadow-eval=pass`,
+`ranked-recall-shadow-eval.payload-light=pass`,
+`ranked-recall-shadow-eval.fixtures=4`,
+`ranked-recall-shadow-eval.regression-fixture=blocked`, and
+`ranked-recall-shadow-eval.runtime-activation=disabled`.
+
+MemoryProvider boundary: runtime-facing recall providers must own query,
+`update_context`, `report`, and `clear` attempts through a single typed
+provider contract instead of letting callers scatter recall injection logic.
+The Rust contract is `MemoryProvider` plus
+`MemoryProviderContextUpdateEnvelope`, `MemoryProviderReport`, and
+`MemoryProviderClearReport` in `codex-rs/hepta-core/src/memory/provider_plane.rs`,
+re-exported from `hepta_core::memory`. The initial provider implementation is
+shadow-only: `update_context` may summarize returned source counts, limit
+pressure, ranked item counts, selected item counts, and estimated token budget,
+but it must not export prompt text, query text, transcript payloads, memory
+payloads, ranked item payloads, source ids, session ids, memory ids, trace ids,
+tool arguments, tool outputs, or user identifiers. The envelope must keep
+`payload_light=true`, `operator_approval_required=true`,
+`prompt_payload_exported=false`, `query_payload_exported=false`,
+`ranked_payload_exported=false`, `write_performed=false`, and
+`runtime_activation=false`.
+
+Provider `clear` is likewise constrained until an explicit activation design
+exists. The reference `hepta-memory` provider must return either a dry-run clear
+report or a blocked clear report, with `clear_performed=false`,
+`affected_record_count=0`, `prompt_payload_exported=false`,
+`write_performed=false`, and `runtime_activation=false`. The provider report
+must pair the builtin descriptor with the compact update envelope and preserve
+context fencing plus provenance requirements. The boundary is covered by
+focused `hepta-core` provider trait tests and `hepta-memory` reference-provider
+payload-light/no-mutation tests; it does not enable a production route or alter
+prompt assembly.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation
@@ -1371,6 +1455,9 @@ that tells the model not to keep applying the prior collaboration-mode guidance.
 Likewise, when persisted user or developer instructions disappear, the diff must
 emit `user_instructions` or `developer_instructions` source entries that
 explicitly clear the prior model-visible guidance.
+When persisted `model_switch` guidance disappears because the current model has
+no model-specific switch instructions, the diff must emit a `model_switch`
+source clear and must stay quiet after that clear hash is already persisted.
 Capability inventory sources (`apps`, `available_skills`, and
 `available_plugins`) must compare the previous manifest hash against the next
 rendered inventory. When an inventory disappears, the diff must emit a matching
@@ -1384,6 +1471,11 @@ developer or contextual-user text. Settings diffs must compare ordered
 per-source manifest hash lists against the next rendered extension fragment
 list, emit source-specific replacements or clears when they change or disappear,
 and stay quiet after a persisted clear hash has already recorded disappearance.
+Multi-agent usage hints must be marker-wrapped as `multi_agent_usage_hint`
+developer sources before entering model history. Settings diffs must compare the
+previous manifest hash against the current rendered root/subagent usage hint,
+emit replacements when the guidance changes, emit a source-specific clear when
+the hint disappears, and stay quiet after that clear hash is already persisted.
 
 `text_hash` and manifest ledger hashes use the stable 16-lower-hex shape. A
 manifest passes replay integrity only when its version is supported, entries have
