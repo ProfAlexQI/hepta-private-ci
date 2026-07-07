@@ -3,7 +3,7 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=4
+context-plane-operator-approval-packet.schema=5
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
@@ -26,6 +26,12 @@ context-plane-operator-approval-packet.canary-promotion.observed-stable-window-c
 context-plane-operator-approval-packet.canary-promotion.required-pass-streak=3
 context-plane-operator-approval-packet.canary-promotion.observed-pass-streak=3
 context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=0
+context-plane-operator-approval-packet.canary-promotion.checklist-required-count=4
+context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4
+context-plane-operator-approval-packet.canary-promotion.readiness-check=pass
+context-plane-operator-approval-packet.canary-promotion.negative-rehearsal-check=pass
+context-plane-operator-approval-packet.canary-promotion.audit-digest-check=pass
+context-plane-operator-approval-packet.canary-promotion.audit-freshness-check=pass
 context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3
 context-plane-operator-approval-packet.canary-promotion.kill-switch-rehearsal-pass-count=3
 context-plane-operator-approval-packet.canary-promotion.soak-readback-pass-count=3

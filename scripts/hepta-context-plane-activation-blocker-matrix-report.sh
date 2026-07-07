@@ -3,7 +3,7 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=5
+context-plane-activation-blockers.schema=6
 context-plane-activation-blockers.rows=16
 context-plane-activation-blockers.satisfied=9
 context-plane-activation-blockers.blockers=7
@@ -28,6 +28,12 @@ context-plane-activation-blockers.canary-promotion.observed-stable-window-count=
 context-plane-activation-blockers.canary-promotion.required-pass-streak=3
 context-plane-activation-blockers.canary-promotion.observed-pass-streak=3
 context-plane-activation-blockers.canary-promotion.promotion-blocker-count=0
+context-plane-activation-blockers.canary-promotion.checklist-required-count=4
+context-plane-activation-blockers.canary-promotion.checklist-pass-count=4
+context-plane-activation-blockers.canary-promotion.readiness-check=pass
+context-plane-activation-blockers.canary-promotion.negative-rehearsal-check=pass
+context-plane-activation-blockers.canary-promotion.audit-digest-check=pass
+context-plane-activation-blockers.canary-promotion.audit-freshness-check=pass
 context-plane-activation-blockers.canary-promotion.rollback-rehearsal-pass-count=3
 context-plane-activation-blockers.canary-promotion.kill-switch-rehearsal-pass-count=3
 context-plane-activation-blockers.canary-promotion.soak-readback-pass-count=3

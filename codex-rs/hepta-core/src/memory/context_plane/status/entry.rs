@@ -10,6 +10,8 @@ use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::MemoryProviderReport;
 
+const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+
 /// One payload-light context-plane status row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -26,6 +28,12 @@ pub struct ContextPlaneStatusEntry {
     pub canary_promotion_required_pass_streak: usize,
     pub canary_promotion_observed_pass_streak: usize,
     pub canary_promotion_blocker_count: usize,
+    pub canary_promotion_checklist_required_count: usize,
+    pub canary_promotion_checklist_pass_count: usize,
+    pub canary_promotion_readiness_check_pass: bool,
+    pub canary_promotion_negative_rehearsal_check_pass: bool,
+    pub canary_promotion_audit_digest_check_pass: bool,
+    pub canary_promotion_audit_freshness_check_pass: bool,
     pub canary_promotion_rollback_rehearsal_count: usize,
     pub canary_promotion_rollback_rehearsal_pass_count: usize,
     pub canary_promotion_kill_switch_rehearsal_count: usize,
@@ -229,6 +237,11 @@ impl ContextPlaneStatusEntry {
         promotion_readiness: &ContextMemoryShadowCanaryPromotionReadinessReport,
     ) -> Self {
         let has_integrity = promotion_readiness.has_shadow_canary_promotion_readiness_integrity();
+        let canary_promotion_checklist_pass_count = if has_integrity {
+            CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT
+        } else {
+            0
+        };
         let blocker_count = if has_integrity {
             0
         } else {
@@ -254,6 +267,12 @@ impl ContextPlaneStatusEntry {
             canary_promotion_required_pass_streak: promotion_readiness.required_pass_streak,
             canary_promotion_observed_pass_streak: promotion_readiness.observed_pass_streak,
             canary_promotion_blocker_count: promotion_readiness.promotion_blocker_count,
+            canary_promotion_checklist_required_count: CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT,
+            canary_promotion_checklist_pass_count,
+            canary_promotion_readiness_check_pass: has_integrity,
+            canary_promotion_negative_rehearsal_check_pass: has_integrity,
+            canary_promotion_audit_digest_check_pass: has_integrity,
+            canary_promotion_audit_freshness_check_pass: has_integrity,
             canary_promotion_rollback_rehearsal_count: promotion_readiness.rollback_rehearsal_count,
             canary_promotion_rollback_rehearsal_pass_count: promotion_readiness
                 .rollback_rehearsal_pass_count,
@@ -315,6 +334,8 @@ impl ContextPlaneStatusEntry {
             self.canary_promotion_required_pass_streak,
             self.canary_promotion_observed_pass_streak,
             self.canary_promotion_blocker_count,
+            self.canary_promotion_checklist_required_count,
+            self.canary_promotion_checklist_pass_count,
             self.canary_promotion_rollback_rehearsal_count,
             self.canary_promotion_rollback_rehearsal_pass_count,
             self.canary_promotion_kill_switch_rehearsal_count,
@@ -322,9 +343,16 @@ impl ContextPlaneStatusEntry {
             self.canary_promotion_soak_readback_window_count,
             self.canary_promotion_soak_readback_pass_count,
         ];
+        let checks = [
+            self.canary_promotion_readiness_check_pass,
+            self.canary_promotion_negative_rehearsal_check_pass,
+            self.canary_promotion_audit_digest_check_pass,
+            self.canary_promotion_audit_freshness_check_pass,
+        ];
 
         if self.section != ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness {
-            return counts.into_iter().all(|count| count == 0);
+            return counts.into_iter().all(|count| count == 0)
+                && checks.into_iter().all(|check| !check);
         }
 
         self.canary_promotion_required_stable_window_count > 0
@@ -342,9 +370,17 @@ impl ContextPlaneStatusEntry {
             && self.canary_promotion_soak_readback_window_count > 0
             && self.canary_promotion_soak_readback_pass_count
                 <= self.canary_promotion_soak_readback_window_count
+            && self.canary_promotion_checklist_required_count
+                == CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT
+            && self.canary_promotion_checklist_pass_count
+                == checks.into_iter().filter(|check| *check).count()
+            && self.canary_promotion_checklist_pass_count
+                <= self.canary_promotion_checklist_required_count
             && self.canary_promotion_blocker_count == self.blocker_count
             && (self.status == ContextPlaneStatusKind::Shadow)
-                == (self.canary_promotion_blocker_count == 0)
+                == (self.canary_promotion_blocker_count == 0
+                    && self.canary_promotion_checklist_pass_count
+                        == self.canary_promotion_checklist_required_count)
     }
 }
 

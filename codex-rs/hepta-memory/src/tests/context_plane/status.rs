@@ -79,6 +79,19 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
         .expect("recall quality status row should exist");
     assert_eq!(recall_entry.recall_quality_blocking_reason_count, 0);
     assert!(recall_entry.recall_quality_blocking_reasons.is_empty());
+    let promotion_entry = report
+        .sections
+        .iter()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness
+        })
+        .expect("memory shadow canary promotion readiness status row should exist");
+    assert_eq!(promotion_entry.canary_promotion_checklist_required_count, 4);
+    assert_eq!(promotion_entry.canary_promotion_checklist_pass_count, 4);
+    assert!(promotion_entry.canary_promotion_readiness_check_pass);
+    assert!(promotion_entry.canary_promotion_negative_rehearsal_check_pass);
+    assert!(promotion_entry.canary_promotion_audit_digest_check_pass);
+    assert!(promotion_entry.canary_promotion_audit_freshness_check_pass);
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -103,6 +116,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("canary_promotion_required_stable_window_count"));
+    assert!(json.contains("canary_promotion_checklist_pass_count"));
+    assert!(json.contains("canary_promotion_negative_rehearsal_check_pass"));
+    assert!(json.contains("canary_promotion_audit_digest_check_pass"));
+    assert!(json.contains("canary_promotion_audit_freshness_check_pass"));
     assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_soak_readback_pass_count"));

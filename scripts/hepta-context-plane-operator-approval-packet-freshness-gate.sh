@@ -113,7 +113,7 @@ expected_freshness_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness=pass
 context-plane-operator-approval-packet-freshness.schema=1
 context-plane-operator-approval-packet-freshness.source-canonical-digest-report-lines=10
-context-plane-operator-approval-packet-freshness.source-canonical-digest-report-sha256=485f8d654b36b1047d8ccb9c6e88828abe995bc1f3c0e306ac9519f0310bb6c7
+context-plane-operator-approval-packet-freshness.source-canonical-digest-report-sha256=e0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b
 context-plane-operator-approval-packet-freshness.approval-readiness-sequence=273
 context-plane-operator-approval-packet-freshness.current-readiness-sequence=273
 context-plane-operator-approval-packet-freshness.expires-after-sequence=274
@@ -165,7 +165,7 @@ fi
 stale_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/approval-readiness-sequence=273/approval-readiness-sequence=272/')"
 expired_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/expires-after-sequence=274/expires-after-sequence=273/')"
 future_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/approval-readiness-sequence=273/approval-readiness-sequence=274/')"
-source_digest_replay_tamper="$(printf '%s\n' "$freshness_status" | sed 's/485f8d654b36b1047d8ccb9c6e88828abe995bc1f3c0e306ac9519f0310bb6c7/7768154619ab5d682edda150452642d5c6aebc65146e0fde81567004950c98de/')"
+source_digest_replay_tamper="$(printf '%s\n' "$freshness_status" | sed 's/e0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b/f0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b/')"
 line_count_tamper="$(
   printf '%s\n' "$freshness_status"
   printf '%s\n' "context-plane-operator-approval-packet-freshness.replayed-copy=unexpected"

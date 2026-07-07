@@ -1441,8 +1441,15 @@ shadow-only until a separately approved provider route is promoted. The
 canary promotion route is designed and explicitly approved. The
 `memory_shadow_canary_promotion_readiness` row is also shadow-only and may carry
 only canary promotion rehearsal counts for stable-window, rollback,
-kill-switch, soak readback, and promotion blockers. The exported field names
-include `canary_promotion_rollback_rehearsal_pass_count`,
+kill-switch, soak readback, promotion blockers, and the four-link
+promotion-audit checklist state. That checklist covers readiness, negative
+rehearsal, audit digest, and audit freshness, and may expose only pass/fail
+booleans plus required/pass counts. The exported field names include
+`canary_promotion_checklist_pass_count`,
+`canary_promotion_negative_rehearsal_check_pass`,
+`canary_promotion_audit_digest_check_pass`,
+`canary_promotion_audit_freshness_check_pass`,
+`canary_promotion_rollback_rehearsal_pass_count`,
 `canary_promotion_kill_switch_rehearsal_pass_count`, and
 `canary_promotion_soak_readback_pass_count`. The
 `recall_quality_gate` status row may additionally carry
@@ -1503,7 +1510,8 @@ are controlled enum values:
 `operator_approval_missing`, and `side_effect_flag_enabled`; future reasons must
 be added to the enum and gate before export. Matrix rows may carry only
 target/status/required-status taxonomy, threshold booleans, blocker reason
-enums, counts, and explicit side-effect booleans. A status input carrying any
+enums, counts, canary promotion audit checklist pass booleans, and explicit
+side-effect booleans. A status input carrying any
 production-write, graph-write, runtime-activation, adaptive-allocator runtime,
 source-aware runtime, prompt-assembly, or operator-activation side-effect flag
 must produce a `side_effect_flag_enabled` blocker without propagating enabled
@@ -1570,12 +1578,18 @@ controlled recall-quality blocker enums `missing_critical_fact_regression`,
 approval export may additionally carry canary promotion checklist counts copied
 from the `memory_shadow_canary_promotion_readiness` matrix row: stable-window
 counts, pass streak counts, promotion blocker count, rollback rehearsal pass
-count, kill-switch rehearsal pass count, and soak readback pass count only.
+count, kill-switch rehearsal pass count, soak readback pass count, and the
+readiness/negative-rehearsal/audit-digest/audit-freshness checklist pass state
+only.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1`,
+`context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4`,
+`context-plane-operator-approval-packet.canary-promotion.negative-rehearsal-check=pass`,
+`context-plane-operator-approval-packet.canary-promotion.audit-digest-check=pass`,
+`context-plane-operator-approval-packet.canary-promotion.audit-freshness-check=pass`,
 `context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3`,
 `context-plane-operator-approval-packet.canary-promotion.kill-switch-rehearsal-pass-count=3`,
 `context-plane-operator-approval-packet.canary-promotion.soak-readback-pass-count=3`,
@@ -1643,8 +1657,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 32 lines, negative export report 4 lines, and
-combined report 36 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 47 lines, negative export report 4 lines, and
+combined report 51 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

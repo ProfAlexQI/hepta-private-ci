@@ -11,6 +11,8 @@ use super::activation::ContextPlaneActivationTarget;
 use super::activation::activation_blocker_reason_order;
 use super::status::ContextPlaneStatusKind;
 
+const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+
 /// Approval scope that must be covered before any context-plane promotion.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,6 +119,12 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub canary_promotion_required_pass_streak: usize,
     pub canary_promotion_observed_pass_streak: usize,
     pub canary_promotion_blocker_count: usize,
+    pub canary_promotion_checklist_required_count: usize,
+    pub canary_promotion_checklist_pass_count: usize,
+    pub canary_promotion_readiness_check_pass: bool,
+    pub canary_promotion_negative_rehearsal_check_pass: bool,
+    pub canary_promotion_audit_digest_check_pass: bool,
+    pub canary_promotion_audit_freshness_check_pass: bool,
     pub canary_promotion_rollback_rehearsal_count: usize,
     pub canary_promotion_rollback_rehearsal_pass_count: usize,
     pub canary_promotion_kill_switch_rehearsal_count: usize,
@@ -152,6 +160,12 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             canary_promotion_required_pass_streak: 0,
             canary_promotion_observed_pass_streak: 0,
             canary_promotion_blocker_count: 0,
+            canary_promotion_checklist_required_count: 0,
+            canary_promotion_checklist_pass_count: 0,
+            canary_promotion_readiness_check_pass: false,
+            canary_promotion_negative_rehearsal_check_pass: false,
+            canary_promotion_audit_digest_check_pass: false,
+            canary_promotion_audit_freshness_check_pass: false,
             canary_promotion_rollback_rehearsal_count: 0,
             canary_promotion_rollback_rehearsal_pass_count: 0,
             canary_promotion_kill_switch_rehearsal_count: 0,
@@ -235,6 +249,24 @@ impl ContextPlaneOperatorApprovalPacket {
                 .unwrap_or_default(),
             canary_promotion_blocker_count: canary_promotion_row
                 .map(|row| row.canary_promotion_blocker_count)
+                .unwrap_or_default(),
+            canary_promotion_checklist_required_count: canary_promotion_row
+                .map(|row| row.canary_promotion_checklist_required_count)
+                .unwrap_or_default(),
+            canary_promotion_checklist_pass_count: canary_promotion_row
+                .map(|row| row.canary_promotion_checklist_pass_count)
+                .unwrap_or_default(),
+            canary_promotion_readiness_check_pass: canary_promotion_row
+                .map(|row| row.canary_promotion_readiness_check_pass)
+                .unwrap_or_default(),
+            canary_promotion_negative_rehearsal_check_pass: canary_promotion_row
+                .map(|row| row.canary_promotion_negative_rehearsal_check_pass)
+                .unwrap_or_default(),
+            canary_promotion_audit_digest_check_pass: canary_promotion_row
+                .map(|row| row.canary_promotion_audit_digest_check_pass)
+                .unwrap_or_default(),
+            canary_promotion_audit_freshness_check_pass: canary_promotion_row
+                .map(|row| row.canary_promotion_audit_freshness_check_pass)
                 .unwrap_or_default(),
             canary_promotion_rollback_rehearsal_count: canary_promotion_row
                 .map(|row| row.canary_promotion_rollback_rehearsal_count)
@@ -376,6 +408,20 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.canary_promotion_soak_readback_window_count > 0
             && self.canary_promotion_soak_readback_pass_count
                 <= self.canary_promotion_soak_readback_window_count
+            && self.canary_promotion_checklist_required_count
+                == CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT
+            && self.canary_promotion_checklist_pass_count
+                == [
+                    self.canary_promotion_readiness_check_pass,
+                    self.canary_promotion_negative_rehearsal_check_pass,
+                    self.canary_promotion_audit_digest_check_pass,
+                    self.canary_promotion_audit_freshness_check_pass,
+                ]
+                .into_iter()
+                .filter(|check| *check)
+                .count()
+            && self.canary_promotion_checklist_pass_count
+                <= self.canary_promotion_checklist_required_count
     }
 }
 

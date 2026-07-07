@@ -87,6 +87,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert_eq!(packet.recall_quality_blocking_reason_count, 0);
     assert_eq!(packet.recall_quality_blocking_reason_count_total(), 0);
     assert_eq!(packet.canary_promotion_blocker_count, 0);
+    assert_eq!(packet.canary_promotion_checklist_required_count, 4);
+    assert_eq!(packet.canary_promotion_checklist_pass_count, 4);
+    assert!(packet.canary_promotion_readiness_check_pass);
+    assert!(packet.canary_promotion_negative_rehearsal_check_pass);
+    assert!(packet.canary_promotion_audit_digest_check_pass);
+    assert!(packet.canary_promotion_audit_freshness_check_pass);
     assert_eq!(packet.canary_promotion_rollback_rehearsal_pass_count, 3);
     assert_eq!(packet.canary_promotion_kill_switch_rehearsal_pass_count, 3);
     assert_eq!(packet.canary_promotion_soak_readback_pass_count, 3);
@@ -102,6 +108,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
+    assert!(json.contains("canary_promotion_checklist_pass_count"));
+    assert!(json.contains("canary_promotion_negative_rehearsal_check_pass"));
+    assert!(json.contains("canary_promotion_audit_digest_check_pass"));
+    assert!(json.contains("canary_promotion_audit_freshness_check_pass"));
     assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_soak_readback_pass_count"));
@@ -235,6 +245,12 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert_eq!(from_store.recall_quality_blocking_reason_count, 0);
     assert_eq!(from_store.recall_quality_blocking_reason_count_total(), 0);
     assert_eq!(from_store.canary_promotion_blocker_count, 0);
+    assert_eq!(from_store.canary_promotion_checklist_required_count, 4);
+    assert_eq!(from_store.canary_promotion_checklist_pass_count, 4);
+    assert!(from_store.canary_promotion_readiness_check_pass);
+    assert!(from_store.canary_promotion_negative_rehearsal_check_pass);
+    assert!(from_store.canary_promotion_audit_digest_check_pass);
+    assert!(from_store.canary_promotion_audit_freshness_check_pass);
     assert_eq!(from_store.canary_promotion_rollback_rehearsal_pass_count, 3);
     assert_eq!(
         from_store.canary_promotion_kill_switch_rehearsal_pass_count,

@@ -163,6 +163,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert_eq!(packet.recall_quality_blocking_reason_count, 0);
     assert_eq!(packet.recall_quality_blocking_reason_count_total(), 0);
     assert_eq!(packet.canary_promotion_blocker_count, 0);
+    assert_eq!(packet.canary_promotion_checklist_required_count, 4);
+    assert_eq!(packet.canary_promotion_checklist_pass_count, 4);
+    assert!(packet.canary_promotion_readiness_check_pass);
+    assert!(packet.canary_promotion_negative_rehearsal_check_pass);
+    assert!(packet.canary_promotion_audit_digest_check_pass);
+    assert!(packet.canary_promotion_audit_freshness_check_pass);
     assert_eq!(packet.canary_promotion_rollback_rehearsal_pass_count, 3);
     assert_eq!(packet.canary_promotion_kill_switch_rehearsal_pass_count, 3);
     assert_eq!(packet.canary_promotion_soak_readback_pass_count, 3);
@@ -185,6 +191,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
+    assert!(json.contains("canary_promotion_checklist_pass_count"));
+    assert!(json.contains("canary_promotion_negative_rehearsal_check_pass"));
+    assert!(json.contains("canary_promotion_audit_digest_check_pass"));
+    assert!(json.contains("canary_promotion_audit_freshness_check_pass"));
     assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_soak_readback_pass_count"));
@@ -254,6 +264,8 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
         Some(1)
     );
     assert_eq!(packet.canary_promotion_blocker_count, 0);
+    assert_eq!(packet.canary_promotion_checklist_required_count, 4);
+    assert_eq!(packet.canary_promotion_checklist_pass_count, 4);
     assert_eq!(packet.canary_promotion_rollback_rehearsal_pass_count, 3);
     assert_eq!(packet.canary_promotion_kill_switch_rehearsal_pass_count, 3);
     assert_eq!(packet.canary_promotion_soak_readback_pass_count, 3);
@@ -339,6 +351,12 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         canary_promotion_required_pass_streak: 3,
         canary_promotion_observed_pass_streak: 3,
         canary_promotion_blocker_count: 0,
+        canary_promotion_checklist_required_count: 4,
+        canary_promotion_checklist_pass_count: 4,
+        canary_promotion_readiness_check_pass: true,
+        canary_promotion_negative_rehearsal_check_pass: true,
+        canary_promotion_audit_digest_check_pass: true,
+        canary_promotion_audit_freshness_check_pass: true,
         canary_promotion_rollback_rehearsal_count: 3,
         canary_promotion_rollback_rehearsal_pass_count: 3,
         canary_promotion_kill_switch_rehearsal_count: 3,

@@ -8,6 +8,8 @@ use super::super::status::context_plane_status_entry_has_side_effect_flag;
 use super::target::ContextPlaneActivationBlockerReason;
 use super::target::ContextPlaneActivationTarget;
 
+const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+
 /// One activation-readiness threshold row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -24,6 +26,12 @@ pub struct ContextPlaneActivationBlockerRow {
     pub canary_promotion_required_pass_streak: usize,
     pub canary_promotion_observed_pass_streak: usize,
     pub canary_promotion_blocker_count: usize,
+    pub canary_promotion_checklist_required_count: usize,
+    pub canary_promotion_checklist_pass_count: usize,
+    pub canary_promotion_readiness_check_pass: bool,
+    pub canary_promotion_negative_rehearsal_check_pass: bool,
+    pub canary_promotion_audit_digest_check_pass: bool,
+    pub canary_promotion_audit_freshness_check_pass: bool,
     pub canary_promotion_rollback_rehearsal_count: usize,
     pub canary_promotion_rollback_rehearsal_pass_count: usize,
     pub canary_promotion_kill_switch_rehearsal_count: usize,
@@ -182,6 +190,18 @@ impl ContextPlaneActivationBlockerRow {
             self.canary_promotion_observed_pass_streak =
                 entry.canary_promotion_observed_pass_streak;
             self.canary_promotion_blocker_count = entry.canary_promotion_blocker_count;
+            self.canary_promotion_checklist_required_count =
+                entry.canary_promotion_checklist_required_count;
+            self.canary_promotion_checklist_pass_count =
+                entry.canary_promotion_checklist_pass_count;
+            self.canary_promotion_readiness_check_pass =
+                entry.canary_promotion_readiness_check_pass;
+            self.canary_promotion_negative_rehearsal_check_pass =
+                entry.canary_promotion_negative_rehearsal_check_pass;
+            self.canary_promotion_audit_digest_check_pass =
+                entry.canary_promotion_audit_digest_check_pass;
+            self.canary_promotion_audit_freshness_check_pass =
+                entry.canary_promotion_audit_freshness_check_pass;
             self.canary_promotion_rollback_rehearsal_count =
                 entry.canary_promotion_rollback_rehearsal_count;
             self.canary_promotion_rollback_rehearsal_pass_count =
@@ -239,6 +259,8 @@ impl ContextPlaneActivationBlockerRow {
             self.canary_promotion_required_pass_streak,
             self.canary_promotion_observed_pass_streak,
             self.canary_promotion_blocker_count,
+            self.canary_promotion_checklist_required_count,
+            self.canary_promotion_checklist_pass_count,
             self.canary_promotion_rollback_rehearsal_count,
             self.canary_promotion_rollback_rehearsal_pass_count,
             self.canary_promotion_kill_switch_rehearsal_count,
@@ -246,9 +268,16 @@ impl ContextPlaneActivationBlockerRow {
             self.canary_promotion_soak_readback_window_count,
             self.canary_promotion_soak_readback_pass_count,
         ];
+        let checks = [
+            self.canary_promotion_readiness_check_pass,
+            self.canary_promotion_negative_rehearsal_check_pass,
+            self.canary_promotion_audit_digest_check_pass,
+            self.canary_promotion_audit_freshness_check_pass,
+        ];
 
         if self.target != ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness {
-            return counts.into_iter().all(|count| count == 0);
+            return counts.into_iter().all(|count| count == 0)
+                && checks.into_iter().all(|check| !check);
         }
 
         self.canary_promotion_required_stable_window_count > 0
@@ -266,6 +295,12 @@ impl ContextPlaneActivationBlockerRow {
             && self.canary_promotion_soak_readback_window_count > 0
             && self.canary_promotion_soak_readback_pass_count
                 <= self.canary_promotion_soak_readback_window_count
+            && self.canary_promotion_checklist_required_count
+                == CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT
+            && self.canary_promotion_checklist_pass_count
+                == checks.into_iter().filter(|check| *check).count()
+            && self.canary_promotion_checklist_pass_count
+                <= self.canary_promotion_checklist_required_count
             && (self.canary_promotion_blocker_count == 0 || self.blocker_reason.is_blocking())
     }
 }

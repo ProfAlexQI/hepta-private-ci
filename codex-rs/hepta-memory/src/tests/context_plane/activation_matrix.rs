@@ -88,6 +88,15 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
             .recall_quality_blocking_reasons
             .is_empty()
     );
+    let promotion_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness)
+        .expect("memory shadow canary promotion readiness row should exist");
+    assert_eq!(promotion_row.canary_promotion_checklist_required_count, 4);
+    assert_eq!(promotion_row.canary_promotion_checklist_pass_count, 4);
+    assert!(promotion_row.canary_promotion_readiness_check_pass);
+    assert!(promotion_row.canary_promotion_negative_rehearsal_check_pass);
+    assert!(promotion_row.canary_promotion_audit_digest_check_pass);
+    assert!(promotion_row.canary_promotion_audit_freshness_check_pass);
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
@@ -102,6 +111,10 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
+    assert!(json.contains("canary_promotion_checklist_pass_count"));
+    assert!(json.contains("canary_promotion_negative_rehearsal_check_pass"));
+    assert!(json.contains("canary_promotion_audit_digest_check_pass"));
+    assert!(json.contains("canary_promotion_audit_freshness_check_pass"));
     assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_soak_readback_pass_count"));

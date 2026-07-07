@@ -34,6 +34,12 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 entry.canary_promotion_observed_stable_window_count = 1;
                 entry.canary_promotion_required_pass_streak = 3;
                 entry.canary_promotion_observed_pass_streak = 3;
+                entry.canary_promotion_checklist_required_count = 4;
+                entry.canary_promotion_checklist_pass_count = 4;
+                entry.canary_promotion_readiness_check_pass = true;
+                entry.canary_promotion_negative_rehearsal_check_pass = true;
+                entry.canary_promotion_audit_digest_check_pass = true;
+                entry.canary_promotion_audit_freshness_check_pass = true;
                 entry.canary_promotion_rollback_rehearsal_count = 3;
                 entry.canary_promotion_rollback_rehearsal_pass_count = 3;
                 entry.canary_promotion_kill_switch_rehearsal_count = 3;
@@ -122,6 +128,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
+    assert!(json.contains("canary_promotion_checklist_pass_count"));
+    assert!(json.contains("canary_promotion_negative_rehearsal_check_pass"));
+    assert!(json.contains("canary_promotion_audit_digest_check_pass"));
+    assert!(json.contains("canary_promotion_audit_freshness_check_pass"));
     assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
     assert!(json.contains("canary_promotion_soak_readback_pass_count"));

@@ -86,6 +86,10 @@ for term in \
   "memory_provider_boundary" \
   "memory_shadow_canary_readiness" \
   "memory_shadow_canary_promotion_readiness" \
+  "canary_promotion_checklist_pass_count" \
+  "canary_promotion_negative_rehearsal_check_pass" \
+  "canary_promotion_audit_digest_check_pass" \
+  "canary_promotion_audit_freshness_check_pass" \
   "canary_promotion_rollback_rehearsal_pass_count" \
   "canary_promotion_kill_switch_rehearsal_pass_count" \
   "canary_promotion_soak_readback_pass_count" \
@@ -218,6 +222,12 @@ context-plane-status.canary-promotion.observed-stable-window-count=1
 context-plane-status.canary-promotion.required-pass-streak=3
 context-plane-status.canary-promotion.observed-pass-streak=3
 context-plane-status.canary-promotion.promotion-blocker-count=0
+context-plane-status.canary-promotion.checklist-required-count=4
+context-plane-status.canary-promotion.checklist-pass-count=4
+context-plane-status.canary-promotion.readiness-check=pass
+context-plane-status.canary-promotion.negative-rehearsal-check=pass
+context-plane-status.canary-promotion.audit-digest-check=pass
+context-plane-status.canary-promotion.audit-freshness-check=pass
 context-plane-status.canary-promotion.rollback-rehearsal-pass-count=3
 context-plane-status.canary-promotion.kill-switch-rehearsal-pass-count=3
 context-plane-status.canary-promotion.soak-readback-pass-count=3
