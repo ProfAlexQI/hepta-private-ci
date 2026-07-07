@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-positive-preconditions-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CLER_STORE_LOCAL_EVIDENCE_ACCEPTANCE_AUTHORITY_DECISION_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable source report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+source_json="${HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_LOCAL_EVIDENCE_ACCEPTANCE_AUTHORITY_DECISION_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_JSON:-}"
+source_cache_input_present=false
+source_report_render_count=0
+if [[ -n "$source_json" ]]; then
+  [[ -f "$source_json" ]] || fail "missing cached source report: $source_json"
+  source_cache_input_present=true
+else
+  source_json="$tmpdir/source.json"
+  "$SOURCE_REPORT" >"$source_json" || fail "failed to render source report"
+  source_report_render_count=1
+fi
+jq -e . "$source_json" >/dev/null || fail "source report did not render valid JSON"
+
+jq -n \
+  --slurpfile source "$source_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --argjson source_cache_input_present "$source_cache_input_present" \
+  --argjson source_report_render_count "$source_report_render_count" \
+  --arg gate "scripts/hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CLER_STORE_LOCAL_EVIDENCE_ACCEPTANCE_AUTHORITY_DECISION_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_2026-07-07.md" \
+  --arg route "readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/authority-decision-recording-denial-receipts/persistence-denial" \
+  '
+  def hyphen_id($id): $id | gsub("_"; "-");
+  def count_true($entries; $key): $entries | map(select(.[$key] == true)) | length;
+  def count_missing($entries; $required; $present): $entries | map(select(.[$required] == true and .[$present] == false)) | length;
+  ($source[0]) as $src |
+  ($src.entries | map({
+    id:("evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_without_persistence_" + .source_blocker_id),
+    source_blocker_id,
+    source_positive_precondition_set_id:.positive_precondition_set_id,
+    source_positive_precondition_route:.positive_precondition_route,
+    source_denial_receipt_id:.source_denial_receipt_id,
+    source_denial_receipt_route:.source_denial_receipt_route,
+    source_denial_receipt_digest:.source_denial_receipt_digest,
+    source_authority_decision_record_id:.source_authority_decision_record_id,
+    source_retention_policy_id:.source_retention_policy_id,
+    source_replay_idempotency_key:.source_replay_idempotency_key,
+    source_denial_receipt_persistence_grant_precondition_id:.denial_receipt_persistence_grant_precondition_id,
+    persistence_denial_id:("local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    persistence_denial_route:($route + "/" + hyphen_id(.source_blocker_id)),
+    persistence_denial_reason:"local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_disabled_positive_preconditions_missing",
+    observed_state:"local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denied_without_persistence",
+    source_positive_precondition_set_projected:.positive_precondition_set_projected,
+    source_positive_preconditions_missing:.positive_preconditions_missing,
+    source_denial_receipt_attached:.source_denial_receipt_attached,
+    source_authority_decision_record_id_attached:.source_authority_decision_record_id_attached,
+    persistence_denial_projected:true,
+    denial_receipt_persistence_denied:true,
+    denial_receipt_persistence_disabled:true,
+    denial_receipt_persistence_allowed:false,
+    denial_receipt_persistence_attempt_recorded:false,
+    denial_receipt_persisted:false,
+    persistence_authority_required:.persistence_authority_required,
+    persistence_authority_present:.persistence_authority_present,
+    operator_persistence_approval_required:.operator_persistence_approval_required,
+    operator_persistence_approval_present:.operator_persistence_approval_present,
+    evidence_acceptance_required:.evidence_acceptance_required,
+    evidence_acceptance_present:.evidence_acceptance_present,
+    denial_receipt_persistence_grant_required:.denial_receipt_persistence_grant_required,
+    denial_receipt_persistence_grant_present:.denial_receipt_persistence_grant_present,
+    atomic_append_required:.atomic_append_required,
+    atomic_append_enabled:.atomic_append_enabled,
+    post_persist_readback_required:.post_persist_readback_required,
+    post_persist_readback_persisted:.post_persist_readback_persisted,
+    rollback_anchor_required:.rollback_anchor_required,
+    rollback_anchor_verified:.rollback_anchor_verified,
+    retention_policy_commit_required:.retention_policy_commit_required,
+    retention_policy_committed:.retention_policy_committed,
+    replay_idempotency_guard_required:.replay_idempotency_guard_required,
+    replay_idempotency_guard_enabled:.replay_idempotency_guard_enabled,
+    authority_decision_recorded:false,
+    authority_decision_persisted:false,
+    evidence_acceptance_recorded:false,
+    evidence_recorded:false,
+    receipt_store_write_attempt_recorded:false,
+    receipt_store_written:false,
+    receipt_persisted:false,
+    ledger_written:false,
+    workflow_event_log_written:false,
+    sqlite_written:false,
+    credential_read_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  (count_true($entries; "persistence_denial_projected")) as $persistence_denial_projected_count |
+  (count_true($entries; "source_positive_precondition_set_projected")) as $source_positive_preconditions_attached_count |
+  (count_true($entries; "source_denial_receipt_attached")) as $source_denial_receipt_attached_count |
+  (count_true($entries; "source_authority_decision_record_id_attached")) as $source_authority_decision_record_id_attached_count |
+  (count_true($entries; "denial_receipt_persistence_denied")) as $denial_receipt_persistence_denied_count |
+  (count_true($entries; "denial_receipt_persistence_disabled")) as $denial_receipt_persistence_disabled_count |
+  (count_true($entries; "denial_receipt_persistence_allowed")) as $denial_receipt_persistence_allowed_count |
+  (count_true($entries; "denial_receipt_persistence_attempt_recorded")) as $denial_receipt_persistence_attempt_recorded_count |
+  (count_true($entries; "denial_receipt_persisted")) as $denial_receipt_persisted_count |
+  (count_missing($entries; "persistence_authority_required"; "persistence_authority_present")) as $persistence_authority_missing_count |
+  (count_missing($entries; "operator_persistence_approval_required"; "operator_persistence_approval_present")) as $operator_persistence_approval_missing_count |
+  (count_missing($entries; "evidence_acceptance_required"; "evidence_acceptance_present")) as $evidence_acceptance_missing_count |
+  (count_missing($entries; "denial_receipt_persistence_grant_required"; "denial_receipt_persistence_grant_present")) as $denial_receipt_persistence_grant_missing_count |
+  (count_missing($entries; "atomic_append_required"; "atomic_append_enabled")) as $atomic_append_disabled_count |
+  (count_missing($entries; "post_persist_readback_required"; "post_persist_readback_persisted")) as $post_persist_readback_missing_count |
+  (count_missing($entries; "rollback_anchor_required"; "rollback_anchor_verified")) as $rollback_anchor_missing_count |
+  (count_missing($entries; "retention_policy_commit_required"; "retention_policy_committed")) as $retention_policy_not_committed_count |
+  (count_missing($entries; "replay_idempotency_guard_required"; "replay_idempotency_guard_enabled")) as $replay_idempotency_guard_disabled_count |
+  (count_true($entries; "authority_decision_recorded")) as $authority_decision_recorded_count |
+  (count_true($entries; "authority_decision_persisted")) as $authority_decision_persisted_count |
+  (count_true($entries; "evidence_acceptance_recorded")) as $evidence_acceptance_recorded_count |
+  (count_true($entries; "evidence_recorded")) as $evidence_recorded_count |
+  (count_true($entries; "receipt_store_write_attempt_recorded")) as $receipt_store_write_attempt_recorded_count |
+  (count_true($entries; "receipt_store_written")) as $receipt_store_written_count |
+  (count_true($entries; "receipt_persisted")) as $receipt_persisted_count |
+  (count_true($entries; "ledger_written")) as $ledger_written_count |
+  (count_true($entries; "workflow_event_log_written")) as $workflow_event_log_written_count |
+  (count_true($entries; "sqlite_written")) as $sqlite_written_count |
+  (count_true($entries; "live_mutation_allowed")) as $live_mutation_allowed_count |
+  ($src.positive_preconditions_readback_ready == true
+    and $src.precondition_entry_count == 7
+    and $src.positive_precondition_set_projected_count == 7
+    and $src.positive_preconditions_missing_count == 7
+    and $src.denial_receipt_persistence_allowed_count == 0
+    and $src.denial_receipt_persisted_count == 0
+    and $src.authority_decision_recorded_count == 0
+    and $src.authority_decision_persisted_count == 0
+    and $src.evidence_acceptance_recorded_count == 0
+    and $src.evidence_recorded_count == 0
+    and $src.receipt_store_write_attempt_recorded_count == 0
+    and $src.receipt_store_written_count == 0
+    and $src.receipt_persisted_count == 0
+    and $src.live_execution_allowed == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $persistence_denial_projected_count == 7
+    and $source_positive_preconditions_attached_count == 7
+    and $source_denial_receipt_attached_count == 7
+    and $source_authority_decision_record_id_attached_count == 7
+    and $denial_receipt_persistence_denied_count == 7
+    and $denial_receipt_persistence_disabled_count == 7
+    and $denial_receipt_persistence_allowed_count == 0
+    and $denial_receipt_persistence_attempt_recorded_count == 0
+    and $denial_receipt_persisted_count == 0
+    and $persistence_authority_missing_count == 7
+    and $operator_persistence_approval_missing_count == 7
+    and $evidence_acceptance_missing_count == 7
+    and $denial_receipt_persistence_grant_missing_count == 7
+    and $atomic_append_disabled_count == 7
+    and $post_persist_readback_missing_count == 7
+    and $rollback_anchor_missing_count == 7
+    and $retention_policy_not_committed_count == 7
+    and $replay_idempotency_guard_disabled_count == 7
+    and $authority_decision_recorded_count == 0
+    and $authority_decision_persisted_count == 0
+    and $evidence_acceptance_recorded_count == 0
+    and $evidence_recorded_count == 0
+    and $receipt_store_write_attempt_recorded_count == 0
+    and $receipt_store_written_count == 0
+    and $receipt_persisted_count == 0
+    and $ledger_written_count == 0
+    and $workflow_event_log_written_count == 0
+    and $sqlite_written_count == 0
+    and $live_mutation_allowed_count == 0) as $ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence_gate",
+    schema_version:"controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_positive_preconditions_readback_ready:$src.positive_preconditions_readback_ready,
+    source_precondition_entry_count:$src.precondition_entry_count,
+    source_positive_precondition_set_projected_count:$src.positive_precondition_set_projected_count,
+    source_persistence_authority_required_count:$src.persistence_authority_required_count,
+    source_persistence_authority_present_count:$src.persistence_authority_present_count,
+    source_operator_persistence_approval_required_count:$src.operator_persistence_approval_required_count,
+    source_operator_persistence_approval_present_count:$src.operator_persistence_approval_present_count,
+    source_evidence_acceptance_required_count:$src.evidence_acceptance_required_count,
+    source_evidence_acceptance_present_count:$src.evidence_acceptance_present_count,
+    source_denial_receipt_persistence_grant_required_count:$src.denial_receipt_persistence_grant_required_count,
+    source_denial_receipt_persistence_grant_present_count:$src.denial_receipt_persistence_grant_present_count,
+    source_atomic_append_required_count:$src.atomic_append_required_count,
+    source_atomic_append_enabled_count:$src.atomic_append_enabled_count,
+    source_post_persist_readback_required_count:$src.post_persist_readback_required_count,
+    source_post_persist_readback_persisted_count:$src.post_persist_readback_persisted_count,
+    source_rollback_anchor_required_count:$src.rollback_anchor_required_count,
+    source_rollback_anchor_verified_count:$src.rollback_anchor_verified_count,
+    source_retention_policy_commit_required_count:$src.retention_policy_commit_required_count,
+    source_retention_policy_committed_count:$src.retention_policy_committed_count,
+    source_replay_idempotency_guard_required_count:$src.replay_idempotency_guard_required_count,
+    source_replay_idempotency_guard_enabled_count:$src.replay_idempotency_guard_enabled_count,
+    source_positive_preconditions_missing_count:$src.positive_preconditions_missing_count,
+    source_authority_decision_recorded_count:$src.authority_decision_recorded_count,
+    source_authority_decision_persisted_count:$src.authority_decision_persisted_count,
+    source_denial_receipt_persistence_allowed_count:$src.denial_receipt_persistence_allowed_count,
+    source_denial_receipt_persisted_count:$src.denial_receipt_persisted_count,
+    source_evidence_acceptance_recorded_count:$src.evidence_acceptance_recorded_count,
+    source_evidence_recorded_count:$src.evidence_recorded_count,
+    source_receipt_store_write_attempt_recorded_count:$src.receipt_store_write_attempt_recorded_count,
+    source_receipt_store_written_count:$src.receipt_store_written_count,
+    source_receipt_persisted_count:$src.receipt_persisted_count,
+    source_live_execution_allowed:$src.live_execution_allowed,
+    source_cache_mode:(if $source_cache_input_present then "provided_source_json" else "rendered_once_temp_source_json" end),
+    source_cache_input_present:$source_cache_input_present,
+    source_report_render_count:$source_report_render_count,
+    target_source_reuse_count:1,
+    lib_export_present:$lib_export_present,
+    persistence_denial_route:$route,
+    persistence_denial_entry_count:($entries | length),
+    persistence_denial_projected_count:$persistence_denial_projected_count,
+    source_positive_preconditions_attached_count:$source_positive_preconditions_attached_count,
+    source_denial_receipt_attached_count:$source_denial_receipt_attached_count,
+    source_authority_decision_record_id_attached_count:$source_authority_decision_record_id_attached_count,
+    denial_receipt_persistence_denied_count:$denial_receipt_persistence_denied_count,
+    denial_receipt_persistence_disabled_count:$denial_receipt_persistence_disabled_count,
+    denial_receipt_persistence_allowed_count:$denial_receipt_persistence_allowed_count,
+    denial_receipt_persistence_attempt_recorded_count:$denial_receipt_persistence_attempt_recorded_count,
+    denial_receipt_persisted_count:$denial_receipt_persisted_count,
+    persistence_authority_missing_count:$persistence_authority_missing_count,
+    operator_persistence_approval_missing_count:$operator_persistence_approval_missing_count,
+    evidence_acceptance_missing_count:$evidence_acceptance_missing_count,
+    denial_receipt_persistence_grant_missing_count:$denial_receipt_persistence_grant_missing_count,
+    atomic_append_disabled_count:$atomic_append_disabled_count,
+    post_persist_readback_missing_count:$post_persist_readback_missing_count,
+    rollback_anchor_missing_count:$rollback_anchor_missing_count,
+    retention_policy_not_committed_count:$retention_policy_not_committed_count,
+    replay_idempotency_guard_disabled_count:$replay_idempotency_guard_disabled_count,
+    authority_decision_recorded_count:$authority_decision_recorded_count,
+    authority_decision_persisted_count:$authority_decision_persisted_count,
+    evidence_acceptance_recorded_count:$evidence_acceptance_recorded_count,
+    evidence_recorded_count:$evidence_recorded_count,
+    receipt_store_write_attempt_recorded_count:$receipt_store_write_attempt_recorded_count,
+    receipt_store_written_count:$receipt_store_written_count,
+    receipt_persisted_count:$receipt_persisted_count,
+    ledger_written_count:$ledger_written_count,
+    workflow_event_log_written_count:$workflow_event_log_written_count,
+    sqlite_written_count:$sqlite_written_count,
+    live_mutation_allowed_count:$live_mutation_allowed_count,
+    persistence_denial_readback_ready:$ready,
+    authority_decision_recording_allowed:false,
+    authority_decision_persistence_allowed:false,
+    denial_receipt_persistence_allowed:false,
+    denial_receipt_persisted:false,
+    evidence_acceptance_recording_allowed:false,
+    evidence_recording_allowed:false,
+    receipt_store_write_attempt_recording_allowed:false,
+    receipt_store_write_allowed:false,
+    receipt_persistence_allowed:false,
+    ledger_write_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    credential_read_allowed:false,
+    live_execution_allowed:false,
+    blockers:[
+      "persistence_authority_missing",
+      "operator_persistence_approval_missing",
+      "evidence_acceptance_missing",
+      "denial_receipt_persistence_grant_missing",
+      "atomic_append_not_enabled",
+      "post_persist_readback_missing",
+      "rollback_anchor_missing",
+      "retention_policy_not_committed",
+      "replay_idempotency_guard_disabled",
+      "denial_receipt_persistence_disabled",
+      "authority_decision_recording_disabled",
+      "receipt_store_write_attempt_recording_disabled",
+      "receipt_store_write_disabled",
+      "ledger_write_disabled",
+      "workflow_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    entries:$entries,
+    next_actions:["controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence"],
+    recommended_next_gate:"controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      authority_decision_recorded:false,
+      authority_decision_persisted:false,
+      denial_receipt_persistence_attempt_recorded:false,
+      denial_receipt_persisted:false,
+      evidence_acceptance_recorded:false,
+      evidence_recorded:false,
+      receipt_store_write_attempt_recorded:false,
+      receipt_store_written:false,
+      receipt_persisted:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      credential_read:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      kill_switch_rehearsal_executed:false,
+      kill_switch_mutated:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }
+'

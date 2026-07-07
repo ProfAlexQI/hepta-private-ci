@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial-report.sh"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-positive-preconditions-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CLER_STORE_LOCAL_EVIDENCE_ACCEPTANCE_AUTHORITY_DECISION_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable persistence-denial report: $REPORT"
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable positive-preconditions source report: $SOURCE_REPORT"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+source_json="$tmpdir/source.json"
+target_json="$tmpdir/target.json"
+
+"$SOURCE_REPORT" >"$source_json" || fail "failed to render source report"
+jq -e . "$source_json" >/dev/null || fail "source report did not render valid JSON"
+HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_LOCAL_EVIDENCE_ACCEPTANCE_AUTHORITY_DECISION_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_JSON="$source_json" \
+  "$REPORT" >"$target_json" || fail "failed to render target report"
+jq -e . "$target_json" >/dev/null || fail "target report did not render valid JSON"
+
+rg -q 'Controlled Live Evidence Receipt Store Local Evidence Acceptance Authority Decision Recording Denial Receipt Persistence Denial Readback Without Persistence' "$DOC" \
+  || fail "architecture note must document the persistence-denial readback surface"
+rg -q 'no persistence authority recording, operator persistence approval, evidence acceptance, denial receipt persistence grant, atomic append, post-persist readback persistence, rollback anchor verification, retention policy commit, replay idempotency guard enablement, authority decision recording, authority decision persistence, denial receipt persistence, evidence acceptance recording, evidence recording, receipt-store write-attempt recording, receipt-store write, receipt persistence, ledger write, event-log write, SQLite write, credential read, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, provider call, model call, replay execution, rollback, kill-switch rehearsal execution, kill-switch mutation, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed boundary"
+
+jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence_gate"
+  and .schema_version == "controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_readback_without_persistence_v1"
+  and .source_cache_mode == "provided_source_json"
+  and .source_cache_input_present == true
+  and .source_report_render_count == 0
+  and .target_source_reuse_count == 1
+  and .lib_export_present == true
+  and .source_positive_preconditions_readback_ready == true
+  and .source_precondition_entry_count == 7
+  and .source_positive_precondition_set_projected_count == 7
+  and .source_persistence_authority_required_count == 7
+  and .source_persistence_authority_present_count == 0
+  and .source_operator_persistence_approval_required_count == 7
+  and .source_operator_persistence_approval_present_count == 0
+  and .source_evidence_acceptance_required_count == 7
+  and .source_evidence_acceptance_present_count == 0
+  and .source_denial_receipt_persistence_grant_required_count == 7
+  and .source_denial_receipt_persistence_grant_present_count == 0
+  and .source_atomic_append_required_count == 7
+  and .source_atomic_append_enabled_count == 0
+  and .source_post_persist_readback_required_count == 7
+  and .source_post_persist_readback_persisted_count == 0
+  and .source_rollback_anchor_required_count == 7
+  and .source_rollback_anchor_verified_count == 0
+  and .source_retention_policy_commit_required_count == 7
+  and .source_retention_policy_committed_count == 0
+  and .source_replay_idempotency_guard_required_count == 7
+  and .source_replay_idempotency_guard_enabled_count == 0
+  and .source_positive_preconditions_missing_count == 7
+  and .source_authority_decision_recorded_count == 0
+  and .source_authority_decision_persisted_count == 0
+  and .source_denial_receipt_persistence_allowed_count == 0
+  and .source_denial_receipt_persisted_count == 0
+  and .source_evidence_acceptance_recorded_count == 0
+  and .source_evidence_recorded_count == 0
+  and .source_receipt_store_write_attempt_recorded_count == 0
+  and .source_receipt_store_written_count == 0
+  and .source_receipt_persisted_count == 0
+  and .source_live_execution_allowed == false
+  and .persistence_denial_route == "readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/authority-decision-recording-denial-receipts/persistence-denial"
+  and .persistence_denial_entry_count == 7
+  and .persistence_denial_projected_count == 7
+  and .source_positive_preconditions_attached_count == 7
+  and .source_denial_receipt_attached_count == 7
+  and .source_authority_decision_record_id_attached_count == 7
+  and .denial_receipt_persistence_denied_count == 7
+  and .denial_receipt_persistence_disabled_count == 7
+  and .denial_receipt_persistence_allowed_count == 0
+  and .denial_receipt_persistence_attempt_recorded_count == 0
+  and .denial_receipt_persisted_count == 0
+  and .persistence_authority_missing_count == 7
+  and .operator_persistence_approval_missing_count == 7
+  and .evidence_acceptance_missing_count == 7
+  and .denial_receipt_persistence_grant_missing_count == 7
+  and .atomic_append_disabled_count == 7
+  and .post_persist_readback_missing_count == 7
+  and .rollback_anchor_missing_count == 7
+  and .retention_policy_not_committed_count == 7
+  and .replay_idempotency_guard_disabled_count == 7
+  and .authority_decision_recorded_count == 0
+  and .authority_decision_persisted_count == 0
+  and .evidence_acceptance_recorded_count == 0
+  and .evidence_recorded_count == 0
+  and .receipt_store_write_attempt_recorded_count == 0
+  and .receipt_store_written_count == 0
+  and .receipt_persisted_count == 0
+  and .ledger_written_count == 0
+  and .workflow_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_mutation_allowed_count == 0
+  and .persistence_denial_readback_ready == true
+  and .authority_decision_recording_allowed == false
+  and .authority_decision_persistence_allowed == false
+  and .denial_receipt_persistence_allowed == false
+  and .denial_receipt_persisted == false
+  and .receipt_store_write_allowed == false
+  and .live_execution_allowed == false
+  and (.entries | length) == 7
+  and (.entries | all(
+    (.id | startswith("evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_without_persistence_"))
+    and (.source_positive_precondition_set_id | startswith("local-evidence-acceptance-authority-decision-recording-denial-receipt-positive-preconditions:"))
+    and (.source_denial_receipt_id | startswith("local-evidence-acceptance-authority-decision-recording-denial-receipt:"))
+    and (.source_retention_policy_id | startswith("local-evidence-acceptance-authority-decision-recording-denial-receipt-retention-policy:controlled-live-evidence-receipt-store:"))
+    and (.persistence_denial_id | startswith("local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial:controlled-live-evidence-receipt-store:"))
+    and (.persistence_denial_route | startswith("readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/authority-decision-recording-denial-receipts/persistence-denial/"))
+    and .persistence_denial_reason == "local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_disabled_positive_preconditions_missing"
+    and .source_positive_precondition_set_projected == true
+    and .source_positive_preconditions_missing == true
+    and .source_denial_receipt_attached == true
+    and .source_authority_decision_record_id_attached == true
+    and .persistence_denial_projected == true
+    and .denial_receipt_persistence_denied == true
+    and .denial_receipt_persistence_disabled == true
+    and .denial_receipt_persistence_allowed == false
+    and .denial_receipt_persistence_attempt_recorded == false
+    and .denial_receipt_persisted == false
+    and .persistence_authority_required == true
+    and .persistence_authority_present == false
+    and .operator_persistence_approval_required == true
+    and .operator_persistence_approval_present == false
+    and .evidence_acceptance_required == true
+    and .evidence_acceptance_present == false
+    and .denial_receipt_persistence_grant_required == true
+    and .denial_receipt_persistence_grant_present == false
+    and .atomic_append_required == true
+    and .atomic_append_enabled == false
+    and .authority_decision_recorded == false
+    and .authority_decision_persisted == false
+    and .receipt_store_written == false
+    and .ledger_written == false
+    and .workflow_event_log_written == false
+    and .sqlite_written == false
+    and .live_mutation_allowed == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .persistence_denial_route == "readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/authority-decision-recording-denial-receipts/persistence-denial/dirty-worktree-boundary")
+  and (.blockers | index("persistence_authority_missing")) != null
+  and (.blockers | index("denial_receipt_persistence_disabled")) != null
+  and (.blockers | index("authority_decision_recording_disabled")) != null
+  and .recommended_next_gate == "controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' "$target_json" >/dev/null
+
+jq -e '
+  .surface == "controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_denial_receipt_positive_preconditions_readback_without_persistence"
+  and .status == "ready_blocked"
+  and .positive_preconditions_readback_ready == true
+  and .precondition_entry_count == 7
+  and .denial_receipt_persisted_count == 0
+  and .receipt_store_written_count == 0
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' "$source_json" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime local_evidence_acceptance_authority_decision_recording_denial_receipt_persistence_denial --lib
+)
+
+printf 'hepta-systems-cler-store-local-evidence-acceptance-authority-decision-recording-denial-receipt-persistence-denial-gate: PASS: local evidence acceptance authority decision recording denial receipt persistence denial is read back without persistence or live execution\n'
