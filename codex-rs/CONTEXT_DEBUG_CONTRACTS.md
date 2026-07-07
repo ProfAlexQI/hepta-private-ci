@@ -1258,6 +1258,60 @@ debug gate and preflight must run it after
 `scripts/hepta-context-memory-shadow-quality-summary-gate.sh` and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
+Memory shadow canary promotion readiness: recall diagnostics may expose a
+shadow-only promotion rehearsal derived from the memory shadow quality trend
+snapshot. The Rust report is
+`ContextMemoryShadowCanaryPromotionReadinessReport` in
+`codex-rs/hepta-core/src/memory/eval_harness/shadow_canary_promotion.rs`,
+re-exported through `codex-rs/hepta-core/src/memory/eval_harness.rs` and
+`codex-rs/hepta-core/src/memory.rs`, and exposed through
+`context_memory_shadow_canary_promotion_readiness_report` on both
+`StoreSnapshot` and `InMemoryStore`. The report may contain only schema/mode,
+source trend snapshot pass, stable-window counts, required/observed pass
+streak, controlled promotion decision
+(`ContextMemoryShadowCanaryPromotionDecision`), controlled shadow mode
+(`ContextMemoryShadowCanaryPromotionMode`), controlled rehearsal verdicts
+(`ContextMemoryShadowCanaryRehearsalVerdict`), `promotion_blocker_count`,
+`regression_window_blocking_count`, rollback rehearsal counters,
+`rollback_rehearsal_verdict`, `rollback_rehearsal_pass_count`, kill-switch
+rehearsal counters, `kill_switch_rehearsal_verdict`,
+`kill_switch_rehearsal_pass_count`, soak-readback counters,
+`soak_readback_verdict`,
+`soak_readback_pass_count`, operator packet redaction/counts, and explicit
+side-effect booleans including `operator_packet_redacted=true`,
+`canary_promotion_route_opened=false`, and `rollback_write=false`. It must not
+contain prompt text, query text, transcript
+text, memory text, answer text, ranked payloads, raw ranked payloads, graph
+payloads, raw graph payloads, source ids, session ids, memory ids, trace ids,
+tool arguments, tool outputs, operator identity, activation commands,
+email-shaped strings, phone-shaped strings, or user identifiers. Promotion
+readiness integrity requires schema version 1, shadow-only mode, source trend
+snapshot pass, `source_trend_window_verdict=stable_window`, one observed
+stable window, three required and observed passes, `promotion_decision` equal
+to `ready_shadow_only`, zero promotion blockers, zero regression-window
+blockers, rollback rehearsal covered with three pass observations and zero
+blocking observations, kill-switch rehearsal covered with three pass
+observations, soak readback covered with three pass observations, operator
+packet redacted, operator approval required, no history persistence write, no
+production route, no production memory write, no graph write, no prompt
+assembly change, no runtime activation, no operator activation allowance, no
+canary promotion route opened, and no rollback write.
+`scripts/hepta-context-memory-shadow-canary-promotion-readiness-report.sh` must
+emit `memory-shadow-canary-promotion-readiness=pass`,
+`memory-shadow-canary-promotion-readiness.payload-light=pass`,
+`memory-shadow-canary-promotion-readiness.promotion-decision=ready-shadow-only`,
+`memory-shadow-canary-promotion-readiness.rollback-rehearsal=covered`,
+`memory-shadow-canary-promotion-readiness.canary-promotion-route=disabled`,
+`memory-shadow-canary-promotion-readiness.rollback-write=disabled`, and
+`memory-shadow-canary-promotion-readiness.runtime-activation=disabled`.
+`scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh` must
+verify the trend-derived Rust report, helper tests, debug/preflight wiring, and
+no-leak constraints.
+The context debug gate and preflight must run it after
+`scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh` and before
+`scripts/hepta-context-plane-status-report-gate.sh`. This readiness surface is
+rehearsal-only and must not open a production graph/provider/canary route.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation

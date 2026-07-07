@@ -2,6 +2,7 @@ mod adaptive_shadow;
 mod eval_seed;
 mod ranked_recall_shadow;
 mod selected_recall_canary;
+mod shadow_canary_promotion;
 mod shadow_quality_summary;
 mod shadow_quality_trend_snapshot;
 mod shadow_regression_dashboard;
@@ -27,6 +28,10 @@ pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixt
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMetric;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMode;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalReport;
+pub use shadow_canary_promotion::ContextMemoryShadowCanaryPromotionDecision;
+pub use shadow_canary_promotion::ContextMemoryShadowCanaryPromotionMode;
+pub use shadow_canary_promotion::ContextMemoryShadowCanaryPromotionReadinessReport;
+pub use shadow_canary_promotion::ContextMemoryShadowCanaryRehearsalVerdict;
 pub use shadow_quality_summary::ContextMemoryShadowQualityOperatorSummary;
 pub use shadow_quality_summary::ContextMemoryShadowQualitySummaryMode;
 pub use shadow_quality_summary::ContextMemoryShadowQualitySummaryReport;

@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryFormationQueueReport;
 use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
+use hepta_core::ContextMemoryShadowCanaryPromotionReadinessReport;
 use hepta_core::ContextMemoryShadowQualitySummaryReport;
 use hepta_core::ContextMemoryShadowQualityTrendSnapshotReport;
 use hepta_core::ContextMemoryShadowRegressionDashboardReport;
@@ -123,6 +124,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryShadowQualityTrendSnapshotReport {
         ContextMemoryShadowQualityTrendSnapshotReport::from_summary(
             &self.context_memory_shadow_quality_summary_report(request),
+        )
+    }
+
+    /// Builds a payload-light canary-promotion readiness rehearsal from the
+    /// shadow trend snapshot without opening any production route.
+    pub fn context_memory_shadow_canary_promotion_readiness_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryShadowCanaryPromotionReadinessReport {
+        ContextMemoryShadowCanaryPromotionReadinessReport::from_trend_snapshot(
+            &self.context_memory_shadow_quality_trend_snapshot_report(request),
         )
     }
 
@@ -261,6 +273,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_shadow_quality_trend_snapshot_report(&request))
+    }
+
+    pub fn context_memory_shadow_canary_promotion_readiness_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryShadowCanaryPromotionReadinessReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_shadow_canary_promotion_readiness_report(&request))
     }
 
     pub fn context_plane_status_report(

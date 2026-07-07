@@ -93,6 +93,7 @@ memory_provider_boundary_gate_script="hepta-context-memory-provider-boundary-gat
 memory_shadow_regression_dashboard_gate_script="hepta-context-memory-shadow-regression-dashboard-gate.sh"
 memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-summary-gate.sh"
 memory_shadow_quality_trend_snapshot_gate_script="hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+memory_shadow_canary_promotion_readiness_gate_script="hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -395,6 +396,22 @@ required_contract_terms=(
   "stable_window"
   "hepta-context-memory-shadow-quality-trend-snapshot-report.sh"
   "hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+  "Memory shadow canary promotion readiness"
+  "memory-shadow-canary-promotion-readiness=pass"
+  "memory-shadow-canary-promotion-readiness.payload-light=pass"
+  "ContextMemoryShadowCanaryPromotionReadinessReport"
+  "ContextMemoryShadowCanaryPromotionMode"
+  "ContextMemoryShadowCanaryPromotionDecision"
+  "ContextMemoryShadowCanaryRehearsalVerdict"
+  "context_memory_shadow_canary_promotion_readiness_report"
+  "promotion_blocker_count"
+  "rollback_rehearsal_pass_count"
+  "kill_switch_rehearsal_pass_count"
+  "soak_readback_pass_count"
+  "canary_promotion_route_opened"
+  "rollback_write"
+  "hepta-context-memory-shadow-canary-promotion-readiness-report.sh"
+  "hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -708,6 +725,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_shadow_quality_trend_snapshot_gate_script" \
   "memory shadow quality trend snapshot debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_shadow_canary_promotion_readiness_gate_script" \
+  "memory shadow canary promotion readiness debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -1222,8 +1244,14 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_shadow_quality_trend_snapshot_gate_script" \
+  "$memory_shadow_canary_promotion_readiness_gate_script" \
+  "memory shadow canary promotion readiness debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_shadow_canary_promotion_readiness_gate_script" \
   "$context_plane_status_report_gate_script" \
-  "memory shadow quality trend snapshot context plane status debug gate order"
+  "memory shadow canary promotion readiness context plane status debug gate order"
 
 assert_line_before \
   "$preflight_script" \
@@ -1252,8 +1280,14 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory shadow quality trend snapshot gate" \
+  "context memory shadow canary promotion readiness gate" \
+  "memory shadow canary promotion readiness preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory shadow canary promotion readiness gate" \
   "context plane status/export report gate" \
-  "memory shadow quality trend snapshot context plane status preflight stage order"
+  "memory shadow canary promotion readiness context plane status preflight stage order"
 
 assert_line_before \
   "$preflight_script" \

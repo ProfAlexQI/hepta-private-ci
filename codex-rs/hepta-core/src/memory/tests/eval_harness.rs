@@ -901,6 +901,135 @@ fn context_memory_shadow_quality_trend_snapshot_blocks_summary_regression_drift(
 }
 
 #[test]
+fn context_memory_shadow_canary_promotion_readiness_rehearses_without_activation() {
+    let summary = shadow_quality_summary_report_fixture();
+    let trend_snapshot = ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&summary);
+
+    let report =
+        ContextMemoryShadowCanaryPromotionReadinessReport::from_trend_snapshot(&trend_snapshot);
+
+    assert!(report.has_shadow_canary_promotion_readiness_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_SHADOW_CANARY_PROMOTION_READINESS_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.mode,
+        ContextMemoryShadowCanaryPromotionMode::ShadowOnly
+    );
+    assert!(report.source_trend_snapshot_pass);
+    assert_eq!(
+        report.source_trend_window_verdict,
+        ContextMemoryShadowQualityTrendWindowVerdict::StableWindow
+    );
+    assert_eq!(report.required_stable_window_count, 1);
+    assert_eq!(report.observed_stable_window_count, 1);
+    assert_eq!(report.required_pass_streak, 3);
+    assert_eq!(report.observed_pass_streak, 3);
+    assert_eq!(
+        report.promotion_decision,
+        ContextMemoryShadowCanaryPromotionDecision::ReadyShadowOnly
+    );
+    assert_eq!(report.promotion_blocker_count, 0);
+    assert_eq!(report.regression_window_blocking_count, 0);
+    assert_eq!(
+        report.rollback_rehearsal_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Covered
+    );
+    assert_eq!(report.rollback_rehearsal_count, 3);
+    assert_eq!(report.rollback_rehearsal_pass_count, 3);
+    assert_eq!(report.rollback_rehearsal_blocking_count, 0);
+    assert_eq!(
+        report.kill_switch_rehearsal_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Covered
+    );
+    assert_eq!(report.kill_switch_rehearsal_count, 3);
+    assert_eq!(report.kill_switch_rehearsal_pass_count, 3);
+    assert_eq!(
+        report.soak_readback_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Covered
+    );
+    assert_eq!(report.soak_readback_window_count, 3);
+    assert_eq!(report.soak_readback_pass_count, 3);
+    assert_eq!(report.operator_packet_line_count, 6);
+    assert!(report.operator_packet_redacted);
+    assert!(report.operator_approval_required);
+    assert!(!report.history_persistence_write);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+    assert!(!report.canary_promotion_route_opened);
+    assert!(!report.rollback_write);
+
+    let json =
+        serde_json::to_string(&report).expect("shadow canary promotion readiness should serialize");
+    assert!(json.contains("ready_shadow_only"));
+    assert!(json.contains("rollback_rehearsal_verdict"));
+    assert!(json.contains("kill_switch_rehearsal_verdict"));
+    assert!(json.contains("soak_readback_verdict"));
+    assert!(json.contains("operator_packet_redacted"));
+    assert!(!json.contains("session-"));
+    assert!(!json.contains("memory-"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("raw_ranked_payload"));
+    assert!(!json.contains("raw_graph_payload"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("activation_command"));
+    assert!(!json.contains("\"history_persistence_write\":true"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+    assert!(!json.contains("\"canary_promotion_route_opened\":true"));
+    assert!(!json.contains("\"rollback_write\":true"));
+}
+
+#[test]
+fn context_memory_shadow_canary_promotion_readiness_blocks_trend_regression_drift() {
+    let mut summary = shadow_quality_summary_report_fixture();
+    summary.regression_blocking_count = 1;
+    let trend_snapshot = ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&summary);
+
+    let report =
+        ContextMemoryShadowCanaryPromotionReadinessReport::from_trend_snapshot(&trend_snapshot);
+
+    assert!(!report.source_trend_snapshot_pass);
+    assert_eq!(
+        report.source_trend_window_verdict,
+        ContextMemoryShadowQualityTrendWindowVerdict::RegressionBlocked
+    );
+    assert_eq!(report.observed_stable_window_count, 0);
+    assert_eq!(
+        report.promotion_decision,
+        ContextMemoryShadowCanaryPromotionDecision::BlockedRegression
+    );
+    assert!(report.promotion_blocker_count > 0);
+    assert_eq!(
+        report.rollback_rehearsal_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Blocked
+    );
+    assert_eq!(report.rollback_rehearsal_pass_count, 0);
+    assert_eq!(report.rollback_rehearsal_blocking_count, 3);
+    assert_eq!(
+        report.kill_switch_rehearsal_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Blocked
+    );
+    assert_eq!(
+        report.soak_readback_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Blocked
+    );
+    assert!(!report.has_shadow_canary_promotion_readiness_integrity());
+}
+
+#[test]
 fn context_memory_selected_recall_summary_canary_eval_replays_without_activation() {
     let report = ContextMemorySelectedRecallSummaryCanaryEvalReport::seeded();
 

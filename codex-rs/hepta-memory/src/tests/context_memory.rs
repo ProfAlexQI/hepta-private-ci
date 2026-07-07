@@ -1,4 +1,7 @@
 use super::*;
+use hepta_core::ContextMemoryShadowCanaryPromotionDecision;
+use hepta_core::ContextMemoryShadowCanaryPromotionMode;
+use hepta_core::ContextMemoryShadowCanaryRehearsalVerdict;
 use hepta_core::ContextMemoryShadowQualityOperatorSummary;
 use hepta_core::ContextMemoryShadowQualitySummaryMode;
 use hepta_core::ContextMemoryShadowQualityTrend;
@@ -774,6 +777,112 @@ fn store_snapshot_context_memory_shadow_quality_trend_snapshot_is_payload_light(
 }
 
 #[test]
+fn store_snapshot_context_memory_shadow_canary_promotion_readiness_is_payload_light() {
+    let snapshot = StoreSnapshot {
+        sessions: vec![],
+        memories: vec![memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        )],
+        transcripts: vec![
+            transcript_entry(
+                "session-1",
+                1,
+                TranscriptEntryKind::Message,
+                "timeout surfaced during tool run",
+            ),
+            transcript_entry(
+                "session-1",
+                2,
+                TranscriptEntryKind::Summary,
+                "timeout retried successfully",
+            ),
+        ],
+    };
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout retry guidance".into()),
+        recent_window_limit: 2,
+        transcript_limit: 2,
+        memory_limit: 2,
+        allow_cross_session: false,
+    };
+
+    let report = snapshot.context_memory_shadow_canary_promotion_readiness_report(&request);
+
+    assert!(report.has_shadow_canary_promotion_readiness_integrity());
+    assert_eq!(
+        report.mode,
+        ContextMemoryShadowCanaryPromotionMode::ShadowOnly
+    );
+    assert!(report.source_trend_snapshot_pass);
+    assert_eq!(
+        report.source_trend_window_verdict,
+        ContextMemoryShadowQualityTrendWindowVerdict::StableWindow
+    );
+    assert_eq!(report.required_stable_window_count, 1);
+    assert_eq!(report.observed_stable_window_count, 1);
+    assert_eq!(report.required_pass_streak, 3);
+    assert_eq!(report.observed_pass_streak, 3);
+    assert_eq!(
+        report.promotion_decision,
+        ContextMemoryShadowCanaryPromotionDecision::ReadyShadowOnly
+    );
+    assert_eq!(report.promotion_blocker_count, 0);
+    assert_eq!(
+        report.rollback_rehearsal_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Covered
+    );
+    assert_eq!(report.rollback_rehearsal_pass_count, 3);
+    assert_eq!(
+        report.kill_switch_rehearsal_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Covered
+    );
+    assert_eq!(report.kill_switch_rehearsal_pass_count, 3);
+    assert_eq!(
+        report.soak_readback_verdict,
+        ContextMemoryShadowCanaryRehearsalVerdict::Covered
+    );
+    assert_eq!(report.soak_readback_pass_count, 3);
+    assert_eq!(report.operator_packet_line_count, 6);
+    assert!(report.operator_packet_redacted);
+    assert!(report.operator_approval_required);
+    assert!(!report.history_persistence_write);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+    assert!(!report.canary_promotion_route_opened);
+    assert!(!report.rollback_write);
+
+    let json =
+        serde_json::to_string(&report).expect("shadow canary promotion readiness should serialize");
+    assert!(json.contains("ready_shadow_only"));
+    assert!(json.contains("rollback_rehearsal_verdict"));
+    assert!(json.contains("kill_switch_rehearsal_verdict"));
+    assert!(json.contains("soak_readback_verdict"));
+    assert!(!json.contains("timeout surfaced during tool run"));
+    assert!(!json.contains("timeout retried successfully"));
+    assert!(!json.contains("timeout retry guidance"));
+    assert!(!json.contains("session-1"));
+    assert!(!json.contains("memory-1"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("activation_command"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+    assert!(!json.contains("\"canary_promotion_route_opened\":true"));
+}
+
+#[test]
 fn store_snapshot_context_memory_selected_recall_summary_canary_eval_is_payload_light() {
     let snapshot = StoreSnapshot {
         sessions: vec![],
@@ -1406,6 +1515,85 @@ async fn store_context_memory_shadow_quality_trend_snapshot_matches_snapshot_hel
     assert!(!from_store.runtime_activation);
     assert!(!from_store.prompt_assembly_change);
     assert!(!from_store.operator_activation_allowed);
+}
+
+#[tokio::test]
+async fn store_context_memory_shadow_canary_promotion_readiness_matches_snapshot_helper() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            1,
+            TranscriptEntryKind::Message,
+            "timeout surfaced during tool run",
+        ))
+        .await
+        .expect("append should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            2,
+            TranscriptEntryKind::Summary,
+            "timeout retried successfully",
+        ))
+        .await
+        .expect("append should succeed");
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout retry guidance".into()),
+        recent_window_limit: 2,
+        transcript_limit: 2,
+        memory_limit: 2,
+        allow_cross_session: false,
+    };
+
+    let snapshot = store.snapshot().expect("snapshot should load");
+    let from_store = store
+        .context_memory_shadow_canary_promotion_readiness_report(request.clone())
+        .expect("shadow canary promotion readiness should succeed");
+
+    assert_eq!(
+        from_store,
+        snapshot.context_memory_shadow_canary_promotion_readiness_report(&request)
+    );
+    assert!(from_store.has_shadow_canary_promotion_readiness_integrity());
+    assert!(from_store.source_trend_snapshot_pass);
+    assert_eq!(
+        from_store.source_trend_window_verdict,
+        ContextMemoryShadowQualityTrendWindowVerdict::StableWindow
+    );
+    assert_eq!(from_store.required_stable_window_count, 1);
+    assert_eq!(from_store.observed_stable_window_count, 1);
+    assert_eq!(from_store.required_pass_streak, 3);
+    assert_eq!(from_store.observed_pass_streak, 3);
+    assert_eq!(
+        from_store.promotion_decision,
+        ContextMemoryShadowCanaryPromotionDecision::ReadyShadowOnly
+    );
+    assert_eq!(from_store.promotion_blocker_count, 0);
+    assert_eq!(from_store.rollback_rehearsal_pass_count, 3);
+    assert_eq!(from_store.rollback_rehearsal_blocking_count, 0);
+    assert_eq!(from_store.kill_switch_rehearsal_pass_count, 3);
+    assert_eq!(from_store.soak_readback_pass_count, 3);
+    assert!(from_store.operator_packet_redacted);
+    assert!(from_store.operator_approval_required);
+    assert!(!from_store.history_persistence_write);
+    assert!(!from_store.production_route);
+    assert!(!from_store.production_write);
+    assert!(!from_store.graph_write);
+    assert!(!from_store.runtime_activation);
+    assert!(!from_store.prompt_assembly_change);
+    assert!(!from_store.operator_activation_allowed);
+    assert!(!from_store.canary_promotion_route_opened);
+    assert!(!from_store.rollback_write);
 }
 
 #[tokio::test]
