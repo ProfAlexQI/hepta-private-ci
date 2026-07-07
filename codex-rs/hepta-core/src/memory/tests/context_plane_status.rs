@@ -65,6 +65,7 @@ fn context_plane_status_report_fixture(
     };
     let temporal_fact_graph =
         ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
+    let temporal_graph_shadow_eval = ContextMemoryTemporalGraphShadowEvalReport::seeded();
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let provider_report = MemoryProviderReport::from_update(
         MemoryProviderDescriptor::builtin(),
@@ -92,6 +93,7 @@ fn context_plane_status_report_fixture(
         formation_queue: &formation_queue,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
+        temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
         eval_seed: &eval_seed,
         allocator_shadow,
         recall_quality_gate,
@@ -106,9 +108,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 12);
+    assert_eq!(report.sections.len(), 13);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 3);
+    assert_eq!(report.shadow_section_count(), 4);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -125,6 +127,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowEval),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -153,6 +159,8 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("memory_formation_receipts"));
     assert!(json.contains("memory_formation_queue"));
     assert!(json.contains("memory_temporal_facts"));
+    assert!(json.contains("memory_temporal_fact_graph"));
+    assert!(json.contains("memory_temporal_graph_shadow_eval"));
     assert!(json.contains("eval_harness_seed"));
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));

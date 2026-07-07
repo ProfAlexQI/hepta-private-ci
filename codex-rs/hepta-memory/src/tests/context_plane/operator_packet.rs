@@ -38,10 +38,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 13);
+    assert_eq!(packet.matrix_row_count, 14);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 4);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 12);
+    assert_eq!(packet.blocker_count, 5);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 13);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -63,6 +63,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
         Some(1)
     );
     assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::OperatorApprovalMissing),
         Some(1)
     );
@@ -76,6 +82,7 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reason_counts"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("source_aware_front_door_disabled"));
     assert!(json.contains("operator_approval_missing"));
@@ -157,10 +164,10 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert!(from_store.dry_run_only);
     assert!(from_store.approval_required);
     assert!(!from_store.activation_command_present);
-    assert_eq!(from_store.matrix_row_count, 13);
+    assert_eq!(from_store.matrix_row_count, 14);
     assert_eq!(from_store.threshold_satisfied_count, 9);
-    assert_eq!(from_store.blocker_count, 4);
-    assert_eq!(from_store.threshold_snapshot.required_ready_count, 12);
+    assert_eq!(from_store.blocker_count, 5);
+    assert_eq!(from_store.threshold_snapshot.required_ready_count, 13);
     assert_eq!(from_store.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(from_store.required_scope_count(), 6);
     assert_eq!(
@@ -184,6 +191,12 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert_eq!(
         from_store
             .blocker_reason_count(ContextPlaneActivationBlockerReason::OperatorApprovalMissing),
+        Some(1)
+    );
+    assert_eq!(
+        from_store.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly
+        ),
         Some(1)
     );
     assert_eq!(from_store.recall_quality_blocking_reason_count, 0);

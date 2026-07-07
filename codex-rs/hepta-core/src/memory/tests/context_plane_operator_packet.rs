@@ -53,6 +53,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     };
     let temporal_fact_graph =
         ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
+    let temporal_graph_shadow_eval = ContextMemoryTemporalGraphShadowEvalReport::seeded();
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
     let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
@@ -81,6 +82,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         formation_queue: &formation_queue,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
+        temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
         eval_seed: &eval_seed,
         allocator_shadow: &allocator_shadow,
         recall_quality_gate: &recall_quality_gate,
@@ -94,11 +96,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 13);
+    assert_eq!(packet.matrix_row_count, 14);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 4);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 13);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 12);
+    assert_eq!(packet.blocker_count, 5);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 14);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 13);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -110,6 +112,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly
         ),
         Some(1)
     );
@@ -140,6 +148,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reason_counts"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("source_aware_front_door_disabled"));
     assert!(json.contains("operator_approval_missing"));
@@ -185,9 +194,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 13);
+    assert_eq!(packet.matrix_row_count, 14);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 5);
+    assert_eq!(packet.blocker_count, 6);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -242,14 +251,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 13,
+        matrix_row_count: 14,
         threshold_satisfied_count: 9,
-        blocker_count: 4,
+        blocker_count: 5,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 13,
+            total_row_count: 14,
             threshold_satisfied_count: 9,
-            blocker_count: 4,
-            required_ready_count: 12,
+            blocker_count: 5,
+            required_ready_count: 13,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -259,6 +268,10 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason: ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason: ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly,
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {

@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 13);
+    assert_eq!(matrix.rows.len(), 14);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 4);
+    assert_eq!(matrix.blocker_count, 5);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -50,6 +50,10 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval),
+        Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::OperatorApproval),
@@ -79,10 +83,12 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
+    assert!(json.contains("memory_temporal_graph_shadow_eval"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("source_aware_front_door_disabled"));
     assert!(json.contains("operator_approval_missing"));
@@ -161,9 +167,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 13);
+    assert_eq!(from_store.rows.len(), 14);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 4);
+    assert_eq!(from_store.blocker_count, 5);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -188,6 +194,10 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        from_store.blocker_reason(ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval),
+        Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly)
     );
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::OperatorApproval),

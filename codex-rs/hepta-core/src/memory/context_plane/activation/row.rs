@@ -79,6 +79,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::AdaptiveBudgetAllocationShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryProviderBoundary,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly,

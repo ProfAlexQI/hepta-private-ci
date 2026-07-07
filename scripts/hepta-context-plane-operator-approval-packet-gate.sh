@@ -81,6 +81,7 @@ for term in \
   "threshold snapshot" \
   "memory_formation_queue" \
   "memory_temporal_fact_graph" \
+  "memory_temporal_graph_shadow_eval" \
   "recall_quality_gate" \
   "required approval scopes" \
   "adaptive_budget_allocation_runtime" \
@@ -90,6 +91,7 @@ for term in \
   "prompt_assembly_change" \
   "operator_activation" \
   "adaptive_budget_allocation_shadow_only" \
+  "temporal_graph_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "source_aware_front_door_disabled" \
   "operator_approval_missing" \
@@ -188,16 +190,17 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=1
+context-plane-operator-approval-packet.schema=2
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=13
+context-plane-operator-approval-packet.rows=14
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=4
-context-plane-operator-approval-packet.threshold.required-ready=12
+context-plane-operator-approval-packet.blockers=5
+context-plane-operator-approval-packet.threshold.required-ready=13
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
+context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.source-aware-front-door-disabled=1
 context-plane-operator-approval-packet.blocker.operator-approval-missing=1

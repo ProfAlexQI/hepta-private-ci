@@ -10,6 +10,7 @@ context-plane-status.memory-formation-receipts=ready
 context-plane-status.memory-formation-queue=ready
 context-plane-status.memory-temporal-facts=ready
 context-plane-status.memory-temporal-fact-graph=ready
+context-plane-status.memory-temporal-graph-shadow-eval=shadow
 context-plane-status.eval-harness-seed=ready
 context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready

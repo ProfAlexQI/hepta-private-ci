@@ -79,6 +79,7 @@ for term in \
   "memory_formation_queue" \
   "memory_temporal_facts" \
   "memory_temporal_fact_graph" \
+  "memory_temporal_graph_shadow_eval" \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
@@ -90,6 +91,7 @@ for term in \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
+  "temporal_graph_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "source_aware_front_door_disabled" \
   "operator_approval_missing" \
@@ -200,10 +202,10 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=2
-context-plane-activation-blockers.rows=13
+context-plane-activation-blockers.schema=3
+context-plane-activation-blockers.rows=14
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=4
+context-plane-activation-blockers.blockers=5
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -211,6 +213,7 @@ context-plane-activation-blockers.memory-formation-receipts=ready
 context-plane-activation-blockers.memory-formation-queue=ready
 context-plane-activation-blockers.memory-temporal-facts=ready
 context-plane-activation-blockers.memory-temporal-fact-graph=ready
+context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only
 context-plane-activation-blockers.eval-harness-seed=ready
 context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
 context-plane-activation-blockers.recall-quality-gate=ready

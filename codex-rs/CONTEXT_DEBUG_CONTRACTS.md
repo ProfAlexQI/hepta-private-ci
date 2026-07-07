@@ -1149,12 +1149,14 @@ machine-readable report is
 keys only. The Rust status sections are `source_registry`,
 `adaptive_budget_allocation`, `memory_taxonomy`,
 `memory_formation_receipts`, `memory_formation_queue`, `memory_temporal_facts`,
-`memory_temporal_fact_graph`, `eval_harness_seed`,
-`adaptive_allocator_eval_shadow`, `recall_quality_gate`,
+`memory_temporal_fact_graph`, `memory_temporal_graph_shadow_eval`,
+`eval_harness_seed`, `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
 `memory_provider_boundary`, and `source_aware_front_door`. Section states may be
 `ready`, `shadow`, `disabled`, or `blocked`; they may carry only counts and
-side-effect booleans. The `memory_provider_boundary` row is shadow-only until a
-separately approved provider route is promoted. The
+side-effect booleans. The `memory_temporal_graph_shadow_eval` row is
+shadow-only until a separately approved graph route is promoted. The
+`memory_provider_boundary` row is shadow-only until a separately approved
+provider route is promoted. The
 `recall_quality_gate` status row may additionally carry
 `recall_quality_blocking_reason_count` and
 `recall_quality_blocking_reasons`, but those reasons must be controlled
@@ -1162,6 +1164,7 @@ recall-quality blocker enums only:
 `missing_critical_fact_regression`, `recall_coverage_regression`,
 `precision_regression`, `safety_leak`, `answer_quality_regression`, and
 `side_effect_flag_enabled`. Gate-pass status must export
+`context-plane-status.memory-temporal-graph-shadow-eval=shadow`,
 `context-plane-status.memory-provider-boundary=shadow`,
 `context-plane-status.recall-quality-blocking-reason-count=0` and
 `context-plane-status.recall-quality-blocking-reasons=none`. The report
@@ -1171,7 +1174,7 @@ answer text. It must not expose source ids, session ids, memory ids, trace ids,
 query payloads, ranked payloads, tool arguments, raw fact/entity values,
 email-shaped strings, phone-shaped strings, user identifiers, transcript spans,
 candidate text, entity hashes, fact hashes, edge hashes, supersedes hashes,
-fixture hashes, or idempotency hashes. Status integrity requires all twelve
+fixture hashes, or idempotency hashes. Status integrity requires all thirteen
 sections, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
@@ -1194,12 +1197,14 @@ Plane status report. The machine-readable report is
 `context-plane-activation-blockers.*` keys only. Matrix targets are
 `source_registry`, `adaptive_budget_allocation`, `memory_taxonomy`,
 `memory_formation_receipts`, `memory_formation_queue`,
-`memory_temporal_facts`, `memory_temporal_fact_graph`, `eval_harness_seed`,
+`memory_temporal_facts`, `memory_temporal_fact_graph`,
+`memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
 `memory_provider_boundary`, `source_aware_front_door`, and
 `operator_approval`. The current blocker reasons
 are controlled enum values:
 `adaptive_budget_allocation_shadow_only`,
+`temporal_graph_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`, `source_aware_front_door_disabled`,
 `operator_approval_missing`, and `side_effect_flag_enabled`; future reasons must
 be added to the enum and gate before export. Matrix rows may carry only
@@ -1215,6 +1220,7 @@ controlled recall-quality blocker enums `missing_critical_fact_regression`,
 `recall_coverage_regression`, `precision_regression`, `safety_leak`,
 `answer_quality_regression`, and `side_effect_flag_enabled`. Gate-pass
 activation matrix export must include
+`context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.recall-quality-blocking-reason-count=0` and
 `context-plane-activation-blockers.recall-quality-blocking-reasons=none`. The
@@ -1225,7 +1231,7 @@ It must not expose source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw fact/entity values, email-shaped
 strings, phone-shaped strings, user identifiers, transcript spans, candidate
 text, entity hashes, fact hashes, edge hashes, supersedes hashes, fixture hashes,
-or idempotency hashes. Matrix integrity requires all thirteen targets, exact blocker counts, no production
+or idempotency hashes. Matrix integrity requires all fourteen targets, exact blocker counts, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
 changes, no operator activation allowance, and `activation_allowed=false`. This
@@ -1252,6 +1258,7 @@ payload-light counters only. Required approval scopes are controlled enum values
 `prompt_assembly_change`, and `operator_activation`. Current blocker reason
 counts may include only the controlled activation blocker enum values
 `adaptive_budget_allocation_shadow_only`,
+`temporal_graph_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`, `source_aware_front_door_disabled`,
 `operator_approval_missing`, and `side_effect_flag_enabled` until new reasons are
 added to the Rust enum and gate. The packet may also carry
@@ -1262,6 +1269,7 @@ controlled recall-quality blocker enums `missing_critical_fact_regression`,
 `recall_coverage_regression`, `precision_regression`, `safety_leak`,
 `answer_quality_regression`, and `side_effect_flag_enabled`. Gate-pass operator
 approval export must include
+`context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.recall-quality-blocking-reason-count=0`
 and
@@ -1273,7 +1281,7 @@ payloads, tool arguments, raw fact/entity values, email-shaped strings,
 phone-shaped strings, user identifiers, transcript spans, candidate text, entity
 hashes, supersedes hashes, fixture hashes, or idempotency hashes. The packet
 must not include activation commands or any command-shaped field that could be
-executed by an operator path. Packet integrity requires all thirteen matrix rows,
+executed by an operator path. Packet integrity requires all fourteen matrix rows,
 exact threshold counts, exact blocker reason counts, all required approval
 scopes, no production memory writes, no graph writes, no runtime activation, no
 adaptive allocator runtime activation, no source-aware runtime activation, no
@@ -1327,8 +1335,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 30 lines, negative export report 4 lines, and
-combined report 34 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 31 lines, negative export report 4 lines, and
+combined report 35 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

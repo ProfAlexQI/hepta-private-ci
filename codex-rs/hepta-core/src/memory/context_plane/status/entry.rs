@@ -5,6 +5,7 @@ use super::section::ContextPlaneStatusKind;
 use super::section::ContextPlaneStatusSection;
 use crate::memory::ContextMemoryRecallQualityGateBlockerReason;
 use crate::memory::ContextMemoryRecallQualityGateReport;
+use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::MemoryProviderReport;
 
 /// One payload-light context-plane status row.
@@ -130,6 +131,32 @@ impl ContextPlaneStatusEntry {
             runtime_activation: recall_quality_gate.runtime_activation,
             prompt_assembly_change: recall_quality_gate.prompt_assembly_change,
             operator_activation_allowed: recall_quality_gate.operator_activation_allowed,
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_temporal_graph_shadow_eval(
+        temporal_graph_shadow_eval: &ContextMemoryTemporalGraphShadowEvalReport,
+    ) -> Self {
+        let has_integrity = temporal_graph_shadow_eval.has_temporal_graph_shadow_integrity();
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryTemporalGraphShadowEval,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: temporal_graph_shadow_eval.fixture_count(),
+            omitted_count: temporal_graph_shadow_eval
+                .fixture_count()
+                .saturating_sub(temporal_graph_shadow_eval.fixture_pass_count()),
+            blocker_count: usize::from(!has_integrity),
+            production_write: temporal_graph_shadow_eval.production_write,
+            graph_write: temporal_graph_shadow_eval.graph_write,
+            runtime_activation: temporal_graph_shadow_eval.runtime_activation,
+            prompt_assembly_change: temporal_graph_shadow_eval.prompt_assembly_change,
+            operator_activation_allowed: temporal_graph_shadow_eval.operator_activation_allowed,
+            ..Self::default()
         }
     }
 

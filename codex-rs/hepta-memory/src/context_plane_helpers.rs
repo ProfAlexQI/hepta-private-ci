@@ -94,6 +94,7 @@ impl StoreSnapshot {
         let temporal_facts = self.recall_context_memory_temporal_fact_report(request);
         let temporal_fact_graph =
             ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
+        let temporal_graph_shadow_eval = self.context_memory_temporal_graph_shadow_eval_report();
         let eval_seed = self.context_memory_eval_harness_seed_report();
         let allocator_shadow =
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
@@ -107,6 +108,7 @@ impl StoreSnapshot {
             formation_queue: &formation_queue,
             temporal_facts: &temporal_facts,
             temporal_fact_graph: &temporal_fact_graph,
+            temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
             eval_seed: &eval_seed,
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,

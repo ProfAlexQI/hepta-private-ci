@@ -3,16 +3,17 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=1
+context-plane-operator-approval-packet.schema=2
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=13
+context-plane-operator-approval-packet.rows=14
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=4
-context-plane-operator-approval-packet.threshold.required-ready=12
+context-plane-operator-approval-packet.blockers=5
+context-plane-operator-approval-packet.threshold.required-ready=13
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
+context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.source-aware-front-door-disabled=1
 context-plane-operator-approval-packet.blocker.operator-approval-missing=1
