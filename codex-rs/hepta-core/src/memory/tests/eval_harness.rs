@@ -516,6 +516,21 @@ fn memory_provider_report_fixture() -> MemoryProviderReport {
     )
 }
 
+fn shadow_quality_summary_report_fixture() -> ContextMemoryShadowQualitySummaryReport {
+    let ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let temporal_graph = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+    let recall_quality = ContextMemoryRecallQualityGateReport::seeded();
+    let provider = memory_provider_report_fixture();
+    let dashboard = ContextMemoryShadowRegressionDashboardReport::from_reports(
+        &ranked_recall,
+        &temporal_graph,
+        &recall_quality,
+        &provider,
+    );
+
+    ContextMemoryShadowQualitySummaryReport::from_dashboard(&dashboard)
+}
+
 #[test]
 fn context_memory_shadow_regression_dashboard_rolls_up_shadow_reports_without_activation() {
     let ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
@@ -770,6 +785,119 @@ fn context_memory_shadow_quality_summary_blocks_dashboard_regression_drift() {
     );
     assert!(report.regression_blocking_count > 0);
     assert!(!report.has_shadow_quality_summary_integrity());
+}
+
+#[test]
+fn context_memory_shadow_quality_trend_snapshot_rolls_up_summary_window_without_activation() {
+    let summary = shadow_quality_summary_report_fixture();
+
+    let report = ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&summary);
+
+    assert!(report.has_shadow_quality_trend_snapshot_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_SHADOW_QUALITY_TREND_SNAPSHOT_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.mode,
+        ContextMemoryShadowQualityTrendSnapshotMode::ShadowOnly
+    );
+    assert!(report.source_summary_pass);
+    assert_eq!(
+        report.current_quality_trend,
+        ContextMemoryShadowQualityTrend::StablePass
+    );
+    assert_eq!(
+        report.current_operator_summary,
+        ContextMemoryShadowQualityOperatorSummary::ReadyShadowOnly
+    );
+    assert_eq!(report.current_regression_blocking_count, 0);
+    assert_eq!(report.window_observation_count, 3);
+    assert_eq!(report.required_pass_streak, 3);
+    assert_eq!(report.observed_pass_streak, 3);
+    assert_eq!(report.stable_observation_count, 3);
+    assert_eq!(report.regression_window_blocking_count, 0);
+    assert_eq!(
+        report.trend_window_verdict,
+        ContextMemoryShadowQualityTrendWindowVerdict::StableWindow
+    );
+    assert_eq!(report.operator_snapshot_line_count, 5);
+    assert!(report.operator_snapshot_redacted);
+    assert_eq!(report.quality_signal_count, 4);
+    assert_eq!(report.quality_signal_window_pass_count, 12);
+    assert_eq!(report.ranked_recall_window_pass_count, 3);
+    assert_eq!(report.temporal_graph_window_pass_count, 3);
+    assert_eq!(report.recall_quality_window_pass_count, 3);
+    assert_eq!(report.provider_boundary_window_pass_count, 3);
+    assert_eq!(report.ranked_recall_min_positive_recall_basis_points, 8000);
+    assert_eq!(
+        report.ranked_recall_min_positive_precision_basis_points,
+        8000
+    );
+    assert_eq!(report.ranked_recall_total_positive_token_saved, 2_140);
+    assert_eq!(report.ranked_recall_max_positive_latency_ms, 55);
+    assert_eq!(
+        report.temporal_graph_min_positive_node_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(
+        report.temporal_graph_min_positive_edge_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(report.temporal_graph_max_positive_latency_ms, 47);
+    assert_eq!(report.recall_quality_observed_recall_basis_points, 7777);
+    assert_eq!(report.recall_quality_observed_precision_basis_points, 7777);
+    assert_eq!(report.provider_estimated_token_count, 320);
+    assert!(report.operator_approval_required);
+    assert!(!report.history_persistence_write);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+
+    let json =
+        serde_json::to_string(&report).expect("shadow quality trend snapshot should serialize");
+    assert!(json.contains("stable_window"));
+    assert!(json.contains("window_observation_count"));
+    assert!(json.contains("observed_pass_streak"));
+    assert!(json.contains("quality_signal_window_pass_count"));
+    assert!(json.contains("operator_snapshot_redacted"));
+    assert!(!json.contains("session-"));
+    assert!(!json.contains("memory-"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("raw_ranked_payload"));
+    assert!(!json.contains("raw_graph_payload"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("\"history_persistence_write\":true"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
+#[test]
+fn context_memory_shadow_quality_trend_snapshot_blocks_summary_regression_drift() {
+    let mut summary = shadow_quality_summary_report_fixture();
+    summary.regression_blocking_count = 1;
+
+    let report = ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&summary);
+
+    assert!(!report.source_summary_pass);
+    assert_eq!(report.observed_pass_streak, 0);
+    assert_eq!(report.stable_observation_count, 0);
+    assert!(report.regression_window_blocking_count > 0);
+    assert_eq!(
+        report.trend_window_verdict,
+        ContextMemoryShadowQualityTrendWindowVerdict::RegressionBlocked
+    );
+    assert!(!report.has_shadow_quality_trend_snapshot_integrity());
 }
 
 #[test]

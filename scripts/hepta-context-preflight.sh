@@ -121,6 +121,9 @@ run_stage "context memory shadow regression dashboard gate" \
 run_stage "context memory shadow quality summary gate" \
   bash "$repo_root/scripts/hepta-context-memory-shadow-quality-summary-gate.sh"
 
+run_stage "context memory shadow quality trend snapshot gate" \
+  bash "$repo_root/scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
+
 run_stage "context plane status/export report gate" \
   bash "$repo_root/scripts/hepta-context-plane-status-report-gate.sh"
 

@@ -92,6 +92,7 @@ memory_ranked_recall_shadow_eval_gate_script="hepta-context-memory-ranked-recall
 memory_provider_boundary_gate_script="hepta-context-memory-provider-boundary-gate.sh"
 memory_shadow_regression_dashboard_gate_script="hepta-context-memory-shadow-regression-dashboard-gate.sh"
 memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-summary-gate.sh"
+memory_shadow_quality_trend_snapshot_gate_script="hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -377,6 +378,23 @@ required_contract_terms=(
   "stable_pass"
   "hepta-context-memory-shadow-quality-summary-report.sh"
   "hepta-context-memory-shadow-quality-summary-gate.sh"
+  "Memory shadow quality trend snapshot"
+  "memory-shadow-quality-trend-snapshot=pass"
+  "memory-shadow-quality-trend-snapshot.payload-light=pass"
+  "ContextMemoryShadowQualityTrendSnapshotReport"
+  "ContextMemoryShadowQualityTrendSnapshotMode"
+  "ContextMemoryShadowQualityTrendWindowVerdict"
+  "context_memory_shadow_quality_trend_snapshot_report"
+  "window_observation_count"
+  "required_pass_streak"
+  "observed_pass_streak"
+  "regression_window_blocking_count"
+  "quality_signal_window_pass_count"
+  "operator_snapshot_redacted"
+  "history_persistence_write"
+  "stable_window"
+  "hepta-context-memory-shadow-quality-trend-snapshot-report.sh"
+  "hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -682,6 +700,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_shadow_quality_trend_snapshot_gate_script" \
+  "memory shadow quality trend snapshot debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$context_plane_status_report_gate_script" \
   "context plane status report debug gate"
 
@@ -914,6 +937,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory shadow quality summary gate" \
   "memory shadow quality summary preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory shadow quality trend snapshot gate" \
+  "memory shadow quality trend snapshot preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1182,8 +1210,14 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_shadow_quality_summary_gate_script" \
+  "$memory_shadow_quality_trend_snapshot_gate_script" \
+  "memory shadow quality trend snapshot debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_shadow_quality_trend_snapshot_gate_script" \
   "$context_plane_status_report_gate_script" \
-  "memory shadow quality summary context plane status debug gate order"
+  "memory shadow quality trend snapshot context plane status debug gate order"
 
 assert_line_before \
   "$preflight_script" \
@@ -1206,8 +1240,14 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory shadow quality summary gate" \
+  "context memory shadow quality trend snapshot gate" \
+  "memory shadow quality trend snapshot preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory shadow quality trend snapshot gate" \
   "context plane status/export report gate" \
-  "memory shadow quality summary context plane status preflight stage order"
+  "memory shadow quality trend snapshot context plane status preflight stage order"
 
 assert_line_before \
   "$preflight_script" \

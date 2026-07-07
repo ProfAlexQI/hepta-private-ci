@@ -1214,6 +1214,50 @@ debug gate and preflight must run it after
 `scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
+Memory shadow quality trend snapshot: recall diagnostics may expose a
+payload-light shadow-only trend snapshot derived from the memory shadow quality
+summary. The Rust report is
+`ContextMemoryShadowQualityTrendSnapshotReport` in
+`codex-rs/hepta-core/src/memory/eval_harness/shadow_quality_trend_snapshot.rs`,
+re-exported through `codex-rs/hepta-core/src/memory/eval_harness.rs` and
+`codex-rs/hepta-core/src/memory.rs`, and exposed through
+`context_memory_shadow_quality_trend_snapshot_report` on both `StoreSnapshot`
+and `InMemoryStore`. The snapshot may contain only schema/mode, controlled
+current summary verdicts, `window_observation_count`, `required_pass_streak`,
+`observed_pass_streak`, `stable_observation_count`,
+`regression_window_blocking_count`, controlled trend window verdict
+(`ContextMemoryShadowQualityTrendWindowVerdict`), the controlled snapshot mode
+(`ContextMemoryShadowQualityTrendSnapshotMode`), `operator_snapshot_redacted`,
+aggregate per-signal window pass counts, selected threshold observations, and
+explicit side-effect booleans including `history_persistence_write=false`. It
+must not contain prompt text, query text, transcript text, memory text, answer
+text, ranked payloads, raw ranked payloads, graph payloads, raw graph payloads,
+source ids, session ids, memory ids, trace ids, tool arguments, tool outputs,
+operator identity, email-shaped strings, phone-shaped strings, or user
+identifiers. Snapshot integrity requires schema version 1, shadow-only mode,
+source summary pass, `current_quality_trend=stable_pass`,
+`current_operator_summary=ready_shadow_only`, a three-observation window, a
+three-observation required and observed pass streak, zero regression-window
+blockers, `trend_window_verdict=stable_window`,
+`operator_snapshot_redacted=true`, `quality_signal_window_pass_count=12`, each
+per-signal window pass count equal to 3, operator approval required, no history
+persistence write, no production route, no production memory write, no graph
+write, no prompt assembly change, no runtime activation, and no operator
+activation allowance.
+`scripts/hepta-context-memory-shadow-quality-trend-snapshot-report.sh` must
+emit `memory-shadow-quality-trend-snapshot=pass`,
+`memory-shadow-quality-trend-snapshot.payload-light=pass`,
+`memory-shadow-quality-trend-snapshot.trend-window=stable-window`,
+`memory-shadow-quality-trend-snapshot.regression-window-blocking-count=0`,
+`memory-shadow-quality-trend-snapshot.history-persistence-write=disabled`, and
+`memory-shadow-quality-trend-snapshot.runtime-activation=disabled`.
+`scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh` must verify
+the summary-derived Rust report, helper tests, release manifest, front-door
+static contract, debug/preflight wiring, and no-leak constraints. The context
+debug gate and preflight must run it after
+`scripts/hepta-context-memory-shadow-quality-summary-gate.sh` and before
+`scripts/hepta-context-plane-status-report-gate.sh`.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation

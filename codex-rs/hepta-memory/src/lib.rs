@@ -76,7 +76,9 @@
 //! payload-light quality loop without activating a production route.
 //! shadow quality summary: operator-readable but controlled, exposing only
 //! trend enums, aggregate signal counts, threshold observations, and
-//! side-effect booleans. The
+//! side-effect booleans. The shadow quality trend snapshot rolls that summary
+//! into a controlled, payload-light regression window without persisting
+//! history or enabling production routes. The
 //! selected-recall summary canary eval replay is likewise exposed as a fixed,
 //! payload-light helper so readiness gates can validate replay counts,
 //! rollback-readback coverage, proof coverage, thresholds, and disabled runtime

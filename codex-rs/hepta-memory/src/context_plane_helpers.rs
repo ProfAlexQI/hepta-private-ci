@@ -7,6 +7,7 @@ use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
 use hepta_core::ContextMemoryShadowQualitySummaryReport;
+use hepta_core::ContextMemoryShadowQualityTrendSnapshotReport;
 use hepta_core::ContextMemoryShadowRegressionDashboardReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
@@ -111,6 +112,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryShadowQualitySummaryReport {
         ContextMemoryShadowQualitySummaryReport::from_dashboard(
             &self.context_memory_shadow_regression_dashboard_report(request),
+        )
+    }
+
+    /// Builds a payload-light trend snapshot from the shadow quality summary
+    /// without persisting history or enabling a production route.
+    pub fn context_memory_shadow_quality_trend_snapshot_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryShadowQualityTrendSnapshotReport {
+        ContextMemoryShadowQualityTrendSnapshotReport::from_summary(
+            &self.context_memory_shadow_quality_summary_report(request),
         )
     }
 
@@ -237,6 +249,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_shadow_quality_summary_report(&request))
+    }
+
+    pub fn context_memory_shadow_quality_trend_snapshot_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryShadowQualityTrendSnapshotReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_shadow_quality_trend_snapshot_report(&request))
     }
 
     pub fn context_plane_status_report(

@@ -3,6 +3,7 @@ mod eval_seed;
 mod ranked_recall_shadow;
 mod selected_recall_canary;
 mod shadow_quality_summary;
+mod shadow_quality_trend_snapshot;
 mod shadow_regression_dashboard;
 mod temporal_graph_shadow;
 
@@ -30,6 +31,9 @@ pub use shadow_quality_summary::ContextMemoryShadowQualityOperatorSummary;
 pub use shadow_quality_summary::ContextMemoryShadowQualitySummaryMode;
 pub use shadow_quality_summary::ContextMemoryShadowQualitySummaryReport;
 pub use shadow_quality_summary::ContextMemoryShadowQualityTrend;
+pub use shadow_quality_trend_snapshot::ContextMemoryShadowQualityTrendSnapshotMode;
+pub use shadow_quality_trend_snapshot::ContextMemoryShadowQualityTrendSnapshotReport;
+pub use shadow_quality_trend_snapshot::ContextMemoryShadowQualityTrendWindowVerdict;
 pub use shadow_regression_dashboard::ContextMemoryShadowRegressionDashboardMode;
 pub use shadow_regression_dashboard::ContextMemoryShadowRegressionDashboardReport;
 pub use temporal_graph_shadow::ContextMemoryTemporalGraphShadowEvalFixtureKind;
