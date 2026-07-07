@@ -145,6 +145,8 @@ impl StoreSnapshot {
         let recall_quality_gate =
             ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
         let provider_report = self.context_memory_provider_report(request);
+        let shadow_quality_trend_snapshot =
+            self.context_memory_shadow_quality_trend_snapshot_report(request);
 
         ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
             taxonomy: &taxonomy,
@@ -157,6 +159,7 @@ impl StoreSnapshot {
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
             provider_report: &provider_report,
+            shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
         })
     }
 

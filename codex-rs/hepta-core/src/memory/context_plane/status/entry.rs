@@ -5,6 +5,7 @@ use super::section::ContextPlaneStatusKind;
 use super::section::ContextPlaneStatusSection;
 use crate::memory::ContextMemoryRecallQualityGateBlockerReason;
 use crate::memory::ContextMemoryRecallQualityGateReport;
+use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::MemoryProviderReport;
 
@@ -178,6 +179,35 @@ impl ContextPlaneStatusEntry {
             runtime_activation: provider_report.update_context.runtime_activation,
             prompt_assembly_change: provider_report.update_context.prompt_payload_exported
                 || provider_report.update_context.ranked_payload_exported,
+            ..Self::default()
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_memory_shadow_canary_readiness(
+        trend_snapshot: &ContextMemoryShadowQualityTrendSnapshotReport,
+    ) -> Self {
+        let has_integrity = trend_snapshot.has_shadow_quality_trend_snapshot_integrity();
+        let blocker_count = if has_integrity {
+            0
+        } else {
+            trend_snapshot.regression_window_blocking_count.max(1)
+        };
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryShadowCanaryReadiness,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: trend_snapshot.window_observation_count,
+            omitted_count: trend_snapshot.regression_window_blocking_count,
+            blocker_count,
+            production_write: trend_snapshot.production_write || trend_snapshot.production_route,
+            graph_write: trend_snapshot.graph_write,
+            runtime_activation: trend_snapshot.runtime_activation,
+            prompt_assembly_change: trend_snapshot.prompt_assembly_change,
+            operator_activation_allowed: trend_snapshot.operator_activation_allowed,
             ..Self::default()
         }
     }

@@ -84,6 +84,7 @@ for term in \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
   "memory_provider_boundary" \
+  "memory_shadow_canary_readiness" \
   "recall_quality_blocking_reason_count" \
   "recall_quality_blocking_reasons" \
   "source_aware_front_door" \
@@ -206,6 +207,7 @@ context-plane-status.recall-quality-gate=ready
 context-plane-status.recall-quality-blocking-reason-count=0
 context-plane-status.recall-quality-blocking-reasons=none
 context-plane-status.memory-provider-boundary=shadow
+context-plane-status.memory-shadow-canary-readiness=shadow
 context-plane-status.source-aware-front-door=disabled
 context-plane-status.production-write=disabled
 context-plane-status.graph-write=disabled

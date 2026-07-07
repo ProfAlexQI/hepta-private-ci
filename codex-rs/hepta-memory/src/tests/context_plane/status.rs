@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 13);
+    assert_eq!(report.sections.len(), 14);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 4);
+    assert_eq!(report.shadow_section_count(), 5);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -54,6 +54,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryShadowCanaryReadiness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -92,6 +96,7 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_provider_boundary"));
+    assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("source_aware_front_door"));
@@ -166,7 +171,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 13);
+    assert_eq!(from_store.sections.len(), 14);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
@@ -174,6 +179,10 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
     );
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        from_store.section_status(ContextPlaneStatusSection::MemoryShadowCanaryReadiness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(

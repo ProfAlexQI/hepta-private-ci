@@ -86,6 +86,17 @@ fn context_plane_status_report_fixture(
             runtime_activation: false,
         },
     );
+    let ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let dashboard = ContextMemoryShadowRegressionDashboardReport::from_reports(
+        &ranked_recall,
+        &temporal_graph_shadow_eval,
+        recall_quality_gate,
+        &provider_report,
+    );
+    let shadow_quality_summary =
+        ContextMemoryShadowQualitySummaryReport::from_dashboard(&dashboard);
+    let shadow_quality_trend_snapshot =
+        ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&shadow_quality_summary);
 
     ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
         taxonomy: &taxonomy,
@@ -98,6 +109,7 @@ fn context_plane_status_report_fixture(
         allocator_shadow,
         recall_quality_gate,
         provider_report: &provider_report,
+        shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
     })
 }
 
@@ -108,9 +120,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 13);
+    assert_eq!(report.sections.len(), 14);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 4);
+    assert_eq!(report.shadow_section_count(), 5);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -127,6 +139,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryShadowCanaryReadiness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -165,6 +181,7 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_provider_boundary"));
+    assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("source_aware_front_door"));
@@ -209,7 +226,7 @@ fn context_plane_status_report_rolls_up_recall_quality_blockers_without_payloads
         report.section_status(ContextPlaneStatusSection::RecallQualityGate),
         Some(ContextPlaneStatusKind::Blocked)
     );
-    assert_eq!(report.blocker_count(), 2);
+    assert_eq!(report.blocker_count(), 21);
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -238,6 +255,14 @@ fn context_plane_status_report_rolls_up_recall_quality_blockers_without_payloads
     assert!(!recall_entry.runtime_activation);
     assert!(recall_entry.prompt_assembly_change);
     assert!(!recall_entry.operator_activation_allowed);
+    let canary_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryShadowCanaryReadiness)
+        .expect("memory shadow canary readiness status row should exist");
+    assert_eq!(canary_entry.status, ContextPlaneStatusKind::Blocked);
+    assert_eq!(canary_entry.blocker_count, 19);
+    assert_eq!(canary_entry.omitted_count, 19);
 
     let json = serde_json::to_string(&report).expect("context plane status should serialize");
     assert!(json.contains("recall_quality_blocking_reason_count"));

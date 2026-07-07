@@ -17,6 +17,7 @@ pub enum ContextPlaneStatusSection {
     AdaptiveAllocatorEvalShadow,
     RecallQualityGate,
     MemoryProviderBoundary,
+    MemoryShadowCanaryReadiness,
     SourceAwareFrontDoor,
     #[default]
     Unknown,
