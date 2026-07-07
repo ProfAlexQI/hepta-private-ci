@@ -1355,6 +1355,66 @@ rehearsal must not open a production graph/provider/canary route, persist
 history, write rollback state, write memory/graph data, alter prompt assembly,
 or enable runtime/operator activation.
 
+Memory shadow canary promotion audit digest: recall diagnostics must seal the
+shadow-only canary promotion readiness report and its negative rehearsal report
+with deterministic canonical digests before any context-plane status or
+operator packet consumes the promotion checklist. The report emitted by
+`scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-report.sh`
+is payload-light and may contain only schema, line counts, SHA-256 digests, and
+disabled activation booleans. It must emit
+`memory-shadow-canary-promotion-audit-digest=pass`,
+`memory-shadow-canary-promotion-audit-digest.payload-light=pass`,
+`memory-shadow-canary-promotion-audit-digest.readiness-report-lines=32`,
+`memory-shadow-canary-promotion-audit-digest.negative-rehearsal-report-lines=14`,
+and `memory-shadow-canary-promotion-audit-digest.combined-report-lines=46`,
+with `readiness-report-sha256`, `negative-rehearsal-report-sha256`, and
+`combined-report-sha256` fields. The digest gate
+`scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh`
+must run the readiness gate and negative rehearsal gate first, require
+byte-for-byte idempotence, and reject readiness digest mutation, negative
+rehearsal digest mutation, combined digest mutation, line-count injection, and
+activation-flag injection. The context debug gate and preflight must run it
+after
+`scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh`
+and before
+`scripts/hepta-context-memory-shadow-canary-promotion-audit-freshness-gate.sh`.
+This digest is observational only; it must not open a production
+graph/provider/canary route, persist history, write rollback state, write
+memory/graph data, alter prompt assembly, or enable runtime/operator
+activation.
+
+Memory shadow canary promotion audit freshness: recall diagnostics must bind
+the canary promotion audit digest to a deterministic freshness window so the
+operator-facing promotion checklist can reject stale, expired, future, or
+mixed-source audit evidence. The report emitted by
+`scripts/hepta-context-memory-shadow-canary-promotion-audit-freshness-report.sh`
+is payload-light and may contain only schema, source audit digest line count
+and SHA-256, readiness sequence values, replay-rejection decisions, and
+disabled activation booleans. It must emit
+`memory-shadow-canary-promotion-audit-freshness=pass`,
+`memory-shadow-canary-promotion-audit-freshness.payload-light=pass`,
+`memory-shadow-canary-promotion-audit-freshness.source-audit-digest-report-lines=11`,
+`memory-shadow-canary-promotion-audit-freshness.source-audit-digest-report-sha256`,
+`memory-shadow-canary-promotion-audit-freshness.audit-readiness-sequence=309`,
+`memory-shadow-canary-promotion-audit-freshness.current-readiness-sequence=309`,
+`memory-shadow-canary-promotion-audit-freshness.expires-after-sequence=310`,
+`memory-shadow-canary-promotion-audit-freshness.stale-sequence=reject`,
+`memory-shadow-canary-promotion-audit-freshness.expired-sequence=reject`,
+`memory-shadow-canary-promotion-audit-freshness.future-sequence=reject`,
+`memory-shadow-canary-promotion-audit-freshness.digest-replay=reject`, and
+`memory-shadow-canary-promotion-audit-freshness.mixed-source-digest=reject`.
+The freshness gate
+`scripts/hepta-context-memory-shadow-canary-promotion-audit-freshness-gate.sh`
+must run the audit digest gate first, require byte-for-byte idempotence, and
+reject stale sequence, expired sequence, future sequence, source digest replay,
+line-count injection, and activation-flag injection. The context debug gate and
+preflight must run it after
+`scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh` and
+before `scripts/hepta-context-plane-status-report-gate.sh`. This freshness
+chain is observational only; it must not open a production graph/provider/canary
+route, persist history, write rollback state, write memory/graph data, alter
+prompt assembly, or enable runtime/operator activation.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation

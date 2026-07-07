@@ -130,6 +130,12 @@ run_stage "context memory shadow canary promotion readiness gate" \
 run_stage "context memory shadow canary promotion negative rehearsal gate" \
   bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
 
+run_stage "context memory shadow canary promotion audit digest gate" \
+  bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh"
+
+run_stage "context memory shadow canary promotion audit freshness gate" \
+  bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-audit-freshness-gate.sh"
+
 run_stage "context plane status/export report gate" \
   bash "$repo_root/scripts/hepta-context-plane-status-report-gate.sh"
 

@@ -233,6 +233,10 @@ scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh	gate_script	hep
 scripts/hepta-context-memory-recall-helper-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-manifest-payload-light-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-recall-quality-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-report.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-shadow-canary-promotion-audit-freshness-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-shadow-canary-promotion-audit-freshness-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh	gate_script	hepta-context	required

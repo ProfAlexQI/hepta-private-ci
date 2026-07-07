@@ -95,6 +95,8 @@ memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-s
 memory_shadow_quality_trend_snapshot_gate_script="hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
 memory_shadow_canary_promotion_readiness_gate_script="hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
 memory_shadow_canary_promotion_negative_rehearsal_gate_script="hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
+memory_shadow_canary_promotion_audit_digest_gate_script="hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh"
+memory_shadow_canary_promotion_audit_freshness_gate_script="hepta-context-memory-shadow-canary-promotion-audit-freshness-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -423,6 +425,32 @@ required_contract_terms=(
   "context_memory_shadow_canary_promotion_negative_rehearsal_blocks_activation_shaped_side_effects"
   "hepta-context-memory-shadow-canary-promotion-negative-rehearsal-report.sh"
   "hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
+  "Memory shadow canary promotion audit digest"
+  "memory-shadow-canary-promotion-audit-digest=pass"
+  "memory-shadow-canary-promotion-audit-digest.payload-light=pass"
+  "memory-shadow-canary-promotion-audit-digest.readiness-report-lines=32"
+  "memory-shadow-canary-promotion-audit-digest.negative-rehearsal-report-lines=14"
+  "memory-shadow-canary-promotion-audit-digest.combined-report-lines=46"
+  "readiness-report-sha256"
+  "negative-rehearsal-report-sha256"
+  "combined-report-sha256"
+  "hepta-context-memory-shadow-canary-promotion-audit-digest-report.sh"
+  "hepta-context-memory-shadow-canary-promotion-audit-digest-gate.sh"
+  "Memory shadow canary promotion audit freshness"
+  "memory-shadow-canary-promotion-audit-freshness=pass"
+  "memory-shadow-canary-promotion-audit-freshness.payload-light=pass"
+  "memory-shadow-canary-promotion-audit-freshness.source-audit-digest-report-lines=11"
+  "source-audit-digest-report-sha256"
+  "memory-shadow-canary-promotion-audit-freshness.audit-readiness-sequence=309"
+  "memory-shadow-canary-promotion-audit-freshness.current-readiness-sequence=309"
+  "memory-shadow-canary-promotion-audit-freshness.expires-after-sequence=310"
+  "memory-shadow-canary-promotion-audit-freshness.stale-sequence=reject"
+  "memory-shadow-canary-promotion-audit-freshness.expired-sequence=reject"
+  "memory-shadow-canary-promotion-audit-freshness.future-sequence=reject"
+  "memory-shadow-canary-promotion-audit-freshness.digest-replay=reject"
+  "memory-shadow-canary-promotion-audit-freshness.mixed-source-digest=reject"
+  "hepta-context-memory-shadow-canary-promotion-audit-freshness-report.sh"
+  "hepta-context-memory-shadow-canary-promotion-audit-freshness-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -761,6 +789,16 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_shadow_canary_promotion_audit_digest_gate_script" \
+  "memory shadow canary promotion audit digest debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_shadow_canary_promotion_audit_freshness_gate_script" \
+  "memory shadow canary promotion audit freshness debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$context_plane_status_report_gate_script" \
   "context plane status report debug gate"
 
@@ -1003,6 +1041,16 @@ assert_file_contains \
   "$preflight_script" \
   "context memory shadow canary promotion negative rehearsal gate" \
   "memory shadow canary promotion negative rehearsal preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory shadow canary promotion audit digest gate" \
+  "memory shadow canary promotion audit digest preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory shadow canary promotion audit freshness gate" \
+  "memory shadow canary promotion audit freshness preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1289,8 +1337,20 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_shadow_canary_promotion_negative_rehearsal_gate_script" \
+  "$memory_shadow_canary_promotion_audit_digest_gate_script" \
+  "memory shadow canary promotion audit digest debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_shadow_canary_promotion_audit_digest_gate_script" \
+  "$memory_shadow_canary_promotion_audit_freshness_gate_script" \
+  "memory shadow canary promotion audit freshness debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_shadow_canary_promotion_audit_freshness_gate_script" \
   "$context_plane_status_report_gate_script" \
-  "memory shadow canary promotion negative rehearsal context plane status debug gate order"
+  "memory shadow canary promotion audit freshness context plane status debug gate order"
 
 assert_line_before \
   "$preflight_script" \
@@ -1331,8 +1391,20 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory shadow canary promotion negative rehearsal gate" \
+  "context memory shadow canary promotion audit digest gate" \
+  "memory shadow canary promotion audit digest preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory shadow canary promotion audit digest gate" \
+  "context memory shadow canary promotion audit freshness gate" \
+  "memory shadow canary promotion audit freshness preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory shadow canary promotion audit freshness gate" \
   "context plane status/export report gate" \
-  "memory shadow canary promotion negative rehearsal context plane status preflight stage order"
+  "memory shadow canary promotion audit freshness context plane status preflight stage order"
 
 assert_line_before \
   "$preflight_script" \
