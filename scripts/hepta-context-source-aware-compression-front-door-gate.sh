@@ -94,6 +94,7 @@ memory_shadow_regression_dashboard_gate_script="hepta-context-memory-shadow-regr
 memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-summary-gate.sh"
 memory_shadow_quality_trend_snapshot_gate_script="hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
 memory_shadow_canary_promotion_readiness_gate_script="hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
+memory_shadow_canary_promotion_negative_rehearsal_gate_script="hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -412,6 +413,16 @@ required_contract_terms=(
   "rollback_write"
   "hepta-context-memory-shadow-canary-promotion-readiness-report.sh"
   "hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
+  "Memory shadow canary promotion negative rehearsal"
+  "memory-shadow-canary-promotion-negative-rehearsal=pass"
+  "memory-shadow-canary-promotion-negative-rehearsal.payload-light=pass"
+  "memory-shadow-canary-promotion-negative-rehearsal.activation-shaped-route=blocked"
+  "memory-shadow-canary-promotion-negative-rehearsal.rollback-write=blocked"
+  "memory-shadow-canary-promotion-negative-rehearsal.canary-promotion-route=disabled"
+  "memory-shadow-canary-promotion-negative-rehearsal.runtime-activation-state=disabled"
+  "context_memory_shadow_canary_promotion_negative_rehearsal_blocks_activation_shaped_side_effects"
+  "hepta-context-memory-shadow-canary-promotion-negative-rehearsal-report.sh"
+  "hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -745,6 +756,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_shadow_canary_promotion_negative_rehearsal_gate_script" \
+  "memory shadow canary promotion negative rehearsal debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$context_plane_status_report_gate_script" \
   "context plane status report debug gate"
 
@@ -982,6 +998,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory shadow quality trend snapshot gate" \
   "memory shadow quality trend snapshot preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory shadow canary promotion negative rehearsal gate" \
+  "memory shadow canary promotion negative rehearsal preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1262,8 +1283,14 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_shadow_canary_promotion_readiness_gate_script" \
+  "$memory_shadow_canary_promotion_negative_rehearsal_gate_script" \
+  "memory shadow canary promotion negative rehearsal debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_shadow_canary_promotion_negative_rehearsal_gate_script" \
   "$context_plane_status_report_gate_script" \
-  "memory shadow canary promotion readiness context plane status debug gate order"
+  "memory shadow canary promotion negative rehearsal context plane status debug gate order"
 
 assert_line_before \
   "$preflight_script" \
@@ -1298,8 +1325,14 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory shadow canary promotion readiness gate" \
+  "context memory shadow canary promotion negative rehearsal gate" \
+  "memory shadow canary promotion negative rehearsal preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory shadow canary promotion negative rehearsal gate" \
   "context plane status/export report gate" \
-  "memory shadow canary promotion readiness context plane status preflight stage order"
+  "memory shadow canary promotion negative rehearsal context plane status preflight stage order"
 
 assert_line_before \
   "$preflight_script" \

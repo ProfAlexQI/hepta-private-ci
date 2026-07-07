@@ -1030,6 +1030,52 @@ fn context_memory_shadow_canary_promotion_readiness_blocks_trend_regression_drif
 }
 
 #[test]
+fn context_memory_shadow_canary_promotion_negative_rehearsal_blocks_activation_shaped_side_effects()
+{
+    let summary = shadow_quality_summary_report_fixture();
+    let trend_snapshot = ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&summary);
+    let report =
+        ContextMemoryShadowCanaryPromotionReadinessReport::from_trend_snapshot(&trend_snapshot);
+    assert!(report.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut history_write = report.clone();
+    history_write.history_persistence_write = true;
+    assert!(!history_write.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut production_route = report.clone();
+    production_route.production_route = true;
+    assert!(!production_route.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut production_write = report.clone();
+    production_write.production_write = true;
+    assert!(!production_write.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut graph_write = report.clone();
+    graph_write.graph_write = true;
+    assert!(!graph_write.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut runtime_activation = report.clone();
+    runtime_activation.runtime_activation = true;
+    assert!(!runtime_activation.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut prompt_assembly_change = report.clone();
+    prompt_assembly_change.prompt_assembly_change = true;
+    assert!(!prompt_assembly_change.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut operator_activation = report.clone();
+    operator_activation.operator_activation_allowed = true;
+    assert!(!operator_activation.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut canary_promotion_route = report.clone();
+    canary_promotion_route.canary_promotion_route_opened = true;
+    assert!(!canary_promotion_route.has_shadow_canary_promotion_readiness_integrity());
+
+    let mut rollback_write = report;
+    rollback_write.rollback_write = true;
+    assert!(!rollback_write.has_shadow_canary_promotion_readiness_integrity());
+}
+
+#[test]
 fn context_memory_selected_recall_summary_canary_eval_replays_without_activation() {
     let report = ContextMemorySelectedRecallSummaryCanaryEvalReport::seeded();
 

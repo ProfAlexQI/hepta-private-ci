@@ -30,6 +30,7 @@ bash "$repo_root/scripts/hepta-context-memory-shadow-regression-dashboard-gate.s
 bash "$repo_root/scripts/hepta-context-memory-shadow-quality-summary-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh"
+bash "$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh"
 bash "$repo_root/scripts/hepta-context-plane-status-report-gate.sh"
 bash "$repo_root/scripts/hepta-context-plane-activation-blocker-matrix-gate.sh"
 bash "$repo_root/scripts/hepta-context-plane-operator-approval-packet-gate.sh"

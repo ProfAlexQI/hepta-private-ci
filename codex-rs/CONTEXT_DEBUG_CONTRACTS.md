@@ -1312,6 +1312,49 @@ The context debug gate and preflight must run it after
 `scripts/hepta-context-plane-status-report-gate.sh`. This readiness surface is
 rehearsal-only and must not open a production graph/provider/canary route.
 
+Memory shadow canary promotion negative rehearsal: recall diagnostics must
+exercise the canary promotion readiness integrity guard against
+activation-shaped side effects before any context-plane status or operator
+packet consumes the readiness surface. The regression test
+`context_memory_shadow_canary_promotion_negative_rehearsal_blocks_activation_shaped_side_effects`
+must start from a readiness-valid
+`ContextMemoryShadowCanaryPromotionReadinessReport` and individually flip
+history persistence write, production route, production memory write, graph
+write, prompt assembly change, runtime activation, operator activation
+allowance, canary promotion route opened, and rollback write to prove each
+state fails readiness integrity. The report emitted by
+`scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-report.sh`
+is payload-light and may contain only deterministic pass/block/disabled lines:
+`memory-shadow-canary-promotion-negative-rehearsal=pass`,
+`memory-shadow-canary-promotion-negative-rehearsal.payload-light=pass`,
+`memory-shadow-canary-promotion-negative-rehearsal.activation-shaped-route=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.rollback-write=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.production-route=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.production-write=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.graph-write=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.history-persistence-write=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.prompt-assembly-change=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.operator-activation=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.runtime-activation=blocked`,
+`memory-shadow-canary-promotion-negative-rehearsal.canary-promotion-route=disabled`,
+`memory-shadow-canary-promotion-negative-rehearsal.rollback-write-state=disabled`,
+and
+`memory-shadow-canary-promotion-negative-rehearsal.runtime-activation-state=disabled`.
+It must not contain prompt text, query text, transcript text, memory text,
+answer text, ranked payloads, raw ranked payloads, graph payloads, raw graph
+payloads, source ids, session ids, memory ids, trace ids, tool arguments, tool
+outputs, operator identity, activation commands, email-shaped strings,
+phone-shaped strings, or user identifiers.
+`scripts/hepta-context-memory-shadow-canary-promotion-negative-rehearsal-gate.sh`
+must verify the readiness gate, static report, Rust negative test,
+debug/preflight wiring, and no-leak/no-activation constraints. The context
+debug gate and preflight must run it after
+`scripts/hepta-context-memory-shadow-canary-promotion-readiness-gate.sh` and
+before `scripts/hepta-context-plane-status-report-gate.sh`. This negative
+rehearsal must not open a production graph/provider/canary route, persist
+history, write rollback state, write memory/graph data, alter prompt assembly,
+or enable runtime/operator activation.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation
