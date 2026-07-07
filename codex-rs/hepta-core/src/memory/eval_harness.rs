@@ -2,6 +2,7 @@ mod adaptive_shadow;
 mod eval_seed;
 mod ranked_recall_shadow;
 mod selected_recall_canary;
+mod shadow_regression_dashboard;
 mod temporal_graph_shadow;
 
 pub use adaptive_shadow::ContextMemoryAdaptiveAllocatorEvalArm;
@@ -24,6 +25,8 @@ pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixt
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMetric;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMode;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalReport;
+pub use shadow_regression_dashboard::ContextMemoryShadowRegressionDashboardMode;
+pub use shadow_regression_dashboard::ContextMemoryShadowRegressionDashboardReport;
 pub use temporal_graph_shadow::ContextMemoryTemporalGraphShadowEvalFixtureKind;
 pub use temporal_graph_shadow::ContextMemoryTemporalGraphShadowEvalFixtureResult;
 pub use temporal_graph_shadow::ContextMemoryTemporalGraphShadowEvalMetric;

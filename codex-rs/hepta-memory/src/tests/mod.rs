@@ -14,6 +14,7 @@ use hepta_core::ContextMemoryRecallQualityGateVerdict;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalFixtureKind;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalMetric;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalMode;
+use hepta_core::ContextMemoryShadowRegressionDashboardMode;
 use hepta_core::ContextMemoryTaxonomyBucket;
 use hepta_core::ContextMemoryTaxonomyClass;
 use hepta_core::ContextMemoryTaxonomyReport;

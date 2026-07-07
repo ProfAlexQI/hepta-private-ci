@@ -1138,6 +1138,44 @@ provider tests and must be wired into debug/preflight after
 `scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
+Memory shadow regression dashboard: recall diagnostics may expose a
+payload-light shadow-only dashboard that aggregates the ranked recall shadow,
+temporal graph shadow, recall quality, and provider boundary reports before any
+status-plane promotion. The Rust report is
+`ContextMemoryShadowRegressionDashboardReport` in
+`codex-rs/hepta-core/src/memory/eval_harness/shadow_regression_dashboard.rs`,
+re-exported through `codex-rs/hepta-core/src/memory/eval_harness.rs` and
+`codex-rs/hepta-core/src/memory.rs`, and exposed through
+`context_memory_shadow_regression_dashboard_report` on both `StoreSnapshot` and
+`InMemoryStore`. The report may contain only schema/mode, `input_report_count`,
+`input_report_pass_count`, `regression_blocking_count`, aggregate ranked recall
+fixture counts and thresholds, aggregate temporal graph fixture counts and
+thresholds, recall-quality blocker/regression counts, provider-boundary
+payload-light booleans such as `provider_payload_light`, compact provider item
+and token counts, and explicit side-effect booleans. It must not contain prompt
+text, query text, transcript text, memory text, answer text, ranked payloads,
+raw ranked payloads, graph payloads, raw graph payloads, source ids, session
+ids, memory ids, trace ids, tool arguments, tool outputs, operator identity,
+email-shaped strings, phone-shaped strings, or user identifiers. Dashboard
+integrity requires schema version 1, shadow-only mode, exactly four input
+reports, four passing input reports, zero regression blockers, ranked recall
+and temporal graph regression fixtures blocked, zero recall-quality blocking
+reasons, `provider_payload_light=true`, operator approval required, no
+production route, no production memory write, no graph write, no prompt
+assembly change, no runtime activation, and no operator activation allowance.
+`scripts/hepta-context-memory-shadow-regression-dashboard-report.sh` must emit
+`memory-shadow-regression-dashboard=pass`,
+`memory-shadow-regression-dashboard.payload-light=pass`,
+`memory-shadow-regression-dashboard.input-report-pass-count=4`,
+`memory-shadow-regression-dashboard.regression-blocking-count=0`, and
+`memory-shadow-regression-dashboard.runtime-activation=disabled`.
+`scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` must verify
+the Rust-backed report, helper tests, release manifest, front-door static
+contract, debug/preflight wiring, and no-leak constraints. The context debug
+gate and preflight must run it after
+`scripts/hepta-context-memory-provider-boundary-gate.sh` and before
+`scripts/hepta-context-plane-status-report-gate.sh`.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation

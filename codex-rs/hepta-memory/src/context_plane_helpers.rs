@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryFormationQueueReport;
 use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
+use hepta_core::ContextMemoryShadowRegressionDashboardReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
 use hepta_core::ContextPlaneActivationBlockerMatrix;
@@ -80,6 +81,25 @@ impl StoreSnapshot {
         &self,
     ) -> ContextMemoryTemporalGraphShadowEvalReport {
         ContextMemoryTemporalGraphShadowEvalReport::seeded()
+    }
+
+    /// Builds a payload-light dashboard that closes the loop across recall,
+    /// temporal graph, quality, and provider shadow reports.
+    pub fn context_memory_shadow_regression_dashboard_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryShadowRegressionDashboardReport {
+        let ranked_recall = self.context_memory_ranked_recall_shadow_eval_report();
+        let temporal_graph = self.context_memory_temporal_graph_shadow_eval_report();
+        let recall_quality = self.context_memory_recall_quality_gate_report();
+        let provider = self.context_memory_provider_report(request);
+
+        ContextMemoryShadowRegressionDashboardReport::from_reports(
+            &ranked_recall,
+            &temporal_graph,
+            &recall_quality,
+            &provider,
+        )
     }
 
     /// Builds a unified, payload-light context-plane status report for
@@ -187,6 +207,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_temporal_graph_shadow_eval_report())
+    }
+
+    pub fn context_memory_shadow_regression_dashboard_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryShadowRegressionDashboardReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_shadow_regression_dashboard_report(&request))
     }
 
     pub fn context_plane_status_report(
