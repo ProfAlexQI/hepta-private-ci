@@ -5,6 +5,7 @@ use super::section::ContextPlaneStatusKind;
 use super::section::ContextPlaneStatusSection;
 use crate::memory::ContextMemoryRecallQualityGateBlockerReason;
 use crate::memory::ContextMemoryRecallQualityGateReport;
+use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::MemoryProviderReport;
@@ -20,6 +21,17 @@ pub struct ContextPlaneStatusEntry {
     pub blocker_count: usize,
     pub recall_quality_blocking_reason_count: usize,
     pub recall_quality_blocking_reasons: Vec<ContextMemoryRecallQualityGateBlockerReason>,
+    pub canary_promotion_required_stable_window_count: usize,
+    pub canary_promotion_observed_stable_window_count: usize,
+    pub canary_promotion_required_pass_streak: usize,
+    pub canary_promotion_observed_pass_streak: usize,
+    pub canary_promotion_blocker_count: usize,
+    pub canary_promotion_rollback_rehearsal_count: usize,
+    pub canary_promotion_rollback_rehearsal_pass_count: usize,
+    pub canary_promotion_kill_switch_rehearsal_count: usize,
+    pub canary_promotion_kill_switch_rehearsal_pass_count: usize,
+    pub canary_promotion_soak_readback_window_count: usize,
+    pub canary_promotion_soak_readback_pass_count: usize,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -132,6 +144,7 @@ impl ContextPlaneStatusEntry {
             runtime_activation: recall_quality_gate.runtime_activation,
             prompt_assembly_change: recall_quality_gate.prompt_assembly_change,
             operator_activation_allowed: recall_quality_gate.operator_activation_allowed,
+            ..Self::default()
         }
     }
 
@@ -212,11 +225,64 @@ impl ContextPlaneStatusEntry {
         }
     }
 
+    pub(in crate::memory::context_plane::status) fn from_memory_shadow_canary_promotion_readiness(
+        promotion_readiness: &ContextMemoryShadowCanaryPromotionReadinessReport,
+    ) -> Self {
+        let has_integrity = promotion_readiness.has_shadow_canary_promotion_readiness_integrity();
+        let blocker_count = if has_integrity {
+            0
+        } else {
+            promotion_readiness.promotion_blocker_count.max(1)
+        };
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: promotion_readiness.rollback_rehearsal_count
+                + promotion_readiness.kill_switch_rehearsal_count
+                + promotion_readiness.soak_readback_window_count,
+            omitted_count: promotion_readiness.promotion_blocker_count,
+            blocker_count,
+            canary_promotion_required_stable_window_count: promotion_readiness
+                .required_stable_window_count,
+            canary_promotion_observed_stable_window_count: promotion_readiness
+                .observed_stable_window_count,
+            canary_promotion_required_pass_streak: promotion_readiness.required_pass_streak,
+            canary_promotion_observed_pass_streak: promotion_readiness.observed_pass_streak,
+            canary_promotion_blocker_count: promotion_readiness.promotion_blocker_count,
+            canary_promotion_rollback_rehearsal_count: promotion_readiness.rollback_rehearsal_count,
+            canary_promotion_rollback_rehearsal_pass_count: promotion_readiness
+                .rollback_rehearsal_pass_count,
+            canary_promotion_kill_switch_rehearsal_count: promotion_readiness
+                .kill_switch_rehearsal_count,
+            canary_promotion_kill_switch_rehearsal_pass_count: promotion_readiness
+                .kill_switch_rehearsal_pass_count,
+            canary_promotion_soak_readback_window_count: promotion_readiness
+                .soak_readback_window_count,
+            canary_promotion_soak_readback_pass_count: promotion_readiness.soak_readback_pass_count,
+            production_write: promotion_readiness.production_write
+                || promotion_readiness.production_route
+                || promotion_readiness.history_persistence_write
+                || promotion_readiness.canary_promotion_route_opened
+                || promotion_readiness.rollback_write,
+            graph_write: promotion_readiness.graph_write,
+            runtime_activation: promotion_readiness.runtime_activation,
+            prompt_assembly_change: promotion_readiness.prompt_assembly_change,
+            operator_activation_allowed: promotion_readiness.operator_activation_allowed,
+            ..Self::default()
+        }
+    }
+
     pub fn has_status_integrity(&self) -> bool {
         !self.section.is_unknown()
             && !self.status.is_unknown()
             && (self.status == ContextPlaneStatusKind::Blocked) == (self.blocker_count > 0)
             && self.has_recall_quality_blocker_integrity()
+            && self.has_canary_promotion_checklist_integrity()
             && !self.production_write
             && !self.graph_write
             && !self.runtime_activation
@@ -240,6 +306,45 @@ impl ContextPlaneStatusEntry {
             && reasons_are_unique
             && (self.status == ContextPlaneStatusKind::Ready)
                 == self.recall_quality_blocking_reasons.is_empty()
+    }
+
+    fn has_canary_promotion_checklist_integrity(&self) -> bool {
+        let counts = [
+            self.canary_promotion_required_stable_window_count,
+            self.canary_promotion_observed_stable_window_count,
+            self.canary_promotion_required_pass_streak,
+            self.canary_promotion_observed_pass_streak,
+            self.canary_promotion_blocker_count,
+            self.canary_promotion_rollback_rehearsal_count,
+            self.canary_promotion_rollback_rehearsal_pass_count,
+            self.canary_promotion_kill_switch_rehearsal_count,
+            self.canary_promotion_kill_switch_rehearsal_pass_count,
+            self.canary_promotion_soak_readback_window_count,
+            self.canary_promotion_soak_readback_pass_count,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness {
+            return counts.into_iter().all(|count| count == 0);
+        }
+
+        self.canary_promotion_required_stable_window_count > 0
+            && self.canary_promotion_observed_stable_window_count
+                <= self.canary_promotion_required_stable_window_count
+            && self.canary_promotion_required_pass_streak > 0
+            && self.canary_promotion_observed_pass_streak
+                <= self.canary_promotion_required_pass_streak
+            && self.canary_promotion_rollback_rehearsal_count > 0
+            && self.canary_promotion_rollback_rehearsal_pass_count
+                <= self.canary_promotion_rollback_rehearsal_count
+            && self.canary_promotion_kill_switch_rehearsal_count > 0
+            && self.canary_promotion_kill_switch_rehearsal_pass_count
+                <= self.canary_promotion_kill_switch_rehearsal_count
+            && self.canary_promotion_soak_readback_window_count > 0
+            && self.canary_promotion_soak_readback_pass_count
+                <= self.canary_promotion_soak_readback_window_count
+            && self.canary_promotion_blocker_count == self.blocker_count
+            && (self.status == ContextPlaneStatusKind::Shadow)
+                == (self.canary_promotion_blocker_count == 0)
     }
 }
 

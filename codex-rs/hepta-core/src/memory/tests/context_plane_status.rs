@@ -97,6 +97,10 @@ fn context_plane_status_report_fixture(
         ContextMemoryShadowQualitySummaryReport::from_dashboard(&dashboard);
     let shadow_quality_trend_snapshot =
         ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&shadow_quality_summary);
+    let shadow_canary_promotion_readiness =
+        ContextMemoryShadowCanaryPromotionReadinessReport::from_trend_snapshot(
+            &shadow_quality_trend_snapshot,
+        );
 
     ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
         taxonomy: &taxonomy,
@@ -110,6 +114,7 @@ fn context_plane_status_report_fixture(
         recall_quality_gate,
         provider_report: &provider_report,
         shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
+        shadow_canary_promotion_readiness: &shadow_canary_promotion_readiness,
     })
 }
 
@@ -120,9 +125,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 14);
+    assert_eq!(report.sections.len(), 15);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 5);
+    assert_eq!(report.shadow_section_count(), 6);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -143,6 +148,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryShadowCanaryReadiness),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -182,6 +191,11 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_shadow_canary_readiness"));
+    assert!(json.contains("memory_shadow_canary_promotion_readiness"));
+    assert!(json.contains("canary_promotion_required_stable_window_count"));
+    assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
+    assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
+    assert!(json.contains("canary_promotion_soak_readback_pass_count"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("source_aware_front_door"));
@@ -226,7 +240,7 @@ fn context_plane_status_report_rolls_up_recall_quality_blockers_without_payloads
         report.section_status(ContextPlaneStatusSection::RecallQualityGate),
         Some(ContextPlaneStatusKind::Blocked)
     );
-    assert_eq!(report.blocker_count(), 21);
+    assert_eq!(report.blocker_count(), 40);
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -263,6 +277,16 @@ fn context_plane_status_report_rolls_up_recall_quality_blockers_without_payloads
     assert_eq!(canary_entry.status, ContextPlaneStatusKind::Blocked);
     assert_eq!(canary_entry.blocker_count, 19);
     assert_eq!(canary_entry.omitted_count, 19);
+    let promotion_entry = report
+        .sections
+        .iter()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness
+        })
+        .expect("memory shadow canary promotion readiness status row should exist");
+    assert_eq!(promotion_entry.status, ContextPlaneStatusKind::Blocked);
+    assert_eq!(promotion_entry.blocker_count, 19);
+    assert_eq!(promotion_entry.canary_promotion_blocker_count, 19);
 
     let json = serde_json::to_string(&report).expect("context plane status should serialize");
     assert!(json.contains("recall_quality_blocking_reason_count"));

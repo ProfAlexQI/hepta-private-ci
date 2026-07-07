@@ -11,6 +11,7 @@ use crate::memory::ContextMemoryEvalHarnessReport;
 use crate::memory::ContextMemoryFormationQueueReport;
 use crate::memory::ContextMemoryFormationReceiptReport;
 use crate::memory::ContextMemoryRecallQualityGateReport;
+use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTaxonomyReport;
 use crate::memory::ContextMemoryTemporalFactGraphReport;
@@ -48,6 +49,7 @@ pub struct ContextPlaneStatusReportInput<'a> {
     pub recall_quality_gate: &'a ContextMemoryRecallQualityGateReport,
     pub provider_report: &'a MemoryProviderReport,
     pub shadow_quality_trend_snapshot: &'a ContextMemoryShadowQualityTrendSnapshotReport,
+    pub shadow_canary_promotion_readiness: &'a ContextMemoryShadowCanaryPromotionReadinessReport,
 }
 
 impl Default for ContextPlaneStatusReport {
@@ -125,6 +127,9 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusEntry::from_memory_shadow_canary_readiness(
                 input.shadow_quality_trend_snapshot,
             ),
+            ContextPlaneStatusEntry::from_memory_shadow_canary_promotion_readiness(
+                input.shadow_canary_promotion_readiness,
+            ),
             ContextPlaneStatusEntry::disabled(ContextPlaneStatusSection::SourceAwareFrontDoor),
         ];
         sections.sort_by_key(|entry| match entry.section {
@@ -141,8 +146,9 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::RecallQualityGate => 10,
             ContextPlaneStatusSection::MemoryProviderBoundary => 11,
             ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 12,
-            ContextPlaneStatusSection::SourceAwareFrontDoor => 13,
-            ContextPlaneStatusSection::Unknown => 14,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 13,
+            ContextPlaneStatusSection::SourceAwareFrontDoor => 14,
+            ContextPlaneStatusSection::Unknown => 15,
         });
 
         let production_write = sections.iter().any(|entry| entry.production_write);
@@ -166,7 +172,7 @@ impl ContextPlaneStatusReport {
 
     pub fn has_status_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_STATUS_SCHEMA_VERSION
-            && self.sections.len() == 14
+            && self.sections.len() == 15
             && self.has_required_sections()
             && self
                 .sections
@@ -196,6 +202,7 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::RecallQualityGate,
             ContextPlaneStatusSection::MemoryProviderBoundary,
             ContextPlaneStatusSection::MemoryShadowCanaryReadiness,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness,
             ContextPlaneStatusSection::SourceAwareFrontDoor,
         ]
         .into_iter()

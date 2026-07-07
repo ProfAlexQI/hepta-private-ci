@@ -87,6 +87,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         ContextMemoryShadowQualitySummaryReport::from_dashboard(&dashboard);
     let shadow_quality_trend_snapshot =
         ContextMemoryShadowQualityTrendSnapshotReport::from_summary(&shadow_quality_summary);
+    let shadow_canary_promotion_readiness =
+        ContextMemoryShadowCanaryPromotionReadinessReport::from_trend_snapshot(
+            &shadow_quality_trend_snapshot,
+        );
     let status = ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
         taxonomy: &taxonomy,
         formation_receipts: &formation_receipts,
@@ -99,6 +103,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         recall_quality_gate: &recall_quality_gate,
         provider_report: &provider_report,
         shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
+        shadow_canary_promotion_readiness: &shadow_canary_promotion_readiness,
     });
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
@@ -108,11 +113,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 15);
+    assert_eq!(packet.matrix_row_count, 16);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 6);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 15);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 14);
+    assert_eq!(packet.blocker_count, 7);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 16);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 15);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -146,11 +151,21 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         Some(1)
     );
     assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryShadowCanaryPromotionReadinessShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::OperatorApprovalMissing),
         Some(1)
     );
     assert_eq!(packet.recall_quality_blocking_reason_count, 0);
     assert_eq!(packet.recall_quality_blocking_reason_count_total(), 0);
+    assert_eq!(packet.canary_promotion_blocker_count, 0);
+    assert_eq!(packet.canary_promotion_rollback_rehearsal_pass_count, 3);
+    assert_eq!(packet.canary_promotion_kill_switch_rehearsal_pass_count, 3);
+    assert_eq!(packet.canary_promotion_soak_readback_pass_count, 3);
     assert!(!packet.production_write);
     assert!(!packet.graph_write);
     assert!(!packet.runtime_activation);
@@ -169,6 +184,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
+    assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
+    assert!(json.contains("canary_promotion_rollback_rehearsal_pass_count"));
+    assert!(json.contains("canary_promotion_kill_switch_rehearsal_pass_count"));
+    assert!(json.contains("canary_promotion_soak_readback_pass_count"));
     assert!(json.contains("source_aware_front_door_disabled"));
     assert!(json.contains("operator_approval_missing"));
     assert!(!json.contains("prompt_text"));
@@ -213,9 +232,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 15);
+    assert_eq!(packet.matrix_row_count, 16);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 7);
+    assert_eq!(packet.blocker_count, 8);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -234,6 +253,10 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
         ),
         Some(1)
     );
+    assert_eq!(packet.canary_promotion_blocker_count, 0);
+    assert_eq!(packet.canary_promotion_rollback_rehearsal_pass_count, 3);
+    assert_eq!(packet.canary_promotion_kill_switch_rehearsal_pass_count, 3);
+    assert_eq!(packet.canary_promotion_soak_readback_pass_count, 3);
     assert!(!packet.production_write);
     assert!(!packet.graph_write);
     assert!(!packet.runtime_activation);
@@ -270,14 +293,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 15,
+        matrix_row_count: 16,
         threshold_satisfied_count: 9,
-        blocker_count: 6,
+        blocker_count: 7,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 15,
+            total_row_count: 16,
             threshold_satisfied_count: 9,
-            blocker_count: 6,
-            required_ready_count: 14,
+            blocker_count: 7,
+            required_ready_count: 15,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -302,10 +325,26 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason:
+                    ContextPlaneActivationBlockerReason::MemoryShadowCanaryPromotionReadinessShadowOnly,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason: ContextPlaneActivationBlockerReason::OperatorApprovalMissing,
                 count: 1,
             },
         ],
+        canary_promotion_required_stable_window_count: 1,
+        canary_promotion_observed_stable_window_count: 1,
+        canary_promotion_required_pass_streak: 3,
+        canary_promotion_observed_pass_streak: 3,
+        canary_promotion_blocker_count: 0,
+        canary_promotion_rollback_rehearsal_count: 3,
+        canary_promotion_rollback_rehearsal_pass_count: 3,
+        canary_promotion_kill_switch_rehearsal_count: 3,
+        canary_promotion_kill_switch_rehearsal_pass_count: 3,
+        canary_promotion_soak_readback_window_count: 3,
+        canary_promotion_soak_readback_pass_count: 3,
         required_approval_scopes: required_operator_approval_scopes(),
         ..ContextPlaneOperatorApprovalPacket::default()
     };

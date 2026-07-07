@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=4
-context-plane-activation-blockers.rows=15
+context-plane-activation-blockers.schema=5
+context-plane-activation-blockers.rows=16
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=6
+context-plane-activation-blockers.blockers=7
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -22,6 +22,15 @@ context-plane-activation-blockers.recall-quality-blocking-reason-count=0
 context-plane-activation-blockers.recall-quality-blocking-reasons=none
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.memory-shadow-canary-readiness=blocked:memory_shadow_canary_readiness_shadow_only
+context-plane-activation-blockers.memory-shadow-canary-promotion-readiness=blocked:memory_shadow_canary_promotion_readiness_shadow_only
+context-plane-activation-blockers.canary-promotion.required-stable-window-count=1
+context-plane-activation-blockers.canary-promotion.observed-stable-window-count=1
+context-plane-activation-blockers.canary-promotion.required-pass-streak=3
+context-plane-activation-blockers.canary-promotion.observed-pass-streak=3
+context-plane-activation-blockers.canary-promotion.promotion-blocker-count=0
+context-plane-activation-blockers.canary-promotion.rollback-rehearsal-pass-count=3
+context-plane-activation-blockers.canary-promotion.kill-switch-rehearsal-pass-count=3
+context-plane-activation-blockers.canary-promotion.soak-readback-pass-count=3
 context-plane-activation-blockers.source-aware-front-door=blocked:source_aware_front_door_disabled
 context-plane-activation-blockers.operator-approval=blocked:operator_approval_missing
 context-plane-activation-blockers.activation-allowed=disabled

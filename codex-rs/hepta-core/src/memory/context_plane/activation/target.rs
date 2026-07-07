@@ -18,6 +18,7 @@ pub enum ContextPlaneActivationTarget {
     RecallQualityGate,
     MemoryProviderBoundary,
     MemoryShadowCanaryReadiness,
+    MemoryShadowCanaryPromotionReadiness,
     SourceAwareFrontDoor,
     OperatorApproval,
     #[default]
@@ -43,6 +44,7 @@ pub enum ContextPlaneActivationBlockerReason {
     TemporalGraphShadowEvalShadowOnly,
     MemoryProviderBoundaryShadowOnly,
     MemoryShadowCanaryReadinessShadowOnly,
+    MemoryShadowCanaryPromotionReadinessShadowOnly,
     SourceAwareFrontDoorDisabled,
     OperatorApprovalMissing,
     UnexpectedStatus,
@@ -76,9 +78,10 @@ pub(super) fn activation_target_order(target: ContextPlaneActivationTarget) -> u
         ContextPlaneActivationTarget::RecallQualityGate => 10,
         ContextPlaneActivationTarget::MemoryProviderBoundary => 11,
         ContextPlaneActivationTarget::MemoryShadowCanaryReadiness => 12,
-        ContextPlaneActivationTarget::SourceAwareFrontDoor => 13,
-        ContextPlaneActivationTarget::OperatorApproval => 14,
-        ContextPlaneActivationTarget::Unknown => 15,
+        ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness => 13,
+        ContextPlaneActivationTarget::SourceAwareFrontDoor => 14,
+        ContextPlaneActivationTarget::OperatorApproval => 15,
+        ContextPlaneActivationTarget::Unknown => 16,
     }
 }
 
@@ -95,10 +98,11 @@ pub(in crate::memory::context_plane) fn activation_blocker_reason_order(
         ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly => 6,
         ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly => 7,
         ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly => 8,
-        ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled => 9,
-        ContextPlaneActivationBlockerReason::OperatorApprovalMissing => 10,
-        ContextPlaneActivationBlockerReason::UnexpectedStatus => 11,
-        ContextPlaneActivationBlockerReason::SideEffectFlagEnabled => 12,
-        ContextPlaneActivationBlockerReason::Unknown => 13,
+        ContextPlaneActivationBlockerReason::MemoryShadowCanaryPromotionReadinessShadowOnly => 9,
+        ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled => 10,
+        ContextPlaneActivationBlockerReason::OperatorApprovalMissing => 11,
+        ContextPlaneActivationBlockerReason::UnexpectedStatus => 12,
+        ContextPlaneActivationBlockerReason::SideEffectFlagEnabled => 13,
+        ContextPlaneActivationBlockerReason::Unknown => 14,
     }
 }

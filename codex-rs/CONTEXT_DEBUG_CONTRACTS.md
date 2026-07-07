@@ -1317,7 +1317,8 @@ payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation
 receipts, memory formation queue, temporal facts, temporal fact graph, eval
 harness seed, adaptive allocator eval shadow, recall quality gate, memory
-provider boundary, memory shadow canary readiness, and source-aware front-door
+provider boundary, memory shadow canary readiness, memory shadow canary
+promotion readiness, and source-aware front-door
 readiness. The
 machine-readable report is
 `context-plane-status=pass` plus fixed allowlisted `context-plane-status.*`
@@ -1326,14 +1327,21 @@ keys only. The Rust status sections are `source_registry`,
 `memory_formation_receipts`, `memory_formation_queue`, `memory_temporal_facts`,
 `memory_temporal_fact_graph`, `memory_temporal_graph_shadow_eval`,
 `eval_harness_seed`, `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
-`memory_provider_boundary`, `memory_shadow_canary_readiness`, and
-`source_aware_front_door`. Section states may be `ready`, `shadow`, `disabled`,
+`memory_provider_boundary`, `memory_shadow_canary_readiness`,
+`memory_shadow_canary_promotion_readiness`, and `source_aware_front_door`.
+Section states may be `ready`, `shadow`, `disabled`,
 or `blocked`; they may carry only counts and side-effect booleans. The
 `memory_temporal_graph_shadow_eval` row is shadow-only until a separately
 approved graph route is promoted. The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
 `memory_shadow_canary_readiness` row is shadow-only until a separately approved
 canary promotion route is designed and explicitly approved. The
+`memory_shadow_canary_promotion_readiness` row is also shadow-only and may carry
+only canary promotion rehearsal counts for stable-window, rollback,
+kill-switch, soak readback, and promotion blockers. The exported field names
+include `canary_promotion_rollback_rehearsal_pass_count`,
+`canary_promotion_kill_switch_rehearsal_pass_count`, and
+`canary_promotion_soak_readback_pass_count`. The
 `recall_quality_gate` status row may additionally carry
 `recall_quality_blocking_reason_count` and
 `recall_quality_blocking_reasons`, but those reasons must be controlled
@@ -1344,6 +1352,7 @@ recall-quality blocker enums only:
 `context-plane-status.memory-temporal-graph-shadow-eval=shadow`,
 `context-plane-status.memory-provider-boundary=shadow`,
 `context-plane-status.memory-shadow-canary-readiness=shadow`,
+`context-plane-status.memory-shadow-canary-promotion-readiness=shadow`,
 `context-plane-status.recall-quality-blocking-reason-count=0` and
 `context-plane-status.recall-quality-blocking-reasons=none`. The report
 must not
@@ -1352,7 +1361,7 @@ answer text. It must not expose source ids, session ids, memory ids, trace ids,
 query payloads, ranked payloads, tool arguments, raw fact/entity values,
 email-shaped strings, phone-shaped strings, user identifiers, transcript spans,
 candidate text, entity hashes, fact hashes, edge hashes, supersedes hashes,
-fixture hashes, or idempotency hashes. Status integrity requires all fourteen
+fixture hashes, or idempotency hashes. Status integrity requires all fifteen
 sections, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
@@ -1379,13 +1388,14 @@ Plane status report. The machine-readable report is
 `memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
 `memory_provider_boundary`, `memory_shadow_canary_readiness`,
-`source_aware_front_door`, and
+`memory_shadow_canary_promotion_readiness`, `source_aware_front_door`, and
 `operator_approval`. The current blocker reasons
 are controlled enum values:
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
+`memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
 `operator_approval_missing`, and `side_effect_flag_enabled`; future reasons must
 be added to the enum and gate before export. Matrix rows may carry only
@@ -1404,6 +1414,7 @@ activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-shadow-canary-readiness=blocked:memory_shadow_canary_readiness_shadow_only`,
+`context-plane-activation-blockers.memory-shadow-canary-promotion-readiness=blocked:memory_shadow_canary_promotion_readiness_shadow_only`,
 `context-plane-activation-blockers.recall-quality-blocking-reason-count=0` and
 `context-plane-activation-blockers.recall-quality-blocking-reasons=none`. The
 matrix must not contain
@@ -1413,7 +1424,7 @@ It must not expose source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw fact/entity values, email-shaped
 strings, phone-shaped strings, user identifiers, transcript spans, candidate
 text, entity hashes, fact hashes, edge hashes, supersedes hashes, fixture hashes,
-or idempotency hashes. Matrix integrity requires all fifteen targets, exact blocker counts, no production
+or idempotency hashes. Matrix integrity requires all sixteen targets, exact blocker counts, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
 changes, no operator activation allowance, and `activation_allowed=false`. This
@@ -1443,6 +1454,7 @@ counts may include only the controlled activation blocker enum values
 `temporal_graph_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
+`memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
 `operator_approval_missing`, and `side_effect_flag_enabled` until new reasons are
 added to the Rust enum and gate. The packet may also carry
@@ -1452,10 +1464,18 @@ added to the Rust enum and gate. The packet may also carry
 controlled recall-quality blocker enums `missing_critical_fact_regression`,
 `recall_coverage_regression`, `precision_regression`, `safety_leak`,
 `answer_quality_regression`, and `side_effect_flag_enabled`. Gate-pass operator
-approval export must include
+approval export may additionally carry canary promotion checklist counts copied
+from the `memory_shadow_canary_promotion_readiness` matrix row: stable-window
+counts, pass streak counts, promotion blocker count, rollback rehearsal pass
+count, kill-switch rehearsal pass count, and soak readback pass count only.
+Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1`,
+`context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3`,
+`context-plane-operator-approval-packet.canary-promotion.kill-switch-rehearsal-pass-count=3`,
+`context-plane-operator-approval-packet.canary-promotion.soak-readback-pass-count=3`,
 `context-plane-operator-approval-packet.recall-quality-blocking-reason-count=0`
 and
 `context-plane-operator-approval-packet.recall-quality-blocking-reasons=none`.
@@ -1466,7 +1486,7 @@ payloads, tool arguments, raw fact/entity values, email-shaped strings,
 phone-shaped strings, user identifiers, transcript spans, candidate text, entity
 hashes, supersedes hashes, fixture hashes, or idempotency hashes. The packet
 must not include activation commands or any command-shaped field that could be
-executed by an operator path. Packet integrity requires all fifteen matrix rows,
+executed by an operator path. Packet integrity requires all sixteen matrix rows,
 exact threshold counts, exact blocker reason counts, all required approval
 scopes, no production memory writes, no graph writes, no runtime activation, no
 adaptive allocator runtime activation, no source-aware runtime activation, no

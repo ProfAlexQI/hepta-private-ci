@@ -159,6 +159,8 @@ impl StoreSnapshot {
         let provider_report = self.context_memory_provider_report(request);
         let shadow_quality_trend_snapshot =
             self.context_memory_shadow_quality_trend_snapshot_report(request);
+        let shadow_canary_promotion_readiness =
+            self.context_memory_shadow_canary_promotion_readiness_report(request);
 
         ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
             taxonomy: &taxonomy,
@@ -172,6 +174,7 @@ impl StoreSnapshot {
             recall_quality_gate: &recall_quality_gate,
             provider_report: &provider_report,
             shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
+            shadow_canary_promotion_readiness: &shadow_canary_promotion_readiness,
         })
     }
 

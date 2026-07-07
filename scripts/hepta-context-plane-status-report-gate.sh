@@ -85,6 +85,10 @@ for term in \
   "recall_quality_gate" \
   "memory_provider_boundary" \
   "memory_shadow_canary_readiness" \
+  "memory_shadow_canary_promotion_readiness" \
+  "canary_promotion_rollback_rehearsal_pass_count" \
+  "canary_promotion_kill_switch_rehearsal_pass_count" \
+  "canary_promotion_soak_readback_pass_count" \
   "recall_quality_blocking_reason_count" \
   "recall_quality_blocking_reasons" \
   "source_aware_front_door" \
@@ -208,6 +212,15 @@ context-plane-status.recall-quality-blocking-reason-count=0
 context-plane-status.recall-quality-blocking-reasons=none
 context-plane-status.memory-provider-boundary=shadow
 context-plane-status.memory-shadow-canary-readiness=shadow
+context-plane-status.memory-shadow-canary-promotion-readiness=shadow
+context-plane-status.canary-promotion.required-stable-window-count=1
+context-plane-status.canary-promotion.observed-stable-window-count=1
+context-plane-status.canary-promotion.required-pass-streak=3
+context-plane-status.canary-promotion.observed-pass-streak=3
+context-plane-status.canary-promotion.promotion-blocker-count=0
+context-plane-status.canary-promotion.rollback-rehearsal-pass-count=3
+context-plane-status.canary-promotion.kill-switch-rehearsal-pass-count=3
+context-plane-status.canary-promotion.soak-readback-pass-count=3
 context-plane-status.source-aware-front-door=disabled
 context-plane-status.production-write=disabled
 context-plane-status.graph-write=disabled

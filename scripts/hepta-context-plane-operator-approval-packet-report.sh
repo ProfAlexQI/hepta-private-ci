@@ -3,23 +3,32 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=3
+context-plane-operator-approval-packet.schema=4
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=15
+context-plane-operator-approval-packet.rows=16
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=6
-context-plane-operator-approval-packet.threshold.required-ready=14
+context-plane-operator-approval-packet.blockers=7
+context-plane-operator-approval-packet.threshold.required-ready=15
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1
+context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1
 context-plane-operator-approval-packet.blocker.source-aware-front-door-disabled=1
 context-plane-operator-approval-packet.blocker.operator-approval-missing=1
 context-plane-operator-approval-packet.recall-quality-blocking-reason-count=0
 context-plane-operator-approval-packet.recall-quality-blocking-reasons=none
+context-plane-operator-approval-packet.canary-promotion.required-stable-window-count=1
+context-plane-operator-approval-packet.canary-promotion.observed-stable-window-count=1
+context-plane-operator-approval-packet.canary-promotion.required-pass-streak=3
+context-plane-operator-approval-packet.canary-promotion.observed-pass-streak=3
+context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=0
+context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3
+context-plane-operator-approval-packet.canary-promotion.kill-switch-rehearsal-pass-count=3
+context-plane-operator-approval-packet.canary-promotion.soak-readback-pass-count=3
 context-plane-operator-approval-packet.required-scopes=6
 context-plane-operator-approval-packet.scope.adaptive-budget-allocation-runtime=required
 context-plane-operator-approval-packet.scope.source-aware-runtime-activation=required

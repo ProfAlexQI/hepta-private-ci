@@ -90,7 +90,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 15
+        self.total_row_count == 16
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -112,6 +112,17 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub recall_quality_blocking_reason_count: usize,
     pub recall_quality_blocking_reason_counts:
         Vec<ContextPlaneOperatorApprovalRecallQualityBlockerReasonCount>,
+    pub canary_promotion_required_stable_window_count: usize,
+    pub canary_promotion_observed_stable_window_count: usize,
+    pub canary_promotion_required_pass_streak: usize,
+    pub canary_promotion_observed_pass_streak: usize,
+    pub canary_promotion_blocker_count: usize,
+    pub canary_promotion_rollback_rehearsal_count: usize,
+    pub canary_promotion_rollback_rehearsal_pass_count: usize,
+    pub canary_promotion_kill_switch_rehearsal_count: usize,
+    pub canary_promotion_kill_switch_rehearsal_pass_count: usize,
+    pub canary_promotion_soak_readback_window_count: usize,
+    pub canary_promotion_soak_readback_pass_count: usize,
     pub required_approval_scopes: Vec<ContextPlaneOperatorApprovalScope>,
     pub production_write: bool,
     pub graph_write: bool,
@@ -136,6 +147,17 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             blocker_reason_counts: Vec::new(),
             recall_quality_blocking_reason_count: 0,
             recall_quality_blocking_reason_counts: Vec::new(),
+            canary_promotion_required_stable_window_count: 0,
+            canary_promotion_observed_stable_window_count: 0,
+            canary_promotion_required_pass_streak: 0,
+            canary_promotion_observed_pass_streak: 0,
+            canary_promotion_blocker_count: 0,
+            canary_promotion_rollback_rehearsal_count: 0,
+            canary_promotion_rollback_rehearsal_pass_count: 0,
+            canary_promotion_kill_switch_rehearsal_count: 0,
+            canary_promotion_kill_switch_rehearsal_pass_count: 0,
+            canary_promotion_soak_readback_window_count: 0,
+            canary_promotion_soak_readback_pass_count: 0,
             required_approval_scopes: Vec::new(),
             production_write: false,
             graph_write: false,
@@ -183,6 +205,8 @@ impl ContextPlaneOperatorApprovalPacket {
         recall_quality_blocking_reason_counts
             .sort_by_key(|entry| recall_quality_blocker_reason_order(entry.reason));
         let recall_quality_blocking_reason_count = recall_quality_blocking_reason_counts.len();
+        let canary_promotion_row = matrix
+            .row_for_target(ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness);
 
         let required_approval_scopes = required_operator_approval_scopes();
 
@@ -197,6 +221,39 @@ impl ContextPlaneOperatorApprovalPacket {
             blocker_reason_counts,
             recall_quality_blocking_reason_count,
             recall_quality_blocking_reason_counts,
+            canary_promotion_required_stable_window_count: canary_promotion_row
+                .map(|row| row.canary_promotion_required_stable_window_count)
+                .unwrap_or_default(),
+            canary_promotion_observed_stable_window_count: canary_promotion_row
+                .map(|row| row.canary_promotion_observed_stable_window_count)
+                .unwrap_or_default(),
+            canary_promotion_required_pass_streak: canary_promotion_row
+                .map(|row| row.canary_promotion_required_pass_streak)
+                .unwrap_or_default(),
+            canary_promotion_observed_pass_streak: canary_promotion_row
+                .map(|row| row.canary_promotion_observed_pass_streak)
+                .unwrap_or_default(),
+            canary_promotion_blocker_count: canary_promotion_row
+                .map(|row| row.canary_promotion_blocker_count)
+                .unwrap_or_default(),
+            canary_promotion_rollback_rehearsal_count: canary_promotion_row
+                .map(|row| row.canary_promotion_rollback_rehearsal_count)
+                .unwrap_or_default(),
+            canary_promotion_rollback_rehearsal_pass_count: canary_promotion_row
+                .map(|row| row.canary_promotion_rollback_rehearsal_pass_count)
+                .unwrap_or_default(),
+            canary_promotion_kill_switch_rehearsal_count: canary_promotion_row
+                .map(|row| row.canary_promotion_kill_switch_rehearsal_count)
+                .unwrap_or_default(),
+            canary_promotion_kill_switch_rehearsal_pass_count: canary_promotion_row
+                .map(|row| row.canary_promotion_kill_switch_rehearsal_pass_count)
+                .unwrap_or_default(),
+            canary_promotion_soak_readback_window_count: canary_promotion_row
+                .map(|row| row.canary_promotion_soak_readback_window_count)
+                .unwrap_or_default(),
+            canary_promotion_soak_readback_pass_count: canary_promotion_row
+                .map(|row| row.canary_promotion_soak_readback_pass_count)
+                .unwrap_or_default(),
             required_approval_scopes,
             production_write: matrix.production_write,
             graph_write: matrix.graph_write,
@@ -214,7 +271,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 15
+            && self.matrix_row_count == 16
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count
@@ -226,6 +283,7 @@ impl ContextPlaneOperatorApprovalPacket {
                 .iter()
                 .all(ContextPlaneOperatorApprovalBlockerReasonCount::has_count_integrity)
             && self.has_recall_quality_blocking_reason_count_integrity()
+            && self.has_canary_promotion_checklist_integrity()
             && self.has_required_approval_scopes()
             && !self.production_write
             && !self.graph_write
@@ -300,6 +358,24 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.recall_quality_blocking_reason_counts.iter().all(
                 ContextPlaneOperatorApprovalRecallQualityBlockerReasonCount::has_count_integrity,
             )
+    }
+
+    fn has_canary_promotion_checklist_integrity(&self) -> bool {
+        self.canary_promotion_required_stable_window_count > 0
+            && self.canary_promotion_observed_stable_window_count
+                <= self.canary_promotion_required_stable_window_count
+            && self.canary_promotion_required_pass_streak > 0
+            && self.canary_promotion_observed_pass_streak
+                <= self.canary_promotion_required_pass_streak
+            && self.canary_promotion_rollback_rehearsal_count > 0
+            && self.canary_promotion_rollback_rehearsal_pass_count
+                <= self.canary_promotion_rollback_rehearsal_count
+            && self.canary_promotion_kill_switch_rehearsal_count > 0
+            && self.canary_promotion_kill_switch_rehearsal_pass_count
+                <= self.canary_promotion_kill_switch_rehearsal_count
+            && self.canary_promotion_soak_readback_window_count > 0
+            && self.canary_promotion_soak_readback_pass_count
+                <= self.canary_promotion_soak_readback_window_count
     }
 }
 
