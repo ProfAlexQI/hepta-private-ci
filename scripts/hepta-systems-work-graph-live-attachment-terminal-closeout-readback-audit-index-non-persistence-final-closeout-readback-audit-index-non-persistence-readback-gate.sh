@@ -26,6 +26,10 @@ jq -e '
   and .source_audit_index_entry_count == 9
   and .source_audit_index_blocker_count == 92
   and .source_required_prior_gate_count == 35
+  and .source_audit_index_ready == true
+  and .source_audit_index_no_persistence_confirmed == true
+  and .source_audit_index_no_live_confirmed == true
+  and .source_audit_index_ready_for_non_persistence_readback == true
   and .readback_entry_count == 6
   and .readback_blocker_count == 95
   and .required_prior_gate_count == 36
@@ -89,6 +93,10 @@ jq -e '
   and .required_prior_gates[0] == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_gate"
   and (.required_prior_gates | length == 36)
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_gate"
+  and .readback_scope_complete == true
+  and .readback_entries_complete == true
+  and .readback_blockers_complete == true
+  and .non_persistence_readback_preconditions_complete == true
   and .audit_index_visible == true
   and .audit_index_recorded == false
   and .audit_index_persisted == false
@@ -136,16 +144,25 @@ jq -e '
   and .ready_for_terminal_closeout_readback_audit_index_final_closeout == true
   and .ready_for_live_attachment == false
   and .ready_for_live_execution == false
-  and .source_probes.non_persistence_readback_module_present == true
-  and .source_probes.audit_index_gate_present == true
-  and .source_probes.audit_index_points_here == true
-  and .source_probes.audit_index_ready_present == true
-  and .source_probes.audit_index_unpersisted_present == true
-  and .source_probes.audit_index_no_live_present == true
+  and .source_readbacks.audit_index_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_gate"
+  and .source_readbacks.audit_index_preconditions_complete == true
+  and .source_readbacks.audit_index_ready_for_non_persistence_readback == true
+  and .source_readbacks.audit_index_no_persistence_confirmed == true
+  and .source_readbacks.audit_index_no_live_confirmed == true
+  and .source_readbacks.audit_index_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback --lib
+tests=(
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback::tests::final_closeout_readback_audit_index_non_persistence_readback_derives_from_index
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback::tests::final_closeout_readback_audit_index_non_persistence_readback_is_visible_only
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback::tests::final_closeout_readback_audit_index_non_persistence_readback_blocks_live_paths
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_readback::tests::final_closeout_readback_audit_index_non_persistence_readback_links_priors_and_side_effects
+)
+
+for test_name in "${tests[@]}"; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph live attachment terminal closeout readback audit index non-persistence final closeout readback audit-index non-persistence readback gate passed"
