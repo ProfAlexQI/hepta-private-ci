@@ -350,6 +350,146 @@ fn context_memory_ranked_recall_shadow_eval_blocks_regression_drift() {
 }
 
 #[test]
+fn context_memory_temporal_graph_shadow_eval_tracks_metrics_without_activation() {
+    let report = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+
+    assert!(report.has_temporal_graph_shadow_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_EVAL_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.mode,
+        ContextMemoryTemporalGraphShadowEvalMode::DeterministicShadow
+    );
+    assert_eq!(
+        report.metrics,
+        vec![
+            ContextMemoryTemporalGraphShadowEvalMetric::NodeCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::EdgeCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::ValidityWindowCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::SupersedesCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::Latency,
+            ContextMemoryTemporalGraphShadowEvalMetric::Regret,
+        ]
+    );
+    assert_eq!(report.fixture_count(), 4);
+    assert_eq!(report.fixture_pass_count(), 4);
+    assert_eq!(report.positive_fixture_count(), 3);
+    assert_eq!(report.negative_fixture_count(), 1);
+    assert_eq!(report.regression_blocked_count(), 1);
+    assert_eq!(report.min_positive_node_coverage_basis_points(), 10_000);
+    assert_eq!(report.min_positive_edge_coverage_basis_points(), 10_000);
+    assert_eq!(
+        report.min_positive_validity_window_coverage_basis_points(),
+        10_000
+    );
+    assert_eq!(
+        report.min_positive_supersedes_coverage_basis_points(),
+        10_000
+    );
+    assert_eq!(report.max_positive_latency_ms(), 47);
+    assert_eq!(report.max_positive_regret_basis_points(), 0);
+    assert_eq!(report.node_coverage_floor_basis_points, 10_000);
+    assert_eq!(report.edge_coverage_floor_basis_points, 10_000);
+    assert_eq!(report.validity_window_floor_basis_points, 10_000);
+    assert_eq!(report.supersedes_floor_basis_points, 10_000);
+    assert_eq!(report.latency_max_ms, 100);
+    assert_eq!(report.regret_max_basis_points, 0);
+    assert!(report.operator_approval_required);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+
+    let topology = report
+        .fixture(ContextMemoryTemporalGraphShadowEvalFixtureKind::TopologyCoverage)
+        .expect("topology coverage fixture should exist");
+    assert!(topology.positive_fixture);
+    assert_eq!(topology.temporal_fact_count, 5);
+    assert_eq!(topology.graph_node_count, 5);
+    assert_eq!(topology.graph_edge_count, 10);
+    assert_eq!(topology.observed_validity_window_edge_count, 5);
+    assert_eq!(topology.observed_supersedes_edge_count, 0);
+    assert_eq!(topology.node_coverage_basis_points, 10_000);
+    assert_eq!(topology.edge_coverage_basis_points, 10_000);
+    assert_eq!(topology.validity_window_coverage_basis_points, 10_000);
+    assert_eq!(topology.supersedes_coverage_basis_points, 10_000);
+
+    let supersedes = report
+        .fixture(ContextMemoryTemporalGraphShadowEvalFixtureKind::SupersedesReplay)
+        .expect("supersedes replay fixture should exist");
+    assert!(supersedes.positive_fixture);
+    assert_eq!(supersedes.observed_supersedes_edge_count, 1);
+    assert_eq!(supersedes.supersedes_coverage_basis_points, 10_000);
+
+    let regression = report
+        .fixture(ContextMemoryTemporalGraphShadowEvalFixtureKind::RegressionGuard)
+        .expect("regression guard fixture should exist");
+    assert!(regression.negative_fixture);
+    assert!(regression.regression_fixture);
+    assert!(regression.regression_blocked);
+    assert_eq!(regression.node_coverage_basis_points, 6_666);
+    assert_eq!(regression.edge_coverage_basis_points, 5_714);
+    assert_eq!(regression.validity_window_coverage_basis_points, 6_666);
+    assert_eq!(regression.supersedes_coverage_basis_points, 0);
+    assert_eq!(regression.latency_ms, 125);
+    assert_eq!(regression.regret_basis_points, 400);
+
+    let json = serde_json::to_string(&report).expect("temporal graph report should serialize");
+    assert!(json.contains("deterministic_shadow"));
+    assert!(json.contains("topology_coverage"));
+    assert!(json.contains("validity_window_replay"));
+    assert!(json.contains("supersedes_replay"));
+    assert!(json.contains("regression_guard"));
+    assert!(json.contains("node_coverage"));
+    assert!(json.contains("edge_coverage"));
+    assert!(json.contains("validity_window_coverage"));
+    assert!(json.contains("supersedes_coverage"));
+    assert!(json.contains("temporal_fact_count"));
+    assert!(json.contains("graph_edge_count"));
+    assert!(!json.contains("session-"));
+    assert!(!json.contains("memory-"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("entity_text"));
+    assert!(!json.contains("fact_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("query_payload"));
+    assert!(!json.contains("raw_graph_payload"));
+    assert!(!json.contains("tool_args"));
+    assert!(!json.contains("tool_outputs"));
+    assert!(!json.contains("trace_id"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+    assert!(!json.contains("\"prompt_assembly_change\":true"));
+    assert!(!json.contains("\"operator_activation_allowed\":true"));
+}
+
+#[test]
+fn context_memory_temporal_graph_shadow_eval_blocks_regression_drift() {
+    let mut report = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+    let regression = report
+        .fixtures
+        .iter_mut()
+        .find(|fixture| {
+            fixture.fixture_kind == ContextMemoryTemporalGraphShadowEvalFixtureKind::RegressionGuard
+        })
+        .expect("regression guard fixture should exist");
+
+    regression.regression_blocked = false;
+
+    assert!(!report.has_temporal_graph_shadow_integrity());
+}
+
+#[test]
 fn context_memory_selected_recall_summary_canary_eval_replays_without_activation() {
     let report = ContextMemorySelectedRecallSummaryCanaryEvalReport::seeded();
 

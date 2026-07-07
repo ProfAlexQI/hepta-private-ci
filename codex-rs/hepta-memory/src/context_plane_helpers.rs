@@ -7,6 +7,7 @@ use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
+use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
 use hepta_core::ContextPlaneActivationBlockerMatrix;
 use hepta_core::ContextPlaneOperatorApprovalPacket;
 use hepta_core::ContextPlaneStatusReport;
@@ -71,6 +72,14 @@ impl StoreSnapshot {
         &self,
     ) -> ContextMemorySelectedRecallSummaryCanaryEvalReport {
         ContextMemorySelectedRecallSummaryCanaryEvalReport::seeded()
+    }
+
+    /// Builds the offline temporal-graph shadow eval report without writing
+    /// graph facts, activating runtime routes, or changing prompt assembly.
+    pub fn context_memory_temporal_graph_shadow_eval_report(
+        &self,
+    ) -> ContextMemoryTemporalGraphShadowEvalReport {
+        ContextMemoryTemporalGraphShadowEvalReport::seeded()
     }
 
     /// Builds a unified, payload-light context-plane status report for
@@ -168,6 +177,14 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_selected_recall_summary_canary_eval_report())
+    }
+
+    pub fn context_memory_temporal_graph_shadow_eval_report(
+        &self,
+    ) -> Result<ContextMemoryTemporalGraphShadowEvalReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_temporal_graph_shadow_eval_report())
     }
 
     pub fn context_plane_status_report(

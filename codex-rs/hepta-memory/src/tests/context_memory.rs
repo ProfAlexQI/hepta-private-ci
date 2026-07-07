@@ -389,6 +389,112 @@ fn store_snapshot_context_memory_ranked_recall_shadow_eval_is_payload_light() {
 }
 
 #[test]
+fn store_snapshot_context_memory_temporal_graph_shadow_eval_is_payload_light() {
+    let snapshot = StoreSnapshot {
+        sessions: vec![],
+        memories: vec![memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        )],
+        transcripts: vec![
+            transcript_entry(
+                "session-1",
+                1,
+                TranscriptEntryKind::Message,
+                "timeout surfaced during tool run",
+            ),
+            transcript_entry(
+                "session-1",
+                2,
+                TranscriptEntryKind::Summary,
+                "timeout retried successfully",
+            ),
+        ],
+    };
+
+    let report = snapshot.context_memory_temporal_graph_shadow_eval_report();
+
+    assert!(report.has_temporal_graph_shadow_integrity());
+    assert_eq!(
+        report.mode,
+        ContextMemoryTemporalGraphShadowEvalMode::DeterministicShadow
+    );
+    assert_eq!(
+        report.metrics,
+        vec![
+            ContextMemoryTemporalGraphShadowEvalMetric::NodeCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::EdgeCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::ValidityWindowCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::SupersedesCoverage,
+            ContextMemoryTemporalGraphShadowEvalMetric::Latency,
+            ContextMemoryTemporalGraphShadowEvalMetric::Regret,
+        ]
+    );
+    assert_eq!(report.fixture_count(), 4);
+    assert_eq!(report.fixture_pass_count(), 4);
+    assert_eq!(report.positive_fixture_count(), 3);
+    assert_eq!(report.negative_fixture_count(), 1);
+    assert_eq!(report.regression_blocked_count(), 1);
+    assert_eq!(report.min_positive_node_coverage_basis_points(), 10_000);
+    assert_eq!(report.min_positive_edge_coverage_basis_points(), 10_000);
+    assert_eq!(
+        report.min_positive_validity_window_coverage_basis_points(),
+        10_000
+    );
+    assert_eq!(
+        report.min_positive_supersedes_coverage_basis_points(),
+        10_000
+    );
+    assert_eq!(report.max_positive_latency_ms(), 47);
+    assert_eq!(report.max_positive_regret_basis_points(), 0);
+    assert!(report.operator_approval_required);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+
+    let regression = report
+        .fixture(ContextMemoryTemporalGraphShadowEvalFixtureKind::RegressionGuard)
+        .expect("regression guard fixture should exist");
+    assert!(regression.negative_fixture);
+    assert!(regression.regression_fixture);
+    assert!(regression.regression_blocked);
+
+    let json = serde_json::to_string(&report).expect("temporal graph report should serialize");
+    assert!(json.contains("deterministic_shadow"));
+    assert!(json.contains("topology_coverage"));
+    assert!(json.contains("validity_window_replay"));
+    assert!(json.contains("supersedes_replay"));
+    assert!(json.contains("regression_guard"));
+    assert!(json.contains("temporal_fact_count"));
+    assert!(json.contains("graph_edge_count"));
+    assert!(!json.contains("timeout surfaced during tool run"));
+    assert!(!json.contains("timeout retried successfully"));
+    assert!(!json.contains("session-1"));
+    assert!(!json.contains("memory-1"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("entity_text"));
+    assert!(!json.contains("fact_text"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("query_payload"));
+    assert!(!json.contains("raw_graph_payload"));
+    assert!(!json.contains("tool_args"));
+    assert!(!json.contains("tool_outputs"));
+    assert!(!json.contains("trace_id"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
+#[test]
 fn store_snapshot_context_memory_selected_recall_summary_canary_eval_is_payload_light() {
     let snapshot = StoreSnapshot {
         sessions: vec![],
@@ -740,6 +846,72 @@ async fn store_context_memory_ranked_recall_shadow_eval_matches_snapshot_helper(
     assert_eq!(from_store.min_positive_precision_basis_points(), 8000);
     assert_eq!(from_store.total_positive_token_saved(), 2_140);
     assert_eq!(from_store.max_positive_latency_ms(), 55);
+    assert_eq!(from_store.max_positive_regret_basis_points(), 0);
+    assert!(from_store.operator_approval_required);
+    assert!(!from_store.production_route);
+    assert!(!from_store.production_write);
+    assert!(!from_store.graph_write);
+    assert!(!from_store.runtime_activation);
+    assert!(!from_store.prompt_assembly_change);
+    assert!(!from_store.operator_activation_allowed);
+}
+
+#[tokio::test]
+async fn store_context_memory_temporal_graph_shadow_eval_matches_snapshot_helper() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            1,
+            TranscriptEntryKind::Message,
+            "timeout surfaced during tool run",
+        ))
+        .await
+        .expect("append should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            2,
+            TranscriptEntryKind::Summary,
+            "timeout retried successfully",
+        ))
+        .await
+        .expect("append should succeed");
+
+    let snapshot = store.snapshot().expect("snapshot should load");
+    let from_store = store
+        .context_memory_temporal_graph_shadow_eval_report()
+        .expect("temporal graph shadow eval should succeed");
+
+    assert_eq!(
+        from_store,
+        snapshot.context_memory_temporal_graph_shadow_eval_report()
+    );
+    assert!(from_store.has_temporal_graph_shadow_integrity());
+    assert_eq!(from_store.fixture_count(), 4);
+    assert_eq!(from_store.fixture_pass_count(), 4);
+    assert_eq!(from_store.positive_fixture_count(), 3);
+    assert_eq!(from_store.negative_fixture_count(), 1);
+    assert_eq!(from_store.regression_blocked_count(), 1);
+    assert_eq!(from_store.min_positive_node_coverage_basis_points(), 10_000);
+    assert_eq!(from_store.min_positive_edge_coverage_basis_points(), 10_000);
+    assert_eq!(
+        from_store.min_positive_validity_window_coverage_basis_points(),
+        10_000
+    );
+    assert_eq!(
+        from_store.min_positive_supersedes_coverage_basis_points(),
+        10_000
+    );
+    assert_eq!(from_store.max_positive_latency_ms(), 47);
     assert_eq!(from_store.max_positive_regret_basis_points(), 0);
     assert!(from_store.operator_approval_required);
     assert!(!from_store.production_route);

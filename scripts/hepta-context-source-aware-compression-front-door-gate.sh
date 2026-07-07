@@ -84,6 +84,7 @@ memory_formation_queue_gate_script="hepta-context-memory-formation-queue-gate.sh
 memory_formation_candidate_no_leak_gate_script="hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 memory_temporal_fact_schema_gate_script="hepta-context-memory-temporal-fact-schema-gate.sh"
 memory_temporal_fact_graph_gate_script="hepta-context-memory-temporal-fact-graph-gate.sh"
+memory_temporal_graph_shadow_eval_gate_script="hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
 memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gate.sh"
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
@@ -323,6 +324,20 @@ required_contract_terms=(
   "context_memory_ranked_recall_shadow_eval_report"
   "hepta-context-memory-ranked-recall-shadow-eval-report.sh"
   "hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+  "Temporal graph shadow eval"
+  "temporal-graph-shadow-eval=pass"
+  "temporal-graph-shadow-eval.payload-light=pass"
+  "topology_coverage"
+  "validity_window_replay"
+  "supersedes_replay"
+  "node-coverage-floor-basis-points"
+  "edge-coverage-floor-basis-points"
+  "validity-window-floor-basis-points"
+  "supersedes-floor-basis-points"
+  "ContextMemoryTemporalGraphShadowEvalReport"
+  "context_memory_temporal_graph_shadow_eval_report"
+  "hepta-context-memory-temporal-graph-shadow-eval-report.sh"
+  "hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
   "MemoryProvider boundary"
   "MemoryProviderContextUpdateEnvelope"
   "MemoryProviderReport"
@@ -594,6 +609,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_temporal_graph_shadow_eval_gate_script" \
+  "memory temporal graph shadow eval debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$memory_eval_harness_seed_gate_script" \
   "memory eval harness seed debug gate"
 
@@ -811,6 +831,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory temporal fact graph dry-run gate" \
   "memory temporal fact graph preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory temporal graph shadow eval gate" \
+  "memory temporal graph shadow eval preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1056,6 +1081,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory temporal fact graph dry-run gate" \
+  "context memory temporal graph shadow eval gate" \
+  "memory temporal graph shadow eval preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory temporal graph shadow eval gate" \
   "context memory eval harness seed gate" \
   "memory eval harness seed preflight stage order"
 

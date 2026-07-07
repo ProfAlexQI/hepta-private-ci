@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+temporal_fact_graph_gate="$repo_root/scripts/hepta-context-memory-temporal-fact-graph-gate.sh"
+
+fail() {
+  echo "hepta-context-memory-temporal-graph-shadow-eval-report: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+bash "$temporal_fact_graph_gate" >/dev/null
+
+for term in \
+  "Memory temporal fact schema dry-run" \
+  "Memory temporal fact graph dry-run" \
+  "Temporal graph shadow eval"; do
+  assert_file_contains "$contracts" "$term" "temporal graph shadow eval contract input"
+done
+
+for term in \
+  "context memory temporal fact schema dry-run gate" \
+  "context memory temporal fact graph dry-run gate" \
+  "context memory temporal graph shadow eval gate"; do
+  assert_file_contains "$preflight_script" "$term" "temporal graph shadow eval preflight input"
+done
+
+cat <<'EOF'
+temporal-graph-shadow-eval=pass
+temporal-graph-shadow-eval.payload-light=pass
+temporal-graph-shadow-eval.schema=1
+temporal-graph-shadow-eval.mode=deterministic-shadow
+temporal-graph-shadow-eval.fixture-count=4
+temporal-graph-shadow-eval.fixture-pass-count=4
+temporal-graph-shadow-eval.positive-fixture-count=3
+temporal-graph-shadow-eval.negative-fixture-count=1
+temporal-graph-shadow-eval.node-coverage-floor-basis-points=10000
+temporal-graph-shadow-eval.edge-coverage-floor-basis-points=10000
+temporal-graph-shadow-eval.validity-window-floor-basis-points=10000
+temporal-graph-shadow-eval.supersedes-floor-basis-points=10000
+temporal-graph-shadow-eval.latency-max-ms=100
+temporal-graph-shadow-eval.regret-max-basis-points=0
+temporal-graph-shadow-eval.min-positive-node-coverage-basis-points=10000
+temporal-graph-shadow-eval.min-positive-edge-coverage-basis-points=10000
+temporal-graph-shadow-eval.min-positive-validity-window-coverage-basis-points=10000
+temporal-graph-shadow-eval.min-positive-supersedes-coverage-basis-points=10000
+temporal-graph-shadow-eval.max-positive-latency-ms=47
+temporal-graph-shadow-eval.max-positive-regret-basis-points=0
+temporal-graph-shadow-eval.regression-fixture=blocked
+temporal-graph-shadow-eval.operator-approval=required
+temporal-graph-shadow-eval.production-route=disabled
+temporal-graph-shadow-eval.graph-write=disabled
+temporal-graph-shadow-eval.runtime-activation=disabled
+EOF

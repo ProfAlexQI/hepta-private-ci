@@ -175,6 +175,7 @@ codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/result.rs
 codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs
 codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs
 codex-rs/hepta-core/src/memory/eval_harness/selected_recall_canary.rs
+codex-rs/hepta-core/src/memory/eval_harness/temporal_graph_shadow.rs
 codex-rs/hepta-core/src/memory/formation.rs
 codex-rs/hepta-core/src/memory/provider_plane.rs
 codex-rs/hepta-core/src/memory/query.rs

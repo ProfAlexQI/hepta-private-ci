@@ -874,8 +874,53 @@ into durable memory, must not alter prompt assembly, and must not enable
 runtime activation. The context debug gate and preflight must run
 `scripts/hepta-context-memory-temporal-fact-graph-gate.sh` after
 `scripts/hepta-context-memory-temporal-fact-schema-gate.sh` and before
-`scripts/hepta-context-memory-eval-harness-seed-gate.sh`. It must keep
+`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh`. It must keep
 `runtime-activation=disabled`.
+Temporal graph shadow eval: recall diagnostics may expose an offline,
+behavior-neutral deterministic-shadow scoreboard for temporal fact graph
+topology. The report may contain only fixed metric names (`node_coverage`,
+`edge_coverage`, `validity_window_coverage`, `supersedes_coverage`, `latency`,
+and `regret`), controlled fixture kinds (`topology_coverage`,
+`validity_window_replay`, `supersedes_replay`, and `regression_guard`), stable
+fixture hashes, aggregate temporal fact counts, graph node and edge counts,
+expected/observed validity-window and supersedes edge counts, coverage basis
+points, latency milliseconds and latency budget, regret basis points, a blocked
+regression fixture, fixed threshold labels
+(`node-coverage-floor-basis-points`, `edge-coverage-floor-basis-points`,
+`validity-window-floor-basis-points`, `supersedes-floor-basis-points`,
+`latency-max-ms`, and `regret-max-basis-points`), and explicit side-effect
+booleans. It must not contain entity text, fact text, transcript text, memory
+text, prompt text, answer text, query payloads, raw graph payloads, entity
+hashes, fact hashes, edge hashes, source ids, session ids, memory ids, trace
+ids, tool arguments, tool outputs, raw fact/entity values, email-shaped
+strings, phone-shaped strings, operator identity, or user identifiers. Shadow
+integrity requires schema version 1, `deterministic-shadow` mode, exactly four
+fixtures, three positive fixtures, one negative regression fixture, minimum
+positive node/edge/validity-window/supersedes coverage of 10000 basis points,
+maximum positive latency 47 ms, zero positive regret, and the regression
+fixture blocked. It must not write production memory, must not write graph
+facts, must not alter prompt assembly, must not enable runtime activation, must
+not enable a production route, and must not allow operator activation. The
+Rust-backed fixture is `ContextMemoryTemporalGraphShadowEvalReport` in
+`codex-rs/hepta-core/src/memory/eval_harness/temporal_graph_shadow.rs`,
+exposed through `context_memory_temporal_graph_shadow_eval_report` on both
+`StoreSnapshot` and `InMemoryStore`.
+
+`scripts/hepta-context-memory-temporal-graph-shadow-eval-report.sh` emits the
+payload-light scoreboard, and
+`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` verifies the
+report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
+debug/preflight wiring, source-aware front-door static check, release manifest
+entries, and no-leak constraints. The context debug gate and preflight must run
+`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` after
+`scripts/hepta-context-memory-temporal-fact-graph-gate.sh` and before
+`scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate output must
+include `temporal-graph-shadow-eval=pass`,
+`temporal-graph-shadow-eval.payload-light=pass`,
+`temporal-graph-shadow-eval.fixtures=4`,
+`temporal-graph-shadow-eval.regression-fixture=blocked`,
+`temporal-graph-shadow-eval.graph-write=disabled`, and
+`temporal-graph-shadow-eval.runtime-activation=disabled`.
 Context memory eval harness seed: recall diagnostics may expose an offline,
 behavior-neutral eval harness seed for future quality gates. The seed may
 contain only fixed metric names (`recall_coverage`, `missing_critical_fact`,
@@ -899,7 +944,7 @@ activate adaptive allocation, must not activate source-aware compression, must
 not write graph facts, must not write production memory, must not alter prompt
 assembly, and must not enable runtime activation. The context debug gate and
 preflight must run `scripts/hepta-context-memory-eval-harness-seed-gate.sh`
-after `scripts/hepta-context-memory-temporal-fact-graph-gate.sh` and before
+after `scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` and before
 the source-aware compression front-door report. It must keep
 `runtime-activation=disabled`. Its core implementation boundary is
 `codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs`, re-exported

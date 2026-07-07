@@ -60,6 +60,7 @@ codex-rs/hepta-core/src/memory/eval_harness/adaptive_shadow/result.rs	rust_memor
 codex-rs/hepta-core/src/memory/eval_harness/eval_seed.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/eval_harness/selected_recall_canary.rs	rust_memory	hepta-context	required
+codex-rs/hepta-core/src/memory/eval_harness/temporal_graph_shadow.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/formation.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/provider_plane.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/query.rs	rust_memory	hepta-context	required
@@ -232,6 +233,8 @@ scripts/hepta-context-memory-snapshot-helper-boundary-gate.sh	gate_script	hepta-
 scripts/hepta-context-memory-taxonomy-report-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-fact-graph-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-fact-schema-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-temporal-graph-shadow-eval-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-test-module-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-non-runtime-preflight.sh	gate_script	hepta-context	required
 scripts/hepta-context-plane-activation-blocker-matrix-gate.sh	gate_script	hepta-context	required
