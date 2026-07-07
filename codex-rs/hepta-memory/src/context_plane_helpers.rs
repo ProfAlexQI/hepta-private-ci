@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryFormationQueueReport;
 use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
+use hepta_core::ContextMemoryShadowQualitySummaryReport;
 use hepta_core::ContextMemoryShadowRegressionDashboardReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
@@ -99,6 +100,17 @@ impl StoreSnapshot {
             &temporal_graph,
             &recall_quality,
             &provider,
+        )
+    }
+
+    /// Builds a payload-light operator-readable quality summary from the
+    /// shadow regression dashboard without enabling a production route.
+    pub fn context_memory_shadow_quality_summary_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryShadowQualitySummaryReport {
+        ContextMemoryShadowQualitySummaryReport::from_dashboard(
+            &self.context_memory_shadow_regression_dashboard_report(request),
         )
     }
 
@@ -216,6 +228,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_shadow_regression_dashboard_report(&request))
+    }
+
+    pub fn context_memory_shadow_quality_summary_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryShadowQualitySummaryReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_shadow_quality_summary_report(&request))
     }
 
     pub fn context_plane_status_report(

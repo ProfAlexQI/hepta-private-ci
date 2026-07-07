@@ -91,6 +91,7 @@ memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
 memory_ranked_recall_shadow_eval_gate_script="hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
 memory_provider_boundary_gate_script="hepta-context-memory-provider-boundary-gate.sh"
 memory_shadow_regression_dashboard_gate_script="hepta-context-memory-shadow-regression-dashboard-gate.sh"
+memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-summary-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -362,6 +363,20 @@ required_contract_terms=(
   "provider_payload_light"
   "hepta-context-memory-shadow-regression-dashboard-report.sh"
   "hepta-context-memory-shadow-regression-dashboard-gate.sh"
+  "Memory shadow quality summary"
+  "memory-shadow-quality-summary=pass"
+  "memory-shadow-quality-summary.payload-light=pass"
+  "ContextMemoryShadowQualitySummaryReport"
+  "ContextMemoryShadowQualityTrend"
+  "ContextMemoryShadowQualityOperatorSummary"
+  "context_memory_shadow_quality_summary_report"
+  "quality_signal_count"
+  "quality_signal_pass_count"
+  "operator_summary_redacted"
+  "ready_shadow_only"
+  "stable_pass"
+  "hepta-context-memory-shadow-quality-summary-report.sh"
+  "hepta-context-memory-shadow-quality-summary-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -662,6 +677,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_shadow_quality_summary_gate_script" \
+  "memory shadow quality summary debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$context_plane_status_report_gate_script" \
   "context plane status report debug gate"
 
@@ -889,6 +909,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory shadow regression dashboard gate" \
   "memory shadow regression dashboard preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory shadow quality summary gate" \
+  "memory shadow quality summary preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1151,8 +1176,14 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_shadow_regression_dashboard_gate_script" \
+  "$memory_shadow_quality_summary_gate_script" \
+  "memory shadow quality summary debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_shadow_quality_summary_gate_script" \
   "$context_plane_status_report_gate_script" \
-  "memory shadow regression dashboard context plane status debug gate order"
+  "memory shadow quality summary context plane status debug gate order"
 
 assert_line_before \
   "$preflight_script" \
@@ -1169,8 +1200,14 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory shadow regression dashboard gate" \
+  "context memory shadow quality summary gate" \
+  "memory shadow quality summary preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory shadow quality summary gate" \
   "context plane status/export report gate" \
-  "memory shadow regression dashboard context plane status preflight stage order"
+  "memory shadow quality summary context plane status preflight stage order"
 
 assert_line_before \
   "$preflight_script" \

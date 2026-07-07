@@ -1,4 +1,7 @@
 use super::*;
+use hepta_core::ContextMemoryShadowQualityOperatorSummary;
+use hepta_core::ContextMemoryShadowQualitySummaryMode;
+use hepta_core::ContextMemoryShadowQualityTrend;
 
 #[test]
 fn store_snapshot_context_memory_eval_harness_seed_is_payload_light() {
@@ -579,6 +582,96 @@ fn store_snapshot_context_memory_shadow_regression_dashboard_is_payload_light() 
 }
 
 #[test]
+fn store_snapshot_context_memory_shadow_quality_summary_is_payload_light() {
+    let snapshot = StoreSnapshot {
+        sessions: vec![],
+        memories: vec![memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        )],
+        transcripts: vec![
+            transcript_entry(
+                "session-1",
+                1,
+                TranscriptEntryKind::Message,
+                "timeout surfaced during tool run",
+            ),
+            transcript_entry(
+                "session-1",
+                2,
+                TranscriptEntryKind::Summary,
+                "timeout retried successfully",
+            ),
+        ],
+    };
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout retry guidance".into()),
+        recent_window_limit: 2,
+        transcript_limit: 2,
+        memory_limit: 2,
+        allow_cross_session: false,
+    };
+
+    let report = snapshot.context_memory_shadow_quality_summary_report(&request);
+
+    assert!(report.has_shadow_quality_summary_integrity());
+    assert_eq!(
+        report.mode,
+        ContextMemoryShadowQualitySummaryMode::ShadowOnly
+    );
+    assert_eq!(
+        report.quality_trend,
+        ContextMemoryShadowQualityTrend::StablePass
+    );
+    assert_eq!(
+        report.operator_summary,
+        ContextMemoryShadowQualityOperatorSummary::ReadyShadowOnly
+    );
+    assert!(report.source_dashboard_pass);
+    assert_eq!(report.quality_signal_count, 4);
+    assert_eq!(report.quality_signal_pass_count, 4);
+    assert_eq!(report.regression_blocking_count, 0);
+    assert_eq!(report.operator_summary_line_count, 4);
+    assert!(report.operator_summary_redacted);
+    assert!(report.ranked_recall_signal_pass);
+    assert!(report.temporal_graph_signal_pass);
+    assert!(report.recall_quality_signal_pass);
+    assert!(report.provider_boundary_signal_pass);
+    assert!(report.provider_estimated_token_count > 0);
+    assert!(report.operator_approval_required);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+
+    let json = serde_json::to_string(&report).expect("shadow quality summary should serialize");
+    assert!(json.contains("stable_pass"));
+    assert!(json.contains("ready_shadow_only"));
+    assert!(json.contains("quality_signal_count"));
+    assert!(json.contains("operator_summary_redacted"));
+    assert!(!json.contains("timeout surfaced during tool run"));
+    assert!(!json.contains("timeout retried successfully"));
+    assert!(!json.contains("timeout retry guidance"));
+    assert!(!json.contains("session-1"));
+    assert!(!json.contains("memory-1"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
+#[test]
 fn store_snapshot_context_memory_selected_recall_summary_canary_eval_is_payload_light() {
     let snapshot = StoreSnapshot {
         sessions: vec![],
@@ -1064,6 +1157,72 @@ async fn store_context_memory_shadow_regression_dashboard_matches_snapshot_helpe
     assert!(from_store.provider_payload_light);
     assert!(from_store.provider_selected_item_count > 0);
     assert!(from_store.provider_estimated_token_count > 0);
+    assert!(from_store.operator_approval_required);
+    assert!(!from_store.production_route);
+    assert!(!from_store.production_write);
+    assert!(!from_store.graph_write);
+    assert!(!from_store.runtime_activation);
+    assert!(!from_store.prompt_assembly_change);
+    assert!(!from_store.operator_activation_allowed);
+}
+
+#[tokio::test]
+async fn store_context_memory_shadow_quality_summary_matches_snapshot_helper() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            1,
+            TranscriptEntryKind::Message,
+            "timeout surfaced during tool run",
+        ))
+        .await
+        .expect("append should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            2,
+            TranscriptEntryKind::Summary,
+            "timeout retried successfully",
+        ))
+        .await
+        .expect("append should succeed");
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout retry guidance".into()),
+        recent_window_limit: 2,
+        transcript_limit: 2,
+        memory_limit: 2,
+        allow_cross_session: false,
+    };
+
+    let snapshot = store.snapshot().expect("snapshot should load");
+    let from_store = store
+        .context_memory_shadow_quality_summary_report(request.clone())
+        .expect("shadow quality summary should succeed");
+
+    assert_eq!(
+        from_store,
+        snapshot.context_memory_shadow_quality_summary_report(&request)
+    );
+    assert!(from_store.has_shadow_quality_summary_integrity());
+    assert!(from_store.source_dashboard_pass);
+    assert_eq!(from_store.quality_signal_count, 4);
+    assert_eq!(from_store.quality_signal_pass_count, 4);
+    assert_eq!(from_store.regression_blocking_count, 0);
+    assert!(from_store.operator_summary_redacted);
+    assert!(from_store.ranked_recall_signal_pass);
+    assert!(from_store.temporal_graph_signal_pass);
+    assert!(from_store.recall_quality_signal_pass);
+    assert!(from_store.provider_boundary_signal_pass);
     assert!(from_store.operator_approval_required);
     assert!(!from_store.production_route);
     assert!(!from_store.production_write);

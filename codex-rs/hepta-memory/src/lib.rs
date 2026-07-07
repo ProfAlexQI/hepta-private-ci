@@ -73,7 +73,10 @@
 //! token-saved, latency, regret, and disabled runtime activation. The
 //! memory shadow regression dashboard then aggregates ranked recall, temporal
 //! graph, recall-quality, and provider-boundary shadow reports as a
-//! payload-light quality loop without activating a production route. The
+//! payload-light quality loop without activating a production route.
+//! shadow quality summary: operator-readable but controlled, exposing only
+//! trend enums, aggregate signal counts, threshold observations, and
+//! side-effect booleans. The
 //! selected-recall summary canary eval replay is likewise exposed as a fixed,
 //! payload-light helper so readiness gates can validate replay counts,
 //! rollback-readback coverage, proof coverage, thresholds, and disabled runtime

@@ -118,6 +118,9 @@ run_stage "context memory provider boundary gate" \
 run_stage "context memory shadow regression dashboard gate" \
   bash "$repo_root/scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh"
 
+run_stage "context memory shadow quality summary gate" \
+  bash "$repo_root/scripts/hepta-context-memory-shadow-quality-summary-gate.sh"
+
 run_stage "context plane status/export report gate" \
   bash "$repo_root/scripts/hepta-context-plane-status-report-gate.sh"
 

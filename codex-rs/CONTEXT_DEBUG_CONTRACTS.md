@@ -1176,6 +1176,44 @@ gate and preflight must run it after
 `scripts/hepta-context-memory-provider-boundary-gate.sh` and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
+Memory shadow quality summary: recall diagnostics may expose a payload-light
+shadow-only quality summary derived from the memory shadow regression
+dashboard. The Rust report is `ContextMemoryShadowQualitySummaryReport` in
+`codex-rs/hepta-core/src/memory/eval_harness/shadow_quality_summary.rs`,
+re-exported through `codex-rs/hepta-core/src/memory/eval_harness.rs` and
+`codex-rs/hepta-core/src/memory.rs`, and exposed through
+`context_memory_shadow_quality_summary_report` on both `StoreSnapshot` and
+`InMemoryStore`. The summary may contain only schema/mode, controlled trend
+and operator summary enums (`ContextMemoryShadowQualityTrend`,
+`ContextMemoryShadowQualityOperatorSummary`), source dashboard pass counts,
+`quality_signal_count`, `quality_signal_pass_count`,
+`regression_blocking_count`, `operator_summary_redacted`, per-signal pass
+booleans, selected threshold observations, and explicit side-effect booleans.
+It must not contain prompt text, query text, transcript text, memory text,
+answer text, ranked payloads, raw ranked payloads, graph payloads, raw graph
+payloads, source ids, session ids, memory ids, trace ids, tool arguments, tool
+outputs, operator identity, email-shaped strings, phone-shaped strings, or user
+identifiers. Summary integrity requires schema version 1, shadow-only mode,
+`quality_trend=stable_pass`, `operator_summary=ready_shadow_only`, four input
+reports from the source dashboard, four passing quality signals, zero
+regression blockers, `operator_summary_redacted=true`, ranked recall/temporal
+graph/recall quality/provider-boundary signal pass booleans all true, operator
+approval required, no production route, no production memory write, no graph
+write, no prompt assembly change, no runtime activation, and no operator
+activation allowance. `scripts/hepta-context-memory-shadow-quality-summary-report.sh`
+must emit `memory-shadow-quality-summary=pass`,
+`memory-shadow-quality-summary.payload-light=pass`,
+`memory-shadow-quality-summary.quality-trend=stable-pass`,
+`memory-shadow-quality-summary.operator-summary=ready-shadow-only`,
+`memory-shadow-quality-summary.regression-blocking-count=0`, and
+`memory-shadow-quality-summary.runtime-activation=disabled`.
+`scripts/hepta-context-memory-shadow-quality-summary-gate.sh` must verify the
+dashboard-derived Rust report, helper tests, release manifest, front-door
+static contract, debug/preflight wiring, and no-leak constraints. The context
+debug gate and preflight must run it after
+`scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` and before
+`scripts/hepta-context-plane-status-report-gate.sh`.
+
 Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation

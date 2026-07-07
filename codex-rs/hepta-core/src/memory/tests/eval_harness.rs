@@ -646,6 +646,133 @@ fn context_memory_shadow_regression_dashboard_blocks_input_regression_drift() {
 }
 
 #[test]
+fn context_memory_shadow_quality_summary_rolls_up_dashboard_without_activation() {
+    let ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let temporal_graph = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+    let recall_quality = ContextMemoryRecallQualityGateReport::seeded();
+    let provider = memory_provider_report_fixture();
+    let dashboard = ContextMemoryShadowRegressionDashboardReport::from_reports(
+        &ranked_recall,
+        &temporal_graph,
+        &recall_quality,
+        &provider,
+    );
+
+    let report = ContextMemoryShadowQualitySummaryReport::from_dashboard(&dashboard);
+
+    assert!(report.has_shadow_quality_summary_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_SHADOW_QUALITY_SUMMARY_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.mode,
+        ContextMemoryShadowQualitySummaryMode::ShadowOnly
+    );
+    assert_eq!(
+        report.quality_trend,
+        ContextMemoryShadowQualityTrend::StablePass
+    );
+    assert_eq!(
+        report.operator_summary,
+        ContextMemoryShadowQualityOperatorSummary::ReadyShadowOnly
+    );
+    assert!(report.source_dashboard_pass);
+    assert_eq!(report.source_input_report_count, 4);
+    assert_eq!(report.source_input_report_pass_count, 4);
+    assert_eq!(report.quality_signal_count, 4);
+    assert_eq!(report.quality_signal_pass_count, 4);
+    assert_eq!(report.regression_blocking_count, 0);
+    assert_eq!(report.operator_summary_line_count, 4);
+    assert!(report.operator_summary_redacted);
+    assert!(report.ranked_recall_signal_pass);
+    assert_eq!(report.ranked_recall_min_positive_recall_basis_points, 8000);
+    assert_eq!(
+        report.ranked_recall_min_positive_precision_basis_points,
+        8000
+    );
+    assert_eq!(report.ranked_recall_total_positive_token_saved, 2_140);
+    assert_eq!(report.ranked_recall_max_positive_latency_ms, 55);
+    assert!(report.temporal_graph_signal_pass);
+    assert_eq!(
+        report.temporal_graph_min_positive_node_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(
+        report.temporal_graph_min_positive_edge_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(report.temporal_graph_max_positive_latency_ms, 47);
+    assert!(report.recall_quality_signal_pass);
+    assert_eq!(report.recall_quality_observed_recall_basis_points, 7777);
+    assert_eq!(report.recall_quality_observed_precision_basis_points, 7777);
+    assert!(report.provider_boundary_signal_pass);
+    assert_eq!(report.provider_estimated_token_count, 320);
+    assert!(report.operator_approval_required);
+    assert!(!report.production_route);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.runtime_activation);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.operator_activation_allowed);
+
+    let json = serde_json::to_string(&report).expect("shadow quality summary should serialize");
+    assert!(json.contains("stable_pass"));
+    assert!(json.contains("ready_shadow_only"));
+    assert!(json.contains("quality_signal_count"));
+    assert!(json.contains("operator_summary_line_count"));
+    assert!(json.contains("ranked_recall_signal_pass"));
+    assert!(json.contains("temporal_graph_signal_pass"));
+    assert!(json.contains("recall_quality_signal_pass"));
+    assert!(json.contains("provider_boundary_signal_pass"));
+    assert!(!json.contains("session-"));
+    assert!(!json.contains("memory-"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("prompt_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("answer_text"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("raw_ranked_payload"));
+    assert!(!json.contains("raw_graph_payload"));
+    assert!(!json.contains("operator_identity"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
+#[test]
+fn context_memory_shadow_quality_summary_blocks_dashboard_regression_drift() {
+    let ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let temporal_graph = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+    let recall_quality = ContextMemoryRecallQualityGateReport::seeded();
+    let mut provider = memory_provider_report_fixture();
+    provider.update_context.prompt_payload_exported = true;
+    let dashboard = ContextMemoryShadowRegressionDashboardReport::from_reports(
+        &ranked_recall,
+        &temporal_graph,
+        &recall_quality,
+        &provider,
+    );
+
+    let report = ContextMemoryShadowQualitySummaryReport::from_dashboard(&dashboard);
+
+    assert!(!dashboard.has_shadow_regression_dashboard_integrity());
+    assert!(!report.source_dashboard_pass);
+    assert_eq!(
+        report.quality_trend,
+        ContextMemoryShadowQualityTrend::RegressionBlocked
+    );
+    assert_eq!(
+        report.operator_summary,
+        ContextMemoryShadowQualityOperatorSummary::BlockedRegression
+    );
+    assert!(report.regression_blocking_count > 0);
+    assert!(!report.has_shadow_quality_summary_integrity());
+}
+
+#[test]
 fn context_memory_selected_recall_summary_canary_eval_replays_without_activation() {
     let report = ContextMemorySelectedRecallSummaryCanaryEvalReport::seeded();
 
