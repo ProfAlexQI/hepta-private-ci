@@ -15,6 +15,7 @@ pub enum ContextPlaneStatusSection {
     EvalHarnessSeed,
     AdaptiveAllocatorEvalShadow,
     RecallQualityGate,
+    MemoryProviderBoundary,
     SourceAwareFrontDoor,
     #[default]
     Unknown,

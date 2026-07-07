@@ -4,6 +4,7 @@ use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WORK_GRAPH_A
 use crate::work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_CONFIG_WIRING_REPORT_ONLY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DRY_RUN_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDryRunSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_report,
 };
 use crate::work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_NON_BLOCKING_CANARY_GATE;
@@ -35,6 +36,7 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialRea
     pub source_deny_reason_count: usize,
     pub source_allow_count: usize,
     pub source_deny_count: usize,
+    pub source_required_prior_gate_count: usize,
     pub denial_readback_entry_count: usize,
     pub denial_readback_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -45,6 +47,14 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialRea
         Vec<WorkGraphFeatureFlagEnablementPreconditionDenialReadbackBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_enablement_precondition_dry_run_preconditions_complete: bool,
+    pub source_enablement_precondition_deny_only_confirmed: bool,
+    pub source_enablement_precondition_no_mutation_confirmed: bool,
+    pub source_enablement_precondition_denial_readback_ready: bool,
+    pub denial_readback_scope_non_authoritative: bool,
+    pub denial_readback_entries_non_authoritative: bool,
+    pub denial_readback_blockers_complete: bool,
+    pub denial_readback_preconditions_complete: bool,
     pub dry_run_denial_visible: bool,
     pub dry_run_denial_recorded: bool,
     pub dry_run_denial_persisted: bool,
@@ -144,6 +154,55 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
     let required_prior_gates =
         work_graph_agent_jobs_task_board_feature_flag_enablement_denial_readback_required_prior_gates(
         );
+    let source_enablement_precondition_deny_only_confirmed = source.allow_count == 0
+        && source.deny_count == source.decision_count
+        && source.dry_run_decisions_deny_complete
+        && source.deny_reasons_unsatisfied_complete;
+    let source_enablement_precondition_no_mutation_confirmed = !source.config_write_allowed
+        && !source.feature_flag_enablement_allowed
+        && !source.canary_traffic_allowed
+        && !source.live_cutover_allowed
+        && !source.approval_acceptance_allowed
+        && !source.replay_execution_allowed
+        && !source.rollback_execution_allowed
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_canary_traffic
+        && !source.ready_for_live_cutover
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDryRunSideEffects::none(
+            );
+    let source_enablement_precondition_denial_readback_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DRY_RUN_GATE
+        && source.enablement_precondition_dry_run_preconditions_complete
+        && source.ready_for_denial_readback
+        && source_enablement_precondition_deny_only_confirmed
+        && source_enablement_precondition_no_mutation_confirmed;
+    let denial_readback_scope_non_authoritative = denial_readback_scope.denial_visible
+        && !denial_readback_scope.denial_recorded
+        && !denial_readback_scope.denial_persisted
+        && !denial_readback_scope.denial_accepted
+        && !denial_readback_scope.denial_authoritative
+        && !denial_readback_scope.readback_persisted;
+    let denial_readback_entries_non_authoritative = !denial_readback_entries.is_empty()
+        && denial_readback_entries.iter().all(|entry| {
+            entry.visible
+                && entry.ready
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.accepted
+                && !entry.authoritative
+                && !entry.mutation_allowed
+        });
+    let denial_readback_blockers_complete = !denial_readback_blockers.is_empty()
+        && denial_readback_blockers
+            .iter()
+            .all(|blocker| blocker.blocked);
+    let denial_readback_preconditions_complete =
+        source_enablement_precondition_denial_readback_ready
+            && denial_readback_scope_non_authoritative
+            && denial_readback_entries_non_authoritative
+            && denial_readback_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialReadbackReport {
         product: "Hepta",
@@ -158,6 +217,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         source_deny_reason_count: source.deny_reason_count,
         source_allow_count: source.allow_count,
         source_deny_count: source.deny_count,
+        source_required_prior_gate_count: source.required_prior_gate_count,
         denial_readback_entry_count: denial_readback_entries.len(),
         denial_readback_blocker_count: denial_readback_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -167,6 +227,15 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_READBACK_RECOMMENDED_NEXT_GATE,
+        source_enablement_precondition_dry_run_preconditions_complete: source
+            .enablement_precondition_dry_run_preconditions_complete,
+        source_enablement_precondition_deny_only_confirmed,
+        source_enablement_precondition_no_mutation_confirmed,
+        source_enablement_precondition_denial_readback_ready,
+        denial_readback_scope_non_authoritative,
+        denial_readback_entries_non_authoritative,
+        denial_readback_blockers_complete,
+        denial_readback_preconditions_complete,
         dry_run_denial_visible: true,
         dry_run_denial_recorded: false,
         dry_run_denial_persisted: false,
@@ -179,7 +248,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         denial_readback_authorizes_live_cutover: false,
         approval_recorded: false,
         approval_acceptance_allowed: false,
-        ready_for_denial_audit_index: true,
+        ready_for_denial_audit_index: denial_readback_preconditions_complete,
         ready_for_feature_flag_config_write: false,
         ready_for_feature_flag_enablement: false,
         ready_for_canary_traffic: false,
@@ -389,6 +458,11 @@ mod tests {
         assert_eq!(report.source_deny_reason_count, 10);
         assert_eq!(report.source_allow_count, 0);
         assert_eq!(report.source_deny_count, 2);
+        assert_eq!(report.source_required_prior_gate_count, 9);
+        assert!(report.source_enablement_precondition_dry_run_preconditions_complete);
+        assert!(report.source_enablement_precondition_deny_only_confirmed);
+        assert!(report.source_enablement_precondition_no_mutation_confirmed);
+        assert!(report.source_enablement_precondition_denial_readback_ready);
         assert!(report.dry_run_denial_visible);
         assert!(!report.dry_run_denial_recorded);
         assert!(!report.dry_run_denial_persisted);
@@ -413,6 +487,7 @@ mod tests {
         assert!(!report.denial_readback_scope.denial_accepted);
         assert!(!report.denial_readback_scope.denial_authoritative);
         assert!(!report.denial_readback_scope.readback_persisted);
+        assert!(report.denial_readback_scope_non_authoritative);
         assert!(report.denial_readback_entries.iter().all(|entry| {
             entry.visible
                 && entry.ready
@@ -422,6 +497,7 @@ mod tests {
                 && !entry.authoritative
                 && !entry.mutation_allowed
         }));
+        assert!(report.denial_readback_entries_non_authoritative);
     }
 
     #[test]
@@ -437,6 +513,7 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.denial_readback_blockers_complete);
         assert_eq!(
             report.required_prior_gates,
             vec![
@@ -453,6 +530,7 @@ mod tests {
             ]
         );
         assert_eq!(report.required_prior_gate_count, 10);
+        assert!(report.denial_readback_preconditions_complete);
         assert!(report.ready_for_denial_audit_index);
         assert!(!report.denial_readback_authorizes_config_write);
         assert!(!report.denial_readback_authorizes_feature_flag_enablement);

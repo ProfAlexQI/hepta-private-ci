@@ -27,15 +27,20 @@ jq -e '
   and .source_guardrail_check_count == 8
   and .source_dry_run_decision_count == 4
   and .source_entrypoint_required_prior_gate_count == 4
+  and .source_entrypoint_ready == true
+  and .source_entrypoint_no_live_confirmed == true
   and .source_terminal_no_execution_final_closeout_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_terminal_no_execution_final_closeout_gate"
   and .source_terminal_no_execution_final_closeout_entry_count == 9
   and .source_terminal_no_execution_final_closeout_blocker_count == 26
   and .source_terminal_no_execution_final_closeout_required_prior_gate_count == 5
+  and .source_terminal_no_execution_final_closeout_ready == true
+  and .source_terminal_no_execution_final_closeout_no_live_confirmed == true
   and .hardened_entrypoint_count == 4
   and .hardening_check_count == 10
   and .hardening_decision_count == 4
   and .hardening_blocker_count == 23
   and .required_prior_gate_count == 11
+  and .source_prior_readbacks_complete == true
   and (.hardened_entrypoints | map(.entrypoint_id) == [
     "spawn_agent",
     "spawn_agents_on_csv",
@@ -51,6 +56,7 @@ jq -e '
     and .live_blocking_enabled == false
     and .runtime_interception_enabled == false
   ))
+  and .hardened_entrypoints_complete == true
   and (.hardening_checks | map(.id) == [
     "dependencies_readback_required",
     "lane_lease_snapshot_required",
@@ -68,6 +74,7 @@ jq -e '
     and .dry_run_only == true
     and (.hardening_requirement | length > 0)
   ))
+  and .hardening_checks_complete == true
   and (.hardening_decisions | map(.entrypoint_id) == [
     "spawn_agent",
     "spawn_agents_on_csv",
@@ -83,6 +90,7 @@ jq -e '
     and (.trace_id | length > 0)
     and (.deterministic_decision_key | length > 0)
   ))
+  and .hardening_decisions_complete == true
   and (.hardening_blockers | map(.blocked_action) == [
     "install_live_blocking_hook",
     "enable_runtime_interception",
@@ -109,6 +117,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.hardening_blockers | all(.blocked == true))
+  and .hardening_blockers_complete == true
+  and .hardening_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_terminal_no_execution_final_closeout_gate",
@@ -144,10 +154,26 @@ jq -e '
   and .source_probes.entrypoint_no_live_present == true
   and .source_probes.entrypoint_dry_run_present == true
   and .source_probes.terminal_closeout_no_live_present == true
+  and .source_probes.entrypoint_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate"
+  and .source_probes.entrypoint_pre_entrypoint_hook_contract_ready == true
+  and .source_probes.entrypoint_ready_for_shadow_readback == true
+  and .source_probes.entrypoint_no_live_confirmed == true
+  and .source_probes.entrypoint_side_effects_all_false == true
+  and .source_probes.terminal_closeout_report_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_terminal_no_execution_final_closeout_gate"
+  and .source_probes.terminal_closeout_preconditions_complete == true
+  and .source_probes.terminal_closeout_ready_for_hardening == true
+  and .source_probes.terminal_closeout_no_live_confirmed == true
+  and .source_probes.terminal_closeout_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening --lib
+for test_name in \
+  scheduler_guardrail_entrypoint_hardening_derives_from_entrypoint_and_closeout_priors \
+  scheduler_guardrail_entrypoint_hardening_covers_four_entrypoints \
+  scheduler_guardrail_entrypoint_hardening_blocks_live_paths \
+  scheduler_guardrail_entrypoint_hardening_links_priors_and_has_no_side_effects; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint hardening gate passed"

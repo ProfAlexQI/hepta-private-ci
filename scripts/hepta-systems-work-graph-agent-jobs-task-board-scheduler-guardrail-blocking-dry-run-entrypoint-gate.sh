@@ -25,13 +25,22 @@ jq -e '
   and .source_scheduler_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   and .source_scheduler_entrypoint_count == 4
   and .source_scheduler_check_count == 7
+  and .source_scheduler_admission_dry_run_ready == true
+  and .source_scheduler_admission_no_live_blocking_confirmed == true
   and .source_trace_guardrail_gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
   and .source_trace_span_count == 9
   and .source_blocking_guardrail_count == 6
+  and .source_trace_guardrail_readiness_complete == true
+  and .source_trace_guardrail_no_live_blocking_confirmed == true
   and .source_entrypoint_emission_gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
   and .source_emission_count == 2
+  and .source_entrypoint_emission_readiness_complete == true
+  and .source_entrypoint_emission_no_live_confirmed == true
   and .source_final_closeout_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout_gate"
   and .source_final_closeout_entry_count == 8
+  and .source_final_closeout_preconditions_complete == true
+  and .source_final_closeout_no_live_confirmed == true
+  and .source_final_closeout_ready == true
   and .entrypoint_binding_count == 4
   and .guardrail_check_count == 8
   and .dry_run_decision_count == 4
@@ -83,6 +92,10 @@ jq -e '
     "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
   ]
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
+  and .prior_readbacks_complete == true
+  and .entrypoint_bindings_complete == true
+  and .guardrail_checks_complete == true
+  and .dry_run_decisions_complete == true
   and .scheduler_admission_dry_run_present == true
   and .blocking_guardrail_dry_run_attached == true
   and .pre_entrypoint_hook_contract_ready == true
@@ -97,10 +110,29 @@ jq -e '
   and .source_probes.scheduler_dry_run_present == true
   and .source_probes.trace_guardrail_present == true
   and .source_probes.entrypoint_emission_present == true
+  and .source_probes.scheduler_report_gate == true
+  and .source_probes.scheduler_dry_run_ready == true
+  and .source_probes.scheduler_side_effects_all_false == true
+  and .source_probes.trace_guardrail_report_gate == true
+  and .source_probes.trace_guardrail_readiness_complete == true
+  and .source_probes.trace_guardrail_side_effects_all_false == true
+  and .source_probes.entrypoint_emission_report_gate == true
+  and .source_probes.entrypoint_emission_readiness_complete == true
+  and .source_probes.entrypoint_emission_side_effects_all_false == true
+  and .source_probes.final_closeout_report_gate == true
+  and .source_probes.final_closeout_preconditions_complete == true
+  and .source_probes.final_closeout_ready_for_scheduler == true
+  and .source_probes.final_closeout_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
 cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint --lib
+  scheduler_guardrail_blocking_dry_run_derives_from_existing_priors --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  scheduler_guardrail_blocking_dry_run_covers_requested_entrypoints --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  scheduler_guardrail_blocking_dry_run_keeps_runtime_non_mutating --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  scheduler_guardrail_blocking_dry_run_has_no_side_effects --lib
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint gate passed"

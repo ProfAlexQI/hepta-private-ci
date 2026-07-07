@@ -27,6 +27,10 @@ jq -e '
   and .source_request_blocker_count == 17
   and .source_request_precondition_check_count == 12
   and .source_required_prior_gate_count == 17
+  and .source_request_blocker_matrix_preconditions_complete == true
+  and .source_request_blocker_matrix_no_request_confirmed == true
+  and .source_request_blocker_matrix_no_authorization_confirmed == true
+  and .source_request_blocker_matrix_ready == true
   and .request_denial_readback_entry_count == 5
   and .request_denial_readback_blocker_count == 18
   and .required_prior_gate_count == 18
@@ -38,6 +42,7 @@ jq -e '
   and .request_denial_readback_scope.denial_accepted == false
   and .request_denial_readback_scope.denial_authoritative == false
   and .request_denial_readback_scope.readback_persisted == false
+  and .request_denial_readback_scope_complete == true
   and (.request_denial_readback_entries | map(.id) == [
     "operator_review_request_denial_decision_readback",
     "operator_review_request_precondition_check_catalog_readback",
@@ -54,6 +59,7 @@ jq -e '
     and .authoritative == false
     and .mutation_allowed == false
   ))
+  and .request_denial_readback_entries_visible_only_complete == true
   and (.request_denial_readback_blockers | map(.blocked_action) == [
     "accept_operator_review_request_denial_readback",
     "persist_operator_review_request_denial_readback",
@@ -75,6 +81,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.request_denial_readback_blockers | all(.blocked == true))
+  and .request_denial_readback_blockers_complete == true
+  and .request_denial_readback_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix_gate",
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback_gate",
@@ -125,6 +133,10 @@ jq -e '
   and .source_probes.request_blocker_matrix_points_here == true
   and .source_probes.request_blocker_matrix_denies_present == true
   and .source_probes.request_blocker_matrix_ready_present == true
+  and .source_probes.request_blocker_matrix_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix_gate"
+  and .source_probes.request_blocker_matrix_preconditions_complete == true
+  and .source_probes.request_blocker_matrix_ready_for_denial_readback == true
+  and .source_probes.request_blocker_matrix_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

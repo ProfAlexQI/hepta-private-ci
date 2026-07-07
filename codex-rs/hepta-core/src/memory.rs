@@ -41,6 +41,7 @@ pub use context_plane::ContextPlaneOperatorApprovalThresholdSnapshot;
 pub use context_plane::ContextPlaneStatusEntry;
 pub use context_plane::ContextPlaneStatusKind;
 pub use context_plane::ContextPlaneStatusReport;
+pub use context_plane::ContextPlaneStatusReportInput;
 pub use context_plane::ContextPlaneStatusSection;
 #[cfg(test)]
 use context_plane::required_operator_approval_scopes;
@@ -166,8 +167,8 @@ pub const CONTEXT_MEMORY_SELECTED_RECALL_SUMMARY_CANARY_EVAL_SCHEMA_VERSION: u32
 pub const CONTEXT_MEMORY_RECALL_QUALITY_GATE_SCHEMA_VERSION: u32 = 2;
 pub const CONTEXT_MEMORY_FORMATION_QUEUE_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_FACT_GRAPH_SCHEMA_VERSION: u32 = 1;
-pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 1;
-pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 1;
+pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 2;
+pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 2;
 pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 1;
 
 /// Declares whether a memory record belongs to a single session or to a wider

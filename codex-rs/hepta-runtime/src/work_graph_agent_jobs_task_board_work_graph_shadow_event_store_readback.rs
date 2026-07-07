@@ -1,10 +1,13 @@
 use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE;
+use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WorkGraphAgentJobsTaskBoardCanaryReadbackReplaySideEffects;
 use crate::work_graph_agent_jobs_task_board_canary_readback_replay::hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report;
 use crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_GATE;
+use crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint::WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointSideEffects;
 use crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint::hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_report;
 use crate::work_graph_append_only_event_store_shadow_path::WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE;
+use crate::work_graph_append_only_event_store_shadow_path::WorkGraphAppendOnlyEventStoreShadowPathSideEffects;
 use crate::work_graph_append_only_event_store_shadow_path::hepta_work_graph_append_only_event_store_shadow_path_report;
 
 pub const WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_GATE: &str =
@@ -25,16 +28,22 @@ pub struct WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReadbackReport {
     pub source_scheduler_guardrail_gate: &'static str,
     pub source_entrypoint_binding_count: usize,
     pub source_dry_run_decision_count: usize,
+    pub source_scheduler_guardrail_ready: bool,
+    pub source_scheduler_guardrail_no_live_confirmed: bool,
     pub source_shadow_path_gate: &'static str,
     pub source_shadow_event_record_count: usize,
     pub source_projection_index_count: usize,
     pub source_readback_evidence_count: usize,
     pub source_replay_diff_count: usize,
+    pub source_shadow_path_readiness_complete: bool,
+    pub source_shadow_path_no_persistence_confirmed: bool,
     pub source_canary_readback_replay_gate: &'static str,
     pub source_canary_entrypoint_count: usize,
     pub source_canary_projection_index_count: usize,
     pub source_canary_readback_evidence_count: usize,
     pub source_canary_replay_diff_count: usize,
+    pub source_canary_readback_replay_ready: bool,
+    pub source_canary_readback_replay_no_live_confirmed: bool,
     pub readback_entry_count: usize,
     pub shadow_event_join_count: usize,
     pub non_persistence_blocker_count: usize,
@@ -44,6 +53,10 @@ pub struct WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReadbackReport {
     pub non_persistence_blockers: Vec<WorkGraphShadowEventStoreReadbackBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_prior_readbacks_complete: bool,
+    pub readback_entries_visible_only_complete: bool,
+    pub shadow_event_joins_report_only_complete: bool,
+    pub non_persistence_blockers_complete: bool,
     pub shadow_event_store_readback_ready: bool,
     pub entrypoint_shadow_event_join_ready: bool,
     pub redacted_payload_hash_join_ready: bool,
@@ -141,11 +154,144 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_read
     let required_prior_gates =
         work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_required_prior_gates(
         );
+    let source_scheduler_guardrail_no_live_confirmed = !scheduler_guardrail
+        .live_blocking_enforcement_enabled
+        && !scheduler_guardrail.runtime_interception_enabled
+        && !scheduler_guardrail.work_graph_event_persistence_enabled
+        && !scheduler_guardrail.ready_for_live_execution
+        && scheduler_guardrail.side_effects
+            == WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointSideEffects::none();
+    let source_scheduler_guardrail_ready = scheduler_guardrail.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_GATE
+        && scheduler_guardrail.prior_readbacks_complete
+        && scheduler_guardrail.pre_entrypoint_hook_contract_ready
+        && scheduler_guardrail.ready_for_work_graph_shadow_event_store_readback
+        && scheduler_guardrail.entrypoint_binding_count == 4
+        && scheduler_guardrail.dry_run_decision_count == 4
+        && source_scheduler_guardrail_no_live_confirmed;
+    let source_shadow_path_no_persistence_confirmed = !shadow_path.shadow_store_write_enabled
+        && !shadow_path.live_cutover_enabled
+        && !shadow_path.ready_for_live_execution
+        && shadow_path
+            .event_records
+            .iter()
+            .all(|event| !event.shadow_persisted && !event.live_cutover_enabled)
+        && shadow_path
+            .projection_indexes
+            .iter()
+            .all(|index| !index.index_persisted)
+        && shadow_path
+            .readback_evidence
+            .iter()
+            .all(|evidence| !evidence.readback_executed)
+        && shadow_path
+            .replay_diffs
+            .iter()
+            .all(|diff| !diff.replay_executed && !diff.diff_persisted)
+        && shadow_path.side_effects == WorkGraphAppendOnlyEventStoreShadowPathSideEffects::none();
+    let source_shadow_path_readiness_complete = shadow_path.gate
+        == WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        && shadow_path.append_only_shadow_path_readiness_complete
+        && shadow_path.redacted_payload_policy_ready
+        && shadow_path.deterministic_event_ids_ready
+        && shadow_path.projection_index_ready
+        && shadow_path.readback_evidence_ready
+        && shadow_path.replay_diff_ready
+        && shadow_path.event_record_count == 8
+        && shadow_path.projection_index_count == 5
+        && shadow_path.readback_evidence_count == 5
+        && shadow_path.replay_diff_count == 4
+        && source_shadow_path_no_persistence_confirmed;
+    let source_canary_readback_replay_no_live_confirmed = !canary_readback.feature_flag_enabled
+        && !canary_readback.ready_for_live_cutover
+        && canary_readback.canary_entrypoints.iter().all(|entrypoint| {
+            !entrypoint.live_blocking_enabled && !entrypoint.live_persistence_enabled
+        })
+        && canary_readback
+            .projection_indexes
+            .iter()
+            .all(|index| !index.persisted)
+        && canary_readback
+            .readback_evidence
+            .iter()
+            .all(|evidence| !evidence.evidence_persisted)
+        && canary_readback
+            .replay_diffs
+            .iter()
+            .all(|diff| !diff.replay_executed)
+        && canary_readback.side_effects
+            == WorkGraphAgentJobsTaskBoardCanaryReadbackReplaySideEffects::none();
+    let source_canary_readback_replay_ready = canary_readback.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE
+        && canary_readback.canary_readback_replay_prior_readbacks_complete
+        && canary_readback.canary_projection_readback_replay_preview_complete
+        && canary_readback.ready_for_non_blocking_canary
+        && canary_readback.canary_entrypoint_count == 2
+        && canary_readback.projection_indexes.len() == 2
+        && canary_readback.readback_evidence_count == 2
+        && canary_readback.replay_diff_count == 2
+        && source_canary_readback_replay_no_live_confirmed;
+    let source_prior_readbacks_complete = source_scheduler_guardrail_ready
+        && source_shadow_path_readiness_complete
+        && source_canary_readback_replay_ready;
+    let readback_entries_visible_only_complete = readback_entries.len() == 6
+        && readback_entries.iter().all(|entry| {
+            entry.visible
+                && !entry.executed
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.authoritative
+                && !entry.required_fields.is_empty()
+        });
+    let shadow_event_joins_report_only_complete = shadow_event_joins.len() == 4
+        && shadow_event_joins.iter().all(|join| {
+            join.joined
+                && !join.persisted
+                && !join.live_enforced
+                && join.dry_run_trace_id.starts_with("trace-blocking-dry-run-")
+                && join.shadow_event_ref.starts_with("wg-event-shadow-")
+                && join.scheduler_event_ref == "wg-event-shadow-scheduler-admission-001"
+        });
+    let non_persistence_blockers_complete = non_persistence_blockers.len() == 14
+        && non_persistence_blockers
+            .iter()
+            .all(|blocker| blocker.required_before_enablement);
+    let entrypoint_shadow_event_join_ready =
+        source_scheduler_guardrail_ready && shadow_event_joins_report_only_complete;
+    let redacted_payload_hash_join_ready = source_shadow_path_readiness_complete
+        && readback_entries
+            .iter()
+            .any(|entry| entry.id == "redacted_payload_hash_shadow_readback");
+    let projection_index_readback_ready = source_shadow_path_readiness_complete
+        && readback_entries
+            .iter()
+            .any(|entry| entry.id == "projection_index_shadow_readback");
+    let canary_readback_join_ready = source_canary_readback_replay_ready
+        && readback_entries
+            .iter()
+            .any(|entry| entry.id == "canary_report_only_shadow_readback");
+    let replay_diff_readback_ready = source_shadow_path_readiness_complete
+        && readback_entries
+            .iter()
+            .any(|entry| entry.id == "replay_diff_preview_shadow_readback");
+    let shadow_event_store_readback_ready = source_prior_readbacks_complete
+        && readback_entries_visible_only_complete
+        && shadow_event_joins_report_only_complete
+        && non_persistence_blockers_complete
+        && entrypoint_shadow_event_join_ready
+        && redacted_payload_hash_join_ready
+        && projection_index_readback_ready
+        && canary_readback_join_ready
+        && replay_diff_readback_ready;
 
     WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReadbackReport {
         product: "Hepta",
         runtime: "hepta",
-        status: "ready",
+        status: if shadow_event_store_readback_ready {
+            "ready"
+        } else {
+            "blocked"
+        },
         gate: WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_GATE,
         schema_version:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_SCHEMA_VERSION,
@@ -153,16 +299,22 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_read
         source_scheduler_guardrail_gate: scheduler_guardrail.gate,
         source_entrypoint_binding_count: scheduler_guardrail.entrypoint_binding_count,
         source_dry_run_decision_count: scheduler_guardrail.dry_run_decision_count,
+        source_scheduler_guardrail_ready,
+        source_scheduler_guardrail_no_live_confirmed,
         source_shadow_path_gate: shadow_path.gate,
         source_shadow_event_record_count: shadow_path.event_record_count,
         source_projection_index_count: shadow_path.projection_index_count,
         source_readback_evidence_count: shadow_path.readback_evidence_count,
         source_replay_diff_count: shadow_path.replay_diff_count,
+        source_shadow_path_readiness_complete,
+        source_shadow_path_no_persistence_confirmed,
         source_canary_readback_replay_gate: canary_readback.gate,
         source_canary_entrypoint_count: canary_readback.canary_entrypoint_count,
         source_canary_projection_index_count: canary_readback.projection_indexes.len(),
         source_canary_readback_evidence_count: canary_readback.readback_evidence_count,
         source_canary_replay_diff_count: canary_readback.replay_diff_count,
+        source_canary_readback_replay_ready,
+        source_canary_readback_replay_no_live_confirmed,
         readback_entry_count: readback_entries.len(),
         shadow_event_join_count: shadow_event_joins.len(),
         non_persistence_blocker_count: non_persistence_blockers.len(),
@@ -173,18 +325,22 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_read
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_RECOMMENDED_NEXT_GATE,
-        shadow_event_store_readback_ready: true,
-        entrypoint_shadow_event_join_ready: true,
-        redacted_payload_hash_join_ready: true,
-        projection_index_readback_ready: true,
-        canary_readback_join_ready: true,
-        replay_diff_readback_ready: true,
+        source_prior_readbacks_complete,
+        readback_entries_visible_only_complete,
+        shadow_event_joins_report_only_complete,
+        non_persistence_blockers_complete,
+        shadow_event_store_readback_ready,
+        entrypoint_shadow_event_join_ready,
+        redacted_payload_hash_join_ready,
+        projection_index_readback_ready,
+        canary_readback_join_ready,
+        replay_diff_readback_ready,
         shadow_readback_executed: false,
         shadow_event_persistence_enabled: false,
         projection_index_persistence_enabled: false,
         scheduler_guardrail_live_enforcement_enabled: false,
         runtime_interception_enabled: false,
-        ready_for_replay_diff_dry_run: true,
+        ready_for_replay_diff_dry_run: shadow_event_store_readback_ready,
         ready_for_live_execution: false,
         side_effects:
             WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReadbackSideEffects::none(),
@@ -453,8 +609,22 @@ mod tests {
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE
         );
         assert_eq!(report.source_entrypoint_binding_count, 4);
+        assert_eq!(report.source_dry_run_decision_count, 4);
+        assert!(report.source_scheduler_guardrail_ready);
+        assert!(report.source_scheduler_guardrail_no_live_confirmed);
         assert_eq!(report.source_shadow_event_record_count, 8);
+        assert_eq!(report.source_projection_index_count, 5);
+        assert_eq!(report.source_readback_evidence_count, 5);
+        assert_eq!(report.source_replay_diff_count, 4);
+        assert!(report.source_shadow_path_readiness_complete);
+        assert!(report.source_shadow_path_no_persistence_confirmed);
         assert_eq!(report.source_canary_entrypoint_count, 2);
+        assert_eq!(report.source_canary_projection_index_count, 2);
+        assert_eq!(report.source_canary_readback_evidence_count, 2);
+        assert_eq!(report.source_canary_replay_diff_count, 2);
+        assert!(report.source_canary_readback_replay_ready);
+        assert!(report.source_canary_readback_replay_no_live_confirmed);
+        assert!(report.source_prior_readbacks_complete);
     }
 
     #[test]
@@ -484,6 +654,7 @@ mod tests {
                 && join.dry_run_trace_id.starts_with("trace-blocking-dry-run-")
                 && join.shadow_event_ref.starts_with("wg-event-shadow-")
         }));
+        assert!(report.shadow_event_joins_report_only_complete);
     }
 
     #[test]
@@ -493,6 +664,8 @@ mod tests {
 
         assert_eq!(report.readback_entry_count, 6);
         assert_eq!(report.non_persistence_blocker_count, 14);
+        assert!(report.readback_entries_visible_only_complete);
+        assert!(report.non_persistence_blockers_complete);
         assert!(report.shadow_event_store_readback_ready);
         assert!(report.ready_for_replay_diff_dry_run);
         assert!(!report.shadow_readback_executed);

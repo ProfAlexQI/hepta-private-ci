@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+KILL_SWITCH_BOUNDARY_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_evidence_receipt_store_preflight_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_PREFLIGHT_READBACK_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-preflight-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$KILL_SWITCH_BOUNDARY_REPORT" ]] || fail "missing executable kill-switch rehearsal boundary report: $KILL_SWITCH_BOUNDARY_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing controlled-live evidence receipt store preflight Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the controlled-live evidence receipt store preflight readback report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_evidence_receipt_store_preflight_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+kill_switch_json="${HEPTA_CONTROLLED_LIVE_KILL_SWITCH_BOUNDARY_JSON:-}"
+if [[ -n "$kill_switch_json" ]]; then
+  [[ -f "$kill_switch_json" ]] || fail "missing cached kill-switch rehearsal boundary report: $kill_switch_json"
+else
+  kill_switch_json="$tmpdir/kill-switch.json"
+  "$KILL_SWITCH_BOUNDARY_REPORT" >"$kill_switch_json" || fail "failed to render kill-switch rehearsal boundary report"
+fi
+
+jq -n \
+  --slurpfile kill "$kill_switch_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-evidence-receipt-store-preflight-readback-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_PREFLIGHT_READBACK_2026-07-07.md" \
+  --arg store_root ".hepta/controlled-live/evidence-receipts/status-canary" \
+  --arg receipt_schema_version "controlled_live_evidence_receipt_v1" \
+  --arg redaction_policy "metadata_only_no_secret_payload" \
+  '
+  def hyphen_id($id):
+    $id | gsub("_"; "-");
+  def receipt_path($id):
+    $store_root + "/" + hyphen_id($id) + ".receipt.json";
+  def receipt_id($id):
+    "controlled-live-evidence-receipt-preflight:" + $id + ":missing";
+  def idempotency_key($id):
+    "controlled-live-evidence-receipt-preflight:idempotency:" + $id + ":controlled-live-operator-packet-preview-no-live-payload";
+  def readback_query_key($id):
+    "controlled_live.evidence_receipt_store.preflight." + $id;
+  def readback_query_route($id):
+    "readback://controlled-live/evidence-receipt-store/preflight/" + hyphen_id($id);
+  ($kill[0]) as $kill |
+  ($kill.entries | map({
+    id:("evidence_receipt_store_preflight_" + .source_blocker_id),
+    source_blocker_id,
+    packet_id,
+    packet_payload_hash,
+    attachment_key,
+    attachment_route,
+    kill_switch_rehearsal_boundary_key,
+    kill_switch_rehearsal_boundary_route,
+    store_root:$store_root,
+    receipt_path:receipt_path(.source_blocker_id),
+    receipt_id:receipt_id(.source_blocker_id),
+    receipt_schema_version:$receipt_schema_version,
+    receipt_status:"projected_missing_evidence_no_write",
+    idempotency_key:idempotency_key(.source_blocker_id),
+    readback_query_key:readback_query_key(.source_blocker_id),
+    readback_query_route:readback_query_route(.source_blocker_id),
+    operator_display_order,
+    operator_status,
+    observed_state:"receipt_store_preflight_projected_no_write",
+    previous_state,
+    current_state,
+    state_delta,
+    owner,
+    risk_bucket,
+    operator_label,
+    required_evidence,
+    redaction_policy:$redaction_policy,
+    secret_payload_state:"denied",
+    path_allowlist_state:"projected",
+    append_only_contract:"projected_append_only_metadata_receipt",
+    retention_policy:"projected_local_receipt_metadata_only",
+    replay_guard_state:"projected_no_replay_execution",
+    kill_switch_rehearsal_boundary_confirmed:true,
+    missing_evidence_confirmed:true,
+    path_allowlist_projected:true,
+    receipt_schema_projected:true,
+    redaction_policy_projected:true,
+    secret_payload_denied:true,
+    idempotency_key_projected:true,
+    append_only_contract_projected:true,
+    retention_policy_projected:true,
+    readback_query_projected:true,
+    replay_guard_projected:true,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_recorded:false,
+    blocker_waiver_allowed:false,
+    receipt_persistence_allowed:false,
+    receipt_persisted:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    credential_read_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  ($entries | map(select(.kill_switch_rehearsal_boundary_confirmed == true
+    and .missing_evidence_confirmed == true
+    and .path_allowlist_projected == true
+    and .receipt_schema_projected == true
+    and .redaction_policy_projected == true
+    and .secret_payload_denied == true
+    and .idempotency_key_projected == true
+    and .append_only_contract_projected == true
+    and .retention_policy_projected == true
+    and .readback_query_projected == true
+    and .replay_guard_projected == true
+    and .receipt_store_write_allowed == false
+    and .receipt_store_written == false
+    and .receipt_persistence_allowed == false
+    and .receipt_persisted == false
+    and .ledger_write_allowed == false
+    and .workflow_event_log_write_allowed == false
+    and .sqlite_write_allowed == false
+    and .live_mutation_allowed == false)) | length) as $store_preflight_ready_count |
+  ($entries | map(select(.current_state == "missing" and .missing_evidence_confirmed == true)) | length) as $missing_evidence_entry_count |
+  ($entries | map(select(.path_allowlist_projected == true)) | length) as $path_allowlist_projected_count |
+  ($entries | map(select(.receipt_schema_projected == true)) | length) as $receipt_schema_projected_count |
+  ($entries | map(select(.redaction_policy_projected == true)) | length) as $redaction_policy_projected_count |
+  ($entries | map(select(.secret_payload_denied == true)) | length) as $secret_payload_denial_projected_count |
+  ($entries | map(select(.idempotency_key_projected == true)) | length) as $idempotency_key_projected_count |
+  ($entries | map(select(.append_only_contract_projected == true)) | length) as $append_only_contract_projected_count |
+  ($entries | map(select(.retention_policy_projected == true)) | length) as $retention_policy_projected_count |
+  ($entries | map(select(.readback_query_projected == true)) | length) as $readback_query_projected_count |
+  ($entries | map(select(.replay_guard_projected == true)) | length) as $replay_guard_projected_count |
+  ($entries | map(select(.evidence_recorded == true)) | length) as $evidence_recorded_count |
+  ($entries | map(select(.blocker_waiver_allowed == true)) | length) as $blocker_waived_count |
+  ($kill.kill_switch_rehearsal_boundary_readback_ready == true
+    and $kill.kill_switch_rehearsal_boundary_entry_count == 7
+    and $kill.kill_switch_rehearsal_boundary_ready_count == 7
+    and $kill.kill_switch_rehearsal_evidence_missing_count == 7
+    and $kill.kill_switch_rehearsal_receipt_persistence_blocked_count == 7
+    and $kill.packet_send_attempted == false
+    and $kill.attachment_send_attempted == false
+    and $kill.approval_request_sent == false
+    and $kill.approval_accepted == false
+    and $kill.credential_read_allowed == false
+    and $kill.kill_switch_rehearsal_allowed == false
+    and $kill.kill_switch_mutation_allowed == false
+    and $kill.evidence_recording_allowed == false
+    and $kill.evidence_persisted == false
+    and $kill.packet_persisted == false
+    and $kill.attachment_persisted == false
+    and $kill.readback_persisted == false
+    and $kill.live_execution_allowed == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $store_preflight_ready_count == 7
+    and $missing_evidence_entry_count == 7
+    and $path_allowlist_projected_count == 7
+    and $receipt_schema_projected_count == 7
+    and $redaction_policy_projected_count == 7
+    and $secret_payload_denial_projected_count == 7
+    and $idempotency_key_projected_count == 7
+    and $append_only_contract_projected_count == 7
+    and $retention_policy_projected_count == 7
+    and $readback_query_projected_count == 7
+    and $replay_guard_projected_count == 7
+    and $evidence_recorded_count == 0
+    and $blocker_waived_count == 0
+    and ($entries | all(.packet_id == "controlled-live-operator-packet-preview"
+      and .packet_payload_hash == "sha256:controlled-live-operator-packet-preview-no-live-payload"
+      and .receipt_schema_version == $receipt_schema_version
+      and .redaction_policy == $redaction_policy
+      and .secret_payload_state == "denied"
+      and .receipt_status == "projected_missing_evidence_no_write"
+      and .observed_state == "receipt_store_preflight_projected_no_write"
+      and .previous_state == "missing"
+      and .current_state == "missing"
+      and .state_delta == "unchanged_missing"
+      and .approval_request_allowed == false
+      and .approval_acceptance_allowed == false
+      and .evidence_recording_allowed == false
+      and .receipt_persistence_allowed == false
+      and .receipt_persisted == false
+      and .receipt_store_write_allowed == false
+      and .receipt_store_written == false
+      and .ledger_write_allowed == false
+      and .workflow_event_log_write_allowed == false
+      and .sqlite_write_allowed == false
+      and .credential_read_allowed == false
+      and .live_mutation_allowed == false))) as $receipt_store_preflight_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_evidence_receipt_store_preflight_readback",
+    status:(if $receipt_store_preflight_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_evidence_receipt_store_preflight_readback_gate",
+    schema_version:"controlled_live_evidence_receipt_store_preflight_readback_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_kill_switch_rehearsal_boundary_readback_ready:$kill.kill_switch_rehearsal_boundary_readback_ready,
+    source_kill_switch_rehearsal_boundary_entry_count:$kill.kill_switch_rehearsal_boundary_entry_count,
+    source_kill_switch_rehearsal_evidence_missing_count:$kill.kill_switch_rehearsal_evidence_missing_count,
+    source_packet_id:($entries[0].packet_id),
+    source_packet_payload_hash:($entries[0].packet_payload_hash),
+    store_root:$store_root,
+    lib_export_present:$lib_export_present,
+    store_preflight_entry_count:($entries | length),
+    store_preflight_ready_count:$store_preflight_ready_count,
+    missing_evidence_entry_count:$missing_evidence_entry_count,
+    path_allowlist_projected_count:$path_allowlist_projected_count,
+    receipt_schema_projected_count:$receipt_schema_projected_count,
+    redaction_policy_projected_count:$redaction_policy_projected_count,
+    secret_payload_denial_projected_count:$secret_payload_denial_projected_count,
+    idempotency_key_projected_count:$idempotency_key_projected_count,
+    append_only_contract_projected_count:$append_only_contract_projected_count,
+    retention_policy_projected_count:$retention_policy_projected_count,
+    readback_query_projected_count:$readback_query_projected_count,
+    replay_guard_projected_count:$replay_guard_projected_count,
+    evidence_recorded_count:$evidence_recorded_count,
+    blocker_waived_count:$blocker_waived_count,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_persisted:false,
+    receipt_persistence_allowed:false,
+    receipt_persisted:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    credential_read_allowed:false,
+    live_execution_allowed:false,
+    receipt_store_preflight_ready:$receipt_store_preflight_ready,
+    blockers:[
+      "evidence_missing",
+      "store_write_disabled",
+      "receipt_persistence_disabled",
+      "approval_request_disabled",
+      "approval_acceptance_disabled",
+      "ledger_write_disabled",
+      "workflow_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    entries:$entries,
+    next_actions:[
+      "controlled_live_evidence_receipt_store_shadow_write_rehearsal_without_persistence",
+      "keep_receipt_store_as_metadata_only_preflight_until_operator_evidence_is_recorded"
+    ],
+    next_migration_step:"controlled_live_evidence_receipt_store_shadow_write_rehearsal_without_persistence",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      receipt_persisted:false,
+      receipt_store_written:false,
+      blocker_waived:false,
+      credential_read:false,
+      packet_sent:false,
+      attachment_sent:false,
+      packet_persisted:false,
+      attachment_persisted:false,
+      readback_persisted:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      kill_switch_rehearsal_executed:false,
+      kill_switch_mutated:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

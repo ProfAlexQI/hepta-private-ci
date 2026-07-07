@@ -26,6 +26,16 @@ jq -e '
   and .rollout_stage_count == 1
   and .emission_binding_count == 2
   and .safety_check_count == 4
+  and .source_canary_readback_replay_required_prior_gate_count == 4
+  and .source_canary_readback_replay_entrypoint_count == 2
+  and .source_canary_readback_replay_readback_evidence_count == 2
+  and .source_canary_readback_replay_replay_diff_count == 2
+  and .source_entrypoint_emission_entrypoint_count == 2
+  and .source_entrypoint_emission_emission_count == 2
+  and .source_trace_guardrail_span_count == 9
+  and .source_trace_guardrail_blocking_guardrail_count == 6
+  and .source_scheduler_admission_entrypoint_count == 4
+  and .source_scheduler_admission_required_prior_gate_count == 5
   and (.feature_flags | map(.id) == [
     "work_graph_agent_jobs_non_blocking_canary",
     "work_graph_task_board_non_blocking_canary"
@@ -66,13 +76,43 @@ jq -e '
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ]
   and .required_prior_gate_count == 4
+  and .source_canary_readback_replay_gate == "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
+  and .source_entrypoint_emission_gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+  and .source_trace_guardrail_gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
+  and .source_scheduler_admission_dry_run_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only_gate"
+  and .source_canary_readback_replay_ready == true
+  and .source_canary_readback_replay_no_live_confirmed == true
+  and .source_entrypoint_emission_readiness_complete == true
+  and .source_entrypoint_emission_no_live_confirmed == true
+  and .source_trace_guardrail_readiness_complete == true
+  and .source_trace_guardrail_no_live_blocking_confirmed == true
+  and .source_scheduler_admission_dry_run_ready == true
+  and .source_scheduler_admission_no_live_blocking_confirmed == true
+  and .feature_flag_prior_readbacks_complete == true
+  and .feature_flags_default_off_confirmed == true
+  and .canary_traffic_zero_ppm_confirmed == true
+  and .feature_flag_enablement_preconditions_report_only_complete == true
   and .ready_for_feature_flag_config_wiring == true
   and .ready_for_feature_flag_enablement == false
   and .ready_for_live_cutover == false
   and .source_probes.feature_flag_module_present == true
   and .source_probes.canary_readback_gate_present == true
   and .source_probes.entrypoint_emission_gate_present == true
+  and .source_probes.canary_readback_replay_report_gate == "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
+  and .source_probes.canary_readback_replay_ready_for_non_blocking_canary == true
+  and .source_probes.canary_readback_replay_ready_for_live_cutover == false
+  and .source_probes.canary_readback_replay_feature_flag_enabled == false
+  and .source_probes.canary_readback_replay_side_effects_all_false == true
+  and .source_probes.entrypoint_emission_report_gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+  and .source_probes.entrypoint_emission_readiness_complete == true
+  and .source_probes.entrypoint_emission_side_effects_all_false == true
+  and .source_probes.trace_guardrail_report_gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
+  and .source_probes.trace_guardrail_prior_readbacks_complete == true
+  and .source_probes.trace_guardrail_side_effects_all_false == true
+  and .source_probes.scheduler_admission_dry_run_report_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+  and .source_probes.scheduler_admission_dry_run_ready == true
+  and .source_probes.scheduler_admission_dry_run_side_effects_all_false == true
   and .source_probes.agent_jobs_feature_flag_field_present == true
   and .source_probes.agent_jobs_feature_flag_id_present == true
   and .source_probes.task_board_feature_flag_field_present == true

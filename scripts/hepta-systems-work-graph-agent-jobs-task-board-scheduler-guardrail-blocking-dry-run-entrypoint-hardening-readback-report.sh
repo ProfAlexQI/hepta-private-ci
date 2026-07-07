@@ -4,56 +4,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-path_exists() {
-  local path="$1"
-  [[ -e "$path" ]]
-}
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 
-source_has() {
-  local pattern="$1"
-  local path="$2"
-  rg -q "$pattern" "$path"
-}
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_HARDENING_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_HARDENING_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_HARDENING_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
 
-bool_for() {
-  if "$@"; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-}
-
-readback_module_present="$(
-  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback.rs
-)"
-hardening_gate_present="$(
-  bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-gate.sh
-)"
-hardening_points_here="$(
-  bool_for source_has \
-    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_gate" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening.rs
-)"
-hardening_no_live_present="$(
-  bool_for source_has "ready_for_live_execution: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening.rs
-)"
-hardening_no_interception_present="$(
-  bool_for source_has "runtime_interception_enabled: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening.rs
-)"
-hardening_no_persistence_present="$(
-  bool_for source_has "work_graph_event_persistence_enabled: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening.rs
+hardening_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-report.sh"
 )"
 
 jq -n \
-  --argjson readback_module_present "$readback_module_present" \
-  --argjson hardening_gate_present "$hardening_gate_present" \
-  --argjson hardening_points_here "$hardening_points_here" \
-  --argjson hardening_no_live_present "$hardening_no_live_present" \
-  --argjson hardening_no_interception_present "$hardening_no_interception_present" \
-  --argjson hardening_no_persistence_present "$hardening_no_persistence_present" \
+  --argjson hardening_report "$hardening_report" \
   '
   def rb_entry($id; $key; $target; $state): {
     id: $id,
@@ -157,6 +125,74 @@ jq -n \
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   ] as $required_prior_gates
+  | ($hardening_report.hardening_preconditions_complete == true
+      and $hardening_report.ready_for_hardening_readback == true
+      and $hardening_report.live_blocking_enforcement_enabled == false
+      and $hardening_report.runtime_interception_enabled == false
+      and $hardening_report.scheduler_admission_enforced == false
+      and $hardening_report.guardrail_enforcement_enabled == false
+      and $hardening_report.work_graph_event_persistence_enabled == false
+      and $hardening_report.ready_for_live_execution == false
+      and ($hardening_report.side_effects | to_entries | all(.value == false))) as $source_hardening_no_live_confirmed
+  | ($hardening_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_gate"
+      and $hardening_report.source_prior_readbacks_complete == true
+      and $hardening_report.hardened_entrypoints_complete == true
+      and $hardening_report.hardening_checks_complete == true
+      and $hardening_report.hardening_decisions_complete == true
+      and $hardening_report.hardening_blockers_complete == true
+      and $hardening_report.hardening_preconditions_complete == true
+      and $hardening_report.hardened_entrypoint_count == 4
+      and $hardening_report.hardening_check_count == 10
+      and $hardening_report.hardening_decision_count == 4
+      and $hardening_report.hardening_blocker_count == 23
+      and $hardening_report.required_prior_gate_count == 11
+      and $source_hardening_no_live_confirmed) as $source_hardening_ready
+  | ($source_hardening_ready
+      and $hardening_report.ready_for_hardening_readback == true) as $source_hardening_ready_for_readback
+  | ($source_hardening_ready
+      and $hardening_report.hardened_entrypoints_complete == true) as $hardening_contract_visible
+  | ($source_hardening_ready
+      and $hardening_report.hardening_decisions_complete == true) as $hardening_decisions_visible
+  | ($source_hardening_ready
+      and $hardening_report.hardening_checks_complete == true) as $hardening_checks_visible
+  | ($source_hardening_ready
+      and $hardening_report.hardening_blockers_complete == true) as $hardening_blockers_visible
+  | ($readback_scope.visible == true
+      and $readback_scope.recorded == false
+      and $readback_scope.persisted == false
+      and $readback_scope.authoritative == false
+      and $readback_scope.accepted == false
+      and $readback_scope.mutation_allowed == false) as $readback_scope_visible_only_complete
+  | (($readback_entries | length) == 7
+      and ($readback_entries | all(
+        .visible == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .accepted == false
+        and .authoritative == false
+        and .mutation_allowed == false
+      ))) as $readback_entries_visible_only_complete
+  | (($entrypoint_readbacks | length) == 4
+      and ($entrypoint_readbacks | all(
+        .dry_run_outcome == "deny_live_allow_report_only_hardened"
+        and .required_evidence_field_count == 9
+        and .required_non_live_guard_count == 5
+        and .readback_status == "visible_only"
+        and .would_block_if_live == true
+        and .report_only_allows_current_runtime == true
+        and .recorded == false
+        and .persisted == false
+      ))) as $entrypoint_readbacks_visible_only_complete
+  | (($readback_blockers | length) == 27
+      and ($readback_blockers | all(.blocked == true))) as $readback_blockers_complete
+  | ($source_hardening_ready
+      and $source_hardening_ready_for_readback
+      and $source_hardening_no_live_confirmed
+      and $readback_scope_visible_only_complete
+      and $readback_entries_visible_only_complete
+      and $entrypoint_readbacks_visible_only_complete
+      and $readback_blockers_complete) as $hardening_readback_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -164,12 +200,15 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_gate",
       schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_v1",
       preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_visible_only",
-      source_hardening_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_gate",
-      source_hardened_entrypoint_count: 4,
-      source_hardening_check_count: 10,
-      source_hardening_decision_count: 4,
-      source_hardening_blocker_count: 23,
-      source_required_prior_gate_count: 11,
+      source_hardening_gate: $hardening_report.gate,
+      source_hardened_entrypoint_count: $hardening_report.hardened_entrypoint_count,
+      source_hardening_check_count: $hardening_report.hardening_check_count,
+      source_hardening_decision_count: $hardening_report.hardening_decision_count,
+      source_hardening_blocker_count: $hardening_report.hardening_blocker_count,
+      source_required_prior_gate_count: $hardening_report.required_prior_gate_count,
+      source_hardening_ready: $source_hardening_ready,
+      source_hardening_no_live_confirmed: $source_hardening_no_live_confirmed,
+      source_hardening_ready_for_readback: $source_hardening_ready_for_readback,
       readback_entry_count: ($readback_entries | length),
       entrypoint_readback_count: ($entrypoint_readbacks | length),
       readback_blocker_count: ($readback_blockers | length),
@@ -180,11 +219,16 @@ jq -n \
       readback_blockers: $readback_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_audit_index_gate",
-      hardening_contract_visible: true,
-      hardening_decisions_visible: true,
-      hardening_checks_visible: true,
-      hardening_blockers_visible: true,
-      readback_ready: true,
+      hardening_contract_visible: $hardening_contract_visible,
+      hardening_decisions_visible: $hardening_decisions_visible,
+      hardening_checks_visible: $hardening_checks_visible,
+      hardening_blockers_visible: $hardening_blockers_visible,
+      readback_scope_visible_only_complete: $readback_scope_visible_only_complete,
+      readback_entries_visible_only_complete: $readback_entries_visible_only_complete,
+      entrypoint_readbacks_visible_only_complete: $entrypoint_readbacks_visible_only_complete,
+      readback_blockers_complete: $readback_blockers_complete,
+      hardening_readback_preconditions_complete: $hardening_readback_preconditions_complete,
+      readback_ready: $hardening_readback_preconditions_complete,
       readback_recorded: false,
       readback_persisted: false,
       readback_authoritative: false,
@@ -213,15 +257,15 @@ jq -n \
       operator_review_request_allowed: false,
       approval_recording_allowed: false,
       live_cutover_allowed: false,
-      ready_for_audit_index: true,
+      ready_for_audit_index: $hardening_readback_preconditions_complete,
       ready_for_live_execution: false,
       source_probes: {
-        readback_module_present: $readback_module_present,
-        hardening_gate_present: $hardening_gate_present,
-        hardening_points_here: $hardening_points_here,
-        hardening_no_live_present: $hardening_no_live_present,
-        hardening_no_interception_present: $hardening_no_interception_present,
-        hardening_no_persistence_present: $hardening_no_persistence_present
+        hardening_report_gate: $hardening_report.gate,
+        hardening_preconditions_complete: $hardening_report.hardening_preconditions_complete,
+        hardening_ready_for_readback: $hardening_report.ready_for_hardening_readback,
+        hardening_source_prior_readbacks_complete: $hardening_report.source_prior_readbacks_complete,
+        hardening_no_live_confirmed: $source_hardening_no_live_confirmed,
+        hardening_side_effects_all_false: ($hardening_report.side_effects | to_entries | all(.value == false))
       },
       side_effects: {
         filesystem_written: false,

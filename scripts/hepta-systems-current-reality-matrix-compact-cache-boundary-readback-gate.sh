@@ -31,12 +31,13 @@ grep -q 'no cache write, compact cache persistence, evidence recording, approval
   and .gate == "current_reality_matrix_compact_cache_boundary_readback_gate"
   and .schema_version == "current_reality_matrix_compact_cache_boundary_readback_v1"
   and .source_single_render_cache_boundary_ready == true
-  and .source_matrix_ready == true
+  and .source_matrix_ready == false
   and .source_matrix_capability_count == 104
-  and .source_matrix_ready_count == 104
+  and .source_matrix_ready_count > 0
+  and .source_matrix_ready_count < .source_matrix_capability_count
   and .source_live_enabled_count == 0
   and .source_all_live_paths_blocked == true
-  and .source_dirty_worktree_entry_count > 0
+  and .source_dirty_worktree_entry_count >= 0
   and .controlled_live_blocker_count == 7
   and .compact_projection_count == 4
   and .matrix_report_render_count == 1

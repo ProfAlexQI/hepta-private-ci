@@ -81,6 +81,14 @@ jq -e '
   ]
   and .required_prior_gate_count == 14
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_gate"
+  and .source_operator_review_precondition_matrix_preconditions_complete == true
+  and .source_operator_review_precondition_matrix_no_request_confirmed == true
+  and .source_operator_review_precondition_matrix_no_authorization_confirmed == true
+  and .source_operator_review_precondition_matrix_ready == true
+  and .readback_scope_no_request_complete == true
+  and .readback_entries_no_request_complete == true
+  and .readback_blockers_complete == true
+  and .non_request_readback_preconditions_complete == true
   and .matrix_visible == true
   and .matrix_recorded == false
   and .matrix_persisted == false
@@ -112,7 +120,10 @@ jq -e '
   and .source_probes.operator_review_precondition_matrix_points_here == true
   and .source_probes.operator_review_request_disallowed_present == true
   and .source_probes.operator_review_request_unsent_present == true
-  and .source_probes.non_request_ready_present == true
+  and .source_probes.operator_review_precondition_matrix_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_gate"
+  and .source_probes.operator_review_precondition_matrix_preconditions_complete == true
+  and .source_probes.operator_review_precondition_matrix_ready_for_non_request_readback == true
+  and .source_probes.operator_review_precondition_matrix_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

@@ -27,6 +27,7 @@ jq -e '
   and .source_deny_reason_count == 10
   and .source_allow_count == 0
   and .source_deny_count == 2
+  and .source_required_prior_gate_count == 9
   and .denial_readback_entry_count == 5
   and .denial_readback_blocker_count == 10
   and .denial_readback_scope.readback_mode == "enablement_precondition_denial_readback_only"
@@ -72,6 +73,14 @@ jq -e '
   ]
   and .required_prior_gate_count == 10
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_gate"
+  and .source_enablement_precondition_dry_run_preconditions_complete == true
+  and .source_enablement_precondition_deny_only_confirmed == true
+  and .source_enablement_precondition_no_mutation_confirmed == true
+  and .source_enablement_precondition_denial_readback_ready == true
+  and .denial_readback_scope_non_authoritative == true
+  and .denial_readback_entries_non_authoritative == true
+  and .denial_readback_blockers_complete == true
+  and .denial_readback_preconditions_complete == true
   and .dry_run_denial_visible == true
   and .dry_run_denial_recorded == false
   and .dry_run_denial_persisted == false
@@ -92,7 +101,10 @@ jq -e '
   and .source_probes.denial_readback_module_present == true
   and .source_probes.enablement_dry_run_gate_present == true
   and .source_probes.enablement_dry_run_points_here == true
-  and .source_probes.enablement_dry_run_ready_present == true
+  and .source_probes.enablement_dry_run_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate"
+  and .source_probes.enablement_dry_run_preconditions_complete == true
+  and .source_probes.enablement_dry_run_ready_for_denial_readback == true
+  and .source_probes.enablement_dry_run_side_effects_all_false == true
   and .source_probes.enablement_dry_run_denies_present == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"

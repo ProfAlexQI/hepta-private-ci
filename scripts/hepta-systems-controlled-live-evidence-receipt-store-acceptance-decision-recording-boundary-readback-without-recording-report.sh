@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-operator-acceptance-packet-readback-without-acceptance-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_evidence_receipt_store_acceptance_decision_recording_boundary_readback_without_recording.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_ACCEPTANCE_DECISION_RECORDING_BOUNDARY_READBACK_WITHOUT_RECORDING_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-acceptance-decision-recording-boundary-readback-without-recording-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable receipt store operator acceptance packet report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing controlled-live evidence receipt store acceptance decision recording boundary Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the controlled-live evidence receipt store acceptance decision recording boundary report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_evidence_receipt_store_acceptance_decision_recording_boundary_readback_without_recording_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+source_json="${HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_OPERATOR_ACCEPTANCE_PACKET_JSON:-}"
+if [[ -n "$source_json" ]]; then
+  [[ -f "$source_json" ]] || fail "missing cached operator acceptance packet report: $source_json"
+else
+  source_json="$tmpdir/operator-acceptance-packet.json"
+  "$SOURCE_REPORT" >"$source_json" || fail "failed to render operator acceptance packet report"
+fi
+jq -e . "$source_json" >/dev/null || fail "operator acceptance packet report did not render valid JSON"
+
+jq -n \
+  --slurpfile source "$source_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-evidence-receipt-store-acceptance-decision-recording-boundary-readback-without-recording-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_ACCEPTANCE_DECISION_RECORDING_BOUNDARY_READBACK_WITHOUT_RECORDING_2026-07-07.md" \
+  --arg boundary_id "controlled-live-evidence-receipt-store-acceptance-decision-recording-boundary" \
+  --arg boundary_route "readback://controlled-live/evidence-receipt-store/acceptance-decision-recording-boundary" \
+  --arg record_schema_version "controlled_live_evidence_receipt_store_acceptance_decision_record_v1" \
+  '
+  def hyphen_id($id):
+    $id | gsub("_"; "-");
+  def record_id($id):
+    "acceptance-decision-record:controlled-live-evidence-receipt-store:" + $id + ":not-recorded";
+  def idempotency_key($id):
+    "controlled-live-evidence-receipt-store.acceptance-decision-recording.idempotency." + $id;
+  def denial_receipt_id($id):
+    "acceptance-decision-recording-denial-receipt:controlled-live-evidence-receipt-store:" + $id;
+  ($source[0]) as $src |
+  ($src.entries | map({
+    id:("evidence_receipt_store_acceptance_decision_recording_boundary_without_recording_" + .source_blocker_id),
+    source_blocker_id,
+    source_packet_entry_id:.id,
+    source_acceptance_decision_request_id:.acceptance_decision_request_id,
+    source_acceptance_decision_request_route:.acceptance_decision_request_route,
+    source_non_acceptance_receipt_id:.non_acceptance_receipt_id,
+    source_operator_acceptance_packet_id:.operator_acceptance_packet_id,
+    source_operator_acceptance_packet_route:.operator_acceptance_packet_route,
+    receipt_id,
+    receipt_path,
+    recording_boundary_id:$boundary_id,
+    recording_boundary_route:($boundary_route + "/" + hyphen_id(.source_blocker_id)),
+    acceptance_decision_record_id:record_id(.source_blocker_id),
+    acceptance_decision_record_schema_version:$record_schema_version,
+    acceptance_decision_idempotency_key:idempotency_key(.source_blocker_id),
+    post_record_readback_route:($boundary_route + "/post-record/" + hyphen_id(.source_blocker_id)),
+    rollback_anchor:("rollback-anchor://controlled-live/evidence-receipt-store/acceptance-decision-recording-boundary/" + hyphen_id(.source_blocker_id)),
+    denial_receipt_id:denial_receipt_id(.source_blocker_id),
+    operator_display_order,
+    operator_status,
+    observed_state:"acceptance_decision_recording_boundary_projected_without_recording",
+    previous_state,
+    current_state,
+    state_delta,
+    owner,
+    risk_bucket,
+    operator_label,
+    required_evidence,
+    boundary_projected:true,
+    boundary_ready:true,
+    source_packet_ready:.packet_ready,
+    source_packet_sent:.operator_packet_sent,
+    source_packet_persisted:.operator_packet_persisted,
+    decision_record_schema_projected:true,
+    acceptance_decision_request_attached:.acceptance_decision_request_projected,
+    operator_acceptance_required:.operator_acceptance_required,
+    operator_acceptance_present:.operator_acceptance_present,
+    evidence_acceptance_required:.evidence_acceptance_required,
+    evidence_acceptance_present:.evidence_acceptance_present,
+    recording_precondition_missing:true,
+    acceptance_decision_recording_allowed:false,
+    acceptance_decision_recorded:false,
+    acceptance_decision_persisted:false,
+    decision_idempotency_key_projected:true,
+    post_record_readback_route_projected:true,
+    rollback_anchor_projected:true,
+    denial_receipt_projected:true,
+    denial_receipt_persisted:false,
+    evidence_recording_allowed:false,
+    evidence_recorded:false,
+    receipt_persistence_allowed:false,
+    receipt_persisted:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    ledger_written:false,
+    workflow_event_log_write_allowed:false,
+    workflow_event_log_written:false,
+    sqlite_write_allowed:false,
+    sqlite_written:false,
+    credential_read_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  ($entries | map(select(.boundary_projected == true)) | length) as $boundary_projected_count |
+  ($entries | map(select(.boundary_ready == true)) | length) as $boundary_ready_count |
+  ($entries | map(select(.decision_record_schema_projected == true)) | length) as $decision_record_schema_projected_count |
+  ($entries | map(select(.acceptance_decision_request_attached == true)) | length) as $acceptance_decision_request_attached_count |
+  ($entries | map(select(.operator_acceptance_required == true)) | length) as $operator_acceptance_required_count |
+  ($entries | map(select(.operator_acceptance_present == true)) | length) as $operator_acceptance_present_count |
+  ($entries | map(select(.evidence_acceptance_required == true)) | length) as $evidence_acceptance_required_count |
+  ($entries | map(select(.evidence_acceptance_present == true)) | length) as $evidence_acceptance_present_count |
+  ($entries | map(select(.recording_precondition_missing == true)) | length) as $recording_precondition_missing_count |
+  ($entries | map(select(.acceptance_decision_recording_allowed == true)) | length) as $decision_recording_allowed_count |
+  ($entries | map(select(.acceptance_decision_recorded == true)) | length) as $acceptance_decision_recorded_count |
+  ($entries | map(select(.acceptance_decision_persisted == true)) | length) as $acceptance_decision_persisted_count |
+  ($entries | map(select(.decision_idempotency_key_projected == true)) | length) as $decision_idempotency_key_projected_count |
+  ($entries | map(.acceptance_decision_idempotency_key) | unique | length) as $decision_idempotency_key_unique_count |
+  ($entries | map(select(.post_record_readback_route_projected == true)) | length) as $post_record_readback_route_projected_count |
+  ($entries | map(select(.rollback_anchor_projected == true)) | length) as $rollback_anchor_projected_count |
+  ($entries | map(select(.denial_receipt_projected == true)) | length) as $denial_receipt_projected_count |
+  ($entries | map(select(.denial_receipt_persisted == true)) | length) as $denial_receipt_persisted_count |
+  ($entries | map(select(.receipt_store_written == true)) | length) as $receipt_store_written_count |
+  ($entries | map(select(.receipt_persisted == true or .denial_receipt_persisted == true)) | length) as $receipt_persisted_count |
+  ($entries | map(select(.ledger_written == true)) | length) as $ledger_written_count |
+  ($entries | map(select(.workflow_event_log_written == true)) | length) as $workflow_event_log_written_count |
+  ($entries | map(select(.sqlite_written == true)) | length) as $sqlite_written_count |
+  ($entries | map(select(.live_mutation_allowed == true)) | length) as $live_mutation_allowed_count |
+  ($src.operator_acceptance_packet_readback_ready == true
+    and $src.packet_entry_count == 7
+    and $src.operator_acceptance_present_count == 0
+    and $src.evidence_acceptance_present_count == 0
+    and $src.acceptance_decision_recorded_count == 0
+    and $src.operator_packet_sent == false
+    and $src.operator_packet_persisted == false
+    and $src.live_execution_allowed == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $boundary_projected_count == 7
+    and $boundary_ready_count == 7
+    and $decision_record_schema_projected_count == 7
+    and $acceptance_decision_request_attached_count == 7
+    and $operator_acceptance_required_count == 7
+    and $operator_acceptance_present_count == 0
+    and $evidence_acceptance_required_count == 7
+    and $evidence_acceptance_present_count == 0
+    and $recording_precondition_missing_count == 7
+    and $decision_recording_allowed_count == 0
+    and $acceptance_decision_recorded_count == 0
+    and $acceptance_decision_persisted_count == 0
+    and $decision_idempotency_key_projected_count == 7
+    and $decision_idempotency_key_unique_count == 7
+    and $post_record_readback_route_projected_count == 7
+    and $rollback_anchor_projected_count == 7
+    and $denial_receipt_projected_count == 7
+    and $denial_receipt_persisted_count == 0
+    and $receipt_store_written_count == 0
+    and $receipt_persisted_count == 0
+    and $ledger_written_count == 0
+    and $workflow_event_log_written_count == 0
+    and $sqlite_written_count == 0
+    and $live_mutation_allowed_count == 0
+    and ($entries | all(.observed_state == "acceptance_decision_recording_boundary_projected_without_recording"
+      and .previous_state == "missing"
+      and .current_state == "missing"
+      and .state_delta == "unchanged_missing"
+      and .boundary_projected == true
+      and .boundary_ready == true
+      and .source_packet_ready == true
+      and .source_packet_sent == false
+      and .source_packet_persisted == false
+      and .decision_record_schema_projected == true
+      and .acceptance_decision_request_attached == true
+      and .operator_acceptance_required == true
+      and .operator_acceptance_present == false
+      and .evidence_acceptance_required == true
+      and .evidence_acceptance_present == false
+      and .recording_precondition_missing == true
+      and .acceptance_decision_recording_allowed == false
+      and .acceptance_decision_recorded == false
+      and .acceptance_decision_persisted == false
+      and .decision_idempotency_key_projected == true
+      and .post_record_readback_route_projected == true
+      and .rollback_anchor_projected == true
+      and .denial_receipt_projected == true
+      and .denial_receipt_persisted == false
+      and .evidence_recording_allowed == false
+      and .evidence_recorded == false
+      and .receipt_persistence_allowed == false
+      and .receipt_persisted == false
+      and .receipt_store_write_allowed == false
+      and .receipt_store_written == false
+      and .ledger_write_allowed == false
+      and .ledger_written == false
+      and .workflow_event_log_write_allowed == false
+      and .workflow_event_log_written == false
+      and .sqlite_write_allowed == false
+      and .sqlite_written == false
+      and .credential_read_allowed == false
+      and .live_mutation_allowed == false))) as $boundary_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_evidence_receipt_store_acceptance_decision_recording_boundary_readback_without_recording",
+    status:(if $boundary_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_evidence_receipt_store_acceptance_decision_recording_boundary_readback_without_recording_gate",
+    schema_version:"controlled_live_evidence_receipt_store_acceptance_decision_recording_boundary_readback_without_recording_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_operator_acceptance_packet_ready:$src.operator_acceptance_packet_readback_ready,
+    source_packet_entry_count:$src.packet_entry_count,
+    source_operator_acceptance_present_count:$src.operator_acceptance_present_count,
+    source_evidence_acceptance_present_count:$src.evidence_acceptance_present_count,
+    source_acceptance_decision_recorded_count:$src.acceptance_decision_recorded_count,
+    source_operator_packet_sent:$src.operator_packet_sent,
+    source_operator_packet_persisted:$src.operator_packet_persisted,
+    source_live_execution_allowed:$src.live_execution_allowed,
+    lib_export_present:$lib_export_present,
+    recording_boundary_id:$boundary_id,
+    recording_boundary_route:$boundary_route,
+    acceptance_decision_record_schema_version:$record_schema_version,
+    boundary_entry_count:($entries | length),
+    boundary_projected_count:$boundary_projected_count,
+    boundary_ready_count:$boundary_ready_count,
+    decision_record_schema_projected_count:$decision_record_schema_projected_count,
+    acceptance_decision_request_attached_count:$acceptance_decision_request_attached_count,
+    operator_acceptance_required_count:$operator_acceptance_required_count,
+    operator_acceptance_present_count:$operator_acceptance_present_count,
+    evidence_acceptance_required_count:$evidence_acceptance_required_count,
+    evidence_acceptance_present_count:$evidence_acceptance_present_count,
+    recording_precondition_missing_count:$recording_precondition_missing_count,
+    decision_recording_allowed_count:$decision_recording_allowed_count,
+    acceptance_decision_recorded_count:$acceptance_decision_recorded_count,
+    acceptance_decision_persisted_count:$acceptance_decision_persisted_count,
+    decision_idempotency_key_projected_count:$decision_idempotency_key_projected_count,
+    decision_idempotency_key_unique_count:$decision_idempotency_key_unique_count,
+    post_record_readback_route_projected_count:$post_record_readback_route_projected_count,
+    rollback_anchor_projected_count:$rollback_anchor_projected_count,
+    denial_receipt_projected_count:$denial_receipt_projected_count,
+    denial_receipt_persisted_count:$denial_receipt_persisted_count,
+    receipt_store_written_count:$receipt_store_written_count,
+    receipt_persisted_count:$receipt_persisted_count,
+    ledger_written_count:$ledger_written_count,
+    workflow_event_log_written_count:$workflow_event_log_written_count,
+    sqlite_written_count:$sqlite_written_count,
+    live_mutation_allowed_count:$live_mutation_allowed_count,
+    acceptance_decision_recording_boundary_readback_ready:$boundary_ready,
+    acceptance_decision_recording_allowed:false,
+    acceptance_decision_recorded:false,
+    acceptance_decision_persisted:false,
+    evidence_recording_allowed:false,
+    evidence_persisted:false,
+    receipt_persistence_allowed:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    credential_read_allowed:false,
+    live_execution_allowed:false,
+    blockers:[
+      "operator_acceptance_missing",
+      "evidence_acceptance_missing",
+      "acceptance_decision_recording_disabled",
+      "acceptance_decision_persistence_disabled",
+      "denial_receipt_persistence_disabled",
+      "evidence_recording_disabled",
+      "receipt_persistence_disabled",
+      "receipt_store_write_disabled",
+      "ledger_write_disabled",
+      "workflow_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    entries:$entries,
+    next_actions:[
+      "controlled_live_evidence_receipt_store_recording_denial_receipt_readback_without_persistence",
+      "keep_acceptance_decision_recording_denied_until_operator_and_evidence_acceptance_exist"
+    ],
+    recommended_next_gate:"controlled_live_evidence_receipt_store_recording_denial_receipt_readback_without_persistence",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      acceptance_decision_recorded:false,
+      acceptance_decision_persisted:false,
+      denial_receipt_persisted:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      receipt_persisted:false,
+      receipt_store_written:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      operator_packet_sent:false,
+      operator_packet_persisted:false,
+      approval_requested:false,
+      approval_accepted:false,
+      credential_read:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      kill_switch_rehearsal_executed:false,
+      kill_switch_mutated:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

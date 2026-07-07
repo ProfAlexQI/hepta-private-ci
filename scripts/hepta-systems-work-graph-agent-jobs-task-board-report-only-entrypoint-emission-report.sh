@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -48,6 +50,22 @@ task_board_output_field_present="$(
   bool_for source_has "workGraphReportOnly" codex-rs/hepta-runtime/src/task_board.rs
 )"
 
+trace_guardrail="$(
+  capture_json_report \
+    "hepta-work-graph-trace-guardrail-span-report-only-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-trace-guardrail-span-report-only-report.sh"
+)"
+task_result="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-envelope-report-only-validator-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-task-result-envelope-report-only-validator-report.sh"
+)"
+scheduler="$(
+  capture_json_report \
+    "hepta-work-graph-scheduler-admission-dry-run-enforcement-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-report.sh"
+)"
+
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
@@ -57,6 +75,9 @@ jq -n \
   --argjson agent_jobs_output_field_present "$agent_jobs_output_field_present" \
   --argjson task_board_runtime_hook_present "$task_board_runtime_hook_present" \
   --argjson task_board_output_field_present "$task_board_output_field_present" \
+  --argjson trace_guardrail "$trace_guardrail" \
+  --argjson task_result "$task_result" \
+  --argjson scheduler "$scheduler" \
   '
   def emission($source; $entrypoint; $mapping; $evidence): {
     source_surface_id: $source,
@@ -95,6 +116,57 @@ jq -n \
     "hepta_work_graph_task_result_envelope_report_only_validator_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($trace_guardrail.live_guardrail_enforcement_enabled == false
+      and $trace_guardrail.ready_for_live_execution == false
+      and ($trace_guardrail.side_effects | to_entries | all(.value == false))) as $source_trace_guardrail_no_live_blocking_confirmed
+  | ($trace_guardrail.gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
+      and $trace_guardrail.trace_guardrail_prior_readbacks_complete == true
+      and $trace_guardrail.ready_for_agent_jobs_task_board_report_only_emission == true
+      and $source_trace_guardrail_no_live_blocking_confirmed) as $source_trace_guardrail_readiness_complete
+  | ($task_result.live_enforcement_enabled == false
+      and $task_result.ready_for_live_execution == false
+      and ($task_result.side_effects | to_entries | all(.value == false))) as $source_task_result_envelope_no_enforcement_confirmed
+  | ($task_result.gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+      and $task_result.ready_for_scheduler_admission_dry_run_enforcement == true
+      and $task_result.report_only_valid_source_count == $task_result.source_envelope_count
+      and $source_task_result_envelope_no_enforcement_confirmed) as $source_task_result_envelope_validator_ready
+  | ($scheduler.live_blocking_enforcement_enabled == false
+      and $scheduler.ready_for_live_execution == false
+      and ($scheduler.side_effects | to_entries | all(.value == false))) as $source_scheduler_admission_no_live_blocking_confirmed
+  | ($scheduler.gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+      and $scheduler.dry_run_enforcement_enabled == true
+      and $scheduler.ready_for_append_only_event_store_shadow_path == true
+      and $source_scheduler_admission_no_live_blocking_confirmed) as $source_scheduler_admission_dry_run_ready
+  | ($source_trace_guardrail_readiness_complete
+      and $source_task_result_envelope_validator_ready
+      and $source_scheduler_admission_dry_run_ready) as $entrypoint_emission_prior_readbacks_complete
+  | ($agent_jobs_core_hook_present
+      and $agent_jobs_output_field_present) as $agent_jobs_hook_readback_complete
+  | ($task_board_runtime_hook_present
+      and $task_board_output_field_present) as $task_board_hook_readback_complete
+  | ($entrypoint_emission_prior_readbacks_complete
+      and $agent_jobs_hook_readback_complete
+      and ($emissions | any(
+        .source_surface_id == "agent_jobs_batch_workers"
+        and .entrypoint_id == "report_agent_job_result"
+        and .actual_runtime_hook_attached == true
+        and .report_only_attached == true
+        and .live_blocking_enabled == false
+        and .persistence_enabled == false
+      ))) as $agent_jobs_report_only_emission_attached
+  | ($entrypoint_emission_prior_readbacks_complete
+      and $task_board_hook_readback_complete
+      and ($emissions | any(
+        .source_surface_id == "hepta_runtime_task_board"
+        and .entrypoint_id == "task_board_terminal_event"
+        and .actual_runtime_hook_attached == true
+        and .report_only_attached == true
+        and .live_blocking_enabled == false
+        and .persistence_enabled == false
+      ))) as $task_board_report_only_emission_attached
+  | ($agent_jobs_report_only_emission_attached
+      and $task_board_report_only_emission_attached
+      and ($fields | length) > 0) as $entrypoint_emission_readiness_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -105,13 +177,31 @@ jq -n \
       entrypoint_count: ($emissions | length),
       emission_count: ($emissions | length),
       required_prior_gate_count: ($required_prior_gates | length),
+      source_trace_guardrail_required_prior_gate_count: $trace_guardrail.required_prior_gate_count,
+      source_trace_guardrail_span_count: $trace_guardrail.span_count,
+      source_trace_guardrail_blocking_guardrail_count: $trace_guardrail.blocking_guardrail_count,
+      source_task_result_envelope_source_adapter_count: $task_result.source_adapter_count,
+      source_task_result_envelope_source_envelope_count: $task_result.source_envelope_count,
+      source_scheduler_admission_entrypoint_count: $scheduler.entrypoint_count,
+      source_scheduler_admission_required_prior_gate_count: ($scheduler.required_prior_gates | length),
       canonical_wire_fields: $fields,
       emissions: $emissions,
       required_prior_gates: $required_prior_gates,
+      source_trace_guardrail_gate: $trace_guardrail.gate,
+      source_task_result_envelope_validator_gate: $task_result.gate,
+      source_scheduler_admission_dry_run_gate: $scheduler.gate,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate",
-      agent_jobs_report_only_emission_attached: true,
-      task_board_report_only_emission_attached: true,
-      ready_for_canary_readback_replay_gate: true,
+      source_trace_guardrail_readiness_complete: $source_trace_guardrail_readiness_complete,
+      source_trace_guardrail_no_live_blocking_confirmed: $source_trace_guardrail_no_live_blocking_confirmed,
+      source_task_result_envelope_validator_ready: $source_task_result_envelope_validator_ready,
+      source_task_result_envelope_no_enforcement_confirmed: $source_task_result_envelope_no_enforcement_confirmed,
+      source_scheduler_admission_dry_run_ready: $source_scheduler_admission_dry_run_ready,
+      source_scheduler_admission_no_live_blocking_confirmed: $source_scheduler_admission_no_live_blocking_confirmed,
+      entrypoint_emission_prior_readbacks_complete: $entrypoint_emission_prior_readbacks_complete,
+      agent_jobs_report_only_emission_attached: $agent_jobs_report_only_emission_attached,
+      task_board_report_only_emission_attached: $task_board_report_only_emission_attached,
+      entrypoint_emission_readiness_complete: $entrypoint_emission_readiness_complete,
+      ready_for_canary_readback_replay_gate: $entrypoint_emission_readiness_complete,
       ready_for_live_execution: false,
       source_probes: {
         agent_jobs_task_board_report_only_entrypoint_emission: {
@@ -120,15 +210,43 @@ jq -n \
           gate_script_present: $gate_script_present
         },
         trace_guardrail_span_report_only: {
-          gate_script_present: $trace_gate_script_present
+          gate_script_present: $trace_gate_script_present,
+          report_gate: $trace_guardrail.gate,
+          prior_readbacks_complete: $trace_guardrail.trace_guardrail_prior_readbacks_complete,
+          ready_for_agent_jobs_task_board_report_only_emission: $trace_guardrail.ready_for_agent_jobs_task_board_report_only_emission,
+          live_guardrail_enforcement_enabled: $trace_guardrail.live_guardrail_enforcement_enabled,
+          ready_for_live_execution: $trace_guardrail.ready_for_live_execution,
+          side_effects_all_false: ($trace_guardrail.side_effects | to_entries | all(.value == false))
+        },
+        task_result_envelope_report_only_validator: {
+          report_gate: $task_result.gate,
+          source_adapter_count: $task_result.source_adapter_count,
+          source_envelope_count: $task_result.source_envelope_count,
+          report_only_valid_source_count: $task_result.report_only_valid_source_count,
+          ready_for_scheduler_admission_dry_run_enforcement: $task_result.ready_for_scheduler_admission_dry_run_enforcement,
+          live_enforcement_enabled: $task_result.live_enforcement_enabled,
+          ready_for_live_execution: $task_result.ready_for_live_execution,
+          side_effects_all_false: ($task_result.side_effects | to_entries | all(.value == false))
+        },
+        scheduler_admission_dry_run_enforcement: {
+          report_gate: $scheduler.gate,
+          entrypoint_count: $scheduler.entrypoint_count,
+          required_prior_gate_count: ($scheduler.required_prior_gates | length),
+          dry_run_enforcement_enabled: $scheduler.dry_run_enforcement_enabled,
+          live_blocking_enforcement_enabled: $scheduler.live_blocking_enforcement_enabled,
+          ready_for_append_only_event_store_shadow_path: $scheduler.ready_for_append_only_event_store_shadow_path,
+          ready_for_live_execution: $scheduler.ready_for_live_execution,
+          side_effects_all_false: ($scheduler.side_effects | to_entries | all(.value == false))
         },
         agent_jobs_batch_workers: {
           core_hook_present: $agent_jobs_core_hook_present,
-          output_field_present: $agent_jobs_output_field_present
+          output_field_present: $agent_jobs_output_field_present,
+          hook_readback_complete: $agent_jobs_hook_readback_complete
         },
         hepta_runtime_task_board: {
           runtime_hook_present: $task_board_runtime_hook_present,
-          output_field_present: $task_board_output_field_present
+          output_field_present: $task_board_output_field_present,
+          hook_readback_complete: $task_board_hook_readback_complete
         }
       },
       side_effects: {

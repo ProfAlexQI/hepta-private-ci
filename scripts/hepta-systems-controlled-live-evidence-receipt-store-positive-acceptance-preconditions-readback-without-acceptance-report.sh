@@ -1,0 +1,321 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-recording-denial-receipt-retention-replay-readback-without-persistence-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_evidence_receipt_store_positive_acceptance_preconditions_readback_without_acceptance.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_POSITIVE_ACCEPTANCE_PRECONDITIONS_READBACK_WITHOUT_ACCEPTANCE_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-positive-acceptance-preconditions-readback-without-acceptance-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable retention/replay source report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing positive acceptance preconditions Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the positive acceptance preconditions report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_evidence_receipt_store_positive_acceptance_preconditions_readback_without_acceptance_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+source_json="${HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_RETENTION_REPLAY_JSON:-}"
+if [[ -n "$source_json" ]]; then
+  [[ -f "$source_json" ]] || fail "missing cached retention/replay report: $source_json"
+else
+  source_json="$tmpdir/retention-replay.json"
+  "$SOURCE_REPORT" >"$source_json" || fail "failed to render retention/replay report"
+fi
+jq -e . "$source_json" >/dev/null || fail "retention/replay report did not render valid JSON"
+
+jq -n \
+  --slurpfile source "$source_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-evidence-receipt-store-positive-acceptance-preconditions-readback-without-acceptance-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_POSITIVE_ACCEPTANCE_PRECONDITIONS_READBACK_WITHOUT_ACCEPTANCE_2026-07-07.md" \
+  --arg precondition_route "readback://controlled-live/evidence-receipt-store/positive-acceptance-preconditions" \
+  '
+  def hyphen_id($id):
+    $id | gsub("_"; "-");
+  ($source[0]) as $src |
+  ($src.entries | map({
+    id:("evidence_receipt_store_positive_acceptance_preconditions_without_acceptance_" + .source_blocker_id),
+    source_blocker_id,
+    source_retention_replay_entry_id:.id,
+    source_denial_receipt_id,
+    source_denial_receipt_route,
+    source_retention_policy_id:.retention_policy_id,
+    source_retention_policy_route:.retention_policy_route,
+    source_replay_key:.replay_key,
+    positive_precondition_set_id:("positive-acceptance-preconditions:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    positive_precondition_route:($precondition_route + "/" + hyphen_id(.source_blocker_id)),
+    operator_acceptance_precondition_id:("operator-acceptance-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    evidence_acceptance_precondition_id:("evidence-acceptance-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    receipt_persistence_grant_precondition_id:("receipt-persistence-grant-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    atomic_append_precondition_id:("atomic-append-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    post_write_readback_precondition_id:("post-write-readback-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    rollback_rehearsal_precondition_id:("rollback-rehearsal-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    retention_commit_precondition_id:("retention-policy-commit-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    live_cutover_approval_precondition_id:("live-cutover-approval-required:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    operator_display_order,
+    operator_status,
+    observed_state:"positive_acceptance_preconditions_projected_without_acceptance",
+    previous_state,
+    current_state,
+    state_delta,
+    owner,
+    risk_bucket,
+    operator_label,
+    required_evidence,
+    positive_precondition_set_projected:true,
+    source_retention_replay_attached:true,
+    operator_acceptance_required:true,
+    operator_acceptance_present:false,
+    evidence_acceptance_required:true,
+    evidence_acceptance_present:false,
+    receipt_persistence_grant_required:true,
+    receipt_persistence_grant_present:false,
+    atomic_append_required:true,
+    atomic_append_enabled:false,
+    post_write_readback_required:true,
+    post_write_readback_persisted:false,
+    rollback_rehearsal_required:true,
+    rollback_rehearsal_verified:false,
+    retention_policy_commit_required:true,
+    retention_policy_committed:false,
+    live_cutover_approval_required:true,
+    live_cutover_approval_present:false,
+    acceptance_preconditions_missing:true,
+    acceptance_allowed:false,
+    acceptance_recording_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_recorded:false,
+    receipt_persistence_allowed:false,
+    receipt_persisted:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    ledger_written:false,
+    workflow_event_log_write_allowed:false,
+    workflow_event_log_written:false,
+    sqlite_write_allowed:false,
+    sqlite_written:false,
+    credential_read_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  ($entries | map(select(.positive_precondition_set_projected == true)) | length) as $positive_precondition_set_projected_count |
+  ($entries | map(select(.source_retention_replay_attached == true)) | length) as $source_retention_replay_attached_count |
+  ($entries | map(select(.operator_acceptance_required == true)) | length) as $operator_acceptance_required_count |
+  ($entries | map(select(.operator_acceptance_present == true)) | length) as $operator_acceptance_present_count |
+  ($entries | map(select(.evidence_acceptance_required == true)) | length) as $evidence_acceptance_required_count |
+  ($entries | map(select(.evidence_acceptance_present == true)) | length) as $evidence_acceptance_present_count |
+  ($entries | map(select(.receipt_persistence_grant_required == true)) | length) as $receipt_persistence_grant_required_count |
+  ($entries | map(select(.receipt_persistence_grant_present == true)) | length) as $receipt_persistence_grant_present_count |
+  ($entries | map(select(.atomic_append_required == true)) | length) as $atomic_append_required_count |
+  ($entries | map(select(.atomic_append_enabled == true)) | length) as $atomic_append_enabled_count |
+  ($entries | map(select(.post_write_readback_required == true)) | length) as $post_write_readback_required_count |
+  ($entries | map(select(.post_write_readback_persisted == true)) | length) as $post_write_readback_persisted_count |
+  ($entries | map(select(.rollback_rehearsal_required == true)) | length) as $rollback_rehearsal_required_count |
+  ($entries | map(select(.rollback_rehearsal_verified == true)) | length) as $rollback_rehearsal_verified_count |
+  ($entries | map(select(.retention_policy_commit_required == true)) | length) as $retention_policy_commit_required_count |
+  ($entries | map(select(.retention_policy_committed == true)) | length) as $retention_policy_committed_count |
+  ($entries | map(select(.live_cutover_approval_required == true)) | length) as $live_cutover_approval_required_count |
+  ($entries | map(select(.live_cutover_approval_present == true)) | length) as $live_cutover_approval_present_count |
+  ($entries | map(select(.acceptance_preconditions_missing == true)) | length) as $acceptance_preconditions_missing_count |
+  ($entries | map(select(.acceptance_allowed == true)) | length) as $acceptance_allowed_count |
+  ($entries | map(select(.evidence_recorded == true)) | length) as $evidence_recorded_count |
+  ($entries | map(select(.receipt_store_written == true)) | length) as $receipt_store_written_count |
+  ($entries | map(select(.receipt_persisted == true)) | length) as $receipt_persisted_count |
+  ($entries | map(select(.ledger_written == true)) | length) as $ledger_written_count |
+  ($entries | map(select(.workflow_event_log_written == true)) | length) as $workflow_event_log_written_count |
+  ($entries | map(select(.sqlite_written == true)) | length) as $sqlite_written_count |
+  ($entries | map(select(.live_mutation_allowed == true)) | length) as $live_mutation_allowed_count |
+  ($src.retention_replay_readback_ready == true
+    and $src.retention_replay_entry_count == 7
+    and $src.retention_policy_persisted_count == 0
+    and $src.denial_receipt_persisted_count == 0
+    and $src.receipt_store_written_count == 0
+    and $src.live_execution_allowed == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $positive_precondition_set_projected_count == 7
+    and $source_retention_replay_attached_count == 7
+    and $operator_acceptance_required_count == 7
+    and $operator_acceptance_present_count == 0
+    and $evidence_acceptance_required_count == 7
+    and $evidence_acceptance_present_count == 0
+    and $receipt_persistence_grant_required_count == 7
+    and $receipt_persistence_grant_present_count == 0
+    and $atomic_append_required_count == 7
+    and $atomic_append_enabled_count == 0
+    and $post_write_readback_required_count == 7
+    and $post_write_readback_persisted_count == 0
+    and $rollback_rehearsal_required_count == 7
+    and $rollback_rehearsal_verified_count == 0
+    and $retention_policy_commit_required_count == 7
+    and $retention_policy_committed_count == 0
+    and $live_cutover_approval_required_count == 7
+    and $live_cutover_approval_present_count == 0
+    and $acceptance_preconditions_missing_count == 7
+    and $acceptance_allowed_count == 0
+    and $evidence_recorded_count == 0
+    and $receipt_store_written_count == 0
+    and $receipt_persisted_count == 0
+    and $ledger_written_count == 0
+    and $workflow_event_log_written_count == 0
+    and $sqlite_written_count == 0
+    and $live_mutation_allowed_count == 0
+    and ($entries | all(.observed_state == "positive_acceptance_preconditions_projected_without_acceptance"
+      and .previous_state == "missing"
+      and .current_state == "missing"
+      and .state_delta == "unchanged_missing"
+      and .positive_precondition_set_projected == true
+      and .source_retention_replay_attached == true
+      and .operator_acceptance_required == true
+      and .operator_acceptance_present == false
+      and .evidence_acceptance_required == true
+      and .evidence_acceptance_present == false
+      and .receipt_persistence_grant_required == true
+      and .receipt_persistence_grant_present == false
+      and .atomic_append_required == true
+      and .atomic_append_enabled == false
+      and .post_write_readback_required == true
+      and .post_write_readback_persisted == false
+      and .rollback_rehearsal_required == true
+      and .rollback_rehearsal_verified == false
+      and .retention_policy_commit_required == true
+      and .retention_policy_committed == false
+      and .live_cutover_approval_required == true
+      and .live_cutover_approval_present == false
+      and .acceptance_preconditions_missing == true
+      and .acceptance_allowed == false
+      and .acceptance_recording_allowed == false
+      and .evidence_recording_allowed == false
+      and .evidence_recorded == false
+      and .receipt_persistence_allowed == false
+      and .receipt_persisted == false
+      and .receipt_store_write_allowed == false
+      and .receipt_store_written == false
+      and .ledger_write_allowed == false
+      and .ledger_written == false
+      and .workflow_event_log_write_allowed == false
+      and .workflow_event_log_written == false
+      and .sqlite_write_allowed == false
+      and .sqlite_written == false
+      and .credential_read_allowed == false
+      and .live_mutation_allowed == false))) as $ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_evidence_receipt_store_positive_acceptance_preconditions_readback_without_acceptance",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_evidence_receipt_store_positive_acceptance_preconditions_readback_without_acceptance_gate",
+    schema_version:"controlled_live_evidence_receipt_store_positive_acceptance_preconditions_readback_without_acceptance_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_retention_replay_readback_ready:$src.retention_replay_readback_ready,
+    source_retention_replay_entry_count:$src.retention_replay_entry_count,
+    source_retention_policy_persisted_count:$src.retention_policy_persisted_count,
+    source_denial_receipt_persisted_count:$src.denial_receipt_persisted_count,
+    source_receipt_store_written_count:$src.receipt_store_written_count,
+    source_live_execution_allowed:$src.live_execution_allowed,
+    lib_export_present:$lib_export_present,
+    positive_preconditions_route:$precondition_route,
+    precondition_entry_count:($entries | length),
+    positive_precondition_set_projected_count:$positive_precondition_set_projected_count,
+    source_retention_replay_attached_count:$source_retention_replay_attached_count,
+    operator_acceptance_required_count:$operator_acceptance_required_count,
+    operator_acceptance_present_count:$operator_acceptance_present_count,
+    evidence_acceptance_required_count:$evidence_acceptance_required_count,
+    evidence_acceptance_present_count:$evidence_acceptance_present_count,
+    receipt_persistence_grant_required_count:$receipt_persistence_grant_required_count,
+    receipt_persistence_grant_present_count:$receipt_persistence_grant_present_count,
+    atomic_append_required_count:$atomic_append_required_count,
+    atomic_append_enabled_count:$atomic_append_enabled_count,
+    post_write_readback_required_count:$post_write_readback_required_count,
+    post_write_readback_persisted_count:$post_write_readback_persisted_count,
+    rollback_rehearsal_required_count:$rollback_rehearsal_required_count,
+    rollback_rehearsal_verified_count:$rollback_rehearsal_verified_count,
+    retention_policy_commit_required_count:$retention_policy_commit_required_count,
+    retention_policy_committed_count:$retention_policy_committed_count,
+    live_cutover_approval_required_count:$live_cutover_approval_required_count,
+    live_cutover_approval_present_count:$live_cutover_approval_present_count,
+    acceptance_preconditions_missing_count:$acceptance_preconditions_missing_count,
+    acceptance_allowed_count:$acceptance_allowed_count,
+    evidence_recorded_count:$evidence_recorded_count,
+    receipt_store_written_count:$receipt_store_written_count,
+    receipt_persisted_count:$receipt_persisted_count,
+    ledger_written_count:$ledger_written_count,
+    workflow_event_log_written_count:$workflow_event_log_written_count,
+    sqlite_written_count:$sqlite_written_count,
+    live_mutation_allowed_count:$live_mutation_allowed_count,
+    positive_acceptance_preconditions_readback_ready:$ready,
+    acceptance_allowed:false,
+    acceptance_recording_allowed:false,
+    evidence_recording_allowed:false,
+    receipt_persistence_allowed:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    credential_read_allowed:false,
+    live_execution_allowed:false,
+    blockers:[
+      "operator_acceptance_missing",
+      "evidence_acceptance_missing",
+      "receipt_persistence_grant_missing",
+      "atomic_append_not_enabled",
+      "post_write_readback_missing",
+      "rollback_rehearsal_missing",
+      "retention_policy_not_committed",
+      "live_cutover_approval_missing",
+      "receipt_store_write_disabled",
+      "ledger_write_disabled",
+      "workflow_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    entries:$entries,
+    next_actions:[
+      "controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance",
+      "keep_acceptance_closed_until_all_positive_preconditions_are_present"
+    ],
+    recommended_next_gate:"controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      acceptance_recorded:false,
+      evidence_recorded:false,
+      receipt_persisted:false,
+      receipt_store_written:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      credential_read:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      kill_switch_rehearsal_executed:false,
+      kill_switch_mutated:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

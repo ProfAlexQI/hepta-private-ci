@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -45,6 +47,27 @@ task_board_test_present="$(
   bool_for source_has "workGraphReportOnly" codex-rs/hepta-runtime/src/task_board.rs
 )"
 
+entrypoint_emission="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-report-only-entrypoint-emission-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-report-only-entrypoint-emission-report.sh"
+)"
+shadow_path="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-event-store-shadow-path-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-append-only-event-store-shadow-path-report.sh"
+)"
+task_result="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-envelope-report-only-validator-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-task-result-envelope-report-only-validator-report.sh"
+)"
+scheduler="$(
+  capture_json_report \
+    "hepta-work-graph-scheduler-admission-dry-run-enforcement-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-report.sh"
+)"
+
 jq -n \
   --argjson canary_module_present "$canary_module_present" \
   --argjson entrypoint_emission_gate_present "$entrypoint_emission_gate_present" \
@@ -53,6 +76,10 @@ jq -n \
   --argjson task_board_report_only_hook_present "$task_board_report_only_hook_present" \
   --argjson agent_jobs_test_present "$agent_jobs_test_present" \
   --argjson task_board_test_present "$task_board_test_present" \
+  --argjson entrypoint_emission "$entrypoint_emission" \
+  --argjson shadow_path "$shadow_path" \
+  --argjson task_result "$task_result" \
+  --argjson scheduler "$scheduler" \
   '
   def entrypoint($source; $entrypoint; $trace_join; $rollback): {
     source_surface_id: $source,
@@ -119,6 +146,46 @@ jq -n \
     "hepta_work_graph_task_result_envelope_report_only_validator_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($entrypoint_emission.ready_for_live_execution == false
+      and ($entrypoint_emission.side_effects | to_entries | all(.value == false))) as $source_entrypoint_emission_no_live_confirmed
+  | ($entrypoint_emission.gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+      and $entrypoint_emission.entrypoint_emission_prior_readbacks_complete == true
+      and $entrypoint_emission.entrypoint_emission_readiness_complete == true
+      and $entrypoint_emission.ready_for_canary_readback_replay_gate == true
+      and $source_entrypoint_emission_no_live_confirmed) as $source_entrypoint_emission_readiness_complete
+  | ($shadow_path.shadow_store_write_enabled == false
+      and $shadow_path.live_cutover_enabled == false
+      and $shadow_path.ready_for_live_execution == false
+      and ($shadow_path.side_effects | to_entries | all(.value == false))) as $source_append_only_shadow_path_no_persistence_confirmed
+  | ($shadow_path.gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+      and $shadow_path.append_only_shadow_path_readiness_complete == true
+      and $source_append_only_shadow_path_no_persistence_confirmed) as $source_append_only_shadow_path_readiness_complete
+  | ($task_result.live_enforcement_enabled == false
+      and $task_result.ready_for_live_execution == false
+      and ($task_result.side_effects | to_entries | all(.value == false))) as $source_task_result_envelope_no_enforcement_confirmed
+  | ($task_result.gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+      and $task_result.ready_for_scheduler_admission_dry_run_enforcement == true
+      and $task_result.report_only_valid_source_count == $task_result.source_envelope_count
+      and $source_task_result_envelope_no_enforcement_confirmed) as $source_task_result_envelope_validator_ready
+  | ($scheduler.live_blocking_enforcement_enabled == false
+      and $scheduler.ready_for_live_execution == false
+      and ($scheduler.side_effects | to_entries | all(.value == false))) as $source_scheduler_admission_no_live_blocking_confirmed
+  | ($scheduler.gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+      and $scheduler.dry_run_enforcement_enabled == true
+      and $scheduler.ready_for_append_only_event_store_shadow_path == true
+      and $source_scheduler_admission_no_live_blocking_confirmed) as $source_scheduler_admission_dry_run_ready
+  | ($source_entrypoint_emission_readiness_complete
+      and $source_append_only_shadow_path_readiness_complete
+      and $source_task_result_envelope_validator_ready
+      and $source_scheduler_admission_dry_run_ready) as $canary_readback_replay_prior_readbacks_complete
+  | (($indexes | length) > 0
+      and ($evidence | length) > 0
+      and ($diffs | length) > 0
+      and ($indexes | all(.persisted == false))
+      and ($evidence | all(.evidence_persisted == false))
+      and ($diffs | all(.replay_executed == false))) as $canary_projection_readback_replay_preview_complete
+  | ($canary_readback_replay_prior_readbacks_complete
+      and $canary_projection_readback_replay_preview_complete) as $ready_for_non_blocking_canary
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -130,20 +197,56 @@ jq -n \
       readback_evidence_count: ($evidence | length),
       replay_diff_count: ($diffs | length),
       required_prior_gate_count: ($required_prior_gates | length),
+      source_entrypoint_emission_required_prior_gate_count: $entrypoint_emission.required_prior_gate_count,
+      source_entrypoint_emission_entrypoint_count: $entrypoint_emission.entrypoint_count,
+      source_entrypoint_emission_emission_count: $entrypoint_emission.emission_count,
+      source_append_only_shadow_path_scheduler_prior_gate_count: $shadow_path.scheduler_prior_gate_count,
+      source_append_only_shadow_path_required_prior_gate_count: $shadow_path.required_prior_gate_count,
+      source_task_result_envelope_source_adapter_count: $task_result.source_adapter_count,
+      source_task_result_envelope_source_envelope_count: $task_result.source_envelope_count,
+      source_scheduler_admission_entrypoint_count: $scheduler.entrypoint_count,
+      source_scheduler_admission_required_prior_gate_count: ($scheduler.required_prior_gates | length),
       canary_entrypoints: $entrypoints,
       projection_indexes: $indexes,
       readback_evidence: $evidence,
       replay_diffs: $diffs,
       required_prior_gates: $required_prior_gates,
+      source_entrypoint_emission_gate: $entrypoint_emission.gate,
+      source_append_only_shadow_path_gate: $shadow_path.gate,
+      source_task_result_envelope_validator_gate: $task_result.gate,
+      source_scheduler_admission_dry_run_gate: $scheduler.gate,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary_gate",
       feature_flag_required: true,
       feature_flag_enabled: false,
-      ready_for_non_blocking_canary: true,
+      source_entrypoint_emission_readiness_complete: $source_entrypoint_emission_readiness_complete,
+      source_entrypoint_emission_no_live_confirmed: $source_entrypoint_emission_no_live_confirmed,
+      source_append_only_shadow_path_readiness_complete: $source_append_only_shadow_path_readiness_complete,
+      source_append_only_shadow_path_no_persistence_confirmed: $source_append_only_shadow_path_no_persistence_confirmed,
+      source_task_result_envelope_validator_ready: $source_task_result_envelope_validator_ready,
+      source_task_result_envelope_no_enforcement_confirmed: $source_task_result_envelope_no_enforcement_confirmed,
+      source_scheduler_admission_dry_run_ready: $source_scheduler_admission_dry_run_ready,
+      source_scheduler_admission_no_live_blocking_confirmed: $source_scheduler_admission_no_live_blocking_confirmed,
+      canary_readback_replay_prior_readbacks_complete: $canary_readback_replay_prior_readbacks_complete,
+      canary_projection_readback_replay_preview_complete: $canary_projection_readback_replay_preview_complete,
+      ready_for_non_blocking_canary: $ready_for_non_blocking_canary,
       ready_for_live_cutover: false,
       source_probes: {
         canary_readback_replay_module_present: $canary_module_present,
         entrypoint_emission_gate_present: $entrypoint_emission_gate_present,
         shadow_path_gate_present: $shadow_path_gate_present,
+        entrypoint_emission_report_gate: $entrypoint_emission.gate,
+        entrypoint_emission_readiness_complete: $entrypoint_emission.entrypoint_emission_readiness_complete,
+        entrypoint_emission_ready_for_canary_readback_replay_gate: $entrypoint_emission.ready_for_canary_readback_replay_gate,
+        entrypoint_emission_side_effects_all_false: ($entrypoint_emission.side_effects | to_entries | all(.value == false)),
+        append_only_shadow_path_report_gate: $shadow_path.gate,
+        append_only_shadow_path_readiness_complete: $shadow_path.append_only_shadow_path_readiness_complete,
+        append_only_shadow_path_side_effects_all_false: ($shadow_path.side_effects | to_entries | all(.value == false)),
+        task_result_envelope_validator_report_gate: $task_result.gate,
+        task_result_envelope_validator_ready: $task_result.ready_for_scheduler_admission_dry_run_enforcement,
+        task_result_envelope_validator_side_effects_all_false: ($task_result.side_effects | to_entries | all(.value == false)),
+        scheduler_admission_dry_run_report_gate: $scheduler.gate,
+        scheduler_admission_dry_run_ready: $scheduler.ready_for_append_only_event_store_shadow_path,
+        scheduler_admission_dry_run_side_effects_all_false: ($scheduler.side_effects | to_entries | all(.value == false)),
         agent_jobs_report_only_hook_present: $agent_jobs_report_only_hook_present,
         task_board_report_only_hook_present: $task_board_report_only_hook_present,
         agent_jobs_test_present: $agent_jobs_test_present,

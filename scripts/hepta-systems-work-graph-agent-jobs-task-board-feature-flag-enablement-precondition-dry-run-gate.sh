@@ -25,6 +25,7 @@ jq -e '
   and .source_rollback_replay_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate"
   and .source_rollback_replay_check_count == 6
   and .source_pre_enable_blocker_count == 10
+  and .source_required_prior_gate_count == 8
   and .decision_count == 2
   and .deny_reason_count == 10
   and (.decisions | map(.flag_id) == [
@@ -69,6 +70,13 @@ jq -e '
   ]
   and .required_prior_gate_count == 9
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_gate"
+  and .source_rollback_replay_preconditions_complete == true
+  and .source_rollback_replay_no_execution_confirmed == true
+  and .source_rollback_replay_no_enablement_confirmed == true
+  and .source_rollback_replay_ready == true
+  and .dry_run_decisions_deny_complete == true
+  and .deny_reasons_unsatisfied_complete == true
+  and .enablement_precondition_dry_run_preconditions_complete == true
   and .dry_run_mode == "deny_only_precondition_explanation"
   and .dry_run_enforced == false
   and .allow_count == 0
@@ -88,7 +96,10 @@ jq -e '
   and .source_probes.enablement_module_present == true
   and .source_probes.rollback_replay_matrix_gate_present == true
   and .source_probes.rollback_replay_matrix_points_here == true
-  and .source_probes.rollback_replay_ready_present == true
+  and .source_probes.rollback_replay_matrix_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate"
+  and .source_probes.rollback_replay_matrix_preconditions_complete == true
+  and .source_probes.rollback_replay_matrix_ready_for_dry_run == true
+  and .source_probes.rollback_replay_matrix_side_effects_all_false == true
   and .source_probes.rollback_replay_execution_false_present == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"

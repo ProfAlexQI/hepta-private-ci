@@ -28,6 +28,9 @@ jq -e '
   and .source_hardening_decision_count == 4
   and .source_hardening_blocker_count == 23
   and .source_required_prior_gate_count == 11
+  and .source_hardening_ready == true
+  and .source_hardening_no_live_confirmed == true
+  and .source_hardening_ready_for_readback == true
   and .readback_entry_count == 7
   and .entrypoint_readback_count == 4
   and .readback_blocker_count == 27
@@ -124,6 +127,11 @@ jq -e '
   and .hardening_decisions_visible == true
   and .hardening_checks_visible == true
   and .hardening_blockers_visible == true
+  and .readback_scope_visible_only_complete == true
+  and .readback_entries_visible_only_complete == true
+  and .entrypoint_readbacks_visible_only_complete == true
+  and .readback_blockers_complete == true
+  and .hardening_readback_preconditions_complete == true
   and .readback_ready == true
   and .readback_recorded == false
   and .readback_persisted == false
@@ -155,16 +163,25 @@ jq -e '
   and .live_cutover_allowed == false
   and .ready_for_audit_index == true
   and .ready_for_live_execution == false
-  and .source_probes.readback_module_present == true
-  and .source_probes.hardening_gate_present == true
-  and .source_probes.hardening_points_here == true
-  and .source_probes.hardening_no_live_present == true
-  and .source_probes.hardening_no_interception_present == true
-  and .source_probes.hardening_no_persistence_present == true
+  and .source_probes.hardening_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_gate"
+  and .source_probes.hardening_preconditions_complete == true
+  and .source_probes.hardening_ready_for_readback == true
+  and .source_probes.hardening_source_prior_readbacks_complete == true
+  and .source_probes.hardening_no_live_confirmed == true
+  and .source_probes.hardening_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback --lib
+tests=(
+  scheduler_guardrail_entrypoint_hardening_readback_derives_from_hardening
+  scheduler_guardrail_entrypoint_hardening_readback_is_visible_only
+  scheduler_guardrail_entrypoint_hardening_readback_blocks_live_paths
+  scheduler_guardrail_entrypoint_hardening_readback_links_priors_and_side_effects
+)
+
+for test_name in "${tests[@]}"; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint hardening readback gate passed"

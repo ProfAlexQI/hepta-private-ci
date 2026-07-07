@@ -2,18 +2,22 @@ use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_FINAL_CLOSEOUT_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestFinalCloseoutSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout_report,
 };
 use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE,
+    WorkGraphAgentJobsTaskBoardReportOnlyEntrypointEmissionSideEffects,
     hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_report,
 };
 use crate::work_graph_scheduler_admission_dry_run_enforcement::{
     WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE,
+    WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects,
     hepta_work_graph_scheduler_admission_dry_run_enforcement_report,
 };
 use crate::work_graph_trace_guardrail_span_report_only::{
     WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE,
+    WorkGraphTraceGuardrailSpanReportOnlySideEffects,
     hepta_work_graph_trace_guardrail_span_report_only_report,
 };
 
@@ -36,13 +40,22 @@ pub struct WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypoint
     pub source_scheduler_gate: &'static str,
     pub source_scheduler_entrypoint_count: usize,
     pub source_scheduler_check_count: usize,
+    pub source_scheduler_admission_dry_run_ready: bool,
+    pub source_scheduler_admission_no_live_blocking_confirmed: bool,
     pub source_trace_guardrail_gate: &'static str,
     pub source_trace_span_count: usize,
     pub source_blocking_guardrail_count: usize,
+    pub source_trace_guardrail_readiness_complete: bool,
+    pub source_trace_guardrail_no_live_blocking_confirmed: bool,
     pub source_entrypoint_emission_gate: &'static str,
     pub source_emission_count: usize,
+    pub source_entrypoint_emission_readiness_complete: bool,
+    pub source_entrypoint_emission_no_live_confirmed: bool,
     pub source_final_closeout_gate: &'static str,
     pub source_final_closeout_entry_count: usize,
+    pub source_final_closeout_preconditions_complete: bool,
+    pub source_final_closeout_no_live_confirmed: bool,
+    pub source_final_closeout_ready: bool,
     pub entrypoint_binding_count: usize,
     pub guardrail_check_count: usize,
     pub dry_run_decision_count: usize,
@@ -52,6 +65,10 @@ pub struct WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypoint
     pub dry_run_decisions: Vec<WorkGraphSchedulerGuardrailBlockingDryRunDecisionPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub prior_readbacks_complete: bool,
+    pub entrypoint_bindings_complete: bool,
+    pub guardrail_checks_complete: bool,
+    pub dry_run_decisions_complete: bool,
     pub scheduler_admission_dry_run_present: bool,
     pub blocking_guardrail_dry_run_attached: bool,
     pub pre_entrypoint_hook_contract_ready: bool,
@@ -136,6 +153,86 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
     let required_prior_gates =
         work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_required_prior_gates(
         );
+    let source_scheduler_admission_no_live_blocking_confirmed = !scheduler
+        .live_blocking_enforcement_enabled
+        && !scheduler.ready_for_live_execution
+        && scheduler.side_effects
+            == WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects::none();
+    let source_scheduler_admission_dry_run_ready = scheduler.gate
+        == WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        && scheduler.entrypoint_count == 4
+        && scheduler.check_count == 7
+        && scheduler.dry_run_enforcement_enabled
+        && scheduler.ready_for_append_only_event_store_shadow_path
+        && source_scheduler_admission_no_live_blocking_confirmed;
+    let source_trace_guardrail_no_live_blocking_confirmed = !trace_guardrail
+        .live_guardrail_enforcement_enabled
+        && !trace_guardrail.ready_for_live_execution
+        && trace_guardrail.side_effects == WorkGraphTraceGuardrailSpanReportOnlySideEffects::none();
+    let source_trace_guardrail_readiness_complete = trace_guardrail.gate
+        == WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE
+        && trace_guardrail.trace_guardrail_prior_readbacks_complete
+        && trace_guardrail.ready_for_agent_jobs_task_board_report_only_emission
+        && trace_guardrail.span_count == 9
+        && trace_guardrail.blocking_guardrail_count == 6
+        && source_trace_guardrail_no_live_blocking_confirmed;
+    let source_entrypoint_emission_no_live_confirmed = !entrypoint_emission
+        .ready_for_live_execution
+        && entrypoint_emission.side_effects
+            == WorkGraphAgentJobsTaskBoardReportOnlyEntrypointEmissionSideEffects::none();
+    let source_entrypoint_emission_readiness_complete = entrypoint_emission.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE
+        && entrypoint_emission.entrypoint_emission_prior_readbacks_complete
+        && entrypoint_emission.entrypoint_emission_readiness_complete
+        && entrypoint_emission.entrypoint_count == 2
+        && entrypoint_emission.emission_count == 2
+        && source_entrypoint_emission_no_live_confirmed;
+    let source_final_closeout_no_live_confirmed = !final_closeout.ready_for_live_cutover
+        && !final_closeout.ready_for_operator_review_request
+        && !final_closeout.operator_review_requested
+        && !final_closeout.operator_packet_send_allowed
+        && !final_closeout.operator_packet_acceptance_allowed
+        && !final_closeout.approval_recording_allowed
+        && !final_closeout.scheduler_enforcement_allowed
+        && !final_closeout.guardrail_enforcement_allowed
+        && !final_closeout.work_graph_persistence_allowed
+        && final_closeout.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestFinalCloseoutSideEffects::none();
+    let source_final_closeout_ready = final_closeout.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_FINAL_CLOSEOUT_GATE
+        && final_closeout.terminal_no_request_final_closeout_preconditions_complete
+        && final_closeout.terminal_no_request_branch_closed
+        && final_closeout.ready_for_scheduler_guardrail_blocking_dry_run_entrypoint
+        && final_closeout.final_closeout_entry_count == 8
+        && source_final_closeout_no_live_confirmed;
+    let prior_readbacks_complete = source_scheduler_admission_dry_run_ready
+        && source_trace_guardrail_readiness_complete
+        && source_entrypoint_emission_readiness_complete
+        && source_final_closeout_ready;
+    let entrypoint_bindings_complete = entrypoint_bindings.len() == 4
+        && entrypoint_bindings.iter().all(|entrypoint| {
+            entrypoint.dry_run_decision == "deny_live_allow_report_only"
+                && entrypoint.would_block_if_live
+                && entrypoint.dry_run_allows_current_runtime_to_continue
+                && !entrypoint.live_blocking_enabled
+                && entrypoint.applied_check_ids.len() == 8
+                && entrypoint.required_trace_fields.len() == 6
+        });
+    let guardrail_checks_complete = guardrail_checks.len() == 8
+        && guardrail_checks
+            .iter()
+            .all(|check| check.blocks_live_execution && check.dry_run_explanation_required);
+    let dry_run_decisions_complete = dry_run_decisions.len() == 4
+        && dry_run_decisions.iter().all(|decision| {
+            decision.outcome == "deny_live_allow_report_only"
+                && decision.allow_current_runtime_to_continue
+                && decision.block_live_execution
+                && !decision.trace_id.is_empty()
+        });
+    let pre_entrypoint_hook_contract_ready = prior_readbacks_complete
+        && entrypoint_bindings_complete
+        && guardrail_checks_complete
+        && dry_run_decisions_complete;
 
     WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointReport {
         product: "Hepta",
@@ -148,13 +245,23 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         source_scheduler_gate: scheduler.gate,
         source_scheduler_entrypoint_count: scheduler.entrypoint_count,
         source_scheduler_check_count: scheduler.check_count,
+        source_scheduler_admission_dry_run_ready,
+        source_scheduler_admission_no_live_blocking_confirmed,
         source_trace_guardrail_gate: trace_guardrail.gate,
         source_trace_span_count: trace_guardrail.span_count,
         source_blocking_guardrail_count: trace_guardrail.blocking_guardrail_count,
+        source_trace_guardrail_readiness_complete,
+        source_trace_guardrail_no_live_blocking_confirmed,
         source_entrypoint_emission_gate: entrypoint_emission.gate,
         source_emission_count: entrypoint_emission.emission_count,
+        source_entrypoint_emission_readiness_complete,
+        source_entrypoint_emission_no_live_confirmed,
         source_final_closeout_gate: final_closeout.gate,
         source_final_closeout_entry_count: final_closeout.final_closeout_entry_count,
+        source_final_closeout_preconditions_complete: final_closeout
+            .terminal_no_request_final_closeout_preconditions_complete,
+        source_final_closeout_no_live_confirmed,
+        source_final_closeout_ready,
         entrypoint_binding_count: entrypoint_bindings.len(),
         guardrail_check_count: guardrail_checks.len(),
         dry_run_decision_count: dry_run_decisions.len(),
@@ -165,13 +272,17 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_RECOMMENDED_NEXT_GATE,
-        scheduler_admission_dry_run_present: true,
-        blocking_guardrail_dry_run_attached: true,
-        pre_entrypoint_hook_contract_ready: true,
+        prior_readbacks_complete,
+        entrypoint_bindings_complete,
+        guardrail_checks_complete,
+        dry_run_decisions_complete,
+        scheduler_admission_dry_run_present: source_scheduler_admission_dry_run_ready,
+        blocking_guardrail_dry_run_attached: pre_entrypoint_hook_contract_ready,
+        pre_entrypoint_hook_contract_ready,
         live_blocking_enforcement_enabled: false,
         runtime_interception_enabled: false,
         work_graph_event_persistence_enabled: false,
-        ready_for_work_graph_shadow_event_store_readback: true,
+        ready_for_work_graph_shadow_event_store_readback: pre_entrypoint_hook_contract_ready,
         ready_for_live_execution: false,
         side_effects:
             WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointSideEffects::none(),
@@ -386,22 +497,31 @@ mod tests {
         );
         assert_eq!(report.source_scheduler_entrypoint_count, 4);
         assert_eq!(report.source_scheduler_check_count, 7);
+        assert!(report.source_scheduler_admission_dry_run_ready);
+        assert!(report.source_scheduler_admission_no_live_blocking_confirmed);
         assert_eq!(
             report.source_trace_guardrail_gate,
             WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE
         );
         assert_eq!(report.source_trace_span_count, 9);
         assert_eq!(report.source_blocking_guardrail_count, 6);
+        assert!(report.source_trace_guardrail_readiness_complete);
+        assert!(report.source_trace_guardrail_no_live_blocking_confirmed);
         assert_eq!(
             report.source_entrypoint_emission_gate,
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE
         );
         assert_eq!(report.source_emission_count, 2);
+        assert!(report.source_entrypoint_emission_readiness_complete);
+        assert!(report.source_entrypoint_emission_no_live_confirmed);
         assert_eq!(
             report.source_final_closeout_gate,
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_FINAL_CLOSEOUT_GATE
         );
         assert_eq!(report.source_final_closeout_entry_count, 8);
+        assert!(report.source_final_closeout_preconditions_complete);
+        assert!(report.source_final_closeout_no_live_confirmed);
+        assert!(report.source_final_closeout_ready);
     }
 
     #[test]
@@ -450,6 +570,10 @@ mod tests {
                 WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE,
             ]
         );
+        assert!(report.prior_readbacks_complete);
+        assert!(report.entrypoint_bindings_complete);
+        assert!(report.guardrail_checks_complete);
+        assert!(report.dry_run_decisions_complete);
         assert!(report.scheduler_admission_dry_run_present);
         assert!(report.blocking_guardrail_dry_run_attached);
         assert!(report.pre_entrypoint_hook_contract_ready);

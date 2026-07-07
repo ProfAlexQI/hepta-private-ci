@@ -25,16 +25,22 @@ jq -e '
   and .source_scheduler_guardrail_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate"
   and .source_entrypoint_binding_count == 4
   and .source_dry_run_decision_count == 4
+  and .source_scheduler_guardrail_ready == true
+  and .source_scheduler_guardrail_no_live_confirmed == true
   and .source_shadow_path_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
   and .source_shadow_event_record_count == 8
   and .source_projection_index_count == 5
   and .source_readback_evidence_count == 5
   and .source_replay_diff_count == 4
+  and .source_shadow_path_readiness_complete == true
+  and .source_shadow_path_no_persistence_confirmed == true
   and .source_canary_readback_replay_gate == "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
   and .source_canary_entrypoint_count == 2
   and .source_canary_projection_index_count == 2
   and .source_canary_readback_evidence_count == 2
   and .source_canary_replay_diff_count == 2
+  and .source_canary_readback_replay_ready == true
+  and .source_canary_readback_replay_no_live_confirmed == true
   and .readback_entry_count == 6
   and .shadow_event_join_count == 4
   and .non_persistence_blocker_count == 14
@@ -99,6 +105,10 @@ jq -e '
     "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
   ]
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate"
+  and .source_prior_readbacks_complete == true
+  and .readback_entries_visible_only_complete == true
+  and .shadow_event_joins_report_only_complete == true
+  and .non_persistence_blockers_complete == true
   and .shadow_event_store_readback_ready == true
   and .entrypoint_shadow_event_join_ready == true
   and .redacted_payload_hash_join_ready == true
@@ -116,12 +126,30 @@ jq -e '
   and .source_probes.shadow_event_store_readback.report_script_present == true
   and .source_probes.shadow_event_store_readback.gate_script_present == true
   and .source_probes.scheduler_guardrail_blocking_dry_run_entrypoint.gate_script_present == true
+  and .source_probes.scheduler_guardrail_blocking_dry_run_entrypoint.report_gate == true
+  and .source_probes.scheduler_guardrail_blocking_dry_run_entrypoint.ready_for_shadow_event_store_readback == true
+  and .source_probes.scheduler_guardrail_blocking_dry_run_entrypoint.no_live_confirmed == true
+  and .source_probes.scheduler_guardrail_blocking_dry_run_entrypoint.side_effects_all_false == true
   and .source_probes.append_only_event_store_shadow_path.gate_script_present == true
+  and .source_probes.append_only_event_store_shadow_path.report_gate == true
+  and .source_probes.append_only_event_store_shadow_path.readiness_complete == true
+  and .source_probes.append_only_event_store_shadow_path.no_persistence_confirmed == true
+  and .source_probes.append_only_event_store_shadow_path.side_effects_all_false == true
   and .source_probes.agent_jobs_task_board_canary_readback_replay.gate_script_present == true
+  and .source_probes.agent_jobs_task_board_canary_readback_replay.report_gate == true
+  and .source_probes.agent_jobs_task_board_canary_readback_replay.readiness_complete == true
+  and .source_probes.agent_jobs_task_board_canary_readback_replay.no_live_confirmed == true
+  and .source_probes.agent_jobs_task_board_canary_readback_replay.side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
 cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback --lib
+  shadow_event_store_readback_derives_from_scheduler_shadow_path_and_canary --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  shadow_event_store_readback_declares_entrypoint_joins --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  shadow_event_store_readback_stays_non_persistent_and_non_live --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  shadow_event_store_readback_links_required_priors_and_side_effects --lib
 
 echo "Hepta WorkGraph agent_jobs + task_board shadow event-store readback gate passed"

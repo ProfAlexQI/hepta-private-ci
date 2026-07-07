@@ -26,6 +26,10 @@ jq -e '
   and .source_final_closeout_entry_count == 9
   and .source_final_closeout_blocker_count == 45
   and .source_required_prior_gate_count == 20
+  and .source_terminal_no_attachment_ready == true
+  and .source_terminal_no_attachment_no_persistence_confirmed == true
+  and .source_terminal_no_attachment_no_live_confirmed == true
+  and .source_terminal_no_attachment_ready_for_attachability_readiness == true
   and .attachability_entrypoint_count == 4
   and .attachability_precondition_check_count == 16
   and .attachability_precondition_satisfied_count == 7
@@ -100,6 +104,10 @@ jq -e '
   and .attachability_preconditions_satisfied == false
   and .source_final_closeout_visible == true
   and .source_final_closeout_persisted == false
+  and .attachability_entrypoints_complete == true
+  and .attachability_precondition_checks_complete == true
+  and .attachability_blockers_complete == true
+  and .attachability_readiness_preconditions_complete == true
   and .live_attachment_allowed == false
   and .live_blocking_hook_install_allowed == false
   and .runtime_interception_allowed == false
@@ -130,16 +138,25 @@ jq -e '
   and .ready_for_attachability_precondition_readiness_readback == true
   and .ready_for_live_attachment == false
   and .ready_for_live_execution == false
-  and .source_probes.readiness_module_present == true
-  and .source_probes.terminal_final_closeout_gate_present == true
-  and .source_probes.terminal_final_closeout_points_here == true
-  and .source_probes.terminal_final_closeout_ready_present == true
-  and .source_probes.terminal_final_closeout_no_attachment_present == true
-  and .source_probes.terminal_final_closeout_no_live_present == true
+  and .source_readbacks.terminal_final_closeout_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_terminal_no_attachment_final_closeout_gate"
+  and .source_readbacks.terminal_final_closeout_preconditions_complete == true
+  and .source_readbacks.terminal_final_closeout_ready_for_attachability_readiness == true
+  and .source_readbacks.terminal_final_closeout_no_persistence_confirmed == true
+  and .source_readbacks.terminal_final_closeout_no_live_confirmed == true
+  and .source_readbacks.terminal_final_closeout_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness --lib
+tests=(
+  live_attachment_attachability_readiness_derives_from_terminal_closeout
+  live_attachment_attachability_readiness_keeps_candidates_report_only
+  live_attachment_attachability_readiness_blocks_live_paths
+  live_attachment_attachability_readiness_links_priors_and_side_effects
+)
+
+for test_name in "${tests[@]}"; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint live attachment attachability precondition readiness gate passed"

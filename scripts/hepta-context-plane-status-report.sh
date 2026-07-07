@@ -15,6 +15,7 @@ context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready
 context-plane-status.recall-quality-blocking-reason-count=0
 context-plane-status.recall-quality-blocking-reasons=none
+context-plane-status.memory-provider-boundary=shadow
 context-plane-status.source-aware-front-door=disabled
 context-plane-status.production-write=disabled
 context-plane-status.graph-write=disabled

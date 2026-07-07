@@ -27,6 +27,10 @@ jq -e '
   and .source_entrypoint_readback_count == 4
   and .source_readback_blocker_count == 27
   and .source_required_prior_gate_count == 12
+  and .source_hardening_readback_ready == true
+  and .source_hardening_readback_no_live_confirmed == true
+  and .source_hardening_readback_no_persistence_confirmed == true
+  and .source_hardening_readback_ready_for_audit_index == true
   and .audit_index_entry_count == 9
   and .audit_index_blocker_count == 30
   and .required_prior_gate_count == 13
@@ -116,6 +120,10 @@ jq -e '
   and .hardening_readback_recorded == false
   and .hardening_readback_persisted == false
   and .hardening_readback_accepted == false
+  and .audit_index_scope_visible_only_complete == true
+  and .audit_index_entries_complete == true
+  and .audit_index_blockers_complete == true
+  and .audit_index_preconditions_complete == true
   and .audit_index_authorizes_hardening_readback_recording == false
   and .audit_index_authorizes_hardening_readback_persistence == false
   and .audit_index_authorizes_hardening_decision_recording == false
@@ -144,16 +152,25 @@ jq -e '
   and .audit_index_authorizes_live_cutover == false
   and .ready_for_non_persistence_readback == true
   and .ready_for_live_execution == false
-  and .source_probes.audit_index_module_present == true
-  and .source_probes.hardening_readback_gate_present == true
-  and .source_probes.hardening_readback_points_here == true
-  and .source_probes.hardening_readback_ready_present == true
-  and .source_probes.hardening_readback_no_live_present == true
-  and .source_probes.hardening_readback_no_persist_present == true
+  and .source_probes.hardening_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_gate"
+  and .source_probes.hardening_readback_preconditions_complete == true
+  and .source_probes.hardening_readback_ready_for_audit_index == true
+  and .source_probes.hardening_readback_no_live_confirmed == true
+  and .source_probes.hardening_readback_no_persistence_confirmed == true
+  and .source_probes.hardening_readback_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_readback_audit_index --lib
+tests=(
+  scheduler_guardrail_entrypoint_hardening_readback_audit_index_derives_from_readback
+  scheduler_guardrail_entrypoint_hardening_readback_audit_index_is_visible_only
+  scheduler_guardrail_entrypoint_hardening_readback_audit_index_blocks_live_paths
+  scheduler_guardrail_entrypoint_hardening_readback_audit_index_links_priors_and_side_effects
+)
+
+for test_name in "${tests[@]}"; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint hardening readback audit index gate passed"

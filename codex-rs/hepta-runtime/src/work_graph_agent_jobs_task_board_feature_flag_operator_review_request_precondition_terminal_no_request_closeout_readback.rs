@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestCloseoutSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_report,
 };
 
@@ -25,6 +26,10 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditi
     pub source_closeout_entry_count: usize,
     pub source_closeout_blocker_count: usize,
     pub source_required_prior_gate_count: usize,
+    pub source_terminal_closeout_preconditions_complete: bool,
+    pub source_terminal_closeout_no_request_confirmed: bool,
+    pub source_terminal_closeout_no_authorization_confirmed: bool,
+    pub source_terminal_closeout_ready: bool,
     pub readback_entry_count: usize,
     pub readback_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -36,6 +41,10 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditi
         Vec<WorkGraphOperatorReviewRequestPreconditionTerminalNoRequestCloseoutReadbackBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub readback_scope_terminal_no_request_complete: bool,
+    pub readback_entries_terminal_no_request_complete: bool,
+    pub readback_blockers_complete: bool,
+    pub terminal_no_request_closeout_readback_preconditions_complete: bool,
     pub terminal_closeout_visible: bool,
     pub terminal_closeout_recorded: bool,
     pub terminal_closeout_persisted: bool,
@@ -167,6 +176,77 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
     let mut required_prior_gates =
         vec![WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_GATE];
     required_prior_gates.extend(source.required_prior_gates.iter().copied());
+    let source_terminal_closeout_no_request_confirmed = source.terminal_closeout_visible
+        && !source.terminal_closeout_recorded
+        && !source.terminal_closeout_persisted
+        && !source.terminal_closeout_authoritative
+        && !source.terminal_closeout_accepted
+        && source.terminal_no_request
+        && !source.operator_review_request_allowed
+        && !source.operator_review_requested
+        && !source.operator_packet_send_allowed
+        && !source.operator_packet_acceptance_allowed
+        && !source.approval_recording_allowed
+        && source.ready_for_terminal_no_request_closeout_readback
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestCloseoutSideEffects::none();
+    let source_terminal_closeout_no_authorization_confirmed = !source
+        .operator_review_request_allowed
+        && !source.operator_review_requested
+        && !source.operator_packet_send_allowed
+        && !source.operator_packet_acceptance_allowed
+        && !source.approval_recording_allowed
+        && !source.config_write_allowed
+        && !source.feature_flag_enablement_allowed
+        && !source.canary_traffic_allowed
+        && !source.scheduler_enforcement_allowed
+        && !source.guardrail_enforcement_allowed
+        && !source.replay_execution_allowed
+        && !source.rollback_execution_allowed
+        && !source.work_graph_persistence_allowed
+        && !source.live_cutover_allowed
+        && !source.ready_for_operator_review_request
+        && !source.ready_for_approval_recording
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_canary_traffic
+        && !source.ready_for_live_cutover;
+    let source_terminal_closeout_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_GATE
+        && source.terminal_no_request_closeout_preconditions_complete
+        && source.ready_for_terminal_no_request_closeout_readback
+        && source_terminal_closeout_no_request_confirmed
+        && source_terminal_closeout_no_authorization_confirmed;
+    let readback_scope_terminal_no_request_complete = readback_scope.closeout_visible
+        && readback_scope.readback_visible
+        && readback_scope.terminal_no_request
+        && !readback_scope.closeout_recorded
+        && !readback_scope.closeout_persisted
+        && !readback_scope.closeout_authoritative
+        && !readback_scope.closeout_accepted
+        && !readback_scope.readback_recorded
+        && !readback_scope.readback_persisted
+        && !readback_scope.readback_authoritative
+        && !readback_scope.readback_accepted
+        && !readback_scope.operator_review_requested;
+    let readback_entries_terminal_no_request_complete = !readback_entries.is_empty()
+        && readback_entries.iter().all(|entry| {
+            entry.visible
+                && entry.ready
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.accepted
+                && !entry.authoritative
+                && !entry.operator_review_requested
+                && !entry.mutation_allowed
+        });
+    let readback_blockers_complete =
+        !readback_blockers.is_empty() && readback_blockers.iter().all(|blocker| blocker.blocked);
+    let terminal_no_request_closeout_readback_preconditions_complete =
+        source_terminal_closeout_ready
+            && readback_scope_terminal_no_request_complete
+            && readback_entries_terminal_no_request_complete
+            && readback_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestCloseoutReadbackReport {
         product: "Hepta",
@@ -181,6 +261,11 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         source_closeout_entry_count: source.closeout_entry_count,
         source_closeout_blocker_count: source.closeout_blocker_count,
         source_required_prior_gate_count: source.required_prior_gate_count,
+        source_terminal_closeout_preconditions_complete: source
+            .terminal_no_request_closeout_preconditions_complete,
+        source_terminal_closeout_no_request_confirmed,
+        source_terminal_closeout_no_authorization_confirmed,
+        source_terminal_closeout_ready,
         readback_entry_count: readback_entries.len(),
         readback_blocker_count: readback_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -190,6 +275,10 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_READBACK_RECOMMENDED_NEXT_GATE,
+        readback_scope_terminal_no_request_complete,
+        readback_entries_terminal_no_request_complete,
+        readback_blockers_complete,
+        terminal_no_request_closeout_readback_preconditions_complete,
         terminal_closeout_visible: true,
         terminal_closeout_recorded: false,
         terminal_closeout_persisted: false,
@@ -215,7 +304,8 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         rollback_execution_allowed: false,
         work_graph_persistence_allowed: false,
         live_cutover_allowed: false,
-        ready_for_terminal_no_request_closeout_readback_audit_index: true,
+        ready_for_terminal_no_request_closeout_readback_audit_index:
+            terminal_no_request_closeout_readback_preconditions_complete,
         ready_for_operator_review_request: false,
         ready_for_approval_recording: false,
         ready_for_feature_flag_config_write: false,
@@ -431,6 +521,10 @@ mod tests {
         assert_eq!(report.source_closeout_entry_count, 7);
         assert_eq!(report.source_closeout_blocker_count, 21);
         assert_eq!(report.source_required_prior_gate_count, 21);
+        assert!(report.source_terminal_closeout_preconditions_complete);
+        assert!(report.source_terminal_closeout_no_request_confirmed);
+        assert!(report.source_terminal_closeout_no_authorization_confirmed);
+        assert!(report.source_terminal_closeout_ready);
         assert_eq!(report.readback_entry_count, 5);
         assert_eq!(report.readback_blocker_count, 22);
         assert_eq!(report.required_prior_gate_count, 22);
@@ -453,6 +547,7 @@ mod tests {
         assert!(!report.readback_scope.readback_authoritative);
         assert!(!report.readback_scope.readback_accepted);
         assert!(!report.readback_scope.operator_review_requested);
+        assert!(report.readback_scope_terminal_no_request_complete);
         assert!(report.readback_entries.iter().all(|entry| {
             entry.visible
                 && entry.ready
@@ -463,6 +558,7 @@ mod tests {
                 && !entry.operator_review_requested
                 && !entry.mutation_allowed
         }));
+        assert!(report.readback_entries_terminal_no_request_complete);
     }
 
     #[test]
@@ -476,6 +572,8 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.readback_blockers_complete);
+        assert!(report.terminal_no_request_closeout_readback_preconditions_complete);
         assert!(report.terminal_closeout_visible);
         assert!(report.readback_visible);
         assert!(report.terminal_no_request);

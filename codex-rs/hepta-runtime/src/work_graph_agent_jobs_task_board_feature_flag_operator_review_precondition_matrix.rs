@@ -5,6 +5,7 @@ use crate::work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_on
 use crate::work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_AUDIT_INDEX_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_AUDIT_INDEX_NON_PERSISTENCE_READBACK_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialAuditIndexNonPersistenceReadbackSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback_report,
 };
 use crate::work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_READBACK_GATE;
@@ -47,6 +48,13 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewPreconditionMatri
     pub blockers: Vec<WorkGraphOperatorReviewPreconditionBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_non_persistence_readback_preconditions_complete: bool,
+    pub source_non_persistence_readback_no_record_persist_request_confirmed: bool,
+    pub source_non_persistence_readback_no_authorization_confirmed: bool,
+    pub source_non_persistence_readback_ready: bool,
+    pub precondition_checks_complete: bool,
+    pub blockers_complete: bool,
+    pub operator_review_precondition_matrix_preconditions_complete: bool,
     pub matrix_mode: &'static str,
     pub operator_review_request_allowed: bool,
     pub operator_review_request_sent: bool,
@@ -140,6 +148,45 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_preco
         .iter()
         .filter(|check| check.blocking)
         .count();
+    let source_non_persistence_readback_no_record_persist_request_confirmed =
+        source.audit_index_visible
+            && !source.audit_index_recorded
+            && !source.audit_index_persisted
+            && !source.audit_index_authoritative
+            && !source.audit_index_accepted
+            && !source.readback_persisted
+            && !source.operator_review_request_allowed
+            && source.side_effects
+                == WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialAuditIndexNonPersistenceReadbackSideEffects::none(
+                );
+    let source_non_persistence_readback_no_authorization_confirmed = !source
+        .operator_review_request_allowed
+        && !source.approval_recorded
+        && !source.config_write_allowed
+        && !source.feature_flag_enablement_allowed
+        && !source.canary_traffic_allowed
+        && !source.scheduler_enforcement_allowed
+        && !source.replay_execution_allowed
+        && !source.rollback_execution_allowed
+        && !source.live_cutover_allowed
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_canary_traffic
+        && !source.ready_for_live_cutover;
+    let source_non_persistence_readback_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_AUDIT_INDEX_NON_PERSISTENCE_READBACK_GATE
+        && source.non_persistence_readback_preconditions_complete
+        && source.ready_for_operator_review_precondition_matrix
+        && source_non_persistence_readback_no_record_persist_request_confirmed
+        && source_non_persistence_readback_no_authorization_confirmed;
+    let precondition_checks_complete = !precondition_checks.is_empty()
+        && precondition_checks.iter().all(|check| check.required)
+        && precondition_satisfied_count == 2
+        && precondition_checks.len() - precondition_satisfied_count == blocking_precondition_count
+        && blocking_precondition_count == 7;
+    let blockers_complete = !blockers.is_empty() && blockers.iter().all(|blocker| blocker.blocked);
+    let operator_review_precondition_matrix_preconditions_complete =
+        source_non_persistence_readback_ready && precondition_checks_complete && blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewPreconditionMatrixReport {
         product: "Hepta",
@@ -164,6 +211,14 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_preco
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_PRECONDITION_MATRIX_RECOMMENDED_NEXT_GATE,
+        source_non_persistence_readback_preconditions_complete: source
+            .non_persistence_readback_preconditions_complete,
+        source_non_persistence_readback_no_record_persist_request_confirmed,
+        source_non_persistence_readback_no_authorization_confirmed,
+        source_non_persistence_readback_ready,
+        precondition_checks_complete,
+        blockers_complete,
+        operator_review_precondition_matrix_preconditions_complete,
         matrix_mode: "deny_request_until_explicit_operator_review_authorization",
         operator_review_request_allowed: false,
         operator_review_request_sent: false,
@@ -178,7 +233,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_preco
         replay_execution_allowed: false,
         rollback_execution_allowed: false,
         live_cutover_allowed: false,
-        ready_for_non_request_readback: true,
+        ready_for_non_request_readback: operator_review_precondition_matrix_preconditions_complete,
         ready_for_operator_review_request: false,
         ready_for_approval_recording: false,
         ready_for_feature_flag_config_write: false,
@@ -392,10 +447,15 @@ mod tests {
         assert_eq!(report.source_readback_entry_count, 5);
         assert_eq!(report.source_readback_blocker_count, 12);
         assert_eq!(report.source_required_prior_gate_count, 12);
+        assert!(report.source_non_persistence_readback_preconditions_complete);
+        assert!(report.source_non_persistence_readback_no_record_persist_request_confirmed);
+        assert!(report.source_non_persistence_readback_no_authorization_confirmed);
+        assert!(report.source_non_persistence_readback_ready);
         assert_eq!(report.precondition_check_count, 9);
         assert_eq!(report.precondition_satisfied_count, 2);
         assert_eq!(report.precondition_unsatisfied_count, 7);
         assert_eq!(report.blocking_precondition_count, 7);
+        assert!(report.precondition_checks_complete);
     }
 
     #[test]
@@ -408,6 +468,8 @@ mod tests {
             "deny_request_until_explicit_operator_review_authorization"
         );
         assert_eq!(report.blocker_count, 13);
+        assert!(report.blockers_complete);
+        assert!(report.operator_review_precondition_matrix_preconditions_complete);
         assert!(!report.operator_review_request_allowed);
         assert!(!report.operator_review_request_sent);
         assert!(!report.operator_packet_send_allowed);

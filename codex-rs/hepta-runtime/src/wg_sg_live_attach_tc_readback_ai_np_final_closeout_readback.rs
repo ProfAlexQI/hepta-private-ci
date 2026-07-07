@@ -3,6 +3,7 @@
 use serde::Serialize;
 
 use crate::wg_sg_live_attach_tc_readback_ai_np_final_closeout::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_PRECONDITION_READINESS_READBACK_TERMINAL_NO_ATTACHMENT_FINAL_CLOSEOUT_READBACK_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_GATE;
+use crate::wg_sg_live_attach_tc_readback_ai_np_final_closeout::WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutSideEffects;
 use crate::wg_sg_live_attach_tc_readback_ai_np_final_closeout::hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_report;
 
 pub const WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_PRECONDITION_READINESS_READBACK_TERMINAL_NO_ATTACHMENT_FINAL_CLOSEOUT_READBACK_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_READBACK_GATE:
@@ -26,6 +27,10 @@ pub struct WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersisten
     pub source_final_closeout_entry_count: usize,
     pub source_final_closeout_blocker_count: usize,
     pub source_required_prior_gate_count: usize,
+    pub source_final_closeout_ready: bool,
+    pub source_final_closeout_no_persistence_confirmed: bool,
+    pub source_final_closeout_no_live_confirmed: bool,
+    pub source_final_closeout_ready_for_readback: bool,
     pub readback_entry_count: usize,
     pub readback_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -37,6 +42,10 @@ pub struct WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersisten
         Vec<WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub readback_scope_complete: bool,
+    pub readback_entries_complete: bool,
+    pub readback_blockers_complete: bool,
+    pub final_closeout_readback_preconditions_complete: bool,
     pub source_final_closeout_visible: bool,
     pub source_final_closeout_recorded: bool,
     pub source_final_closeout_persisted: bool,
@@ -177,6 +186,94 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_blockers();
     let required_prior_gates =
         work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_required_prior_gates();
+    let source_final_closeout_side_effects_all_false =
+        source.side_effects
+            == WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutSideEffects::none();
+    let source_final_closeout_no_persistence_confirmed = source
+        .final_closeout_preconditions_complete
+        && source.final_closeout_visible
+        && !source.final_closeout_recorded
+        && !source.final_closeout_persisted
+        && !source.final_closeout_authoritative
+        && !source.final_closeout_accepted
+        && source.source_audit_index_visible
+        && !source.source_audit_index_recorded
+        && !source.source_audit_index_persisted
+        && !source.source_audit_index_authoritative
+        && !source.source_audit_index_accepted
+        && !source.source_readback_recorded
+        && !source.source_readback_persisted
+        && !source.source_readback_accepted
+        && !source.work_graph_event_persistence_allowed
+        && !source.projection_persistence_allowed
+        && source_final_closeout_side_effects_all_false;
+    let source_final_closeout_no_live_confirmed = source
+        .ready_for_terminal_closeout_readback_audit_index_final_closeout_readback
+        && !source.live_attachment_allowed
+        && !source.live_blocking_hook_install_allowed
+        && !source.runtime_interception_allowed
+        && !source.scheduler_admission_enforcement_allowed
+        && !source.guardrail_enforcement_allowed
+        && !source.lease_acquisition_allowed
+        && !source.work_start_allowed
+        && !source.agent_spawn_allowed
+        && !source.model_invocation_allowed
+        && !source.external_send_allowed
+        && !source.live_task_result_emission_allowed
+        && !source.readback_execution_allowed
+        && !source.replay_execution_allowed
+        && !source.replay_diff_recording_allowed
+        && !source.replay_diff_persistence_allowed
+        && !source.rollback_execution_allowed
+        && !source.idempotency_mutation_allowed
+        && !source.config_write_allowed
+        && !source.feature_flag_mutation_allowed
+        && !source.canary_traffic_allowed
+        && !source.operator_review_request_allowed
+        && !source.approval_recording_allowed
+        && !source.live_cutover_allowed
+        && !source.ready_for_live_attachment
+        && !source.ready_for_live_execution
+        && source_final_closeout_no_persistence_confirmed;
+    let source_final_closeout_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_PRECONDITION_READINESS_READBACK_TERMINAL_NO_ATTACHMENT_FINAL_CLOSEOUT_READBACK_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_GATE
+        && source.source_non_persistence_readback_ready
+        && source.source_non_persistence_readback_no_persistence_confirmed
+        && source.source_non_persistence_readback_no_live_confirmed
+        && source.source_non_persistence_readback_ready_for_final_closeout
+        && source.final_closeout_scope_complete
+        && source.final_closeout_entries_complete
+        && source.final_closeout_blockers_complete
+        && source.final_closeout_preconditions_complete
+        && source.final_closeout_entry_count == 8
+        && source.final_closeout_blocker_count == 86
+        && source.required_prior_gate_count == 33
+        && source_final_closeout_no_live_confirmed;
+    let source_final_closeout_ready_for_readback = source_final_closeout_ready
+        && source.ready_for_terminal_closeout_readback_audit_index_final_closeout_readback;
+    let readback_scope_complete = readback_scope.source_final_closeout_visible
+        && !readback_scope.source_final_closeout_recorded
+        && !readback_scope.source_final_closeout_persisted
+        && !readback_scope.source_final_closeout_accepted
+        && !readback_scope.readback_recorded
+        && !readback_scope.readback_persisted
+        && !readback_scope.readback_accepted;
+    let readback_entries_complete = readback_entries.len() == 6
+        && readback_entries.iter().all(|entry| {
+            entry.visible
+                && entry.ready
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.authoritative
+                && !entry.accepted
+                && !entry.mutation_allowed
+        });
+    let readback_blockers_complete =
+        readback_blockers.len() == 89 && readback_blockers.iter().all(|blocker| blocker.blocked);
+    let final_closeout_readback_preconditions_complete = source_final_closeout_ready_for_readback
+        && readback_scope_complete
+        && readback_entries_complete
+        && readback_blockers_complete;
 
     WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackReport {
         product: "Hepta",
@@ -192,6 +289,10 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         source_final_closeout_entry_count: source.final_closeout_entry_count,
         source_final_closeout_blocker_count: source.final_closeout_blocker_count,
         source_required_prior_gate_count: source.required_prior_gate_count,
+        source_final_closeout_ready,
+        source_final_closeout_no_persistence_confirmed,
+        source_final_closeout_no_live_confirmed,
+        source_final_closeout_ready_for_readback,
         readback_entry_count: readback_entries.len(),
         readback_blocker_count: readback_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -201,6 +302,10 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_PRECONDITION_READINESS_READBACK_TERMINAL_NO_ATTACHMENT_FINAL_CLOSEOUT_READBACK_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_READBACK_RECOMMENDED_NEXT_GATE,
+        readback_scope_complete,
+        readback_entries_complete,
+        readback_blockers_complete,
+        final_closeout_readback_preconditions_complete,
         source_final_closeout_visible: source.final_closeout_visible,
         source_final_closeout_recorded: source.final_closeout_recorded,
         source_final_closeout_persisted: source.final_closeout_persisted,
@@ -237,7 +342,8 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         operator_review_request_allowed: false,
         approval_recording_allowed: false,
         live_cutover_allowed: false,
-        ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index: true,
+        ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index:
+            final_closeout_readback_preconditions_complete,
         ready_for_live_attachment: false,
         ready_for_live_execution: false,
         side_effects:
@@ -440,6 +546,10 @@ mod tests {
         assert_eq!(report.source_final_closeout_entry_count, 8);
         assert_eq!(report.source_final_closeout_blocker_count, 86);
         assert_eq!(report.source_required_prior_gate_count, 33);
+        assert!(report.source_final_closeout_ready);
+        assert!(report.source_final_closeout_no_persistence_confirmed);
+        assert!(report.source_final_closeout_no_live_confirmed);
+        assert!(report.source_final_closeout_ready_for_readback);
         assert_eq!(report.readback_entry_count, 6);
         assert_eq!(
             report.readback_blocker_count,
@@ -468,6 +578,10 @@ mod tests {
         assert!(!report.final_closeout_readback_authoritative);
         assert!(!report.final_closeout_readback_accepted);
         assert!(report.terminal_no_attachment_branch_closed);
+        assert!(report.readback_scope_complete);
+        assert!(report.readback_entries_complete);
+        assert!(report.readback_blockers_complete);
+        assert!(report.final_closeout_readback_preconditions_complete);
         assert!(
             report
                 .ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index
@@ -576,6 +690,13 @@ mod tests {
             && !entry.authoritative
             && !entry.accepted
             && !entry.mutation_allowed));
+        assert!(
+            report
+                .readback_blockers
+                .iter()
+                .all(|blocker| blocker.blocked)
+        );
+        assert!(report.final_closeout_readback_preconditions_complete);
         assert_eq!(
             report.side_effects,
             WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackSideEffects::none()

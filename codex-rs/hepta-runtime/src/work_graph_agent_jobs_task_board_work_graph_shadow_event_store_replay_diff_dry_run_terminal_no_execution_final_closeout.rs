@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_NON_EXECUTION_READBACK_AUDIT_INDEX_NON_PERSISTENCE_READBACK_GATE,
+    WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunNonExecutionReadbackAuditIndexNonPersistenceReadbackSideEffects,
     hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback_report,
 };
 
@@ -24,6 +25,10 @@ pub struct WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunT
     pub source_readback_entry_count: usize,
     pub source_readback_blocker_count: usize,
     pub source_required_prior_gate_count: usize,
+    pub source_non_persistence_readback_ready: bool,
+    pub source_non_persistence_readback_no_persistence_confirmed: bool,
+    pub source_non_persistence_readback_no_authorization_confirmed: bool,
+    pub source_non_persistence_readback_ready_for_terminal_closeout: bool,
     pub final_closeout_entry_count: usize,
     pub final_closeout_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -35,6 +40,10 @@ pub struct WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunT
         Vec<WorkGraphShadowEventStoreReplayDiffDryRunTerminalNoExecutionFinalCloseoutBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub final_closeout_scope_visible_only_complete: bool,
+    pub final_closeout_entries_complete: bool,
+    pub final_closeout_blockers_complete: bool,
+    pub terminal_no_execution_final_closeout_preconditions_complete: bool,
     pub terminal_no_execution_branch_closed: bool,
     pub final_closeout_visible: bool,
     pub final_closeout_recorded: bool,
@@ -156,6 +165,74 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_NON_EXECUTION_READBACK_AUDIT_INDEX_NON_PERSISTENCE_READBACK_GATE,
     ];
     required_prior_gates.extend(source.required_prior_gates.iter().copied());
+    let source_non_persistence_readback_no_persistence_confirmed = source.audit_index_visible
+        && !source.audit_index_recorded
+        && !source.audit_index_persisted
+        && !source.audit_index_authoritative
+        && !source.audit_index_accepted
+        && source.non_execution_readback_visible
+        && !source.non_execution_readback_executed
+        && !source.non_execution_readback_recorded
+        && !source.non_execution_readback_persisted
+        && !source.audit_index_readback_recorded
+        && !source.audit_index_readback_persisted
+        && !source.audit_index_readback_accepted
+        && !source.ready_for_live_execution
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunNonExecutionReadbackAuditIndexNonPersistenceReadbackSideEffects::none();
+    let source_non_persistence_readback_no_authorization_confirmed = !source
+        .readback_execution_allowed
+        && !source.replay_execution_allowed
+        && !source.replay_diff_recording_allowed
+        && !source.replay_diff_persistence_allowed
+        && !source.rollback_execution_allowed
+        && !source.idempotency_mutation_allowed
+        && !source.work_graph_event_persistence_allowed
+        && !source.projection_persistence_allowed
+        && !source.scheduler_guardrail_enforcement_allowed
+        && !source.runtime_interception_allowed
+        && !source.feature_flag_enablement_allowed
+        && !source.canary_traffic_allowed
+        && !source.operator_review_request_allowed
+        && !source.approval_recording_allowed
+        && !source.live_cutover_allowed
+        && !source.ready_for_live_execution;
+    let source_non_persistence_readback_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_NON_EXECUTION_READBACK_AUDIT_INDEX_NON_PERSISTENCE_READBACK_GATE
+        && source.source_audit_index_ready
+        && source.audit_index_non_persistence_readback_preconditions_complete
+        && source.ready_for_terminal_no_execution_final_closeout
+        && source.readback_entry_count == 6
+        && source.readback_blocker_count == 23
+        && source.required_prior_gate_count == 4
+        && source_non_persistence_readback_no_persistence_confirmed
+        && source_non_persistence_readback_no_authorization_confirmed;
+    let final_closeout_scope_visible_only_complete = final_closeout_scope.visible
+        && final_closeout_scope.terminal
+        && !final_closeout_scope.recorded
+        && !final_closeout_scope.persisted
+        && !final_closeout_scope.authoritative
+        && !final_closeout_scope.accepted
+        && !final_closeout_scope.mutation_allowed;
+    let final_closeout_entries_complete = final_closeout_entries.len() == 9
+        && final_closeout_entries.iter().all(|entry| {
+            entry.visible
+                && entry.closed
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.accepted
+                && !entry.authoritative
+                && !entry.mutation_allowed
+        });
+    let final_closeout_blockers_complete = final_closeout_blockers.len() == 26
+        && final_closeout_blockers
+            .iter()
+            .all(|blocker| blocker.blocked);
+    let terminal_no_execution_final_closeout_preconditions_complete =
+        source_non_persistence_readback_ready
+            && final_closeout_scope_visible_only_complete
+            && final_closeout_entries_complete
+            && final_closeout_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunTerminalNoExecutionFinalCloseoutReport {
         product: "Hepta",
@@ -171,6 +248,11 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         source_readback_entry_count: source.readback_entry_count,
         source_readback_blocker_count: source.readback_blocker_count,
         source_required_prior_gate_count: source.required_prior_gate_count,
+        source_non_persistence_readback_ready,
+        source_non_persistence_readback_no_persistence_confirmed,
+        source_non_persistence_readback_no_authorization_confirmed,
+        source_non_persistence_readback_ready_for_terminal_closeout: source
+            .ready_for_terminal_no_execution_final_closeout,
         final_closeout_entry_count: final_closeout_entries.len(),
         final_closeout_blocker_count: final_closeout_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -180,6 +262,10 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_TERMINAL_NO_EXECUTION_FINAL_CLOSEOUT_RECOMMENDED_NEXT_GATE,
+        final_closeout_scope_visible_only_complete,
+        final_closeout_entries_complete,
+        final_closeout_blockers_complete,
+        terminal_no_execution_final_closeout_preconditions_complete,
         terminal_no_execution_branch_closed: true,
         final_closeout_visible: true,
         final_closeout_recorded: false,
@@ -204,7 +290,8 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         operator_review_request_allowed: false,
         approval_recording_allowed: false,
         live_cutover_allowed: false,
-        ready_for_scheduler_guardrail_blocking_dry_run_entrypoint_hardening: true,
+        ready_for_scheduler_guardrail_blocking_dry_run_entrypoint_hardening:
+            terminal_no_execution_final_closeout_preconditions_complete,
         ready_for_live_execution: false,
         side_effects:
             WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunTerminalNoExecutionFinalCloseoutSideEffects::none(),
@@ -471,6 +558,10 @@ mod tests {
         assert_eq!(report.source_readback_entry_count, 6);
         assert_eq!(report.source_readback_blocker_count, 23);
         assert_eq!(report.source_required_prior_gate_count, 4);
+        assert!(report.source_non_persistence_readback_ready);
+        assert!(report.source_non_persistence_readback_no_persistence_confirmed);
+        assert!(report.source_non_persistence_readback_no_authorization_confirmed);
+        assert!(report.source_non_persistence_readback_ready_for_terminal_closeout);
         assert_eq!(report.final_closeout_entry_count, 9);
         assert_eq!(report.final_closeout_blocker_count, 26);
         assert_eq!(report.required_prior_gate_count, 5);
@@ -488,6 +579,7 @@ mod tests {
         assert!(!report.final_closeout_scope.accepted);
         assert!(report.final_closeout_scope.terminal);
         assert!(!report.final_closeout_scope.mutation_allowed);
+        assert!(report.final_closeout_scope_visible_only_complete);
         assert!(report.final_closeout_entries.iter().all(|entry| {
             entry.visible
                 && entry.closed
@@ -497,6 +589,7 @@ mod tests {
                 && !entry.authoritative
                 && !entry.mutation_allowed
         }));
+        assert!(report.final_closeout_entries_complete);
     }
 
     #[test]
@@ -514,6 +607,8 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.final_closeout_blockers_complete);
+        assert!(report.terminal_no_execution_final_closeout_preconditions_complete);
         assert!(report.terminal_no_execution_branch_closed);
         assert!(report.final_closeout_visible);
         assert!(!report.final_closeout_recorded);

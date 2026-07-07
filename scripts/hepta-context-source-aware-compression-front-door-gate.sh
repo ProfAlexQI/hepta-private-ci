@@ -88,6 +88,7 @@ memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gat
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
 memory_ranked_recall_shadow_eval_gate_script="hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+memory_provider_boundary_gate_script="hepta-context-memory-provider-boundary-gate.sh"
 context_plane_status_report_gate_script="hepta-context-plane-status-report-gate.sh"
 context_plane_activation_blocker_matrix_gate_script="hepta-context-plane-activation-blocker-matrix-gate.sh"
 context_plane_operator_approval_packet_gate_script="hepta-context-plane-operator-approval-packet-gate.sh"
@@ -322,6 +323,18 @@ required_contract_terms=(
   "context_memory_ranked_recall_shadow_eval_report"
   "hepta-context-memory-ranked-recall-shadow-eval-report.sh"
   "hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
+  "MemoryProvider boundary"
+  "MemoryProviderContextUpdateEnvelope"
+  "MemoryProviderReport"
+  "MemoryProviderClearReport"
+  "MemoryProvider"
+  "payload_light=true"
+  "operator_approval_required=true"
+  "prompt_payload_exported=false"
+  "query_payload_exported=false"
+  "ranked_payload_exported=false"
+  "hepta-context-memory-provider-boundary-report.sh"
+  "hepta-context-memory-provider-boundary-gate.sh"
   "Context Plane status/export report"
   "context-plane-status=pass"
   "source_registry"
@@ -334,10 +347,12 @@ required_contract_terms=(
   "eval_harness_seed"
   "adaptive_allocator_eval_shadow"
   "recall_quality_gate"
+  "memory_provider_boundary"
   "recall_quality_blocking_reason_count"
   "recall_quality_blocking_reasons"
   "context-plane-status.recall-quality-blocking-reason-count=0"
   "context-plane-status.recall-quality-blocking-reasons=none"
+  "context-plane-status.memory-provider-boundary=shadow"
   "source_aware_front_door"
   "no prompt assembly changes"
   "no operator activation allowance"
@@ -347,10 +362,12 @@ required_contract_terms=(
   "context-plane-activation-blockers=pass"
   "operator_approval"
   "adaptive_budget_allocation_shadow_only"
+  "memory_provider_boundary_shadow_only"
   "source_aware_front_door_disabled"
   "operator_approval_missing"
   "side_effect_flag_enabled"
   "activation_allowed=false"
+  "context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only"
   "context-plane-activation-blockers.recall-quality-blocking-reason-count=0"
   "context-plane-activation-blockers.recall-quality-blocking-reasons=none"
   "hepta-context-plane-activation-blocker-matrix-report.sh"
@@ -363,8 +380,10 @@ required_contract_terms=(
   "matrix row counts"
   "blocker reason counts"
   "recall_quality_blocking_reason_counts"
+  "memory_provider_boundary_shadow_only"
   "context-plane-operator-approval-packet.recall-quality-blocking-reason-count=0"
   "context-plane-operator-approval-packet.recall-quality-blocking-reasons=none"
+  "context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1"
   "threshold snapshot"
   "required approval scopes"
   "adaptive_budget_allocation_runtime"
@@ -384,9 +403,9 @@ required_contract_terms=(
   "hepta-context-plane-operator-approval-packet-negative-export-gate.sh"
   "Context Plane operator approval packet canonical export digest"
   "context-plane-operator-approval-packet-canonical-export-digest=pass"
-  "approval report 29 lines"
+  "approval report 30 lines"
   "negative export report 4 lines"
-  "combined report 33 lines"
+  "combined report 34 lines"
   "deterministic and idempotent"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-gate.sh"
@@ -592,6 +611,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_ranked_recall_shadow_eval_gate_script" \
   "memory ranked recall shadow eval debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_provider_boundary_gate_script" \
+  "memory provider boundary debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -807,6 +831,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory ranked recall shadow eval gate" \
   "memory ranked recall shadow eval preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory provider boundary gate" \
+  "memory provider boundary preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1045,6 +1074,30 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory recall quality gate" \
+  "context memory ranked recall shadow eval gate" \
+  "memory ranked recall shadow eval preflight stage order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_ranked_recall_shadow_eval_gate_script" \
+  "$memory_provider_boundary_gate_script" \
+  "memory provider boundary debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_provider_boundary_gate_script" \
+  "$context_plane_status_report_gate_script" \
+  "memory provider boundary context plane status debug gate order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory ranked recall shadow eval gate" \
+  "context memory provider boundary gate" \
+  "memory provider boundary preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory provider boundary gate" \
   "context plane status/export report gate" \
   "context plane status report preflight stage order"
 

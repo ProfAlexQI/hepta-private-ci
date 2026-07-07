@@ -26,6 +26,10 @@ jq -e '
   and .source_readback_entry_count == 5
   and .source_readback_blocker_count == 18
   and .source_required_prior_gate_count == 18
+  and .source_request_denial_readback_preconditions_complete == true
+  and .source_request_denial_readback_no_request_confirmed == true
+  and .source_request_denial_readback_no_authorization_confirmed == true
+  and .source_request_denial_readback_ready == true
   and .audit_index_entry_count == 6
   and .audit_index_blocker_count == 19
   and .audit_index_scope.source_surface_id == "work_graph_agent_jobs_task_board.feature_flag.operator_review_request_precondition_denial_readback"
@@ -37,6 +41,7 @@ jq -e '
   and .audit_index_scope.index_accepted == false
   and .audit_index_scope.operator_review_requested == false
   and .audit_index_scope.acceptance_allowed == false
+  and .audit_index_scope_report_only_complete == true
   and (.audit_index_entries | map(.id) == [
     "operator_review_request_denial_decision_audit_index",
     "operator_review_request_check_catalog_audit_index",
@@ -54,6 +59,7 @@ jq -e '
     and .mutation_allowed == false
     and .ready == true
   ))
+  and .audit_index_entries_report_only_complete == true
   and (.audit_index_blockers | map(.blocked_action) == [
     "record_operator_review_request_denial_audit_index",
     "persist_operator_review_request_denial_audit_index",
@@ -76,6 +82,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.audit_index_blockers | all(.blocked == true))
+  and .audit_index_blockers_complete == true
+  and .request_denial_audit_index_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_gate",
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix_gate",
@@ -135,6 +143,10 @@ jq -e '
   and .source_probes.request_denial_readback_points_here == true
   and .source_probes.request_denial_readback_unrequested_present == true
   and .source_probes.request_denial_readback_ready_present == true
+  and .source_probes.request_denial_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_gate"
+  and .source_probes.request_denial_readback_preconditions_complete == true
+  and .source_probes.request_denial_readback_ready_for_audit_index == true
+  and .source_probes.request_denial_readback_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

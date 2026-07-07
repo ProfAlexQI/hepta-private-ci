@@ -1,23 +1,19 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use serde::Serialize;
 
-use crate::work_graph_canonical_adapter_inventory_preview::{
-    WORK_GRAPH_CANONICAL_ADAPTER_INVENTORY_PREVIEW_GATE,
-    hepta_work_graph_canonical_adapter_inventory_preview_report,
-};
-use crate::work_graph_current_state_inventory::{
-    WORK_GRAPH_CURRENT_STATE_INVENTORY_GATE, WorkGraphP0GapInventory,
-    work_graph_current_state_p0_gaps, work_graph_current_state_source_surfaces,
-};
-use crate::work_graph_task_result_contract::{
-    WORK_GRAPH_TASK_RESULT_CONTRACT_PREVIEW_GATE, work_graph_task_result_adapter_previews,
-    work_graph_task_result_required_fields,
-};
-use crate::work_graph_task_result_envelope_report_only_validator::{
-    WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE,
-    hepta_work_graph_task_result_envelope_report_only_validator_report,
-};
+use crate::work_graph_canonical_adapter_inventory_preview::WORK_GRAPH_CANONICAL_ADAPTER_INVENTORY_PREVIEW_GATE;
+use crate::work_graph_canonical_adapter_inventory_preview::hepta_work_graph_canonical_adapter_inventory_preview_report;
+use crate::work_graph_current_state_inventory::WORK_GRAPH_CURRENT_STATE_INVENTORY_GATE;
+use crate::work_graph_current_state_inventory::WorkGraphP0GapInventory;
+use crate::work_graph_current_state_inventory::work_graph_current_state_p0_gaps;
+use crate::work_graph_current_state_inventory::work_graph_current_state_source_surfaces;
+use crate::work_graph_task_result_contract::WORK_GRAPH_TASK_RESULT_CONTRACT_PREVIEW_GATE;
+use crate::work_graph_task_result_contract::work_graph_task_result_adapter_previews;
+use crate::work_graph_task_result_contract::work_graph_task_result_required_fields;
+use crate::work_graph_task_result_envelope_report_only_validator::WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE;
+use crate::work_graph_task_result_envelope_report_only_validator::hepta_work_graph_task_result_envelope_report_only_validator_report;
 
 pub const WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE: &str =
     "hepta_work_graph_adapter_task_result_index_gate";

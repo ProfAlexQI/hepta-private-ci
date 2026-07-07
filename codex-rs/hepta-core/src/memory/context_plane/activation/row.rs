@@ -79,6 +79,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::AdaptiveBudgetAllocationShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryProviderBoundary,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly,
+            (
                 ContextPlaneActivationTarget::SourceAwareFrontDoor,
                 ContextPlaneStatusKind::Disabled,
             ) => ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled,

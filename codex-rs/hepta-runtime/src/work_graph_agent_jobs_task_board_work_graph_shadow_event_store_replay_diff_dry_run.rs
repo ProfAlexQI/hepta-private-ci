@@ -1,8 +1,10 @@
 use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_GATE;
+use crate::work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback::WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReadbackSideEffects;
 use crate::work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback::hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_report;
 use crate::work_graph_append_only_event_store_shadow_path::WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE;
+use crate::work_graph_append_only_event_store_shadow_path::WorkGraphAppendOnlyEventStoreShadowPathSideEffects;
 use crate::work_graph_append_only_event_store_shadow_path::hepta_work_graph_append_only_event_store_shadow_path_report;
 
 pub const WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_GATE:
@@ -24,8 +26,12 @@ pub struct WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunR
     pub source_readback_entry_count: usize,
     pub source_shadow_event_join_count: usize,
     pub source_non_persistence_blocker_count: usize,
+    pub source_shadow_event_store_readback_ready: bool,
+    pub source_shadow_event_store_readback_no_execution_confirmed: bool,
     pub source_append_only_shadow_path_gate: &'static str,
     pub source_shadow_path_replay_diff_count: usize,
+    pub source_shadow_path_readiness_complete: bool,
+    pub source_shadow_path_no_persistence_confirmed: bool,
     pub replay_diff_plan_count: usize,
     pub replay_scope_count: usize,
     pub non_execution_blocker_count: usize,
@@ -35,6 +41,10 @@ pub struct WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunR
     pub non_execution_blockers: Vec<WorkGraphShadowEventStoreReplayDiffDryRunBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_prior_readbacks_complete: bool,
+    pub replay_diff_plans_dry_run_complete: bool,
+    pub replay_scopes_dry_run_complete: bool,
+    pub non_execution_blockers_complete: bool,
     pub deterministic_replay_plan_ready: bool,
     pub projection_diff_plan_ready: bool,
     pub duplicate_suppression_diff_ready: bool,
@@ -131,6 +141,98 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         );
     let required_prior_gates =
         work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_required_prior_gates();
+    let source_shadow_event_store_readback_no_execution_confirmed = !readback
+        .shadow_readback_executed
+        && !readback.shadow_event_persistence_enabled
+        && !readback.projection_index_persistence_enabled
+        && !readback.scheduler_guardrail_live_enforcement_enabled
+        && !readback.runtime_interception_enabled
+        && !readback.ready_for_live_execution
+        && readback.side_effects
+            == WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReadbackSideEffects::none();
+    let source_shadow_event_store_readback_ready = readback.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_GATE
+        && readback.source_prior_readbacks_complete
+        && readback.shadow_event_store_readback_ready
+        && readback.ready_for_replay_diff_dry_run
+        && readback.readback_entry_count == 6
+        && readback.shadow_event_join_count == 4
+        && readback.non_persistence_blocker_count == 14
+        && source_shadow_event_store_readback_no_execution_confirmed;
+    let source_shadow_path_no_persistence_confirmed = !shadow_path.shadow_store_write_enabled
+        && !shadow_path.live_cutover_enabled
+        && !shadow_path.ready_for_live_execution
+        && shadow_path
+            .event_records
+            .iter()
+            .all(|event| !event.shadow_persisted && !event.live_cutover_enabled)
+        && shadow_path
+            .projection_indexes
+            .iter()
+            .all(|index| !index.index_persisted)
+        && shadow_path
+            .readback_evidence
+            .iter()
+            .all(|evidence| !evidence.readback_executed)
+        && shadow_path
+            .replay_diffs
+            .iter()
+            .all(|diff| !diff.replay_executed && !diff.diff_persisted)
+        && shadow_path.side_effects == WorkGraphAppendOnlyEventStoreShadowPathSideEffects::none();
+    let source_shadow_path_readiness_complete = shadow_path.gate
+        == WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        && shadow_path.append_only_shadow_path_readiness_complete
+        && shadow_path.replay_diff_ready
+        && shadow_path.replay_diff_count == 4
+        && source_shadow_path_no_persistence_confirmed;
+    let source_prior_readbacks_complete =
+        source_shadow_event_store_readback_ready && source_shadow_path_readiness_complete;
+    let replay_diff_plans_dry_run_complete = replay_diff_plans.len() == 6
+        && replay_diff_plans.iter().all(|plan| {
+            plan.dry_run_ready
+                && !plan.replay_executed
+                && !plan.diff_recorded
+                && !plan.diff_persisted
+                && !plan.live_enforced
+                && !plan.compared_fields.is_empty()
+        });
+    let replay_scopes_dry_run_complete = replay_scopes.len() == 4
+        && replay_scopes.iter().all(|scope| {
+            scope.dry_run_only
+                && scope.trace_id.starts_with("trace-blocking-dry-run-")
+                && scope.shadow_event_ref.starts_with("wg-event-shadow-")
+                && scope.projection_index_ref.starts_with("projection_by_")
+                && scope.replay_diff_ref.starts_with("shadow_replay_")
+        });
+    let non_execution_blockers_complete = non_execution_blockers.len() == 16
+        && non_execution_blockers
+            .iter()
+            .all(|blocker| blocker.required_before_execution);
+    let deterministic_replay_plan_ready = source_prior_readbacks_complete
+        && replay_diff_plans_dry_run_complete
+        && replay_scopes_dry_run_complete;
+    let projection_diff_plan_ready = deterministic_replay_plan_ready
+        && replay_diff_plans
+            .iter()
+            .any(|plan| plan.diff_kind == "projection_index_rebuild");
+    let duplicate_suppression_diff_ready = deterministic_replay_plan_ready
+        && replay_diff_plans
+            .iter()
+            .any(|plan| plan.diff_kind == "duplicate_event_suppression");
+    let redaction_hash_diff_ready = deterministic_replay_plan_ready
+        && replay_diff_plans
+            .iter()
+            .any(|plan| plan.diff_kind == "redaction_hash_stability");
+    let task_result_canary_diff_ready = deterministic_replay_plan_ready
+        && replay_diff_plans
+            .iter()
+            .any(|plan| plan.diff_kind == "task_result_report_only_join");
+    let ready_for_non_execution_readback = deterministic_replay_plan_ready
+        && projection_diff_plan_ready
+        && duplicate_suppression_diff_ready
+        && redaction_hash_diff_ready
+        && task_result_canary_diff_ready
+        && non_execution_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunReport {
         product: "Hepta",
@@ -144,8 +246,12 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         source_readback_entry_count: readback.readback_entry_count,
         source_shadow_event_join_count: readback.shadow_event_join_count,
         source_non_persistence_blocker_count: readback.non_persistence_blocker_count,
+        source_shadow_event_store_readback_ready,
+        source_shadow_event_store_readback_no_execution_confirmed,
         source_append_only_shadow_path_gate: shadow_path.gate,
         source_shadow_path_replay_diff_count: shadow_path.replay_diff_count,
+        source_shadow_path_readiness_complete,
+        source_shadow_path_no_persistence_confirmed,
         replay_diff_plan_count: replay_diff_plans.len(),
         replay_scope_count: replay_scopes.len(),
         non_execution_blocker_count: non_execution_blockers.len(),
@@ -156,11 +262,15 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_RECOMMENDED_NEXT_GATE,
-        deterministic_replay_plan_ready: true,
-        projection_diff_plan_ready: true,
-        duplicate_suppression_diff_ready: true,
-        redaction_hash_diff_ready: true,
-        task_result_canary_diff_ready: true,
+        source_prior_readbacks_complete,
+        replay_diff_plans_dry_run_complete,
+        replay_scopes_dry_run_complete,
+        non_execution_blockers_complete,
+        deterministic_replay_plan_ready,
+        projection_diff_plan_ready,
+        duplicate_suppression_diff_ready,
+        redaction_hash_diff_ready,
+        task_result_canary_diff_ready,
         replay_execution_enabled: false,
         replay_diff_recording_enabled: false,
         replay_diff_persistence_enabled: false,
@@ -169,7 +279,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_repl
         projection_index_persistence_enabled: false,
         scheduler_guardrail_live_enforcement_enabled: false,
         runtime_interception_enabled: false,
-        ready_for_non_execution_readback: true,
+        ready_for_non_execution_readback,
         ready_for_live_execution: false,
         side_effects:
             WorkGraphAgentJobsTaskBoardWorkGraphShadowEventStoreReplayDiffDryRunSideEffects::none(),
@@ -413,7 +523,13 @@ mod tests {
         );
         assert_eq!(report.source_readback_entry_count, 6);
         assert_eq!(report.source_shadow_event_join_count, 4);
+        assert_eq!(report.source_non_persistence_blocker_count, 14);
+        assert!(report.source_shadow_event_store_readback_ready);
+        assert!(report.source_shadow_event_store_readback_no_execution_confirmed);
         assert_eq!(report.source_shadow_path_replay_diff_count, 4);
+        assert!(report.source_shadow_path_readiness_complete);
+        assert!(report.source_shadow_path_no_persistence_confirmed);
+        assert!(report.source_prior_readbacks_complete);
     }
 
     #[test]
@@ -447,6 +563,8 @@ mod tests {
                     && !plan.diff_persisted
                     && !plan.live_enforced)
         );
+        assert!(report.replay_diff_plans_dry_run_complete);
+        assert!(report.replay_scopes_dry_run_complete);
     }
 
     #[test]
@@ -455,6 +573,7 @@ mod tests {
             hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_report();
 
         assert_eq!(report.non_execution_blocker_count, 16);
+        assert!(report.non_execution_blockers_complete);
         assert!(report.deterministic_replay_plan_ready);
         assert!(report.ready_for_non_execution_readback);
         assert!(!report.replay_execution_enabled);

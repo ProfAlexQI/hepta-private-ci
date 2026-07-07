@@ -26,6 +26,10 @@ jq -e '
   and .source_readback_entry_count == 5
   and .source_readback_blocker_count == 22
   and .source_required_prior_gate_count == 22
+  and .source_terminal_closeout_readback_preconditions_complete == true
+  and .source_terminal_closeout_readback_no_request_confirmed == true
+  and .source_terminal_closeout_readback_no_authorization_confirmed == true
+  and .source_terminal_closeout_readback_ready == true
   and .audit_index_entry_count == 6
   and .audit_index_blocker_count == 25
   and .required_prior_gate_count == 23
@@ -37,6 +41,7 @@ jq -e '
   and .audit_index_scope.index_accepted == false
   and .audit_index_scope.operator_review_requested == false
   and .audit_index_scope.acceptance_allowed == false
+  and .audit_index_scope_report_only_complete == true
   and (.audit_index_entries | map(.id) == [
     "terminal_no_request_closeout_decision_audit_index",
     "terminal_no_request_closeout_blocker_chain_audit_index",
@@ -54,6 +59,7 @@ jq -e '
     and .mutation_allowed == false
     and .ready == true
   ))
+  and .audit_index_entries_report_only_complete == true
   and (.audit_index_blockers | map(.blocked_action) == [
     "record_terminal_no_request_closeout_readback_audit_index",
     "persist_terminal_no_request_closeout_readback_audit_index",
@@ -82,6 +88,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.audit_index_blockers | all(.blocked == true))
+  and .audit_index_blockers_complete == true
+  and .terminal_no_request_closeout_readback_audit_index_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_gate",
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_gate",
@@ -146,6 +154,10 @@ jq -e '
   and .source_probes.terminal_closeout_readback_unrequested_present == true
   and .source_probes.terminal_closeout_readback_ready_present == true
   and .source_probes.terminal_closeout_readback_unpersisted_present == true
+  and .source_probes.terminal_closeout_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_gate"
+  and .source_probes.terminal_closeout_readback_preconditions_complete == true
+  and .source_probes.terminal_closeout_readback_ready_for_audit_index == true
+  and .source_probes.terminal_closeout_readback_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

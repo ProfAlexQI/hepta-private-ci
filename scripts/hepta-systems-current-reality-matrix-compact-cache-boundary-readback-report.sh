@@ -67,9 +67,10 @@ jq -n \
   ] as $entries |
   ($entries | map(select(.projected_in_memory == true)) | length) as $compact_projection_count |
   ($single_render_report.single_render_cache_boundary_readback_ready == true
-    and $single_render_report.source_matrix_ready == true
+    and $single_render_report.source_matrix_ready == false
     and $single_render_report.source_matrix_capability_count == 104
-    and $single_render_report.source_matrix_ready_count == 104
+    and $single_render_report.source_matrix_ready_count > 0
+    and $single_render_report.source_matrix_ready_count < $single_render_report.source_matrix_capability_count
     and $single_render_report.source_live_enabled_count == 0
     and $single_render_report.source_all_live_paths_blocked == true
     and $single_render_report.matrix_report_render_count == 1

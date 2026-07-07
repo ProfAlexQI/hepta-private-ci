@@ -1,9 +1,17 @@
 use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE;
+use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WorkGraphAgentJobsTaskBoardCanaryReadbackReplaySideEffects;
+use crate::work_graph_agent_jobs_task_board_canary_readback_replay::hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report;
 use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE;
+use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WorkGraphAgentJobsTaskBoardReportOnlyEntrypointEmissionSideEffects;
+use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_report;
 use crate::work_graph_scheduler_admission_dry_run_enforcement::WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::hepta_work_graph_scheduler_admission_dry_run_enforcement_report;
 use crate::work_graph_trace_guardrail_span_report_only::WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE;
+use crate::work_graph_trace_guardrail_span_report_only::WorkGraphTraceGuardrailSpanReportOnlySideEffects;
+use crate::work_graph_trace_guardrail_span_report_only::hepta_work_graph_trace_guardrail_span_report_only_report;
 
 pub const WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_NON_BLOCKING_CANARY_GATE: &str =
     "hepta_work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary_gate";
@@ -25,12 +33,38 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagNonBlockingCanaryReport {
     pub emission_binding_count: usize,
     pub safety_check_count: usize,
     pub required_prior_gate_count: usize,
+    pub source_canary_readback_replay_required_prior_gate_count: usize,
+    pub source_canary_readback_replay_entrypoint_count: usize,
+    pub source_canary_readback_replay_readback_evidence_count: usize,
+    pub source_canary_readback_replay_replay_diff_count: usize,
+    pub source_entrypoint_emission_entrypoint_count: usize,
+    pub source_entrypoint_emission_emission_count: usize,
+    pub source_trace_guardrail_span_count: usize,
+    pub source_trace_guardrail_blocking_guardrail_count: usize,
+    pub source_scheduler_admission_entrypoint_count: usize,
+    pub source_scheduler_admission_required_prior_gate_count: usize,
     pub feature_flags: Vec<WorkGraphCanaryFeatureFlagPreview>,
     pub rollout_stages: Vec<WorkGraphCanaryFeatureFlagStagePreview>,
     pub emission_bindings: Vec<WorkGraphCanaryFeatureFlagEmissionBindingPreview>,
     pub safety_checks: Vec<WorkGraphCanaryFeatureFlagSafetyCheckPreview>,
     pub required_prior_gates: Vec<&'static str>,
+    pub source_canary_readback_replay_gate: &'static str,
+    pub source_entrypoint_emission_gate: &'static str,
+    pub source_trace_guardrail_gate: &'static str,
+    pub source_scheduler_admission_dry_run_gate: &'static str,
     pub recommended_next_gate: &'static str,
+    pub source_canary_readback_replay_ready: bool,
+    pub source_canary_readback_replay_no_live_confirmed: bool,
+    pub source_entrypoint_emission_readiness_complete: bool,
+    pub source_entrypoint_emission_no_live_confirmed: bool,
+    pub source_trace_guardrail_readiness_complete: bool,
+    pub source_trace_guardrail_no_live_blocking_confirmed: bool,
+    pub source_scheduler_admission_dry_run_ready: bool,
+    pub source_scheduler_admission_no_live_blocking_confirmed: bool,
+    pub feature_flag_prior_readbacks_complete: bool,
+    pub feature_flags_default_off_confirmed: bool,
+    pub canary_traffic_zero_ppm_confirmed: bool,
+    pub feature_flag_enablement_preconditions_report_only_complete: bool,
     pub ready_for_feature_flag_config_wiring: bool,
     pub ready_for_feature_flag_enablement: bool,
     pub ready_for_live_cutover: bool,
@@ -112,6 +146,74 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary_r
     let safety_checks = work_graph_agent_jobs_task_board_non_blocking_canary_safety_checks();
     let required_prior_gates =
         work_graph_agent_jobs_task_board_non_blocking_canary_required_prior_gates();
+    let canary_readback_replay =
+        hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report();
+    let entrypoint_emission =
+        hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_report();
+    let trace_guardrail = hepta_work_graph_trace_guardrail_span_report_only_report();
+    let scheduler_admission = hepta_work_graph_scheduler_admission_dry_run_enforcement_report();
+    let source_canary_readback_replay_no_live_confirmed = !canary_readback_replay
+        .feature_flag_enabled
+        && !canary_readback_replay.ready_for_live_cutover
+        && canary_readback_replay.side_effects
+            == WorkGraphAgentJobsTaskBoardCanaryReadbackReplaySideEffects::none();
+    let source_canary_readback_replay_ready = canary_readback_replay.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE
+        && canary_readback_replay.canary_readback_replay_prior_readbacks_complete
+        && canary_readback_replay.canary_projection_readback_replay_preview_complete
+        && canary_readback_replay.ready_for_non_blocking_canary
+        && source_canary_readback_replay_no_live_confirmed;
+    let source_entrypoint_emission_no_live_confirmed = !entrypoint_emission
+        .ready_for_live_execution
+        && entrypoint_emission.side_effects
+            == WorkGraphAgentJobsTaskBoardReportOnlyEntrypointEmissionSideEffects::none();
+    let source_entrypoint_emission_readiness_complete = entrypoint_emission.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE
+        && entrypoint_emission.entrypoint_emission_readiness_complete
+        && entrypoint_emission.ready_for_canary_readback_replay_gate
+        && source_entrypoint_emission_no_live_confirmed;
+    let source_trace_guardrail_no_live_blocking_confirmed = !trace_guardrail
+        .live_guardrail_enforcement_enabled
+        && !trace_guardrail.ready_for_live_execution
+        && trace_guardrail.side_effects == WorkGraphTraceGuardrailSpanReportOnlySideEffects::none();
+    let source_trace_guardrail_readiness_complete = trace_guardrail.gate
+        == WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE
+        && trace_guardrail.trace_guardrail_prior_readbacks_complete
+        && trace_guardrail.ready_for_agent_jobs_task_board_report_only_emission
+        && source_trace_guardrail_no_live_blocking_confirmed;
+    let source_scheduler_admission_no_live_blocking_confirmed = !scheduler_admission
+        .live_blocking_enforcement_enabled
+        && !scheduler_admission.ready_for_live_execution
+        && scheduler_admission.side_effects
+            == WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects::none();
+    let source_scheduler_admission_dry_run_ready = scheduler_admission.gate
+        == WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        && scheduler_admission.dry_run_enforcement_enabled
+        && scheduler_admission.ready_for_append_only_event_store_shadow_path
+        && source_scheduler_admission_no_live_blocking_confirmed;
+    let feature_flag_prior_readbacks_complete = source_canary_readback_replay_ready
+        && source_entrypoint_emission_readiness_complete
+        && source_trace_guardrail_readiness_complete
+        && source_scheduler_admission_dry_run_ready;
+    let feature_flags_default_off_confirmed = !feature_flags.is_empty()
+        && feature_flags.iter().all(|flag| {
+            !flag.default_enabled
+                && !flag.current_enabled
+                && !flag.allows_live_blocking
+                && !flag.allows_persistence
+        });
+    let canary_traffic_zero_ppm_confirmed = feature_flags.iter().all(|flag| flag.traffic_ppm == 0)
+        && rollout_stages
+            .iter()
+            .all(|stage| stage.traffic_ppm == 0 && stage.blocks_runtime_mutation);
+    let feature_flag_enablement_preconditions_report_only_complete =
+        feature_flag_prior_readbacks_complete
+            && feature_flags_default_off_confirmed
+            && canary_traffic_zero_ppm_confirmed
+            && emission_bindings
+                .iter()
+                .all(|binding| !binding.live_cutover_enabled)
+            && safety_checks.iter().all(|check| check.required);
 
     WorkGraphAgentJobsTaskBoardFeatureFlagNonBlockingCanaryReport {
         product: "Hepta",
@@ -126,14 +228,46 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary_r
         emission_binding_count: emission_bindings.len(),
         safety_check_count: safety_checks.len(),
         required_prior_gate_count: required_prior_gates.len(),
+        source_canary_readback_replay_required_prior_gate_count: canary_readback_replay
+            .required_prior_gate_count,
+        source_canary_readback_replay_entrypoint_count: canary_readback_replay
+            .canary_entrypoint_count,
+        source_canary_readback_replay_readback_evidence_count: canary_readback_replay
+            .readback_evidence_count,
+        source_canary_readback_replay_replay_diff_count: canary_readback_replay.replay_diff_count,
+        source_entrypoint_emission_entrypoint_count: entrypoint_emission.entrypoint_count,
+        source_entrypoint_emission_emission_count: entrypoint_emission.emission_count,
+        source_trace_guardrail_span_count: trace_guardrail.span_count,
+        source_trace_guardrail_blocking_guardrail_count: trace_guardrail.blocking_guardrail_count,
+        source_scheduler_admission_entrypoint_count: scheduler_admission.entrypoint_count,
+        source_scheduler_admission_required_prior_gate_count: scheduler_admission
+            .required_prior_gates
+            .len(),
         feature_flags,
         rollout_stages,
         emission_bindings,
         safety_checks,
         required_prior_gates,
+        source_canary_readback_replay_gate: canary_readback_replay.gate,
+        source_entrypoint_emission_gate: entrypoint_emission.gate,
+        source_trace_guardrail_gate: trace_guardrail.gate,
+        source_scheduler_admission_dry_run_gate: scheduler_admission.gate,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_NON_BLOCKING_CANARY_RECOMMENDED_NEXT_GATE,
-        ready_for_feature_flag_config_wiring: true,
+        source_canary_readback_replay_ready,
+        source_canary_readback_replay_no_live_confirmed,
+        source_entrypoint_emission_readiness_complete,
+        source_entrypoint_emission_no_live_confirmed,
+        source_trace_guardrail_readiness_complete,
+        source_trace_guardrail_no_live_blocking_confirmed,
+        source_scheduler_admission_dry_run_ready,
+        source_scheduler_admission_no_live_blocking_confirmed,
+        feature_flag_prior_readbacks_complete,
+        feature_flags_default_off_confirmed,
+        canary_traffic_zero_ppm_confirmed,
+        feature_flag_enablement_preconditions_report_only_complete,
+        ready_for_feature_flag_config_wiring:
+            feature_flag_enablement_preconditions_report_only_complete,
         ready_for_feature_flag_enablement: false,
         ready_for_live_cutover: false,
         side_effects: WorkGraphAgentJobsTaskBoardFeatureFlagNonBlockingCanarySideEffects::none(),
@@ -345,6 +479,57 @@ mod tests {
     }
 
     #[test]
+    fn feature_flag_non_blocking_canary_consumes_prior_report_readbacks() {
+        let report =
+            hepta_work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary_report();
+
+        assert_eq!(
+            report.source_canary_readback_replay_gate,
+            WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE
+        );
+        assert_eq!(
+            report.source_entrypoint_emission_gate,
+            WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE
+        );
+        assert_eq!(
+            report.source_trace_guardrail_gate,
+            WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE
+        );
+        assert_eq!(
+            report.source_scheduler_admission_dry_run_gate,
+            WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        );
+        assert_eq!(
+            report.source_canary_readback_replay_required_prior_gate_count,
+            4
+        );
+        assert_eq!(report.source_canary_readback_replay_entrypoint_count, 2);
+        assert_eq!(
+            report.source_canary_readback_replay_readback_evidence_count,
+            2
+        );
+        assert_eq!(report.source_canary_readback_replay_replay_diff_count, 2);
+        assert_eq!(report.source_entrypoint_emission_entrypoint_count, 2);
+        assert_eq!(report.source_entrypoint_emission_emission_count, 2);
+        assert_eq!(report.source_trace_guardrail_span_count, 9);
+        assert_eq!(report.source_trace_guardrail_blocking_guardrail_count, 6);
+        assert_eq!(report.source_scheduler_admission_entrypoint_count, 4);
+        assert_eq!(
+            report.source_scheduler_admission_required_prior_gate_count,
+            5
+        );
+        assert!(report.source_canary_readback_replay_ready);
+        assert!(report.source_canary_readback_replay_no_live_confirmed);
+        assert!(report.source_entrypoint_emission_readiness_complete);
+        assert!(report.source_entrypoint_emission_no_live_confirmed);
+        assert!(report.source_trace_guardrail_readiness_complete);
+        assert!(report.source_trace_guardrail_no_live_blocking_confirmed);
+        assert!(report.source_scheduler_admission_dry_run_ready);
+        assert!(report.source_scheduler_admission_no_live_blocking_confirmed);
+        assert!(report.feature_flag_prior_readbacks_complete);
+    }
+
+    #[test]
     fn feature_flag_non_blocking_canary_requires_readback_replay_and_prior_gates() {
         let report =
             hepta_work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary_report();
@@ -367,6 +552,9 @@ mod tests {
             ]
         );
         assert_eq!(report.safety_check_count, 4);
+        assert!(report.feature_flags_default_off_confirmed);
+        assert!(report.canary_traffic_zero_ppm_confirmed);
+        assert!(report.feature_flag_enablement_preconditions_report_only_complete);
         assert!(report.ready_for_feature_flag_config_wiring);
         assert!(!report.ready_for_feature_flag_enablement);
         assert!(!report.ready_for_live_cutover);

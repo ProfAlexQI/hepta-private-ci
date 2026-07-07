@@ -4,56 +4,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-path_exists() {
-  local path="$1"
-  [[ -e "$path" ]]
-}
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 
-source_has() {
-  local pattern="$1"
-  local path="$2"
-  rg -q "$pattern" "$path"
-}
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_DENIAL_READBACK_AUDIT_INDEX_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-audit-index-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_DENIAL_READBACK_AUDIT_INDEX_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_DENIAL_READBACK_AUDIT_INDEX_CAPTURE_CACHE_DIR"' EXIT
+fi
 
-bool_for() {
-  if "$@"; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-}
-
-audit_index_module_present="$(
-  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index.rs
-)"
-denial_readback_gate_present="$(
-  bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-gate.sh
-)"
-denial_readback_points_here="$(
-  bool_for source_has \
-    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index_gate" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback.rs
-)"
-denial_readback_ready_present="$(
-  bool_for source_has "ready_for_denial_readback_audit_index: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback.rs
-)"
-denial_readback_no_live_present="$(
-  bool_for source_has "ready_for_live_execution: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback.rs
-)"
-denial_readback_unpersisted_present="$(
-  bool_for source_has "denial_readback_persisted: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback.rs
+denial_readback_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-report.sh"
 )"
 
 jq -n \
-  --argjson audit_index_module_present "$audit_index_module_present" \
-  --argjson denial_readback_gate_present "$denial_readback_gate_present" \
-  --argjson denial_readback_points_here "$denial_readback_points_here" \
-  --argjson denial_readback_ready_present "$denial_readback_ready_present" \
-  --argjson denial_readback_no_live_present "$denial_readback_no_live_present" \
-  --argjson denial_readback_unpersisted_present "$denial_readback_unpersisted_present" \
+  --argjson denial_readback_report "$denial_readback_report" \
   '
   def entry($id; $key; $source; $category): {
     id: $id,
@@ -159,6 +127,68 @@ jq -n \
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   ] as $required_priors
+  | ($denial_readback_report.source_matrix_no_persistence_confirmed == true
+      and $denial_readback_report.denial_readback_preconditions_complete == true
+      and $denial_readback_report.denial_readback_recorded == false
+      and $denial_readback_report.denial_readback_persisted == false
+      and $denial_readback_report.denial_readback_authoritative == false
+      and $denial_readback_report.denial_readback_accepted == false
+      and ($denial_readback_report.side_effects | to_entries | all(.value == false))) as $source_denial_readback_no_persistence_confirmed
+  | ($denial_readback_report.ready_for_denial_readback_audit_index == true
+      and $denial_readback_report.denial_readback_authorizes_live_attachment == false
+      and $denial_readback_report.denial_readback_authorizes_live_blocking_hook == false
+      and $denial_readback_report.denial_readback_authorizes_runtime_interception == false
+      and $denial_readback_report.denial_readback_authorizes_scheduler_admission_enforcement == false
+      and $denial_readback_report.denial_readback_authorizes_guardrail_enforcement == false
+      and $denial_readback_report.denial_readback_authorizes_work_graph_persistence == false
+      and $denial_readback_report.denial_readback_authorizes_lease_or_work_start == false
+      and $denial_readback_report.denial_readback_authorizes_agent_model_or_external_send == false
+      and $denial_readback_report.denial_readback_authorizes_live_task_result == false
+      and $denial_readback_report.denial_readback_authorizes_replay_or_rollback == false
+      and $denial_readback_report.denial_readback_authorizes_config_flag_or_traffic == false
+      and $denial_readback_report.denial_readback_authorizes_operator_approval_or_live_cutover == false
+      and $denial_readback_report.ready_for_live_attachment == false
+      and $denial_readback_report.ready_for_live_execution == false
+      and $source_denial_readback_no_persistence_confirmed) as $source_denial_readback_no_live_confirmed
+  | ($denial_readback_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_gate"
+      and $denial_readback_report.source_matrix_ready == true
+      and $denial_readback_report.source_matrix_no_persistence_confirmed == true
+      and $denial_readback_report.source_matrix_no_live_confirmed == true
+      and $denial_readback_report.source_matrix_ready_for_denial_readback == true
+      and $denial_readback_report.denial_readback_scope_visible_only_complete == true
+      and $denial_readback_report.denial_readback_entries_complete == true
+      and $denial_readback_report.entrypoint_denial_readbacks_complete == true
+      and $denial_readback_report.denial_readback_blockers_complete == true
+      and $denial_readback_report.denial_readback_preconditions_complete == true
+      and $denial_readback_report.denial_readback_entry_count == 7
+      and $denial_readback_report.entrypoint_denial_readback_count == 4
+      and $denial_readback_report.denial_readback_blocker_count == 36
+      and $denial_readback_report.required_prior_gate_count == 17
+      and $source_denial_readback_no_live_confirmed) as $source_denial_readback_ready
+  | ($source_denial_readback_ready
+      and $denial_readback_report.ready_for_denial_readback_audit_index == true) as $source_denial_readback_ready_for_audit_index
+  | ($scope.index_visible == true
+      and $scope.index_recorded == false
+      and $scope.index_persisted == false
+      and $scope.index_authoritative == false
+      and $scope.index_accepted == false
+      and $scope.live_acceptance_allowed == false) as $audit_index_scope_report_only_complete
+  | (($entries | length) == 9
+      and ($entries | all(
+        .indexed == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and .accepted == false
+        and .mutation_allowed == false
+      ))) as $audit_index_entries_complete
+  | (($blockers | length) == 39
+      and ($blockers | all(.blocked == true and .required_before_acceptance == true))) as $audit_index_blockers_complete
+  | ($source_denial_readback_ready_for_audit_index
+      and $audit_index_scope_report_only_complete
+      and $audit_index_entries_complete
+      and $audit_index_blockers_complete) as $audit_index_preconditions_complete
   | {
     product: "Hepta",
     runtime: "hepta",
@@ -166,11 +196,15 @@ jq -n \
     gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index_gate",
     schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index_v1",
     preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_audit_index_report_only",
-    source_denial_readback_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_gate",
-    source_denial_readback_entry_count: 7,
-    source_entrypoint_denial_readback_count: 4,
-    source_denial_readback_blocker_count: 36,
-    source_required_prior_gate_count: 17,
+    source_denial_readback_gate: $denial_readback_report.gate,
+    source_denial_readback_entry_count: $denial_readback_report.denial_readback_entry_count,
+    source_entrypoint_denial_readback_count: $denial_readback_report.entrypoint_denial_readback_count,
+    source_denial_readback_blocker_count: $denial_readback_report.denial_readback_blocker_count,
+    source_required_prior_gate_count: $denial_readback_report.required_prior_gate_count,
+    source_denial_readback_ready: $source_denial_readback_ready,
+    source_denial_readback_no_persistence_confirmed: $source_denial_readback_no_persistence_confirmed,
+    source_denial_readback_no_live_confirmed: $source_denial_readback_no_live_confirmed,
+    source_denial_readback_ready_for_audit_index: $source_denial_readback_ready_for_audit_index,
     audit_index_entry_count: ($entries | length),
     audit_index_blocker_count: ($blockers | length),
     required_prior_gate_count: ($required_priors | length),
@@ -184,11 +218,15 @@ jq -n \
     audit_index_persisted: false,
     audit_index_authoritative: false,
     audit_index_accepted: false,
-    denial_readback_visible: true,
-    denial_readback_recorded: false,
-    denial_readback_persisted: false,
-    denial_readback_authoritative: false,
-    denial_readback_accepted: false,
+    denial_readback_visible: $denial_readback_report.denial_readback_visible,
+    denial_readback_recorded: $denial_readback_report.denial_readback_recorded,
+    denial_readback_persisted: $denial_readback_report.denial_readback_persisted,
+    denial_readback_authoritative: $denial_readback_report.denial_readback_authoritative,
+    denial_readback_accepted: $denial_readback_report.denial_readback_accepted,
+    audit_index_scope_report_only_complete: $audit_index_scope_report_only_complete,
+    audit_index_entries_complete: $audit_index_entries_complete,
+    audit_index_blockers_complete: $audit_index_blockers_complete,
+    audit_index_preconditions_complete: $audit_index_preconditions_complete,
     audit_index_authorizes_denial_readback_recording: false,
     audit_index_authorizes_denial_readback_persistence: false,
     audit_index_authorizes_matrix_recording: false,
@@ -206,16 +244,16 @@ jq -n \
     audit_index_authorizes_replay_or_rollback: false,
     audit_index_authorizes_config_flag_or_traffic: false,
     audit_index_authorizes_operator_approval_or_live_cutover: false,
-    ready_for_non_persistence_readback: true,
+    ready_for_non_persistence_readback: $audit_index_preconditions_complete,
     ready_for_live_attachment: false,
     ready_for_live_execution: false,
-    source_probes: {
-      audit_index_module_present: $audit_index_module_present,
-      denial_readback_gate_present: $denial_readback_gate_present,
-      denial_readback_points_here: $denial_readback_points_here,
-      denial_readback_ready_present: $denial_readback_ready_present,
-      denial_readback_no_live_present: $denial_readback_no_live_present,
-      denial_readback_unpersisted_present: $denial_readback_unpersisted_present
+    source_readbacks: {
+      denial_readback_report_gate: $denial_readback_report.gate,
+      denial_readback_preconditions_complete: $denial_readback_report.denial_readback_preconditions_complete,
+      denial_readback_ready_for_audit_index: $denial_readback_report.ready_for_denial_readback_audit_index,
+      denial_readback_no_persistence_confirmed: $source_denial_readback_no_persistence_confirmed,
+      denial_readback_no_live_confirmed: $source_denial_readback_no_live_confirmed,
+      denial_readback_side_effects_all_false: ($denial_readback_report.side_effects | to_entries | all(.value == false))
     },
     side_effects: {
       filesystem_written: false,

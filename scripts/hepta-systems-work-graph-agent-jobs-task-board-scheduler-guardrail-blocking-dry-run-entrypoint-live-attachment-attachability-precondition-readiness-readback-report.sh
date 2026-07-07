@@ -4,60 +4,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-path_exists() {
-  local path="$1"
-  [[ -e "$path" ]]
-}
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 
-source_has() {
-  local pattern="$1"
-  local path="$2"
-  rg -q "$pattern" "$path"
-}
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_READINESS_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-live-attachment-attachability-readiness-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_READINESS_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_READINESS_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
 
-bool_for() {
-  if "$@"; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-}
-
-SOURCE_REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-attachability-precondition-readiness-report.sh"
-source_report="$("$SOURCE_REPORT_SCRIPT")"
-
-readback_module_present="$(
-  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback.rs
-)"
-readiness_gate_present="$(
-  bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-attachability-precondition-readiness-gate.sh
-)"
-readiness_points_here="$(
-  bool_for source_has \
-    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_gate" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness.rs
-)"
-readiness_ready_present="$(
-  bool_for source_has "ready_for_attachability_precondition_readiness_readback: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness.rs
-)"
-readiness_no_attachment_present="$(
-  bool_for source_has "ready_for_live_attachment: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness.rs
-)"
-readiness_no_live_present="$(
-  bool_for source_has "ready_for_live_execution: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness.rs
+readiness_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-attachability-precondition-readiness-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-attachability-precondition-readiness-report.sh"
 )"
 
 jq -n \
-  --argjson source "$source_report" \
-  --argjson readback_module_present "$readback_module_present" \
-  --argjson readiness_gate_present "$readiness_gate_present" \
-  --argjson readiness_points_here "$readiness_points_here" \
-  --argjson readiness_ready_present "$readiness_ready_present" \
-  --argjson readiness_no_attachment_present "$readiness_no_attachment_present" \
-  --argjson readiness_no_live_present "$readiness_no_live_present" \
+  --argjson source "$readiness_report" \
   '
   def readback_entry($id; $key; $field; $category): {
     id: $id,
@@ -123,6 +87,94 @@ jq -n \
     + ($source.attachability_blockers | map(blocker(.id; .blocked_action)))
   ) as $readback_blockers
   | ([$source.gate] + $source.required_prior_gates) as $required_prior_gates
+  | ($source.source_terminal_no_attachment_no_persistence_confirmed == true
+      and $source.attachability_readiness_preconditions_complete == true
+      and $source.readiness_visible == true
+      and $source.readiness_recorded == false
+      and $source.readiness_persisted == false
+      and $source.readiness_authoritative == false
+      and $source.readiness_accepted == false
+      and $source.source_final_closeout_persisted == false
+      and $source.work_graph_event_persistence_allowed == false
+      and $source.projection_persistence_allowed == false
+      and ($source.side_effects | to_entries | all(.value == false))) as $source_attachability_readiness_no_persistence_confirmed
+  | ($source.ready_for_attachability_precondition_readiness_readback == true
+      and $source.live_attachment_allowed == false
+      and $source.live_blocking_hook_install_allowed == false
+      and $source.runtime_interception_allowed == false
+      and $source.scheduler_admission_enforcement_allowed == false
+      and $source.guardrail_enforcement_allowed == false
+      and $source.lease_acquisition_allowed == false
+      and $source.work_start_allowed == false
+      and $source.agent_spawn_allowed == false
+      and $source.model_invocation_allowed == false
+      and $source.external_send_allowed == false
+      and $source.live_task_result_emission_allowed == false
+      and $source.hardening_decision_recording_allowed == false
+      and $source.hardening_decision_persistence_allowed == false
+      and $source.readback_execution_allowed == false
+      and $source.replay_execution_allowed == false
+      and $source.replay_diff_recording_allowed == false
+      and $source.replay_diff_persistence_allowed == false
+      and $source.rollback_execution_allowed == false
+      and $source.idempotency_mutation_allowed == false
+      and $source.config_write_allowed == false
+      and $source.feature_flag_mutation_allowed == false
+      and $source.canary_traffic_allowed == false
+      and $source.operator_review_request_allowed == false
+      and $source.approval_recording_allowed == false
+      and $source.live_cutover_allowed == false
+      and $source.ready_for_live_attachment == false
+      and $source.ready_for_live_execution == false
+      and $source_attachability_readiness_no_persistence_confirmed) as $source_attachability_readiness_no_live_confirmed
+  | ($source.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_gate"
+      and $source.source_terminal_no_attachment_ready == true
+      and $source.source_terminal_no_attachment_no_persistence_confirmed == true
+      and $source.source_terminal_no_attachment_no_live_confirmed == true
+      and $source.source_terminal_no_attachment_ready_for_attachability_readiness == true
+      and $source.attachability_entrypoints_complete == true
+      and $source.attachability_precondition_checks_complete == true
+      and $source.attachability_blockers_complete == true
+      and $source.attachability_readiness_preconditions_complete == true
+      and $source.attachability_entrypoint_count == 4
+      and $source.attachability_precondition_check_count == 16
+      and $source.attachability_precondition_satisfied_count == 7
+      and $source.blocking_precondition_count == 9
+      and $source.attachability_blocker_count == 50
+      and $source.required_prior_gate_count == 21
+      and $source_attachability_readiness_no_live_confirmed) as $source_attachability_readiness_ready
+  | ($source_attachability_readiness_ready
+      and $source.ready_for_attachability_precondition_readiness_readback == true) as $source_attachability_readiness_ready_for_readback
+  | ($readback_scope.visible == true
+      and $readback_scope.recorded == false
+      and $readback_scope.persisted == false
+      and $readback_scope.authoritative == false
+      and $readback_scope.accepted == false
+      and $readback_scope.mutation_allowed == false) as $readback_scope_visible_only_complete
+  | (($readback_entries | length) == 7
+      and ($readback_entries | all(
+        .visible == true
+        and .recorded == false
+        and .persisted == false
+        and .accepted == false
+        and .authoritative == false
+        and .mutation_allowed == false
+      ))) as $readback_entries_complete
+  | (($entrypoint_readbacks | length) == 4
+      and ($entrypoint_readbacks | all(
+        .live_attachment_candidate == true
+        and .report_only == true
+        and .live_attachment_allowed == false
+        and .readback_recorded == false
+        and .readback_persisted == false
+      ))) as $entrypoint_readbacks_complete
+  | (($readback_blockers | length) == 53
+      and ($readback_blockers | all(.blocked == true))) as $readback_blockers_complete
+  | ($source_attachability_readiness_ready_for_readback
+      and $readback_scope_visible_only_complete
+      and $readback_entries_complete
+      and $entrypoint_readbacks_complete
+      and $readback_blockers_complete) as $attachability_readback_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -135,6 +187,10 @@ jq -n \
       source_attachability_precondition_check_count: $source.attachability_precondition_check_count,
       source_attachability_blocker_count: $source.attachability_blocker_count,
       source_required_prior_gate_count: $source.required_prior_gate_count,
+      source_attachability_readiness_ready: $source_attachability_readiness_ready,
+      source_attachability_readiness_no_persistence_confirmed: $source_attachability_readiness_no_persistence_confirmed,
+      source_attachability_readiness_no_live_confirmed: $source_attachability_readiness_no_live_confirmed,
+      source_attachability_readiness_ready_for_readback: $source_attachability_readiness_ready_for_readback,
       readback_entry_count: ($readback_entries | length),
       entrypoint_readback_count: ($entrypoint_readbacks | length),
       readback_blocker_count: ($readback_blockers | length),
@@ -146,13 +202,18 @@ jq -n \
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_audit_index_gate",
       source_readiness_visible: $source.readiness_visible,
-      source_readiness_persisted: false,
+      source_readiness_persisted: $source.readiness_persisted,
       readback_visible: true,
       readback_recorded: false,
       readback_persisted: false,
       readback_authoritative: false,
       readback_accepted: false,
-      attachability_candidates_readback_ready: true,
+      readback_scope_visible_only_complete: $readback_scope_visible_only_complete,
+      readback_entries_complete: $readback_entries_complete,
+      entrypoint_readbacks_complete: $entrypoint_readbacks_complete,
+      readback_blockers_complete: $readback_blockers_complete,
+      attachability_readback_preconditions_complete: $attachability_readback_preconditions_complete,
+      attachability_candidates_readback_ready: ($source_attachability_readiness_ready and $entrypoint_readbacks_complete),
       attachability_preconditions_satisfied: false,
       live_attachment_allowed: false,
       live_blocking_hook_install_allowed: false,
@@ -181,16 +242,16 @@ jq -n \
       operator_review_request_allowed: false,
       approval_recording_allowed: false,
       live_cutover_allowed: false,
-      ready_for_attachability_readback_audit_index: true,
+      ready_for_attachability_readback_audit_index: $attachability_readback_preconditions_complete,
       ready_for_live_attachment: false,
       ready_for_live_execution: false,
-      source_probes: {
-        readback_module_present: $readback_module_present,
-        readiness_gate_present: $readiness_gate_present,
-        readiness_points_here: $readiness_points_here,
-        readiness_ready_present: $readiness_ready_present,
-        readiness_no_attachment_present: $readiness_no_attachment_present,
-        readiness_no_live_present: $readiness_no_live_present
+      source_readbacks: {
+        attachability_readiness_report_gate: $source.gate,
+        attachability_readiness_preconditions_complete: $source.attachability_readiness_preconditions_complete,
+        attachability_readiness_ready_for_readback: $source.ready_for_attachability_precondition_readiness_readback,
+        attachability_readiness_no_persistence_confirmed: $source_attachability_readiness_no_persistence_confirmed,
+        attachability_readiness_no_live_confirmed: $source_attachability_readiness_no_live_confirmed,
+        attachability_readiness_side_effects_all_false: ($source.side_effects | to_entries | all(.value == false))
       },
       side_effects: {
         filesystem_written: false,

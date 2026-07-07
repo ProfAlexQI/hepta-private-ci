@@ -26,8 +26,12 @@ jq -e '
   and .source_readback_entry_count == 6
   and .source_shadow_event_join_count == 4
   and .source_non_persistence_blocker_count == 14
+  and .source_shadow_event_store_readback_ready == true
+  and .source_shadow_event_store_readback_no_execution_confirmed == true
   and .source_append_only_shadow_path_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
   and .source_shadow_path_replay_diff_count == 4
+  and .source_shadow_path_readiness_complete == true
+  and .source_shadow_path_no_persistence_confirmed == true
   and .replay_diff_plan_count == 6
   and .replay_scope_count == 4
   and .non_execution_blocker_count == 16
@@ -85,6 +89,10 @@ jq -e '
     "hepta_work_graph_append_only_event_store_shadow_path_gate"
   ]
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_gate"
+  and .source_prior_readbacks_complete == true
+  and .replay_diff_plans_dry_run_complete == true
+  and .replay_scopes_dry_run_complete == true
+  and .non_execution_blockers_complete == true
   and .deterministic_replay_plan_ready == true
   and .projection_diff_plan_ready == true
   and .duplicate_suppression_diff_ready == true
@@ -104,11 +112,26 @@ jq -e '
   and .source_probes.replay_diff_dry_run.report_script_present == true
   and .source_probes.replay_diff_dry_run.gate_script_present == true
   and .source_probes.shadow_event_store_readback.gate_script_present == true
+  and .source_probes.shadow_event_store_readback.report_gate == true
+  and .source_probes.shadow_event_store_readback.readback_ready == true
+  and .source_probes.shadow_event_store_readback.no_execution_confirmed == true
+  and .source_probes.shadow_event_store_readback.side_effects_all_false == true
   and .source_probes.append_only_event_store_shadow_path.gate_script_present == true
+  and .source_probes.append_only_event_store_shadow_path.report_gate == true
+  and .source_probes.append_only_event_store_shadow_path.readiness_complete == true
+  and .source_probes.append_only_event_store_shadow_path.replay_diff_ready == true
+  and .source_probes.append_only_event_store_shadow_path.no_persistence_confirmed == true
+  and .source_probes.append_only_event_store_shadow_path.side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
 cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run --lib
+  replay_diff_dry_run_derives_from_shadow_readback_and_shadow_path --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  replay_diff_dry_run_declares_plans_and_scopes --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  replay_diff_dry_run_stays_non_executing_and_non_live --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  replay_diff_dry_run_links_priors_and_side_effects --lib
 
 echo "Hepta WorkGraph agent_jobs + task_board shadow event-store replay diff dry-run gate passed"

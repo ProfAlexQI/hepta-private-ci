@@ -90,6 +90,7 @@ for term in \
   "prompt_assembly_change" \
   "operator_activation" \
   "adaptive_budget_allocation_shadow_only" \
+  "memory_provider_boundary_shadow_only" \
   "source_aware_front_door_disabled" \
   "operator_approval_missing" \
   "must not contain prompt text" \
@@ -191,12 +192,13 @@ context-plane-operator-approval-packet.schema=1
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=12
+context-plane-operator-approval-packet.rows=13
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=3
-context-plane-operator-approval-packet.threshold.required-ready=11
+context-plane-operator-approval-packet.blockers=4
+context-plane-operator-approval-packet.threshold.required-ready=12
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
+context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.source-aware-front-door-disabled=1
 context-plane-operator-approval-packet.blocker.operator-approval-missing=1
 context-plane-operator-approval-packet.recall-quality-blocking-reason-count=0

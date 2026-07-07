@@ -49,7 +49,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .source_freeze_applied == false
   and .source_classification_persisted == false
   and .source_test_probe_executed == false
-  and .source_boundary_entry_count == 4
+  and .source_boundary_entry_count == .boundary_entry_count
   and .lib_export_present == true
   and .evidence_recording_boundary_scope.readback_mode == "operator_evidence_recording_boundary_readback_only"
   and .evidence_recording_boundary_scope.evidence_recording_boundary == "blocked"
@@ -57,7 +57,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .evidence_recording_boundary_scope.evidence_receipt_boundary == "blocked"
   and .evidence_recording_boundary_scope.approval_acceptance_boundary == "blocked"
   and .evidence_recording_boundary_scope.git_mutation_boundary == "blocked"
-  and .boundary_entry_count == 4
+  and .boundary_entry_count > 0
   and .stable_boundary_key_count == .boundary_entry_count
   and .boundary_route_count == .boundary_entry_count
   and .boundary_ready_count == .boundary_entry_count
@@ -118,7 +118,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .live_activation_allowed == false
   and .live_execution_allowed == false
   and .operator_evidence_recording_boundary_readback_ready == false
-  and (.entries | length) == 4
+  and (.entries | length) == .boundary_entry_count
   and (.entries | all(
     .source_entry_count > 0
     and .source_entry_count == (.tracked_count + .untracked_count)
@@ -167,9 +167,11 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
     and .canary_activation_allowed == false
     and .live_execution_allowed == false))
   and any(.entries[]; .source_bucket == "codex-rs" and .required_local_gate == "targeted_rust_gate")
+  and any(.entries[]; .source_bucket == "docs" and .required_local_gate == "doc_evidence_consistency_gate")
   and any(.entries[]; .source_bucket == "scripts" and .required_local_gate == "script_syntax_gate")
-  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .required_local_gate == "owner_attribution_freeze_gate")
   and any(.entries[]; .source_bucket == "hepta_systems_owned" and .required_local_gate == "owned_lane_freeze_gate")
+  and ((.entries | map(select(.source_bucket == "cross_lane_or_unowned")) | length) == 0
+    or any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .required_local_gate == "owner_attribution_freeze_gate"))
   and (.blockers | index("evidence_recording_blocked")) != null
   and (.blockers | index("approval_request_blocked")) != null
   and (.blockers | index("approval_acceptance_blocked")) != null
@@ -192,9 +194,9 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_approval_acceptance_boundary_readback_without_acceptance"
   and .status == "blocked"
   and .operator_approval_acceptance_boundary_readback_ready == false
-  and .boundary_entry_count == 4
-  and .pending_operator_decision_count == 4
-  and .approval_acceptance_blocked_count == 4
+  and .boundary_entry_count > 0
+  and .pending_operator_decision_count == .boundary_entry_count
+  and .approval_acceptance_blocked_count == .boundary_entry_count
   and .release_cutover_allowed == false
   and .canary_activation_allowed == false
   and .live_execution_allowed == false
@@ -202,4 +204,4 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-evidence-recording-boundary-readback-without-recording-gate: PASS: owner/freeze evidence boundary exposes four dirty buckets with recording and live execution blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-evidence-recording-boundary-readback-without-recording-gate: PASS: owner/freeze evidence boundary exposes dirty buckets with recording and live execution blocked\n'

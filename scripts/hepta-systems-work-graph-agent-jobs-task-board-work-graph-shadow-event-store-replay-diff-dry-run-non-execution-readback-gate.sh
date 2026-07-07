@@ -26,9 +26,13 @@ jq -e '
   and .source_replay_diff_plan_count == 6
   and .source_replay_scope_count == 4
   and .source_non_execution_blocker_count == 16
+  and .source_replay_diff_dry_run_ready == true
+  and .source_replay_diff_dry_run_no_execution_confirmed == true
   and .source_shadow_event_store_readback_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   and .source_shadow_readback_entry_count == 6
   and .source_shadow_event_join_count == 4
+  and .source_shadow_event_store_readback_ready == true
+  and .source_shadow_event_store_readback_no_execution_confirmed == true
   and .non_execution_readback_entry_count == 7
   and .replay_scope_readback_count == 4
   and .non_execution_blocker_count == 18
@@ -92,6 +96,10 @@ jq -e '
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   ]
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_gate"
+  and .source_prior_readbacks_complete == true
+  and .non_execution_readback_entries_visible_only_complete == true
+  and .replay_scope_readbacks_visible_only_complete == true
+  and .non_execution_blockers_complete == true
   and .dry_run_non_execution_readback_ready == true
   and .replay_diff_plan_readback_ready == true
   and .replay_scope_readback_ready == true
@@ -115,11 +123,25 @@ jq -e '
   and .source_probes.non_execution_readback.report_script_present == true
   and .source_probes.non_execution_readback.gate_script_present == true
   and .source_probes.replay_diff_dry_run.gate_script_present == true
+  and .source_probes.replay_diff_dry_run.report_gate == true
+  and .source_probes.replay_diff_dry_run.ready_for_non_execution_readback == true
+  and .source_probes.replay_diff_dry_run.no_execution_confirmed == true
+  and .source_probes.replay_diff_dry_run.side_effects_all_false == true
   and .source_probes.shadow_event_store_readback.gate_script_present == true
+  and .source_probes.shadow_event_store_readback.report_gate == true
+  and .source_probes.shadow_event_store_readback.readback_ready == true
+  and .source_probes.shadow_event_store_readback.no_execution_confirmed == true
+  and .source_probes.shadow_event_store_readback.side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
 cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback --lib
+  non_execution_readback_derives_from_replay_diff_dry_run --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  non_execution_readback_declares_entries_and_scope_readbacks --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  non_execution_readback_keeps_execution_persistence_and_live_disabled --lib
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  non_execution_readback_links_priors_and_side_effects --lib
 
 echo "Hepta WorkGraph agent_jobs + task_board shadow event-store replay diff dry-run non-execution readback gate passed"

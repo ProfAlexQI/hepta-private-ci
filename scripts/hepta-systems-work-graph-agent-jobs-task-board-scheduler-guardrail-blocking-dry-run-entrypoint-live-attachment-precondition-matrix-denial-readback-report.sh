@@ -4,56 +4,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-path_exists() {
-  local path="$1"
-  [[ -e "$path" ]]
-}
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 
-source_has() {
-  local pattern="$1"
-  local path="$2"
-  rg -q "$pattern" "$path"
-}
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_DENIAL_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_DENIAL_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_DENIAL_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
 
-bool_for() {
-  if "$@"; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-}
-
-denial_readback_module_present="$(
-  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback.rs
-)"
-live_attachment_matrix_gate_present="$(
-  bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-gate.sh
-)"
-live_attachment_matrix_points_here="$(
-  bool_for source_has \
-    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_gate" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix.rs
-)"
-live_attachment_matrix_ready_present="$(
-  bool_for source_has "ready_for_denial_readback: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix.rs
-)"
-live_attachment_matrix_no_live_present="$(
-  bool_for source_has "ready_for_live_execution: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix.rs
-)"
-live_attachment_matrix_unpersisted_present="$(
-  bool_for source_has "matrix_persisted: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix.rs
+matrix_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-report.sh"
 )"
 
 jq -n \
-  --argjson denial_readback_module_present "$denial_readback_module_present" \
-  --argjson live_attachment_matrix_gate_present "$live_attachment_matrix_gate_present" \
-  --argjson live_attachment_matrix_points_here "$live_attachment_matrix_points_here" \
-  --argjson live_attachment_matrix_ready_present "$live_attachment_matrix_ready_present" \
-  --argjson live_attachment_matrix_no_live_present "$live_attachment_matrix_no_live_present" \
-  --argjson live_attachment_matrix_unpersisted_present "$live_attachment_matrix_unpersisted_present" \
+  --argjson matrix_report "$matrix_report" \
   '
   def readback_entry($id; $key; $state): {
     id: $id,
@@ -192,6 +160,89 @@ jq -n \
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   ] as $required_priors
+  | ($matrix_report.source_final_closeout_no_persistence_confirmed == true
+      and $matrix_report.live_attachment_precondition_matrix_preconditions_complete == true
+      and $matrix_report.matrix_recorded == false
+      and $matrix_report.matrix_persisted == false
+      and $matrix_report.matrix_authoritative == false
+      and $matrix_report.matrix_accepted == false
+      and $matrix_report.hardening_decision_recording_allowed == false
+      and $matrix_report.hardening_decision_persistence_allowed == false
+      and $matrix_report.work_graph_event_persistence_allowed == false
+      and $matrix_report.projection_persistence_allowed == false
+      and ($matrix_report.side_effects | to_entries | all(.value == false))) as $source_matrix_no_persistence_confirmed
+  | ($matrix_report.ready_for_denial_readback == true
+      and $matrix_report.live_attachment_allowed == false
+      and $matrix_report.live_blocking_hook_install_allowed == false
+      and $matrix_report.runtime_interception_allowed == false
+      and $matrix_report.scheduler_admission_enforcement_allowed == false
+      and $matrix_report.guardrail_enforcement_allowed == false
+      and $matrix_report.lease_acquisition_allowed == false
+      and $matrix_report.work_start_allowed == false
+      and $matrix_report.agent_spawn_allowed == false
+      and $matrix_report.model_invocation_allowed == false
+      and $matrix_report.external_send_allowed == false
+      and $matrix_report.live_task_result_emission_allowed == false
+      and $matrix_report.readback_execution_allowed == false
+      and $matrix_report.replay_execution_allowed == false
+      and $matrix_report.replay_diff_recording_allowed == false
+      and $matrix_report.replay_diff_persistence_allowed == false
+      and $matrix_report.rollback_execution_allowed == false
+      and $matrix_report.idempotency_mutation_allowed == false
+      and $matrix_report.config_write_allowed == false
+      and $matrix_report.feature_flag_mutation_allowed == false
+      and $matrix_report.canary_traffic_allowed == false
+      and $matrix_report.operator_review_request_allowed == false
+      and $matrix_report.approval_recording_allowed == false
+      and $matrix_report.live_cutover_allowed == false
+      and $matrix_report.ready_for_live_execution == false
+      and $source_matrix_no_persistence_confirmed) as $source_matrix_no_live_confirmed
+  | ($matrix_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_gate"
+      and $matrix_report.source_final_closeout_ready == true
+      and $matrix_report.source_final_closeout_no_persistence_confirmed == true
+      and $matrix_report.source_final_closeout_no_live_confirmed == true
+      and $matrix_report.source_final_closeout_ready_for_live_attachment_matrix == true
+      and $matrix_report.entrypoints_complete == true
+      and $matrix_report.precondition_matrix_complete == true
+      and $matrix_report.blocking_preconditions_complete == true
+      and $matrix_report.blockers_complete == true
+      and $matrix_report.live_attachment_precondition_matrix_preconditions_complete == true
+      and $matrix_report.entrypoint_count == 4
+      and $matrix_report.precondition_check_count == 14
+      and $matrix_report.blocking_precondition_count == 10
+      and $matrix_report.blocker_count == 33
+      and $matrix_report.required_prior_gate_count == 16
+      and $source_matrix_no_live_confirmed) as $source_matrix_ready
+  | ($source_matrix_ready
+      and $matrix_report.ready_for_denial_readback == true) as $source_matrix_ready_for_denial_readback
+  | ($scope.visible == true
+      and $scope.recorded == false
+      and $scope.persisted == false
+      and $scope.authoritative == false
+      and $scope.accepted == false) as $denial_readback_scope_visible_only_complete
+  | (($entries | length) == 7
+      and ($entries | all(
+        .visible == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and .accepted == false
+        and .mutation_allowed == false
+      ))) as $denial_readback_entries_complete
+  | (($entrypoint_readbacks | length) == 4
+      and ($entrypoint_readbacks | all(
+        .report_only == true
+        and .live_attachment_allowed == false
+        and .runtime_interception_allowed == false
+      ))) as $entrypoint_denial_readbacks_complete
+  | (($blockers | length) == 36
+      and ($blockers | all(.blocked == true))) as $denial_readback_blockers_complete
+  | ($source_matrix_ready_for_denial_readback
+      and $denial_readback_scope_visible_only_complete
+      and $denial_readback_entries_complete
+      and $entrypoint_denial_readbacks_complete
+      and $denial_readback_blockers_complete) as $denial_readback_preconditions_complete
   | {
     product: "Hepta",
     runtime: "hepta",
@@ -199,12 +250,16 @@ jq -n \
     gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_gate",
     schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_v1",
     preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_only",
-    source_matrix_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_gate",
-    source_entrypoint_count: 4,
-    source_precondition_check_count: 14,
-    source_blocking_precondition_count: 10,
-    source_blocker_count: 33,
-    source_required_prior_gate_count: 16,
+    source_matrix_gate: $matrix_report.gate,
+    source_entrypoint_count: $matrix_report.entrypoint_count,
+    source_precondition_check_count: $matrix_report.precondition_check_count,
+    source_blocking_precondition_count: $matrix_report.blocking_precondition_count,
+    source_blocker_count: $matrix_report.blocker_count,
+    source_required_prior_gate_count: $matrix_report.required_prior_gate_count,
+    source_matrix_ready: $source_matrix_ready,
+    source_matrix_no_persistence_confirmed: $source_matrix_no_persistence_confirmed,
+    source_matrix_no_live_confirmed: $source_matrix_no_live_confirmed,
+    source_matrix_ready_for_denial_readback: $source_matrix_ready_for_denial_readback,
     denial_readback_entry_count: ($entries | length),
     entrypoint_denial_readback_count: ($entrypoint_readbacks | length),
     denial_readback_blocker_count: ($blockers | length),
@@ -220,6 +275,11 @@ jq -n \
     denial_readback_persisted: false,
     denial_readback_authoritative: false,
     denial_readback_accepted: false,
+    denial_readback_scope_visible_only_complete: $denial_readback_scope_visible_only_complete,
+    denial_readback_entries_complete: $denial_readback_entries_complete,
+    entrypoint_denial_readbacks_complete: $entrypoint_denial_readbacks_complete,
+    denial_readback_blockers_complete: $denial_readback_blockers_complete,
+    denial_readback_preconditions_complete: $denial_readback_preconditions_complete,
     denial_readback_authorizes_live_attachment: false,
     denial_readback_authorizes_live_blocking_hook: false,
     denial_readback_authorizes_runtime_interception: false,
@@ -232,16 +292,16 @@ jq -n \
     denial_readback_authorizes_replay_or_rollback: false,
     denial_readback_authorizes_config_flag_or_traffic: false,
     denial_readback_authorizes_operator_approval_or_live_cutover: false,
-    ready_for_denial_readback_audit_index: true,
+    ready_for_denial_readback_audit_index: $denial_readback_preconditions_complete,
     ready_for_live_attachment: false,
     ready_for_live_execution: false,
-    source_probes: {
-      denial_readback_module_present: $denial_readback_module_present,
-      live_attachment_matrix_gate_present: $live_attachment_matrix_gate_present,
-      live_attachment_matrix_points_here: $live_attachment_matrix_points_here,
-      live_attachment_matrix_ready_present: $live_attachment_matrix_ready_present,
-      live_attachment_matrix_no_live_present: $live_attachment_matrix_no_live_present,
-      live_attachment_matrix_unpersisted_present: $live_attachment_matrix_unpersisted_present
+    source_readbacks: {
+      live_attachment_matrix_report_gate: $matrix_report.gate,
+      live_attachment_matrix_preconditions_complete: $matrix_report.live_attachment_precondition_matrix_preconditions_complete,
+      live_attachment_matrix_ready_for_denial_readback: $matrix_report.ready_for_denial_readback,
+      live_attachment_matrix_no_persistence_confirmed: $source_matrix_no_persistence_confirmed,
+      live_attachment_matrix_no_live_confirmed: $source_matrix_no_live_confirmed,
+      live_attachment_matrix_side_effects_all_false: ($matrix_report.side_effects | to_entries | all(.value == false))
     },
     side_effects: {
       filesystem_written: false,

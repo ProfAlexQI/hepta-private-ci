@@ -26,6 +26,10 @@ jq -e '
   and .source_readback_entry_count == 5
   and .source_readback_blocker_count == 20
   and .source_required_prior_gate_count == 20
+  and .source_non_persistence_readback_preconditions_complete == true
+  and .source_non_persistence_readback_no_request_confirmed == true
+  and .source_non_persistence_readback_no_authorization_confirmed == true
+  and .source_non_persistence_readback_ready == true
   and .closeout_entry_count == 7
   and .closeout_blocker_count == 21
   and .required_prior_gate_count == 21
@@ -37,6 +41,7 @@ jq -e '
   and .closeout_scope.closeout_accepted == false
   and .closeout_scope.terminal_no_request == true
   and .closeout_scope.operator_review_requested == false
+  and .closeout_scope_terminal_no_request_complete == true
   and (.closeout_entries | map(.id) == [
     "terminal_no_request_decision_closeout",
     "terminal_denial_readback_chain_closeout",
@@ -57,6 +62,7 @@ jq -e '
     and .mutation_allowed == false
     and .ready == true
   ))
+  and .closeout_entries_terminal_no_request_complete == true
   and (.closeout_blockers | map(.blocked_action) == [
     "persist_terminal_no_request_closeout_readback",
     "record_terminal_no_request_closeout",
@@ -81,6 +87,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.closeout_blockers | all(.blocked == true))
+  and .closeout_blockers_complete == true
+  and .terminal_no_request_closeout_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index_non_persistence_readback_gate",
     "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index_gate",
@@ -138,6 +146,10 @@ jq -e '
   and .source_probes.non_persistence_readback_unrequested_present == true
   and .source_probes.non_persistence_readback_ready_present == true
   and .source_probes.non_persistence_readback_unpersisted_present == true
+  and .source_probes.non_persistence_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index_non_persistence_readback_gate"
+  and .source_probes.non_persistence_readback_preconditions_complete == true
+  and .source_probes.non_persistence_readback_ready_for_terminal_closeout == true
+  and .source_probes.non_persistence_readback_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

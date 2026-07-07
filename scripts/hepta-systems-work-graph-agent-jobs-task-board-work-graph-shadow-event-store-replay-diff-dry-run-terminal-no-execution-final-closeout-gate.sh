@@ -26,6 +26,10 @@ jq -e '
   and .source_readback_entry_count == 6
   and .source_readback_blocker_count == 23
   and .source_required_prior_gate_count == 4
+  and .source_non_persistence_readback_ready == true
+  and .source_non_persistence_readback_no_persistence_confirmed == true
+  and .source_non_persistence_readback_no_authorization_confirmed == true
+  and .source_non_persistence_readback_ready_for_terminal_closeout == true
   and .final_closeout_entry_count == 9
   and .final_closeout_blocker_count == 26
   and .required_prior_gate_count == 5
@@ -38,6 +42,7 @@ jq -e '
   and .final_closeout_scope.accepted == false
   and .final_closeout_scope.terminal == true
   and .final_closeout_scope.mutation_allowed == false
+  and .final_closeout_scope_visible_only_complete == true
   and (.final_closeout_entries | map(.id) == [
     "replay_diff_no_execution_branch_final_closeout",
     "replay_diff_audit_index_surface_final_closeout",
@@ -58,6 +63,7 @@ jq -e '
     and .mutation_allowed == false
     and .closed == true
   ))
+  and .final_closeout_entries_complete == true
   and (.final_closeout_blockers | map(.blocked_action) == [
     "record_replay_diff_terminal_no_execution_final_closeout",
     "persist_replay_diff_terminal_no_execution_final_closeout",
@@ -87,6 +93,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.final_closeout_blockers | all(.blocked == true))
+  and .final_closeout_blockers_complete == true
+  and .terminal_no_execution_final_closeout_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_gate",
@@ -127,10 +135,22 @@ jq -e '
   and .source_probes.non_persistence_readback_ready_present == true
   and .source_probes.non_persistence_readback_no_live_present == true
   and .source_probes.non_persistence_readback_unpersisted_present == true
+  and .source_probes.non_persistence_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback_gate"
+  and .source_probes.non_persistence_readback_preconditions_complete == true
+  and .source_probes.non_persistence_readback_ready_for_terminal_closeout == true
+  and .source_probes.non_persistence_readback_no_persistence_confirmed == true
+  and .source_probes.non_persistence_readback_no_authorization_confirmed == true
+  and .source_probes.non_persistence_readback_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_terminal_no_execution_final_closeout --lib
+for test_name in \
+  replay_diff_terminal_no_execution_final_closeout_derives_from_non_persistence_readback \
+  replay_diff_terminal_no_execution_final_closeout_is_visible_only \
+  replay_diff_terminal_no_execution_final_closeout_blocks_execution_and_live_paths \
+  replay_diff_terminal_no_execution_final_closeout_links_priors_and_side_effects; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board shadow event-store replay/diff dry-run terminal no-execution final closeout gate passed"

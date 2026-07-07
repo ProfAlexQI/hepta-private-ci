@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_OPERATOR_REVIEW_REQUEST_DENIAL_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-operator-review-request-denial-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_OPERATOR_REVIEW_REQUEST_DENIAL_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_OPERATOR_REVIEW_REQUEST_DENIAL_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -39,8 +49,14 @@ request_blocker_matrix_denies_present="$(
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix.rs
 )"
 request_blocker_matrix_ready_present="$(
-  bool_for source_has "ready_for_request_denial_readback: true" \
+  bool_for source_has "ready_for_request_denial_readback" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix.rs
+)"
+
+request_blocker_matrix="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-blocker-matrix-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-blocker-matrix-report.sh"
 )"
 
 jq -n \
@@ -49,6 +65,7 @@ jq -n \
   --argjson request_blocker_matrix_points_here "$request_blocker_matrix_points_here" \
   --argjson request_blocker_matrix_denies_present "$request_blocker_matrix_denies_present" \
   --argjson request_blocker_matrix_ready_present "$request_blocker_matrix_ready_present" \
+  --argjson request_blocker_matrix "$request_blocker_matrix" \
   '
   def entry($id; $key; $state): {
     id: $id,
@@ -219,6 +236,61 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($request_blocker_matrix.request_decision == "deny"
+      and $request_blocker_matrix.operator_review_request_allowed == false
+      and $request_blocker_matrix.operator_review_requested == false
+      and $request_blocker_matrix.operator_review_request_recorded == false
+      and $request_blocker_matrix.operator_review_request_persisted == false
+      and $request_blocker_matrix.operator_review_request_accepted == false
+      and $request_blocker_matrix.ready_for_request_denial_readback == true
+      and ($request_blocker_matrix.side_effects | to_entries | all(.value == false))) as $source_request_blocker_matrix_no_request_confirmed
+  | ($request_blocker_matrix.operator_review_request_allowed == false
+      and $request_blocker_matrix.operator_review_requested == false
+      and $request_blocker_matrix.operator_packet_send_allowed == false
+      and $request_blocker_matrix.operator_packet_acceptance_allowed == false
+      and $request_blocker_matrix.approval_recording_allowed == false
+      and $request_blocker_matrix.config_write_allowed == false
+      and $request_blocker_matrix.feature_flag_enablement_allowed == false
+      and $request_blocker_matrix.canary_traffic_allowed == false
+      and $request_blocker_matrix.scheduler_enforcement_allowed == false
+      and $request_blocker_matrix.guardrail_enforcement_allowed == false
+      and $request_blocker_matrix.replay_execution_allowed == false
+      and $request_blocker_matrix.rollback_execution_allowed == false
+      and $request_blocker_matrix.work_graph_persistence_allowed == false
+      and $request_blocker_matrix.live_cutover_allowed == false
+      and $request_blocker_matrix.ready_for_operator_review_request == false
+      and $request_blocker_matrix.ready_for_approval_recording == false
+      and $request_blocker_matrix.ready_for_feature_flag_config_write == false
+      and $request_blocker_matrix.ready_for_feature_flag_enablement == false
+      and $request_blocker_matrix.ready_for_canary_traffic == false
+      and $request_blocker_matrix.ready_for_live_cutover == false) as $source_request_blocker_matrix_no_authorization_confirmed
+  | ($request_blocker_matrix.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix_gate"
+      and $request_blocker_matrix.request_precondition_blocker_matrix_preconditions_complete == true
+      and $request_blocker_matrix.ready_for_request_denial_readback == true
+      and $source_request_blocker_matrix_no_request_confirmed
+      and $source_request_blocker_matrix_no_authorization_confirmed) as $source_request_blocker_matrix_ready
+  | ($request_denial_readback_scope.denial_visible == true
+      and $request_denial_readback_scope.denial_recorded == false
+      and $request_denial_readback_scope.denial_persisted == false
+      and $request_denial_readback_scope.denial_accepted == false
+      and $request_denial_readback_scope.denial_authoritative == false
+      and $request_denial_readback_scope.readback_persisted == false) as $request_denial_readback_scope_complete
+  | (($request_denial_readback_entries | length) > 0
+      and ($request_denial_readback_entries | all(
+        .visible == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .accepted == false
+        and .authoritative == false
+        and .mutation_allowed == false
+      ))) as $request_denial_readback_entries_visible_only_complete
+  | (($request_denial_readback_blockers | length) > 0
+      and ($request_denial_readback_blockers | all(.blocked == true))) as $request_denial_readback_blockers_complete
+  | ($source_request_blocker_matrix_ready
+      and $request_denial_readback_scope_complete
+      and $request_denial_readback_entries_visible_only_complete
+      and $request_denial_readback_blockers_complete) as $request_denial_readback_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -226,11 +298,15 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_v1",
       preview_mode: "operator_review_request_precondition_denial_readback_only_no_request_no_record_no_persistence",
-      source_request_precondition_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_blocker_matrix_gate",
-      source_request_decision: "deny",
-      source_request_blocker_count: 17,
-      source_request_precondition_check_count: 12,
-      source_required_prior_gate_count: 17,
+      source_request_precondition_gate: $request_blocker_matrix.gate,
+      source_request_decision: $request_blocker_matrix.request_decision,
+      source_request_blocker_count: $request_blocker_matrix.request_blocker_count,
+      source_request_precondition_check_count: $request_blocker_matrix.request_precondition_check_count,
+      source_required_prior_gate_count: $request_blocker_matrix.required_prior_gate_count,
+      source_request_blocker_matrix_preconditions_complete: $request_blocker_matrix.request_precondition_blocker_matrix_preconditions_complete,
+      source_request_blocker_matrix_no_request_confirmed: $source_request_blocker_matrix_no_request_confirmed,
+      source_request_blocker_matrix_no_authorization_confirmed: $source_request_blocker_matrix_no_authorization_confirmed,
+      source_request_blocker_matrix_ready: $source_request_blocker_matrix_ready,
       request_denial_readback_entry_count: ($request_denial_readback_entries | length),
       request_denial_readback_blocker_count: ($request_denial_readback_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -239,6 +315,10 @@ jq -n \
       request_denial_readback_blockers: $request_denial_readback_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_audit_index_gate",
+      request_denial_readback_scope_complete: $request_denial_readback_scope_complete,
+      request_denial_readback_entries_visible_only_complete: $request_denial_readback_entries_visible_only_complete,
+      request_denial_readback_blockers_complete: $request_denial_readback_blockers_complete,
+      request_denial_readback_preconditions_complete: $request_denial_readback_preconditions_complete,
       request_denial_visible: true,
       request_denial_recorded: false,
       request_denial_persisted: false,
@@ -256,7 +336,7 @@ jq -n \
       operator_review_request_recorded: false,
       operator_review_request_persisted: false,
       operator_review_request_accepted: false,
-      ready_for_request_denial_audit_index: true,
+      ready_for_request_denial_audit_index: $request_denial_readback_preconditions_complete,
       ready_for_operator_review_request: false,
       ready_for_approval_recording: false,
       ready_for_feature_flag_config_write: false,
@@ -268,7 +348,11 @@ jq -n \
         request_blocker_matrix_gate_present: $request_blocker_matrix_gate_present,
         request_blocker_matrix_points_here: $request_blocker_matrix_points_here,
         request_blocker_matrix_denies_present: $request_blocker_matrix_denies_present,
-        request_blocker_matrix_ready_present: $request_blocker_matrix_ready_present
+        request_blocker_matrix_ready_present: $request_blocker_matrix_ready_present,
+        request_blocker_matrix_report_gate: $request_blocker_matrix.gate,
+        request_blocker_matrix_preconditions_complete: $request_blocker_matrix.request_precondition_blocker_matrix_preconditions_complete,
+        request_blocker_matrix_ready_for_denial_readback: $request_blocker_matrix.ready_for_request_denial_readback,
+        request_blocker_matrix_side_effects_all_false: ($request_blocker_matrix.side_effects | to_entries | all(.value == false))
       },
       side_effects: {
         filesystem_written: false,

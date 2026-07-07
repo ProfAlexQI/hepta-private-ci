@@ -123,6 +123,13 @@ impl ContextPlaneActivationBlockerMatrix {
                 report_side_effect_flag_enabled,
             ),
             row_from_section(
+                ContextPlaneActivationTarget::MemoryProviderBoundary,
+                status,
+                ContextPlaneStatusSection::MemoryProviderBoundary,
+                ContextPlaneStatusKind::Ready,
+                report_side_effect_flag_enabled,
+            ),
+            row_from_section(
                 ContextPlaneActivationTarget::SourceAwareFrontDoor,
                 status,
                 ContextPlaneStatusSection::SourceAwareFrontDoor,
@@ -151,7 +158,7 @@ impl ContextPlaneActivationBlockerMatrix {
 
     pub fn has_matrix_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION
-            && self.rows.len() == 12
+            && self.rows.len() == 13
             && self.has_required_targets()
             && self.blocker_count
                 == self
@@ -185,6 +192,7 @@ impl ContextPlaneActivationBlockerMatrix {
             ContextPlaneActivationTarget::EvalHarnessSeed,
             ContextPlaneActivationTarget::AdaptiveAllocatorEvalShadow,
             ContextPlaneActivationTarget::RecallQualityGate,
+            ContextPlaneActivationTarget::MemoryProviderBoundary,
             ContextPlaneActivationTarget::SourceAwareFrontDoor,
             ContextPlaneActivationTarget::OperatorApproval,
         ]

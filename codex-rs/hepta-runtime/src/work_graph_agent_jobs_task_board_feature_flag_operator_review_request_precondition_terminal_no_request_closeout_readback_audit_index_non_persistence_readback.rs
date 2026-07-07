@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_READBACK_AUDIT_INDEX_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestCloseoutReadbackAuditIndexSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_report,
 };
 
@@ -25,6 +26,10 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditi
     pub source_audit_index_entry_count: usize,
     pub source_audit_index_blocker_count: usize,
     pub source_required_prior_gate_count: usize,
+    pub source_audit_index_preconditions_complete: bool,
+    pub source_audit_index_no_record_persist_request_confirmed: bool,
+    pub source_audit_index_no_authorization_confirmed: bool,
+    pub source_audit_index_ready: bool,
     pub readback_entry_count: usize,
     pub readback_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -36,6 +41,10 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditi
         Vec<WorkGraphOperatorReviewRequestPreconditionTerminalNoRequestCloseoutReadbackAuditIndexNonPersistenceReadbackBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub readback_scope_non_persistent_complete: bool,
+    pub readback_entries_non_persistent_complete: bool,
+    pub readback_blockers_complete: bool,
+    pub non_persistence_readback_preconditions_complete: bool,
     pub audit_index_visible: bool,
     pub audit_index_recorded: bool,
     pub audit_index_persisted: bool,
@@ -171,6 +180,76 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_READBACK_AUDIT_INDEX_GATE,
     ];
     required_prior_gates.extend(source.required_prior_gates.iter().copied());
+    let source_audit_index_no_record_persist_request_confirmed = source.audit_index_visible
+        && !source.audit_index_recorded
+        && !source.audit_index_persisted
+        && !source.audit_index_authoritative
+        && !source.audit_index_accepted
+        && source.terminal_closeout_readback_visible
+        && !source.terminal_closeout_readback_persisted
+        && source.terminal_no_request
+        && !source.operator_review_request_allowed
+        && !source.operator_review_requested
+        && !source.operator_packet_send_allowed
+        && !source.operator_packet_acceptance_allowed
+        && !source.approval_recording_allowed
+        && source.ready_for_non_persistence_readback
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestCloseoutReadbackAuditIndexSideEffects::none();
+    let source_audit_index_no_authorization_confirmed = !source.operator_review_request_allowed
+        && !source.operator_review_requested
+        && !source.operator_packet_send_allowed
+        && !source.operator_packet_acceptance_allowed
+        && !source.approval_recording_allowed
+        && !source.audit_index_authorizes_operator_review_request
+        && !source.audit_index_authorizes_operator_packet_send
+        && !source.audit_index_authorizes_approval_recording
+        && !source.audit_index_authorizes_config_write
+        && !source.audit_index_authorizes_feature_flag_enablement
+        && !source.audit_index_authorizes_canary_traffic
+        && !source.audit_index_authorizes_scheduler_enforcement
+        && !source.audit_index_authorizes_guardrail_enforcement
+        && !source.audit_index_authorizes_replay_execution
+        && !source.audit_index_authorizes_rollback_execution
+        && !source.audit_index_authorizes_work_graph_persistence
+        && !source.audit_index_authorizes_live_cutover
+        && !source.ready_for_operator_review_request
+        && !source.ready_for_approval_recording
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_canary_traffic
+        && !source.ready_for_live_cutover;
+    let source_audit_index_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_READBACK_AUDIT_INDEX_GATE
+        && source.terminal_no_request_closeout_readback_audit_index_preconditions_complete
+        && source.ready_for_non_persistence_readback
+        && source_audit_index_no_record_persist_request_confirmed
+        && source_audit_index_no_authorization_confirmed;
+    let readback_scope_non_persistent_complete = readback_scope.audit_index_visible
+        && !readback_scope.audit_index_recorded
+        && !readback_scope.audit_index_persisted
+        && !readback_scope.audit_index_authoritative
+        && !readback_scope.audit_index_accepted
+        && !readback_scope.operator_review_requested
+        && !readback_scope.readback_recorded
+        && !readback_scope.readback_persisted;
+    let readback_entries_non_persistent_complete = !readback_entries.is_empty()
+        && readback_entries.iter().all(|entry| {
+            entry.visible
+                && entry.ready
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.accepted
+                && !entry.authoritative
+                && !entry.operator_review_requested
+                && !entry.mutation_allowed
+        });
+    let readback_blockers_complete =
+        !readback_blockers.is_empty() && readback_blockers.iter().all(|blocker| blocker.blocked);
+    let non_persistence_readback_preconditions_complete = source_audit_index_ready
+        && readback_scope_non_persistent_complete
+        && readback_entries_non_persistent_complete
+        && readback_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagOperatorReviewRequestPreconditionTerminalNoRequestCloseoutReadbackAuditIndexNonPersistenceReadbackReport {
         product: "Hepta",
@@ -186,6 +265,11 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         source_audit_index_entry_count: source.audit_index_entry_count,
         source_audit_index_blocker_count: source.audit_index_blocker_count,
         source_required_prior_gate_count: source.required_prior_gate_count,
+        source_audit_index_preconditions_complete: source
+            .terminal_no_request_closeout_readback_audit_index_preconditions_complete,
+        source_audit_index_no_record_persist_request_confirmed,
+        source_audit_index_no_authorization_confirmed,
+        source_audit_index_ready,
         readback_entry_count: readback_entries.len(),
         readback_blocker_count: readback_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -195,6 +279,10 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_REVIEW_REQUEST_PRECONDITION_TERMINAL_NO_REQUEST_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_READBACK_RECOMMENDED_NEXT_GATE,
+        readback_scope_non_persistent_complete,
+        readback_entries_non_persistent_complete,
+        readback_blockers_complete,
+        non_persistence_readback_preconditions_complete,
         audit_index_visible: true,
         audit_index_recorded: false,
         audit_index_persisted: false,
@@ -219,7 +307,8 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
         rollback_execution_allowed: false,
         work_graph_persistence_allowed: false,
         live_cutover_allowed: false,
-        ready_for_terminal_no_request_final_closeout: true,
+        ready_for_terminal_no_request_final_closeout:
+            non_persistence_readback_preconditions_complete,
         ready_for_operator_review_request: false,
         ready_for_approval_recording: false,
         ready_for_feature_flag_config_write: false,
@@ -465,6 +554,10 @@ mod tests {
         assert_eq!(report.source_audit_index_entry_count, 6);
         assert_eq!(report.source_audit_index_blocker_count, 25);
         assert_eq!(report.source_required_prior_gate_count, 23);
+        assert!(report.source_audit_index_preconditions_complete);
+        assert!(report.source_audit_index_no_record_persist_request_confirmed);
+        assert!(report.source_audit_index_no_authorization_confirmed);
+        assert!(report.source_audit_index_ready);
         assert_eq!(report.readback_entry_count, 5);
         assert_eq!(report.readback_blocker_count, 26);
         assert_eq!(report.required_prior_gate_count, 24);
@@ -487,6 +580,7 @@ mod tests {
         assert!(!report.readback_scope.operator_review_requested);
         assert!(!report.readback_scope.readback_recorded);
         assert!(!report.readback_scope.readback_persisted);
+        assert!(report.readback_scope_non_persistent_complete);
         assert!(report.readback_entries.iter().all(|entry| {
             entry.visible
                 && entry.ready
@@ -497,6 +591,7 @@ mod tests {
                 && !entry.operator_review_requested
                 && !entry.mutation_allowed
         }));
+        assert!(report.readback_entries_non_persistent_complete);
     }
 
     #[test]
@@ -514,6 +609,8 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.readback_blockers_complete);
+        assert!(report.non_persistence_readback_preconditions_complete);
         assert!(report.ready_for_terminal_no_request_final_closeout);
         assert!(report.audit_index_visible);
         assert!(report.terminal_closeout_readback_visible);

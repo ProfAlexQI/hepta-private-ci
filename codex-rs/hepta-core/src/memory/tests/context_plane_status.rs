@@ -66,17 +66,37 @@ fn context_plane_status_report_fixture(
     let temporal_fact_graph =
         ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
+    let provider_report = MemoryProviderReport::from_update(
+        MemoryProviderDescriptor::builtin(),
+        MemoryProviderContextUpdateEnvelope {
+            provider_id: "builtin".into(),
+            mode: MemoryProviderContextUpdateMode::ShadowOnly,
+            source_counts: ContextRecallSourceCounts::default(),
+            limit_pressure: ContextRecallLimitPressure::default(),
+            ranked_item_count: 2,
+            selected_item_count: 1,
+            estimated_token_count: 256,
+            payload_light: true,
+            operator_approval_required: true,
+            prompt_payload_exported: false,
+            query_payload_exported: false,
+            ranked_payload_exported: false,
+            write_performed: false,
+            runtime_activation: false,
+        },
+    );
 
-    ContextPlaneStatusReport::from_reports(
-        &taxonomy,
-        &formation_receipts,
-        &formation_queue,
-        &temporal_facts,
-        &temporal_fact_graph,
-        &eval_seed,
+    ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
+        taxonomy: &taxonomy,
+        formation_receipts: &formation_receipts,
+        formation_queue: &formation_queue,
+        temporal_facts: &temporal_facts,
+        temporal_fact_graph: &temporal_fact_graph,
+        eval_seed: &eval_seed,
         allocator_shadow,
         recall_quality_gate,
-    )
+        provider_report: &provider_report,
+    })
 }
 
 #[test]
@@ -86,9 +106,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 11);
+    assert_eq!(report.sections.len(), 12);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 2);
+    assert_eq!(report.shadow_section_count(), 3);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -102,6 +122,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::RecallQualityGate),
         Some(ContextPlaneStatusKind::Ready)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::SourceAwareFrontDoor),
@@ -132,6 +156,7 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("eval_harness_seed"));
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
+    assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("source_aware_front_door"));

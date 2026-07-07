@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_OPERATOR_REVIEW_REQUEST_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-operator-review-request-terminal-closeout-readback-audit-index-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_OPERATOR_REVIEW_REQUEST_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_OPERATOR_REVIEW_REQUEST_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -39,12 +49,18 @@ terminal_closeout_readback_unrequested_present="$(
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback.rs
 )"
 terminal_closeout_readback_ready_present="$(
-  bool_for source_has "ready_for_terminal_no_request_closeout_readback_audit_index: true" \
+  bool_for source_has "ready_for_terminal_no_request_closeout_readback_audit_index" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback.rs
 )"
 terminal_closeout_readback_unpersisted_present="$(
   bool_for source_has "work_graph_persistence_allowed: false" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback.rs
+)"
+
+terminal_closeout_readback="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-terminal-no-request-closeout-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-terminal-no-request-closeout-readback-report.sh"
 )"
 
 jq -n \
@@ -54,6 +70,7 @@ jq -n \
   --argjson terminal_closeout_readback_unrequested_present "$terminal_closeout_readback_unrequested_present" \
   --argjson terminal_closeout_readback_ready_present "$terminal_closeout_readback_ready_present" \
   --argjson terminal_closeout_readback_unpersisted_present "$terminal_closeout_readback_unpersisted_present" \
+  --argjson terminal_closeout_readback "$terminal_closeout_readback" \
   '
   def entry($id; $key; $source; $category): {
     id: $id,
@@ -147,6 +164,72 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($terminal_closeout_readback.terminal_closeout_visible == true
+      and $terminal_closeout_readback.terminal_closeout_recorded == false
+      and $terminal_closeout_readback.terminal_closeout_persisted == false
+      and $terminal_closeout_readback.terminal_closeout_authoritative == false
+      and $terminal_closeout_readback.terminal_closeout_accepted == false
+      and $terminal_closeout_readback.readback_visible == true
+      and $terminal_closeout_readback.readback_recorded == false
+      and $terminal_closeout_readback.readback_persisted == false
+      and $terminal_closeout_readback.readback_authoritative == false
+      and $terminal_closeout_readback.readback_accepted == false
+      and $terminal_closeout_readback.terminal_no_request == true
+      and $terminal_closeout_readback.operator_review_request_allowed == false
+      and $terminal_closeout_readback.operator_review_requested == false
+      and $terminal_closeout_readback.operator_packet_send_allowed == false
+      and $terminal_closeout_readback.operator_packet_acceptance_allowed == false
+      and $terminal_closeout_readback.approval_recording_allowed == false
+      and $terminal_closeout_readback.ready_for_terminal_no_request_closeout_readback_audit_index == true
+      and ($terminal_closeout_readback.side_effects | to_entries | all(.value == false))) as $source_terminal_closeout_readback_no_request_confirmed
+  | ($terminal_closeout_readback.operator_review_request_allowed == false
+      and $terminal_closeout_readback.operator_review_requested == false
+      and $terminal_closeout_readback.operator_packet_send_allowed == false
+      and $terminal_closeout_readback.operator_packet_acceptance_allowed == false
+      and $terminal_closeout_readback.approval_recording_allowed == false
+      and $terminal_closeout_readback.config_write_allowed == false
+      and $terminal_closeout_readback.feature_flag_enablement_allowed == false
+      and $terminal_closeout_readback.canary_traffic_allowed == false
+      and $terminal_closeout_readback.scheduler_enforcement_allowed == false
+      and $terminal_closeout_readback.guardrail_enforcement_allowed == false
+      and $terminal_closeout_readback.replay_execution_allowed == false
+      and $terminal_closeout_readback.rollback_execution_allowed == false
+      and $terminal_closeout_readback.work_graph_persistence_allowed == false
+      and $terminal_closeout_readback.live_cutover_allowed == false
+      and $terminal_closeout_readback.ready_for_operator_review_request == false
+      and $terminal_closeout_readback.ready_for_approval_recording == false
+      and $terminal_closeout_readback.ready_for_feature_flag_config_write == false
+      and $terminal_closeout_readback.ready_for_feature_flag_enablement == false
+      and $terminal_closeout_readback.ready_for_canary_traffic == false
+      and $terminal_closeout_readback.ready_for_live_cutover == false) as $source_terminal_closeout_readback_no_authorization_confirmed
+  | ($terminal_closeout_readback.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_gate"
+      and $terminal_closeout_readback.terminal_no_request_closeout_readback_preconditions_complete == true
+      and $terminal_closeout_readback.ready_for_terminal_no_request_closeout_readback_audit_index == true
+      and $source_terminal_closeout_readback_no_request_confirmed
+      and $source_terminal_closeout_readback_no_authorization_confirmed) as $source_terminal_closeout_readback_ready
+  | ($audit_index_scope.index_visible == true
+      and $audit_index_scope.index_recorded == false
+      and $audit_index_scope.index_persisted == false
+      and $audit_index_scope.index_authoritative == false
+      and $audit_index_scope.index_accepted == false
+      and $audit_index_scope.operator_review_requested == false
+      and $audit_index_scope.acceptance_allowed == false) as $audit_index_scope_report_only_complete
+  | (($audit_index_entries | length) > 0
+      and ($audit_index_entries | all(
+        .indexed == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and .operator_review_requested == false
+        and .mutation_allowed == false
+      ))) as $audit_index_entries_report_only_complete
+  | (($audit_index_blockers | length) > 0
+      and ($audit_index_blockers | all(.blocked == true))) as $audit_index_blockers_complete
+  | ($source_terminal_closeout_readback_ready
+      and $audit_index_scope_report_only_complete
+      and $audit_index_entries_report_only_complete
+      and $audit_index_blockers_complete) as $terminal_no_request_closeout_readback_audit_index_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -154,10 +237,14 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_v1",
       preview_mode: "operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_report_only",
-      source_terminal_closeout_readback_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_gate",
-      source_readback_entry_count: 5,
-      source_readback_blocker_count: 22,
-      source_required_prior_gate_count: 22,
+      source_terminal_closeout_readback_gate: $terminal_closeout_readback.gate,
+      source_readback_entry_count: $terminal_closeout_readback.readback_entry_count,
+      source_readback_blocker_count: $terminal_closeout_readback.readback_blocker_count,
+      source_required_prior_gate_count: $terminal_closeout_readback.required_prior_gate_count,
+      source_terminal_closeout_readback_preconditions_complete: $terminal_closeout_readback.terminal_no_request_closeout_readback_preconditions_complete,
+      source_terminal_closeout_readback_no_request_confirmed: $source_terminal_closeout_readback_no_request_confirmed,
+      source_terminal_closeout_readback_no_authorization_confirmed: $source_terminal_closeout_readback_no_authorization_confirmed,
+      source_terminal_closeout_readback_ready: $source_terminal_closeout_readback_ready,
       audit_index_entry_count: ($audit_index_entries | length),
       audit_index_blocker_count: ($audit_index_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -166,6 +253,10 @@ jq -n \
       audit_index_blockers: $audit_index_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_closeout_readback_audit_index_non_persistence_readback_gate",
+      audit_index_scope_report_only_complete: $audit_index_scope_report_only_complete,
+      audit_index_entries_report_only_complete: $audit_index_entries_report_only_complete,
+      audit_index_blockers_complete: $audit_index_blockers_complete,
+      terminal_no_request_closeout_readback_audit_index_preconditions_complete: $terminal_no_request_closeout_readback_audit_index_preconditions_complete,
       audit_index_visible: true,
       audit_index_recorded: false,
       audit_index_persisted: false,
@@ -191,7 +282,7 @@ jq -n \
       audit_index_authorizes_rollback_execution: false,
       audit_index_authorizes_work_graph_persistence: false,
       audit_index_authorizes_live_cutover: false,
-      ready_for_non_persistence_readback: true,
+      ready_for_non_persistence_readback: $terminal_no_request_closeout_readback_audit_index_preconditions_complete,
       ready_for_operator_review_request: false,
       ready_for_approval_recording: false,
       ready_for_feature_flag_config_write: false,
@@ -204,7 +295,11 @@ jq -n \
         terminal_closeout_readback_points_here: $terminal_closeout_readback_points_here,
         terminal_closeout_readback_unrequested_present: $terminal_closeout_readback_unrequested_present,
         terminal_closeout_readback_ready_present: $terminal_closeout_readback_ready_present,
-        terminal_closeout_readback_unpersisted_present: $terminal_closeout_readback_unpersisted_present
+        terminal_closeout_readback_unpersisted_present: $terminal_closeout_readback_unpersisted_present,
+        terminal_closeout_readback_report_gate: $terminal_closeout_readback.gate,
+        terminal_closeout_readback_preconditions_complete: $terminal_closeout_readback.terminal_no_request_closeout_readback_preconditions_complete,
+        terminal_closeout_readback_ready_for_audit_index: $terminal_closeout_readback.ready_for_terminal_no_request_closeout_readback_audit_index,
+        terminal_closeout_readback_side_effects_all_false: ($terminal_closeout_readback.side_effects | to_entries | all(.value == false))
       },
       side_effects: {
         filesystem_written: false,

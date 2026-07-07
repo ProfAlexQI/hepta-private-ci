@@ -1,8 +1,7 @@
 use serde::Serialize;
 
-use crate::work_graph_adapter_task_result_index::{
-    WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE, hepta_work_graph_adapter_task_result_index_report,
-};
+use crate::work_graph_adapter_task_result_index::WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE;
+use crate::work_graph_adapter_task_result_index::hepta_work_graph_adapter_task_result_index_report;
 use crate::work_graph_task_result_envelope_report_only_validator::WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE;
 
 pub const WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE: &str =

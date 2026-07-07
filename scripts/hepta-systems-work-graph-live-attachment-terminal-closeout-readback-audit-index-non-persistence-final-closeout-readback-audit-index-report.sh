@@ -4,59 +4,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-path_exists() {
-  local path="$1"
-  [[ -e "$path" ]]
-}
-
-source_has() {
-  local pattern="$1"
-  local path="$2"
-  rg -q "$pattern" "$path"
-}
-
-bool_for() {
-  if "$@"; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-}
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 
 SOURCE_REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-live-attachment-terminal-closeout-readback-audit-index-non-persistence-final-closeout-readback-report.sh"
-SOURCE_MODULE="codex-rs/hepta-runtime/src/wg_sg_live_attach_tc_readback_ai_np_final_closeout_readback.rs"
-
-source_report="$("$SOURCE_REPORT_SCRIPT")"
-
-audit_index_module_present="$(
-  bool_for path_exists codex-rs/hepta-runtime/src/wg_sg_live_attach_tc_readback_ai_np_final_closeout_readback_audit_index.rs
-)"
-final_closeout_readback_gate_present="$(
-  bool_for path_exists scripts/hepta-systems-work-graph-live-attachment-terminal-closeout-readback-audit-index-non-persistence-final-closeout-readback-gate.sh
-)"
-final_closeout_readback_points_here="$(
-  bool_for source_has \
-    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_gate" \
-    "$SOURCE_MODULE"
-)"
-final_closeout_readback_ready_present="$(
-  bool_for source_has "ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index: true" "$SOURCE_MODULE"
-)"
-final_closeout_readback_no_live_present="$(
-  bool_for source_has "ready_for_live_execution: false" "$SOURCE_MODULE"
-)"
-final_closeout_readback_unpersisted_present="$(
-  bool_for source_has "final_closeout_readback_persisted: false" "$SOURCE_MODULE"
+source_report="$(
+  capture_json_report \
+    "hepta-work-graph-live-attachment-terminal-closeout-readback-audit-index-non-persistence-final-closeout-readback-report" \
+    "$SOURCE_REPORT_SCRIPT"
 )"
 
 jq -n \
   --argjson source "$source_report" \
-  --argjson audit_index_module_present "$audit_index_module_present" \
-  --argjson final_closeout_readback_gate_present "$final_closeout_readback_gate_present" \
-  --argjson final_closeout_readback_points_here "$final_closeout_readback_points_here" \
-  --argjson final_closeout_readback_ready_present "$final_closeout_readback_ready_present" \
-  --argjson final_closeout_readback_no_live_present "$final_closeout_readback_no_live_present" \
-  --argjson final_closeout_readback_unpersisted_present "$final_closeout_readback_unpersisted_present" \
   '
   def entry($id; $key; $source; $category): {
     id: $id,
@@ -78,7 +36,64 @@ jq -n \
     reason: "required before final closeout readback audit index can be recorded, accepted, enforced, or cut live",
     required_before_acceptance: true
   };
-  {
+  ($source.side_effects | to_entries | all(.value == false)) as $source_side_effects_all_false
+  | ($source.final_closeout_readback_preconditions_complete == true
+      and $source.final_closeout_readback_visible == true
+      and $source.final_closeout_readback_recorded == false
+      and $source.final_closeout_readback_persisted == false
+      and $source.final_closeout_readback_authoritative == false
+      and $source.final_closeout_readback_accepted == false
+      and $source.source_final_closeout_visible == true
+      and $source.source_final_closeout_recorded == false
+      and $source.source_final_closeout_persisted == false
+      and $source.source_final_closeout_authoritative == false
+      and $source.source_final_closeout_accepted == false
+      and $source.work_graph_event_persistence_allowed == false
+      and $source.projection_persistence_allowed == false
+      and $source_side_effects_all_false) as $source_final_closeout_readback_no_persistence_confirmed
+  | ($source.ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index == true
+      and $source.live_attachment_allowed == false
+      and $source.live_blocking_hook_install_allowed == false
+      and $source.runtime_interception_allowed == false
+      and $source.scheduler_admission_enforcement_allowed == false
+      and $source.guardrail_enforcement_allowed == false
+      and $source.lease_acquisition_allowed == false
+      and $source.work_start_allowed == false
+      and $source.agent_spawn_allowed == false
+      and $source.model_invocation_allowed == false
+      and $source.external_send_allowed == false
+      and $source.live_task_result_emission_allowed == false
+      and $source.readback_execution_allowed == false
+      and $source.replay_execution_allowed == false
+      and $source.replay_diff_recording_allowed == false
+      and $source.replay_diff_persistence_allowed == false
+      and $source.rollback_execution_allowed == false
+      and $source.idempotency_mutation_allowed == false
+      and $source.config_write_allowed == false
+      and $source.feature_flag_mutation_allowed == false
+      and $source.canary_traffic_allowed == false
+      and $source.operator_review_request_allowed == false
+      and $source.approval_recording_allowed == false
+      and $source.live_cutover_allowed == false
+      and $source.ready_for_live_attachment == false
+      and $source.ready_for_live_execution == false
+      and $source_final_closeout_readback_no_persistence_confirmed) as $source_final_closeout_readback_no_live_confirmed
+  | ($source.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_gate"
+      and $source.source_final_closeout_ready == true
+      and $source.source_final_closeout_no_persistence_confirmed == true
+      and $source.source_final_closeout_no_live_confirmed == true
+      and $source.source_final_closeout_ready_for_readback == true
+      and $source.readback_scope_complete == true
+      and $source.readback_entries_complete == true
+      and $source.readback_blockers_complete == true
+      and $source.final_closeout_readback_preconditions_complete == true
+      and $source.readback_entry_count == 6
+      and $source.readback_blocker_count == 89
+      and $source.required_prior_gate_count == 34
+      and $source_final_closeout_readback_no_live_confirmed) as $source_final_closeout_readback_ready
+  | ($source_final_closeout_readback_ready
+      and $source.ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index == true) as $source_final_closeout_readback_ready_for_audit_index
+  | {
     id: "agent_jobs_task_board_scheduler_guardrail_live_attachment_attachability_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_scope",
     source_surface_id: "work_graph_agent_jobs_task_board.scheduler_guardrail.live_attachment_attachability_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback",
     index_mode: "live_attachment_attachability_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_report_only",
@@ -110,6 +125,28 @@ jq -n \
     + ($source.readback_blockers | map(blocker(.id; .blocked_action)))
   ) as $blockers
   | ([$source.gate] + $source.required_prior_gates) as $required_priors
+  | ($scope.index_visible == true
+      and $scope.index_recorded == false
+      and $scope.index_persisted == false
+      and $scope.index_authoritative == false
+      and $scope.index_accepted == false
+      and $scope.live_acceptance_allowed == false) as $audit_index_scope_complete
+  | (($entries | length) == 9
+      and ($entries | all(
+        .indexed == true
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and .accepted == false
+        and .mutation_allowed == false
+        and .ready == true
+      ))) as $audit_index_entries_complete
+  | (($blockers | length) == 92
+      and ($blockers | all(.blocked == true and .required_before_acceptance == true))) as $audit_index_blockers_complete
+  | ($source_final_closeout_readback_ready_for_audit_index
+      and $audit_index_scope_complete
+      and $audit_index_entries_complete
+      and $audit_index_blockers_complete) as $audit_index_preconditions_complete
   | {
     product: "Hepta",
     runtime: "hepta",
@@ -121,6 +158,10 @@ jq -n \
     source_readback_entry_count: $source.readback_entry_count,
     source_readback_blocker_count: $source.readback_blocker_count,
     source_required_prior_gate_count: $source.required_prior_gate_count,
+    source_final_closeout_readback_ready: $source_final_closeout_readback_ready,
+    source_final_closeout_readback_no_persistence_confirmed: $source_final_closeout_readback_no_persistence_confirmed,
+    source_final_closeout_readback_no_live_confirmed: $source_final_closeout_readback_no_live_confirmed,
+    source_final_closeout_readback_ready_for_audit_index: $source_final_closeout_readback_ready_for_audit_index,
     audit_index_entry_count: ($entries | length),
     audit_index_blocker_count: ($blockers | length),
     required_prior_gate_count: ($required_priors | length),
@@ -129,6 +170,10 @@ jq -n \
     audit_index_blockers: $blockers,
     required_prior_gates: $required_priors,
     recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_readback_gate",
+    audit_index_scope_complete: $audit_index_scope_complete,
+    audit_index_entries_complete: $audit_index_entries_complete,
+    audit_index_blockers_complete: $audit_index_blockers_complete,
+    audit_index_preconditions_complete: $audit_index_preconditions_complete,
     audit_index_visible: true,
     audit_index_recorded: false,
     audit_index_persisted: false,
@@ -162,16 +207,16 @@ jq -n \
     audit_index_authorizes_readback_replay_or_rollback: false,
     audit_index_authorizes_config_flag_or_traffic: false,
     audit_index_authorizes_operator_approval_or_live_cutover: false,
-    ready_for_non_persistence_readback: true,
+    ready_for_non_persistence_readback: $audit_index_preconditions_complete,
     ready_for_live_attachment: false,
     ready_for_live_execution: false,
-    source_probes: {
-      audit_index_module_present: $audit_index_module_present,
-      final_closeout_readback_gate_present: $final_closeout_readback_gate_present,
-      final_closeout_readback_points_here: $final_closeout_readback_points_here,
-      final_closeout_readback_ready_present: $final_closeout_readback_ready_present,
-      final_closeout_readback_no_live_present: $final_closeout_readback_no_live_present,
-      final_closeout_readback_unpersisted_present: $final_closeout_readback_unpersisted_present
+    source_readbacks: {
+      final_closeout_readback_report_gate: $source.gate,
+      final_closeout_readback_preconditions_complete: $source.final_closeout_readback_preconditions_complete,
+      final_closeout_readback_ready_for_audit_index: $source.ready_for_terminal_closeout_readback_audit_index_final_closeout_readback_audit_index,
+      final_closeout_readback_no_persistence_confirmed: $source_final_closeout_readback_no_persistence_confirmed,
+      final_closeout_readback_no_live_confirmed: $source_final_closeout_readback_no_live_confirmed,
+      final_closeout_readback_side_effects_all_false: $source_side_effects_all_false
     },
     side_effects: {
       filesystem_written: false,

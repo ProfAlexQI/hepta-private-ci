@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_ENABLEMENT_DRY_RUN_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-enablement-dry-run-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_ENABLEMENT_DRY_RUN_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_ENABLEMENT_DRY_RUN_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -34,21 +44,23 @@ rollback_replay_matrix_points_here="$(
     "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix.rs
 )"
-rollback_replay_ready_present="$(
-  bool_for source_has "ready_for_enablement_precondition_dry_run: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix.rs
-)"
 rollback_replay_execution_false_present="$(
   bool_for source_has "replay_executed: false" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix.rs
+)"
+
+rollback_replay_matrix="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-rollback-replay-pre-enable-blocker-matrix-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-rollback-replay-pre-enable-blocker-matrix-report.sh"
 )"
 
 jq -n \
   --argjson enablement_module_present "$enablement_module_present" \
   --argjson rollback_replay_matrix_gate_present "$rollback_replay_matrix_gate_present" \
   --argjson rollback_replay_matrix_points_here "$rollback_replay_matrix_points_here" \
-  --argjson rollback_replay_ready_present "$rollback_replay_ready_present" \
   --argjson rollback_replay_execution_false_present "$rollback_replay_execution_false_present" \
+  --argjson rollback_replay_matrix "$rollback_replay_matrix" \
   '
   def deny_reason($id; $class; $explanation): {
     id: $id,
@@ -112,6 +124,33 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($rollback_replay_matrix.replay_executed == false
+      and $rollback_replay_matrix.rollback_executed == false
+      and ($rollback_replay_matrix.side_effects | to_entries | all(.value == false))) as $source_rollback_replay_no_execution_confirmed
+  | ($rollback_replay_matrix.ready_for_feature_flag_config_write == false
+      and $rollback_replay_matrix.ready_for_feature_flag_enablement == false
+      and $rollback_replay_matrix.ready_for_canary_traffic == false
+      and $rollback_replay_matrix.ready_for_live_cutover == false) as $source_rollback_replay_no_enablement_confirmed
+  | ($rollback_replay_matrix.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate"
+      and $rollback_replay_matrix.rollback_replay_blocker_matrix_preconditions_complete == true
+      and $rollback_replay_matrix.ready_for_enablement_precondition_dry_run == true
+      and $source_rollback_replay_no_execution_confirmed
+      and $source_rollback_replay_no_enablement_confirmed) as $source_rollback_replay_ready
+  | (($decisions | length) > 0
+      and ($decisions | all(
+        .decision == "deny"
+        and .allowed_traffic_ppm == 0
+        and .config_write_allowed == false
+        and .feature_flag_enablement_allowed == false
+        and .canary_traffic_allowed == false
+        and .live_cutover_allowed == false
+      ))) as $dry_run_decisions_deny_complete
+  | (($deny_reasons | length) > 0
+      and ($deny_reasons | all(.required == true and .satisfied == false))) as $deny_reasons_unsatisfied_complete
+  | ($source_rollback_replay_ready
+      and $dry_run_decisions_deny_complete
+      and $deny_reasons_unsatisfied_complete
+      and (($decisions | length) == ($decisions | map(select(.decision == "deny")) | length))) as $enablement_precondition_dry_run_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -119,9 +158,10 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_v1",
       preview_mode: "feature_flag_enablement_precondition_dry_run_deny_no_write_no_enablement",
-      source_rollback_replay_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate",
-      source_rollback_replay_check_count: 6,
-      source_pre_enable_blocker_count: 10,
+      source_rollback_replay_gate: $rollback_replay_matrix.gate,
+      source_rollback_replay_check_count: $rollback_replay_matrix.rollback_replay_check_count,
+      source_pre_enable_blocker_count: $rollback_replay_matrix.pre_enable_blocker_count,
+      source_required_prior_gate_count: $rollback_replay_matrix.required_prior_gate_count,
       decision_count: ($decisions | length),
       deny_reason_count: ($deny_reasons | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -129,6 +169,13 @@ jq -n \
       deny_reasons: $deny_reasons,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_gate",
+      source_rollback_replay_preconditions_complete: $rollback_replay_matrix.rollback_replay_blocker_matrix_preconditions_complete,
+      source_rollback_replay_no_execution_confirmed: $source_rollback_replay_no_execution_confirmed,
+      source_rollback_replay_no_enablement_confirmed: $source_rollback_replay_no_enablement_confirmed,
+      source_rollback_replay_ready: $source_rollback_replay_ready,
+      dry_run_decisions_deny_complete: $dry_run_decisions_deny_complete,
+      deny_reasons_unsatisfied_complete: $deny_reasons_unsatisfied_complete,
+      enablement_precondition_dry_run_preconditions_complete: $enablement_precondition_dry_run_preconditions_complete,
       dry_run_mode: "deny_only_precondition_explanation",
       dry_run_enforced: false,
       allow_count: 0,
@@ -140,7 +187,7 @@ jq -n \
       approval_acceptance_allowed: false,
       replay_execution_allowed: false,
       rollback_execution_allowed: false,
-      ready_for_denial_readback: true,
+      ready_for_denial_readback: $enablement_precondition_dry_run_preconditions_complete,
       ready_for_feature_flag_config_write: false,
       ready_for_feature_flag_enablement: false,
       ready_for_canary_traffic: false,
@@ -149,7 +196,10 @@ jq -n \
         enablement_module_present: $enablement_module_present,
         rollback_replay_matrix_gate_present: $rollback_replay_matrix_gate_present,
         rollback_replay_matrix_points_here: $rollback_replay_matrix_points_here,
-        rollback_replay_ready_present: $rollback_replay_ready_present,
+        rollback_replay_matrix_report_gate: $rollback_replay_matrix.gate,
+        rollback_replay_matrix_preconditions_complete: $rollback_replay_matrix.rollback_replay_blocker_matrix_preconditions_complete,
+        rollback_replay_matrix_ready_for_dry_run: $rollback_replay_matrix.ready_for_enablement_precondition_dry_run,
+        rollback_replay_matrix_side_effects_all_false: ($rollback_replay_matrix.side_effects | to_entries | all(.value == false)),
         rollback_replay_execution_false_present: $rollback_replay_execution_false_present
       },
       side_effects: {

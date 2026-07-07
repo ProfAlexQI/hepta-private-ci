@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(report.rerun_store_guard_gap_count, 5);
         assert_eq!(report.closure_plan_count, 5);
         assert_eq!(report.candidate_guard_count, 5);
-        assert_eq!(report.existing_guard_gap_count, 5);
+        assert_eq!(report.existing_guard_gap_count, 0);
     }
 
     #[test]
@@ -633,7 +633,7 @@ mod tests {
 
         assert_eq!(probe_counts, [3, 3, 2, 2, 4]);
         assert!(report.guard_bindings.iter().all(|binding| {
-            !binding.existing_state_store_guard_present
+            binding.existing_state_store_guard_present
                 && binding.adapter_replay_key_contract_present
                 && binding.no_runtime_application
         }));

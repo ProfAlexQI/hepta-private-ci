@@ -1,0 +1,334 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-positive-acceptance-preconditions-readback-without-acceptance-report.sh"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_ACCEPTANCE_AUTHORITY_PACKET_READBACK_WITHOUT_ACCEPTANCE_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-readback-without-acceptance-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable positive acceptance preconditions report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing acceptance authority packet Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the acceptance authority packet report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+source_json="${HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_POSITIVE_ACCEPTANCE_PRECONDITIONS_JSON:-}"
+if [[ -n "$source_json" ]]; then
+  [[ -f "$source_json" ]] || fail "missing cached positive acceptance preconditions report: $source_json"
+else
+  source_json="$tmpdir/positive-acceptance-preconditions.json"
+  "$SOURCE_REPORT" >"$source_json" || fail "failed to render positive acceptance preconditions report"
+fi
+jq -e . "$source_json" >/dev/null || fail "positive acceptance preconditions report did not render valid JSON"
+
+jq -n \
+  --slurpfile source "$source_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-readback-without-acceptance-gate.sh" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_ACCEPTANCE_AUTHORITY_PACKET_READBACK_WITHOUT_ACCEPTANCE_2026-07-07.md" \
+  --arg packet_id "controlled-live-evidence-receipt-store-acceptance-authority-packet" \
+  --arg packet_route "operator-packet://controlled-live/evidence-receipt-store/acceptance-authority" \
+  --arg packet_fingerprint "sha256:controlled-live-evidence-receipt-store-acceptance-authority-packet-no-acceptance" \
+  '
+  def hyphen_id($id):
+    $id | gsub("_"; "-");
+  ($source[0]) as $src |
+  ($src.entries | map({
+    id:("evidence_receipt_store_acceptance_authority_packet_without_acceptance_" + .source_blocker_id),
+    source_blocker_id,
+    source_positive_precondition_set_id:.positive_precondition_set_id,
+    source_positive_precondition_route:.positive_precondition_route,
+    acceptance_authority_packet_id:$packet_id,
+    acceptance_authority_packet_route:$packet_route,
+    authority_decision_request_id:("acceptance-authority-decision-request:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    authority_decision_request_route:("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/decision-request/" + hyphen_id(.source_blocker_id)),
+    non_authority_receipt_id:("non-authority-receipt:controlled-live-evidence-receipt-store:" + .source_blocker_id),
+    operator_display_order,
+    operator_status,
+    observed_state:"acceptance_authority_packet_projected_without_acceptance",
+    previous_state,
+    current_state,
+    state_delta,
+    owner,
+    risk_bucket,
+    operator_label,
+    required_evidence,
+    packet_projected:true,
+    packet_ready:true,
+    authority_checklist_projected:true,
+    authority_item_required_count:8,
+    authority_item_present_count:0,
+    acceptance_authority_required:true,
+    acceptance_authority_present:false,
+    operator_acceptance_required:.operator_acceptance_required,
+    operator_acceptance_present:.operator_acceptance_present,
+    evidence_acceptance_required:.evidence_acceptance_required,
+    evidence_acceptance_present:.evidence_acceptance_present,
+    receipt_persistence_grant_required:.receipt_persistence_grant_required,
+    receipt_persistence_grant_present:.receipt_persistence_grant_present,
+    atomic_append_required:.atomic_append_required,
+    atomic_append_enabled:.atomic_append_enabled,
+    post_write_readback_required:.post_write_readback_required,
+    post_write_readback_persisted:.post_write_readback_persisted,
+    rollback_rehearsal_required:.rollback_rehearsal_required,
+    rollback_rehearsal_verified:.rollback_rehearsal_verified,
+    retention_policy_commit_required:.retention_policy_commit_required,
+    retention_policy_committed:.retention_policy_committed,
+    live_cutover_approval_required:.live_cutover_approval_required,
+    live_cutover_approval_present:.live_cutover_approval_present,
+    authority_decision_request_projected:true,
+    authority_decision_recorded:false,
+    non_authority_receipt_projected:true,
+    non_authority_receipt_persisted:false,
+    operator_packet_send_allowed:false,
+    operator_packet_sent:false,
+    operator_packet_persistence_allowed:false,
+    operator_packet_persisted:false,
+    acceptance_allowed:false,
+    acceptance_recording_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_recorded:false,
+    receipt_persistence_allowed:false,
+    receipt_persisted:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    ledger_written:false,
+    workflow_event_log_write_allowed:false,
+    workflow_event_log_written:false,
+    sqlite_write_allowed:false,
+    sqlite_written:false,
+    credential_read_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  ($entries | map(select(.packet_projected == true)) | length) as $packet_projected_count |
+  ($entries | map(select(.packet_ready == true)) | length) as $packet_ready_count |
+  ($entries | map(select(.authority_checklist_projected == true)) | length) as $authority_checklist_projected_count |
+  ($entries | map(.authority_item_required_count) | add) as $authority_item_required_count |
+  ($entries | map(.authority_item_present_count) | add) as $authority_item_present_count |
+  ($entries | map(select(.acceptance_authority_required == true)) | length) as $acceptance_authority_required_count |
+  ($entries | map(select(.acceptance_authority_present == true)) | length) as $acceptance_authority_present_count |
+  ($entries | map(select(.authority_decision_request_projected == true)) | length) as $authority_decision_request_projected_count |
+  ($entries | map(select(.authority_decision_recorded == true)) | length) as $authority_decision_recorded_count |
+  ($entries | map(select(.non_authority_receipt_projected == true)) | length) as $non_authority_receipt_projected_count |
+  ($entries | map(select(.non_authority_receipt_persisted == true)) | length) as $non_authority_receipt_persisted_count |
+  ($entries | map(select(.operator_packet_sent == true)) | length) as $operator_packet_sent_count |
+  ($entries | map(select(.operator_packet_persisted == true)) | length) as $operator_packet_persisted_count |
+  ($entries | map(select(.acceptance_allowed == true)) | length) as $acceptance_allowed_count |
+  ($entries | map(select(.evidence_recorded == true)) | length) as $evidence_recorded_count |
+  ($entries | map(select(.receipt_store_written == true)) | length) as $receipt_store_written_count |
+  ($entries | map(select(.receipt_persisted == true or .non_authority_receipt_persisted == true)) | length) as $receipt_persisted_count |
+  ($entries | map(select(.ledger_written == true)) | length) as $ledger_written_count |
+  ($entries | map(select(.workflow_event_log_written == true)) | length) as $workflow_event_log_written_count |
+  ($entries | map(select(.sqlite_written == true)) | length) as $sqlite_written_count |
+  ($entries | map(select(.live_mutation_allowed == true)) | length) as $live_mutation_allowed_count |
+  ($src.positive_acceptance_preconditions_readback_ready == true
+    and $src.precondition_entry_count == 7
+    and $src.acceptance_allowed_count == 0
+    and $src.operator_acceptance_present_count == 0
+    and $src.evidence_acceptance_present_count == 0
+    and $src.receipt_store_written_count == 0
+    and $src.live_execution_allowed == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $packet_projected_count == 7
+    and $packet_ready_count == 7
+    and $authority_checklist_projected_count == 7
+    and $authority_item_required_count == 56
+    and $authority_item_present_count == 0
+    and $acceptance_authority_required_count == 7
+    and $acceptance_authority_present_count == 0
+    and $authority_decision_request_projected_count == 7
+    and $authority_decision_recorded_count == 0
+    and $non_authority_receipt_projected_count == 7
+    and $non_authority_receipt_persisted_count == 0
+    and $operator_packet_sent_count == 0
+    and $operator_packet_persisted_count == 0
+    and $acceptance_allowed_count == 0
+    and $evidence_recorded_count == 0
+    and $receipt_store_written_count == 0
+    and $receipt_persisted_count == 0
+    and $ledger_written_count == 0
+    and $workflow_event_log_written_count == 0
+    and $sqlite_written_count == 0
+    and $live_mutation_allowed_count == 0
+    and ($entries | all(.observed_state == "acceptance_authority_packet_projected_without_acceptance"
+      and .previous_state == "missing"
+      and .current_state == "missing"
+      and .state_delta == "unchanged_missing"
+      and .packet_projected == true
+      and .packet_ready == true
+      and .authority_checklist_projected == true
+      and .authority_item_required_count == 8
+      and .authority_item_present_count == 0
+      and .acceptance_authority_required == true
+      and .acceptance_authority_present == false
+      and .operator_acceptance_required == true
+      and .operator_acceptance_present == false
+      and .evidence_acceptance_required == true
+      and .evidence_acceptance_present == false
+      and .receipt_persistence_grant_required == true
+      and .receipt_persistence_grant_present == false
+      and .atomic_append_required == true
+      and .atomic_append_enabled == false
+      and .post_write_readback_required == true
+      and .post_write_readback_persisted == false
+      and .rollback_rehearsal_required == true
+      and .rollback_rehearsal_verified == false
+      and .retention_policy_commit_required == true
+      and .retention_policy_committed == false
+      and .live_cutover_approval_required == true
+      and .live_cutover_approval_present == false
+      and .authority_decision_request_projected == true
+      and .authority_decision_recorded == false
+      and .non_authority_receipt_projected == true
+      and .non_authority_receipt_persisted == false
+      and .operator_packet_send_allowed == false
+      and .operator_packet_sent == false
+      and .operator_packet_persistence_allowed == false
+      and .operator_packet_persisted == false
+      and .acceptance_allowed == false
+      and .acceptance_recording_allowed == false
+      and .evidence_recording_allowed == false
+      and .evidence_recorded == false
+      and .receipt_persistence_allowed == false
+      and .receipt_persisted == false
+      and .receipt_store_write_allowed == false
+      and .receipt_store_written == false
+      and .ledger_write_allowed == false
+      and .ledger_written == false
+      and .workflow_event_log_write_allowed == false
+      and .workflow_event_log_written == false
+      and .sqlite_write_allowed == false
+      and .sqlite_written == false
+      and .credential_read_allowed == false
+      and .live_mutation_allowed == false))) as $ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance_gate",
+    schema_version:"controlled_live_evidence_receipt_store_acceptance_authority_packet_readback_without_acceptance_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_positive_preconditions_ready:$src.positive_acceptance_preconditions_readback_ready,
+    source_precondition_entry_count:$src.precondition_entry_count,
+    source_acceptance_allowed_count:$src.acceptance_allowed_count,
+    source_operator_acceptance_present_count:$src.operator_acceptance_present_count,
+    source_evidence_acceptance_present_count:$src.evidence_acceptance_present_count,
+    source_receipt_store_written_count:$src.receipt_store_written_count,
+    source_live_execution_allowed:$src.live_execution_allowed,
+    lib_export_present:$lib_export_present,
+    acceptance_authority_packet_id:$packet_id,
+    acceptance_authority_packet_route:$packet_route,
+    acceptance_authority_packet_payload_fingerprint:$packet_fingerprint,
+    packet_entry_count:($entries | length),
+    packet_projected_count:$packet_projected_count,
+    packet_ready_count:$packet_ready_count,
+    authority_checklist_projected_count:$authority_checklist_projected_count,
+    authority_item_required_count:$authority_item_required_count,
+    authority_item_present_count:$authority_item_present_count,
+    acceptance_authority_required_count:$acceptance_authority_required_count,
+    acceptance_authority_present_count:$acceptance_authority_present_count,
+    authority_decision_request_projected_count:$authority_decision_request_projected_count,
+    authority_decision_recorded_count:$authority_decision_recorded_count,
+    non_authority_receipt_projected_count:$non_authority_receipt_projected_count,
+    non_authority_receipt_persisted_count:$non_authority_receipt_persisted_count,
+    operator_packet_sent_count:$operator_packet_sent_count,
+    operator_packet_persisted_count:$operator_packet_persisted_count,
+    acceptance_allowed_count:$acceptance_allowed_count,
+    evidence_recorded_count:$evidence_recorded_count,
+    receipt_store_written_count:$receipt_store_written_count,
+    receipt_persisted_count:$receipt_persisted_count,
+    ledger_written_count:$ledger_written_count,
+    workflow_event_log_written_count:$workflow_event_log_written_count,
+    sqlite_written_count:$sqlite_written_count,
+    live_mutation_allowed_count:$live_mutation_allowed_count,
+    acceptance_authority_packet_readback_ready:$ready,
+    operator_packet_send_allowed:false,
+    operator_packet_sent:false,
+    operator_packet_persistence_allowed:false,
+    operator_packet_persisted:false,
+    acceptance_authority_allowed:false,
+    acceptance_recording_allowed:false,
+    evidence_recording_allowed:false,
+    receipt_persistence_allowed:false,
+    receipt_store_write_allowed:false,
+    receipt_store_written:false,
+    ledger_write_allowed:false,
+    workflow_event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    credential_read_allowed:false,
+    live_execution_allowed:false,
+    blockers:[
+      "operator_packet_send_disabled",
+      "operator_packet_persistence_disabled",
+      "acceptance_authority_missing",
+      "operator_acceptance_missing",
+      "evidence_acceptance_missing",
+      "receipt_persistence_grant_missing",
+      "atomic_append_not_enabled",
+      "post_write_readback_missing",
+      "rollback_rehearsal_missing",
+      "retention_policy_not_committed",
+      "live_cutover_approval_missing",
+      "receipt_store_write_disabled",
+      "ledger_write_disabled",
+      "workflow_event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    entries:$entries,
+    next_actions:[
+      "controlled_live_evidence_receipt_store_acceptance_authority_packet_non_send_readback",
+      "keep_acceptance_authority_packet_unsent_unaccepted_unpersisted"
+    ],
+    recommended_next_gate:"controlled_live_evidence_receipt_store_acceptance_authority_packet_non_send_readback",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      operator_packet_sent:false,
+      operator_packet_persisted:false,
+      acceptance_authority_accepted:false,
+      acceptance_recorded:false,
+      evidence_recorded:false,
+      receipt_persisted:false,
+      receipt_store_written:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      credential_read:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      kill_switch_rehearsal_executed:false,
+      kill_switch_mutated:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

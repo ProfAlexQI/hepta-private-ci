@@ -7,6 +7,7 @@ use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_sen
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_REPORT_ONLY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ROLLBACK_REPLAY_PRE_ENABLE_BLOCKER_MATRIX_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagRollbackReplayPreEnableBlockerMatrixSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_report,
 };
 use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE;
@@ -31,6 +32,7 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDryRunRep
     pub source_rollback_replay_gate: &'static str,
     pub source_rollback_replay_check_count: usize,
     pub source_pre_enable_blocker_count: usize,
+    pub source_required_prior_gate_count: usize,
     pub decision_count: usize,
     pub deny_reason_count: usize,
     pub required_prior_gate_count: usize,
@@ -38,6 +40,13 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDryRunRep
     pub deny_reasons: Vec<WorkGraphFeatureFlagEnablementDenyReasonPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_rollback_replay_preconditions_complete: bool,
+    pub source_rollback_replay_no_execution_confirmed: bool,
+    pub source_rollback_replay_no_enablement_confirmed: bool,
+    pub source_rollback_replay_ready: bool,
+    pub dry_run_decisions_deny_complete: bool,
+    pub deny_reasons_unsatisfied_complete: bool,
+    pub enablement_precondition_dry_run_preconditions_complete: bool,
     pub dry_run_mode: &'static str,
     pub dry_run_enforced: bool,
     pub allow_count: usize,
@@ -126,6 +135,39 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         .iter()
         .filter(|decision| decision.decision == "deny")
         .count();
+    let source_rollback_replay_no_execution_confirmed = !source.replay_executed
+        && !source.rollback_executed
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagRollbackReplayPreEnableBlockerMatrixSideEffects::none(
+            );
+    let source_rollback_replay_no_enablement_confirmed = !source
+        .ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_canary_traffic
+        && !source.ready_for_live_cutover;
+    let source_rollback_replay_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ROLLBACK_REPLAY_PRE_ENABLE_BLOCKER_MATRIX_GATE
+        && source.rollback_replay_blocker_matrix_preconditions_complete
+        && source.ready_for_enablement_precondition_dry_run
+        && source_rollback_replay_no_execution_confirmed
+        && source_rollback_replay_no_enablement_confirmed;
+    let dry_run_decisions_deny_complete = !decisions.is_empty()
+        && decisions.iter().all(|decision| {
+            decision.decision == "deny"
+                && decision.allowed_traffic_ppm == 0
+                && !decision.config_write_allowed
+                && !decision.feature_flag_enablement_allowed
+                && !decision.canary_traffic_allowed
+                && !decision.live_cutover_allowed
+        });
+    let deny_reasons_unsatisfied_complete = !deny_reasons.is_empty()
+        && deny_reasons
+            .iter()
+            .all(|reason| reason.required && !reason.satisfied);
+    let enablement_precondition_dry_run_preconditions_complete = source_rollback_replay_ready
+        && dry_run_decisions_deny_complete
+        && deny_reasons_unsatisfied_complete
+        && deny_count == decisions.len();
 
     WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDryRunReport {
         product: "Hepta",
@@ -138,6 +180,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         source_rollback_replay_gate: source.gate,
         source_rollback_replay_check_count: source.rollback_replay_check_count,
         source_pre_enable_blocker_count: source.pre_enable_blocker_count,
+        source_required_prior_gate_count: source.required_prior_gate_count,
         decision_count: decisions.len(),
         deny_reason_count: deny_reasons.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -146,6 +189,14 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DRY_RUN_RECOMMENDED_NEXT_GATE,
+        source_rollback_replay_preconditions_complete: source
+            .rollback_replay_blocker_matrix_preconditions_complete,
+        source_rollback_replay_no_execution_confirmed,
+        source_rollback_replay_no_enablement_confirmed,
+        source_rollback_replay_ready,
+        dry_run_decisions_deny_complete,
+        deny_reasons_unsatisfied_complete,
+        enablement_precondition_dry_run_preconditions_complete,
         dry_run_mode: "deny_only_precondition_explanation",
         dry_run_enforced: false,
         allow_count: 0,
@@ -157,7 +208,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         approval_acceptance_allowed: false,
         replay_execution_allowed: false,
         rollback_execution_allowed: false,
-        ready_for_denial_readback: true,
+        ready_for_denial_readback: enablement_precondition_dry_run_preconditions_complete,
         ready_for_feature_flag_config_write: false,
         ready_for_feature_flag_enablement: false,
         ready_for_canary_traffic: false,
@@ -353,6 +404,11 @@ mod tests {
         );
         assert_eq!(report.source_rollback_replay_check_count, 6);
         assert_eq!(report.source_pre_enable_blocker_count, 10);
+        assert_eq!(report.source_required_prior_gate_count, 8);
+        assert!(report.source_rollback_replay_preconditions_complete);
+        assert!(report.source_rollback_replay_no_execution_confirmed);
+        assert!(report.source_rollback_replay_no_enablement_confirmed);
+        assert!(report.source_rollback_replay_ready);
         assert_eq!(report.decision_count, 2);
         assert_eq!(report.deny_reason_count, 10);
         assert_eq!(report.dry_run_mode, "deny_only_precondition_explanation");
@@ -385,6 +441,7 @@ mod tests {
                 && !decision.canary_traffic_allowed
                 && !decision.live_cutover_allowed
         }));
+        assert!(report.dry_run_decisions_deny_complete);
     }
 
     #[test]
@@ -408,6 +465,8 @@ mod tests {
             ]
         );
         assert_eq!(report.required_prior_gate_count, 9);
+        assert!(report.deny_reasons_unsatisfied_complete);
+        assert!(report.enablement_precondition_dry_run_preconditions_complete);
         assert!(report.ready_for_denial_readback);
         assert!(!report.ready_for_feature_flag_config_write);
         assert!(!report.ready_for_feature_flag_enablement);

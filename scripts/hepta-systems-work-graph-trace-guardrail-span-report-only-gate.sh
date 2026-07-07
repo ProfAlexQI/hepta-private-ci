@@ -97,7 +97,27 @@ jq -e '
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ]
   and .required_prior_gate_count == 4
+  and .source_agent_role_agent_card_required_prior_gate_count == 2
+  and .source_append_only_shadow_path_scheduler_prior_gate_count == 5
+  and .source_append_only_shadow_path_required_prior_gate_count == 9
+  and .source_task_result_envelope_source_adapter_count == 7
+  and .source_task_result_envelope_source_envelope_count == 7
+  and .source_scheduler_admission_entrypoint_count == 4
+  and .source_scheduler_admission_required_prior_gate_count == 5
+  and .source_agent_role_agent_card_gate == "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate"
+  and .source_append_only_shadow_path_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+  and .source_task_result_envelope_validator_gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+  and .source_scheduler_admission_dry_run_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+  and .source_agent_role_agent_card_readiness_complete == true
+  and .source_agent_role_agent_card_no_enforcement_confirmed == true
+  and .source_append_only_shadow_path_readiness_complete == true
+  and .source_append_only_shadow_path_no_persistence_confirmed == true
+  and .source_task_result_envelope_validator_ready == true
+  and .source_task_result_envelope_no_enforcement_confirmed == true
+  and .source_scheduler_admission_dry_run_ready == true
+  and .source_scheduler_admission_no_live_blocking_confirmed == true
+  and .trace_guardrail_prior_readbacks_complete == true
   and .trace_spine_complete == true
   and .blocking_guardrail_preview_complete == true
   and .report_only_guardrail_attached == true
@@ -108,9 +128,40 @@ jq -e '
   and .source_probes.trace_guardrail_span_report_only.report_script_present == true
   and .source_probes.trace_guardrail_span_report_only.gate_script_present == true
   and .source_probes.agent_role_agent_card_manifest_report_only.gate_script_present == true
+  and .source_probes.agent_role_agent_card_manifest_report_only.report_gate == "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate"
+  and .source_probes.agent_role_agent_card_manifest_report_only.readiness_complete == true
+  and .source_probes.agent_role_agent_card_manifest_report_only.ready_for_trace_guardrail_span == true
+  and .source_probes.agent_role_agent_card_manifest_report_only.role_enforcement_enabled == false
+  and .source_probes.agent_role_agent_card_manifest_report_only.ready_for_live_execution == false
+  and .source_probes.agent_role_agent_card_manifest_report_only.side_effects_all_false == true
   and .source_probes.append_only_event_store_shadow_path.gate_script_present == true
+  and .source_probes.append_only_event_store_shadow_path.report_gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+  and .source_probes.append_only_event_store_shadow_path.scheduler_prior_gate_count == 5
+  and .source_probes.append_only_event_store_shadow_path.required_prior_gate_count == 9
+  and .source_probes.append_only_event_store_shadow_path.readiness_complete == true
+  and .source_probes.append_only_event_store_shadow_path.ready_for_persistent_mailbox_handoff == true
+  and .source_probes.append_only_event_store_shadow_path.shadow_store_write_enabled == false
+  and .source_probes.append_only_event_store_shadow_path.live_cutover_enabled == false
+  and .source_probes.append_only_event_store_shadow_path.ready_for_live_execution == false
+  and .source_probes.append_only_event_store_shadow_path.side_effects_all_false == true
   and .source_probes.task_result_envelope_report_only_validator.gate_script_present == true
+  and .source_probes.task_result_envelope_report_only_validator.report_gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+  and .source_probes.task_result_envelope_report_only_validator.source_adapter_count == 7
+  and .source_probes.task_result_envelope_report_only_validator.source_envelope_count == 7
+  and .source_probes.task_result_envelope_report_only_validator.report_only_valid_source_count == 7
+  and .source_probes.task_result_envelope_report_only_validator.ready_for_scheduler_admission_dry_run_enforcement == true
+  and .source_probes.task_result_envelope_report_only_validator.live_enforcement_enabled == false
+  and .source_probes.task_result_envelope_report_only_validator.ready_for_live_execution == false
+  and .source_probes.task_result_envelope_report_only_validator.side_effects_all_false == true
   and .source_probes.scheduler_admission_dry_run_enforcement.gate_script_present == true
+  and .source_probes.scheduler_admission_dry_run_enforcement.report_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+  and .source_probes.scheduler_admission_dry_run_enforcement.entrypoint_count == 4
+  and .source_probes.scheduler_admission_dry_run_enforcement.required_prior_gate_count == 5
+  and .source_probes.scheduler_admission_dry_run_enforcement.dry_run_enforcement_enabled == true
+  and .source_probes.scheduler_admission_dry_run_enforcement.live_blocking_enforcement_enabled == false
+  and .source_probes.scheduler_admission_dry_run_enforcement.ready_for_append_only_event_store_shadow_path == true
+  and .source_probes.scheduler_admission_dry_run_enforcement.ready_for_live_execution == false
+  and .source_probes.scheduler_admission_dry_run_enforcement.side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_NON_SEND_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-non-send-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_NON_SEND_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_NON_SEND_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -47,6 +57,12 @@ operator_packet_unpersisted_present="$(
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only.rs
 )"
 
+operator_packet="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-operator-packet-report-only-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-packet-report-only-report.sh"
+)"
+
 jq -n \
   --argjson non_send_readback_module_present "$non_send_readback_module_present" \
   --argjson operator_packet_gate_present "$operator_packet_gate_present" \
@@ -54,6 +70,7 @@ jq -n \
   --argjson operator_packet_visible_unsent_present "$operator_packet_visible_unsent_present" \
   --argjson operator_packet_unrecorded_present "$operator_packet_unrecorded_present" \
   --argjson operator_packet_unpersisted_present "$operator_packet_unpersisted_present" \
+  --argjson operator_packet "$operator_packet" \
   '
   def entry($id; $key; $state): {
     id: $id,
@@ -160,6 +177,47 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($operator_packet.operator_packet_visible == true
+      and $operator_packet.operator_packet_sent == false
+      and $operator_packet.operator_packet_recorded == false
+      and $operator_packet.operator_packet_persisted == false
+      and ($operator_packet.side_effects | to_entries | all(.value == false))) as $source_operator_packet_no_send_record_persist_confirmed
+  | ($operator_packet.operator_packet_authorizes_config_write == false
+      and $operator_packet.operator_packet_authorizes_canary_traffic == false
+      and $operator_packet.operator_packet_authorizes_live_cutover == false
+      and $operator_packet.ready_for_feature_flag_config_write == false
+      and $operator_packet.ready_for_feature_flag_enablement == false
+      and $operator_packet.ready_for_live_cutover == false) as $source_operator_packet_non_authorizing_confirmed
+  | ($operator_packet.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only_gate"
+      and $operator_packet.operator_packet_prior_readbacks_complete == true
+      and $operator_packet.operator_packet_report_only_preconditions_complete == true
+      and $operator_packet.ready_for_operator_packet_non_send_readback == true
+      and $source_operator_packet_no_send_record_persist_confirmed
+      and $source_operator_packet_non_authorizing_confirmed) as $source_operator_packet_non_send_readback_ready
+  | ($readback_scope.packet_visible == true
+      and $readback_scope.packet_sent == false
+      and $readback_scope.packet_recorded == false
+      and $readback_scope.packet_persisted == false
+      and $readback_scope.packet_accepted == false
+      and $readback_scope.packet_authoritative == false
+      and $readback_scope.readback_persisted == false) as $readback_scope_no_send_record_persist_confirmed
+  | (($readback_entries | length) > 0
+      and ($readback_entries | all(
+        .visible == true
+        and .ready == true
+        and .sent == false
+        and .recorded == false
+        and .persisted == false
+        and .accepted == false
+        and .authoritative == false
+        and .mutation_allowed == false
+      ))) as $readback_entries_non_authoritative
+  | (($readback_blockers | length) > 0
+      and ($readback_blockers | all(.blocked == true))) as $readback_blockers_complete
+  | ($source_operator_packet_non_send_readback_ready
+      and $readback_scope_no_send_record_persist_confirmed
+      and $readback_entries_non_authoritative
+      and $readback_blockers_complete) as $non_send_readback_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -167,11 +225,12 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_v1",
       preview_mode: "operator_packet_non_send_readback_only_no_send_no_record_no_persistence",
-      source_operator_packet_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only_gate",
-      source_operator_packet_section_count: 5,
-      source_review_item_count: 2,
-      source_evidence_ref_count: 5,
-      source_blocked_action_count: 6,
+      source_operator_packet_gate: $operator_packet.gate,
+      source_operator_packet_section_count: $operator_packet.operator_packet_section_count,
+      source_review_item_count: $operator_packet.review_item_count,
+      source_evidence_ref_count: $operator_packet.evidence_ref_count,
+      source_blocked_action_count: $operator_packet.blocked_action_count,
+      source_required_prior_gate_count: $operator_packet.required_prior_gate_count,
       readback_entry_count: ($readback_entries | length),
       readback_blocker_count: ($readback_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -180,6 +239,15 @@ jq -n \
       readback_blockers: $readback_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate",
+      source_operator_packet_prior_readbacks_complete: $operator_packet.operator_packet_prior_readbacks_complete,
+      source_operator_packet_report_only_preconditions_complete: $operator_packet.operator_packet_report_only_preconditions_complete,
+      source_operator_packet_no_send_record_persist_confirmed: $source_operator_packet_no_send_record_persist_confirmed,
+      source_operator_packet_non_authorizing_confirmed: $source_operator_packet_non_authorizing_confirmed,
+      source_operator_packet_non_send_readback_ready: $source_operator_packet_non_send_readback_ready,
+      readback_scope_no_send_record_persist_confirmed: $readback_scope_no_send_record_persist_confirmed,
+      readback_entries_non_authoritative: $readback_entries_non_authoritative,
+      readback_blockers_complete: $readback_blockers_complete,
+      non_send_readback_preconditions_complete: $non_send_readback_preconditions_complete,
       operator_packet_visible: true,
       operator_packet_sent: false,
       operator_packet_recorded: false,
@@ -192,7 +260,7 @@ jq -n \
       approval_recorded: false,
       approval_acceptance_allowed: false,
       readback_persisted: false,
-      ready_for_rollback_replay_pre_enable_blocker_matrix: true,
+      ready_for_rollback_replay_pre_enable_blocker_matrix: $non_send_readback_preconditions_complete,
       ready_for_operator_packet_acceptance: false,
       ready_for_feature_flag_config_write: false,
       ready_for_feature_flag_enablement: false,
@@ -201,6 +269,14 @@ jq -n \
         non_send_readback_module_present: $non_send_readback_module_present,
         operator_packet_gate_present: $operator_packet_gate_present,
         operator_packet_gate_points_here: $operator_packet_gate_points_here,
+        operator_packet_report_gate: $operator_packet.gate,
+        operator_packet_prior_readbacks_complete: $operator_packet.operator_packet_prior_readbacks_complete,
+        operator_packet_report_only_preconditions_complete: $operator_packet.operator_packet_report_only_preconditions_complete,
+        operator_packet_ready_for_non_send_readback: $operator_packet.ready_for_operator_packet_non_send_readback,
+        operator_packet_sent_observed: $operator_packet.operator_packet_sent,
+        operator_packet_recorded_observed: $operator_packet.operator_packet_recorded,
+        operator_packet_persisted_observed: $operator_packet.operator_packet_persisted,
+        operator_packet_side_effects_all_false: ($operator_packet.side_effects | to_entries | all(.value == false)),
         operator_packet_visible_unsent_present: $operator_packet_visible_unsent_present,
         operator_packet_unrecorded_present: $operator_packet_unrecorded_present,
         operator_packet_unpersisted_present: $operator_packet_unpersisted_present

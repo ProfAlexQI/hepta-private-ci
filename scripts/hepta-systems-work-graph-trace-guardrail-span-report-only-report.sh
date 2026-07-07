@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -39,6 +41,27 @@ admission_gate_script_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-gate.sh
 )"
 
+agent_card="$(
+  capture_json_report \
+    "hepta-work-graph-agent-role-agent-card-manifest-report-only-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-role-agent-card-manifest-report-only-report.sh"
+)"
+shadow_path="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-event-store-shadow-path-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-append-only-event-store-shadow-path-report.sh"
+)"
+task_result="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-envelope-report-only-validator-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-task-result-envelope-report-only-validator-report.sh"
+)"
+admission="$(
+  capture_json_report \
+    "hepta-work-graph-scheduler-admission-dry-run-enforcement-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-report.sh"
+)"
+
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
@@ -47,6 +70,10 @@ jq -n \
   --argjson shadow_path_gate_script_present "$shadow_path_gate_script_present" \
   --argjson task_result_gate_script_present "$task_result_gate_script_present" \
   --argjson admission_gate_script_present "$admission_gate_script_present" \
+  --argjson agent_card "$agent_card" \
+  --argjson shadow_path "$shadow_path" \
+  --argjson task_result "$task_result" \
+  --argjson admission "$admission" \
   '
   def span($id; $parent; $kind; $source; $entrypoint; $decision; $blocking; $guardrail; $evidence; $redaction; $hash): {
     trace_id: "trace-work-graph-report-only-001",
@@ -125,6 +152,57 @@ jq -n \
     "hepta_work_graph_task_result_envelope_report_only_validator_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($agent_card.role_enforcement_enabled == false
+      and $agent_card.ready_for_live_execution == false
+      and ($agent_card.side_effects | to_entries | all(.value == false))) as $source_agent_role_agent_card_no_enforcement_confirmed
+  | ($agent_card.gate == "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate"
+      and $agent_card.agent_role_agent_card_manifest_readiness_complete == true
+      and $agent_card.ready_for_trace_guardrail_span == true
+      and $source_agent_role_agent_card_no_enforcement_confirmed) as $source_agent_role_agent_card_readiness_complete
+  | ($shadow_path.shadow_store_write_enabled == false
+      and $shadow_path.live_cutover_enabled == false
+      and $shadow_path.ready_for_live_execution == false
+      and ($shadow_path.side_effects | to_entries | all(.value == false))) as $source_append_only_shadow_path_no_persistence_confirmed
+  | ($shadow_path.gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+      and $shadow_path.append_only_shadow_path_readiness_complete == true
+      and $shadow_path.ready_for_persistent_mailbox_handoff == true
+      and $source_append_only_shadow_path_no_persistence_confirmed) as $source_append_only_shadow_path_readiness_complete
+  | ($task_result.live_enforcement_enabled == false
+      and $task_result.ready_for_live_execution == false
+      and ($task_result.side_effects | to_entries | all(.value == false))) as $source_task_result_envelope_no_enforcement_confirmed
+  | ($task_result.gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+      and $task_result.ready_for_scheduler_admission_dry_run_enforcement == true
+      and $task_result.report_only_validator_attached == true
+      and $task_result.report_only_valid_source_count == $task_result.source_envelope_count
+      and $source_task_result_envelope_no_enforcement_confirmed) as $source_task_result_envelope_validator_ready
+  | ($admission.live_blocking_enforcement_enabled == false
+      and $admission.ready_for_live_execution == false
+      and ($admission.side_effects | to_entries | all(.value == false))) as $source_scheduler_admission_no_live_blocking_confirmed
+  | ($admission.gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+      and $admission.dry_run_enforcement_enabled == true
+      and $admission.ready_for_append_only_event_store_shadow_path == true
+      and $admission.required_prior_gates == $shadow_path.scheduler_prior_gates
+      and $source_scheduler_admission_no_live_blocking_confirmed) as $source_scheduler_admission_dry_run_ready
+  | ($source_agent_role_agent_card_readiness_complete
+      and $source_append_only_shadow_path_readiness_complete
+      and $source_task_result_envelope_validator_ready
+      and $source_scheduler_admission_dry_run_ready) as $trace_guardrail_prior_readbacks_complete
+  | ($trace_guardrail_prior_readbacks_complete
+      and ($spans | length) > 0
+      and ($spans | all(
+        .trace_id == "trace-work-graph-report-only-001"
+        and (.span_id | length) > 0
+        and (.source_surface_id | length) > 0
+        and (.source_entrypoint | length) > 0
+        and (.decision | length) > 0
+        and (.guardrail_span_id | length) > 0
+        and (.evidence_ref | length) > 0
+        and (.redaction_policy | length) > 0
+        and (.payload_hash | startswith("sha256:"))
+      ))) as $trace_spine_complete
+  | (($spans | map(select(.blocking_guardrail_required == true)) | length) == ($guardrails | length)
+      and (($spans | map(select(.blocking_guardrail_required == true) | .span_id) - ($guardrails | map(.span_id))) == [])) as $blocking_guardrail_preview_complete
+  | ($trace_spine_complete and $blocking_guardrail_preview_complete) as $report_only_guardrail_attached
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -137,17 +215,37 @@ jq -n \
       blocking_guardrail_count: ($spans | map(select(.blocking_guardrail_required == true)) | length),
       source_binding_count: ($bindings | length),
       required_prior_gate_count: ($required_prior_gates | length),
+      source_agent_role_agent_card_required_prior_gate_count: $agent_card.required_prior_gate_count,
+      source_append_only_shadow_path_scheduler_prior_gate_count: $shadow_path.scheduler_prior_gate_count,
+      source_append_only_shadow_path_required_prior_gate_count: $shadow_path.required_prior_gate_count,
+      source_task_result_envelope_source_adapter_count: $task_result.source_adapter_count,
+      source_task_result_envelope_source_envelope_count: $task_result.source_envelope_count,
+      source_scheduler_admission_entrypoint_count: $admission.entrypoint_count,
+      source_scheduler_admission_required_prior_gate_count: ($admission.required_prior_gates | length),
       required_wire_fields: $fields,
       spans: $spans,
       guardrail_bindings: $guardrails,
       source_bindings: $bindings,
       required_prior_gates: $required_prior_gates,
+      source_agent_role_agent_card_gate: $agent_card.gate,
+      source_append_only_shadow_path_gate: $shadow_path.gate,
+      source_task_result_envelope_validator_gate: $task_result.gate,
+      source_scheduler_admission_dry_run_gate: $admission.gate,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate",
-      trace_spine_complete: true,
-      blocking_guardrail_preview_complete: true,
-      report_only_guardrail_attached: true,
+      source_agent_role_agent_card_readiness_complete: $source_agent_role_agent_card_readiness_complete,
+      source_agent_role_agent_card_no_enforcement_confirmed: $source_agent_role_agent_card_no_enforcement_confirmed,
+      source_append_only_shadow_path_readiness_complete: $source_append_only_shadow_path_readiness_complete,
+      source_append_only_shadow_path_no_persistence_confirmed: $source_append_only_shadow_path_no_persistence_confirmed,
+      source_task_result_envelope_validator_ready: $source_task_result_envelope_validator_ready,
+      source_task_result_envelope_no_enforcement_confirmed: $source_task_result_envelope_no_enforcement_confirmed,
+      source_scheduler_admission_dry_run_ready: $source_scheduler_admission_dry_run_ready,
+      source_scheduler_admission_no_live_blocking_confirmed: $source_scheduler_admission_no_live_blocking_confirmed,
+      trace_guardrail_prior_readbacks_complete: $trace_guardrail_prior_readbacks_complete,
+      trace_spine_complete: $trace_spine_complete,
+      blocking_guardrail_preview_complete: $blocking_guardrail_preview_complete,
+      report_only_guardrail_attached: $report_only_guardrail_attached,
       live_guardrail_enforcement_enabled: false,
-      ready_for_agent_jobs_task_board_report_only_emission: true,
+      ready_for_agent_jobs_task_board_report_only_emission: $report_only_guardrail_attached,
       ready_for_live_execution: false,
       source_probes: {
         trace_guardrail_span_report_only: {
@@ -156,16 +254,47 @@ jq -n \
           gate_script_present: $gate_script_present
         },
         agent_role_agent_card_manifest_report_only: {
-          gate_script_present: $agent_card_gate_script_present
+          gate_script_present: $agent_card_gate_script_present,
+          report_gate: $agent_card.gate,
+          readiness_complete: $agent_card.agent_role_agent_card_manifest_readiness_complete,
+          ready_for_trace_guardrail_span: $agent_card.ready_for_trace_guardrail_span,
+          role_enforcement_enabled: $agent_card.role_enforcement_enabled,
+          ready_for_live_execution: $agent_card.ready_for_live_execution,
+          side_effects_all_false: ($agent_card.side_effects | to_entries | all(.value == false))
         },
         append_only_event_store_shadow_path: {
-          gate_script_present: $shadow_path_gate_script_present
+          gate_script_present: $shadow_path_gate_script_present,
+          report_gate: $shadow_path.gate,
+          scheduler_prior_gate_count: $shadow_path.scheduler_prior_gate_count,
+          required_prior_gate_count: $shadow_path.required_prior_gate_count,
+          readiness_complete: $shadow_path.append_only_shadow_path_readiness_complete,
+          ready_for_persistent_mailbox_handoff: $shadow_path.ready_for_persistent_mailbox_handoff,
+          shadow_store_write_enabled: $shadow_path.shadow_store_write_enabled,
+          live_cutover_enabled: $shadow_path.live_cutover_enabled,
+          ready_for_live_execution: $shadow_path.ready_for_live_execution,
+          side_effects_all_false: ($shadow_path.side_effects | to_entries | all(.value == false))
         },
         task_result_envelope_report_only_validator: {
-          gate_script_present: $task_result_gate_script_present
+          gate_script_present: $task_result_gate_script_present,
+          report_gate: $task_result.gate,
+          source_adapter_count: $task_result.source_adapter_count,
+          source_envelope_count: $task_result.source_envelope_count,
+          report_only_valid_source_count: $task_result.report_only_valid_source_count,
+          ready_for_scheduler_admission_dry_run_enforcement: $task_result.ready_for_scheduler_admission_dry_run_enforcement,
+          live_enforcement_enabled: $task_result.live_enforcement_enabled,
+          ready_for_live_execution: $task_result.ready_for_live_execution,
+          side_effects_all_false: ($task_result.side_effects | to_entries | all(.value == false))
         },
         scheduler_admission_dry_run_enforcement: {
-          gate_script_present: $admission_gate_script_present
+          gate_script_present: $admission_gate_script_present,
+          report_gate: $admission.gate,
+          entrypoint_count: $admission.entrypoint_count,
+          required_prior_gate_count: ($admission.required_prior_gates | length),
+          dry_run_enforcement_enabled: $admission.dry_run_enforcement_enabled,
+          live_blocking_enforcement_enabled: $admission.live_blocking_enforcement_enabled,
+          ready_for_append_only_event_store_shadow_path: $admission.ready_for_append_only_event_store_shadow_path,
+          ready_for_live_execution: $admission.ready_for_live_execution,
+          side_effects_all_false: ($admission.side_effects | to_entries | all(.value == false))
         }
       },
       side_effects: {

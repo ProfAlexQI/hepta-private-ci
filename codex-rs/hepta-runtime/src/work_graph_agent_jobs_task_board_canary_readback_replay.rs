@@ -1,9 +1,17 @@
 use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE;
+use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WorkGraphAgentJobsTaskBoardReportOnlyEntrypointEmissionSideEffects;
+use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_report;
 use crate::work_graph_append_only_event_store_shadow_path::WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE;
+use crate::work_graph_append_only_event_store_shadow_path::WorkGraphAppendOnlyEventStoreShadowPathSideEffects;
+use crate::work_graph_append_only_event_store_shadow_path::hepta_work_graph_append_only_event_store_shadow_path_report;
 use crate::work_graph_scheduler_admission_dry_run_enforcement::WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::hepta_work_graph_scheduler_admission_dry_run_enforcement_report;
 use crate::work_graph_task_result_envelope_report_only_validator::WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE;
+use crate::work_graph_task_result_envelope_report_only_validator::WorkGraphTaskResultEnvelopeReportOnlyValidatorSideEffects;
+use crate::work_graph_task_result_envelope_report_only_validator::hepta_work_graph_task_result_envelope_report_only_validator_report;
 
 pub const WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_GATE: &str =
     "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate";
@@ -24,14 +32,37 @@ pub struct WorkGraphAgentJobsTaskBoardCanaryReadbackReplayReport {
     pub readback_evidence_count: usize,
     pub replay_diff_count: usize,
     pub required_prior_gate_count: usize,
+    pub source_entrypoint_emission_required_prior_gate_count: usize,
+    pub source_entrypoint_emission_entrypoint_count: usize,
+    pub source_entrypoint_emission_emission_count: usize,
+    pub source_append_only_shadow_path_scheduler_prior_gate_count: usize,
+    pub source_append_only_shadow_path_required_prior_gate_count: usize,
+    pub source_task_result_envelope_source_adapter_count: usize,
+    pub source_task_result_envelope_source_envelope_count: usize,
+    pub source_scheduler_admission_entrypoint_count: usize,
+    pub source_scheduler_admission_required_prior_gate_count: usize,
     pub canary_entrypoints: Vec<WorkGraphCanaryEntrypointPreview>,
     pub projection_indexes: Vec<WorkGraphCanaryProjectionIndexPreview>,
     pub readback_evidence: Vec<WorkGraphCanaryReadbackEvidencePreview>,
     pub replay_diffs: Vec<WorkGraphCanaryReplayDiffPreview>,
     pub required_prior_gates: Vec<&'static str>,
+    pub source_entrypoint_emission_gate: &'static str,
+    pub source_append_only_shadow_path_gate: &'static str,
+    pub source_task_result_envelope_validator_gate: &'static str,
+    pub source_scheduler_admission_dry_run_gate: &'static str,
     pub recommended_next_gate: &'static str,
     pub feature_flag_required: bool,
     pub feature_flag_enabled: bool,
+    pub source_entrypoint_emission_readiness_complete: bool,
+    pub source_entrypoint_emission_no_live_confirmed: bool,
+    pub source_append_only_shadow_path_readiness_complete: bool,
+    pub source_append_only_shadow_path_no_persistence_confirmed: bool,
+    pub source_task_result_envelope_validator_ready: bool,
+    pub source_task_result_envelope_no_enforcement_confirmed: bool,
+    pub source_scheduler_admission_dry_run_ready: bool,
+    pub source_scheduler_admission_no_live_blocking_confirmed: bool,
+    pub canary_readback_replay_prior_readbacks_complete: bool,
+    pub canary_projection_readback_replay_preview_complete: bool,
     pub ready_for_non_blocking_canary: bool,
     pub ready_for_live_cutover: bool,
     pub side_effects: WorkGraphAgentJobsTaskBoardCanaryReadbackReplaySideEffects,
@@ -103,6 +134,67 @@ pub fn hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report()
     let readback_evidence = work_graph_agent_jobs_task_board_canary_readback_evidence();
     let replay_diffs = work_graph_agent_jobs_task_board_canary_replay_diffs();
     let required_prior_gates = work_graph_agent_jobs_task_board_canary_required_prior_gates();
+    let entrypoint_emission =
+        hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_report();
+    let append_only_shadow_path = hepta_work_graph_append_only_event_store_shadow_path_report();
+    let task_result_envelope = hepta_work_graph_task_result_envelope_report_only_validator_report();
+    let scheduler_admission = hepta_work_graph_scheduler_admission_dry_run_enforcement_report();
+    let source_entrypoint_emission_no_live_confirmed = !entrypoint_emission
+        .ready_for_live_execution
+        && entrypoint_emission.side_effects
+            == WorkGraphAgentJobsTaskBoardReportOnlyEntrypointEmissionSideEffects::none();
+    let source_entrypoint_emission_readiness_complete = entrypoint_emission.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE
+        && entrypoint_emission.entrypoint_emission_prior_readbacks_complete
+        && entrypoint_emission.entrypoint_emission_readiness_complete
+        && entrypoint_emission.ready_for_canary_readback_replay_gate
+        && source_entrypoint_emission_no_live_confirmed;
+    let source_append_only_shadow_path_no_persistence_confirmed = !append_only_shadow_path
+        .shadow_store_write_enabled
+        && !append_only_shadow_path.live_cutover_enabled
+        && !append_only_shadow_path.ready_for_live_execution
+        && append_only_shadow_path.side_effects
+            == WorkGraphAppendOnlyEventStoreShadowPathSideEffects::none();
+    let source_append_only_shadow_path_readiness_complete = append_only_shadow_path.gate
+        == WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        && append_only_shadow_path.append_only_shadow_path_readiness_complete
+        && source_append_only_shadow_path_no_persistence_confirmed;
+    let source_task_result_envelope_no_enforcement_confirmed = !task_result_envelope
+        .live_enforcement_enabled
+        && !task_result_envelope.ready_for_live_execution
+        && task_result_envelope.side_effects
+            == WorkGraphTaskResultEnvelopeReportOnlyValidatorSideEffects::none();
+    let source_task_result_envelope_validator_ready = task_result_envelope.gate
+        == WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE
+        && task_result_envelope.ready_for_scheduler_admission_dry_run_enforcement
+        && task_result_envelope.report_only_valid_source_count
+            == task_result_envelope.source_envelope_count
+        && source_task_result_envelope_no_enforcement_confirmed;
+    let source_scheduler_admission_no_live_blocking_confirmed = !scheduler_admission
+        .live_blocking_enforcement_enabled
+        && !scheduler_admission.ready_for_live_execution
+        && scheduler_admission.side_effects
+            == WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects::none();
+    let source_scheduler_admission_dry_run_ready = scheduler_admission.gate
+        == WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        && scheduler_admission.dry_run_enforcement_enabled
+        && scheduler_admission.ready_for_append_only_event_store_shadow_path
+        && source_scheduler_admission_no_live_blocking_confirmed;
+    let canary_readback_replay_prior_readbacks_complete =
+        source_entrypoint_emission_readiness_complete
+            && source_append_only_shadow_path_readiness_complete
+            && source_task_result_envelope_validator_ready
+            && source_scheduler_admission_dry_run_ready;
+    let canary_projection_readback_replay_preview_complete = !projection_indexes.is_empty()
+        && !readback_evidence.is_empty()
+        && !replay_diffs.is_empty()
+        && projection_indexes.iter().all(|index| !index.persisted)
+        && readback_evidence
+            .iter()
+            .all(|evidence| !evidence.evidence_persisted)
+        && replay_diffs.iter().all(|diff| !diff.replay_executed);
+    let ready_for_non_blocking_canary = canary_readback_replay_prior_readbacks_complete
+        && canary_projection_readback_replay_preview_complete;
 
     WorkGraphAgentJobsTaskBoardCanaryReadbackReplayReport {
         product: "Hepta",
@@ -115,16 +207,45 @@ pub fn hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report()
         readback_evidence_count: readback_evidence.len(),
         replay_diff_count: replay_diffs.len(),
         required_prior_gate_count: required_prior_gates.len(),
+        source_entrypoint_emission_required_prior_gate_count: entrypoint_emission
+            .required_prior_gate_count,
+        source_entrypoint_emission_entrypoint_count: entrypoint_emission.entrypoint_count,
+        source_entrypoint_emission_emission_count: entrypoint_emission.emission_count,
+        source_append_only_shadow_path_scheduler_prior_gate_count: append_only_shadow_path
+            .scheduler_prior_gate_count,
+        source_append_only_shadow_path_required_prior_gate_count: append_only_shadow_path
+            .required_prior_gate_count,
+        source_task_result_envelope_source_adapter_count: task_result_envelope.source_adapter_count,
+        source_task_result_envelope_source_envelope_count: task_result_envelope
+            .source_envelope_count,
+        source_scheduler_admission_entrypoint_count: scheduler_admission.entrypoint_count,
+        source_scheduler_admission_required_prior_gate_count: scheduler_admission
+            .required_prior_gates
+            .len(),
         canary_entrypoints,
         projection_indexes,
         readback_evidence,
         replay_diffs,
         required_prior_gates,
+        source_entrypoint_emission_gate: entrypoint_emission.gate,
+        source_append_only_shadow_path_gate: append_only_shadow_path.gate,
+        source_task_result_envelope_validator_gate: task_result_envelope.gate,
+        source_scheduler_admission_dry_run_gate: scheduler_admission.gate,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_CANARY_READBACK_REPLAY_RECOMMENDED_NEXT_GATE,
         feature_flag_required: true,
         feature_flag_enabled: false,
-        ready_for_non_blocking_canary: true,
+        source_entrypoint_emission_readiness_complete,
+        source_entrypoint_emission_no_live_confirmed,
+        source_append_only_shadow_path_readiness_complete,
+        source_append_only_shadow_path_no_persistence_confirmed,
+        source_task_result_envelope_validator_ready,
+        source_task_result_envelope_no_enforcement_confirmed,
+        source_scheduler_admission_dry_run_ready,
+        source_scheduler_admission_no_live_blocking_confirmed,
+        canary_readback_replay_prior_readbacks_complete,
+        canary_projection_readback_replay_preview_complete,
+        ready_for_non_blocking_canary,
         ready_for_live_cutover: false,
         side_effects: WorkGraphAgentJobsTaskBoardCanaryReadbackReplaySideEffects::none(),
     }
@@ -335,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn canary_readback_replay_links_required_priors() {
+    fn canary_readback_replay_consumes_prior_report_readbacks() {
         let report = hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report();
 
         assert_eq!(
@@ -348,6 +469,59 @@ mod tests {
             ]
         );
         assert_eq!(report.required_prior_gate_count, 4);
+        assert_eq!(
+            report.source_entrypoint_emission_gate,
+            WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE
+        );
+        assert_eq!(
+            report.source_append_only_shadow_path_gate,
+            WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        );
+        assert_eq!(
+            report.source_task_result_envelope_validator_gate,
+            WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE
+        );
+        assert_eq!(
+            report.source_scheduler_admission_dry_run_gate,
+            WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        );
+        assert_eq!(
+            report.source_entrypoint_emission_required_prior_gate_count,
+            3
+        );
+        assert_eq!(report.source_entrypoint_emission_entrypoint_count, 2);
+        assert_eq!(report.source_entrypoint_emission_emission_count, 2);
+        assert_eq!(
+            report.source_append_only_shadow_path_scheduler_prior_gate_count,
+            5
+        );
+        assert_eq!(
+            report.source_append_only_shadow_path_required_prior_gate_count,
+            9
+        );
+        assert_eq!(report.source_task_result_envelope_source_adapter_count, 7);
+        assert_eq!(report.source_task_result_envelope_source_envelope_count, 7);
+        assert_eq!(report.source_scheduler_admission_entrypoint_count, 4);
+        assert_eq!(
+            report.source_scheduler_admission_required_prior_gate_count,
+            5
+        );
+        assert!(report.source_entrypoint_emission_readiness_complete);
+        assert!(report.source_entrypoint_emission_no_live_confirmed);
+        assert!(report.source_append_only_shadow_path_readiness_complete);
+        assert!(report.source_append_only_shadow_path_no_persistence_confirmed);
+        assert!(report.source_task_result_envelope_validator_ready);
+        assert!(report.source_task_result_envelope_no_enforcement_confirmed);
+        assert!(report.source_scheduler_admission_dry_run_ready);
+        assert!(report.source_scheduler_admission_no_live_blocking_confirmed);
+        assert!(report.canary_readback_replay_prior_readbacks_complete);
+        assert!(report.canary_projection_readback_replay_preview_complete);
+    }
+
+    #[test]
+    fn canary_readback_replay_links_required_priors() {
+        let report = hepta_work_graph_agent_jobs_task_board_canary_readback_replay_report();
+
         assert!(report.feature_flag_required);
         assert!(!report.feature_flag_enabled);
         assert!(report.ready_for_non_blocking_canary);

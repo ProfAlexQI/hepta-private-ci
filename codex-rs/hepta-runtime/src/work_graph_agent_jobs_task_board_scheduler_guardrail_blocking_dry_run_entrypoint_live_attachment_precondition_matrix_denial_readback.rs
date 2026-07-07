@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_GATE,
+    WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointLiveAttachmentPreconditionMatrixSideEffects,
     hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_report,
 };
 
@@ -28,6 +29,10 @@ pub struct WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypoint
     pub source_blocking_precondition_count: usize,
     pub source_blocker_count: usize,
     pub source_required_prior_gate_count: usize,
+    pub source_matrix_ready: bool,
+    pub source_matrix_no_persistence_confirmed: bool,
+    pub source_matrix_no_live_confirmed: bool,
+    pub source_matrix_ready_for_denial_readback: bool,
     pub denial_readback_entry_count: usize,
     pub entrypoint_denial_readback_count: usize,
     pub denial_readback_blocker_count: usize,
@@ -47,6 +52,11 @@ pub struct WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypoint
     pub denial_readback_persisted: bool,
     pub denial_readback_authoritative: bool,
     pub denial_readback_accepted: bool,
+    pub denial_readback_scope_visible_only_complete: bool,
+    pub denial_readback_entries_complete: bool,
+    pub entrypoint_denial_readbacks_complete: bool,
+    pub denial_readback_blockers_complete: bool,
+    pub denial_readback_preconditions_complete: bool,
     pub denial_readback_authorizes_live_attachment: bool,
     pub denial_readback_authorizes_live_blocking_hook: bool,
     pub denial_readback_authorizes_runtime_interception: bool,
@@ -165,6 +175,95 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_GATE,
     ];
     required_prior_gates.extend(source.required_prior_gates.iter().copied());
+    let source_matrix_no_persistence_confirmed =
+        source.source_final_closeout_no_persistence_confirmed
+            && source.live_attachment_precondition_matrix_preconditions_complete
+            && !source.matrix_recorded
+            && !source.matrix_persisted
+            && !source.matrix_authoritative
+            && !source.matrix_accepted
+            && !source.hardening_decision_recording_allowed
+            && !source.hardening_decision_persistence_allowed
+            && !source.work_graph_event_persistence_allowed
+            && !source.projection_persistence_allowed
+            && source.side_effects
+                == WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointLiveAttachmentPreconditionMatrixSideEffects::none();
+    let source_matrix_no_live_confirmed = source.ready_for_denial_readback
+        && !source.live_attachment_allowed
+        && !source.live_blocking_hook_install_allowed
+        && !source.runtime_interception_allowed
+        && !source.scheduler_admission_enforcement_allowed
+        && !source.guardrail_enforcement_allowed
+        && !source.lease_acquisition_allowed
+        && !source.work_start_allowed
+        && !source.agent_spawn_allowed
+        && !source.model_invocation_allowed
+        && !source.external_send_allowed
+        && !source.live_task_result_emission_allowed
+        && !source.readback_execution_allowed
+        && !source.replay_execution_allowed
+        && !source.replay_diff_recording_allowed
+        && !source.replay_diff_persistence_allowed
+        && !source.rollback_execution_allowed
+        && !source.idempotency_mutation_allowed
+        && !source.config_write_allowed
+        && !source.feature_flag_mutation_allowed
+        && !source.canary_traffic_allowed
+        && !source.operator_review_request_allowed
+        && !source.approval_recording_allowed
+        && !source.live_cutover_allowed
+        && !source.ready_for_live_execution
+        && source_matrix_no_persistence_confirmed;
+    let source_matrix_ready =
+        source.gate
+            == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_GATE
+            && source.source_final_closeout_ready
+            && source.source_final_closeout_no_persistence_confirmed
+            && source.source_final_closeout_no_live_confirmed
+            && source.source_final_closeout_ready_for_live_attachment_matrix
+            && source.entrypoints_complete
+            && source.precondition_matrix_complete
+            && source.blocking_preconditions_complete
+            && source.blockers_complete
+            && source.live_attachment_precondition_matrix_preconditions_complete
+            && source.entrypoint_count == 4
+            && source.precondition_check_count == 14
+            && source.blocking_precondition_count == 10
+            && source.blocker_count == 33
+            && source.required_prior_gate_count == 16
+            && source_matrix_no_live_confirmed;
+    let source_matrix_ready_for_denial_readback =
+        source_matrix_ready && source.ready_for_denial_readback;
+    let denial_readback_scope_visible_only_complete = denial_readback_scope.visible
+        && !denial_readback_scope.recorded
+        && !denial_readback_scope.persisted
+        && !denial_readback_scope.authoritative
+        && !denial_readback_scope.accepted;
+    let denial_readback_entries_complete = denial_readback_entries.len() == 7
+        && denial_readback_entries.iter().all(|entry| {
+            entry.visible
+                && entry.ready
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.authoritative
+                && !entry.accepted
+                && !entry.mutation_allowed
+        });
+    let entrypoint_denial_readbacks_complete = entrypoint_denial_readbacks.len() == 4
+        && entrypoint_denial_readbacks.iter().all(|entry| {
+            entry.report_only
+                && !entry.live_attachment_allowed
+                && !entry.runtime_interception_allowed
+        });
+    let denial_readback_blockers_complete = denial_readback_blockers.len() == 36
+        && denial_readback_blockers
+            .iter()
+            .all(|blocker| blocker.blocked);
+    let denial_readback_preconditions_complete = source_matrix_ready_for_denial_readback
+        && denial_readback_scope_visible_only_complete
+        && denial_readback_entries_complete
+        && entrypoint_denial_readbacks_complete
+        && denial_readback_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointLiveAttachmentPreconditionMatrixDenialReadbackReport {
         product: "Hepta",
@@ -182,6 +281,10 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         source_blocking_precondition_count: source.blocking_precondition_count,
         source_blocker_count: source.blocker_count,
         source_required_prior_gate_count: source.required_prior_gate_count,
+        source_matrix_ready,
+        source_matrix_no_persistence_confirmed,
+        source_matrix_no_live_confirmed,
+        source_matrix_ready_for_denial_readback,
         denial_readback_entry_count: denial_readback_entries.len(),
         entrypoint_denial_readback_count: entrypoint_denial_readbacks.len(),
         denial_readback_blocker_count: denial_readback_blockers.len(),
@@ -198,6 +301,11 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         denial_readback_persisted: false,
         denial_readback_authoritative: false,
         denial_readback_accepted: false,
+        denial_readback_scope_visible_only_complete,
+        denial_readback_entries_complete,
+        entrypoint_denial_readbacks_complete,
+        denial_readback_blockers_complete,
+        denial_readback_preconditions_complete,
         denial_readback_authorizes_live_attachment: false,
         denial_readback_authorizes_live_blocking_hook: false,
         denial_readback_authorizes_runtime_interception: false,
@@ -210,7 +318,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         denial_readback_authorizes_replay_or_rollback: false,
         denial_readback_authorizes_config_flag_or_traffic: false,
         denial_readback_authorizes_operator_approval_or_live_cutover: false,
-        ready_for_denial_readback_audit_index: true,
+        ready_for_denial_readback_audit_index: denial_readback_preconditions_complete,
         ready_for_live_attachment: false,
         ready_for_live_execution: false,
         side_effects:
@@ -373,12 +481,10 @@ pub fn work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_ent
 
 pub fn work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_required_prior_gates()
 -> Vec<&'static str> {
-    let source =
-        hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_report();
     let mut required_prior_gates = vec![
         WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_GATE,
     ];
-    required_prior_gates.extend(source.required_prior_gates.iter().copied());
+    required_prior_gates.extend(crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_required_prior_gates());
     required_prior_gates
 }
 
@@ -484,6 +590,10 @@ mod tests {
         assert_eq!(report.source_blocking_precondition_count, 10);
         assert_eq!(report.source_blocker_count, 33);
         assert_eq!(report.source_required_prior_gate_count, 16);
+        assert!(report.source_matrix_ready);
+        assert!(report.source_matrix_no_persistence_confirmed);
+        assert!(report.source_matrix_no_live_confirmed);
+        assert!(report.source_matrix_ready_for_denial_readback);
         assert_eq!(report.denial_readback_entry_count, 7);
         assert_eq!(report.entrypoint_denial_readback_count, 4);
         assert_eq!(report.denial_readback_blocker_count, 36);
@@ -513,6 +623,9 @@ mod tests {
         assert!(!report.denial_readback_persisted);
         assert!(!report.denial_readback_authoritative);
         assert!(!report.denial_readback_accepted);
+        assert!(report.denial_readback_scope_visible_only_complete);
+        assert!(report.denial_readback_entries_complete);
+        assert!(report.entrypoint_denial_readbacks_complete);
         assert!(report.entrypoint_denial_readbacks.iter().all(|entry| {
             entry.report_only
                 && !entry.live_attachment_allowed
@@ -531,6 +644,8 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.denial_readback_blockers_complete);
+        assert!(report.denial_readback_preconditions_complete);
         assert!(!report.denial_readback_authorizes_live_attachment);
         assert!(!report.denial_readback_authorizes_live_blocking_hook);
         assert!(!report.denial_readback_authorizes_runtime_interception);

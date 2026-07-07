@@ -27,6 +27,7 @@ jq -e '
   and .source_review_item_count == 2
   and .source_evidence_ref_count == 5
   and .source_blocked_action_count == 6
+  and .source_required_prior_gate_count == 6
   and .readback_entry_count == 4
   and .readback_blocker_count == 8
   and .readback_scope.readback_mode == "operator_packet_non_send_readback_only"
@@ -69,6 +70,15 @@ jq -e '
   ]
   and .required_prior_gate_count == 7
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate"
+  and .source_operator_packet_prior_readbacks_complete == true
+  and .source_operator_packet_report_only_preconditions_complete == true
+  and .source_operator_packet_no_send_record_persist_confirmed == true
+  and .source_operator_packet_non_authorizing_confirmed == true
+  and .source_operator_packet_non_send_readback_ready == true
+  and .readback_scope_no_send_record_persist_confirmed == true
+  and .readback_entries_non_authoritative == true
+  and .readback_blockers_complete == true
+  and .non_send_readback_preconditions_complete == true
   and .operator_packet_visible == true
   and .operator_packet_sent == false
   and .operator_packet_recorded == false
@@ -89,6 +99,14 @@ jq -e '
   and .source_probes.non_send_readback_module_present == true
   and .source_probes.operator_packet_gate_present == true
   and .source_probes.operator_packet_gate_points_here == true
+  and .source_probes.operator_packet_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only_gate"
+  and .source_probes.operator_packet_prior_readbacks_complete == true
+  and .source_probes.operator_packet_report_only_preconditions_complete == true
+  and .source_probes.operator_packet_ready_for_non_send_readback == true
+  and .source_probes.operator_packet_sent_observed == false
+  and .source_probes.operator_packet_recorded_observed == false
+  and .source_probes.operator_packet_persisted_observed == false
+  and .source_probes.operator_packet_side_effects_all_false == true
   and .source_probes.operator_packet_visible_unsent_present == true
   and .source_probes.operator_packet_unrecorded_present == true
   and .source_probes.operator_packet_unpersisted_present == true

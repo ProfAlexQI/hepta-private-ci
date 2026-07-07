@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-work-graph-shadow-event-store-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_WORK_GRAPH_SHADOW_EVENT_STORE_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -36,6 +46,22 @@ canary_readback_gate_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-canary-readback-replay-gate.sh
 )"
 
+scheduler_guardrail_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-report.sh"
+)"
+shadow_path_report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-event-store-shadow-path-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-append-only-event-store-shadow-path-report.sh"
+)"
+canary_readback_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-canary-readback-replay-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-canary-readback-replay-report.sh"
+)"
+
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
@@ -43,6 +69,9 @@ jq -n \
   --argjson scheduler_guardrail_gate_present "$scheduler_guardrail_gate_present" \
   --argjson shadow_path_gate_present "$shadow_path_gate_present" \
   --argjson canary_readback_gate_present "$canary_readback_gate_present" \
+  --argjson scheduler_guardrail_report "$scheduler_guardrail_report" \
+  --argjson shadow_path_report "$shadow_path_report" \
+  --argjson canary_readback_report "$canary_readback_report" \
   '
   def readback_entry($id; $source; $target; $fields; $evidence): {
     id: $id,
@@ -193,6 +222,95 @@ jq -n \
     "hepta_work_graph_append_only_event_store_shadow_path_gate",
     "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
   ] as $required_prior_gates
+  | ($scheduler_guardrail_report.live_blocking_enforcement_enabled == false
+      and $scheduler_guardrail_report.runtime_interception_enabled == false
+      and $scheduler_guardrail_report.work_graph_event_persistence_enabled == false
+      and $scheduler_guardrail_report.ready_for_live_execution == false
+      and ($scheduler_guardrail_report.side_effects | to_entries | all(.value == false))) as $source_scheduler_guardrail_no_live_confirmed
+  | ($scheduler_guardrail_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate"
+      and $scheduler_guardrail_report.prior_readbacks_complete == true
+      and $scheduler_guardrail_report.pre_entrypoint_hook_contract_ready == true
+      and $scheduler_guardrail_report.ready_for_work_graph_shadow_event_store_readback == true
+      and $scheduler_guardrail_report.entrypoint_binding_count == 4
+      and $scheduler_guardrail_report.dry_run_decision_count == 4
+      and $source_scheduler_guardrail_no_live_confirmed) as $source_scheduler_guardrail_ready
+  | ($shadow_path_report.shadow_store_write_enabled == false
+      and $shadow_path_report.live_cutover_enabled == false
+      and $shadow_path_report.ready_for_live_execution == false
+      and ($shadow_path_report.event_records | all(.shadow_persisted == false and .live_cutover_enabled == false))
+      and ($shadow_path_report.projection_indexes | all(.index_persisted == false))
+      and ($shadow_path_report.readback_evidence | all(.readback_executed == false))
+      and ($shadow_path_report.replay_diffs | all(.replay_executed == false and .diff_persisted == false))
+      and ($shadow_path_report.side_effects | to_entries | all(.value == false))) as $source_shadow_path_no_persistence_confirmed
+  | ($shadow_path_report.gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"
+      and $shadow_path_report.append_only_shadow_path_readiness_complete == true
+      and $shadow_path_report.redacted_payload_policy_ready == true
+      and $shadow_path_report.deterministic_event_ids_ready == true
+      and $shadow_path_report.projection_index_ready == true
+      and $shadow_path_report.readback_evidence_ready == true
+      and $shadow_path_report.replay_diff_ready == true
+      and $shadow_path_report.event_record_count == 8
+      and $shadow_path_report.projection_index_count == 5
+      and $shadow_path_report.readback_evidence_count == 5
+      and $shadow_path_report.replay_diff_count == 4
+      and $source_shadow_path_no_persistence_confirmed) as $source_shadow_path_readiness_complete
+  | ($canary_readback_report.feature_flag_enabled == false
+      and $canary_readback_report.ready_for_live_cutover == false
+      and ($canary_readback_report.canary_entrypoints | all(.live_blocking_enabled == false and .live_persistence_enabled == false))
+      and ($canary_readback_report.projection_indexes | all(.persisted == false))
+      and ($canary_readback_report.readback_evidence | all(.evidence_persisted == false))
+      and ($canary_readback_report.replay_diffs | all(.replay_executed == false))
+      and ($canary_readback_report.side_effects | to_entries | all(.value == false))) as $source_canary_readback_replay_no_live_confirmed
+  | ($canary_readback_report.gate == "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
+      and $canary_readback_report.canary_readback_replay_prior_readbacks_complete == true
+      and $canary_readback_report.canary_projection_readback_replay_preview_complete == true
+      and $canary_readback_report.ready_for_non_blocking_canary == true
+      and $canary_readback_report.canary_entrypoint_count == 2
+      and ($canary_readback_report.projection_indexes | length) == 2
+      and $canary_readback_report.readback_evidence_count == 2
+      and $canary_readback_report.replay_diff_count == 2
+      and $source_canary_readback_replay_no_live_confirmed) as $source_canary_readback_replay_ready
+  | ($source_scheduler_guardrail_ready
+      and $source_shadow_path_readiness_complete
+      and $source_canary_readback_replay_ready) as $source_prior_readbacks_complete
+  | (($readback_entries | length) == 6
+      and ($readback_entries | all(
+        .visible == true
+        and .executed == false
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and (.required_fields | length > 0)
+      ))) as $readback_entries_visible_only_complete
+  | (($shadow_event_joins | length) == 4
+      and ($shadow_event_joins | all(
+        .joined == true
+        and .persisted == false
+        and .live_enforced == false
+        and (.dry_run_trace_id | startswith("trace-blocking-dry-run-"))
+        and (.shadow_event_ref | startswith("wg-event-shadow-"))
+        and .scheduler_event_ref == "wg-event-shadow-scheduler-admission-001"
+      ))) as $shadow_event_joins_report_only_complete
+  | (($non_persistence_blockers | length) == 14
+      and ($non_persistence_blockers | all(.required_before_enablement == true))) as $non_persistence_blockers_complete
+  | ($source_scheduler_guardrail_ready and $shadow_event_joins_report_only_complete) as $entrypoint_shadow_event_join_ready
+  | ($source_shadow_path_readiness_complete
+      and ($readback_entries | map(.id == "redacted_payload_hash_shadow_readback") | any)) as $redacted_payload_hash_join_ready
+  | ($source_shadow_path_readiness_complete
+      and ($readback_entries | map(.id == "projection_index_shadow_readback") | any)) as $projection_index_readback_ready
+  | ($source_canary_readback_replay_ready
+      and ($readback_entries | map(.id == "canary_report_only_shadow_readback") | any)) as $canary_readback_join_ready
+  | ($source_shadow_path_readiness_complete
+      and ($readback_entries | map(.id == "replay_diff_preview_shadow_readback") | any)) as $replay_diff_readback_ready
+  | ($source_prior_readbacks_complete
+      and $readback_entries_visible_only_complete
+      and $shadow_event_joins_report_only_complete
+      and $non_persistence_blockers_complete
+      and $entrypoint_shadow_event_join_ready
+      and $redacted_payload_hash_join_ready
+      and $projection_index_readback_ready
+      and $canary_readback_join_ready
+      and $replay_diff_readback_ready) as $shadow_event_store_readback_ready
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -200,19 +318,25 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate",
       schema_version: "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_v1",
       preview_mode: "work_graph_shadow_event_store_readback_ready_no_persistence_no_live",
-      source_scheduler_guardrail_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate",
-      source_entrypoint_binding_count: 4,
-      source_dry_run_decision_count: 4,
-      source_shadow_path_gate: "hepta_work_graph_append_only_event_store_shadow_path_gate",
-      source_shadow_event_record_count: 8,
-      source_projection_index_count: 5,
-      source_readback_evidence_count: 5,
-      source_replay_diff_count: 4,
-      source_canary_readback_replay_gate: "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate",
-      source_canary_entrypoint_count: 2,
-      source_canary_projection_index_count: 2,
-      source_canary_readback_evidence_count: 2,
-      source_canary_replay_diff_count: 2,
+      source_scheduler_guardrail_gate: $scheduler_guardrail_report.gate,
+      source_entrypoint_binding_count: $scheduler_guardrail_report.entrypoint_binding_count,
+      source_dry_run_decision_count: $scheduler_guardrail_report.dry_run_decision_count,
+      source_scheduler_guardrail_ready: $source_scheduler_guardrail_ready,
+      source_scheduler_guardrail_no_live_confirmed: $source_scheduler_guardrail_no_live_confirmed,
+      source_shadow_path_gate: $shadow_path_report.gate,
+      source_shadow_event_record_count: $shadow_path_report.event_record_count,
+      source_projection_index_count: $shadow_path_report.projection_index_count,
+      source_readback_evidence_count: $shadow_path_report.readback_evidence_count,
+      source_replay_diff_count: $shadow_path_report.replay_diff_count,
+      source_shadow_path_readiness_complete: $source_shadow_path_readiness_complete,
+      source_shadow_path_no_persistence_confirmed: $source_shadow_path_no_persistence_confirmed,
+      source_canary_readback_replay_gate: $canary_readback_report.gate,
+      source_canary_entrypoint_count: $canary_readback_report.canary_entrypoint_count,
+      source_canary_projection_index_count: ($canary_readback_report.projection_indexes | length),
+      source_canary_readback_evidence_count: $canary_readback_report.readback_evidence_count,
+      source_canary_replay_diff_count: $canary_readback_report.replay_diff_count,
+      source_canary_readback_replay_ready: $source_canary_readback_replay_ready,
+      source_canary_readback_replay_no_live_confirmed: $source_canary_readback_replay_no_live_confirmed,
       readback_entry_count: ($readback_entries | length),
       shadow_event_join_count: ($shadow_event_joins | length),
       non_persistence_blocker_count: ($non_persistence_blockers | length),
@@ -222,18 +346,22 @@ jq -n \
       non_persistence_blockers: $non_persistence_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
-      shadow_event_store_readback_ready: true,
-      entrypoint_shadow_event_join_ready: true,
-      redacted_payload_hash_join_ready: true,
-      projection_index_readback_ready: true,
-      canary_readback_join_ready: true,
-      replay_diff_readback_ready: true,
+      source_prior_readbacks_complete: $source_prior_readbacks_complete,
+      readback_entries_visible_only_complete: $readback_entries_visible_only_complete,
+      shadow_event_joins_report_only_complete: $shadow_event_joins_report_only_complete,
+      non_persistence_blockers_complete: $non_persistence_blockers_complete,
+      shadow_event_store_readback_ready: $shadow_event_store_readback_ready,
+      entrypoint_shadow_event_join_ready: $entrypoint_shadow_event_join_ready,
+      redacted_payload_hash_join_ready: $redacted_payload_hash_join_ready,
+      projection_index_readback_ready: $projection_index_readback_ready,
+      canary_readback_join_ready: $canary_readback_join_ready,
+      replay_diff_readback_ready: $replay_diff_readback_ready,
       shadow_readback_executed: false,
       shadow_event_persistence_enabled: false,
       projection_index_persistence_enabled: false,
       scheduler_guardrail_live_enforcement_enabled: false,
       runtime_interception_enabled: false,
-      ready_for_replay_diff_dry_run: true,
+      ready_for_replay_diff_dry_run: $shadow_event_store_readback_ready,
       ready_for_live_execution: false,
       source_probes: {
         shadow_event_store_readback: {
@@ -242,13 +370,25 @@ jq -n \
           gate_script_present: $gate_script_present
         },
         scheduler_guardrail_blocking_dry_run_entrypoint: {
-          gate_script_present: $scheduler_guardrail_gate_present
+          gate_script_present: $scheduler_guardrail_gate_present,
+          report_gate: ($scheduler_guardrail_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate"),
+          ready_for_shadow_event_store_readback: $scheduler_guardrail_report.ready_for_work_graph_shadow_event_store_readback,
+          no_live_confirmed: $source_scheduler_guardrail_no_live_confirmed,
+          side_effects_all_false: ($scheduler_guardrail_report.side_effects | to_entries | all(.value == false))
         },
         append_only_event_store_shadow_path: {
-          gate_script_present: $shadow_path_gate_present
+          gate_script_present: $shadow_path_gate_present,
+          report_gate: ($shadow_path_report.gate == "hepta_work_graph_append_only_event_store_shadow_path_gate"),
+          readiness_complete: $shadow_path_report.append_only_shadow_path_readiness_complete,
+          no_persistence_confirmed: $source_shadow_path_no_persistence_confirmed,
+          side_effects_all_false: ($shadow_path_report.side_effects | to_entries | all(.value == false))
         },
         agent_jobs_task_board_canary_readback_replay: {
-          gate_script_present: $canary_readback_gate_present
+          gate_script_present: $canary_readback_gate_present,
+          report_gate: ($canary_readback_report.gate == "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"),
+          readiness_complete: $canary_readback_report.canary_readback_replay_prior_readbacks_complete,
+          no_live_confirmed: $source_canary_readback_replay_no_live_confirmed,
+          side_effects_all_false: ($canary_readback_report.side_effects | to_entries | all(.value == false))
         }
       },
       side_effects: {

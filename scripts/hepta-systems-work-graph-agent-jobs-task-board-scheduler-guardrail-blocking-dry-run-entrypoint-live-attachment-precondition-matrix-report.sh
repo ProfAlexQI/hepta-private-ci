@@ -4,56 +4,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-path_exists() {
-  local path="$1"
-  [[ -e "$path" ]]
-}
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 
-source_has() {
-  local pattern="$1"
-  local path="$2"
-  rg -q "$pattern" "$path"
-}
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_PRECONDITION_MATRIX_CAPTURE_CACHE_DIR"' EXIT
+fi
 
-bool_for() {
-  if "$@"; then
-    printf 'true\n'
-  else
-    printf 'false\n'
-  fi
-}
-
-live_attachment_matrix_module_present="$(
-  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix.rs
-)"
-terminal_closeout_gate_present="$(
-  bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-terminal-no-enforcement-final-closeout-gate.sh
-)"
-terminal_closeout_points_here="$(
-  bool_for source_has \
-    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_gate" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout.rs
-)"
-terminal_closeout_ready_present="$(
-  bool_for source_has "ready_for_live_attachment_precondition_matrix: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout.rs
-)"
-terminal_closeout_no_live_present="$(
-  bool_for source_has "ready_for_live_execution: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout.rs
-)"
-terminal_closeout_unpersisted_present="$(
-  bool_for source_has "final_closeout_persisted: false" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout.rs
+terminal_closeout_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-terminal-no-enforcement-final-closeout-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-hardening-terminal-no-enforcement-final-closeout-report.sh"
 )"
 
 jq -n \
-  --argjson live_attachment_matrix_module_present "$live_attachment_matrix_module_present" \
-  --argjson terminal_closeout_gate_present "$terminal_closeout_gate_present" \
-  --argjson terminal_closeout_points_here "$terminal_closeout_points_here" \
-  --argjson terminal_closeout_ready_present "$terminal_closeout_ready_present" \
-  --argjson terminal_closeout_no_live_present "$terminal_closeout_no_live_present" \
-  --argjson terminal_closeout_unpersisted_present "$terminal_closeout_unpersisted_present" \
+  --argjson terminal_closeout_report "$terminal_closeout_report" \
   '
   def entrypoint($id; $surface): {
     id: $id,
@@ -152,6 +120,78 @@ jq -n \
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   ] as $required_prior_gates
+  | ($terminal_closeout_report.source_non_persistence_readback_no_persistence_confirmed == true
+      and $terminal_closeout_report.terminal_no_enforcement_final_closeout_preconditions_complete == true
+      and $terminal_closeout_report.final_closeout_recorded == false
+      and $terminal_closeout_report.final_closeout_persisted == false
+      and $terminal_closeout_report.final_closeout_authoritative == false
+      and $terminal_closeout_report.final_closeout_accepted == false
+      and $terminal_closeout_report.source_audit_index_persisted == false
+      and $terminal_closeout_report.source_readback_persisted == false
+      and $terminal_closeout_report.hardening_decision_recording_allowed == false
+      and $terminal_closeout_report.hardening_decision_persistence_allowed == false
+      and $terminal_closeout_report.work_graph_event_persistence_allowed == false
+      and $terminal_closeout_report.projection_persistence_allowed == false
+      and ($terminal_closeout_report.side_effects | to_entries | all(.value == false))) as $source_final_closeout_no_persistence_confirmed
+  | ($terminal_closeout_report.ready_for_live_attachment_precondition_matrix == true
+      and $terminal_closeout_report.live_blocking_enforcement_allowed == false
+      and $terminal_closeout_report.runtime_interception_allowed == false
+      and $terminal_closeout_report.scheduler_admission_enforcement_allowed == false
+      and $terminal_closeout_report.guardrail_enforcement_allowed == false
+      and $terminal_closeout_report.lease_acquisition_allowed == false
+      and $terminal_closeout_report.work_start_allowed == false
+      and $terminal_closeout_report.agent_spawn_allowed == false
+      and $terminal_closeout_report.model_invocation_allowed == false
+      and $terminal_closeout_report.external_send_allowed == false
+      and $terminal_closeout_report.replay_execution_allowed == false
+      and $terminal_closeout_report.replay_diff_recording_allowed == false
+      and $terminal_closeout_report.replay_diff_persistence_allowed == false
+      and $terminal_closeout_report.rollback_execution_allowed == false
+      and $terminal_closeout_report.idempotency_mutation_allowed == false
+      and $terminal_closeout_report.config_write_allowed == false
+      and $terminal_closeout_report.feature_flag_mutation_allowed == false
+      and $terminal_closeout_report.canary_traffic_allowed == false
+      and $terminal_closeout_report.operator_review_request_allowed == false
+      and $terminal_closeout_report.approval_recording_allowed == false
+      and $terminal_closeout_report.live_cutover_allowed == false
+      and $terminal_closeout_report.ready_for_live_execution == false
+      and $source_final_closeout_no_persistence_confirmed) as $source_final_closeout_no_live_confirmed
+  | ($terminal_closeout_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout_gate"
+      and $terminal_closeout_report.source_non_persistence_readback_ready == true
+      and $terminal_closeout_report.source_non_persistence_readback_no_persistence_confirmed == true
+      and $terminal_closeout_report.source_non_persistence_readback_no_live_confirmed == true
+      and $terminal_closeout_report.source_non_persistence_readback_ready_for_terminal_closeout == true
+      and $terminal_closeout_report.terminal_no_enforcement_branch_closed == true
+      and $terminal_closeout_report.final_closeout_scope_visible_only_complete == true
+      and $terminal_closeout_report.final_closeout_entries_complete == true
+      and $terminal_closeout_report.final_closeout_blockers_complete == true
+      and $terminal_closeout_report.terminal_no_enforcement_final_closeout_preconditions_complete == true
+      and $terminal_closeout_report.final_closeout_entry_count == 9
+      and $terminal_closeout_report.final_closeout_blocker_count == 36
+      and $terminal_closeout_report.required_prior_gate_count == 15
+      and $source_final_closeout_no_live_confirmed) as $source_final_closeout_ready
+  | ($source_final_closeout_ready
+      and $terminal_closeout_report.ready_for_live_attachment_precondition_matrix == true) as $source_final_closeout_ready_for_live_attachment_matrix
+  | (($entrypoints | length) == 4
+      and ($entrypoints | all(
+        .live_attachment_candidate == true
+        and .report_only == true
+        and .live_attachment_allowed == false
+        and .runtime_interception_allowed == false
+      ))) as $entrypoints_complete
+  | (($precondition_checks | length) == 14
+      and (($precondition_checks | map(select(.satisfied == true)) | length) == 4)
+      and (($precondition_checks | map(select(.satisfied == false)) | length) == 10)
+      and ($precondition_checks | all(.required == true))) as $precondition_matrix_complete
+  | ((($precondition_checks | map(select(.blocking == true)) | length) == 10)
+      and ($precondition_checks | map(select(.blocking == true)) | all(.satisfied == false))) as $blocking_preconditions_complete
+  | (($blockers | length) == 33
+      and ($blockers | all(.blocked == true))) as $blockers_complete
+  | ($source_final_closeout_ready_for_live_attachment_matrix
+      and $entrypoints_complete
+      and $precondition_matrix_complete
+      and $blocking_preconditions_complete
+      and $blockers_complete) as $live_attachment_precondition_matrix_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -159,10 +199,14 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_gate",
       schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_v1",
       preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_deny_only",
-      source_final_closeout_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout_gate",
-      source_final_closeout_entry_count: 9,
-      source_final_closeout_blocker_count: 36,
-      source_required_prior_gate_count: 15,
+      source_final_closeout_gate: $terminal_closeout_report.gate,
+      source_final_closeout_entry_count: $terminal_closeout_report.final_closeout_entry_count,
+      source_final_closeout_blocker_count: $terminal_closeout_report.final_closeout_blocker_count,
+      source_required_prior_gate_count: $terminal_closeout_report.required_prior_gate_count,
+      source_final_closeout_ready: $source_final_closeout_ready,
+      source_final_closeout_no_persistence_confirmed: $source_final_closeout_no_persistence_confirmed,
+      source_final_closeout_no_live_confirmed: $source_final_closeout_no_live_confirmed,
+      source_final_closeout_ready_for_live_attachment_matrix: $source_final_closeout_ready_for_live_attachment_matrix,
       entrypoint_count: ($entrypoints | length),
       precondition_check_count: ($precondition_checks | length),
       precondition_satisfied_count: ($precondition_checks | map(select(.satisfied == true)) | length),
@@ -181,6 +225,11 @@ jq -n \
       matrix_persisted: false,
       matrix_authoritative: false,
       matrix_accepted: false,
+      entrypoints_complete: $entrypoints_complete,
+      precondition_matrix_complete: $precondition_matrix_complete,
+      blocking_preconditions_complete: $blocking_preconditions_complete,
+      blockers_complete: $blockers_complete,
+      live_attachment_precondition_matrix_preconditions_complete: $live_attachment_precondition_matrix_preconditions_complete,
       live_attachment_allowed: false,
       live_blocking_hook_install_allowed: false,
       runtime_interception_allowed: false,
@@ -208,16 +257,16 @@ jq -n \
       operator_review_request_allowed: false,
       approval_recording_allowed: false,
       live_cutover_allowed: false,
-      ready_for_denial_readback: true,
+      ready_for_denial_readback: $live_attachment_precondition_matrix_preconditions_complete,
       ready_for_live_attachment: false,
       ready_for_live_execution: false,
-      source_probes: {
-        live_attachment_matrix_module_present: $live_attachment_matrix_module_present,
-        terminal_closeout_gate_present: $terminal_closeout_gate_present,
-        terminal_closeout_points_here: $terminal_closeout_points_here,
-        terminal_closeout_ready_present: $terminal_closeout_ready_present,
-        terminal_closeout_no_live_present: $terminal_closeout_no_live_present,
-        terminal_closeout_unpersisted_present: $terminal_closeout_unpersisted_present
+      source_readbacks: {
+        terminal_closeout_report_gate: $terminal_closeout_report.gate,
+        terminal_closeout_preconditions_complete: $terminal_closeout_report.terminal_no_enforcement_final_closeout_preconditions_complete,
+        terminal_closeout_ready_for_live_attachment_matrix: $terminal_closeout_report.ready_for_live_attachment_precondition_matrix,
+        terminal_closeout_no_persistence_confirmed: $source_final_closeout_no_persistence_confirmed,
+        terminal_closeout_no_live_confirmed: $source_final_closeout_no_live_confirmed,
+        terminal_closeout_side_effects_all_false: ($terminal_closeout_report.side_effects | to_entries | all(.value == false))
       },
       side_effects: {
         filesystem_written: false,

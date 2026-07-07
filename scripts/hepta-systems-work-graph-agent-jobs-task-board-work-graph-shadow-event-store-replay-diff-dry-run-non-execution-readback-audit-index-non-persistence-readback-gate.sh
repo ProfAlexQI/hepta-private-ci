@@ -26,6 +26,10 @@ jq -e '
   and .source_audit_index_entry_count == 8
   and .source_audit_index_blocker_count == 20
   and .source_required_prior_gate_count == 3
+  and .source_audit_index_ready == true
+  and .source_audit_index_no_persistence_confirmed == true
+  and .source_audit_index_no_authorization_confirmed == true
+  and .source_audit_index_ready_for_non_persistence_readback == true
   and .readback_entry_count == 6
   and .readback_blocker_count == 23
   and .required_prior_gate_count == 4
@@ -39,6 +43,7 @@ jq -e '
   and .readback_scope.readback_recorded == false
   and .readback_scope.readback_persisted == false
   and .readback_scope.readback_accepted == false
+  and .readback_scope_visible_only_complete == true
   and (.readback_entries | map(.id) == [
     "replay_diff_audit_index_surface_non_persistence_readback",
     "replay_diff_audit_index_entry_inventory_non_persistence_readback",
@@ -56,6 +61,7 @@ jq -e '
     and .mutation_allowed == false
     and .ready == true
   ))
+  and .readback_entries_visible_only_complete == true
   and (.readback_blockers | map(.blocked_action) == [
     "record_replay_diff_audit_index_non_persistence_readback",
     "persist_replay_diff_audit_index_non_persistence_readback",
@@ -82,6 +88,8 @@ jq -e '
     "perform_live_cutover"
   ])
   and (.readback_blockers | all(.blocked == true))
+  and .readback_blockers_complete == true
+  and .audit_index_non_persistence_readback_preconditions_complete == true
   and .required_prior_gates == [
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_gate",
@@ -124,10 +132,22 @@ jq -e '
   and .source_probes.audit_index_ready_present == true
   and .source_probes.audit_index_unpersisted_present == true
   and .source_probes.audit_index_no_live_present == true
+  and .source_probes.audit_index_report_gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_gate"
+  and .source_probes.audit_index_preconditions_complete == true
+  and .source_probes.audit_index_ready_for_non_persistence_readback == true
+  and .source_probes.audit_index_no_persistence_confirmed == true
+  and .source_probes.audit_index_no_authorization_confirmed == true
+  and .source_probes.audit_index_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_non_persistence_readback --lib
+for test_name in \
+  replay_diff_audit_index_non_persistence_readback_derives_from_audit_index \
+  replay_diff_audit_index_non_persistence_readback_entries_are_visible_only \
+  replay_diff_audit_index_non_persistence_readback_blocks_execution_and_live_paths \
+  replay_diff_audit_index_non_persistence_readback_links_priors_and_side_effects; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board shadow event-store replay diff dry-run non-execution readback audit index non-persistence readback gate passed"

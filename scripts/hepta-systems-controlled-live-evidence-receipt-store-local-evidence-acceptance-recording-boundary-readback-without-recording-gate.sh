@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-local-evidence-acceptance-recording-boundary-readback-without-recording-report.sh"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-local-evidence-acceptance-source-readback-without-recording-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_LOCAL_EVIDENCE_ACCEPTANCE_RECORDING_BOUNDARY_READBACK_WITHOUT_RECORDING_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-local-evidence-acceptance-recording-boundary-readback-without-recording-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable local evidence acceptance recording boundary report: $REPORT"
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable local evidence acceptance source report: $SOURCE_REPORT"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the local evidence acceptance recording boundary report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+source_json="$tmpdir/local-evidence-acceptance-source.json"
+target_json="$tmpdir/local-evidence-acceptance-recording-boundary.json"
+
+"$SOURCE_REPORT" >"$source_json" || fail "failed to render local evidence acceptance source report"
+jq -e . "$source_json" >/dev/null || fail "local evidence acceptance source report did not render valid JSON"
+HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_LOCAL_EVIDENCE_ACCEPTANCE_SOURCE_JSON="$source_json" \
+  "$REPORT" >"$target_json" || fail "failed to render local evidence acceptance recording boundary report from cached source"
+jq -e . "$target_json" >/dev/null || fail "local evidence acceptance recording boundary report did not render valid JSON"
+
+rg -q 'Controlled Live Evidence Receipt Store Local Evidence Acceptance Recording Boundary Readback Without Recording' "$DOC" \
+  || fail "architecture note must document Controlled Live Evidence Receipt Store Local Evidence Acceptance Recording Boundary Readback Without Recording"
+rg -q 'controlled live evidence receipt store local evidence acceptance recording-boundary readback without recording' "$DOC" \
+  || fail "architecture note must document local evidence acceptance recording-boundary readback without recording"
+rg -q 'no dev evidence acceptance source recording, evidence acceptance recording, evidence record, denial receipt persistence, local receipt-store feature-gate opening, append-only store path grant, atomic append, post-append readback persistence, rollback anchor verification, retention policy commit, replay idempotency guard enablement, receipt-store write attempt record, receipt store write, receipt persistence, ledger write, event-log write, SQLite write, credential read, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, provider call, model call, replay execution, rollback, kill-switch rehearsal execution, kill-switch mutation, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed local evidence acceptance recording boundary"
+
+jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_local_evidence_acceptance_recording_boundary_readback_without_recording"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_evidence_receipt_store_local_evidence_acceptance_recording_boundary_readback_without_recording_gate"
+  and .schema_version == "controlled_live_evidence_receipt_store_local_evidence_acceptance_recording_boundary_readback_without_recording_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_acceptance_source_readback_ready == true
+  and .source_acceptance_source_entry_count == 7
+  and .source_acceptance_source_projected_count == 7
+  and .source_acceptance_source_schema_projected_count == 7
+  and .source_acceptance_source_policy_projected_count == 7
+  and .source_acceptance_source_idempotency_key_unique_count == 7
+  and .source_open_preconditions_attached_count == 7
+  and .source_acceptance_source_recording_required_count == 7
+  and .source_acceptance_source_recording_allowed_count == 0
+  and .source_acceptance_source_recorded_count == 0
+  and .source_acceptance_source_persisted_count == 0
+  and .source_evidence_acceptance_recorded_count == 0
+  and .source_evidence_recorded_count == 0
+  and .source_receipt_store_written_count == 0
+  and .source_receipt_persisted_count == 0
+  and .source_live_execution_allowed == false
+  and .source_cache_mode == "provided_source_json"
+  and .source_cache_input_present == true
+  and .source_report_render_count == 0
+  and .target_source_reuse_count == 1
+  and .lib_export_present == true
+  and .recording_boundary_id == "controlled-live-evidence-receipt-store-local-evidence-acceptance-recording-boundary"
+  and .recording_boundary_route == "readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/recording-boundary"
+  and .acceptance_source_record_schema_version == "controlled_live_local_evidence_acceptance_source_record_v1"
+  and .boundary_entry_count == 7
+  and .boundary_projected_count == 7
+  and .boundary_ready_count == 7
+  and .source_acceptance_source_attached_count == 7
+  and .record_schema_projected_count == 7
+  and .recording_precondition_missing_count == 7
+  and .acceptance_source_recording_required_count == 7
+  and .acceptance_source_recording_allowed_count == 0
+  and .acceptance_source_recorded_count == 0
+  and .acceptance_source_persisted_count == 0
+  and .recording_idempotency_key_projected_count == 7
+  and .recording_idempotency_key_unique_count == 7
+  and .post_record_readback_route_projected_count == 7
+  and .rollback_anchor_projected_count == 7
+  and .denial_receipt_projected_count == 7
+  and .denial_receipt_persisted_count == 0
+  and .evidence_acceptance_recording_allowed_count == 0
+  and .evidence_acceptance_recorded_count == 0
+  and .evidence_recorded_count == 0
+  and .receipt_store_write_attempt_recorded_count == 0
+  and .receipt_store_written_count == 0
+  and .receipt_persisted_count == 0
+  and .ledger_written_count == 0
+  and .workflow_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_mutation_allowed_count == 0
+  and .local_evidence_acceptance_recording_boundary_readback_ready == true
+  and .acceptance_source_recording_allowed == false
+  and .evidence_acceptance_recording_allowed == false
+  and .evidence_recording_allowed == false
+  and .receipt_store_write_attempt_recording_allowed == false
+  and .receipt_store_write_allowed == false
+  and .receipt_persistence_allowed == false
+  and .ledger_write_allowed == false
+  and .workflow_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .credential_read_allowed == false
+  and .live_execution_allowed == false
+  and (.blockers | index("acceptance_source_recording_disabled")) != null
+  and (.blockers | index("evidence_acceptance_recording_disabled")) != null
+  and (.blockers | index("evidence_recording_disabled")) != null
+  and (.blockers | index("denial_receipt_persistence_disabled")) != null
+  and (.blockers | index("receipt_store_write_attempt_recording_disabled")) != null
+  and (.blockers | index("receipt_store_write_disabled")) != null
+  and (.blockers | index("receipt_persistence_disabled")) != null
+  and (.blockers | index("ledger_write_disabled")) != null
+  and (.blockers | index("workflow_event_log_write_disabled")) != null
+  and (.blockers | index("sqlite_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.entries | length) == 7
+  and (.entries | all(
+    (.id | startswith("evidence_receipt_store_local_evidence_acceptance_recording_boundary_without_recording_"))
+    and (.source_acceptance_source_id | startswith("local-evidence-acceptance-source:controlled-live-evidence-receipt-store:"))
+    and (.source_acceptance_source_route | startswith("readback://controlled-live/evidence-receipt-store/local-evidence-acceptance-source/"))
+    and .source_acceptance_source_schema == "controlled_live_local_evidence_acceptance_source_v1"
+    and (.source_acceptance_source_policy_id | startswith("local-evidence-acceptance-source-policy:controlled-live-evidence-receipt-store:"))
+    and (.source_acceptance_source_idempotency_key | startswith("local-evidence-acceptance-source-idempotency:controlled-live-evidence-receipt-store:"))
+    and (.source_acceptance_source_readback_route | endswith("/readback"))
+    and (.source_acceptance_source_recording_boundary_route | endswith("/recording-boundary"))
+    and (.recording_boundary_id | startswith("local-evidence-acceptance-recording-boundary:controlled-live-evidence-receipt-store:"))
+    and (.recording_boundary_route | startswith("readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/recording-boundary/"))
+    and (.acceptance_source_record_id | startswith("local-evidence-acceptance-source-record:controlled-live-evidence-receipt-store:"))
+    and .acceptance_source_record_schema_version == "controlled_live_local_evidence_acceptance_source_record_v1"
+    and (.acceptance_source_record_idempotency_key | startswith("local-evidence-acceptance-source-record-idempotency:controlled-live-evidence-receipt-store:"))
+    and (.post_record_readback_route | startswith("readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/recording-boundary/"))
+    and (.post_record_readback_route | endswith("/post-record-readback"))
+    and (.rollback_anchor | startswith("rollback-anchor:local-evidence-acceptance-recording-boundary:controlled-live-evidence-receipt-store:"))
+    and (.denial_receipt_id | startswith("local-evidence-acceptance-source-recording-denial-receipt:controlled-live-evidence-receipt-store:"))
+    and (.denial_receipt_route | startswith("readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/recording-boundary/"))
+    and (.denial_receipt_route | endswith("/denial-receipt"))
+    and .denial_reason == "local_evidence_acceptance_source_recording_disabled_open_preconditions_missing"
+    and .operator_status == "blocked_missing_evidence"
+    and .observed_state == "local_evidence_acceptance_recording_boundary_projected_without_recording"
+    and .previous_state == "missing"
+    and .current_state == "missing"
+    and .state_delta == "unchanged_missing"
+    and .boundary_projected == true
+    and .boundary_ready == true
+    and .source_acceptance_source_attached == true
+    and .record_schema_projected == true
+    and .recording_precondition_missing == true
+    and .acceptance_source_recording_required == true
+    and .acceptance_source_recording_allowed == false
+    and .acceptance_source_recorded == false
+    and .acceptance_source_persisted == false
+    and .recording_idempotency_key_projected == true
+    and .post_record_readback_route_projected == true
+    and .rollback_anchor_projected == true
+    and .denial_receipt_projected == true
+    and .denial_receipt_persisted == false
+    and .evidence_acceptance_required == true
+    and .evidence_acceptance_present == false
+    and .evidence_acceptance_recording_allowed == false
+    and .evidence_acceptance_recorded == false
+    and .evidence_recording_allowed == false
+    and .evidence_recorded == false
+    and .receipt_store_write_attempt_recording_allowed == false
+    and .receipt_store_write_attempt_recorded == false
+    and .receipt_store_write_allowed == false
+    and .receipt_store_written == false
+    and .receipt_persistence_allowed == false
+    and .receipt_persisted == false
+    and .ledger_write_allowed == false
+    and .ledger_written == false
+    and .workflow_event_log_write_allowed == false
+    and .workflow_event_log_written == false
+    and .sqlite_write_allowed == false
+    and .sqlite_written == false
+    and .credential_read_allowed == false
+    and .live_mutation_allowed == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .recording_boundary_route == "readback://controlled-live/evidence-receipt-store/local-evidence-acceptance/recording-boundary/dirty-worktree-boundary")
+  and any(.entries[]; .source_blocker_id == "fresh_soak_readback_missing" and .acceptance_source_record_idempotency_key == "local-evidence-acceptance-source-record-idempotency:controlled-live-evidence-receipt-store:fresh_soak_readback_missing")
+  and (.next_actions | index("controlled_live_evidence_receipt_store_local_evidence_acceptance_recording_denial_receipt_readback_without_persistence")) != null
+  and .recommended_next_gate == "controlled_live_evidence_receipt_store_local_evidence_acceptance_recording_denial_receipt_readback_without_persistence"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' "$target_json" >/dev/null
+
+jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_local_evidence_acceptance_source_readback_without_recording"
+  and .status == "ready_blocked"
+  and .local_evidence_acceptance_source_readback_ready == true
+  and .acceptance_source_entry_count == 7
+  and .acceptance_source_projected_count == 7
+  and .acceptance_source_schema_projected_count == 7
+  and .acceptance_source_policy_projected_count == 7
+  and .acceptance_source_idempotency_key_unique_count == 7
+  and .acceptance_source_recording_allowed_count == 0
+  and .acceptance_source_recorded_count == 0
+  and .acceptance_source_persisted_count == 0
+  and .evidence_acceptance_recorded_count == 0
+  and .evidence_recorded_count == 0
+  and .receipt_store_written_count == 0
+  and .receipt_persisted_count == 0
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' "$source_json" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime \
+    controlled_live_evidence_receipt_store_local_evidence_acceptance_recording_boundary_readback_without_recording --lib
+)
+
+printf 'hepta-systems-controlled-live-evidence-receipt-store-local-evidence-acceptance-recording-boundary-readback-without-recording-gate: PASS: local evidence acceptance recording boundary is read back without source recording, evidence recording, receipt-store write, or live execution\n'

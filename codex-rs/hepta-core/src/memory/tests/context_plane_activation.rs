@@ -16,6 +16,7 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 4,
             ),
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::RecallQualityGate, 2),
+            ContextPlaneStatusEntry::shadow(ContextPlaneStatusSection::MemoryProviderBoundary, 1),
             ContextPlaneStatusEntry::disabled(ContextPlaneStatusSection::SourceAwareFrontDoor),
         ],
         ..ContextPlaneStatusReport::default()
@@ -28,9 +29,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 12);
+    assert_eq!(matrix.rows.len(), 13);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 3);
+    assert_eq!(matrix.blocker_count, 4);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -47,6 +48,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
         Some(ContextPlaneActivationBlockerReason::AdaptiveBudgetAllocationShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
+        Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
@@ -69,9 +74,11 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("adaptive_budget_allocation"));
     assert!(json.contains("memory_formation_queue"));
     assert!(json.contains("recall_quality_gate"));
+    assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
+    assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("source_aware_front_door_disabled"));
     assert!(json.contains("operator_approval_missing"));
     assert!(!json.contains("prompt_text"));
@@ -105,9 +112,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 12);
+    assert_eq!(matrix.rows.len(), 13);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 4);
+    assert_eq!(matrix.blocker_count, 5);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -119,6 +126,10 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
         Some(ContextPlaneActivationBlockerReason::AdaptiveBudgetAllocationShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
+        Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
@@ -160,7 +171,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 12);
+    assert_eq!(report_side_effect_matrix.blocker_count, 13);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -193,9 +204,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 12);
+    assert_eq!(matrix.rows.len(), 13);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 4);
+    assert_eq!(matrix.blocker_count, 5);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

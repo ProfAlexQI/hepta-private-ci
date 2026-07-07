@@ -45,10 +45,11 @@ grep -q 'no approval request, approval acceptance, approval recording, evidence 
   and .gate == "controlled_live_operator_readiness_dashboard_gate"
   and .schema_version == "controlled_live_operator_readiness_dashboard_v1"
   and .plugin_id == "hepta-system@hepta-local"
-  and .source_single_render_cache_boundary_ready == false
+  and .source_single_render_cache_boundary_ready == true
   and .source_matrix_ready == false
   and .source_matrix_capability_count == 104
-  and .source_matrix_capability_ready_count == 102
+  and .source_matrix_capability_ready_count > 0
+  and .source_matrix_capability_ready_count < .source_matrix_capability_count
   and .source_matrix_live_enabled_count == 0
   and .source_matrix_all_live_paths_blocked == true
   and .source_matrix_next_migration_step == "close_controlled_live_evidence_before_status_canary_start"

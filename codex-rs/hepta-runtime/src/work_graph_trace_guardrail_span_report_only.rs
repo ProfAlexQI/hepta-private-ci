@@ -1,9 +1,17 @@
 use serde::Serialize;
 
 use crate::work_graph_agent_role_agent_card_manifest_report_only::WORK_GRAPH_AGENT_ROLE_AGENT_CARD_MANIFEST_REPORT_ONLY_GATE;
+use crate::work_graph_agent_role_agent_card_manifest_report_only::WorkGraphAgentRoleAgentCardManifestReportOnlySideEffects;
+use crate::work_graph_agent_role_agent_card_manifest_report_only::hepta_work_graph_agent_role_agent_card_manifest_report_only_report;
 use crate::work_graph_append_only_event_store_shadow_path::WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE;
+use crate::work_graph_append_only_event_store_shadow_path::WorkGraphAppendOnlyEventStoreShadowPathSideEffects;
+use crate::work_graph_append_only_event_store_shadow_path::hepta_work_graph_append_only_event_store_shadow_path_report;
 use crate::work_graph_scheduler_admission_dry_run_enforcement::WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects;
+use crate::work_graph_scheduler_admission_dry_run_enforcement::hepta_work_graph_scheduler_admission_dry_run_enforcement_report;
 use crate::work_graph_task_result_envelope_report_only_validator::WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE;
+use crate::work_graph_task_result_envelope_report_only_validator::WorkGraphTaskResultEnvelopeReportOnlyValidatorSideEffects;
+use crate::work_graph_task_result_envelope_report_only_validator::hepta_work_graph_task_result_envelope_report_only_validator_report;
 
 pub const WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE: &str =
     "hepta_work_graph_trace_guardrail_span_report_only_gate";
@@ -25,12 +33,32 @@ pub struct WorkGraphTraceGuardrailSpanReportOnlyReport {
     pub blocking_guardrail_count: usize,
     pub source_binding_count: usize,
     pub required_prior_gate_count: usize,
+    pub source_agent_role_agent_card_required_prior_gate_count: usize,
+    pub source_append_only_shadow_path_scheduler_prior_gate_count: usize,
+    pub source_append_only_shadow_path_required_prior_gate_count: usize,
+    pub source_task_result_envelope_source_adapter_count: usize,
+    pub source_task_result_envelope_source_envelope_count: usize,
+    pub source_scheduler_admission_entrypoint_count: usize,
+    pub source_scheduler_admission_required_prior_gate_count: usize,
     pub required_wire_fields: Vec<&'static str>,
     pub spans: Vec<WorkGraphTraceSpanPreview>,
     pub guardrail_bindings: Vec<WorkGraphGuardrailSpanBindingPreview>,
     pub source_bindings: Vec<WorkGraphTraceGuardrailSourceBindingPreview>,
     pub required_prior_gates: Vec<&'static str>,
+    pub source_agent_role_agent_card_gate: &'static str,
+    pub source_append_only_shadow_path_gate: &'static str,
+    pub source_task_result_envelope_validator_gate: &'static str,
+    pub source_scheduler_admission_dry_run_gate: &'static str,
     pub recommended_next_gate: &'static str,
+    pub source_agent_role_agent_card_readiness_complete: bool,
+    pub source_agent_role_agent_card_no_enforcement_confirmed: bool,
+    pub source_append_only_shadow_path_readiness_complete: bool,
+    pub source_append_only_shadow_path_no_persistence_confirmed: bool,
+    pub source_task_result_envelope_validator_ready: bool,
+    pub source_task_result_envelope_no_enforcement_confirmed: bool,
+    pub source_scheduler_admission_dry_run_ready: bool,
+    pub source_scheduler_admission_no_live_blocking_confirmed: bool,
+    pub trace_guardrail_prior_readbacks_complete: bool,
     pub trace_spine_complete: bool,
     pub blocking_guardrail_preview_complete: bool,
     pub report_only_guardrail_attached: bool,
@@ -103,10 +131,88 @@ pub fn hepta_work_graph_trace_guardrail_span_report_only_report()
     let guardrail_bindings = work_graph_guardrail_span_bindings();
     let source_bindings = work_graph_trace_guardrail_source_bindings();
     let required_prior_gates = work_graph_trace_guardrail_span_required_prior_gates();
+    let agent_role_agent_card =
+        hepta_work_graph_agent_role_agent_card_manifest_report_only_report();
+    let append_only_shadow_path = hepta_work_graph_append_only_event_store_shadow_path_report();
+    let task_result_envelope = hepta_work_graph_task_result_envelope_report_only_validator_report();
+    let scheduler_admission = hepta_work_graph_scheduler_admission_dry_run_enforcement_report();
     let blocking_guardrail_count = spans
         .iter()
         .filter(|span| span.blocking_guardrail_required)
         .count();
+    let source_agent_role_agent_card_no_enforcement_confirmed = !agent_role_agent_card
+        .role_enforcement_enabled
+        && !agent_role_agent_card.ready_for_live_execution
+        && agent_role_agent_card.side_effects
+            == WorkGraphAgentRoleAgentCardManifestReportOnlySideEffects::none();
+    let source_agent_role_agent_card_readiness_complete = agent_role_agent_card.gate
+        == WORK_GRAPH_AGENT_ROLE_AGENT_CARD_MANIFEST_REPORT_ONLY_GATE
+        && agent_role_agent_card.agent_role_agent_card_manifest_readiness_complete
+        && agent_role_agent_card.ready_for_trace_guardrail_span
+        && source_agent_role_agent_card_no_enforcement_confirmed;
+    let source_append_only_shadow_path_no_persistence_confirmed = !append_only_shadow_path
+        .shadow_store_write_enabled
+        && !append_only_shadow_path.live_cutover_enabled
+        && !append_only_shadow_path.ready_for_live_execution
+        && append_only_shadow_path.side_effects
+            == WorkGraphAppendOnlyEventStoreShadowPathSideEffects::none();
+    let source_append_only_shadow_path_readiness_complete = append_only_shadow_path.gate
+        == WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        && append_only_shadow_path.append_only_shadow_path_readiness_complete
+        && append_only_shadow_path.ready_for_persistent_mailbox_handoff
+        && source_append_only_shadow_path_no_persistence_confirmed;
+    let source_task_result_envelope_no_enforcement_confirmed = !task_result_envelope
+        .live_enforcement_enabled
+        && !task_result_envelope.ready_for_live_execution
+        && task_result_envelope.side_effects
+            == WorkGraphTaskResultEnvelopeReportOnlyValidatorSideEffects::none();
+    let source_task_result_envelope_validator_ready = task_result_envelope.gate
+        == WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE
+        && task_result_envelope.ready_for_scheduler_admission_dry_run_enforcement
+        && task_result_envelope.report_only_validator_attached
+        && task_result_envelope.report_only_valid_source_count
+            == task_result_envelope.source_envelope_count
+        && source_task_result_envelope_no_enforcement_confirmed;
+    let source_scheduler_admission_no_live_blocking_confirmed = !scheduler_admission
+        .live_blocking_enforcement_enabled
+        && !scheduler_admission.ready_for_live_execution
+        && scheduler_admission.side_effects
+            == WorkGraphSchedulerAdmissionDryRunEnforcementSideEffects::none();
+    let source_scheduler_admission_dry_run_ready = scheduler_admission.gate
+        == WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        && scheduler_admission.dry_run_enforcement_enabled
+        && scheduler_admission.ready_for_append_only_event_store_shadow_path
+        && scheduler_admission.required_prior_gates
+            == append_only_shadow_path.scheduler_prior_gates
+        && source_scheduler_admission_no_live_blocking_confirmed;
+    let trace_guardrail_prior_readbacks_complete = source_agent_role_agent_card_readiness_complete
+        && source_append_only_shadow_path_readiness_complete
+        && source_task_result_envelope_validator_ready
+        && source_scheduler_admission_dry_run_ready;
+    let trace_spine_complete = trace_guardrail_prior_readbacks_complete
+        && !spans.is_empty()
+        && spans.iter().all(|span| {
+            span.trace_id == "trace-work-graph-report-only-001"
+                && !span.span_id.is_empty()
+                && !span.source_surface_id.is_empty()
+                && !span.source_entrypoint.is_empty()
+                && !span.decision.is_empty()
+                && !span.guardrail_span_id.is_empty()
+                && !span.evidence_ref.is_empty()
+                && !span.redaction_policy.is_empty()
+                && span.payload_hash.starts_with("sha256:")
+        });
+    let blocking_guardrail_preview_complete = blocking_guardrail_count == guardrail_bindings.len()
+        && spans
+            .iter()
+            .filter(|span| span.blocking_guardrail_required)
+            .all(|span| {
+                guardrail_bindings
+                    .iter()
+                    .any(|binding| binding.span_id == span.span_id && binding.blocking_preview)
+            });
+    let report_only_guardrail_attached =
+        trace_spine_complete && blocking_guardrail_preview_complete;
 
     WorkGraphTraceGuardrailSpanReportOnlyReport {
         product: "Hepta",
@@ -120,17 +226,43 @@ pub fn hepta_work_graph_trace_guardrail_span_report_only_report()
         blocking_guardrail_count,
         source_binding_count: source_bindings.len(),
         required_prior_gate_count: required_prior_gates.len(),
+        source_agent_role_agent_card_required_prior_gate_count: agent_role_agent_card
+            .required_prior_gate_count,
+        source_append_only_shadow_path_scheduler_prior_gate_count: append_only_shadow_path
+            .scheduler_prior_gate_count,
+        source_append_only_shadow_path_required_prior_gate_count: append_only_shadow_path
+            .required_prior_gate_count,
+        source_task_result_envelope_source_adapter_count: task_result_envelope.source_adapter_count,
+        source_task_result_envelope_source_envelope_count: task_result_envelope
+            .source_envelope_count,
+        source_scheduler_admission_entrypoint_count: scheduler_admission.entrypoint_count,
+        source_scheduler_admission_required_prior_gate_count: scheduler_admission
+            .required_prior_gates
+            .len(),
         required_wire_fields,
         spans,
         guardrail_bindings,
         source_bindings,
         required_prior_gates,
+        source_agent_role_agent_card_gate: agent_role_agent_card.gate,
+        source_append_only_shadow_path_gate: append_only_shadow_path.gate,
+        source_task_result_envelope_validator_gate: task_result_envelope.gate,
+        source_scheduler_admission_dry_run_gate: scheduler_admission.gate,
         recommended_next_gate: WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_RECOMMENDED_NEXT_GATE,
-        trace_spine_complete: true,
-        blocking_guardrail_preview_complete: true,
-        report_only_guardrail_attached: true,
+        source_agent_role_agent_card_readiness_complete,
+        source_agent_role_agent_card_no_enforcement_confirmed,
+        source_append_only_shadow_path_readiness_complete,
+        source_append_only_shadow_path_no_persistence_confirmed,
+        source_task_result_envelope_validator_ready,
+        source_task_result_envelope_no_enforcement_confirmed,
+        source_scheduler_admission_dry_run_ready,
+        source_scheduler_admission_no_live_blocking_confirmed,
+        trace_guardrail_prior_readbacks_complete,
+        trace_spine_complete,
+        blocking_guardrail_preview_complete,
+        report_only_guardrail_attached,
         live_guardrail_enforcement_enabled: false,
-        ready_for_agent_jobs_task_board_report_only_emission: true,
+        ready_for_agent_jobs_task_board_report_only_emission: report_only_guardrail_attached,
         ready_for_live_execution: false,
         side_effects: WorkGraphTraceGuardrailSpanReportOnlySideEffects::none(),
     }
@@ -530,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn trace_guardrail_remains_report_only() {
+    fn trace_guardrail_consumes_prior_report_readbacks() {
         let report = hepta_work_graph_trace_guardrail_span_report_only_report();
 
         assert_eq!(
@@ -542,6 +674,56 @@ mod tests {
                 WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE,
             ]
         );
+        assert_eq!(
+            report.source_agent_role_agent_card_gate,
+            WORK_GRAPH_AGENT_ROLE_AGENT_CARD_MANIFEST_REPORT_ONLY_GATE
+        );
+        assert_eq!(
+            report.source_append_only_shadow_path_gate,
+            WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE
+        );
+        assert_eq!(
+            report.source_task_result_envelope_validator_gate,
+            WORK_GRAPH_TASK_RESULT_ENVELOPE_REPORT_ONLY_VALIDATOR_GATE
+        );
+        assert_eq!(
+            report.source_scheduler_admission_dry_run_gate,
+            WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE
+        );
+        assert_eq!(
+            report.source_agent_role_agent_card_required_prior_gate_count,
+            2
+        );
+        assert_eq!(
+            report.source_append_only_shadow_path_scheduler_prior_gate_count,
+            5
+        );
+        assert_eq!(
+            report.source_append_only_shadow_path_required_prior_gate_count,
+            9
+        );
+        assert_eq!(report.source_task_result_envelope_source_adapter_count, 7);
+        assert_eq!(report.source_task_result_envelope_source_envelope_count, 7);
+        assert_eq!(report.source_scheduler_admission_entrypoint_count, 4);
+        assert_eq!(
+            report.source_scheduler_admission_required_prior_gate_count,
+            5
+        );
+        assert!(report.source_agent_role_agent_card_readiness_complete);
+        assert!(report.source_agent_role_agent_card_no_enforcement_confirmed);
+        assert!(report.source_append_only_shadow_path_readiness_complete);
+        assert!(report.source_append_only_shadow_path_no_persistence_confirmed);
+        assert!(report.source_task_result_envelope_validator_ready);
+        assert!(report.source_task_result_envelope_no_enforcement_confirmed);
+        assert!(report.source_scheduler_admission_dry_run_ready);
+        assert!(report.source_scheduler_admission_no_live_blocking_confirmed);
+        assert!(report.trace_guardrail_prior_readbacks_complete);
+    }
+
+    #[test]
+    fn trace_guardrail_remains_report_only() {
+        let report = hepta_work_graph_trace_guardrail_span_report_only_report();
+
         assert!(report.trace_spine_complete);
         assert!(report.blocking_guardrail_preview_complete);
         assert!(report.report_only_guardrail_attached);

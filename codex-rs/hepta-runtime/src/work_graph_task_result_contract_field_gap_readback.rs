@@ -2,17 +2,12 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::work_graph_source_id_alignment_readback::{
-    WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE,
-    hepta_work_graph_source_id_alignment_readback_report,
-};
-use crate::work_graph_task_result_contract::{
-    WORK_GRAPH_TASK_RESULT_CONTRACT_PREVIEW_GATE,
-    hepta_work_graph_task_result_contract_preview_report,
-};
-use crate::work_graph_terminal_envelope_readback::{
-    WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE, hepta_work_graph_terminal_envelope_readback_report,
-};
+use crate::work_graph_source_id_alignment_readback::WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE;
+use crate::work_graph_source_id_alignment_readback::hepta_work_graph_source_id_alignment_readback_report;
+use crate::work_graph_task_result_contract::WORK_GRAPH_TASK_RESULT_CONTRACT_PREVIEW_GATE;
+use crate::work_graph_task_result_contract::hepta_work_graph_task_result_contract_preview_report;
+use crate::work_graph_terminal_envelope_readback::WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE;
+use crate::work_graph_terminal_envelope_readback::hepta_work_graph_terminal_envelope_readback_report;
 
 pub const WORK_GRAPH_TASK_RESULT_CONTRACT_FIELD_GAP_READBACK_GATE: &str =
     "hepta_work_graph_task_result_contract_field_gap_readback_gate";

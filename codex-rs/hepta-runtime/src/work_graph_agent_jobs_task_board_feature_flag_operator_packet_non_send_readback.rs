@@ -4,6 +4,7 @@ use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WORK_GRAPH_A
 use crate::work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_CONFIG_WIRING_REPORT_ONLY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_NON_BLOCKING_CANARY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_REPORT_ONLY_GATE;
+use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only::WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketReportOnlySideEffects;
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only::hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only_report;
 use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE;
 use crate::work_graph_scheduler_admission_dry_run_enforcement::WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE;
@@ -30,6 +31,7 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketNonSendReadbackRe
     pub source_review_item_count: usize,
     pub source_evidence_ref_count: usize,
     pub source_blocked_action_count: usize,
+    pub source_required_prior_gate_count: usize,
     pub readback_entry_count: usize,
     pub readback_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -38,6 +40,15 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketNonSendReadbackRe
     pub readback_blockers: Vec<WorkGraphFeatureFlagOperatorPacketNonSendReadbackBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_operator_packet_prior_readbacks_complete: bool,
+    pub source_operator_packet_report_only_preconditions_complete: bool,
+    pub source_operator_packet_no_send_record_persist_confirmed: bool,
+    pub source_operator_packet_non_authorizing_confirmed: bool,
+    pub source_operator_packet_non_send_readback_ready: bool,
+    pub readback_scope_no_send_record_persist_confirmed: bool,
+    pub readback_entries_non_authoritative: bool,
+    pub readback_blockers_complete: bool,
+    pub non_send_readback_preconditions_complete: bool,
     pub operator_packet_visible: bool,
     pub operator_packet_sent: bool,
     pub operator_packet_recorded: bool,
@@ -137,6 +148,50 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_s
     let required_prior_gates =
         work_graph_agent_jobs_task_board_feature_flag_operator_packet_readback_required_prior_gates(
         );
+    let source_operator_packet_no_send_record_persist_confirmed = source.operator_packet_visible
+        && !source.operator_packet_sent
+        && !source.operator_packet_recorded
+        && !source.operator_packet_persisted
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketReportOnlySideEffects::none();
+    let source_operator_packet_non_authorizing_confirmed = !source
+        .operator_packet_authorizes_config_write
+        && !source.operator_packet_authorizes_canary_traffic
+        && !source.operator_packet_authorizes_live_cutover
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_live_cutover;
+    let source_operator_packet_non_send_readback_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_REPORT_ONLY_GATE
+        && source.operator_packet_prior_readbacks_complete
+        && source.operator_packet_report_only_preconditions_complete
+        && source.ready_for_operator_packet_non_send_readback
+        && source_operator_packet_no_send_record_persist_confirmed
+        && source_operator_packet_non_authorizing_confirmed;
+    let readback_scope_no_send_record_persist_confirmed = readback_scope.packet_visible
+        && !readback_scope.packet_sent
+        && !readback_scope.packet_recorded
+        && !readback_scope.packet_persisted
+        && !readback_scope.packet_accepted
+        && !readback_scope.packet_authoritative
+        && !readback_scope.readback_persisted;
+    let readback_entries_non_authoritative = !readback_entries.is_empty()
+        && readback_entries.iter().all(|entry| {
+            entry.visible
+                && entry.ready
+                && !entry.sent
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.accepted
+                && !entry.authoritative
+                && !entry.mutation_allowed
+        });
+    let readback_blockers_complete =
+        !readback_blockers.is_empty() && readback_blockers.iter().all(|blocker| blocker.blocked);
+    let non_send_readback_preconditions_complete = source_operator_packet_non_send_readback_ready
+        && readback_scope_no_send_record_persist_confirmed
+        && readback_entries_non_authoritative
+        && readback_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketNonSendReadbackReport {
         product: "Hepta",
@@ -151,6 +206,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_s
         source_review_item_count: source.review_item_count,
         source_evidence_ref_count: source.evidence_ref_count,
         source_blocked_action_count: source.blocked_action_count,
+        source_required_prior_gate_count: source.required_prior_gate_count,
         readback_entry_count: readback_entries.len(),
         readback_blocker_count: readback_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -160,6 +216,15 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_s
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_NON_SEND_READBACK_RECOMMENDED_NEXT_GATE,
+        source_operator_packet_prior_readbacks_complete: source.operator_packet_prior_readbacks_complete,
+        source_operator_packet_report_only_preconditions_complete: source.operator_packet_report_only_preconditions_complete,
+        source_operator_packet_no_send_record_persist_confirmed,
+        source_operator_packet_non_authorizing_confirmed,
+        source_operator_packet_non_send_readback_ready,
+        readback_scope_no_send_record_persist_confirmed,
+        readback_entries_non_authoritative,
+        readback_blockers_complete,
+        non_send_readback_preconditions_complete,
         operator_packet_visible: true,
         operator_packet_sent: false,
         operator_packet_recorded: false,
@@ -172,7 +237,8 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_s
         approval_recorded: false,
         approval_acceptance_allowed: false,
         readback_persisted: false,
-        ready_for_rollback_replay_pre_enable_blocker_matrix: true,
+        ready_for_rollback_replay_pre_enable_blocker_matrix:
+            non_send_readback_preconditions_complete,
         ready_for_operator_packet_acceptance: false,
         ready_for_feature_flag_config_write: false,
         ready_for_feature_flag_enablement: false,
@@ -370,6 +436,12 @@ mod tests {
         assert_eq!(report.source_review_item_count, 2);
         assert_eq!(report.source_evidence_ref_count, 5);
         assert_eq!(report.source_blocked_action_count, 6);
+        assert_eq!(report.source_required_prior_gate_count, 6);
+        assert!(report.source_operator_packet_prior_readbacks_complete);
+        assert!(report.source_operator_packet_report_only_preconditions_complete);
+        assert!(report.source_operator_packet_no_send_record_persist_confirmed);
+        assert!(report.source_operator_packet_non_authorizing_confirmed);
+        assert!(report.source_operator_packet_non_send_readback_ready);
         assert!(report.operator_packet_visible);
         assert!(!report.operator_packet_sent);
         assert!(!report.operator_packet_recorded);
@@ -397,6 +469,7 @@ mod tests {
         assert!(!report.readback_scope.packet_accepted);
         assert!(!report.readback_scope.packet_authoritative);
         assert!(!report.readback_scope.readback_persisted);
+        assert!(report.readback_scope_no_send_record_persist_confirmed);
         assert!(report.readback_entries.iter().all(|entry| {
             entry.visible
                 && entry.ready
@@ -407,6 +480,7 @@ mod tests {
                 && !entry.authoritative
                 && !entry.mutation_allowed
         }));
+        assert!(report.readback_entries_non_authoritative);
     }
 
     #[test]
@@ -435,6 +509,8 @@ mod tests {
             ]
         );
         assert_eq!(report.required_prior_gate_count, 7);
+        assert!(report.readback_blockers_complete);
+        assert!(report.non_send_readback_preconditions_complete);
         assert!(!report.operator_packet_authorizes_config_write);
         assert!(!report.operator_packet_authorizes_canary_traffic);
         assert!(!report.operator_packet_authorizes_live_cutover);

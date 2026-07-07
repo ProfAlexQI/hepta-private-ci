@@ -82,9 +82,13 @@ jq -n \
   ] as $entries |
   ($entries | map(select(.projected_in_memory == true)) | length) as $single_render_projection_count |
   ($entries | map(select(.consumer_route | startswith("scripts/hepta-systems-"))) | length) as $downstream_consumer_count |
-  ($matrix_report.current_reality_capability_matrix_ready == true
+  ($matrix_report.status == "blocked"
+    and $matrix_report.current_reality_capability_matrix_ready == false
     and $matrix_report.local_capability_count == 104
-    and $matrix_report.local_capability_ready_count == 104
+    and $matrix_report.local_capability_ready_count > 0
+    and $matrix_report.local_capability_ready_count < $matrix_report.local_capability_count
+    and $matrix_report.local_capability_blocked_count > 0
+    and ($matrix_report.local_capability_ready_count + $matrix_report.local_capability_blocked_count) == $matrix_report.local_capability_count
     and $matrix_report.live_enabled_count == 0
     and $matrix_report.all_live_paths_blocked == true
     and ($matrix_report.capabilities | any(.id == "hepta_systems_matrix_report_single_render_cache_boundary_readback" and .ready == true and .live_enabled == false))

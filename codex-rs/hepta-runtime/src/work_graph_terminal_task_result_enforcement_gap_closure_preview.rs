@@ -714,7 +714,7 @@ mod tests {
         assert_eq!(reducer.evidence_contract_id, "reducer_consensus_evidence");
         assert_eq!(
             reducer.terminal_source_blocker_ids,
-            ["reducer_output_missing_task_result_wrapper"]
+            ["multi_agent_reducer_task_result_projection_report_only_not_enforced"]
         );
         assert_eq!(report.terminal_source_blocker_ref_count, 6);
         assert_eq!(report.terminal_route_blocker_count_before, 6);

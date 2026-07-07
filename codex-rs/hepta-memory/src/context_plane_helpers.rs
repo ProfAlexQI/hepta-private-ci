@@ -10,7 +10,11 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextPlaneActivationBlockerMatrix;
 use hepta_core::ContextPlaneOperatorApprovalPacket;
 use hepta_core::ContextPlaneStatusReport;
+use hepta_core::ContextPlaneStatusReportInput;
 use hepta_core::ContextRecallRequest;
+use hepta_core::MemoryProviderContextUpdateEnvelope;
+use hepta_core::MemoryProviderDescriptor;
+use hepta_core::MemoryProviderReport;
 
 impl StoreSnapshot {
     /// Builds the offline, payload-light eval harness seed report without
@@ -36,6 +40,20 @@ impl StoreSnapshot {
     ) -> ContextMemoryRecallQualityGateReport {
         ContextMemoryRecallQualityGateReport::from_shadow(
             &self.context_memory_adaptive_allocator_eval_shadow_report(),
+        )
+    }
+
+    /// Builds the offline memory-provider boundary report without changing
+    /// prompt assembly, clearing store state, or enabling a runtime route.
+    pub fn context_memory_provider_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> MemoryProviderReport {
+        let bundle = self.recall_context(request);
+        let limit_pressure = self.recall_context_limit_pressure(request);
+        MemoryProviderReport::from_update(
+            MemoryProviderDescriptor::builtin(),
+            MemoryProviderContextUpdateEnvelope::from_bundle("builtin", &bundle, limit_pressure),
         )
     }
 
@@ -72,17 +90,19 @@ impl StoreSnapshot {
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
         let recall_quality_gate =
             ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+        let provider_report = self.context_memory_provider_report(request);
 
-        ContextPlaneStatusReport::from_reports(
-            &taxonomy,
-            &formation_receipts,
-            &formation_queue,
-            &temporal_facts,
-            &temporal_fact_graph,
-            &eval_seed,
-            &allocator_shadow,
-            &recall_quality_gate,
-        )
+        ContextPlaneStatusReport::from_reports(ContextPlaneStatusReportInput {
+            taxonomy: &taxonomy,
+            formation_receipts: &formation_receipts,
+            formation_queue: &formation_queue,
+            temporal_facts: &temporal_facts,
+            temporal_fact_graph: &temporal_fact_graph,
+            eval_seed: &eval_seed,
+            allocator_shadow: &allocator_shadow,
+            recall_quality_gate: &recall_quality_gate,
+            provider_report: &provider_report,
+        })
     }
 
     /// Builds a payload-light activation-blocker matrix from the unified
@@ -125,6 +145,13 @@ impl InMemoryStore {
         &self,
     ) -> Result<ContextMemoryRecallQualityGateReport, hepta_core::MemoryError> {
         Ok(self.snapshot()?.context_memory_recall_quality_gate_report())
+    }
+
+    pub fn context_memory_provider_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<MemoryProviderReport, hepta_core::MemoryError> {
+        Ok(self.snapshot()?.context_memory_provider_report(&request))
     }
 
     pub fn context_memory_ranked_recall_shadow_eval_report(

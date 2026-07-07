@@ -2,15 +2,12 @@ use std::collections::BTreeSet;
 
 use serde::Serialize;
 
-use crate::work_graph_adapter_task_result_index::{
-    WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE, hepta_work_graph_adapter_task_result_index_report,
-};
-use crate::work_graph_current_state_inventory::{
-    WORK_GRAPH_CURRENT_STATE_INVENTORY_GATE, work_graph_current_state_source_surfaces,
-};
-use crate::work_graph_terminal_envelope_readback::{
-    WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE, hepta_work_graph_terminal_envelope_readback_report,
-};
+use crate::work_graph_adapter_task_result_index::WORK_GRAPH_ADAPTER_TASK_RESULT_INDEX_GATE;
+use crate::work_graph_adapter_task_result_index::hepta_work_graph_adapter_task_result_index_report;
+use crate::work_graph_current_state_inventory::WORK_GRAPH_CURRENT_STATE_INVENTORY_GATE;
+use crate::work_graph_current_state_inventory::work_graph_current_state_source_surfaces;
+use crate::work_graph_terminal_envelope_readback::WORK_GRAPH_TERMINAL_ENVELOPE_READBACK_GATE;
+use crate::work_graph_terminal_envelope_readback::hepta_work_graph_terminal_envelope_readback_report;
 
 pub const WORK_GRAPH_SOURCE_ID_ALIGNMENT_READBACK_GATE: &str =
     "hepta_work_graph_source_id_alignment_readback_gate";

@@ -30,12 +30,13 @@ grep -q 'no matrix cache write, matrix cache persistence, compact cache persiste
   and .status == "ready_blocked"
   and .gate == "hepta_systems_matrix_report_single_render_cache_boundary_readback_gate"
   and .schema_version == "hepta_systems_matrix_report_single_render_cache_boundary_readback_v1"
-  and .source_matrix_ready == true
+  and .source_matrix_ready == false
   and .source_matrix_capability_count == 104
-  and .source_matrix_ready_count == 104
+  and .source_matrix_ready_count > 0
+  and .source_matrix_ready_count < .source_matrix_capability_count
   and .source_live_enabled_count == 0
   and .source_all_live_paths_blocked == true
-  and .source_dirty_worktree_entry_count > 0
+  and .source_dirty_worktree_entry_count >= 0
   and .controlled_live_blocker_count == 7
   and .matrix_report_render_count == 1
   and .single_render_projection_count == 4

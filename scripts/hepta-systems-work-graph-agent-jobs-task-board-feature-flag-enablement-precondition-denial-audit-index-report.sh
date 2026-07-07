@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_DENIAL_AUDIT_INDEX_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-denial-audit-index-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_DENIAL_AUDIT_INDEX_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_DENIAL_AUDIT_INDEX_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -34,21 +44,23 @@ denial_readback_points_here="$(
     "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_gate" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback.rs
 )"
-denial_readback_ready_present="$(
-  bool_for source_has "ready_for_denial_audit_index: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback.rs
-)"
 denial_readback_non_authoritative_present="$(
   bool_for source_has "dry_run_denial_authoritative: false" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback.rs
+)"
+
+denial_readback="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-enablement-precondition-denial-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-enablement-precondition-denial-readback-report.sh"
 )"
 
 jq -n \
   --argjson denial_audit_index_module_present "$denial_audit_index_module_present" \
   --argjson denial_readback_gate_present "$denial_readback_gate_present" \
   --argjson denial_readback_points_here "$denial_readback_points_here" \
-  --argjson denial_readback_ready_present "$denial_readback_ready_present" \
   --argjson denial_readback_non_authoritative_present "$denial_readback_non_authoritative_present" \
+  --argjson denial_readback "$denial_readback" \
   '
   def entry($id; $key; $source; $category): {
     id: $id,
@@ -143,6 +155,48 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($denial_readback.dry_run_denial_visible == true
+      and $denial_readback.dry_run_denial_recorded == false
+      and $denial_readback.dry_run_denial_persisted == false
+      and $denial_readback.dry_run_denial_accepted == false
+      and $denial_readback.dry_run_denial_authoritative == false
+      and $denial_readback.denial_readback_persisted == false
+      and ($denial_readback.side_effects | to_entries | all(.value == false))) as $source_denial_readback_no_record_persist_accept_confirmed
+  | ($denial_readback.denial_readback_authorizes_config_write == false
+      and $denial_readback.denial_readback_authorizes_feature_flag_enablement == false
+      and $denial_readback.denial_readback_authorizes_canary_traffic == false
+      and $denial_readback.denial_readback_authorizes_live_cutover == false
+      and $denial_readback.approval_recorded == false
+      and $denial_readback.approval_acceptance_allowed == false
+      and $denial_readback.ready_for_feature_flag_config_write == false
+      and $denial_readback.ready_for_feature_flag_enablement == false
+      and $denial_readback.ready_for_canary_traffic == false
+      and $denial_readback.ready_for_live_cutover == false) as $source_denial_readback_no_authorization_confirmed
+  | ($denial_readback.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_gate"
+      and $denial_readback.denial_readback_preconditions_complete == true
+      and $denial_readback.ready_for_denial_audit_index == true
+      and $source_denial_readback_no_record_persist_accept_confirmed
+      and $source_denial_readback_no_authorization_confirmed) as $source_denial_readback_ready
+  | ($audit_index_scope.index_visible == true
+      and $audit_index_scope.index_recorded == false
+      and $audit_index_scope.index_persisted == false
+      and $audit_index_scope.index_authoritative == false
+      and $audit_index_scope.acceptance_allowed == false) as $audit_index_scope_report_only_complete
+  | (($audit_index_entries | length) > 0
+      and ($audit_index_entries | all(
+        .indexed == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and .mutation_allowed == false
+      ))) as $audit_index_entries_report_only_complete
+  | (($audit_index_blockers | length) > 0
+      and ($audit_index_blockers | all(.blocked == true))) as $audit_index_blockers_complete
+  | ($source_denial_readback_ready
+      and $audit_index_scope_report_only_complete
+      and $audit_index_entries_report_only_complete
+      and $audit_index_blockers_complete) as $denial_audit_index_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -150,10 +204,10 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_v1",
       preview_mode: "enablement_precondition_denial_audit_index_no_record_no_persistence_no_acceptance",
-      source_denial_readback_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_gate",
-      source_denial_readback_entry_count: 5,
-      source_denial_readback_blocker_count: 10,
-      source_required_prior_gate_count: 10,
+      source_denial_readback_gate: $denial_readback.gate,
+      source_denial_readback_entry_count: $denial_readback.denial_readback_entry_count,
+      source_denial_readback_blocker_count: $denial_readback.denial_readback_blocker_count,
+      source_required_prior_gate_count: $denial_readback.required_prior_gate_count,
       audit_index_entry_count: ($audit_index_entries | length),
       audit_index_blocker_count: ($audit_index_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -162,6 +216,14 @@ jq -n \
       audit_index_blockers: $audit_index_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_non_persistence_readback_gate",
+      source_denial_readback_preconditions_complete: $denial_readback.denial_readback_preconditions_complete,
+      source_denial_readback_no_record_persist_accept_confirmed: $source_denial_readback_no_record_persist_accept_confirmed,
+      source_denial_readback_no_authorization_confirmed: $source_denial_readback_no_authorization_confirmed,
+      source_denial_readback_ready: $source_denial_readback_ready,
+      audit_index_scope_report_only_complete: $audit_index_scope_report_only_complete,
+      audit_index_entries_report_only_complete: $audit_index_entries_report_only_complete,
+      audit_index_blockers_complete: $audit_index_blockers_complete,
+      denial_audit_index_preconditions_complete: $denial_audit_index_preconditions_complete,
       audit_index_visible: true,
       audit_index_recorded: false,
       audit_index_persisted: false,
@@ -174,7 +236,7 @@ jq -n \
       audit_index_authorizes_replay_execution: false,
       audit_index_authorizes_rollback_execution: false,
       audit_index_authorizes_live_cutover: false,
-      ready_for_non_persistence_readback: true,
+      ready_for_non_persistence_readback: $denial_audit_index_preconditions_complete,
       ready_for_feature_flag_config_write: false,
       ready_for_feature_flag_enablement: false,
       ready_for_canary_traffic: false,
@@ -183,7 +245,10 @@ jq -n \
         denial_audit_index_module_present: $denial_audit_index_module_present,
         denial_readback_gate_present: $denial_readback_gate_present,
         denial_readback_points_here: $denial_readback_points_here,
-        denial_readback_ready_present: $denial_readback_ready_present,
+        denial_readback_report_gate: $denial_readback.gate,
+        denial_readback_preconditions_complete: $denial_readback.denial_readback_preconditions_complete,
+        denial_readback_ready_for_audit_index: $denial_readback.ready_for_denial_audit_index,
+        denial_readback_side_effects_all_false: ($denial_readback.side_effects | to_entries | all(.value == false)),
         denial_readback_non_authoritative_present: $denial_readback_non_authoritative_present
       },
       side_effects: {

@@ -26,6 +26,10 @@ jq -e '
   and .source_final_closeout_entry_count == 9
   and .source_final_closeout_blocker_count == 36
   and .source_required_prior_gate_count == 15
+  and .source_final_closeout_ready == true
+  and .source_final_closeout_no_persistence_confirmed == true
+  and .source_final_closeout_no_live_confirmed == true
+  and .source_final_closeout_ready_for_live_attachment_matrix == true
   and .entrypoint_count == 4
   and .precondition_check_count == 14
   and .precondition_satisfied_count == 4
@@ -124,6 +128,11 @@ jq -e '
   and .matrix_persisted == false
   and .matrix_authoritative == false
   and .matrix_accepted == false
+  and .entrypoints_complete == true
+  and .precondition_matrix_complete == true
+  and .blocking_preconditions_complete == true
+  and .blockers_complete == true
+  and .live_attachment_precondition_matrix_preconditions_complete == true
   and .live_attachment_allowed == false
   and .live_blocking_hook_install_allowed == false
   and .runtime_interception_allowed == false
@@ -154,16 +163,25 @@ jq -e '
   and .ready_for_denial_readback == true
   and .ready_for_live_attachment == false
   and .ready_for_live_execution == false
-  and .source_probes.live_attachment_matrix_module_present == true
-  and .source_probes.terminal_closeout_gate_present == true
-  and .source_probes.terminal_closeout_points_here == true
-  and .source_probes.terminal_closeout_ready_present == true
-  and .source_probes.terminal_closeout_no_live_present == true
-  and .source_probes.terminal_closeout_unpersisted_present == true
+  and .source_readbacks.terminal_closeout_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout_gate"
+  and .source_readbacks.terminal_closeout_preconditions_complete == true
+  and .source_readbacks.terminal_closeout_ready_for_live_attachment_matrix == true
+  and .source_readbacks.terminal_closeout_no_persistence_confirmed == true
+  and .source_readbacks.terminal_closeout_no_live_confirmed == true
+  and .source_readbacks.terminal_closeout_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix --lib
+tests=(
+  live_attachment_precondition_matrix_derives_from_terminal_closeout
+  live_attachment_precondition_matrix_keeps_entrypoints_report_only
+  live_attachment_precondition_matrix_blocks_live_paths
+  live_attachment_precondition_matrix_links_priors_and_side_effects
+)
+
+for test_name in "${tests[@]}"; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint live attachment precondition matrix gate passed"

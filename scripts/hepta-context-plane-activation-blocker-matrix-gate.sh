@@ -82,6 +82,7 @@ for term in \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
+  "memory_provider_boundary" \
   "recall_quality_blocking_reason_count" \
   "recall_quality_blocking_reasons" \
   "context-plane-activation-blockers.recall-quality-blocking-reason-count=0" \
@@ -89,6 +90,7 @@ for term in \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
+  "memory_provider_boundary_shadow_only" \
   "source_aware_front_door_disabled" \
   "operator_approval_missing" \
   "side_effect_flag_enabled" \
@@ -198,10 +200,10 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=1
-context-plane-activation-blockers.rows=12
+context-plane-activation-blockers.schema=2
+context-plane-activation-blockers.rows=13
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=3
+context-plane-activation-blockers.blockers=4
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -214,6 +216,7 @@ context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshol
 context-plane-activation-blockers.recall-quality-gate=ready
 context-plane-activation-blockers.recall-quality-blocking-reason-count=0
 context-plane-activation-blockers.recall-quality-blocking-reasons=none
+context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.source-aware-front-door=blocked:source_aware_front_door_disabled
 context-plane-activation-blockers.operator-approval=blocked:operator_approval_missing
 context-plane-activation-blockers.activation-allowed=disabled

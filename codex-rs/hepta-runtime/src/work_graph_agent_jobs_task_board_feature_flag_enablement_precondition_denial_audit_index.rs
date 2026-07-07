@@ -4,6 +4,7 @@ use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WORK_GRAPH_A
 use crate::work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_CONFIG_WIRING_REPORT_ONLY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_READBACK_GATE,
+    WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialReadbackSideEffects,
     hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_report,
 };
 use crate::work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DRY_RUN_GATE;
@@ -45,6 +46,14 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialAud
         Vec<WorkGraphFeatureFlagEnablementPreconditionDenialAuditIndexBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_denial_readback_preconditions_complete: bool,
+    pub source_denial_readback_no_record_persist_accept_confirmed: bool,
+    pub source_denial_readback_no_authorization_confirmed: bool,
+    pub source_denial_readback_ready: bool,
+    pub audit_index_scope_report_only_complete: bool,
+    pub audit_index_entries_report_only_complete: bool,
+    pub audit_index_blockers_complete: bool,
+    pub denial_audit_index_preconditions_complete: bool,
     pub audit_index_visible: bool,
     pub audit_index_recorded: bool,
     pub audit_index_persisted: bool,
@@ -144,6 +153,52 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
     let required_prior_gates =
         work_graph_agent_jobs_task_board_feature_flag_enablement_denial_audit_index_required_prior_gates(
         );
+    let source_denial_readback_no_record_persist_accept_confirmed = source.dry_run_denial_visible
+        && !source.dry_run_denial_recorded
+        && !source.dry_run_denial_persisted
+        && !source.dry_run_denial_accepted
+        && !source.dry_run_denial_authoritative
+        && !source.denial_readback_persisted
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialReadbackSideEffects::none(
+            );
+    let source_denial_readback_no_authorization_confirmed = !source
+        .denial_readback_authorizes_config_write
+        && !source.denial_readback_authorizes_feature_flag_enablement
+        && !source.denial_readback_authorizes_canary_traffic
+        && !source.denial_readback_authorizes_live_cutover
+        && !source.approval_recorded
+        && !source.approval_acceptance_allowed
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_canary_traffic
+        && !source.ready_for_live_cutover;
+    let source_denial_readback_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_READBACK_GATE
+        && source.denial_readback_preconditions_complete
+        && source.ready_for_denial_audit_index
+        && source_denial_readback_no_record_persist_accept_confirmed
+        && source_denial_readback_no_authorization_confirmed;
+    let audit_index_scope_report_only_complete = audit_index_scope.index_visible
+        && !audit_index_scope.index_recorded
+        && !audit_index_scope.index_persisted
+        && !audit_index_scope.index_authoritative
+        && !audit_index_scope.acceptance_allowed;
+    let audit_index_entries_report_only_complete = !audit_index_entries.is_empty()
+        && audit_index_entries.iter().all(|entry| {
+            entry.indexed
+                && entry.ready
+                && !entry.recorded
+                && !entry.persisted
+                && !entry.authoritative
+                && !entry.mutation_allowed
+        });
+    let audit_index_blockers_complete = !audit_index_blockers.is_empty()
+        && audit_index_blockers.iter().all(|blocker| blocker.blocked);
+    let denial_audit_index_preconditions_complete = source_denial_readback_ready
+        && audit_index_scope_report_only_complete
+        && audit_index_entries_report_only_complete
+        && audit_index_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagEnablementPreconditionDenialAuditIndexReport {
         product: "Hepta",
@@ -166,6 +221,14 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ENABLEMENT_PRECONDITION_DENIAL_AUDIT_INDEX_RECOMMENDED_NEXT_GATE,
+        source_denial_readback_preconditions_complete: source.denial_readback_preconditions_complete,
+        source_denial_readback_no_record_persist_accept_confirmed,
+        source_denial_readback_no_authorization_confirmed,
+        source_denial_readback_ready,
+        audit_index_scope_report_only_complete,
+        audit_index_entries_report_only_complete,
+        audit_index_blockers_complete,
+        denial_audit_index_preconditions_complete,
         audit_index_visible: true,
         audit_index_recorded: false,
         audit_index_persisted: false,
@@ -178,7 +241,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_preconditi
         audit_index_authorizes_replay_execution: false,
         audit_index_authorizes_rollback_execution: false,
         audit_index_authorizes_live_cutover: false,
-        ready_for_non_persistence_readback: true,
+        ready_for_non_persistence_readback: denial_audit_index_preconditions_complete,
         ready_for_feature_flag_config_write: false,
         ready_for_feature_flag_enablement: false,
         ready_for_canary_traffic: false,
@@ -405,6 +468,10 @@ mod tests {
         assert_eq!(report.source_denial_readback_entry_count, 5);
         assert_eq!(report.source_denial_readback_blocker_count, 10);
         assert_eq!(report.source_required_prior_gate_count, 10);
+        assert!(report.source_denial_readback_preconditions_complete);
+        assert!(report.source_denial_readback_no_record_persist_accept_confirmed);
+        assert!(report.source_denial_readback_no_authorization_confirmed);
+        assert!(report.source_denial_readback_ready);
         assert_eq!(report.audit_index_entry_count, 6);
         assert_eq!(report.audit_index_blocker_count, 11);
     }
@@ -424,6 +491,7 @@ mod tests {
         assert!(!report.audit_index_scope.index_persisted);
         assert!(!report.audit_index_scope.index_authoritative);
         assert!(!report.audit_index_scope.acceptance_allowed);
+        assert!(report.audit_index_scope_report_only_complete);
         assert!(report.audit_index_entries.iter().all(|entry| {
             entry.indexed
                 && entry.ready
@@ -432,6 +500,7 @@ mod tests {
                 && !entry.authoritative
                 && !entry.mutation_allowed
         }));
+        assert!(report.audit_index_entries_report_only_complete);
     }
 
     #[test]
@@ -463,6 +532,8 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.audit_index_blockers_complete);
+        assert!(report.denial_audit_index_preconditions_complete);
         assert!(report.ready_for_non_persistence_readback);
         assert!(!report.audit_index_authorizes_config_write);
         assert!(!report.audit_index_authorizes_feature_flag_enablement);

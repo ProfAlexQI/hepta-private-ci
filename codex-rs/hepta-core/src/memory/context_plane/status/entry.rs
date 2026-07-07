@@ -5,6 +5,7 @@ use super::section::ContextPlaneStatusKind;
 use super::section::ContextPlaneStatusSection;
 use crate::memory::ContextMemoryRecallQualityGateBlockerReason;
 use crate::memory::ContextMemoryRecallQualityGateReport;
+use crate::memory::MemoryProviderReport;
 
 /// One payload-light context-plane status row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +130,28 @@ impl ContextPlaneStatusEntry {
             runtime_activation: recall_quality_gate.runtime_activation,
             prompt_assembly_change: recall_quality_gate.prompt_assembly_change,
             operator_activation_allowed: recall_quality_gate.operator_activation_allowed,
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_memory_provider_report(
+        provider_report: &MemoryProviderReport,
+    ) -> Self {
+        let has_integrity = provider_report.has_provider_boundary_integrity();
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryProviderBoundary,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: 1,
+            blocker_count: usize::from(!has_integrity),
+            production_write: provider_report.update_context.write_performed,
+            runtime_activation: provider_report.update_context.runtime_activation,
+            prompt_assembly_change: provider_report.update_context.prompt_payload_exported
+                || provider_report.update_context.ranked_payload_exported,
+            ..Self::default()
         }
     }
 

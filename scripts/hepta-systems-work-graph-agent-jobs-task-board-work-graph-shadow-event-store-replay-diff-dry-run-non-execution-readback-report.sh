@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_NON_EXECUTION_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-work-graph-shadow-event-store-replay-diff-dry-run-non-execution-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_NON_EXECUTION_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_WORK_GRAPH_SHADOW_EVENT_STORE_REPLAY_DIFF_DRY_RUN_NON_EXECUTION_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -33,12 +43,25 @@ shadow_readback_gate_present="$(
   bool_for path_exists scripts/hepta-systems-work-graph-agent-jobs-task-board-work-graph-shadow-event-store-readback-gate.sh
 )"
 
+replay_diff_dry_run_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-work-graph-shadow-event-store-replay-diff-dry-run-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-work-graph-shadow-event-store-replay-diff-dry-run-report.sh"
+)"
+shadow_readback_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-work-graph-shadow-event-store-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-work-graph-shadow-event-store-readback-report.sh"
+)"
+
 jq -n \
   --argjson rust_module_present "$rust_module_present" \
   --argjson report_script_present "$report_script_present" \
   --argjson gate_script_present "$gate_script_present" \
   --argjson replay_diff_dry_run_gate_present "$replay_diff_dry_run_gate_present" \
   --argjson shadow_readback_gate_present "$shadow_readback_gate_present" \
+  --argjson replay_diff_dry_run_report "$replay_diff_dry_run_report" \
+  --argjson shadow_readback_report "$shadow_readback_report" \
   '
   def readback_entry($id; $source; $target; $fields; $evidence): {
     id: $id,
@@ -176,6 +199,74 @@ jq -n \
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
     "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
   ] as $required_prior_gates
+  | ($replay_diff_dry_run_report.replay_execution_enabled == false
+      and $replay_diff_dry_run_report.replay_diff_recording_enabled == false
+      and $replay_diff_dry_run_report.replay_diff_persistence_enabled == false
+      and $replay_diff_dry_run_report.rollback_execution_enabled == false
+      and $replay_diff_dry_run_report.shadow_event_persistence_enabled == false
+      and $replay_diff_dry_run_report.projection_index_persistence_enabled == false
+      and $replay_diff_dry_run_report.scheduler_guardrail_live_enforcement_enabled == false
+      and $replay_diff_dry_run_report.runtime_interception_enabled == false
+      and $replay_diff_dry_run_report.ready_for_live_execution == false
+      and ($replay_diff_dry_run_report.side_effects | to_entries | all(.value == false))) as $source_replay_diff_dry_run_no_execution_confirmed
+  | ($replay_diff_dry_run_report.gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate"
+      and $replay_diff_dry_run_report.source_prior_readbacks_complete == true
+      and $replay_diff_dry_run_report.ready_for_non_execution_readback == true
+      and $replay_diff_dry_run_report.replay_diff_plan_count == 6
+      and $replay_diff_dry_run_report.replay_scope_count == 4
+      and $replay_diff_dry_run_report.non_execution_blocker_count == 16
+      and $source_replay_diff_dry_run_no_execution_confirmed) as $source_replay_diff_dry_run_ready
+  | ($shadow_readback_report.shadow_readback_executed == false
+      and $shadow_readback_report.shadow_event_persistence_enabled == false
+      and $shadow_readback_report.projection_index_persistence_enabled == false
+      and $shadow_readback_report.scheduler_guardrail_live_enforcement_enabled == false
+      and $shadow_readback_report.runtime_interception_enabled == false
+      and $shadow_readback_report.ready_for_live_execution == false
+      and ($shadow_readback_report.side_effects | to_entries | all(.value == false))) as $source_shadow_event_store_readback_no_execution_confirmed
+  | ($shadow_readback_report.gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"
+      and $shadow_readback_report.source_prior_readbacks_complete == true
+      and $shadow_readback_report.shadow_event_store_readback_ready == true
+      and $shadow_readback_report.ready_for_replay_diff_dry_run == true
+      and $shadow_readback_report.readback_entry_count == 6
+      and $shadow_readback_report.shadow_event_join_count == 4
+      and $source_shadow_event_store_readback_no_execution_confirmed) as $source_shadow_event_store_readback_ready
+  | ($source_replay_diff_dry_run_ready and $source_shadow_event_store_readback_ready) as $source_prior_readbacks_complete
+  | (($non_execution_readback_entries | length) == 7
+      and ($non_execution_readback_entries | all(
+        .visible == true
+        and .executed == false
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and (.required_fields | length > 0)
+      ))) as $non_execution_readback_entries_visible_only_complete
+  | (($replay_scope_readbacks | length) == 4
+      and ($replay_scope_readbacks | all(
+        .readback_status == "scope_readback_ready_not_executed"
+        and .dry_run_only == true
+        and .replay_executed == false
+        and .diff_recorded == false
+        and .persisted == false
+        and (.trace_id | startswith("trace-blocking-dry-run-"))
+        and (.shadow_event_ref | startswith("wg-event-shadow-"))
+      ))) as $replay_scope_readbacks_visible_only_complete
+  | (($non_execution_blockers | length) == 18
+      and ($non_execution_blockers | all(.required_before_audit_acceptance == true))) as $non_execution_blockers_complete
+  | ($source_replay_diff_dry_run_ready
+      and $non_execution_readback_entries_visible_only_complete) as $replay_diff_plan_readback_ready
+  | ($source_replay_diff_dry_run_ready
+      and $replay_scope_readbacks_visible_only_complete) as $replay_scope_readback_ready
+  | ($source_prior_readbacks_complete
+      and $non_execution_blockers_complete
+      and $replay_diff_dry_run_report.side_effects.replay_executed == false
+      and $replay_diff_dry_run_report.side_effects.replay_diff_recorded == false
+      and $replay_diff_dry_run_report.side_effects.replay_diff_persisted == false
+      and $replay_diff_dry_run_report.side_effects.rollback_executed == false
+      and $replay_diff_dry_run_report.side_effects.idempotency_index_mutated == false) as $side_effect_boundary_readback_ready
+  | ($source_prior_readbacks_complete
+      and $replay_diff_plan_readback_ready
+      and $replay_scope_readback_ready
+      and $side_effect_boundary_readback_ready) as $dry_run_non_execution_readback_ready
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -183,13 +274,17 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_gate",
       schema_version: "work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_v1",
       preview_mode: "work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_no_execute_no_persist_no_live",
-      source_replay_diff_dry_run_gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate",
-      source_replay_diff_plan_count: 6,
-      source_replay_scope_count: 4,
-      source_non_execution_blocker_count: 16,
-      source_shadow_event_store_readback_gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate",
-      source_shadow_readback_entry_count: 6,
-      source_shadow_event_join_count: 4,
+      source_replay_diff_dry_run_gate: $replay_diff_dry_run_report.gate,
+      source_replay_diff_plan_count: $replay_diff_dry_run_report.replay_diff_plan_count,
+      source_replay_scope_count: $replay_diff_dry_run_report.replay_scope_count,
+      source_non_execution_blocker_count: $replay_diff_dry_run_report.non_execution_blocker_count,
+      source_replay_diff_dry_run_ready: $source_replay_diff_dry_run_ready,
+      source_replay_diff_dry_run_no_execution_confirmed: $source_replay_diff_dry_run_no_execution_confirmed,
+      source_shadow_event_store_readback_gate: $shadow_readback_report.gate,
+      source_shadow_readback_entry_count: $shadow_readback_report.readback_entry_count,
+      source_shadow_event_join_count: $shadow_readback_report.shadow_event_join_count,
+      source_shadow_event_store_readback_ready: $source_shadow_event_store_readback_ready,
+      source_shadow_event_store_readback_no_execution_confirmed: $source_shadow_event_store_readback_no_execution_confirmed,
       non_execution_readback_entry_count: ($non_execution_readback_entries | length),
       replay_scope_readback_count: ($replay_scope_readbacks | length),
       non_execution_blocker_count: ($non_execution_blockers | length),
@@ -199,15 +294,19 @@ jq -n \
       non_execution_blockers: $non_execution_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_non_execution_readback_audit_index_gate",
-      dry_run_non_execution_readback_ready: true,
-      replay_diff_plan_readback_ready: true,
-      replay_scope_readback_ready: true,
-      side_effect_boundary_readback_ready: true,
-      replay_execution_confirmed_absent: true,
-      replay_diff_recording_confirmed_absent: true,
-      replay_diff_persistence_confirmed_absent: true,
-      rollback_execution_confirmed_absent: true,
-      idempotency_mutation_confirmed_absent: true,
+      source_prior_readbacks_complete: $source_prior_readbacks_complete,
+      non_execution_readback_entries_visible_only_complete: $non_execution_readback_entries_visible_only_complete,
+      replay_scope_readbacks_visible_only_complete: $replay_scope_readbacks_visible_only_complete,
+      non_execution_blockers_complete: $non_execution_blockers_complete,
+      dry_run_non_execution_readback_ready: $dry_run_non_execution_readback_ready,
+      replay_diff_plan_readback_ready: $replay_diff_plan_readback_ready,
+      replay_scope_readback_ready: $replay_scope_readback_ready,
+      side_effect_boundary_readback_ready: $side_effect_boundary_readback_ready,
+      replay_execution_confirmed_absent: $source_replay_diff_dry_run_no_execution_confirmed,
+      replay_diff_recording_confirmed_absent: ($replay_diff_dry_run_report.replay_diff_recording_enabled == false),
+      replay_diff_persistence_confirmed_absent: ($replay_diff_dry_run_report.replay_diff_persistence_enabled == false),
+      rollback_execution_confirmed_absent: ($replay_diff_dry_run_report.rollback_execution_enabled == false),
+      idempotency_mutation_confirmed_absent: ($replay_diff_dry_run_report.side_effects.idempotency_index_mutated == false),
       readback_execution_enabled: false,
       readback_recording_enabled: false,
       readback_persistence_enabled: false,
@@ -216,7 +315,7 @@ jq -n \
       shadow_event_persistence_enabled: false,
       scheduler_guardrail_live_enforcement_enabled: false,
       runtime_interception_enabled: false,
-      ready_for_audit_index: true,
+      ready_for_audit_index: $dry_run_non_execution_readback_ready,
       ready_for_live_execution: false,
       source_probes: {
         non_execution_readback: {
@@ -225,10 +324,18 @@ jq -n \
           gate_script_present: $gate_script_present
         },
         replay_diff_dry_run: {
-          gate_script_present: $replay_diff_dry_run_gate_present
+          gate_script_present: $replay_diff_dry_run_gate_present,
+          report_gate: ($replay_diff_dry_run_report.gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_replay_diff_dry_run_gate"),
+          ready_for_non_execution_readback: $replay_diff_dry_run_report.ready_for_non_execution_readback,
+          no_execution_confirmed: $source_replay_diff_dry_run_no_execution_confirmed,
+          side_effects_all_false: ($replay_diff_dry_run_report.side_effects | to_entries | all(.value == false))
         },
         shadow_event_store_readback: {
-          gate_script_present: $shadow_readback_gate_present
+          gate_script_present: $shadow_readback_gate_present,
+          report_gate: ($shadow_readback_report.gate == "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate"),
+          readback_ready: $shadow_readback_report.shadow_event_store_readback_ready,
+          no_execution_confirmed: $source_shadow_event_store_readback_no_execution_confirmed,
+          side_effects_all_false: ($shadow_readback_report.side_effects | to_entries | all(.value == false))
         }
       },
       side_effects: {

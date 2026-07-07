@@ -4,6 +4,7 @@ use crate::work_graph_agent_jobs_task_board_canary_readback_replay::WORK_GRAPH_A
 use crate::work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_CONFIG_WIRING_REPORT_ONLY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_non_blocking_canary::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_NON_BLOCKING_CANARY_GATE;
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_NON_SEND_READBACK_GATE;
+use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback::WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketNonSendReadbackSideEffects;
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback::hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_report;
 use crate::work_graph_agent_jobs_task_board_feature_flag_operator_packet_report_only::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_REPORT_ONLY_GATE;
 use crate::work_graph_agent_jobs_task_board_report_only_entrypoint_emission::WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE;
@@ -29,6 +30,7 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagRollbackReplayPreEnableBlockerM
     pub source_non_send_readback_gate: &'static str,
     pub source_readback_entry_count: usize,
     pub source_readback_blocker_count: usize,
+    pub source_required_prior_gate_count: usize,
     pub rollback_replay_check_count: usize,
     pub pre_enable_blocker_count: usize,
     pub required_prior_gate_count: usize,
@@ -36,6 +38,13 @@ pub struct WorkGraphAgentJobsTaskBoardFeatureFlagRollbackReplayPreEnableBlockerM
     pub pre_enable_blockers: Vec<WorkGraphFeatureFlagPreEnableBlockerPreview>,
     pub required_prior_gates: Vec<&'static str>,
     pub recommended_next_gate: &'static str,
+    pub source_non_send_readback_preconditions_complete: bool,
+    pub source_non_send_readback_no_acceptance_confirmed: bool,
+    pub source_non_send_readback_no_mutation_confirmed: bool,
+    pub source_non_send_readback_ready: bool,
+    pub rollback_replay_checks_report_only_complete: bool,
+    pub pre_enable_blockers_complete: bool,
+    pub rollback_replay_blocker_matrix_preconditions_complete: bool,
     pub rollback_anchor_present: bool,
     pub deterministic_replay_required: bool,
     pub replay_diff_required: bool,
@@ -111,6 +120,39 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_e
     let pre_enable_blockers = work_graph_agent_jobs_task_board_feature_flag_pre_enable_blockers();
     let required_prior_gates =
         work_graph_agent_jobs_task_board_feature_flag_rollback_replay_required_prior_gates();
+    let source_non_send_readback_no_acceptance_confirmed = !source.operator_packet_accepted
+        && !source.approval_recorded
+        && !source.approval_acceptance_allowed
+        && !source.ready_for_operator_packet_acceptance;
+    let source_non_send_readback_no_mutation_confirmed = !source.operator_packet_sent
+        && !source.operator_packet_recorded
+        && !source.operator_packet_persisted
+        && !source.operator_packet_authoritative
+        && !source.operator_packet_authorizes_config_write
+        && !source.operator_packet_authorizes_canary_traffic
+        && !source.operator_packet_authorizes_live_cutover
+        && !source.readback_persisted
+        && !source.ready_for_feature_flag_config_write
+        && !source.ready_for_feature_flag_enablement
+        && !source.ready_for_live_cutover
+        && source.side_effects
+            == WorkGraphAgentJobsTaskBoardFeatureFlagOperatorPacketNonSendReadbackSideEffects::none(
+            );
+    let source_non_send_readback_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_OPERATOR_PACKET_NON_SEND_READBACK_GATE
+        && source.non_send_readback_preconditions_complete
+        && source.ready_for_rollback_replay_pre_enable_blocker_matrix
+        && source_non_send_readback_no_acceptance_confirmed
+        && source_non_send_readback_no_mutation_confirmed;
+    let rollback_replay_checks_report_only_complete = !rollback_replay_checks.is_empty()
+        && rollback_replay_checks.iter().all(|check| {
+            check.deterministic && check.diff_required && !check.executed && check.passed_preview
+        });
+    let pre_enable_blockers_complete = !pre_enable_blockers.is_empty()
+        && pre_enable_blockers.iter().all(|blocker| blocker.blocked);
+    let rollback_replay_blocker_matrix_preconditions_complete = source_non_send_readback_ready
+        && rollback_replay_checks_report_only_complete
+        && pre_enable_blockers_complete;
 
     WorkGraphAgentJobsTaskBoardFeatureFlagRollbackReplayPreEnableBlockerMatrixReport {
         product: "Hepta",
@@ -123,6 +165,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_e
         source_non_send_readback_gate: source.gate,
         source_readback_entry_count: source.readback_entry_count,
         source_readback_blocker_count: source.readback_blocker_count,
+        source_required_prior_gate_count: source.required_prior_gate_count,
         rollback_replay_check_count: rollback_replay_checks.len(),
         pre_enable_blocker_count: pre_enable_blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -131,13 +174,22 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_e
         required_prior_gates,
         recommended_next_gate:
             WORK_GRAPH_AGENT_JOBS_TASK_BOARD_FEATURE_FLAG_ROLLBACK_REPLAY_PRE_ENABLE_BLOCKER_MATRIX_RECOMMENDED_NEXT_GATE,
+        source_non_send_readback_preconditions_complete: source
+            .non_send_readback_preconditions_complete,
+        source_non_send_readback_no_acceptance_confirmed,
+        source_non_send_readback_no_mutation_confirmed,
+        source_non_send_readback_ready,
+        rollback_replay_checks_report_only_complete,
+        pre_enable_blockers_complete,
+        rollback_replay_blocker_matrix_preconditions_complete,
         rollback_anchor_present: true,
         deterministic_replay_required: true,
         replay_diff_required: true,
         rollback_rehearsal_required: true,
         replay_executed: false,
         rollback_executed: false,
-        ready_for_enablement_precondition_dry_run: true,
+        ready_for_enablement_precondition_dry_run:
+            rollback_replay_blocker_matrix_preconditions_complete,
         ready_for_feature_flag_config_write: false,
         ready_for_feature_flag_enablement: false,
         ready_for_canary_traffic: false,
@@ -350,6 +402,11 @@ mod tests {
         );
         assert_eq!(report.source_readback_entry_count, 4);
         assert_eq!(report.source_readback_blocker_count, 8);
+        assert_eq!(report.source_required_prior_gate_count, 7);
+        assert!(report.source_non_send_readback_preconditions_complete);
+        assert!(report.source_non_send_readback_no_acceptance_confirmed);
+        assert!(report.source_non_send_readback_no_mutation_confirmed);
+        assert!(report.source_non_send_readback_ready);
         assert!(report.rollback_anchor_present);
         assert!(report.deterministic_replay_required);
         assert!(report.replay_diff_required);
@@ -367,6 +424,7 @@ mod tests {
         assert!(report.rollback_replay_checks.iter().all(|check| {
             check.deterministic && check.diff_required && !check.executed && check.passed_preview
         }));
+        assert!(report.rollback_replay_checks_report_only_complete);
         assert!(report.ready_for_enablement_precondition_dry_run);
         assert!(!report.ready_for_feature_flag_config_write);
         assert!(!report.ready_for_feature_flag_enablement);
@@ -386,6 +444,7 @@ mod tests {
                 .iter()
                 .all(|blocker| blocker.blocked)
         );
+        assert!(report.pre_enable_blockers_complete);
         assert_eq!(
             report.required_prior_gates,
             vec![
@@ -400,6 +459,7 @@ mod tests {
             ]
         );
         assert_eq!(report.required_prior_gate_count, 8);
+        assert!(report.rollback_replay_blocker_matrix_preconditions_complete);
     }
 
     #[test]

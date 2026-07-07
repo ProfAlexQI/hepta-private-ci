@@ -591,7 +591,7 @@ mod tests {
             [
                 ("durable_store_enablement_switch", 9, 12, 5),
                 ("wal_append_boundary_contract", 6, 12, 5),
-                ("idempotency_mutation_policy", 12, 12, 5),
+                ("idempotency_mutation_policy", 17, 12, 5),
                 ("rollback_readback_gate", 10, 12, 5),
                 ("operator_review_and_side_effect_lock", 3, 6, 5),
                 ("scheduler_admission_enforcement_precondition", 5, 5, 6),
@@ -613,7 +613,7 @@ mod tests {
         let report =
             hepta_work_graph_append_only_store_enablement_precondition_application_preview_report();
 
-        assert_eq!(report.contract_ref_count, 49);
+        assert_eq!(report.contract_ref_count, 54);
         assert_eq!(report.source_ref_count, 63);
         assert_eq!(report.evidence_field_ref_count, 36);
         assert_eq!(report.blocker_mapping_source_ref_count, 70);

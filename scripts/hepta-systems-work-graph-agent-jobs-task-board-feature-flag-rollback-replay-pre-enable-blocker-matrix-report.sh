@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_ROLLBACK_REPLAY_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-rollback-replay-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_ROLLBACK_REPLAY_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_ROLLBACK_REPLAY_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -34,21 +44,23 @@ non_send_readback_gate_points_here="$(
     "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback.rs
 )"
-non_send_readback_ready_present="$(
-  bool_for source_has "ready_for_rollback_replay_pre_enable_blocker_matrix: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback.rs
-)"
 operator_packet_unsent_present="$(
   bool_for source_has "operator_packet_sent: false" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback.rs
+)"
+
+non_send_readback="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-operator-packet-non-send-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-packet-non-send-readback-report.sh"
 )"
 
 jq -n \
   --argjson rollback_replay_module_present "$rollback_replay_module_present" \
   --argjson non_send_readback_gate_present "$non_send_readback_gate_present" \
   --argjson non_send_readback_gate_points_here "$non_send_readback_gate_points_here" \
-  --argjson non_send_readback_ready_present "$non_send_readback_ready_present" \
   --argjson operator_packet_unsent_present "$operator_packet_unsent_present" \
+  --argjson non_send_readback "$non_send_readback" \
   '
   def check($id; $surface; $kind; $state): {
     id: $id,
@@ -178,6 +190,39 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($non_send_readback.operator_packet_accepted == false
+      and $non_send_readback.approval_recorded == false
+      and $non_send_readback.approval_acceptance_allowed == false
+      and $non_send_readback.ready_for_operator_packet_acceptance == false) as $source_non_send_readback_no_acceptance_confirmed
+  | ($non_send_readback.operator_packet_sent == false
+      and $non_send_readback.operator_packet_recorded == false
+      and $non_send_readback.operator_packet_persisted == false
+      and $non_send_readback.operator_packet_authoritative == false
+      and $non_send_readback.operator_packet_authorizes_config_write == false
+      and $non_send_readback.operator_packet_authorizes_canary_traffic == false
+      and $non_send_readback.operator_packet_authorizes_live_cutover == false
+      and $non_send_readback.readback_persisted == false
+      and $non_send_readback.ready_for_feature_flag_config_write == false
+      and $non_send_readback.ready_for_feature_flag_enablement == false
+      and $non_send_readback.ready_for_live_cutover == false
+      and ($non_send_readback.side_effects | to_entries | all(.value == false))) as $source_non_send_readback_no_mutation_confirmed
+  | ($non_send_readback.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_gate"
+      and $non_send_readback.non_send_readback_preconditions_complete == true
+      and $non_send_readback.ready_for_rollback_replay_pre_enable_blocker_matrix == true
+      and $source_non_send_readback_no_acceptance_confirmed
+      and $source_non_send_readback_no_mutation_confirmed) as $source_non_send_readback_ready
+  | (($rollback_replay_checks | length) > 0
+      and ($rollback_replay_checks | all(
+        .deterministic == true
+        and .diff_required == true
+        and .executed == false
+        and .passed_preview == true
+      ))) as $rollback_replay_checks_report_only_complete
+  | (($pre_enable_blockers | length) > 0
+      and ($pre_enable_blockers | all(.blocked == true))) as $pre_enable_blockers_complete
+  | ($source_non_send_readback_ready
+      and $rollback_replay_checks_report_only_complete
+      and $pre_enable_blockers_complete) as $rollback_replay_blocker_matrix_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -185,9 +230,10 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_rollback_replay_pre_enable_blocker_matrix_v1",
       preview_mode: "rollback_replay_pre_enable_blocker_matrix_no_execution_no_enablement",
-      source_non_send_readback_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_gate",
-      source_readback_entry_count: 4,
-      source_readback_blocker_count: 8,
+      source_non_send_readback_gate: $non_send_readback.gate,
+      source_readback_entry_count: $non_send_readback.readback_entry_count,
+      source_readback_blocker_count: $non_send_readback.readback_blocker_count,
+      source_required_prior_gate_count: $non_send_readback.required_prior_gate_count,
       rollback_replay_check_count: ($rollback_replay_checks | length),
       pre_enable_blocker_count: ($pre_enable_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -195,13 +241,20 @@ jq -n \
       pre_enable_blockers: $pre_enable_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate",
+      source_non_send_readback_preconditions_complete: $non_send_readback.non_send_readback_preconditions_complete,
+      source_non_send_readback_no_acceptance_confirmed: $source_non_send_readback_no_acceptance_confirmed,
+      source_non_send_readback_no_mutation_confirmed: $source_non_send_readback_no_mutation_confirmed,
+      source_non_send_readback_ready: $source_non_send_readback_ready,
+      rollback_replay_checks_report_only_complete: $rollback_replay_checks_report_only_complete,
+      pre_enable_blockers_complete: $pre_enable_blockers_complete,
+      rollback_replay_blocker_matrix_preconditions_complete: $rollback_replay_blocker_matrix_preconditions_complete,
       rollback_anchor_present: true,
       deterministic_replay_required: true,
       replay_diff_required: true,
       rollback_rehearsal_required: true,
       replay_executed: false,
       rollback_executed: false,
-      ready_for_enablement_precondition_dry_run: true,
+      ready_for_enablement_precondition_dry_run: $rollback_replay_blocker_matrix_preconditions_complete,
       ready_for_feature_flag_config_write: false,
       ready_for_feature_flag_enablement: false,
       ready_for_canary_traffic: false,
@@ -210,7 +263,11 @@ jq -n \
         rollback_replay_module_present: $rollback_replay_module_present,
         non_send_readback_gate_present: $non_send_readback_gate_present,
         non_send_readback_gate_points_here: $non_send_readback_gate_points_here,
-        non_send_readback_ready_present: $non_send_readback_ready_present,
+        non_send_readback_report_gate: $non_send_readback.gate,
+        non_send_readback_preconditions_complete: $non_send_readback.non_send_readback_preconditions_complete,
+        non_send_readback_ready_for_matrix: $non_send_readback.ready_for_rollback_replay_pre_enable_blocker_matrix,
+        non_send_readback_operator_packet_acceptance_ready: $non_send_readback.ready_for_operator_packet_acceptance,
+        non_send_readback_side_effects_all_false: ($non_send_readback.side_effects | to_entries | all(.value == false)),
         operator_packet_unsent_present: $operator_packet_unsent_present
       },
       side_effects: {

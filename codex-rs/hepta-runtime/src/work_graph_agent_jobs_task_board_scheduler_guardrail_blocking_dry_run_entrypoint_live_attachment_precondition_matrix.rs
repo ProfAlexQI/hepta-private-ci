@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_HARDENING_TERMINAL_NO_ENFORCEMENT_FINAL_CLOSEOUT_GATE,
+    WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointHardeningTerminalNoEnforcementFinalCloseoutSideEffects,
     hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout_report,
 };
 
@@ -26,6 +27,10 @@ pub struct WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypoint
     pub source_final_closeout_entry_count: usize,
     pub source_final_closeout_blocker_count: usize,
     pub source_required_prior_gate_count: usize,
+    pub source_final_closeout_ready: bool,
+    pub source_final_closeout_no_persistence_confirmed: bool,
+    pub source_final_closeout_no_live_confirmed: bool,
+    pub source_final_closeout_ready_for_live_attachment_matrix: bool,
     pub entrypoint_count: usize,
     pub precondition_check_count: usize,
     pub precondition_satisfied_count: usize,
@@ -47,6 +52,11 @@ pub struct WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypoint
     pub matrix_persisted: bool,
     pub matrix_authoritative: bool,
     pub matrix_accepted: bool,
+    pub entrypoints_complete: bool,
+    pub precondition_matrix_complete: bool,
+    pub blocking_preconditions_complete: bool,
+    pub blockers_complete: bool,
+    pub live_attachment_precondition_matrix_preconditions_complete: bool,
     pub live_attachment_allowed: bool,
     pub live_blocking_hook_install_allowed: bool,
     pub runtime_interception_allowed: bool,
@@ -167,10 +177,90 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         .iter()
         .filter(|check| check.satisfied)
         .count();
+    let precondition_unsatisfied_count = precondition_checks.len() - precondition_satisfied_count;
     let blocking_precondition_count = precondition_checks
         .iter()
         .filter(|check| check.blocking)
         .count();
+    let source_final_closeout_no_persistence_confirmed =
+        source.source_non_persistence_readback_no_persistence_confirmed
+            && source.terminal_no_enforcement_final_closeout_preconditions_complete
+            && !source.final_closeout_recorded
+            && !source.final_closeout_persisted
+            && !source.final_closeout_authoritative
+            && !source.final_closeout_accepted
+            && !source.source_audit_index_persisted
+            && !source.source_readback_persisted
+            && !source.hardening_decision_recording_allowed
+            && !source.hardening_decision_persistence_allowed
+            && !source.work_graph_event_persistence_allowed
+            && !source.projection_persistence_allowed
+            && source.side_effects
+                == WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointHardeningTerminalNoEnforcementFinalCloseoutSideEffects::none();
+    let source_final_closeout_no_live_confirmed = source
+        .ready_for_live_attachment_precondition_matrix
+        && !source.live_blocking_enforcement_allowed
+        && !source.runtime_interception_allowed
+        && !source.scheduler_admission_enforcement_allowed
+        && !source.guardrail_enforcement_allowed
+        && !source.lease_acquisition_allowed
+        && !source.work_start_allowed
+        && !source.agent_spawn_allowed
+        && !source.model_invocation_allowed
+        && !source.external_send_allowed
+        && !source.replay_execution_allowed
+        && !source.replay_diff_recording_allowed
+        && !source.replay_diff_persistence_allowed
+        && !source.rollback_execution_allowed
+        && !source.idempotency_mutation_allowed
+        && !source.config_write_allowed
+        && !source.feature_flag_mutation_allowed
+        && !source.canary_traffic_allowed
+        && !source.operator_review_request_allowed
+        && !source.approval_recording_allowed
+        && !source.live_cutover_allowed
+        && !source.ready_for_live_execution
+        && source_final_closeout_no_persistence_confirmed;
+    let source_final_closeout_ready = source.gate
+        == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_HARDENING_TERMINAL_NO_ENFORCEMENT_FINAL_CLOSEOUT_GATE
+        && source.source_non_persistence_readback_ready
+        && source.source_non_persistence_readback_no_persistence_confirmed
+        && source.source_non_persistence_readback_no_live_confirmed
+        && source.source_non_persistence_readback_ready_for_terminal_closeout
+        && source.terminal_no_enforcement_branch_closed
+        && source.final_closeout_scope_visible_only_complete
+        && source.final_closeout_entries_complete
+        && source.final_closeout_blockers_complete
+        && source.terminal_no_enforcement_final_closeout_preconditions_complete
+        && source.final_closeout_entry_count == 9
+        && source.final_closeout_blocker_count == 36
+        && source.required_prior_gate_count == 15
+        && source_final_closeout_no_live_confirmed;
+    let source_final_closeout_ready_for_live_attachment_matrix =
+        source_final_closeout_ready && source.ready_for_live_attachment_precondition_matrix;
+    let entrypoints_complete = entrypoints.len() == 4
+        && entrypoints.iter().all(|entry| {
+            entry.live_attachment_candidate
+                && entry.report_only
+                && !entry.live_attachment_allowed
+                && !entry.runtime_interception_allowed
+        });
+    let precondition_matrix_complete = precondition_checks.len() == 14
+        && precondition_satisfied_count == 4
+        && precondition_unsatisfied_count == 10
+        && precondition_checks.iter().all(|check| check.required);
+    let blocking_preconditions_complete = blocking_precondition_count == 10
+        && precondition_checks
+            .iter()
+            .filter(|check| check.blocking)
+            .all(|check| !check.satisfied);
+    let blockers_complete = blockers.len() == 33 && blockers.iter().all(|blocker| blocker.blocked);
+    let live_attachment_precondition_matrix_preconditions_complete =
+        source_final_closeout_ready_for_live_attachment_matrix
+            && entrypoints_complete
+            && precondition_matrix_complete
+            && blocking_preconditions_complete
+            && blockers_complete;
 
     WorkGraphAgentJobsTaskBoardSchedulerGuardrailBlockingDryRunEntrypointLiveAttachmentPreconditionMatrixReport {
         product: "Hepta",
@@ -186,10 +276,14 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         source_final_closeout_entry_count: source.final_closeout_entry_count,
         source_final_closeout_blocker_count: source.final_closeout_blocker_count,
         source_required_prior_gate_count: source.required_prior_gate_count,
+        source_final_closeout_ready,
+        source_final_closeout_no_persistence_confirmed,
+        source_final_closeout_no_live_confirmed,
+        source_final_closeout_ready_for_live_attachment_matrix,
         entrypoint_count: entrypoints.len(),
         precondition_check_count: precondition_checks.len(),
         precondition_satisfied_count,
-        precondition_unsatisfied_count: precondition_checks.len() - precondition_satisfied_count,
+        precondition_unsatisfied_count,
         blocking_precondition_count,
         blocker_count: blockers.len(),
         required_prior_gate_count: required_prior_gates.len(),
@@ -206,6 +300,11 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         matrix_persisted: false,
         matrix_authoritative: false,
         matrix_accepted: false,
+        entrypoints_complete,
+        precondition_matrix_complete,
+        blocking_preconditions_complete,
+        blockers_complete,
+        live_attachment_precondition_matrix_preconditions_complete,
         live_attachment_allowed: false,
         live_blocking_hook_install_allowed: false,
         runtime_interception_allowed: false,
@@ -233,7 +332,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         operator_review_request_allowed: false,
         approval_recording_allowed: false,
         live_cutover_allowed: false,
-        ready_for_denial_readback: true,
+        ready_for_denial_readback: live_attachment_precondition_matrix_preconditions_complete,
         ready_for_live_attachment: false,
         ready_for_live_execution: false,
         side_effects:
@@ -435,12 +534,10 @@ pub fn work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_ent
 
 pub fn work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_required_prior_gates()
 -> Vec<&'static str> {
-    let source =
-        hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout_report();
     let mut required_prior_gates = vec![
         WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_HARDENING_TERMINAL_NO_ENFORCEMENT_FINAL_CLOSEOUT_GATE,
     ];
-    required_prior_gates.extend(source.required_prior_gates.iter().copied());
+    required_prior_gates.extend(crate::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout::work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_hardening_terminal_no_enforcement_final_closeout_required_prior_gates());
     required_prior_gates
 }
 
@@ -543,6 +640,10 @@ mod tests {
         assert_eq!(report.source_final_closeout_entry_count, 9);
         assert_eq!(report.source_final_closeout_blocker_count, 36);
         assert_eq!(report.source_required_prior_gate_count, 15);
+        assert!(report.source_final_closeout_ready);
+        assert!(report.source_final_closeout_no_persistence_confirmed);
+        assert!(report.source_final_closeout_no_live_confirmed);
+        assert!(report.source_final_closeout_ready_for_live_attachment_matrix);
         assert_eq!(report.entrypoint_count, 4);
         assert_eq!(report.precondition_check_count, 14);
         assert_eq!(report.precondition_satisfied_count, 4);
@@ -575,6 +676,7 @@ mod tests {
         assert!(!report.matrix_persisted);
         assert!(!report.matrix_authoritative);
         assert!(!report.matrix_accepted);
+        assert!(report.entrypoints_complete);
         assert!(report.entrypoints.iter().all(|entry| {
             entry.live_attachment_candidate
                 && entry.report_only
@@ -595,6 +697,10 @@ mod tests {
                 .filter(|check| check.blocking)
                 .all(|check| !check.satisfied)
         );
+        assert!(report.precondition_matrix_complete);
+        assert!(report.blocking_preconditions_complete);
+        assert!(report.blockers_complete);
+        assert!(report.live_attachment_precondition_matrix_preconditions_complete);
         assert!(report.blockers.iter().all(|blocker| blocker.blocked));
         assert!(!report.live_attachment_allowed);
         assert!(!report.live_blocking_hook_install_allowed);

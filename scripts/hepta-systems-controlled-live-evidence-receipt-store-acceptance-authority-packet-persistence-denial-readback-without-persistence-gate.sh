@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-persistence-denial-readback-without-persistence-report.sh"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-non-send-readback-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_ACCEPTANCE_AUTHORITY_PACKET_PERSISTENCE_DENIAL_READBACK_WITHOUT_PERSISTENCE_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-persistence-denial-readback-without-persistence-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable acceptance authority packet persistence denial report: $REPORT"
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable acceptance authority packet non-send source report: $SOURCE_REPORT"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the acceptance authority packet persistence denial report"
+fi
+
+rg -q 'Controlled Live Evidence Receipt Store Acceptance Authority Packet Persistence Denial Readback Without Persistence' "$DOC" \
+  || fail "architecture note must document Controlled Live Evidence Receipt Store Acceptance Authority Packet Persistence Denial Readback Without Persistence"
+rg -q 'controlled live evidence receipt store acceptance authority packet persistence denial readback without persistence' "$DOC" \
+  || fail "architecture note must document acceptance authority packet persistence denial readback without persistence"
+rg -q 'no operator packet send, send attempt record, operator packet persistence, packet persistence attempt record, acceptance authority acceptance, acceptance recording, evidence recording, receipt store write, receipt persistence, ledger write, event-log write, SQLite write, credential read, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, provider call, model call, replay execution, rollback, kill-switch rehearsal execution, kill-switch mutation, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed persistence denial boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_acceptance_authority_packet_persistence_denial_readback_without_persistence"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_evidence_receipt_store_acceptance_authority_packet_persistence_denial_readback_without_persistence_gate"
+  and .schema_version == "controlled_live_evidence_receipt_store_acceptance_authority_packet_persistence_denial_readback_without_persistence_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_non_send_ready == true
+  and .source_non_send_entry_count == 7
+  and .source_unsent_packet_count == 7
+  and .source_send_disabled_count == 7
+  and .source_send_allowed_count == 0
+  and .source_operator_packet_sent_count == 0
+  and .source_operator_packet_persisted_count == 0
+  and .source_acceptance_allowed_count == 0
+  and .source_receipt_store_written_count == 0
+  and .source_live_execution_allowed == false
+  and .lib_export_present == true
+  and .persistence_denial_entry_count == 7
+  and .persistence_denial_projected_count == 7
+  and .packet_persistence_denied_count == 7
+  and .packet_persistence_disabled_count == 7
+  and .packet_persistence_allowed_count == 0
+  and .packet_persistence_attempt_recorded_count == 0
+  and .operator_packet_sent_count == 0
+  and .operator_packet_persisted_count == 0
+  and .non_send_projection_count == 7
+  and .send_attempt_recorded_count == 0
+  and .acceptance_authority_present_count == 0
+  and .acceptance_allowed_count == 0
+  and .authority_decision_recorded_count == 0
+  and .non_authority_receipt_projected_count == 7
+  and .non_authority_receipt_persisted_count == 0
+  and .evidence_recorded_count == 0
+  and .receipt_store_written_count == 0
+  and .receipt_persisted_count == 0
+  and .ledger_written_count == 0
+  and .workflow_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_mutation_allowed_count == 0
+  and .acceptance_authority_packet_persistence_denial_readback_ready == true
+  and .operator_packet_send_allowed == false
+  and .operator_packet_sent == false
+  and .operator_packet_persistence_allowed == false
+  and .operator_packet_persisted == false
+  and .acceptance_authority_allowed == false
+  and .acceptance_recording_allowed == false
+  and .evidence_recording_allowed == false
+  and .receipt_persistence_allowed == false
+  and .receipt_store_write_allowed == false
+  and .receipt_store_written == false
+  and .ledger_write_allowed == false
+  and .workflow_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .credential_read_allowed == false
+  and .live_execution_allowed == false
+  and (.blockers | index("operator_packet_persistence_disabled")) != null
+  and (.blockers | index("receipt_store_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.entries | length) == 7
+  and (.entries | all(
+    (.id | startswith("evidence_receipt_store_acceptance_authority_packet_persistence_denial_without_persistence_"))
+    and (.source_packet_non_send_readback_id | startswith("packet-non-send-readback:controlled-live-evidence-receipt-store:"))
+    and (.source_packet_non_send_readback_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/non-send/"))
+    and .source_acceptance_authority_packet_id == "controlled-live-evidence-receipt-store-acceptance-authority-packet"
+    and .source_acceptance_authority_packet_route == "operator-packet://controlled-live/evidence-receipt-store/acceptance-authority"
+    and (.packet_persistence_denial_id | startswith("packet-persistence-denial:controlled-live-evidence-receipt-store:"))
+    and (.packet_persistence_denial_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/persistence-denial/"))
+    and .packet_persistence_denial_reason == "operator_packet_persistence_disabled_acceptance_authority_missing_receipt_store_write_disabled"
+    and .operator_status == "blocked_missing_evidence"
+    and .observed_state == "acceptance_authority_packet_persistence_denied_without_persistence"
+    and .packet_projected == true
+    and .packet_ready == true
+    and .non_send_projected == true
+    and .packet_unsent == true
+    and .send_disabled == true
+    and .send_allowed == false
+    and .send_attempt_recorded == false
+    and .persistence_denial_projected == true
+    and .packet_persistence_denied == true
+    and .packet_persistence_disabled == true
+    and .packet_persistence_allowed == false
+    and .packet_persistence_attempt_recorded == false
+    and .operator_packet_sent == false
+    and .operator_packet_persisted == false
+    and .acceptance_authority_present == false
+    and .authority_decision_recorded == false
+    and .non_authority_receipt_projected == true
+    and .non_authority_receipt_persisted == false
+    and .acceptance_allowed == false
+    and .evidence_recorded == false
+    and .receipt_persisted == false
+    and .receipt_store_written == false
+    and .ledger_written == false
+    and .workflow_event_log_written == false
+    and .sqlite_written == false
+    and .credential_read_allowed == false
+    and .live_mutation_allowed == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .packet_persistence_denial_route == "readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/persistence-denial/dirty-worktree-boundary")
+  and (.next_actions | index("controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_denial_readback_without_write")) != null
+  and .recommended_next_gate == "controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_denial_readback_without_write"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_acceptance_authority_packet_non_send_readback"
+  and .status == "ready_blocked"
+  and .acceptance_authority_packet_non_send_readback_ready == true
+  and .non_send_entry_count == 7
+  and .unsent_packet_count == 7
+  and .send_disabled_count == 7
+  and .send_allowed_count == 0
+  and .operator_packet_sent_count == 0
+  and .operator_packet_persisted_count == 0
+  and .acceptance_allowed_count == 0
+  and .receipt_store_written_count == 0
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime controlled_live_evidence_receipt_store_acceptance_authority_packet_persistence_denial_readback_without_persistence --lib
+)
+
+printf 'hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-persistence-denial-readback-without-persistence-gate: PASS: acceptance authority packet persistence denial is read back without persistence or live execution\n'

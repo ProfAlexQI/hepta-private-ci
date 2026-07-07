@@ -90,7 +90,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 12
+        self.total_row_count == 13
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -214,7 +214,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 12
+            && self.matrix_row_count == 13
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count

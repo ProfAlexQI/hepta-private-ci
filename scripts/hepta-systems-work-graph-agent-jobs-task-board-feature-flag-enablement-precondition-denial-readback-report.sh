@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_DENIAL_READBACK_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-denial-readback-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_DENIAL_READBACK_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_DENIAL_READBACK_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -34,21 +44,23 @@ enablement_dry_run_points_here="$(
     "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_gate" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run.rs
 )"
-enablement_dry_run_ready_present="$(
-  bool_for source_has "ready_for_denial_readback: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run.rs
-)"
 enablement_dry_run_denies_present="$(
   bool_for source_has "deny_count" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run.rs
+)"
+
+enablement_dry_run="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-enablement-precondition-dry-run-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-enablement-precondition-dry-run-report.sh"
 )"
 
 jq -n \
   --argjson denial_readback_module_present "$denial_readback_module_present" \
   --argjson enablement_dry_run_gate_present "$enablement_dry_run_gate_present" \
   --argjson enablement_dry_run_points_here "$enablement_dry_run_points_here" \
-  --argjson enablement_dry_run_ready_present "$enablement_dry_run_ready_present" \
   --argjson enablement_dry_run_denies_present "$enablement_dry_run_denies_present" \
+  --argjson enablement_dry_run "$enablement_dry_run" \
   '
   def entry($id; $key; $state): {
     id: $id,
@@ -171,6 +183,49 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($enablement_dry_run.allow_count == 0
+      and $enablement_dry_run.deny_count == $enablement_dry_run.decision_count
+      and $enablement_dry_run.dry_run_decisions_deny_complete == true
+      and $enablement_dry_run.deny_reasons_unsatisfied_complete == true) as $source_enablement_precondition_deny_only_confirmed
+  | ($enablement_dry_run.config_write_allowed == false
+      and $enablement_dry_run.feature_flag_enablement_allowed == false
+      and $enablement_dry_run.canary_traffic_allowed == false
+      and $enablement_dry_run.live_cutover_allowed == false
+      and $enablement_dry_run.approval_acceptance_allowed == false
+      and $enablement_dry_run.replay_execution_allowed == false
+      and $enablement_dry_run.rollback_execution_allowed == false
+      and $enablement_dry_run.ready_for_feature_flag_config_write == false
+      and $enablement_dry_run.ready_for_feature_flag_enablement == false
+      and $enablement_dry_run.ready_for_canary_traffic == false
+      and $enablement_dry_run.ready_for_live_cutover == false
+      and ($enablement_dry_run.side_effects | to_entries | all(.value == false))) as $source_enablement_precondition_no_mutation_confirmed
+  | ($enablement_dry_run.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate"
+      and $enablement_dry_run.enablement_precondition_dry_run_preconditions_complete == true
+      and $enablement_dry_run.ready_for_denial_readback == true
+      and $source_enablement_precondition_deny_only_confirmed
+      and $source_enablement_precondition_no_mutation_confirmed) as $source_enablement_precondition_denial_readback_ready
+  | ($denial_readback_scope.denial_visible == true
+      and $denial_readback_scope.denial_recorded == false
+      and $denial_readback_scope.denial_persisted == false
+      and $denial_readback_scope.denial_accepted == false
+      and $denial_readback_scope.denial_authoritative == false
+      and $denial_readback_scope.readback_persisted == false) as $denial_readback_scope_non_authoritative
+  | (($denial_readback_entries | length) > 0
+      and ($denial_readback_entries | all(
+        .visible == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .accepted == false
+        and .authoritative == false
+        and .mutation_allowed == false
+      ))) as $denial_readback_entries_non_authoritative
+  | (($denial_readback_blockers | length) > 0
+      and ($denial_readback_blockers | all(.blocked == true))) as $denial_readback_blockers_complete
+  | ($source_enablement_precondition_denial_readback_ready
+      and $denial_readback_scope_non_authoritative
+      and $denial_readback_entries_non_authoritative
+      and $denial_readback_blockers_complete) as $denial_readback_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -178,11 +233,12 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_readback_v1",
       preview_mode: "enablement_precondition_denial_readback_only_no_accept_no_record_no_persistence",
-      source_enablement_precondition_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate",
-      source_decision_count: 2,
-      source_deny_reason_count: 10,
-      source_allow_count: 0,
-      source_deny_count: 2,
+      source_enablement_precondition_gate: $enablement_dry_run.gate,
+      source_decision_count: $enablement_dry_run.decision_count,
+      source_deny_reason_count: $enablement_dry_run.deny_reason_count,
+      source_allow_count: $enablement_dry_run.allow_count,
+      source_deny_count: $enablement_dry_run.deny_count,
+      source_required_prior_gate_count: $enablement_dry_run.required_prior_gate_count,
       denial_readback_entry_count: ($denial_readback_entries | length),
       denial_readback_blocker_count: ($denial_readback_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -191,6 +247,14 @@ jq -n \
       denial_readback_blockers: $denial_readback_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_denial_audit_index_gate",
+      source_enablement_precondition_dry_run_preconditions_complete: $enablement_dry_run.enablement_precondition_dry_run_preconditions_complete,
+      source_enablement_precondition_deny_only_confirmed: $source_enablement_precondition_deny_only_confirmed,
+      source_enablement_precondition_no_mutation_confirmed: $source_enablement_precondition_no_mutation_confirmed,
+      source_enablement_precondition_denial_readback_ready: $source_enablement_precondition_denial_readback_ready,
+      denial_readback_scope_non_authoritative: $denial_readback_scope_non_authoritative,
+      denial_readback_entries_non_authoritative: $denial_readback_entries_non_authoritative,
+      denial_readback_blockers_complete: $denial_readback_blockers_complete,
+      denial_readback_preconditions_complete: $denial_readback_preconditions_complete,
       dry_run_denial_visible: true,
       dry_run_denial_recorded: false,
       dry_run_denial_persisted: false,
@@ -203,7 +267,7 @@ jq -n \
       denial_readback_authorizes_live_cutover: false,
       approval_recorded: false,
       approval_acceptance_allowed: false,
-      ready_for_denial_audit_index: true,
+      ready_for_denial_audit_index: $denial_readback_preconditions_complete,
       ready_for_feature_flag_config_write: false,
       ready_for_feature_flag_enablement: false,
       ready_for_canary_traffic: false,
@@ -212,7 +276,10 @@ jq -n \
         denial_readback_module_present: $denial_readback_module_present,
         enablement_dry_run_gate_present: $enablement_dry_run_gate_present,
         enablement_dry_run_points_here: $enablement_dry_run_points_here,
-        enablement_dry_run_ready_present: $enablement_dry_run_ready_present,
+        enablement_dry_run_report_gate: $enablement_dry_run.gate,
+        enablement_dry_run_preconditions_complete: $enablement_dry_run.enablement_precondition_dry_run_preconditions_complete,
+        enablement_dry_run_ready_for_denial_readback: $enablement_dry_run.ready_for_denial_readback,
+        enablement_dry_run_side_effects_all_false: ($enablement_dry_run.side_effects | to_entries | all(.value == false)),
         enablement_dry_run_denies_present: $enablement_dry_run_denies_present
       },
       side_effects: {

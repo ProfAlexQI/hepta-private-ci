@@ -1,10 +1,8 @@
 use serde::Serialize;
 
-use crate::work_graph_append_only_event_store_shadow_path::{
-    WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE,
-    WorkGraphAppendOnlyEventStoreShadowPathSideEffects,
-    hepta_work_graph_append_only_event_store_shadow_path_report,
-};
+use crate::work_graph_append_only_event_store_shadow_path::WORK_GRAPH_APPEND_ONLY_EVENT_STORE_SHADOW_PATH_GATE;
+use crate::work_graph_append_only_event_store_shadow_path::WorkGraphAppendOnlyEventStoreShadowPathSideEffects;
+use crate::work_graph_append_only_event_store_shadow_path::hepta_work_graph_append_only_event_store_shadow_path_report;
 
 pub const WORK_GRAPH_PERSISTENT_MAILBOX_HANDOFF_EVENT_MAPPING_GATE: &str =
     "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate";

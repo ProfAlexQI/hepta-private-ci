@@ -25,6 +25,7 @@ jq -e '
   and .source_non_send_readback_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_gate"
   and .source_readback_entry_count == 4
   and .source_readback_blocker_count == 8
+  and .source_required_prior_gate_count == 7
   and .rollback_replay_check_count == 6
   and .pre_enable_blocker_count == 10
   and (.rollback_replay_checks | all(
@@ -59,6 +60,13 @@ jq -e '
   ]
   and .required_prior_gate_count == 8
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_enablement_precondition_dry_run_gate"
+  and .source_non_send_readback_preconditions_complete == true
+  and .source_non_send_readback_no_acceptance_confirmed == true
+  and .source_non_send_readback_no_mutation_confirmed == true
+  and .source_non_send_readback_ready == true
+  and .rollback_replay_checks_report_only_complete == true
+  and .pre_enable_blockers_complete == true
+  and .rollback_replay_blocker_matrix_preconditions_complete == true
   and .rollback_anchor_present == true
   and .deterministic_replay_required == true
   and .replay_diff_required == true
@@ -73,7 +81,11 @@ jq -e '
   and .source_probes.rollback_replay_module_present == true
   and .source_probes.non_send_readback_gate_present == true
   and .source_probes.non_send_readback_gate_points_here == true
-  and .source_probes.non_send_readback_ready_present == true
+  and .source_probes.non_send_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_packet_non_send_readback_gate"
+  and .source_probes.non_send_readback_preconditions_complete == true
+  and .source_probes.non_send_readback_ready_for_matrix == true
+  and .source_probes.non_send_readback_operator_packet_acceptance_ready == false
+  and .source_probes.non_send_readback_side_effects_all_false == true
   and .source_probes.operator_packet_unsent_present == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"

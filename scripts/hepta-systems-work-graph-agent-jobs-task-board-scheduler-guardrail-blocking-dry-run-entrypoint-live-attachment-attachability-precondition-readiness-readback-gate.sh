@@ -27,6 +27,10 @@ jq -e '
   and .source_attachability_precondition_check_count == 16
   and .source_attachability_blocker_count == 50
   and .source_required_prior_gate_count == 21
+  and .source_attachability_readiness_ready == true
+  and .source_attachability_readiness_no_persistence_confirmed == true
+  and .source_attachability_readiness_no_live_confirmed == true
+  and .source_attachability_readiness_ready_for_readback == true
   and .readback_entry_count == 7
   and .entrypoint_readback_count == 4
   and .readback_blocker_count == 53
@@ -97,6 +101,11 @@ jq -e '
   and .readback_persisted == false
   and .readback_authoritative == false
   and .readback_accepted == false
+  and .readback_scope_visible_only_complete == true
+  and .readback_entries_complete == true
+  and .entrypoint_readbacks_complete == true
+  and .readback_blockers_complete == true
+  and .attachability_readback_preconditions_complete == true
   and .attachability_candidates_readback_ready == true
   and .attachability_preconditions_satisfied == false
   and .live_attachment_allowed == false
@@ -129,16 +138,25 @@ jq -e '
   and .ready_for_attachability_readback_audit_index == true
   and .ready_for_live_attachment == false
   and .ready_for_live_execution == false
-  and .source_probes.readback_module_present == true
-  and .source_probes.readiness_gate_present == true
-  and .source_probes.readiness_points_here == true
-  and .source_probes.readiness_ready_present == true
-  and .source_probes.readiness_no_attachment_present == true
-  and .source_probes.readiness_no_live_present == true
+  and .source_readbacks.attachability_readiness_report_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_gate"
+  and .source_readbacks.attachability_readiness_preconditions_complete == true
+  and .source_readbacks.attachability_readiness_ready_for_readback == true
+  and .source_readbacks.attachability_readiness_no_persistence_confirmed == true
+  and .source_readbacks.attachability_readiness_no_live_confirmed == true
+  and .source_readbacks.attachability_readiness_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
-cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback --lib
+tests=(
+  live_attachment_attachability_readback_derives_from_readiness
+  live_attachment_attachability_readback_is_visible_only
+  live_attachment_attachability_readback_blocks_live_paths
+  live_attachment_attachability_readback_links_priors_and_side_effects
+)
+
+for test_name in "${tests[@]}"; do
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$test_name" --lib
+done
 
 echo "Hepta WorkGraph agent_jobs + task_board scheduler guardrail blocking dry-run entrypoint live attachment attachability precondition readiness readback gate passed"

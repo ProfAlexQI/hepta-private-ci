@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -45,6 +47,27 @@ task_board_feature_flag_id_present="$(
   bool_for source_has "work_graph_task_board_non_blocking_canary" codex-rs/hepta-runtime/src/task_board.rs
 )"
 
+canary_readback="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-canary-readback-replay-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-canary-readback-replay-report.sh"
+)"
+entrypoint_emission="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-report-only-entrypoint-emission-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-report-only-entrypoint-emission-report.sh"
+)"
+trace_guardrail="$(
+  capture_json_report \
+    "hepta-work-graph-trace-guardrail-span-report-only-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-trace-guardrail-span-report-only-report.sh"
+)"
+scheduler="$(
+  capture_json_report \
+    "hepta-work-graph-scheduler-admission-dry-run-enforcement-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement-report.sh"
+)"
+
 jq -n \
   --argjson feature_flag_module_present "$feature_flag_module_present" \
   --argjson canary_readback_gate_present "$canary_readback_gate_present" \
@@ -53,6 +76,10 @@ jq -n \
   --argjson agent_jobs_feature_flag_id_present "$agent_jobs_feature_flag_id_present" \
   --argjson task_board_feature_flag_field_present "$task_board_feature_flag_field_present" \
   --argjson task_board_feature_flag_id_present "$task_board_feature_flag_id_present" \
+  --argjson canary_readback "$canary_readback" \
+  --argjson entrypoint_emission "$entrypoint_emission" \
+  --argjson trace_guardrail "$trace_guardrail" \
+  --argjson scheduler "$scheduler" \
   '
   def flag($id; $source; $entrypoint): {
     id: $id,
@@ -117,6 +144,52 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($canary_readback.feature_flag_enabled == false
+      and $canary_readback.ready_for_live_cutover == false
+      and ($canary_readback.side_effects | to_entries | all(.value == false))) as $source_canary_readback_replay_no_live_confirmed
+  | ($canary_readback.gate == "hepta_work_graph_agent_jobs_task_board_canary_readback_replay_gate"
+      and $canary_readback.canary_readback_replay_prior_readbacks_complete == true
+      and $canary_readback.canary_projection_readback_replay_preview_complete == true
+      and $canary_readback.ready_for_non_blocking_canary == true
+      and $source_canary_readback_replay_no_live_confirmed) as $source_canary_readback_replay_ready
+  | ($entrypoint_emission.ready_for_live_execution == false
+      and ($entrypoint_emission.side_effects | to_entries | all(.value == false))) as $source_entrypoint_emission_no_live_confirmed
+  | ($entrypoint_emission.gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+      and $entrypoint_emission.entrypoint_emission_readiness_complete == true
+      and $entrypoint_emission.ready_for_canary_readback_replay_gate == true
+      and $source_entrypoint_emission_no_live_confirmed) as $source_entrypoint_emission_readiness_complete
+  | ($trace_guardrail.live_guardrail_enforcement_enabled == false
+      and $trace_guardrail.ready_for_live_execution == false
+      and ($trace_guardrail.side_effects | to_entries | all(.value == false))) as $source_trace_guardrail_no_live_blocking_confirmed
+  | ($trace_guardrail.gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
+      and $trace_guardrail.trace_guardrail_prior_readbacks_complete == true
+      and $trace_guardrail.ready_for_agent_jobs_task_board_report_only_emission == true
+      and $source_trace_guardrail_no_live_blocking_confirmed) as $source_trace_guardrail_readiness_complete
+  | ($scheduler.live_blocking_enforcement_enabled == false
+      and $scheduler.ready_for_live_execution == false
+      and ($scheduler.side_effects | to_entries | all(.value == false))) as $source_scheduler_admission_no_live_blocking_confirmed
+  | ($scheduler.gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+      and $scheduler.dry_run_enforcement_enabled == true
+      and $scheduler.ready_for_append_only_event_store_shadow_path == true
+      and $source_scheduler_admission_no_live_blocking_confirmed) as $source_scheduler_admission_dry_run_ready
+  | ($source_canary_readback_replay_ready
+      and $source_entrypoint_emission_readiness_complete
+      and $source_trace_guardrail_readiness_complete
+      and $source_scheduler_admission_dry_run_ready) as $feature_flag_prior_readbacks_complete
+  | (($feature_flags | length) > 0
+      and ($feature_flags | all(
+        .default_enabled == false
+        and .current_enabled == false
+        and .allows_live_blocking == false
+        and .allows_persistence == false
+      ))) as $feature_flags_default_off_confirmed
+  | (($feature_flags | all(.traffic_ppm == 0))
+      and ($rollout_stages | all(.traffic_ppm == 0 and .blocks_runtime_mutation == true))) as $canary_traffic_zero_ppm_confirmed
+  | ($feature_flag_prior_readbacks_complete
+      and $feature_flags_default_off_confirmed
+      and $canary_traffic_zero_ppm_confirmed
+      and ($emission_bindings | all(.live_cutover_enabled == false))
+      and ($safety_checks | all(.required == true))) as $feature_flag_enablement_preconditions_report_only_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -129,19 +202,59 @@ jq -n \
       emission_binding_count: ($emission_bindings | length),
       safety_check_count: ($safety_checks | length),
       required_prior_gate_count: ($required_prior_gates | length),
+      source_canary_readback_replay_required_prior_gate_count: $canary_readback.required_prior_gate_count,
+      source_canary_readback_replay_entrypoint_count: $canary_readback.canary_entrypoint_count,
+      source_canary_readback_replay_readback_evidence_count: $canary_readback.readback_evidence_count,
+      source_canary_readback_replay_replay_diff_count: $canary_readback.replay_diff_count,
+      source_entrypoint_emission_entrypoint_count: $entrypoint_emission.entrypoint_count,
+      source_entrypoint_emission_emission_count: $entrypoint_emission.emission_count,
+      source_trace_guardrail_span_count: $trace_guardrail.span_count,
+      source_trace_guardrail_blocking_guardrail_count: $trace_guardrail.blocking_guardrail_count,
+      source_scheduler_admission_entrypoint_count: $scheduler.entrypoint_count,
+      source_scheduler_admission_required_prior_gate_count: ($scheduler.required_prior_gates | length),
       feature_flags: $feature_flags,
       rollout_stages: $rollout_stages,
       emission_bindings: $emission_bindings,
       safety_checks: $safety_checks,
       required_prior_gates: $required_prior_gates,
+      source_canary_readback_replay_gate: $canary_readback.gate,
+      source_entrypoint_emission_gate: $entrypoint_emission.gate,
+      source_trace_guardrail_gate: $trace_guardrail.gate,
+      source_scheduler_admission_dry_run_gate: $scheduler.gate,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_config_wiring_report_only_gate",
-      ready_for_feature_flag_config_wiring: true,
+      source_canary_readback_replay_ready: $source_canary_readback_replay_ready,
+      source_canary_readback_replay_no_live_confirmed: $source_canary_readback_replay_no_live_confirmed,
+      source_entrypoint_emission_readiness_complete: $source_entrypoint_emission_readiness_complete,
+      source_entrypoint_emission_no_live_confirmed: $source_entrypoint_emission_no_live_confirmed,
+      source_trace_guardrail_readiness_complete: $source_trace_guardrail_readiness_complete,
+      source_trace_guardrail_no_live_blocking_confirmed: $source_trace_guardrail_no_live_blocking_confirmed,
+      source_scheduler_admission_dry_run_ready: $source_scheduler_admission_dry_run_ready,
+      source_scheduler_admission_no_live_blocking_confirmed: $source_scheduler_admission_no_live_blocking_confirmed,
+      feature_flag_prior_readbacks_complete: $feature_flag_prior_readbacks_complete,
+      feature_flags_default_off_confirmed: $feature_flags_default_off_confirmed,
+      canary_traffic_zero_ppm_confirmed: $canary_traffic_zero_ppm_confirmed,
+      feature_flag_enablement_preconditions_report_only_complete: $feature_flag_enablement_preconditions_report_only_complete,
+      ready_for_feature_flag_config_wiring: $feature_flag_enablement_preconditions_report_only_complete,
       ready_for_feature_flag_enablement: false,
       ready_for_live_cutover: false,
       source_probes: {
         feature_flag_module_present: $feature_flag_module_present,
         canary_readback_gate_present: $canary_readback_gate_present,
         entrypoint_emission_gate_present: $entrypoint_emission_gate_present,
+        canary_readback_replay_report_gate: $canary_readback.gate,
+        canary_readback_replay_ready_for_non_blocking_canary: $canary_readback.ready_for_non_blocking_canary,
+        canary_readback_replay_ready_for_live_cutover: $canary_readback.ready_for_live_cutover,
+        canary_readback_replay_feature_flag_enabled: $canary_readback.feature_flag_enabled,
+        canary_readback_replay_side_effects_all_false: ($canary_readback.side_effects | to_entries | all(.value == false)),
+        entrypoint_emission_report_gate: $entrypoint_emission.gate,
+        entrypoint_emission_readiness_complete: $entrypoint_emission.entrypoint_emission_readiness_complete,
+        entrypoint_emission_side_effects_all_false: ($entrypoint_emission.side_effects | to_entries | all(.value == false)),
+        trace_guardrail_report_gate: $trace_guardrail.gate,
+        trace_guardrail_prior_readbacks_complete: $trace_guardrail.trace_guardrail_prior_readbacks_complete,
+        trace_guardrail_side_effects_all_false: ($trace_guardrail.side_effects | to_entries | all(.value == false)),
+        scheduler_admission_dry_run_report_gate: $scheduler.gate,
+        scheduler_admission_dry_run_ready: $scheduler.ready_for_append_only_event_store_shadow_path,
+        scheduler_admission_dry_run_side_effects_all_false: ($scheduler.side_effects | to_entries | all(.value == false)),
         agent_jobs_feature_flag_field_present: $agent_jobs_feature_flag_field_present,
         agent_jobs_feature_flag_id_present: $agent_jobs_feature_flag_id_present,
         task_board_feature_flag_field_present: $task_board_feature_flag_field_present,

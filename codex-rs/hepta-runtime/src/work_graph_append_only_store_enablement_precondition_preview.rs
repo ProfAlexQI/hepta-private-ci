@@ -812,7 +812,7 @@ mod tests {
         assert_eq!(report.append_only_event_route_count, 12);
         assert_eq!(report.wal_operation_count, 6);
         assert_eq!(report.checkpoint_contract_count, 4);
-        assert_eq!(report.existing_idempotency_guard_count, 7);
+        assert_eq!(report.existing_idempotency_guard_count, 12);
         assert_eq!(report.candidate_idempotency_guard_count, 5);
         assert_eq!(report.combined_idempotency_guard_source_count, 12);
         assert_eq!(report.readback_probe_count, 6);

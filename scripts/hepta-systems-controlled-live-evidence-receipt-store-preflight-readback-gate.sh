@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REPORT="$ROOT/scripts/hepta-systems-controlled-live-evidence-receipt-store-preflight-readback-report.sh"
+KILL_SWITCH_BOUNDARY_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-report.sh"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_PREFLIGHT_READBACK_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-preflight-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable controlled-live evidence receipt store preflight report: $REPORT"
+[[ -x "$KILL_SWITCH_BOUNDARY_REPORT" ]] || fail "missing executable kill-switch rehearsal boundary report: $KILL_SWITCH_BOUNDARY_REPORT"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the controlled-live evidence receipt store preflight report"
+fi
+
+grep -q 'Controlled Live Evidence Receipt Store Preflight Readback' "$DOC" \
+  || fail "architecture note must document Controlled Live Evidence Receipt Store Preflight Readback"
+grep -q 'controlled live evidence receipt store preflight readback without persistence' "$DOC" \
+  || fail "architecture note must document receipt store preflight readback without persistence"
+grep -q 'no receipt store write, receipt persistence, approval request, approval acceptance, approval recording, evidence recording, evidence persistence, blocker waiver, credential read, packet send, attachment send, packet persistence, attachment persistence, readback persistence, ledger write, event-log write, SQLite write, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, provider call, model call, replay, rollback, kill-switch rehearsal execution, kill-switch mutation, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed receipt store preflight boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_preflight_readback"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_evidence_receipt_store_preflight_readback_gate"
+  and .schema_version == "controlled_live_evidence_receipt_store_preflight_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_kill_switch_rehearsal_boundary_readback_ready == true
+  and .source_kill_switch_rehearsal_boundary_entry_count == 7
+  and .source_kill_switch_rehearsal_evidence_missing_count == 7
+  and .source_packet_id == "controlled-live-operator-packet-preview"
+  and .source_packet_payload_hash == "sha256:controlled-live-operator-packet-preview-no-live-payload"
+  and .store_root == ".hepta/controlled-live/evidence-receipts/status-canary"
+  and .lib_export_present == true
+  and .store_preflight_entry_count == 7
+  and .store_preflight_ready_count == 7
+  and .missing_evidence_entry_count == 7
+  and .path_allowlist_projected_count == 7
+  and .receipt_schema_projected_count == 7
+  and .redaction_policy_projected_count == 7
+  and .secret_payload_denial_projected_count == 7
+  and .idempotency_key_projected_count == 7
+  and .append_only_contract_projected_count == 7
+  and .retention_policy_projected_count == 7
+  and .readback_query_projected_count == 7
+  and .replay_guard_projected_count == 7
+  and .evidence_recorded_count == 0
+  and .blocker_waived_count == 0
+  and .approval_request_allowed == false
+  and .approval_acceptance_allowed == false
+  and .evidence_recording_allowed == false
+  and .evidence_persisted == false
+  and .receipt_persistence_allowed == false
+  and .receipt_persisted == false
+  and .receipt_store_write_allowed == false
+  and .receipt_store_written == false
+  and .ledger_write_allowed == false
+  and .workflow_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .credential_read_allowed == false
+  and .live_execution_allowed == false
+  and .receipt_store_preflight_ready == true
+  and (.blockers | index("evidence_missing")) != null
+  and (.blockers | index("store_write_disabled")) != null
+  and (.blockers | index("receipt_persistence_disabled")) != null
+  and (.blockers | index("approval_request_disabled")) != null
+  and (.blockers | index("approval_acceptance_disabled")) != null
+  and (.blockers | index("ledger_write_disabled")) != null
+  and (.blockers | index("workflow_event_log_write_disabled")) != null
+  and (.blockers | index("sqlite_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.entries | length) == 7
+  and (.entries | all(.packet_id == "controlled-live-operator-packet-preview" and .packet_payload_hash == "sha256:controlled-live-operator-packet-preview-no-live-payload" and .store_root == ".hepta/controlled-live/evidence-receipts/status-canary" and (.receipt_path | startswith(".hepta/controlled-live/evidence-receipts/status-canary/")) and (.receipt_id | startswith("controlled-live-evidence-receipt-preflight:")) and .receipt_schema_version == "controlled_live_evidence_receipt_v1" and .receipt_status == "projected_missing_evidence_no_write" and (.idempotency_key | startswith("controlled-live-evidence-receipt-preflight:idempotency:")) and (.readback_query_key | startswith("controlled_live.evidence_receipt_store.preflight.")) and (.readback_query_route | startswith("readback://controlled-live/evidence-receipt-store/preflight/")) and .operator_status == "blocked_missing_evidence" and .observed_state == "receipt_store_preflight_projected_no_write" and .previous_state == "missing" and .current_state == "missing" and .state_delta == "unchanged_missing" and .redaction_policy == "metadata_only_no_secret_payload" and .secret_payload_state == "denied" and .path_allowlist_state == "projected" and .append_only_contract == "projected_append_only_metadata_receipt" and .retention_policy == "projected_local_receipt_metadata_only" and .replay_guard_state == "projected_no_replay_execution" and .kill_switch_rehearsal_boundary_confirmed == true and .missing_evidence_confirmed == true and .path_allowlist_projected == true and .receipt_schema_projected == true and .redaction_policy_projected == true and .secret_payload_denied == true and .idempotency_key_projected == true and .append_only_contract_projected == true and .retention_policy_projected == true and .readback_query_projected == true and .replay_guard_projected == true and .approval_request_allowed == false and .approval_acceptance_allowed == false and .evidence_recording_allowed == false and .evidence_recorded == false and .blocker_waiver_allowed == false and .receipt_persistence_allowed == false and .receipt_persisted == false and .receipt_store_write_allowed == false and .receipt_store_written == false and .ledger_write_allowed == false and .workflow_event_log_write_allowed == false and .sqlite_write_allowed == false and .credential_read_allowed == false and .live_mutation_allowed == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/dirty-worktree-boundary.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/dirty-worktree-boundary")
+  and any(.entries[]; .source_blocker_id == "operator_live_approval_missing" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/operator-live-approval-missing.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/operator-live-approval-missing")
+  and any(.entries[]; .source_blocker_id == "fresh_soak_readback_missing" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/fresh-soak-readback-missing.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/fresh-soak-readback-missing")
+  and any(.entries[]; .source_blocker_id == "credential_boundary_attestation_missing" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/credential-boundary-attestation-missing.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/credential-boundary-attestation-missing")
+  and any(.entries[]; .source_blocker_id == "gateway_native_telegram_post_boundary_approval_missing" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/gateway-native-telegram-post-boundary-approval-missing.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/gateway-native-telegram-post-boundary-approval-missing")
+  and any(.entries[]; .source_blocker_id == "rollback_rehearsal_missing" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/rollback-rehearsal-missing.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/rollback-rehearsal-missing")
+  and any(.entries[]; .source_blocker_id == "kill_switch_rehearsal_missing" and .receipt_path == ".hepta/controlled-live/evidence-receipts/status-canary/kill-switch-rehearsal-missing.receipt.json" and .readback_query_route == "readback://controlled-live/evidence-receipt-store/preflight/kill-switch-rehearsal-missing")
+  and (.next_actions | index("controlled_live_evidence_receipt_store_shadow_write_rehearsal_without_persistence")) != null
+  and .next_migration_step == "controlled_live_evidence_receipt_store_shadow_write_rehearsal_without_persistence"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$KILL_SWITCH_BOUNDARY_REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback"
+  and .status == "ready_blocked"
+  and .kill_switch_rehearsal_boundary_readback_ready == true
+  and .kill_switch_rehearsal_boundary_entry_count == 7
+  and .kill_switch_rehearsal_boundary_ready_count == 7
+  and .kill_switch_rehearsal_evidence_missing_count == 7
+  and .kill_switch_rehearsal_receipt_persistence_blocked_count == 7
+  and .packet_send_attempted == false
+  and .attachment_send_attempted == false
+  and .approval_request_sent == false
+  and .approval_accepted == false
+  and .credential_read_allowed == false
+  and .kill_switch_rehearsal_allowed == false
+  and .kill_switch_mutation_allowed == false
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime controlled_live_evidence_receipt_store_preflight_readback --lib
+)
+
+printf 'hepta-systems-controlled-live-evidence-receipt-store-preflight-readback-gate: PASS: receipt store preflight is projected, redacted, and closed without persistence\n'

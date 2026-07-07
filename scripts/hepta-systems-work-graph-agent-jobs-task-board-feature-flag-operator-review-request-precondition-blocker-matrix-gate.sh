@@ -88,6 +88,13 @@ jq -e '
   ]
   and .required_prior_gate_count == 17
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_gate"
+  and .source_non_persistence_readback_preconditions_complete == true
+  and .source_non_persistence_readback_no_request_confirmed == true
+  and .source_non_persistence_readback_no_authorization_confirmed == true
+  and .source_non_persistence_readback_ready == true
+  and .request_precondition_checks_complete == true
+  and .request_blockers_complete == true
+  and .request_precondition_blocker_matrix_preconditions_complete == true
   and .request_decision == "deny"
   and .request_target_action == "request_operator_review"
   and .operator_review_request_allowed == false
@@ -118,7 +125,10 @@ jq -e '
   and .source_probes.non_persistence_readback_gate_present == true
   and .source_probes.non_persistence_readback_points_here == true
   and .source_probes.non_persistence_readback_unrequested_present == true
-  and .source_probes.non_persistence_readback_ready_present == true
+  and .source_probes.non_persistence_readback_report_gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback_gate"
+  and .source_probes.non_persistence_readback_preconditions_complete == true
+  and .source_probes.non_persistence_readback_ready_for_blocker_matrix == true
+  and .source_probes.non_persistence_readback_side_effects_all_false == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 

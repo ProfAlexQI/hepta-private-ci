@@ -16,4 +16,5 @@ pub(in crate::memory) use operator::required_operator_approval_scopes;
 pub use status::ContextPlaneStatusEntry;
 pub use status::ContextPlaneStatusKind;
 pub use status::ContextPlaneStatusReport;
+pub use status::ContextPlaneStatusReportInput;
 pub use status::ContextPlaneStatusSection;

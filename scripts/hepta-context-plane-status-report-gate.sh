@@ -82,6 +82,7 @@ for term in \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
+  "memory_provider_boundary" \
   "recall_quality_blocking_reason_count" \
   "recall_quality_blocking_reasons" \
   "source_aware_front_door" \
@@ -202,6 +203,7 @@ context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready
 context-plane-status.recall-quality-blocking-reason-count=0
 context-plane-status.recall-quality-blocking-reasons=none
+context-plane-status.memory-provider-boundary=shadow
 context-plane-status.source-aware-front-door=disabled
 context-plane-status.production-write=disabled
 context-plane-status.graph-write=disabled

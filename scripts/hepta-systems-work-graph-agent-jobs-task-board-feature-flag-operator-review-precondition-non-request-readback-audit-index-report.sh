@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_OPERATOR_REVIEW_NON_REQUEST_AUDIT_INDEX_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-operator-review-non-request-audit-index-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_OPERATOR_REVIEW_NON_REQUEST_AUDIT_INDEX_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_OPERATOR_REVIEW_NON_REQUEST_AUDIT_INDEX_CAPTURE_CACHE_DIR"' EXIT
+fi
+
 path_exists() {
   local path="$1"
   [[ -e "$path" ]]
@@ -38,9 +48,11 @@ non_request_readback_unrequested_present="$(
   bool_for source_has "operator_review_requested: false" \
     codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback.rs
 )"
-non_request_readback_ready_present="$(
-  bool_for source_has "ready_for_non_request_readback_audit_index: true" \
-    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback.rs
+
+non_request_readback="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-operator-review-precondition-matrix-non-request-readback-report" \
+    "$ROOT/scripts/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-review-precondition-matrix-non-request-readback-report.sh"
 )"
 
 jq -n \
@@ -48,7 +60,7 @@ jq -n \
   --argjson non_request_readback_gate_present "$non_request_readback_gate_present" \
   --argjson non_request_readback_points_here "$non_request_readback_points_here" \
   --argjson non_request_readback_unrequested_present "$non_request_readback_unrequested_present" \
-  --argjson non_request_readback_ready_present "$non_request_readback_ready_present" \
+  --argjson non_request_readback "$non_request_readback" \
   '
   def entry($id; $key; $source; $category): {
     id: $id,
@@ -124,6 +136,62 @@ jq -n \
     "hepta_work_graph_trace_guardrail_span_report_only_gate",
     "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
   ] as $required_prior_gates
+  | ($non_request_readback.matrix_visible == true
+      and $non_request_readback.matrix_recorded == false
+      and $non_request_readback.matrix_persisted == false
+      and $non_request_readback.matrix_authoritative == false
+      and $non_request_readback.matrix_accepted == false
+      and $non_request_readback.operator_review_request_allowed == false
+      and $non_request_readback.operator_review_requested == false
+      and $non_request_readback.readback_persisted == false
+      and ($non_request_readback.side_effects | to_entries | all(.value == false))) as $source_non_request_readback_no_request_persist_confirmed
+  | ($non_request_readback.operator_review_request_allowed == false
+      and $non_request_readback.operator_review_requested == false
+      and $non_request_readback.operator_packet_send_allowed == false
+      and $non_request_readback.operator_packet_acceptance_allowed == false
+      and $non_request_readback.approval_recording_allowed == false
+      and $non_request_readback.config_write_allowed == false
+      and $non_request_readback.feature_flag_enablement_allowed == false
+      and $non_request_readback.canary_traffic_allowed == false
+      and $non_request_readback.scheduler_enforcement_allowed == false
+      and $non_request_readback.guardrail_enforcement_allowed == false
+      and $non_request_readback.replay_execution_allowed == false
+      and $non_request_readback.rollback_execution_allowed == false
+      and $non_request_readback.live_cutover_allowed == false
+      and $non_request_readback.ready_for_operator_review_request == false
+      and $non_request_readback.ready_for_approval_recording == false
+      and $non_request_readback.ready_for_feature_flag_config_write == false
+      and $non_request_readback.ready_for_feature_flag_enablement == false
+      and $non_request_readback.ready_for_canary_traffic == false
+      and $non_request_readback.ready_for_live_cutover == false) as $source_non_request_readback_no_authorization_confirmed
+  | ($non_request_readback.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback_gate"
+      and $non_request_readback.non_request_readback_preconditions_complete == true
+      and $non_request_readback.ready_for_non_request_readback_audit_index == true
+      and $source_non_request_readback_no_request_persist_confirmed
+      and $source_non_request_readback_no_authorization_confirmed) as $source_non_request_readback_ready
+  | ($audit_index_scope.index_visible == true
+      and $audit_index_scope.index_recorded == false
+      and $audit_index_scope.index_persisted == false
+      and $audit_index_scope.index_authoritative == false
+      and $audit_index_scope.index_accepted == false
+      and $audit_index_scope.operator_review_requested == false
+      and $audit_index_scope.acceptance_allowed == false) as $audit_index_scope_report_only_complete
+  | (($audit_index_entries | length) > 0
+      and ($audit_index_entries | all(
+        .indexed == true
+        and .ready == true
+        and .recorded == false
+        and .persisted == false
+        and .authoritative == false
+        and .operator_review_requested == false
+        and .mutation_allowed == false
+      ))) as $audit_index_entries_report_only_complete
+  | (($audit_index_blockers | length) > 0
+      and ($audit_index_blockers | all(.blocked == true))) as $audit_index_blockers_complete
+  | ($source_non_request_readback_ready
+      and $audit_index_scope_report_only_complete
+      and $audit_index_entries_report_only_complete
+      and $audit_index_blockers_complete) as $non_request_audit_index_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
@@ -131,10 +199,10 @@ jq -n \
       gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_gate",
       schema_version: "work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_v1",
       preview_mode: "operator_review_precondition_non_request_readback_audit_index_no_request_no_record_no_persistence",
-      source_non_request_readback_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_matrix_non_request_readback_gate",
-      source_readback_entry_count: 5,
-      source_readback_blocker_count: 14,
-      source_required_prior_gate_count: 14,
+      source_non_request_readback_gate: $non_request_readback.gate,
+      source_readback_entry_count: $non_request_readback.readback_entry_count,
+      source_readback_blocker_count: $non_request_readback.readback_blocker_count,
+      source_required_prior_gate_count: $non_request_readback.required_prior_gate_count,
       audit_index_entry_count: ($audit_index_entries | length),
       audit_index_blocker_count: ($audit_index_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
@@ -143,6 +211,14 @@ jq -n \
       audit_index_blockers: $audit_index_blockers,
       required_prior_gates: $required_prior_gates,
       recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_precondition_non_request_readback_audit_index_non_persistence_readback_gate",
+      source_non_request_readback_preconditions_complete: $non_request_readback.non_request_readback_preconditions_complete,
+      source_non_request_readback_no_request_persist_confirmed: $source_non_request_readback_no_request_persist_confirmed,
+      source_non_request_readback_no_authorization_confirmed: $source_non_request_readback_no_authorization_confirmed,
+      source_non_request_readback_ready: $source_non_request_readback_ready,
+      audit_index_scope_report_only_complete: $audit_index_scope_report_only_complete,
+      audit_index_entries_report_only_complete: $audit_index_entries_report_only_complete,
+      audit_index_blockers_complete: $audit_index_blockers_complete,
+      non_request_audit_index_preconditions_complete: $non_request_audit_index_preconditions_complete,
       audit_index_visible: true,
       audit_index_recorded: false,
       audit_index_persisted: false,
@@ -162,7 +238,7 @@ jq -n \
       audit_index_authorizes_replay_execution: false,
       audit_index_authorizes_rollback_execution: false,
       audit_index_authorizes_live_cutover: false,
-      ready_for_non_persistence_readback: true,
+      ready_for_non_persistence_readback: $non_request_audit_index_preconditions_complete,
       ready_for_operator_review_request: false,
       ready_for_approval_recording: false,
       ready_for_feature_flag_config_write: false,
@@ -174,7 +250,10 @@ jq -n \
         non_request_readback_gate_present: $non_request_readback_gate_present,
         non_request_readback_points_here: $non_request_readback_points_here,
         non_request_readback_unrequested_present: $non_request_readback_unrequested_present,
-        non_request_readback_ready_present: $non_request_readback_ready_present
+        non_request_readback_report_gate: $non_request_readback.gate,
+        non_request_readback_preconditions_complete: $non_request_readback.non_request_readback_preconditions_complete,
+        non_request_readback_ready_for_audit_index: $non_request_readback.ready_for_non_request_readback_audit_index,
+        non_request_readback_side_effects_all_false: ($non_request_readback.side_effects | to_entries | all(.value == false))
       },
       side_effects: {
         filesystem_written: false,
