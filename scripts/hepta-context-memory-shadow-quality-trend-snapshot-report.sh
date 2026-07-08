@@ -35,7 +35,7 @@ done
 cat <<'EOF'
 memory-shadow-quality-trend-snapshot=pass
 memory-shadow-quality-trend-snapshot.payload-light=pass
-memory-shadow-quality-trend-snapshot.schema=1
+memory-shadow-quality-trend-snapshot.schema=2
 memory-shadow-quality-trend-snapshot.mode=shadow-only
 memory-shadow-quality-trend-snapshot.source-summary=pass
 memory-shadow-quality-trend-snapshot.current-quality-trend=stable-pass
@@ -48,6 +48,11 @@ memory-shadow-quality-trend-snapshot.trend-window=stable-window
 memory-shadow-quality-trend-snapshot.regression-window-blocking-count=0
 memory-shadow-quality-trend-snapshot.quality-signal-window-pass-count=12
 memory-shadow-quality-trend-snapshot.ranked-recall-window-pass-count=3
+memory-shadow-quality-trend-snapshot.ranked-recall-comparison-window-pass-count=3
+memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-hybrid-score-basis-points=7800
+memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-reranking-delta-basis-points=640
+memory-shadow-quality-trend-snapshot.ranked-recall-max-positive-latency-delta-ms=10
+memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-token-tradeoff-basis-points=3000
 memory-shadow-quality-trend-snapshot.temporal-graph-window-pass-count=3
 memory-shadow-quality-trend-snapshot.recall-quality-window-pass-count=3
 memory-shadow-quality-trend-snapshot.provider-boundary-window-pass-count=3

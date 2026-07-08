@@ -35,7 +35,7 @@ done
 cat <<'EOF'
 memory-shadow-quality-summary=pass
 memory-shadow-quality-summary.payload-light=pass
-memory-shadow-quality-summary.schema=1
+memory-shadow-quality-summary.schema=2
 memory-shadow-quality-summary.mode=shadow-only
 memory-shadow-quality-summary.quality-trend=stable-pass
 memory-shadow-quality-summary.operator-summary=ready-shadow-only
@@ -47,6 +47,13 @@ memory-shadow-quality-summary.quality-signal-count=4
 memory-shadow-quality-summary.quality-signal-pass-count=4
 memory-shadow-quality-summary.regression-blocking-count=0
 memory-shadow-quality-summary.ranked-recall-signal=pass
+memory-shadow-quality-summary.ranked-recall-comparison-summary=pass
+memory-shadow-quality-summary.ranked-recall-hybrid-signal-count=5
+memory-shadow-quality-summary.ranked-recall-positive-hybrid-signal-pass-count=15
+memory-shadow-quality-summary.ranked-recall-min-positive-hybrid-score-basis-points=7800
+memory-shadow-quality-summary.ranked-recall-min-positive-reranking-delta-basis-points=640
+memory-shadow-quality-summary.ranked-recall-max-positive-latency-delta-ms=10
+memory-shadow-quality-summary.ranked-recall-min-positive-token-tradeoff-basis-points=3000
 memory-shadow-quality-summary.temporal-graph-signal=pass
 memory-shadow-quality-summary.recall-quality-signal=pass
 memory-shadow-quality-summary.provider-boundary-signal=pass

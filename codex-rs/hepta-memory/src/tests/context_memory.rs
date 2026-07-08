@@ -579,6 +579,25 @@ fn store_snapshot_context_memory_shadow_regression_dashboard_is_payload_light() 
     assert_eq!(report.regression_blocking_count, 0);
     assert_eq!(report.ranked_recall_fixture_count, 4);
     assert_eq!(report.ranked_recall_regression_blocked_count, 1);
+    assert!(report.ranked_recall_comparison_summary_pass);
+    assert_eq!(report.ranked_recall_hybrid_signal_count, 5);
+    assert_eq!(report.ranked_recall_positive_hybrid_signal_pass_count, 15);
+    assert_eq!(report.ranked_recall_hybrid_regression_blocked_count, 1);
+    assert_eq!(
+        report.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(report.ranked_recall_calibrated_reranking_win_count, 3);
+    assert_eq!(report.ranked_recall_calibrated_reranking_loss_count, 1);
+    assert_eq!(
+        report.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
+    assert_eq!(report.ranked_recall_max_positive_latency_delta_ms, 10);
+    assert_eq!(
+        report.ranked_recall_min_positive_token_tradeoff_basis_points,
+        3_000
+    );
     assert_eq!(report.temporal_graph_fixture_count, 4);
     assert_eq!(report.temporal_graph_regression_blocked_count, 1);
     assert_eq!(report.recall_quality_blocking_reason_count, 0);
@@ -597,6 +616,9 @@ fn store_snapshot_context_memory_shadow_regression_dashboard_is_payload_light() 
     let json = serde_json::to_string(&report).expect("shadow dashboard report should serialize");
     assert!(json.contains("shadow_only"));
     assert!(json.contains("ranked_recall_fixture_count"));
+    assert!(json.contains("ranked_recall_comparison_summary_pass"));
+    assert!(json.contains("ranked_recall_min_positive_hybrid_score_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_reranking_delta_basis_points"));
     assert!(json.contains("temporal_graph_fixture_count"));
     assert!(json.contains("provider_payload_light"));
     assert!(!json.contains("timeout surfaced during tool run"));
@@ -673,6 +695,21 @@ fn store_snapshot_context_memory_shadow_quality_summary_is_payload_light() {
     assert_eq!(report.operator_summary_line_count, 4);
     assert!(report.operator_summary_redacted);
     assert!(report.ranked_recall_signal_pass);
+    assert!(report.ranked_recall_comparison_summary_pass);
+    assert_eq!(report.ranked_recall_hybrid_signal_count, 5);
+    assert_eq!(report.ranked_recall_positive_hybrid_signal_pass_count, 15);
+    assert_eq!(
+        report.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(
+        report.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
+    assert_eq!(
+        report.ranked_recall_min_positive_token_tradeoff_basis_points,
+        3_000
+    );
     assert!(report.temporal_graph_signal_pass);
     assert!(report.recall_quality_signal_pass);
     assert!(report.provider_boundary_signal_pass);
@@ -690,6 +727,9 @@ fn store_snapshot_context_memory_shadow_quality_summary_is_payload_light() {
     assert!(json.contains("ready_shadow_only"));
     assert!(json.contains("quality_signal_count"));
     assert!(json.contains("operator_summary_redacted"));
+    assert!(json.contains("ranked_recall_comparison_summary_pass"));
+    assert!(json.contains("ranked_recall_min_positive_hybrid_score_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_reranking_delta_basis_points"));
     assert!(!json.contains("timeout surfaced during tool run"));
     assert!(!json.contains("timeout retried successfully"));
     assert!(!json.contains("timeout retry guidance"));
@@ -769,6 +809,19 @@ fn store_snapshot_context_memory_shadow_quality_trend_snapshot_is_payload_light(
     assert_eq!(report.quality_signal_count, 4);
     assert_eq!(report.quality_signal_window_pass_count, 12);
     assert_eq!(report.ranked_recall_window_pass_count, 3);
+    assert_eq!(report.ranked_recall_comparison_window_pass_count, 3);
+    assert_eq!(
+        report.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(
+        report.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
+    assert_eq!(
+        report.ranked_recall_min_positive_token_tradeoff_basis_points,
+        3_000
+    );
     assert_eq!(report.temporal_graph_window_pass_count, 3);
     assert_eq!(report.recall_quality_window_pass_count, 3);
     assert_eq!(report.provider_boundary_window_pass_count, 3);
@@ -788,6 +841,9 @@ fn store_snapshot_context_memory_shadow_quality_trend_snapshot_is_payload_light(
     assert!(json.contains("stable_window"));
     assert!(json.contains("window_observation_count"));
     assert!(json.contains("quality_signal_window_pass_count"));
+    assert!(json.contains("ranked_recall_comparison_window_pass_count"));
+    assert!(json.contains("ranked_recall_min_positive_hybrid_score_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_reranking_delta_basis_points"));
     assert!(json.contains("operator_snapshot_redacted"));
     assert!(!json.contains("timeout surfaced during tool run"));
     assert!(!json.contains("timeout retried successfully"));
@@ -1405,6 +1461,20 @@ async fn store_context_memory_shadow_regression_dashboard_matches_snapshot_helpe
     assert_eq!(from_store.input_report_pass_count, 4);
     assert_eq!(from_store.regression_blocking_count, 0);
     assert_eq!(from_store.ranked_recall_fixture_count, 4);
+    assert!(from_store.ranked_recall_comparison_summary_pass);
+    assert_eq!(from_store.ranked_recall_hybrid_signal_count, 5);
+    assert_eq!(
+        from_store.ranked_recall_positive_hybrid_signal_pass_count,
+        15
+    );
+    assert_eq!(
+        from_store.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(
+        from_store.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
     assert_eq!(from_store.temporal_graph_fixture_count, 4);
     assert_eq!(from_store.recall_quality_blocking_reason_count, 0);
     assert!(from_store.provider_boundary_pass);
@@ -1474,6 +1544,15 @@ async fn store_context_memory_shadow_quality_summary_matches_snapshot_helper() {
     assert_eq!(from_store.regression_blocking_count, 0);
     assert!(from_store.operator_summary_redacted);
     assert!(from_store.ranked_recall_signal_pass);
+    assert!(from_store.ranked_recall_comparison_summary_pass);
+    assert_eq!(
+        from_store.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(
+        from_store.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
     assert!(from_store.temporal_graph_signal_pass);
     assert!(from_store.recall_quality_signal_pass);
     assert!(from_store.provider_boundary_signal_pass);
@@ -1546,6 +1625,15 @@ async fn store_context_memory_shadow_quality_trend_snapshot_matches_snapshot_hel
     );
     assert_eq!(from_store.quality_signal_window_pass_count, 12);
     assert_eq!(from_store.ranked_recall_window_pass_count, 3);
+    assert_eq!(from_store.ranked_recall_comparison_window_pass_count, 3);
+    assert_eq!(
+        from_store.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(
+        from_store.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
     assert_eq!(from_store.temporal_graph_window_pass_count, 3);
     assert_eq!(from_store.recall_quality_window_pass_count, 3);
     assert_eq!(from_store.provider_boundary_window_pass_count, 3);

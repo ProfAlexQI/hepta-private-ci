@@ -91,7 +91,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-quality-summary=pass"
 assert_report_line "memory-shadow-quality-summary.payload-light=pass"
-assert_report_line "memory-shadow-quality-summary.schema=1"
+assert_report_line "memory-shadow-quality-summary.schema=2"
 assert_report_line "memory-shadow-quality-summary.mode=shadow-only"
 assert_report_line "memory-shadow-quality-summary.quality-trend=stable-pass"
 assert_report_line "memory-shadow-quality-summary.operator-summary=ready-shadow-only"
@@ -103,6 +103,13 @@ assert_report_line "memory-shadow-quality-summary.quality-signal-count=4"
 assert_report_line "memory-shadow-quality-summary.quality-signal-pass-count=4"
 assert_report_line "memory-shadow-quality-summary.regression-blocking-count=0"
 assert_report_line "memory-shadow-quality-summary.ranked-recall-signal=pass"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-comparison-summary=pass"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-hybrid-signal-count=5"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-positive-hybrid-signal-pass-count=15"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-min-positive-hybrid-score-basis-points=7800"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-min-positive-reranking-delta-basis-points=640"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-max-positive-latency-delta-ms=10"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-min-positive-token-tradeoff-basis-points=3000"
 assert_report_line "memory-shadow-quality-summary.temporal-graph-signal=pass"
 assert_report_line "memory-shadow-quality-summary.recall-quality-signal=pass"
 assert_report_line "memory-shadow-quality-summary.provider-boundary-signal=pass"
@@ -121,6 +128,10 @@ for term in \
   "quality_signal_count" \
   "quality_signal_pass_count" \
   "operator_summary_redacted" \
+  "ranked_recall_comparison_summary_pass" \
+  "ranked_recall_min_positive_hybrid_score_basis_points" \
+  "ranked_recall_min_positive_reranking_delta_basis_points" \
+  "ranked_recall_min_positive_token_tradeoff_basis_points" \
   "ready_shadow_only" \
   "stable_pass" \
   "hepta-context-memory-shadow-quality-summary-report.sh" \

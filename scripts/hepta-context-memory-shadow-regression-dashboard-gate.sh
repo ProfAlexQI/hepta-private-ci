@@ -97,7 +97,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-regression-dashboard=pass"
 assert_report_line "memory-shadow-regression-dashboard.payload-light=pass"
-assert_report_line "memory-shadow-regression-dashboard.schema=1"
+assert_report_line "memory-shadow-regression-dashboard.schema=2"
 assert_report_line "memory-shadow-regression-dashboard.mode=shadow-only"
 assert_report_line "memory-shadow-regression-dashboard.input-report-count=4"
 assert_report_line "memory-shadow-regression-dashboard.input-report-pass-count=4"
@@ -108,6 +108,17 @@ assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positiv
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-precision-basis-points=8000"
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-total-positive-token-saved=2140"
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-max-positive-latency-ms=55"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-comparison-summary=pass"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-hybrid-signal-count=5"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-positive-hybrid-signal-pass-count=15"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-hybrid-regression-blocked-count=1"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-hybrid-score-basis-points=7800"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-calibrated-reranking-win-count=3"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-calibrated-reranking-loss-count=1"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-reranking-delta-basis-points=640"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-max-positive-latency-delta-ms=10"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-token-tradeoff-basis-points=3000"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-reranking-regression-blocked-count=1"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-fixture-count=4"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-regression-fixture=blocked"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-min-positive-node-coverage-basis-points=10000"
@@ -136,6 +147,10 @@ for term in \
   "input_report_count" \
   "input_report_pass_count" \
   "regression_blocking_count" \
+  "ranked_recall_comparison_summary_pass" \
+  "ranked_recall_min_positive_hybrid_score_basis_points" \
+  "ranked_recall_min_positive_reranking_delta_basis_points" \
+  "ranked_recall_min_positive_token_tradeoff_basis_points" \
   "provider_payload_light" \
   "hepta-context-memory-shadow-regression-dashboard-report.sh" \
   "hepta-context-memory-shadow-regression-dashboard-gate.sh"; do
@@ -169,6 +184,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_shadow_regression_dashboard_blocks_input_regression_drift" \
   "memory shadow regression dashboard hepta-core regression test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_memory_shadow_regression_dashboard_blocks_ranked_recall_comparison_false_green" \
+  "memory shadow regression dashboard ranked recall comparison false-green test"
 
 assert_file_contains "$hepta_memory" \
   "memory shadow regression dashboard" \

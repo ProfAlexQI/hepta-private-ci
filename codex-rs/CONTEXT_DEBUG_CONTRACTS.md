@@ -1227,21 +1227,36 @@ re-exported through `codex-rs/hepta-core/src/memory/eval_harness.rs` and
 fixture counts and thresholds, aggregate temporal graph fixture counts and
 thresholds, recall-quality blocker/regression counts, provider-boundary
 payload-light booleans such as `provider_payload_light`, compact provider item
-and token counts, and explicit side-effect booleans. It must not contain prompt
+and token counts, the payload-light ranked recall comparison summary fields
+`ranked_recall_comparison_summary_pass`,
+`ranked_recall_min_positive_hybrid_score_basis_points`,
+`ranked_recall_min_positive_reranking_delta_basis_points`,
+`ranked_recall_max_positive_latency_delta_ms`, and
+`ranked_recall_min_positive_token_tradeoff_basis_points`, and explicit
+side-effect booleans. It must not contain prompt
 text, query text, transcript text, memory text, answer text, ranked payloads,
 raw ranked payloads, graph payloads, raw graph payloads, source ids, session
 ids, memory ids, trace ids, tool arguments, tool outputs, operator identity,
 email-shaped strings, phone-shaped strings, or user identifiers. Dashboard
-integrity requires schema version 1, shadow-only mode, exactly four input
+integrity requires schema version 2, shadow-only mode, exactly four input
 reports, four passing input reports, zero regression blockers, ranked recall
-and temporal graph regression fixtures blocked, zero recall-quality blocking
-reasons, `provider_payload_light=true`, operator approval required, no
+and temporal graph regression fixtures blocked, the ranked recall comparison
+summary passing with five hybrid signals, fifteen positive hybrid signal
+passes, a minimum positive hybrid score of 7800 basis points, three calibrated
+reranking wins, one calibrated reranking loss, a minimum positive reranking
+delta of 640 basis points, maximum positive latency delta of 10 ms, minimum
+positive token tradeoff of 3000 basis points, reranking regression blocked,
+zero recall-quality blocking reasons, `provider_payload_light=true`, operator
+approval required, no
 production route, no production memory write, no graph write, no prompt
 assembly change, no runtime activation, and no operator activation allowance.
 `scripts/hepta-context-memory-shadow-regression-dashboard-report.sh` must emit
 `memory-shadow-regression-dashboard=pass`,
 `memory-shadow-regression-dashboard.payload-light=pass`,
 `memory-shadow-regression-dashboard.input-report-pass-count=4`,
+`memory-shadow-regression-dashboard.ranked-recall-comparison-summary=pass`,
+`memory-shadow-regression-dashboard.ranked-recall-min-positive-hybrid-score-basis-points=7800`,
+`memory-shadow-regression-dashboard.ranked-recall-min-positive-reranking-delta-basis-points=640`,
 `memory-shadow-regression-dashboard.regression-blocking-count=0`, and
 `memory-shadow-regression-dashboard.runtime-activation=disabled`.
 `scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` must verify
@@ -1264,15 +1279,23 @@ and operator summary enums (`ContextMemoryShadowQualityTrend`,
 `quality_signal_count`, `quality_signal_pass_count`,
 `regression_blocking_count`, `operator_summary_redacted`, per-signal pass
 booleans, selected threshold observations, and explicit side-effect booleans.
+It must also carry the ranked recall comparison summary counters needed by the
+operator quality dashboard: `ranked_recall_comparison_summary_pass`,
+`ranked_recall_min_positive_hybrid_score_basis_points`,
+`ranked_recall_min_positive_reranking_delta_basis_points`,
+`ranked_recall_max_positive_latency_delta_ms`, and
+`ranked_recall_min_positive_token_tradeoff_basis_points`.
 It must not contain prompt text, query text, transcript text, memory text,
 answer text, ranked payloads, raw ranked payloads, graph payloads, raw graph
 payloads, source ids, session ids, memory ids, trace ids, tool arguments, tool
 outputs, operator identity, email-shaped strings, phone-shaped strings, or user
-identifiers. Summary integrity requires schema version 1, shadow-only mode,
+identifiers. Summary integrity requires schema version 2, shadow-only mode,
 `quality_trend=stable_pass`, `operator_summary=ready_shadow_only`, four input
 reports from the source dashboard, four passing quality signals, zero
 regression blockers, `operator_summary_redacted=true`, ranked recall/temporal
-graph/recall quality/provider-boundary signal pass booleans all true, operator
+graph/recall quality/provider-boundary signal pass booleans all true, ranked
+recall comparison summary pass true with hybrid score and calibrated reranking
+delta thresholds met, operator
 approval required, no production route, no production memory write, no graph
 write, no prompt assembly change, no runtime activation, and no operator
 activation allowance. `scripts/hepta-context-memory-shadow-quality-summary-report.sh`
@@ -1280,6 +1303,9 @@ must emit `memory-shadow-quality-summary=pass`,
 `memory-shadow-quality-summary.payload-light=pass`,
 `memory-shadow-quality-summary.quality-trend=stable-pass`,
 `memory-shadow-quality-summary.operator-summary=ready-shadow-only`,
+`memory-shadow-quality-summary.ranked-recall-comparison-summary=pass`,
+`memory-shadow-quality-summary.ranked-recall-min-positive-hybrid-score-basis-points=7800`,
+`memory-shadow-quality-summary.ranked-recall-min-positive-reranking-delta-basis-points=640`,
 `memory-shadow-quality-summary.regression-blocking-count=0`, and
 `memory-shadow-quality-summary.runtime-activation=disabled`.
 `scripts/hepta-context-memory-shadow-quality-summary-gate.sh` must verify the
@@ -1305,17 +1331,28 @@ current summary verdicts, `window_observation_count`, `required_pass_streak`,
 (`ContextMemoryShadowQualityTrendSnapshotMode`), `operator_snapshot_redacted`,
 aggregate per-signal window pass counts, selected threshold observations, and
 explicit side-effect booleans including `history_persistence_write=false`. It
+must also expose the ranked recall comparison fields
+`ranked_recall_comparison_window_pass_count`,
+`ranked_recall_min_positive_hybrid_score_basis_points`,
+`ranked_recall_min_positive_reranking_delta_basis_points`,
+`ranked_recall_max_positive_latency_delta_ms`, and
+`ranked_recall_min_positive_token_tradeoff_basis_points` without exporting
+ranked payloads.
 must not contain prompt text, query text, transcript text, memory text, answer
 text, ranked payloads, raw ranked payloads, graph payloads, raw graph payloads,
 source ids, session ids, memory ids, trace ids, tool arguments, tool outputs,
 operator identity, email-shaped strings, phone-shaped strings, or user
-identifiers. Snapshot integrity requires schema version 1, shadow-only mode,
+identifiers. Snapshot integrity requires schema version 2, shadow-only mode,
 source summary pass, `current_quality_trend=stable_pass`,
 `current_operator_summary=ready_shadow_only`, a three-observation window, a
 three-observation required and observed pass streak, zero regression-window
 blockers, `trend_window_verdict=stable_window`,
 `operator_snapshot_redacted=true`, `quality_signal_window_pass_count=12`, each
-per-signal window pass count equal to 3, operator approval required, no history
+per-signal window pass count equal to 3, ranked recall comparison window pass
+count equal to 3, minimum positive hybrid score at least 7800 basis points,
+minimum positive reranking delta at least 640 basis points, maximum positive
+latency delta no more than 10 ms, minimum positive token tradeoff at least 3000
+basis points, operator approval required, no history
 persistence write, no production route, no production memory write, no graph
 write, no prompt assembly change, no runtime activation, and no operator
 activation allowance.
@@ -1323,6 +1360,9 @@ activation allowance.
 emit `memory-shadow-quality-trend-snapshot=pass`,
 `memory-shadow-quality-trend-snapshot.payload-light=pass`,
 `memory-shadow-quality-trend-snapshot.trend-window=stable-window`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-comparison-window-pass-count=3`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-hybrid-score-basis-points=7800`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-reranking-delta-basis-points=640`,
 `memory-shadow-quality-trend-snapshot.regression-window-blocking-count=0`,
 `memory-shadow-quality-trend-snapshot.history-persistence-write=disabled`, and
 `memory-shadow-quality-trend-snapshot.runtime-activation=disabled`.

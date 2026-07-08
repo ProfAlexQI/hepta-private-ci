@@ -76,6 +76,11 @@ pub struct ContextMemoryShadowQualityTrendSnapshotReport {
     pub ranked_recall_min_positive_precision_basis_points: u32,
     pub ranked_recall_total_positive_token_saved: usize,
     pub ranked_recall_max_positive_latency_ms: u32,
+    pub ranked_recall_comparison_window_pass_count: usize,
+    pub ranked_recall_min_positive_hybrid_score_basis_points: u32,
+    pub ranked_recall_min_positive_reranking_delta_basis_points: i32,
+    pub ranked_recall_max_positive_latency_delta_ms: i32,
+    pub ranked_recall_min_positive_token_tradeoff_basis_points: u32,
     pub temporal_graph_min_positive_node_coverage_basis_points: u32,
     pub temporal_graph_min_positive_edge_coverage_basis_points: u32,
     pub temporal_graph_max_positive_latency_ms: u32,
@@ -119,6 +124,11 @@ impl Default for ContextMemoryShadowQualityTrendSnapshotReport {
             ranked_recall_min_positive_precision_basis_points: 0,
             ranked_recall_total_positive_token_saved: 0,
             ranked_recall_max_positive_latency_ms: 0,
+            ranked_recall_comparison_window_pass_count: 0,
+            ranked_recall_min_positive_hybrid_score_basis_points: 0,
+            ranked_recall_min_positive_reranking_delta_basis_points: 0,
+            ranked_recall_max_positive_latency_delta_ms: 0,
+            ranked_recall_min_positive_token_tradeoff_basis_points: 0,
             temporal_graph_min_positive_node_coverage_basis_points: 0,
             temporal_graph_min_positive_edge_coverage_basis_points: 0,
             temporal_graph_max_positive_latency_ms: 0,
@@ -169,6 +179,12 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
         } else {
             0
         };
+        let ranked_recall_comparison_window_pass_count =
+            if summary.ranked_recall_comparison_summary_pass {
+                SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
+            } else {
+                0
+            };
         let temporal_graph_window_pass_count = if summary.temporal_graph_signal_pass {
             SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
         } else {
@@ -233,6 +249,15 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
             ranked_recall_total_positive_token_saved: summary
                 .ranked_recall_total_positive_token_saved,
             ranked_recall_max_positive_latency_ms: summary.ranked_recall_max_positive_latency_ms,
+            ranked_recall_comparison_window_pass_count,
+            ranked_recall_min_positive_hybrid_score_basis_points: summary
+                .ranked_recall_min_positive_hybrid_score_basis_points,
+            ranked_recall_min_positive_reranking_delta_basis_points: summary
+                .ranked_recall_min_positive_reranking_delta_basis_points,
+            ranked_recall_max_positive_latency_delta_ms: summary
+                .ranked_recall_max_positive_latency_delta_ms,
+            ranked_recall_min_positive_token_tradeoff_basis_points: summary
+                .ranked_recall_min_positive_token_tradeoff_basis_points,
             temporal_graph_min_positive_node_coverage_basis_points: summary
                 .temporal_graph_min_positive_node_coverage_basis_points,
             temporal_graph_min_positive_edge_coverage_basis_points: summary
@@ -282,6 +307,8 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
             && self.quality_signal_window_pass_count == 12
             && self.ranked_recall_window_pass_count
                 == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
+            && self.ranked_recall_comparison_window_pass_count
+                == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
             && self.temporal_graph_window_pass_count
                 == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
             && self.recall_quality_window_pass_count
@@ -292,6 +319,10 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
             && self.ranked_recall_min_positive_precision_basis_points >= 8_000
             && self.ranked_recall_total_positive_token_saved >= 2_140
             && self.ranked_recall_max_positive_latency_ms <= 55
+            && self.ranked_recall_min_positive_hybrid_score_basis_points >= 7_800
+            && self.ranked_recall_min_positive_reranking_delta_basis_points >= 640
+            && self.ranked_recall_max_positive_latency_delta_ms <= 10
+            && self.ranked_recall_min_positive_token_tradeoff_basis_points >= 3_000
             && self.temporal_graph_min_positive_node_coverage_basis_points >= 10_000
             && self.temporal_graph_min_positive_edge_coverage_basis_points >= 10_000
             && self.temporal_graph_max_positive_latency_ms <= 47

@@ -665,6 +665,27 @@ fn context_memory_shadow_regression_dashboard_rolls_up_shadow_reports_without_ac
     assert_eq!(report.ranked_recall_total_positive_token_saved, 2_140);
     assert_eq!(report.ranked_recall_max_positive_latency_ms, 55);
     assert_eq!(report.ranked_recall_max_positive_regret_basis_points, 0);
+    assert!(report.ranked_recall_comparison_summary_pass);
+    assert_eq!(report.ranked_recall_hybrid_signal_count, 5);
+    assert_eq!(report.ranked_recall_positive_hybrid_signal_pass_count, 15);
+    assert_eq!(report.ranked_recall_hybrid_regression_blocked_count, 1);
+    assert_eq!(
+        report.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(report.ranked_recall_calibrated_reranking_fixture_count, 4);
+    assert_eq!(report.ranked_recall_calibrated_reranking_win_count, 3);
+    assert_eq!(report.ranked_recall_calibrated_reranking_loss_count, 1);
+    assert_eq!(
+        report.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
+    assert_eq!(report.ranked_recall_max_positive_latency_delta_ms, 10);
+    assert_eq!(
+        report.ranked_recall_min_positive_token_tradeoff_basis_points,
+        3_000
+    );
+    assert_eq!(report.ranked_recall_reranking_regression_blocked_count, 1);
     assert_eq!(report.temporal_graph_fixture_count, 4);
     assert_eq!(report.temporal_graph_fixture_pass_count, 4);
     assert_eq!(report.temporal_graph_regression_blocked_count, 1);
@@ -714,6 +735,10 @@ fn context_memory_shadow_regression_dashboard_rolls_up_shadow_reports_without_ac
         serde_json::to_string(&report).expect("shadow regression dashboard should serialize");
     assert!(json.contains("shadow_only"));
     assert!(json.contains("ranked_recall_fixture_count"));
+    assert!(json.contains("ranked_recall_comparison_summary_pass"));
+    assert!(json.contains("ranked_recall_min_positive_hybrid_score_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_reranking_delta_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_token_tradeoff_basis_points"));
     assert!(json.contains("temporal_graph_fixture_count"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
     assert!(json.contains("provider_payload_light"));
@@ -754,6 +779,34 @@ fn context_memory_shadow_regression_dashboard_blocks_input_regression_drift() {
     assert_eq!(report.input_report_pass_count, 3);
     assert_eq!(report.regression_blocking_count, 1);
     assert!(report.runtime_activation);
+    assert!(!report.has_shadow_regression_dashboard_integrity());
+}
+
+#[test]
+fn context_memory_shadow_regression_dashboard_blocks_ranked_recall_comparison_false_green() {
+    let mut ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let first_positive = ranked_recall
+        .fixtures
+        .iter_mut()
+        .find(|fixture| fixture.positive_fixture)
+        .expect("positive ranked recall fixture should exist");
+    first_positive.hybrid_score_basis_points = 7_700;
+    first_positive.reranking_delta_basis_points = 300;
+    let temporal_graph = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+    let recall_quality = ContextMemoryRecallQualityGateReport::seeded();
+    let provider = memory_provider_report_fixture();
+
+    let report = ContextMemoryShadowRegressionDashboardReport::from_reports(
+        &ranked_recall,
+        &temporal_graph,
+        &recall_quality,
+        &provider,
+    );
+
+    assert!(!ranked_recall.has_ranked_recall_shadow_integrity());
+    assert_eq!(report.input_report_pass_count, 3);
+    assert!(!report.ranked_recall_comparison_summary_pass);
+    assert!(report.regression_blocking_count > 0);
     assert!(!report.has_shadow_regression_dashboard_integrity());
 }
 
@@ -805,6 +858,26 @@ fn context_memory_shadow_quality_summary_rolls_up_dashboard_without_activation()
     );
     assert_eq!(report.ranked_recall_total_positive_token_saved, 2_140);
     assert_eq!(report.ranked_recall_max_positive_latency_ms, 55);
+    assert!(report.ranked_recall_comparison_summary_pass);
+    assert_eq!(report.ranked_recall_hybrid_signal_count, 5);
+    assert_eq!(report.ranked_recall_positive_hybrid_signal_pass_count, 15);
+    assert_eq!(report.ranked_recall_hybrid_regression_blocked_count, 1);
+    assert_eq!(
+        report.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(report.ranked_recall_calibrated_reranking_win_count, 3);
+    assert_eq!(report.ranked_recall_calibrated_reranking_loss_count, 1);
+    assert_eq!(
+        report.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
+    assert_eq!(report.ranked_recall_max_positive_latency_delta_ms, 10);
+    assert_eq!(
+        report.ranked_recall_min_positive_token_tradeoff_basis_points,
+        3_000
+    );
+    assert_eq!(report.ranked_recall_reranking_regression_blocked_count, 1);
     assert!(report.temporal_graph_signal_pass);
     assert_eq!(
         report.temporal_graph_min_positive_node_coverage_basis_points,
@@ -834,6 +907,10 @@ fn context_memory_shadow_quality_summary_rolls_up_dashboard_without_activation()
     assert!(json.contains("quality_signal_count"));
     assert!(json.contains("operator_summary_line_count"));
     assert!(json.contains("ranked_recall_signal_pass"));
+    assert!(json.contains("ranked_recall_comparison_summary_pass"));
+    assert!(json.contains("ranked_recall_min_positive_hybrid_score_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_reranking_delta_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_token_tradeoff_basis_points"));
     assert!(json.contains("temporal_graph_signal_pass"));
     assert!(json.contains("recall_quality_signal_pass"));
     assert!(json.contains("provider_boundary_signal_pass"));
@@ -933,6 +1010,20 @@ fn context_memory_shadow_quality_trend_snapshot_rolls_up_summary_window_without_
     );
     assert_eq!(report.ranked_recall_total_positive_token_saved, 2_140);
     assert_eq!(report.ranked_recall_max_positive_latency_ms, 55);
+    assert_eq!(report.ranked_recall_comparison_window_pass_count, 3);
+    assert_eq!(
+        report.ranked_recall_min_positive_hybrid_score_basis_points,
+        7_800
+    );
+    assert_eq!(
+        report.ranked_recall_min_positive_reranking_delta_basis_points,
+        640
+    );
+    assert_eq!(report.ranked_recall_max_positive_latency_delta_ms, 10);
+    assert_eq!(
+        report.ranked_recall_min_positive_token_tradeoff_basis_points,
+        3_000
+    );
     assert_eq!(
         report.temporal_graph_min_positive_node_coverage_basis_points,
         10_000
@@ -960,6 +1051,9 @@ fn context_memory_shadow_quality_trend_snapshot_rolls_up_summary_window_without_
     assert!(json.contains("window_observation_count"));
     assert!(json.contains("observed_pass_streak"));
     assert!(json.contains("quality_signal_window_pass_count"));
+    assert!(json.contains("ranked_recall_comparison_window_pass_count"));
+    assert!(json.contains("ranked_recall_min_positive_hybrid_score_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_reranking_delta_basis_points"));
     assert!(json.contains("operator_snapshot_redacted"));
     assert!(!json.contains("session-"));
     assert!(!json.contains("memory-"));

@@ -41,7 +41,7 @@ done
 cat <<'EOF'
 memory-shadow-regression-dashboard=pass
 memory-shadow-regression-dashboard.payload-light=pass
-memory-shadow-regression-dashboard.schema=1
+memory-shadow-regression-dashboard.schema=2
 memory-shadow-regression-dashboard.mode=shadow-only
 memory-shadow-regression-dashboard.input-report-count=4
 memory-shadow-regression-dashboard.input-report-pass-count=4
@@ -52,6 +52,17 @@ memory-shadow-regression-dashboard.ranked-recall-min-positive-recall-basis-point
 memory-shadow-regression-dashboard.ranked-recall-min-positive-precision-basis-points=8000
 memory-shadow-regression-dashboard.ranked-recall-total-positive-token-saved=2140
 memory-shadow-regression-dashboard.ranked-recall-max-positive-latency-ms=55
+memory-shadow-regression-dashboard.ranked-recall-comparison-summary=pass
+memory-shadow-regression-dashboard.ranked-recall-hybrid-signal-count=5
+memory-shadow-regression-dashboard.ranked-recall-positive-hybrid-signal-pass-count=15
+memory-shadow-regression-dashboard.ranked-recall-hybrid-regression-blocked-count=1
+memory-shadow-regression-dashboard.ranked-recall-min-positive-hybrid-score-basis-points=7800
+memory-shadow-regression-dashboard.ranked-recall-calibrated-reranking-win-count=3
+memory-shadow-regression-dashboard.ranked-recall-calibrated-reranking-loss-count=1
+memory-shadow-regression-dashboard.ranked-recall-min-positive-reranking-delta-basis-points=640
+memory-shadow-regression-dashboard.ranked-recall-max-positive-latency-delta-ms=10
+memory-shadow-regression-dashboard.ranked-recall-min-positive-token-tradeoff-basis-points=3000
+memory-shadow-regression-dashboard.ranked-recall-reranking-regression-blocked-count=1
 memory-shadow-regression-dashboard.temporal-graph-fixture-count=4
 memory-shadow-regression-dashboard.temporal-graph-regression-fixture=blocked
 memory-shadow-regression-dashboard.temporal-graph-min-positive-node-coverage-basis-points=10000
