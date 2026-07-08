@@ -1162,6 +1162,43 @@ provider tests and must be wired into debug/preflight after
 `scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh` and before
 `scripts/hepta-context-plane-status-report-gate.sh`.
 
+MemoryProviderV2 boundary: the next provider surface must keep the full
+runtime-facing lifecycle in one typed contract:
+`query / update_context / propose_write / add / clear / close`. The Rust
+contract is `MemoryProviderV2` plus `MemoryProviderWriteProposalReport`,
+`MemoryProviderAddRequest`, `MemoryProviderAddReport`,
+`MemoryProviderCloseReport`, and `MemoryProviderV2AuditReport` in
+`codex-rs/hepta-core/src/memory/provider_plane_v2.rs`, re-exported from
+`hepta_core::memory`. The first implementation remains shadow-only. It may
+turn the dry-run memory-formation queue into proposal counts, but it must not
+export candidate text, transcript text, prompt text, query text, source ids,
+session ids, memory ids, trace ids, provider payloads, or ranked item payloads.
+The proposal/add/close audit reports must keep `payload_light=true`,
+`operator_approval_required=true`, `candidate_payload_exported=false`,
+`source_payload_exported=false`, `write_performed=false`,
+`graph_write_performed=false`, and `runtime_activation=false`.
+
+Provider V2 `add` attempts are constrained until an explicit activation design
+exists. The reference `hepta-memory` provider must return a dry-run or blocked
+add report with `accepted_candidate_count=0`, `affected_record_count=0`,
+`write_performed=false`, `graph_write_performed=false`, and
+`runtime_activation=false`, even when the payload-light proposal has valid
+formation candidates. Provider V2 `close` must return a noop close report with
+no hidden drop-time mutation. The focused V2 gate covers the typed trait,
+public re-exports, the reference `hepta-memory` implementation, no-mutation
+tests, and payload-light audit serialization; it does not enable production
+memory writes, graph writes, provider install, or runtime activation.
+`scripts/hepta-context-memory-provider-v2-boundary-report.sh` must emit a
+fixed payload-light report with `memory-provider-v2-boundary=pass`,
+`memory-provider-v2-boundary.propose-write=shadow-proposal`,
+`memory-provider-v2-boundary.add=dry-run-or-blocked`,
+`memory-provider-v2-boundary.close=noop-close-report`, and
+`memory-provider-v2-boundary.runtime-activation=disabled`.
+`scripts/hepta-context-memory-provider-v2-boundary-gate.sh` must run the
+focused V2 provider tests and must be wired into debug/preflight after
+`scripts/hepta-context-memory-provider-boundary-gate.sh` and before
+`scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh`.
+
 Memory shadow regression dashboard: recall diagnostics may expose a
 payload-light shadow-only dashboard that aggregates the ranked recall shadow,
 temporal graph shadow, recall quality, and provider boundary reports before any

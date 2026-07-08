@@ -118,6 +118,9 @@ run_stage "context memory ranked recall shadow eval gate" \
 run_stage "context memory provider boundary gate" \
   bash "$repo_root/scripts/hepta-context-memory-provider-boundary-gate.sh"
 
+run_stage "context memory provider v2 boundary gate" \
+  bash "$repo_root/scripts/hepta-context-memory-provider-v2-boundary-gate.sh"
+
 run_stage "context memory shadow regression dashboard gate" \
   bash "$repo_root/scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh"
 

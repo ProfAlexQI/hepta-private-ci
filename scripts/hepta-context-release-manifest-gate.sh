@@ -182,6 +182,7 @@ codex-rs/hepta-core/src/memory/eval_harness/shadow_regression_dashboard.rs
 codex-rs/hepta-core/src/memory/eval_harness/temporal_graph_shadow.rs
 codex-rs/hepta-core/src/memory/formation.rs
 codex-rs/hepta-core/src/memory/provider_plane.rs
+codex-rs/hepta-core/src/memory/provider_plane_v2.rs
 codex-rs/hepta-core/src/memory/query.rs
 codex-rs/hepta-core/src/memory/recall.rs
 codex-rs/hepta-core/src/memory/recall/bundle.rs

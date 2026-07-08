@@ -91,6 +91,7 @@ memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
 memory_ranked_recall_shadow_eval_gate_script="hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
 memory_provider_boundary_gate_script="hepta-context-memory-provider-boundary-gate.sh"
+memory_provider_v2_boundary_gate_script="hepta-context-memory-provider-v2-boundary-gate.sh"
 memory_shadow_regression_dashboard_gate_script="hepta-context-memory-shadow-regression-dashboard-gate.sh"
 memory_shadow_quality_summary_gate_script="hepta-context-memory-shadow-quality-summary-gate.sh"
 memory_shadow_quality_trend_snapshot_gate_script="hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"
@@ -358,6 +359,16 @@ required_contract_terms=(
   "ranked_payload_exported=false"
   "hepta-context-memory-provider-boundary-report.sh"
   "hepta-context-memory-provider-boundary-gate.sh"
+  "MemoryProviderV2 boundary"
+  "MemoryProviderWriteProposalReport"
+  "MemoryProviderAddReport"
+  "MemoryProviderCloseReport"
+  "MemoryProviderV2AuditReport"
+  "candidate_payload_exported=false"
+  "source_payload_exported=false"
+  "graph_write_performed=false"
+  "hepta-context-memory-provider-v2-boundary-report.sh"
+  "hepta-context-memory-provider-v2-boundary-gate.sh"
   "Memory shadow regression dashboard"
   "memory-shadow-regression-dashboard=pass"
   "memory-shadow-regression-dashboard.payload-light=pass"
@@ -779,6 +790,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_provider_boundary_gate_script" \
   "memory provider boundary debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_provider_v2_boundary_gate_script" \
+  "memory provider v2 boundary debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -1342,6 +1358,12 @@ assert_line_before \
 assert_line_before \
   "$debug_gate" \
   "$memory_provider_boundary_gate_script" \
+  "$memory_provider_v2_boundary_gate_script" \
+  "memory provider v2 boundary debug gate order"
+
+assert_line_before \
+  "$debug_gate" \
+  "$memory_provider_v2_boundary_gate_script" \
   "$memory_shadow_regression_dashboard_gate_script" \
   "memory shadow regression dashboard debug gate order"
 
@@ -1396,6 +1418,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory provider boundary gate" \
+  "context memory provider v2 boundary gate" \
+  "memory provider v2 boundary preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory provider v2 boundary gate" \
   "context memory shadow regression dashboard gate" \
   "memory shadow regression dashboard preflight stage order"
 

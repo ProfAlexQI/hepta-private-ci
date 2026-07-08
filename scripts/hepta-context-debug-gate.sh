@@ -27,6 +27,7 @@ bash "$repo_root/scripts/hepta-context-memory-adaptive-allocator-eval-shadow-gat
 bash "$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-ranked-recall-shadow-eval-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-provider-boundary-gate.sh"
+bash "$repo_root/scripts/hepta-context-memory-provider-v2-boundary-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-quality-summary-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-shadow-quality-trend-snapshot-gate.sh"

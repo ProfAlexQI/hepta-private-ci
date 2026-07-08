@@ -1774,3 +1774,125 @@ async fn store_memory_provider_clear_is_dry_run_or_blocked_without_store_mutatio
     assert!(blocked.operator_approval_required);
     assert!(blocked.has_no_side_effects());
 }
+
+#[tokio::test]
+async fn store_memory_provider_v2_write_lifecycle_is_shadow_only_without_store_mutation() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            1,
+            TranscriptEntryKind::Message,
+            "timeout surfaced during tool run",
+        ))
+        .await
+        .expect("append should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            2,
+            TranscriptEntryKind::Summary,
+            "timeout retried successfully",
+        ))
+        .await
+        .expect("append should succeed");
+
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout retry guidance".into()),
+        recent_window_limit: 2,
+        transcript_limit: 2,
+        memory_limit: 2,
+        allow_cross_session: false,
+    };
+    let queue = store
+        .recall_context_memory_formation_queue_report(request.clone())
+        .expect("formation queue should build");
+    let before = store.list_memories().expect("memories should list");
+
+    let update = hepta_core::MemoryProviderV2::update_context(&store, request)
+        .await
+        .expect("provider v2 update_context should succeed");
+    let proposal = hepta_core::MemoryProviderV2::propose_write(&store, queue)
+        .await
+        .expect("provider v2 propose_write should succeed");
+    let dry_run_add = hepta_core::MemoryProviderV2::add(
+        &store,
+        hepta_core::MemoryProviderAddRequest {
+            proposal: proposal.clone(),
+            dry_run: true,
+            operator_approval_granted: false,
+        },
+    )
+    .await
+    .expect("provider v2 dry-run add should report");
+    let blocked_add = hepta_core::MemoryProviderV2::add(
+        &store,
+        hepta_core::MemoryProviderAddRequest {
+            proposal: proposal.clone(),
+            dry_run: false,
+            operator_approval_granted: false,
+        },
+    )
+    .await
+    .expect("provider v2 blocked add should report");
+    let clear = hepta_core::MemoryProviderV2::clear(
+        &store,
+        MemoryProviderClearRequest {
+            scope: MemoryProviderClearScope::All,
+            dry_run: false,
+            operator_approval_granted: false,
+        },
+    )
+    .await
+    .expect("provider v2 clear should report");
+    let close = hepta_core::MemoryProviderV2::close(&store)
+        .await
+        .expect("provider v2 close should report");
+    let after = store.list_memories().expect("memories should list");
+
+    assert_eq!(before, after);
+    assert!(update.has_payload_light_boundary());
+    assert_eq!(proposal.provider_id, "builtin");
+    assert_eq!(proposal.candidate_count, 5);
+    assert_eq!(proposal.queued_candidate_count, 5);
+    assert!(proposal.has_shadow_boundary_integrity());
+    assert!(dry_run_add.dry_run);
+    assert!(!dry_run_add.blocked);
+    assert!(dry_run_add.has_no_side_effects());
+    assert!(blocked_add.blocked);
+    assert!(blocked_add.has_no_side_effects());
+    assert!(clear.blocked);
+    assert!(clear.has_no_side_effects());
+    assert!(close.has_no_side_effects());
+
+    let audit = hepta_core::MemoryProviderV2AuditReport::from_parts(
+        hepta_core::MemoryProviderDescriptor::builtin(),
+        update,
+        proposal,
+        blocked_add,
+        clear,
+        close,
+    );
+    assert!(audit.has_shadow_boundary_integrity());
+
+    let json =
+        serde_json::to_string(&audit).expect("provider v2 audit should serialize as payload light");
+    assert!(!json.contains("timeout retry guidance"));
+    assert!(!json.contains("timeout surfaced during tool run"));
+    assert!(!json.contains("timeout retried successfully"));
+    assert!(!json.contains("session-1"));
+    assert!(!json.contains("memory-1"));
+    assert!(!json.contains("\"candidate_payload_exported\":true"));
+    assert!(!json.contains("\"write_performed\":true"));
+    assert!(!json.contains("\"graph_write_performed\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}

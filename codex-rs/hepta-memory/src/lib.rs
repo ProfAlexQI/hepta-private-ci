@@ -89,18 +89,26 @@
 //! The reference store also implements the Hepta-native `MemoryProvider`
 //! boundary as a shadow-only provider: query returns the existing recall bundle,
 //! update/report return guarded payload-light envelopes, and clear attempts are
-//! dry-run or blocked reports without mutating the store.
+//! dry-run or blocked reports without mutating the store. The V2 provider
+//! boundary extends that same shadow-only posture across propose-write, add,
+//! and close lifecycle attempts: proposal/add/close reports carry counts and
+//! safety booleans only, never candidate payloads or production writes.
 
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use hepta_core::ContextMemoryFormationQueueReport;
 use hepta_core::ContextRecallBundle;
 use hepta_core::ContextRecallRequest;
+use hepta_core::MemoryProviderAddReport;
+use hepta_core::MemoryProviderAddRequest;
 use hepta_core::MemoryProviderClearReport;
 use hepta_core::MemoryProviderClearRequest;
+use hepta_core::MemoryProviderCloseReport;
 use hepta_core::MemoryProviderContextUpdateEnvelope;
 use hepta_core::MemoryProviderDescriptor;
 use hepta_core::MemoryProviderReport;
+use hepta_core::MemoryProviderWriteProposalReport;
 use hepta_core::MemoryQuery;
 use hepta_core::MemoryQueryReport;
 use hepta_core::MemoryRecord;
@@ -348,6 +356,53 @@ impl hepta_core::MemoryProvider for InMemoryStore {
         } else {
             Ok(MemoryProviderClearReport::blocked("builtin", request.scope))
         }
+    }
+}
+
+impl hepta_core::MemoryProviderV2 for InMemoryStore {
+    async fn query(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextRecallBundle, hepta_core::MemoryError> {
+        hepta_core::MemoryProvider::query(self, request).await
+    }
+
+    async fn update_context(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<MemoryProviderContextUpdateEnvelope, hepta_core::MemoryError> {
+        hepta_core::MemoryProvider::update_context(self, request).await
+    }
+
+    async fn propose_write(
+        &self,
+        queue: ContextMemoryFormationQueueReport,
+    ) -> Result<MemoryProviderWriteProposalReport, hepta_core::MemoryError> {
+        Ok(MemoryProviderWriteProposalReport::from_formation_queue(
+            "builtin", &queue,
+        ))
+    }
+
+    async fn add(
+        &self,
+        request: MemoryProviderAddRequest,
+    ) -> Result<MemoryProviderAddReport, hepta_core::MemoryError> {
+        if request.dry_run {
+            Ok(MemoryProviderAddReport::dry_run(&request.proposal))
+        } else {
+            Ok(MemoryProviderAddReport::blocked(&request.proposal))
+        }
+    }
+
+    async fn clear(
+        &self,
+        request: MemoryProviderClearRequest,
+    ) -> Result<MemoryProviderClearReport, hepta_core::MemoryError> {
+        hepta_core::MemoryProvider::clear(self, request).await
+    }
+
+    async fn close(&self) -> Result<MemoryProviderCloseReport, hepta_core::MemoryError> {
+        Ok(MemoryProviderCloseReport::shadow_noop("builtin"))
     }
 }
 
