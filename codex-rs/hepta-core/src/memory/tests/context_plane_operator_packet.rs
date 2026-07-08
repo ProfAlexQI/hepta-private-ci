@@ -31,6 +31,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         }],
     };
     let formation_queue = ContextMemoryFormationQueueReport::from_receipts(&formation_receipts);
+    let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
     let temporal_facts = ContextMemoryTemporalFactReport {
         facts: vec![ContextMemoryTemporalFact {
             fact_type: ContextMemoryTemporalFactType::Attribute,
@@ -105,6 +106,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         taxonomy: &taxonomy,
         formation_receipts: &formation_receipts,
         formation_queue: &formation_queue,
+        namespace_policy: &namespace_policy,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
         temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
@@ -125,11 +127,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 18);
+    assert_eq!(packet.matrix_row_count, 19);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 9);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 18);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 17);
+    assert_eq!(packet.blocker_count, 10);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 19);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 18);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -170,6 +172,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     );
     assert_eq!(
         packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly
         ),
         Some(1)
@@ -204,6 +212,17 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.memory_provider_v2_add_check_pass);
     assert!(packet.memory_provider_v2_clear_check_pass);
     assert!(packet.memory_provider_v2_close_check_pass);
+    assert_eq!(packet.memory_namespace_policy_namespace_count, 6);
+    assert_eq!(
+        packet.memory_namespace_policy_operator_approval_required_count,
+        6
+    );
+    assert_eq!(packet.memory_namespace_policy_shadow_wal_required_count, 6);
+    assert_eq!(packet.memory_namespace_policy_readback_required_count, 6);
+    assert_eq!(packet.memory_namespace_policy_canary_required_count, 6);
+    assert_eq!(packet.memory_namespace_policy_rollback_supported_count, 6);
+    assert_eq!(packet.memory_namespace_policy_production_write_count, 0);
+    assert_eq!(packet.memory_namespace_policy_graph_write_count, 0);
     assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
     assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
     assert!(packet.ranked_recall_lexical_bm25_check_pass);
@@ -335,6 +354,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
+    assert!(json.contains("memory_namespace_policy_shadow_only"));
+    assert!(json.contains("memory_namespace_policy_namespace_count"));
+    assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
+    assert!(json.contains("memory_namespace_policy_operator_approval_required_count"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
     assert!(json.contains("canary_promotion_checklist_pass_count"));
@@ -442,6 +465,22 @@ fn context_plane_operator_approval_packet_rejects_memory_provider_v2_lifecycle_f
 }
 
 #[test]
+fn context_plane_operator_approval_packet_rejects_namespace_policy_false_green() {
+    let status = super::context_plane_activation::context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    let packet = ContextPlaneOperatorApprovalPacket::from_matrix(&matrix);
+    assert!(packet.has_packet_integrity());
+
+    let mut partial_policy = packet.clone();
+    partial_policy.memory_namespace_policy_shadow_wal_required_count = 5;
+    assert!(!partial_policy.has_packet_integrity());
+
+    let mut write_false_green = packet.clone();
+    write_false_green.memory_namespace_policy_production_write_count = 1;
+    assert!(!write_false_green.has_packet_integrity());
+}
+
+#[test]
 fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_without_payloads() {
     let mut status = super::context_plane_activation::context_plane_activation_status_fixture();
     let recall_quality_entry = status
@@ -465,9 +504,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 18);
+    assert_eq!(packet.matrix_row_count, 19);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 10);
+    assert_eq!(packet.blocker_count, 11);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -528,14 +567,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 18,
+        matrix_row_count: 19,
         threshold_satisfied_count: 9,
-        blocker_count: 9,
+        blocker_count: 10,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 18,
+            total_row_count: 19,
             threshold_satisfied_count: 9,
-            blocker_count: 9,
-            required_ready_count: 17,
+            blocker_count: 10,
+            required_ready_count: 18,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -561,6 +600,10 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason: ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason: ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly,
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
@@ -604,6 +647,14 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         memory_provider_v2_close_check_pass: true,
         memory_provider_v2_candidate_count: 1,
         memory_provider_v2_operator_review_required_count: 1,
+        memory_namespace_policy_namespace_count: 6,
+        memory_namespace_policy_operator_approval_required_count: 6,
+        memory_namespace_policy_shadow_wal_required_count: 6,
+        memory_namespace_policy_readback_required_count: 6,
+        memory_namespace_policy_canary_required_count: 6,
+        memory_namespace_policy_rollback_supported_count: 6,
+        memory_namespace_policy_production_write_count: 0,
+        memory_namespace_policy_graph_write_count: 0,
         ranked_recall_hybrid_signal_required_count: 5,
         ranked_recall_hybrid_signal_pass_count: 5,
         ranked_recall_lexical_bm25_check_pass: true,

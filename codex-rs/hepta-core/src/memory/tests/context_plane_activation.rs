@@ -8,6 +8,19 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryTaxonomy, 1),
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryFormationReceipts, 1),
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryFormationQueue, 1),
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryNamespacePolicy,
+                    6,
+                );
+                entry.memory_namespace_policy_namespace_count = 6;
+                entry.memory_namespace_policy_operator_approval_required_count = 6;
+                entry.memory_namespace_policy_shadow_wal_required_count = 6;
+                entry.memory_namespace_policy_readback_required_count = 6;
+                entry.memory_namespace_policy_canary_required_count = 6;
+                entry.memory_namespace_policy_rollback_supported_count = 6;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryTemporalFacts, 1),
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryTemporalFactGraph, 1),
             ContextPlaneStatusEntry::shadow(
@@ -132,9 +145,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 18);
+    assert_eq!(matrix.rows.len(), 19);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 9);
+    assert_eq!(matrix.blocker_count, 10);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -159,6 +172,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
         Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryNamespacePolicy),
+        Some(ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
@@ -196,6 +213,7 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("source_registry"));
     assert!(json.contains("adaptive_budget_allocation"));
     assert!(json.contains("memory_formation_queue"));
+    assert!(json.contains("memory_namespace_policy"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_ranked_recall_shadow_eval"));
@@ -221,6 +239,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
+    assert!(json.contains("memory_namespace_policy_shadow_only"));
+    assert!(json.contains("memory_namespace_policy_namespace_count"));
+    assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
+    assert!(json.contains("memory_namespace_policy_operator_approval_required_count"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
@@ -230,6 +252,7 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
+    assert!(json.contains("memory_namespace_policy_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
     assert!(json.contains("canary_promotion_checklist_pass_count"));
@@ -405,9 +428,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 18);
+    assert_eq!(matrix.rows.len(), 19);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 10);
+    assert_eq!(matrix.blocker_count, 11);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -427,6 +450,10 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
         Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryNamespacePolicy),
+        Some(ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryShadowCanaryReadiness),
@@ -480,7 +507,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 18);
+    assert_eq!(report_side_effect_matrix.blocker_count, 19);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -513,9 +540,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 18);
+    assert_eq!(matrix.rows.len(), 19);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 10);
+    assert_eq!(matrix.blocker_count, 11);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");
@@ -570,4 +597,38 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     assert!(!json.contains("\"source_aware_runtime_activation\":true"));
     assert!(!json.contains("\"prompt_assembly_change\":true"));
     assert!(!json.contains("\"operator_activation_allowed\":true"));
+}
+
+#[test]
+fn context_plane_activation_blocker_matrix_rejects_namespace_policy_false_green() {
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    assert!(matrix.has_matrix_integrity());
+
+    let mut partial_policy = matrix.clone();
+    partial_policy
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryNamespacePolicy)
+        .expect("memory namespace policy activation row should exist")
+        .memory_namespace_policy_shadow_wal_required_count = 5;
+    assert!(!partial_policy.has_matrix_integrity());
+
+    let mut write_false_green = matrix.clone();
+    write_false_green
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryNamespacePolicy)
+        .expect("memory namespace policy activation row should exist")
+        .memory_namespace_policy_production_write_count = 1;
+    assert!(!write_false_green.has_matrix_integrity());
+
+    let mut non_policy_leak = matrix.clone();
+    non_policy_leak
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryProviderBoundary)
+        .expect("memory provider boundary activation row should exist")
+        .memory_namespace_policy_namespace_count = 6;
+    assert!(!non_policy_leak.has_matrix_integrity());
 }

@@ -77,6 +77,10 @@ for term in \
   "memory_taxonomy" \
   "memory_formation_receipts" \
   "memory_formation_queue" \
+  "memory_namespace_policy" \
+  "memory_namespace_policy_namespace_count" \
+  "memory_namespace_policy_shadow_wal_required_count" \
+  "memory_namespace_policy_operator_approval_required_count" \
   "memory_temporal_facts" \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
@@ -140,6 +144,10 @@ for term in \
   "context-plane-status.ranked-recall.canary-precondition-pass-count=4" \
   "context-plane-status.ranked-recall.canary-feature-flag-disabled-count=4" \
   "context-plane-status.ranked-recall.canary-precondition-route-opened-count=0" \
+  "context-plane-status.memory-namespace-policy=shadow" \
+  "context-plane-status.memory-namespace-policy.namespace-count=6" \
+  "context-plane-status.memory-namespace-policy.shadow-wal-required-count=6" \
+  "context-plane-status.memory-namespace-policy.production-write-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -238,6 +246,15 @@ context-plane-status.adaptive-budget-allocation=shadow
 context-plane-status.memory-taxonomy=ready
 context-plane-status.memory-formation-receipts=ready
 context-plane-status.memory-formation-queue=ready
+context-plane-status.memory-namespace-policy=shadow
+context-plane-status.memory-namespace-policy.namespace-count=6
+context-plane-status.memory-namespace-policy.operator-approval-required-count=6
+context-plane-status.memory-namespace-policy.shadow-wal-required-count=6
+context-plane-status.memory-namespace-policy.readback-required-count=6
+context-plane-status.memory-namespace-policy.canary-required-count=6
+context-plane-status.memory-namespace-policy.rollback-supported-count=6
+context-plane-status.memory-namespace-policy.production-write-count=0
+context-plane-status.memory-namespace-policy.graph-write-count=0
 context-plane-status.memory-temporal-facts=ready
 context-plane-status.memory-temporal-fact-graph=ready
 context-plane-status.memory-temporal-graph-shadow-eval=shadow

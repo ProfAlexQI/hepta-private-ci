@@ -3,6 +3,7 @@ use crate::StoreSnapshot;
 use hepta_core::ContextMemoryAdaptiveAllocatorEvalShadowReport;
 use hepta_core::ContextMemoryEvalHarnessReport;
 use hepta_core::ContextMemoryFormationQueueReport;
+use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryRankedRecallShadowEvalReport;
 use hepta_core::ContextMemoryRecallQualityGateReport;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalReport;
@@ -153,6 +154,7 @@ impl StoreSnapshot {
         let taxonomy = self.recall_context_memory_taxonomy_report(request);
         let formation_receipts = self.recall_context_memory_formation_receipt_report(request);
         let formation_queue = ContextMemoryFormationQueueReport::from_receipts(&formation_receipts);
+        let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
         let temporal_facts = self.recall_context_memory_temporal_fact_report(request);
         let temporal_fact_graph =
             ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
@@ -183,6 +185,7 @@ impl StoreSnapshot {
             taxonomy: &taxonomy,
             formation_receipts: &formation_receipts,
             formation_queue: &formation_queue,
+            namespace_policy: &namespace_policy,
             temporal_facts: &temporal_facts,
             temporal_fact_graph: &temporal_fact_graph,
             temporal_graph_shadow_eval: &temporal_graph_shadow_eval,

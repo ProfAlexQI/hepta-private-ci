@@ -9,6 +9,7 @@ use super::target::ContextPlaneActivationBlockerReason;
 use super::target::ContextPlaneActivationTarget;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -76,6 +77,14 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_provider_v2_close_check_pass: bool,
     pub memory_provider_v2_candidate_count: usize,
     pub memory_provider_v2_operator_review_required_count: usize,
+    pub memory_namespace_policy_namespace_count: usize,
+    pub memory_namespace_policy_operator_approval_required_count: usize,
+    pub memory_namespace_policy_shadow_wal_required_count: usize,
+    pub memory_namespace_policy_readback_required_count: usize,
+    pub memory_namespace_policy_canary_required_count: usize,
+    pub memory_namespace_policy_rollback_supported_count: usize,
+    pub memory_namespace_policy_production_write_count: usize,
+    pub memory_namespace_policy_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -200,6 +209,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryNamespacePolicy,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryShadowCanaryReadiness,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly,
@@ -247,6 +260,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_recall_quality_rollup(target, entry)
             .with_ranked_recall_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
+            .with_memory_namespace_policy_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
@@ -254,6 +268,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_recall_quality_rollup(target, entry)
             .with_ranked_recall_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
+            .with_memory_namespace_policy_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
     }
 
@@ -448,6 +463,34 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_namespace_policy_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryNamespacePolicy
+            && let Some(entry) = entry
+        {
+            self.memory_namespace_policy_namespace_count =
+                entry.memory_namespace_policy_namespace_count;
+            self.memory_namespace_policy_operator_approval_required_count =
+                entry.memory_namespace_policy_operator_approval_required_count;
+            self.memory_namespace_policy_shadow_wal_required_count =
+                entry.memory_namespace_policy_shadow_wal_required_count;
+            self.memory_namespace_policy_readback_required_count =
+                entry.memory_namespace_policy_readback_required_count;
+            self.memory_namespace_policy_canary_required_count =
+                entry.memory_namespace_policy_canary_required_count;
+            self.memory_namespace_policy_rollback_supported_count =
+                entry.memory_namespace_policy_rollback_supported_count;
+            self.memory_namespace_policy_production_write_count =
+                entry.memory_namespace_policy_production_write_count;
+            self.memory_namespace_policy_graph_write_count =
+                entry.memory_namespace_policy_graph_write_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -457,6 +500,7 @@ impl ContextPlaneActivationBlockerRow {
             && self.has_recall_quality_rollup_integrity()
             && self.has_ranked_recall_rollup_integrity()
             && self.has_canary_promotion_rollup_integrity()
+            && self.has_memory_namespace_policy_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
@@ -753,5 +797,37 @@ impl ContextPlaneActivationBlockerRow {
             && (self.memory_provider_v2_lifecycle_pass_count
                 == self.memory_provider_v2_lifecycle_required_count
                 || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_namespace_policy_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.memory_namespace_policy_namespace_count,
+            self.memory_namespace_policy_operator_approval_required_count,
+            self.memory_namespace_policy_shadow_wal_required_count,
+            self.memory_namespace_policy_readback_required_count,
+            self.memory_namespace_policy_canary_required_count,
+            self.memory_namespace_policy_rollback_supported_count,
+            self.memory_namespace_policy_production_write_count,
+            self.memory_namespace_policy_graph_write_count,
+        ];
+
+        if self.target != ContextPlaneActivationTarget::MemoryNamespacePolicy {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_namespace_policy_namespace_count == MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT
+            && self.memory_namespace_policy_operator_approval_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_shadow_wal_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_readback_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_canary_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_rollback_supported_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_production_write_count == 0
+            && self.memory_namespace_policy_graph_write_count == 0
+            && (self.threshold_satisfied || self.blocker_reason.is_blocking())
     }
 }

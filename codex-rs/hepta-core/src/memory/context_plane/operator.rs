@@ -12,6 +12,7 @@ use super::activation::activation_blocker_reason_order;
 use super::status::ContextPlaneStatusKind;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -120,7 +121,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 18
+        self.total_row_count == 19
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -169,6 +170,14 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub memory_provider_v2_close_check_pass: bool,
     pub memory_provider_v2_candidate_count: usize,
     pub memory_provider_v2_operator_review_required_count: usize,
+    pub memory_namespace_policy_namespace_count: usize,
+    pub memory_namespace_policy_operator_approval_required_count: usize,
+    pub memory_namespace_policy_shadow_wal_required_count: usize,
+    pub memory_namespace_policy_readback_required_count: usize,
+    pub memory_namespace_policy_canary_required_count: usize,
+    pub memory_namespace_policy_rollback_supported_count: usize,
+    pub memory_namespace_policy_production_write_count: usize,
+    pub memory_namespace_policy_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -268,6 +277,14 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             memory_provider_v2_close_check_pass: false,
             memory_provider_v2_candidate_count: 0,
             memory_provider_v2_operator_review_required_count: 0,
+            memory_namespace_policy_namespace_count: 0,
+            memory_namespace_policy_operator_approval_required_count: 0,
+            memory_namespace_policy_shadow_wal_required_count: 0,
+            memory_namespace_policy_readback_required_count: 0,
+            memory_namespace_policy_canary_required_count: 0,
+            memory_namespace_policy_rollback_supported_count: 0,
+            memory_namespace_policy_production_write_count: 0,
+            memory_namespace_policy_graph_write_count: 0,
             ranked_recall_hybrid_signal_required_count: 0,
             ranked_recall_hybrid_signal_pass_count: 0,
             ranked_recall_lexical_bm25_check_pass: false,
@@ -367,6 +384,8 @@ impl ContextPlaneOperatorApprovalPacket {
             .row_for_target(ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness);
         let provider_v2_row =
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryProviderV2Boundary);
+        let namespace_policy_row =
+            matrix.row_for_target(ContextPlaneActivationTarget::MemoryNamespacePolicy);
         let ranked_recall_row =
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval);
 
@@ -463,6 +482,30 @@ impl ContextPlaneOperatorApprovalPacket {
                 .unwrap_or_default(),
             memory_provider_v2_operator_review_required_count: provider_v2_row
                 .map(|row| row.memory_provider_v2_operator_review_required_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_namespace_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_namespace_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_operator_approval_required_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_operator_approval_required_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_shadow_wal_required_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_shadow_wal_required_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_readback_required_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_readback_required_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_canary_required_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_canary_required_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_rollback_supported_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_rollback_supported_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_production_write_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_production_write_count)
+                .unwrap_or_default(),
+            memory_namespace_policy_graph_write_count: namespace_policy_row
+                .map(|row| row.memory_namespace_policy_graph_write_count)
                 .unwrap_or_default(),
             ranked_recall_hybrid_signal_required_count: ranked_recall_row
                 .map(|row| row.ranked_recall_hybrid_signal_required_count)
@@ -628,7 +671,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 18
+            && self.matrix_row_count == 19
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count
@@ -641,6 +684,7 @@ impl ContextPlaneOperatorApprovalPacket {
                 .all(ContextPlaneOperatorApprovalBlockerReasonCount::has_count_integrity)
             && self.has_recall_quality_blocking_reason_count_integrity()
             && self.has_canary_promotion_checklist_integrity()
+            && self.has_memory_namespace_policy_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && self.has_ranked_recall_hybrid_integrity()
             && self.has_required_approval_scopes()
@@ -792,6 +836,22 @@ impl ContextPlaneOperatorApprovalPacket {
                 <= self.memory_provider_v2_lifecycle_required_count
             && self.memory_provider_v2_operator_review_required_count
                 <= self.memory_provider_v2_candidate_count
+    }
+
+    fn has_memory_namespace_policy_integrity(&self) -> bool {
+        self.memory_namespace_policy_namespace_count == MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT
+            && self.memory_namespace_policy_operator_approval_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_shadow_wal_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_readback_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_canary_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_rollback_supported_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_production_write_count == 0
+            && self.memory_namespace_policy_graph_write_count == 0
     }
 
     fn has_ranked_recall_hybrid_integrity(&self) -> bool {

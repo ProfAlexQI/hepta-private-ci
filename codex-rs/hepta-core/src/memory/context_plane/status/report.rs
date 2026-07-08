@@ -10,6 +10,7 @@ use crate::memory::ContextMemoryAdaptiveAllocatorEvalShadowReport;
 use crate::memory::ContextMemoryEvalHarnessReport;
 use crate::memory::ContextMemoryFormationQueueReport;
 use crate::memory::ContextMemoryFormationReceiptReport;
+use crate::memory::ContextMemoryNamespacePolicyReport;
 use crate::memory::ContextMemoryRankedRecallShadowEvalReport;
 use crate::memory::ContextMemoryRecallQualityGateReport;
 use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
@@ -43,6 +44,7 @@ pub struct ContextPlaneStatusReportInput<'a> {
     pub taxonomy: &'a ContextMemoryTaxonomyReport,
     pub formation_receipts: &'a ContextMemoryFormationReceiptReport,
     pub formation_queue: &'a ContextMemoryFormationQueueReport,
+    pub namespace_policy: &'a ContextMemoryNamespacePolicyReport,
     pub temporal_facts: &'a ContextMemoryTemporalFactReport,
     pub temporal_fact_graph: &'a ContextMemoryTemporalFactGraphReport,
     pub temporal_graph_shadow_eval: &'a ContextMemoryTemporalGraphShadowEvalReport,
@@ -95,6 +97,7 @@ impl ContextPlaneStatusReport {
                 input.formation_queue.items.len(),
                 0,
             ),
+            ContextPlaneStatusEntry::from_memory_namespace_policy(input.namespace_policy),
             ContextPlaneStatusEntry::from_integrity(
                 ContextPlaneStatusSection::MemoryTemporalFacts,
                 input.temporal_facts.has_temporal_fact_integrity(),
@@ -144,19 +147,20 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTaxonomy => 2,
             ContextPlaneStatusSection::MemoryFormationReceipts => 3,
             ContextPlaneStatusSection::MemoryFormationQueue => 4,
-            ContextPlaneStatusSection::MemoryTemporalFacts => 5,
-            ContextPlaneStatusSection::MemoryTemporalFactGraph => 6,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowEval => 7,
-            ContextPlaneStatusSection::EvalHarnessSeed => 8,
-            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 9,
-            ContextPlaneStatusSection::RecallQualityGate => 10,
-            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 11,
-            ContextPlaneStatusSection::MemoryProviderBoundary => 12,
-            ContextPlaneStatusSection::MemoryProviderV2Boundary => 13,
-            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 14,
-            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 15,
-            ContextPlaneStatusSection::SourceAwareFrontDoor => 16,
-            ContextPlaneStatusSection::Unknown => 17,
+            ContextPlaneStatusSection::MemoryNamespacePolicy => 5,
+            ContextPlaneStatusSection::MemoryTemporalFacts => 6,
+            ContextPlaneStatusSection::MemoryTemporalFactGraph => 7,
+            ContextPlaneStatusSection::MemoryTemporalGraphShadowEval => 8,
+            ContextPlaneStatusSection::EvalHarnessSeed => 9,
+            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 10,
+            ContextPlaneStatusSection::RecallQualityGate => 11,
+            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 12,
+            ContextPlaneStatusSection::MemoryProviderBoundary => 13,
+            ContextPlaneStatusSection::MemoryProviderV2Boundary => 14,
+            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 15,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 16,
+            ContextPlaneStatusSection::SourceAwareFrontDoor => 17,
+            ContextPlaneStatusSection::Unknown => 18,
         });
 
         let production_write = sections.iter().any(|entry| entry.production_write);
@@ -180,7 +184,7 @@ impl ContextPlaneStatusReport {
 
     pub fn has_status_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_STATUS_SCHEMA_VERSION
-            && self.sections.len() == 17
+            && self.sections.len() == 18
             && self.has_required_sections()
             && self
                 .sections
@@ -202,6 +206,7 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTaxonomy,
             ContextPlaneStatusSection::MemoryFormationReceipts,
             ContextPlaneStatusSection::MemoryFormationQueue,
+            ContextPlaneStatusSection::MemoryNamespacePolicy,
             ContextPlaneStatusSection::MemoryTemporalFacts,
             ContextPlaneStatusSection::MemoryTemporalFactGraph,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowEval,

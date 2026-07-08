@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 18);
+    assert_eq!(matrix.rows.len(), 19);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 9);
+    assert_eq!(matrix.blocker_count, 10);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -54,6 +54,10 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
         Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryNamespacePolicy),
+        Some(ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
@@ -119,10 +123,30 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(provider_v2_row.memory_provider_v2_add_check_pass);
     assert!(provider_v2_row.memory_provider_v2_clear_check_pass);
     assert!(provider_v2_row.memory_provider_v2_close_check_pass);
+    let namespace_policy_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryNamespacePolicy)
+        .expect("memory namespace policy activation row should exist");
+    assert_eq!(
+        namespace_policy_row.memory_namespace_policy_namespace_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_row.memory_namespace_policy_operator_approval_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_row.memory_namespace_policy_shadow_wal_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_row.memory_namespace_policy_production_write_count,
+        0
+    );
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
+    assert!(json.contains("memory_namespace_policy"));
     assert!(json.contains("memory_ranked_recall_shadow_eval"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
@@ -133,6 +157,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
+    assert!(json.contains("memory_namespace_policy_shadow_only"));
+    assert!(json.contains("memory_namespace_policy_namespace_count"));
+    assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
@@ -227,9 +254,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 18);
+    assert_eq!(from_store.rows.len(), 19);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 9);
+    assert_eq!(from_store.blocker_count, 10);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -258,6 +285,10 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
         Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
+    );
+    assert_eq!(
+        from_store.blocker_reason(ContextPlaneActivationTarget::MemoryNamespacePolicy),
+        Some(ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly)
     );
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),

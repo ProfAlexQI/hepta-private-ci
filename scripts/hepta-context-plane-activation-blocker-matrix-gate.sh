@@ -77,6 +77,10 @@ for term in \
   "memory_taxonomy" \
   "memory_formation_receipts" \
   "memory_formation_queue" \
+  "memory_namespace_policy" \
+  "memory_namespace_policy_shadow_only" \
+  "memory_namespace_policy_namespace_count" \
+  "memory_namespace_policy_shadow_wal_required_count" \
   "memory_temporal_facts" \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
@@ -102,6 +106,7 @@ for term in \
   "memory_provider_v2_lifecycle_pass_count" \
   "memory_provider_v2_propose_write_check_pass" \
   "memory_provider_v2_close_check_pass" \
+  "memory_namespace_policy_operator_approval_required_count" \
   "memory_shadow_canary_readiness" \
   "memory_shadow_canary_promotion_readiness" \
   "canary_promotion_checklist_pass_count" \
@@ -127,6 +132,10 @@ for term in \
   "context-plane-activation-blockers.ranked-recall.canary-precondition-pass-count=4" \
   "context-plane-activation-blockers.ranked-recall.canary-feature-flag-disabled-count=4" \
   "context-plane-activation-blockers.ranked-recall.canary-precondition-route-opened-count=0" \
+  "context-plane-activation-blockers.memory-namespace-policy=blocked:memory_namespace_policy_shadow_only" \
+  "context-plane-activation-blockers.memory-namespace-policy.namespace-count=6" \
+  "context-plane-activation-blockers.memory-namespace-policy.shadow-wal-required-count=6" \
+  "context-plane-activation-blockers.memory-namespace-policy.production-write-count=0" \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
@@ -134,6 +143,7 @@ for term in \
   "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
+  "memory_namespace_policy_shadow_only" \
   "memory_shadow_canary_readiness_shadow_only" \
   "memory_shadow_canary_promotion_readiness_shadow_only" \
   "source_aware_front_door_disabled" \
@@ -248,15 +258,24 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=11
-context-plane-activation-blockers.rows=18
+context-plane-activation-blockers.schema=12
+context-plane-activation-blockers.rows=19
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=9
+context-plane-activation-blockers.blockers=10
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
 context-plane-activation-blockers.memory-formation-receipts=ready
 context-plane-activation-blockers.memory-formation-queue=ready
+context-plane-activation-blockers.memory-namespace-policy=blocked:memory_namespace_policy_shadow_only
+context-plane-activation-blockers.memory-namespace-policy.namespace-count=6
+context-plane-activation-blockers.memory-namespace-policy.operator-approval-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.shadow-wal-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.readback-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.canary-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.rollback-supported-count=6
+context-plane-activation-blockers.memory-namespace-policy.production-write-count=0
+context-plane-activation-blockers.memory-namespace-policy.graph-write-count=0
 context-plane-activation-blockers.memory-temporal-facts=ready
 context-plane-activation-blockers.memory-temporal-fact-graph=ready
 context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only

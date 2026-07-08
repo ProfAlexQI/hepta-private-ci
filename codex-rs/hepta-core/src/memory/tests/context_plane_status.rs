@@ -43,6 +43,7 @@ fn context_plane_status_report_fixture(
         }],
     };
     let formation_queue = ContextMemoryFormationQueueReport::from_receipts(&formation_receipts);
+    let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
     let temporal_facts = ContextMemoryTemporalFactReport {
         facts: vec![ContextMemoryTemporalFact {
             fact_type: ContextMemoryTemporalFactType::Attribute,
@@ -116,6 +117,7 @@ fn context_plane_status_report_fixture(
         taxonomy: &taxonomy,
         formation_receipts: &formation_receipts,
         formation_queue: &formation_queue,
+        namespace_policy: &namespace_policy,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
         temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
@@ -137,9 +139,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 17);
+    assert_eq!(report.sections.len(), 18);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 8);
+    assert_eq!(report.shadow_section_count(), 9);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -156,6 +158,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryNamespacePolicy),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -326,6 +332,43 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(provider_v2_entry.memory_provider_v2_add_check_pass);
     assert!(provider_v2_entry.memory_provider_v2_clear_check_pass);
     assert!(provider_v2_entry.memory_provider_v2_close_check_pass);
+    let namespace_policy_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryNamespacePolicy)
+        .expect("memory namespace policy status row should exist");
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_namespace_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_operator_approval_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_shadow_wal_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_readback_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_canary_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_rollback_supported_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_production_write_count,
+        0
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_graph_write_count,
+        0
+    );
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -340,6 +383,7 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("memory_taxonomy"));
     assert!(json.contains("memory_formation_receipts"));
     assert!(json.contains("memory_formation_queue"));
+    assert!(json.contains("memory_namespace_policy"));
     assert!(json.contains("memory_temporal_facts"));
     assert!(json.contains("memory_temporal_fact_graph"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
@@ -364,6 +408,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
+    assert!(json.contains("memory_namespace_policy_namespace_count"));
+    assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
+    assert!(json.contains("memory_namespace_policy_operator_approval_required_count"));
+    assert!(json.contains("memory_namespace_policy_production_write_count"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("canary_promotion_required_stable_window_count"));
@@ -530,6 +578,41 @@ fn context_plane_status_report_rejects_memory_provider_v2_lifecycle_false_green(
         .expect("memory provider boundary status row should exist")
         .memory_provider_v2_lifecycle_pass_count = 1;
     assert!(!non_provider_v2_leak.has_status_integrity());
+}
+
+#[test]
+fn context_plane_status_report_rejects_namespace_policy_false_green() {
+    let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
+    let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+    let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
+    assert!(report.has_status_integrity());
+
+    let mut partial_policy = report.clone();
+    partial_policy
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryNamespacePolicy)
+        .expect("memory namespace policy status row should exist")
+        .memory_namespace_policy_shadow_wal_required_count = 5;
+    assert!(!partial_policy.has_status_integrity());
+
+    let mut write_false_green = report.clone();
+    write_false_green
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryNamespacePolicy)
+        .expect("memory namespace policy status row should exist")
+        .memory_namespace_policy_production_write_count = 1;
+    assert!(!write_false_green.has_status_integrity());
+
+    let mut non_policy_leak = report.clone();
+    non_policy_leak
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryProviderBoundary)
+        .expect("memory provider boundary status row should exist")
+        .memory_namespace_policy_namespace_count = 6;
+    assert!(!non_policy_leak.has_status_integrity());
 }
 
 #[test]

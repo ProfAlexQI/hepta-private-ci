@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use super::section::ContextPlaneStatusKind;
 use super::section::ContextPlaneStatusSection;
+use crate::memory::ContextMemoryNamespacePolicyReport;
 use crate::memory::ContextMemoryRankedRecallShadowEvalReport;
 use crate::memory::ContextMemoryRankedRecallShadowHybridSignal;
 use crate::memory::ContextMemoryRecallQualityGateBlockerReason;
@@ -14,6 +15,7 @@ use crate::memory::MemoryProviderReport;
 use crate::memory::MemoryProviderV2AuditReport;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -81,6 +83,14 @@ pub struct ContextPlaneStatusEntry {
     pub memory_provider_v2_close_check_pass: bool,
     pub memory_provider_v2_candidate_count: usize,
     pub memory_provider_v2_operator_review_required_count: usize,
+    pub memory_namespace_policy_namespace_count: usize,
+    pub memory_namespace_policy_operator_approval_required_count: usize,
+    pub memory_namespace_policy_shadow_wal_required_count: usize,
+    pub memory_namespace_policy_readback_required_count: usize,
+    pub memory_namespace_policy_canary_required_count: usize,
+    pub memory_namespace_policy_rollback_supported_count: usize,
+    pub memory_namespace_policy_production_write_count: usize,
+    pub memory_namespace_policy_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -289,6 +299,44 @@ impl ContextPlaneStatusEntry {
             runtime_activation: provider_report.update_context.runtime_activation,
             prompt_assembly_change: provider_report.update_context.prompt_payload_exported
                 || provider_report.update_context.ranked_payload_exported,
+            ..Self::default()
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_memory_namespace_policy(
+        namespace_policy: &ContextMemoryNamespacePolicyReport,
+    ) -> Self {
+        let has_integrity = namespace_policy.has_policy_integrity();
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryNamespacePolicy,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: namespace_policy.namespace_count(),
+            omitted_count: namespace_policy.production_write_count()
+                + namespace_policy.graph_write_count(),
+            blocker_count: usize::from(!has_integrity),
+            memory_namespace_policy_namespace_count: namespace_policy.namespace_count(),
+            memory_namespace_policy_operator_approval_required_count: namespace_policy
+                .operator_approval_required_count(),
+            memory_namespace_policy_shadow_wal_required_count: namespace_policy
+                .shadow_wal_required_count(),
+            memory_namespace_policy_readback_required_count: namespace_policy
+                .readback_required_count(),
+            memory_namespace_policy_canary_required_count: namespace_policy.canary_required_count(),
+            memory_namespace_policy_rollback_supported_count: namespace_policy
+                .rollback_supported_count(),
+            memory_namespace_policy_production_write_count: namespace_policy
+                .production_write_count(),
+            memory_namespace_policy_graph_write_count: namespace_policy.graph_write_count(),
+            production_write: namespace_policy.production_write,
+            graph_write: namespace_policy.graph_write,
+            runtime_activation: namespace_policy.runtime_activation,
+            prompt_assembly_change: namespace_policy.prompt_assembly_change
+                || namespace_policy.hot_path_write,
             ..Self::default()
         }
     }
@@ -607,6 +655,7 @@ impl ContextPlaneStatusEntry {
             && self.has_recall_quality_blocker_integrity()
             && self.has_ranked_recall_hybrid_integrity()
             && self.has_canary_promotion_checklist_integrity()
+            && self.has_memory_namespace_policy_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && !self.production_write
             && !self.graph_write
@@ -903,6 +952,38 @@ impl ContextPlaneStatusEntry {
                 == (self.memory_provider_v2_lifecycle_pass_count
                     == self.memory_provider_v2_lifecycle_required_count
                     && self.blocker_count == 0)
+    }
+
+    fn has_memory_namespace_policy_integrity(&self) -> bool {
+        let counts = [
+            self.memory_namespace_policy_namespace_count,
+            self.memory_namespace_policy_operator_approval_required_count,
+            self.memory_namespace_policy_shadow_wal_required_count,
+            self.memory_namespace_policy_readback_required_count,
+            self.memory_namespace_policy_canary_required_count,
+            self.memory_namespace_policy_rollback_supported_count,
+            self.memory_namespace_policy_production_write_count,
+            self.memory_namespace_policy_graph_write_count,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryNamespacePolicy {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_namespace_policy_namespace_count == MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT
+            && self.memory_namespace_policy_operator_approval_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_shadow_wal_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_readback_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_canary_required_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_rollback_supported_count
+                == self.memory_namespace_policy_namespace_count
+            && self.memory_namespace_policy_production_write_count == 0
+            && self.memory_namespace_policy_graph_write_count == 0
+            && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 }
 

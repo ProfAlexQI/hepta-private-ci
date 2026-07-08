@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 17);
+    assert_eq!(report.sections.len(), 18);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 8);
+    assert_eq!(report.shadow_section_count(), 9);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -54,6 +54,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryNamespacePolicy),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -137,6 +141,27 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(provider_v2_entry.memory_provider_v2_add_check_pass);
     assert!(provider_v2_entry.memory_provider_v2_clear_check_pass);
     assert!(provider_v2_entry.memory_provider_v2_close_check_pass);
+    let namespace_policy_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryNamespacePolicy)
+        .expect("memory namespace policy status row should exist");
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_namespace_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_operator_approval_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_shadow_wal_required_count,
+        6
+    );
+    assert_eq!(
+        namespace_policy_entry.memory_namespace_policy_production_write_count,
+        0
+    );
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -151,6 +176,7 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("memory_taxonomy"));
     assert!(json.contains("memory_formation_receipts"));
     assert!(json.contains("memory_formation_queue"));
+    assert!(json.contains("memory_namespace_policy"));
     assert!(json.contains("memory_temporal_facts"));
     assert!(json.contains("memory_temporal_fact_graph"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
@@ -166,6 +192,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
+    assert!(json.contains("memory_namespace_policy_namespace_count"));
+    assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
+    assert!(json.contains("memory_namespace_policy_operator_approval_required_count"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("canary_promotion_required_stable_window_count"));
@@ -250,7 +279,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 17);
+    assert_eq!(from_store.sections.len(), 18);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
