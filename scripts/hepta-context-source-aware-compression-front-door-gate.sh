@@ -74,6 +74,7 @@ front_door_gate_list_parity_gate_script="hepta-context-source-aware-compression-
 readiness_export_report_script="hepta-context-source-aware-compression-readiness-export-report.sh"
 readiness_export_gate_script="hepta-context-source-aware-compression-readiness-export-gate.sh"
 adaptive_budget_allocation_report_gate_script="hepta-context-adaptive-budget-allocation-report-gate.sh"
+generated_context_inventory_gate_script="hepta-context-generated-context-inventory-gate.sh"
 memory_snapshot_helper_boundary_gate_script="hepta-context-memory-snapshot-helper-boundary-gate.sh"
 memory_test_module_boundary_gate_script="hepta-context-memory-test-module-boundary-gate.sh"
 memory_recall_helper_boundary_gate_script="hepta-context-memory-recall-helper-boundary-gate.sh"
@@ -696,6 +697,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$generated_context_inventory_gate_script" \
+  "generated context inventory debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$memory_snapshot_helper_boundary_gate_script" \
   "memory snapshot helper boundary debug gate"
 
@@ -956,6 +962,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$preflight_script" \
+  "generated context inventory gate" \
+  "generated context inventory preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
   "context adaptive budget allocation dry-run report gate" \
   "adaptive budget allocation report preflight stage"
 
@@ -1213,6 +1224,18 @@ assert_file_contains \
   "$front_door_report" \
   "source-aware-contracts=pass" \
   "source-aware compression front-door report status"
+
+assert_line_before \
+  "$preflight_script" \
+  "context source registry health gate" \
+  "generated context inventory gate" \
+  "generated context inventory preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "generated context inventory gate" \
+  "context adaptive budget allocation dry-run report gate" \
+  "generated context inventory preflight stage order"
 
 assert_line_before \
   "$preflight_script" \

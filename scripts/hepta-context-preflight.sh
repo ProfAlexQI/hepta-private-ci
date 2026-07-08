@@ -61,6 +61,9 @@ run_stage "context source registry rust resolver gate" \
 run_stage "context source registry health gate" \
   bash "$repo_root/scripts/hepta-context-source-registry-health-gate.sh"
 
+run_stage "generated context inventory gate" \
+  bash "$repo_root/scripts/hepta-context-generated-context-inventory-gate.sh"
+
 run_stage "context health/meta report gate" \
   bash "$repo_root/scripts/hepta-context-health-gate.sh"
 

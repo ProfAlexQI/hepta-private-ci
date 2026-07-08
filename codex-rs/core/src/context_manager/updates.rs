@@ -456,10 +456,9 @@ fn build_text_message(role: &str, text_sections: Vec<String>) -> Option<Response
 }
 
 pub(crate) fn build_settings_update_items(input: SettingsUpdateInput<'_>) -> Vec<ResponseItem> {
-    // TODO(ccunningham): build_settings_update_items still does not cover every
-    // model-visible item emitted by build_initial_context. Persist the remaining
-    // inputs or add explicit replay events so fork/resume can diff everything
-    // deterministically.
+    // Keep this function aligned with the generated context inventory gate: every
+    // model-visible registry source is either diffed here, carried as a live turn
+    // item, or documented as turn-scoped with no steady-state settings diff.
     let SettingsUpdateInput {
         previous,
         previous_turn_settings,

@@ -703,6 +703,30 @@ path is implemented. The context debug gate and preflight must run
 gate and before the source-aware compression front-door report. The health gate
 must report descriptor coverage for all 20 sources, must keep
 `live-activation-routes=0`, and must keep `runtime-activation=disabled`.
+Generated context inventory report: `scripts/hepta-context-generated-context-inventory-report.sh`
+is the payload-light source -> producer -> manifest entry -> debug surface ->
+gate -> runtime status inventory for the 20 model-visible context sources. It
+must bind `CONTEXT_SOURCE_REGISTRY.tsv` source ids to the existing Rust
+settings-diff coverage table, report
+`generated-context-inventory=pass`,
+`generated-context-inventory.settings-diff-covered=16`,
+`generated-context-inventory.turn-scoped-no-steady-state-diff=3`,
+`generated-context-inventory.live-turn-item=1`,
+`generated-context-inventory.build-settings-update-items=covered`,
+`generated-context-inventory.context-controller-ownership=plan_pending_context_items+plan_turn_context`,
+and `generated-context-inventory.runtime-activation=disabled`. This is the
+operator-visible build_settings_update_items coverage. The ContextController
+ownership map is machine-checkable: session remains the owner for `build_initial_context`,
+`build_settings_update_items`, and side-effect handoff, while
+`ContextController` owns pending context planning and turn context planning. The
+report and `scripts/hepta-context-generated-context-inventory-gate.sh` must not
+export prompt bodies, recalled memory text, provider payloads, tool arguments,
+raw replay keys, rollback hashes, response item payloads, ranked recall payloads,
+or temporal graph payloads, must not alter prompt assembly, must not write memory
+or graph state, and must not become a runtime activation route. The context debug
+gate and preflight must run the generated context inventory gate after
+`scripts/hepta-context-source-registry-health-gate.sh` and before
+`scripts/hepta-context-health-gate.sh`.
 Context health/meta report: `scripts/hepta-context-health-report.sh` is the
 payload-light rollup for the context lane's gate surface. It may aggregate only
 control-plane counts and fixed status strings from the release manifest, source

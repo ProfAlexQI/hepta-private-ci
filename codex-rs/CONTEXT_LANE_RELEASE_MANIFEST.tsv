@@ -218,6 +218,8 @@ codex-rs/response-debug-context/src/rollout_context/memory.rs	response_debug	hep
 codex-rs/response-debug-context/src/tests.rs	response_debug	hepta-context	required
 scripts/hepta-context-adaptive-budget-allocation-report-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-debug-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-generated-context-inventory-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-generated-context-inventory-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-health-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-health-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-manifest-replay-hash-boundary-gate.sh	gate_script	hepta-context	required
