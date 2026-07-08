@@ -89,8 +89,18 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "ranked-recall-shadow-eval=pass"
 assert_report_line "ranked-recall-shadow-eval.payload-light=pass"
-assert_report_line "ranked-recall-shadow-eval.schema=1"
+assert_report_line "ranked-recall-shadow-eval.schema=2"
 assert_report_line "ranked-recall-shadow-eval.mode=deterministic-shadow"
+assert_report_line "ranked-recall-shadow-eval.hybrid-mode=shadow-only"
+assert_report_line "ranked-recall-shadow-eval.hybrid-signal-count=5"
+assert_report_line "ranked-recall-shadow-eval.hybrid-positive-signal-pass-count=15"
+assert_report_line "ranked-recall-shadow-eval.hybrid-signal-min-basis-points=6000"
+assert_report_line "ranked-recall-shadow-eval.min-positive-hybrid-score-basis-points=7800"
+assert_report_line "ranked-recall-shadow-eval.lexical-bm25=shadow"
+assert_report_line "ranked-recall-shadow-eval.recency=shadow"
+assert_report_line "ranked-recall-shadow-eval.source-authority=shadow"
+assert_report_line "ranked-recall-shadow-eval.temporal-validity=shadow"
+assert_report_line "ranked-recall-shadow-eval.feedback=shadow"
 assert_report_line "ranked-recall-shadow-eval.fixture-count=4"
 assert_report_line "ranked-recall-shadow-eval.fixture-pass-count=4"
 assert_report_line "ranked-recall-shadow-eval.positive-fixture-count=3"
@@ -108,6 +118,7 @@ assert_report_line "ranked-recall-shadow-eval.total-positive-token-saved=2140"
 assert_report_line "ranked-recall-shadow-eval.max-positive-latency-ms=55"
 assert_report_line "ranked-recall-shadow-eval.max-positive-regret-basis-points=0"
 assert_report_line "ranked-recall-shadow-eval.regression-fixture=blocked"
+assert_report_line "ranked-recall-shadow-eval.hybrid-regression-signal=blocked"
 assert_report_line "ranked-recall-shadow-eval.operator-approval=required"
 assert_report_line "ranked-recall-shadow-eval.production-route=disabled"
 assert_report_line "ranked-recall-shadow-eval.runtime-activation=disabled"
@@ -117,13 +128,22 @@ for term in \
   "hepta-context-memory-ranked-recall-shadow-eval-report.sh" \
   "hepta-context-memory-ranked-recall-shadow-eval-gate.sh" \
   "deterministic-shadow" \
+  "hybrid shadow-only" \
   "ContextMemoryRankedRecallShadowEvalReport" \
+  "ContextMemoryRankedRecallShadowHybridSignal" \
   "context_memory_ranked_recall_shadow_eval_report" \
   "query_match" \
   "recency_tie_break" \
   "budget_pressure" \
   "regression_guard" \
+  "lexical_bm25" \
+  "source_authority" \
+  "temporal_validity" \
+  "feedback" \
   "ranked item counts" \
+  "hybrid-signal-min-basis-points" \
+  "hybrid-positive-signal-pass-count" \
+  "hybrid-regression-signal" \
   "recall-floor-basis-points" \
   "precision-floor-basis-points" \
   "token-saved-min-basis-points" \
@@ -152,6 +172,9 @@ assert_file_contains "$hepta_core_ranked_recall_shadow" \
   "ContextMemoryRankedRecallShadowEvalFixtureResult" \
   "ranked recall shadow eval rust fixture"
 assert_file_contains "$hepta_core_ranked_recall_shadow" \
+  "ContextMemoryRankedRecallShadowHybridSignal" \
+  "ranked recall shadow eval hybrid signal enum"
+assert_file_contains "$hepta_core_ranked_recall_shadow" \
   "pub fn has_ranked_recall_shadow_integrity" \
   "ranked recall shadow eval integrity gate"
 assert_file_contains "$hepta_core_ranked_recall_shadow" \
@@ -160,12 +183,18 @@ assert_file_contains "$hepta_core_ranked_recall_shadow" \
 assert_file_contains "$hepta_core_ranked_recall_shadow" \
   "RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS" \
   "ranked recall shadow eval regret threshold"
+assert_file_contains "$hepta_core_ranked_recall_shadow" \
+  "RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS" \
+  "ranked recall shadow eval hybrid threshold"
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation" \
   "ranked recall shadow eval hepta-core positive test"
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_ranked_recall_shadow_eval_blocks_regression_drift" \
   "ranked recall shadow eval hepta-core regression test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_memory_ranked_recall_shadow_eval_blocks_hybrid_signal_drift" \
+  "ranked recall shadow eval hepta-core hybrid regression test"
 
 assert_file_contains "$hepta_memory" \
   "ranked-recall shadow eval" \
@@ -233,5 +262,6 @@ cargo test --manifest-path "$manifest" -p hepta-memory \
 echo "ranked-recall-shadow-eval=pass"
 echo "ranked-recall-shadow-eval.payload-light=pass"
 echo "ranked-recall-shadow-eval.fixtures=4"
+echo "ranked-recall-shadow-eval.hybrid-signals=5"
 echo "ranked-recall-shadow-eval.regression-fixture=blocked"
 echo "ranked-recall-shadow-eval.runtime-activation=disabled"

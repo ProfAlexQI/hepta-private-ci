@@ -340,14 +340,28 @@ fn store_snapshot_context_memory_ranked_recall_shadow_eval_is_payload_light() {
             ContextMemoryRankedRecallShadowEvalMetric::Regret,
         ]
     );
+    assert_eq!(
+        report.hybrid_signals,
+        vec![
+            ContextMemoryRankedRecallShadowHybridSignal::LexicalBm25,
+            ContextMemoryRankedRecallShadowHybridSignal::Recency,
+            ContextMemoryRankedRecallShadowHybridSignal::SourceAuthority,
+            ContextMemoryRankedRecallShadowHybridSignal::TemporalValidity,
+            ContextMemoryRankedRecallShadowHybridSignal::Feedback,
+        ]
+    );
+    assert_eq!(report.hybrid_signal_count(), 5);
     assert_eq!(report.fixture_count(), 4);
     assert_eq!(report.fixture_pass_count(), 4);
     assert_eq!(report.positive_fixture_count(), 3);
     assert_eq!(report.negative_fixture_count(), 1);
     assert_eq!(report.ranked_item_fixture_count(), 4);
     assert_eq!(report.regression_blocked_count(), 1);
+    assert_eq!(report.positive_hybrid_signal_pass_count(), 15);
+    assert_eq!(report.hybrid_regression_blocked_count(), 1);
     assert_eq!(report.min_positive_recall_basis_points(), 8000);
     assert_eq!(report.min_positive_precision_basis_points(), 8000);
+    assert_eq!(report.min_positive_hybrid_score_basis_points(), 7800);
     assert_eq!(report.total_positive_token_saved(), 2_140);
     assert_eq!(report.max_positive_latency_ms(), 55);
     assert_eq!(report.max_positive_regret_basis_points(), 0);
@@ -368,11 +382,17 @@ fn store_snapshot_context_memory_ranked_recall_shadow_eval_is_payload_light() {
 
     let json = serde_json::to_string(&report).expect("ranked recall report should serialize");
     assert!(json.contains("deterministic_shadow"));
+    assert!(json.contains("lexical_bm25"));
+    assert!(json.contains("source_authority"));
+    assert!(json.contains("temporal_validity"));
+    assert!(json.contains("feedback"));
     assert!(json.contains("query_match"));
     assert!(json.contains("recency_tie_break"));
     assert!(json.contains("budget_pressure"));
     assert!(json.contains("regression_guard"));
     assert!(json.contains("ranked_item_count"));
+    assert!(json.contains("hybrid_score_basis_points"));
+    assert!(json.contains("hybrid_signal_pass_count"));
     assert!(!json.contains("timeout surfaced during tool run"));
     assert!(!json.contains("timeout retried successfully"));
     assert!(!json.contains("session-1"));
@@ -1230,8 +1250,12 @@ async fn store_context_memory_ranked_recall_shadow_eval_matches_snapshot_helper(
     assert_eq!(from_store.negative_fixture_count(), 1);
     assert_eq!(from_store.ranked_item_fixture_count(), 4);
     assert_eq!(from_store.regression_blocked_count(), 1);
+    assert_eq!(from_store.hybrid_signal_count(), 5);
+    assert_eq!(from_store.positive_hybrid_signal_pass_count(), 15);
+    assert_eq!(from_store.hybrid_regression_blocked_count(), 1);
     assert_eq!(from_store.min_positive_recall_basis_points(), 8000);
     assert_eq!(from_store.min_positive_precision_basis_points(), 8000);
+    assert_eq!(from_store.min_positive_hybrid_score_basis_points(), 7800);
     assert_eq!(from_store.total_positive_token_saved(), 2_140);
     assert_eq!(from_store.max_positive_latency_ms(), 55);
     assert_eq!(from_store.max_positive_regret_basis_points(), 0);

@@ -11,6 +11,8 @@ pub const RANKED_RECALL_SHADOW_TOKEN_SAVED_MIN: usize = 300;
 pub const RANKED_RECALL_SHADOW_TOKEN_SAVED_MIN_BASIS_POINTS: u32 = 1_000;
 pub const RANKED_RECALL_SHADOW_LATENCY_MAX_MS: u32 = 100;
 pub const RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS: u32 = 0;
+pub const RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS: u32 = 6_000;
+pub const RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT: usize = 5;
 
 /// Payload-light replay mode for ranked recall evaluation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +50,35 @@ impl ContextMemoryRankedRecallShadowEvalMetric {
             Self::TokenSaved,
             Self::Latency,
             Self::Regret,
+        ]
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+/// Fixed payload-light hybrid ranking signals for ranked recall shadow eval.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextMemoryRankedRecallShadowHybridSignal {
+    LexicalBm25,
+    Recency,
+    SourceAuthority,
+    TemporalValidity,
+    Feedback,
+    #[default]
+    Unknown,
+}
+
+impl ContextMemoryRankedRecallShadowHybridSignal {
+    pub fn fixed_shadow_signals() -> Vec<Self> {
+        vec![
+            Self::LexicalBm25,
+            Self::Recency,
+            Self::SourceAuthority,
+            Self::TemporalValidity,
+            Self::Feedback,
         ]
     }
 
@@ -113,6 +144,13 @@ pub struct ContextMemoryRankedRecallShadowEvalFixtureResult {
     pub latency_ms: u32,
     pub latency_budget_ms: u32,
     pub regret_basis_points: u32,
+    pub lexical_bm25_score_basis_points: u32,
+    pub recency_score_basis_points: u32,
+    pub source_authority_score_basis_points: u32,
+    pub temporal_validity_score_basis_points: u32,
+    pub feedback_score_basis_points: u32,
+    pub hybrid_score_basis_points: u32,
+    pub hybrid_signal_pass_count: usize,
     pub regression_fixture: bool,
     pub regression_blocked: bool,
     pub production_route: bool,
@@ -197,6 +235,12 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         regression_blocked: bool,
     ) -> Self {
         let token_saved = baseline_token_cost.saturating_sub(ranked_token_cost);
+        let hybrid_scores = hybrid_signal_scores(fixture_kind, positive_fixture);
+        let hybrid_score_basis_points = hybrid_score_basis_points(hybrid_scores);
+        let hybrid_signal_pass_count = hybrid_signal_pass_count(
+            hybrid_scores,
+            RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS,
+        );
         Self {
             fixture_kind,
             fixture_id_hash: fixture_id_hash(
@@ -208,6 +252,9 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                 token_saved,
                 latency_ms,
                 regret_basis_points,
+                hybrid_scores,
+                hybrid_score_basis_points,
+                hybrid_signal_pass_count,
             ),
             gate_pass: true,
             positive_fixture,
@@ -227,6 +274,13 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             latency_ms,
             latency_budget_ms,
             regret_basis_points,
+            lexical_bm25_score_basis_points: hybrid_scores.0,
+            recency_score_basis_points: hybrid_scores.1,
+            source_authority_score_basis_points: hybrid_scores.2,
+            temporal_validity_score_basis_points: hybrid_scores.3,
+            feedback_score_basis_points: hybrid_scores.4,
+            hybrid_score_basis_points,
+            hybrid_signal_pass_count,
             regression_fixture,
             regression_blocked,
             production_route: false,
@@ -238,6 +292,7 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn has_ranked_recall_fixture_integrity(
         &self,
         recall_floor_basis_points: u32,
@@ -246,6 +301,7 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         token_saved_min_basis_points: u32,
         latency_max_ms: u32,
         regret_max_basis_points: u32,
+        hybrid_signal_min_basis_points: u32,
     ) -> bool {
         !self.fixture_kind.is_unknown()
             && stable_receipt_hash_is_valid(&self.fixture_id_hash)
@@ -271,6 +327,25 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                     .saturating_sub(self.ranked_token_cost)
             && self.token_saved_basis_points
                 == basis_points(self.token_saved, self.baseline_token_cost)
+            && self.hybrid_score_basis_points
+                == hybrid_score_basis_points((
+                    self.lexical_bm25_score_basis_points,
+                    self.recency_score_basis_points,
+                    self.source_authority_score_basis_points,
+                    self.temporal_validity_score_basis_points,
+                    self.feedback_score_basis_points,
+                ))
+            && self.hybrid_signal_pass_count
+                == hybrid_signal_pass_count(
+                    (
+                        self.lexical_bm25_score_basis_points,
+                        self.recency_score_basis_points,
+                        self.source_authority_score_basis_points,
+                        self.temporal_validity_score_basis_points,
+                        self.feedback_score_basis_points,
+                    ),
+                    hybrid_signal_min_basis_points,
+                )
             && self.latency_budget_ms <= latency_max_ms
             && !self.production_route
             && !self.production_write
@@ -288,6 +363,13 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                     && self.latency_ms <= self.latency_budget_ms
                     && self.latency_ms <= latency_max_ms
                     && self.regret_basis_points <= regret_max_basis_points
+                    && self.lexical_bm25_score_basis_points >= hybrid_signal_min_basis_points
+                    && self.recency_score_basis_points >= hybrid_signal_min_basis_points
+                    && self.source_authority_score_basis_points >= hybrid_signal_min_basis_points
+                    && self.temporal_validity_score_basis_points >= hybrid_signal_min_basis_points
+                    && self.feedback_score_basis_points >= hybrid_signal_min_basis_points
+                    && self.hybrid_score_basis_points >= hybrid_signal_min_basis_points
+                    && self.hybrid_signal_pass_count == RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
             } else {
                 self.regression_fixture
                     && self.regression_blocked
@@ -295,9 +377,47 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                         || self.precision_basis_points < precision_floor_basis_points
                         || self.token_saved < token_saved_min
                         || self.latency_ms > latency_max_ms
-                        || self.regret_basis_points > regret_max_basis_points)
+                        || self.regret_basis_points > regret_max_basis_points
+                        || self.hybrid_signal_pass_count < RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT)
             }
     }
+}
+
+fn hybrid_signal_scores(
+    fixture_kind: ContextMemoryRankedRecallShadowEvalFixtureKind,
+    positive_fixture: bool,
+) -> (u32, u32, u32, u32, u32) {
+    if !positive_fixture {
+        return (4_200, 5_000, 4_800, 4_000, 3_500);
+    }
+
+    match fixture_kind {
+        ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch => {
+            (9_200, 7_600, 8_100, 7_800, 7_000)
+        }
+        ContextMemoryRankedRecallShadowEvalFixtureKind::RecencyTieBreak => {
+            (7_200, 9_400, 7_600, 7_800, 7_000)
+        }
+        ContextMemoryRankedRecallShadowEvalFixtureKind::BudgetPressure => {
+            (8_600, 7_300, 9_000, 7_600, 7_200)
+        }
+        ContextMemoryRankedRecallShadowEvalFixtureKind::RegressionGuard
+        | ContextMemoryRankedRecallShadowEvalFixtureKind::Unknown => {
+            (4_200, 5_000, 4_800, 4_000, 3_500)
+        }
+    }
+}
+
+fn hybrid_score_basis_points(scores: (u32, u32, u32, u32, u32)) -> u32 {
+    (scores.0 + scores.1 + scores.2 + scores.3 + scores.4)
+        / RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT as u32
+}
+
+fn hybrid_signal_pass_count(scores: (u32, u32, u32, u32, u32), min_basis_points: u32) -> usize {
+    [scores.0, scores.1, scores.2, scores.3, scores.4]
+        .into_iter()
+        .filter(|score| *score >= min_basis_points)
+        .count()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -310,6 +430,9 @@ fn fixture_id_hash(
     token_saved: usize,
     latency_ms: u32,
     regret_basis_points: u32,
+    hybrid_scores: (u32, u32, u32, u32, u32),
+    hybrid_score_basis_points: u32,
+    hybrid_signal_pass_count: usize,
 ) -> String {
     stable_receipt_hash(&[
         "context_memory_ranked_recall_shadow_eval",
@@ -321,6 +444,13 @@ fn fixture_id_hash(
         &token_saved.to_string(),
         &latency_ms.to_string(),
         &regret_basis_points.to_string(),
+        &hybrid_scores.0.to_string(),
+        &hybrid_scores.1.to_string(),
+        &hybrid_scores.2.to_string(),
+        &hybrid_scores.3.to_string(),
+        &hybrid_scores.4.to_string(),
+        &hybrid_score_basis_points.to_string(),
+        &hybrid_signal_pass_count.to_string(),
     ])
 }
 
@@ -331,6 +461,7 @@ pub struct ContextMemoryRankedRecallShadowEvalReport {
     pub schema_version: u32,
     pub mode: ContextMemoryRankedRecallShadowEvalMode,
     pub metrics: Vec<ContextMemoryRankedRecallShadowEvalMetric>,
+    pub hybrid_signals: Vec<ContextMemoryRankedRecallShadowHybridSignal>,
     pub fixtures: Vec<ContextMemoryRankedRecallShadowEvalFixtureResult>,
     pub recall_floor_basis_points: u32,
     pub precision_floor_basis_points: u32,
@@ -338,6 +469,7 @@ pub struct ContextMemoryRankedRecallShadowEvalReport {
     pub token_saved_min_basis_points: u32,
     pub latency_max_ms: u32,
     pub regret_max_basis_points: u32,
+    pub hybrid_signal_min_basis_points: u32,
     pub operator_approval_required: bool,
     pub production_route: bool,
     pub production_write: bool,
@@ -353,6 +485,7 @@ impl Default for ContextMemoryRankedRecallShadowEvalReport {
             schema_version: CONTEXT_MEMORY_RANKED_RECALL_SHADOW_EVAL_SCHEMA_VERSION,
             mode: ContextMemoryRankedRecallShadowEvalMode::DeterministicShadow,
             metrics: Vec::new(),
+            hybrid_signals: Vec::new(),
             fixtures: Vec::new(),
             recall_floor_basis_points: RANKED_RECALL_SHADOW_RECALL_FLOOR_BASIS_POINTS,
             precision_floor_basis_points: RANKED_RECALL_SHADOW_PRECISION_FLOOR_BASIS_POINTS,
@@ -360,6 +493,7 @@ impl Default for ContextMemoryRankedRecallShadowEvalReport {
             token_saved_min_basis_points: RANKED_RECALL_SHADOW_TOKEN_SAVED_MIN_BASIS_POINTS,
             latency_max_ms: RANKED_RECALL_SHADOW_LATENCY_MAX_MS,
             regret_max_basis_points: RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS,
+            hybrid_signal_min_basis_points: RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS,
             operator_approval_required: true,
             production_route: false,
             production_write: false,
@@ -377,6 +511,7 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             schema_version: CONTEXT_MEMORY_RANKED_RECALL_SHADOW_EVAL_SCHEMA_VERSION,
             mode: ContextMemoryRankedRecallShadowEvalMode::DeterministicShadow,
             metrics: ContextMemoryRankedRecallShadowEvalMetric::fixed_shadow_metrics(),
+            hybrid_signals: ContextMemoryRankedRecallShadowHybridSignal::fixed_shadow_signals(),
             fixtures: vec![
                 ContextMemoryRankedRecallShadowEvalFixtureResult::positive(
                     ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch,
@@ -421,6 +556,7 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             token_saved_min_basis_points: RANKED_RECALL_SHADOW_TOKEN_SAVED_MIN_BASIS_POINTS,
             latency_max_ms: RANKED_RECALL_SHADOW_LATENCY_MAX_MS,
             regret_max_basis_points: RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS,
+            hybrid_signal_min_basis_points: RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS,
             operator_approval_required: true,
             production_route: false,
             production_write: false,
@@ -437,6 +573,13 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             && !self.mode.is_unknown()
             && self.metrics == ContextMemoryRankedRecallShadowEvalMetric::fixed_shadow_metrics()
             && self.metrics.iter().all(|metric| !metric.is_unknown())
+            && self.hybrid_signals
+                == ContextMemoryRankedRecallShadowHybridSignal::fixed_shadow_signals()
+            && self
+                .hybrid_signals
+                .iter()
+                .all(|signal| !signal.is_unknown())
+            && self.hybrid_signal_count() == RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
             && self.fixture_count() == 4
             && self.fixture_pass_count() == 4
             && self.positive_fixture_count() == 3
@@ -448,6 +591,10 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             && self.total_positive_token_saved() >= self.token_saved_min * 3
             && self.max_positive_latency_ms() <= self.latency_max_ms
             && self.max_positive_regret_basis_points() <= self.regret_max_basis_points
+            && self.positive_hybrid_signal_pass_count()
+                == self.positive_fixture_count() * RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
+            && self.hybrid_regression_blocked_count() == 1
+            && self.min_positive_hybrid_score_basis_points() >= self.hybrid_signal_min_basis_points
             && self.fixtures.iter().all(|fixture| {
                 fixture.has_ranked_recall_fixture_integrity(
                     self.recall_floor_basis_points,
@@ -456,6 +603,7 @@ impl ContextMemoryRankedRecallShadowEvalReport {
                     self.token_saved_min_basis_points,
                     self.latency_max_ms,
                     self.regret_max_basis_points,
+                    self.hybrid_signal_min_basis_points,
                 )
             })
             && self.operator_approval_required
@@ -469,6 +617,10 @@ impl ContextMemoryRankedRecallShadowEvalReport {
 
     pub fn fixture_count(&self) -> usize {
         self.fixtures.len()
+    }
+
+    pub fn hybrid_signal_count(&self) -> usize {
+        self.hybrid_signals.len()
     }
 
     pub fn fixture_pass_count(&self) -> usize {
@@ -503,6 +655,25 @@ impl ContextMemoryRankedRecallShadowEvalReport {
         self.fixtures
             .iter()
             .filter(|fixture| fixture.regression_fixture && fixture.regression_blocked)
+            .count()
+    }
+
+    pub fn positive_hybrid_signal_pass_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.hybrid_signal_pass_count)
+            .sum()
+    }
+
+    pub fn hybrid_regression_blocked_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| {
+                fixture.regression_fixture
+                    && fixture.regression_blocked
+                    && fixture.hybrid_signal_pass_count < RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
+            })
             .count()
     }
 
@@ -546,6 +717,15 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             .iter()
             .filter(|fixture| fixture.positive_fixture)
             .map(|fixture| fixture.precision_basis_points)
+            .min()
+            .unwrap_or(0)
+    }
+
+    pub fn min_positive_hybrid_score_basis_points(&self) -> u32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.hybrid_score_basis_points)
             .min()
             .unwrap_or(0)
     }

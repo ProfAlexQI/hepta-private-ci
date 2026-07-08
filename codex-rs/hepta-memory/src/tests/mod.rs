@@ -10,6 +10,7 @@ use hepta_core::ContextMemoryFormationCandidateType;
 use hepta_core::ContextMemoryRankedRecallShadowEvalFixtureKind;
 use hepta_core::ContextMemoryRankedRecallShadowEvalMetric;
 use hepta_core::ContextMemoryRankedRecallShadowEvalMode;
+use hepta_core::ContextMemoryRankedRecallShadowHybridSignal;
 use hepta_core::ContextMemoryRecallQualityGateVerdict;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalFixtureKind;
 use hepta_core::ContextMemorySelectedRecallSummaryCanaryEvalMetric;

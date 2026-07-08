@@ -60,6 +60,7 @@ pub use eval_harness::ContextMemoryRankedRecallShadowEvalFixtureResult;
 pub use eval_harness::ContextMemoryRankedRecallShadowEvalMetric;
 pub use eval_harness::ContextMemoryRankedRecallShadowEvalMode;
 pub use eval_harness::ContextMemoryRankedRecallShadowEvalReport;
+pub use eval_harness::ContextMemoryRankedRecallShadowHybridSignal;
 pub use eval_harness::ContextMemorySelectedRecallSummaryCanaryEvalFixtureKind;
 pub use eval_harness::ContextMemorySelectedRecallSummaryCanaryEvalFixtureResult;
 pub use eval_harness::ContextMemorySelectedRecallSummaryCanaryEvalMetric;
@@ -189,7 +190,7 @@ pub use transcript::TranscriptSpan;
 
 pub const CONTEXT_MEMORY_EVAL_HARNESS_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_ADAPTIVE_ALLOCATOR_EVAL_SHADOW_SCHEMA_VERSION: u32 = 1;
-pub const CONTEXT_MEMORY_RANKED_RECALL_SHADOW_EVAL_SCHEMA_VERSION: u32 = 1;
+pub const CONTEXT_MEMORY_RANKED_RECALL_SHADOW_EVAL_SCHEMA_VERSION: u32 = 2;
 pub const CONTEXT_MEMORY_SELECTED_RECALL_SUMMARY_CANARY_EVAL_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_SHADOW_CANARY_PROMOTION_READINESS_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_SHADOW_REGRESSION_DASHBOARD_SCHEMA_VERSION: u32 = 1;

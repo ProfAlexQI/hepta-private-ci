@@ -42,8 +42,18 @@ done
 cat <<'EOF'
 ranked-recall-shadow-eval=pass
 ranked-recall-shadow-eval.payload-light=pass
-ranked-recall-shadow-eval.schema=1
+ranked-recall-shadow-eval.schema=2
 ranked-recall-shadow-eval.mode=deterministic-shadow
+ranked-recall-shadow-eval.hybrid-mode=shadow-only
+ranked-recall-shadow-eval.hybrid-signal-count=5
+ranked-recall-shadow-eval.hybrid-positive-signal-pass-count=15
+ranked-recall-shadow-eval.hybrid-signal-min-basis-points=6000
+ranked-recall-shadow-eval.min-positive-hybrid-score-basis-points=7800
+ranked-recall-shadow-eval.lexical-bm25=shadow
+ranked-recall-shadow-eval.recency=shadow
+ranked-recall-shadow-eval.source-authority=shadow
+ranked-recall-shadow-eval.temporal-validity=shadow
+ranked-recall-shadow-eval.feedback=shadow
 ranked-recall-shadow-eval.fixture-count=4
 ranked-recall-shadow-eval.fixture-pass-count=4
 ranked-recall-shadow-eval.positive-fixture-count=3
@@ -61,6 +71,7 @@ ranked-recall-shadow-eval.total-positive-token-saved=2140
 ranked-recall-shadow-eval.max-positive-latency-ms=55
 ranked-recall-shadow-eval.max-positive-regret-basis-points=0
 ranked-recall-shadow-eval.regression-fixture=blocked
+ranked-recall-shadow-eval.hybrid-regression-signal=blocked
 ranked-recall-shadow-eval.operator-approval=required
 ranked-recall-shadow-eval.production-route=disabled
 ranked-recall-shadow-eval.runtime-activation=disabled

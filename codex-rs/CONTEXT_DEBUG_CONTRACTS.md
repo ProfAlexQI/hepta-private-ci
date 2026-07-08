@@ -1080,34 +1080,40 @@ must run `scripts/hepta-context-memory-recall-quality-gate.sh` after
 before `scripts/hepta-context-plane-status-report-gate.sh`. It must keep
 `runtime-activation=disabled`.
 Ranked recall shadow eval: recall diagnostics may expose an offline,
-behavior-neutral deterministic-shadow scoreboard for ranked recall output. The
-report may contain only fixed metric names (`recall`, `precision`,
-`token_saved`, `latency`, and `regret`), controlled fixture kinds
-(`query_match`, `recency_tie_break`, `budget_pressure`, and
-`regression_guard`), stable fixture hashes, ranked item counts, expected/
-recalled/predicted relevant counts, false-positive counts, recall and precision
-basis points, baseline/ranked token counts, token-saved counts and basis
-points, latency milliseconds and latency budget, regret basis points, a blocked
-regression fixture, fixed threshold labels (`recall-floor-basis-points`,
-`precision-floor-basis-points`, `token-saved-min-basis-points`,
-`latency-max-ms`, and `regret-max-basis-points`), and explicit side-effect
-booleans. It must not contain prompt text, transcript text, memory text, answer
-text, query payloads, ranked payloads, raw ranked payloads, rank explanations,
-score reasons, source ids, session ids, memory ids, trace ids, tool arguments,
-tool outputs, raw fact/entity values, email-shaped strings, phone-shaped
-strings, or user identifiers. Shadow integrity requires schema version 1,
-`deterministic-shadow` mode, exactly four fixtures, three positive fixtures,
-one negative regression fixture, ranked item counts on every fixture, minimum
-positive recall and precision of 8000 basis points, total positive
-token-saved count 2140, maximum positive latency 55 ms, zero positive regret,
-and the regression fixture blocked. It must not write production memory, must
-not write graph facts, must not alter prompt assembly, must not enable runtime
-activation, must not enable a production route, and must not allow operator
-activation. The Rust-backed fixture is
+behavior-neutral deterministic-shadow scoreboard for ranked recall output plus
+a hybrid shadow-only signal layer. The report may contain only fixed metric
+names (`recall`, `precision`, `token_saved`, `latency`, and `regret`), fixed
+hybrid signal names (`lexical_bm25`, `recency`, `source_authority`,
+`temporal_validity`, and `feedback`), controlled fixture kinds (`query_match`,
+`recency_tie_break`, `budget_pressure`, and `regression_guard`), stable fixture
+hashes, ranked item counts, expected/recalled/predicted relevant counts,
+false-positive counts, recall and precision basis points, baseline/ranked token
+counts, token-saved counts and basis points, latency milliseconds and latency
+budget, regret basis points, hybrid signal basis-point counters, hybrid score
+basis points, hybrid signal pass counts, a blocked regression fixture, fixed
+threshold labels (`recall-floor-basis-points`, `precision-floor-basis-points`,
+`token-saved-min-basis-points`, `latency-max-ms`,
+`regret-max-basis-points`, and `hybrid-signal-min-basis-points`), and explicit
+side-effect booleans. It must not contain prompt text, transcript text, memory
+text, answer text, query payloads, ranked payloads, raw ranked payloads, rank
+explanations, score reasons, source ids, session ids, memory ids, trace ids,
+tool arguments, tool outputs, raw fact/entity values, email-shaped strings,
+phone-shaped strings, or user identifiers. Shadow integrity requires schema
+version 2, `deterministic-shadow` mode, exactly five fixed hybrid signals,
+`hybrid-positive-signal-pass-count=15`, exactly four fixtures, three positive
+fixtures, one negative regression fixture, ranked item counts on every fixture,
+minimum positive recall and precision of 8000 basis points, minimum positive
+hybrid score of 7800 basis points, total positive token-saved count 2140,
+maximum positive latency 55 ms, zero positive regret, the regression fixture
+blocked, and `hybrid-regression-signal=blocked`. It must not write production
+memory, must not write graph facts, must not alter prompt assembly, must not
+enable runtime activation, must not enable a production route, and must not
+allow operator activation. The Rust-backed fixture is
 `ContextMemoryRankedRecallShadowEvalReport` in
 `codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs`, exposed
 through `context_memory_ranked_recall_shadow_eval_report` on both
-`StoreSnapshot` and `InMemoryStore`.
+`StoreSnapshot` and `InMemoryStore`; its hybrid signal enum is
+`ContextMemoryRankedRecallShadowHybridSignal`.
 
 `scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh` emits the
 payload-light scoreboard, and
@@ -1121,6 +1127,7 @@ entries, and no-leak constraints. The context debug gate and preflight must run
 include `ranked-recall-shadow-eval=pass`,
 `ranked-recall-shadow-eval.payload-light=pass`,
 `ranked-recall-shadow-eval.fixtures=4`,
+`ranked-recall-shadow-eval.hybrid-signals=5`,
 `ranked-recall-shadow-eval.regression-fixture=blocked`, and
 `ranked-recall-shadow-eval.runtime-activation=disabled`.
 

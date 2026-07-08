@@ -23,6 +23,7 @@ pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalFixtureResult;
 pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalMetric;
 pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalMode;
 pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowEvalReport;
+pub use ranked_recall_shadow::ContextMemoryRankedRecallShadowHybridSignal;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixtureKind;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalFixtureResult;
 pub use selected_recall_canary::ContextMemorySelectedRecallSummaryCanaryEvalMetric;
