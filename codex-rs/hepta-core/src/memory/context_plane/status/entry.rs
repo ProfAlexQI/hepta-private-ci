@@ -3,6 +3,8 @@ use serde::Serialize;
 
 use super::section::ContextPlaneStatusKind;
 use super::section::ContextPlaneStatusSection;
+use crate::memory::ContextMemoryRankedRecallShadowEvalReport;
+use crate::memory::ContextMemoryRankedRecallShadowHybridSignal;
 use crate::memory::ContextMemoryRecallQualityGateBlockerReason;
 use crate::memory::ContextMemoryRecallQualityGateReport;
 use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
@@ -13,6 +15,11 @@ use crate::memory::MemoryProviderV2AuditReport;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
+const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
+const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
+const RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS: u32 = 6_000;
+const RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS: u32 = 7_800;
 
 /// One payload-light context-plane status row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +59,18 @@ pub struct ContextPlaneStatusEntry {
     pub memory_provider_v2_close_check_pass: bool,
     pub memory_provider_v2_candidate_count: usize,
     pub memory_provider_v2_operator_review_required_count: usize,
+    pub ranked_recall_hybrid_signal_required_count: usize,
+    pub ranked_recall_hybrid_signal_pass_count: usize,
+    pub ranked_recall_lexical_bm25_check_pass: bool,
+    pub ranked_recall_recency_check_pass: bool,
+    pub ranked_recall_source_authority_check_pass: bool,
+    pub ranked_recall_temporal_validity_check_pass: bool,
+    pub ranked_recall_feedback_check_pass: bool,
+    pub ranked_recall_positive_hybrid_signal_required_count: usize,
+    pub ranked_recall_positive_hybrid_signal_pass_count: usize,
+    pub ranked_recall_hybrid_regression_blocked_count: usize,
+    pub ranked_recall_hybrid_signal_min_basis_points: u32,
+    pub ranked_recall_min_positive_hybrid_score_basis_points: u32,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -212,6 +231,75 @@ impl ContextPlaneStatusEntry {
             runtime_activation: provider_report.update_context.runtime_activation,
             prompt_assembly_change: provider_report.update_context.prompt_payload_exported
                 || provider_report.update_context.ranked_payload_exported,
+            ..Self::default()
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_ranked_recall_shadow_eval(
+        ranked_recall: &ContextMemoryRankedRecallShadowEvalReport,
+    ) -> Self {
+        let lexical_bm25_check_pass = ranked_recall
+            .hybrid_signals
+            .contains(&ContextMemoryRankedRecallShadowHybridSignal::LexicalBm25);
+        let recency_check_pass = ranked_recall
+            .hybrid_signals
+            .contains(&ContextMemoryRankedRecallShadowHybridSignal::Recency);
+        let source_authority_check_pass = ranked_recall
+            .hybrid_signals
+            .contains(&ContextMemoryRankedRecallShadowHybridSignal::SourceAuthority);
+        let temporal_validity_check_pass = ranked_recall
+            .hybrid_signals
+            .contains(&ContextMemoryRankedRecallShadowHybridSignal::TemporalValidity);
+        let feedback_check_pass = ranked_recall
+            .hybrid_signals
+            .contains(&ContextMemoryRankedRecallShadowHybridSignal::Feedback);
+        let hybrid_signal_pass_count = [
+            lexical_bm25_check_pass,
+            recency_check_pass,
+            source_authority_check_pass,
+            temporal_validity_check_pass,
+            feedback_check_pass,
+        ]
+        .iter()
+        .filter(|check| **check)
+        .count();
+        let has_integrity = ranked_recall.has_ranked_recall_shadow_integrity()
+            && hybrid_signal_pass_count == RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT;
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryRankedRecallShadowEval,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: ranked_recall.fixture_count(),
+            omitted_count: ranked_recall
+                .fixture_count()
+                .saturating_sub(ranked_recall.fixture_pass_count()),
+            blocker_count: usize::from(!has_integrity),
+            ranked_recall_hybrid_signal_required_count: RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT,
+            ranked_recall_hybrid_signal_pass_count: hybrid_signal_pass_count,
+            ranked_recall_lexical_bm25_check_pass: lexical_bm25_check_pass,
+            ranked_recall_recency_check_pass: recency_check_pass,
+            ranked_recall_source_authority_check_pass: source_authority_check_pass,
+            ranked_recall_temporal_validity_check_pass: temporal_validity_check_pass,
+            ranked_recall_feedback_check_pass: feedback_check_pass,
+            ranked_recall_positive_hybrid_signal_required_count:
+                RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT,
+            ranked_recall_positive_hybrid_signal_pass_count: ranked_recall
+                .positive_hybrid_signal_pass_count(),
+            ranked_recall_hybrid_regression_blocked_count: ranked_recall
+                .hybrid_regression_blocked_count(),
+            ranked_recall_hybrid_signal_min_basis_points: ranked_recall
+                .hybrid_signal_min_basis_points,
+            ranked_recall_min_positive_hybrid_score_basis_points: ranked_recall
+                .min_positive_hybrid_score_basis_points(),
+            production_write: ranked_recall.production_write || ranked_recall.production_route,
+            graph_write: ranked_recall.graph_write,
+            runtime_activation: ranked_recall.runtime_activation,
+            prompt_assembly_change: ranked_recall.prompt_assembly_change,
+            operator_activation_allowed: ranked_recall.operator_activation_allowed,
             ..Self::default()
         }
     }
@@ -390,6 +478,7 @@ impl ContextPlaneStatusEntry {
             && !self.status.is_unknown()
             && (self.status == ContextPlaneStatusKind::Blocked) == (self.blocker_count > 0)
             && self.has_recall_quality_blocker_integrity()
+            && self.has_ranked_recall_hybrid_integrity()
             && self.has_canary_promotion_checklist_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && !self.production_write
@@ -489,6 +578,51 @@ impl ContextPlaneStatusEntry {
                     && soak_readback_complete))
             && (self.status == ContextPlaneStatusKind::Shadow)
                 == (no_promotion_blockers && checklist_complete)
+    }
+
+    fn has_ranked_recall_hybrid_integrity(&self) -> bool {
+        let counts = [
+            self.ranked_recall_hybrid_signal_required_count,
+            self.ranked_recall_hybrid_signal_pass_count,
+            self.ranked_recall_positive_hybrid_signal_required_count,
+            self.ranked_recall_positive_hybrid_signal_pass_count,
+            self.ranked_recall_hybrid_regression_blocked_count,
+        ];
+        let thresholds = [
+            self.ranked_recall_hybrid_signal_min_basis_points,
+            self.ranked_recall_min_positive_hybrid_score_basis_points,
+        ];
+        let checks = [
+            self.ranked_recall_lexical_bm25_check_pass,
+            self.ranked_recall_recency_check_pass,
+            self.ranked_recall_source_authority_check_pass,
+            self.ranked_recall_temporal_validity_check_pass,
+            self.ranked_recall_feedback_check_pass,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryRankedRecallShadowEval {
+            return counts.iter().all(|count| *count == 0)
+                && thresholds.iter().all(|threshold| *threshold == 0)
+                && checks.iter().all(|check| !check);
+        }
+
+        let hybrid_signal_pass_count = checks.iter().filter(|check| **check).count();
+        self.ranked_recall_hybrid_signal_required_count
+            == RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT
+            && self.ranked_recall_hybrid_signal_pass_count == hybrid_signal_pass_count
+            && self.ranked_recall_hybrid_signal_pass_count
+                == self.ranked_recall_hybrid_signal_required_count
+            && self.ranked_recall_positive_hybrid_signal_required_count
+                == RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT
+            && self.ranked_recall_positive_hybrid_signal_pass_count
+                == self.ranked_recall_positive_hybrid_signal_required_count
+            && self.ranked_recall_hybrid_regression_blocked_count
+                == RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT
+            && self.ranked_recall_hybrid_signal_min_basis_points
+                == RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS
+            && self.ranked_recall_min_positive_hybrid_score_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS
+            && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 
     fn has_memory_provider_v2_lifecycle_integrity(&self) -> bool {

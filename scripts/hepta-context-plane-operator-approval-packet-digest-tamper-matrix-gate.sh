@@ -69,6 +69,7 @@ for term in \
   "canary partial checklist tamper" \
   "canary partial rehearsal tamper" \
   "canary blocker/full-checklist replay" \
+  "ranked recall hybrid counter tamper" \
   "activation-command injection" \
   "raw-payload injection" \
   "PII-shaped value injection" \
@@ -118,12 +119,12 @@ assert_line_before \
 expected_digest_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-canonical-export-digest=pass
 context-plane-operator-approval-packet-canonical-export-digest.schema=1
-context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=58
-context-plane-operator-approval-packet-canonical-export-digest.approval-report-sha256=e85aad630100faabcda6f14dfce9e96d17cefdd7a6d8c96e3f29e05a97858fc7
+context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=71
+context-plane-operator-approval-packet-canonical-export-digest.approval-report-sha256=462614c9cda6e55d7ce1ea82063375eed2a02485463d26f35dca29c8f8097915
 context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-lines=4
 context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-sha256=06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2
-context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=62
-context-plane-operator-approval-packet-canonical-export-digest.combined-report-sha256=56ea3c7291e544029ef08709616ce834e29e6978db4398b3b4d456866922d47e
+context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=75
+context-plane-operator-approval-packet-canonical-export-digest.combined-report-sha256=9c739ad5d374c4a874fe4c5ac7f57a8233be4a6526d9c35e16c81af5964658f3
 context-plane-operator-approval-packet-canonical-export-digest.runtime-activation=disabled
 context-plane-operator-approval-packet-canonical-export-digest.operator-activation=disabled
 STATUS
@@ -138,12 +139,12 @@ canonical_guard_accepts() {
   combined_status="$(printf '%s\n%s' "$approval_status" "$negative_status")"
 
   [ "$digest_status" = "$expected_digest_status" ] || return 1
-  [ "$(line_count "$approval_status")" = "58" ] || return 1
+  [ "$(line_count "$approval_status")" = "71" ] || return 1
   [ "$(line_count "$negative_status")" = "4" ] || return 1
-  [ "$(line_count "$combined_status")" = "62" ] || return 1
-  [ "$(printf '%s\n' "$approval_status" | sha256_digest)" = "e85aad630100faabcda6f14dfce9e96d17cefdd7a6d8c96e3f29e05a97858fc7" ] || return 1
+  [ "$(line_count "$combined_status")" = "75" ] || return 1
+  [ "$(printf '%s\n' "$approval_status" | sha256_digest)" = "462614c9cda6e55d7ce1ea82063375eed2a02485463d26f35dca29c8f8097915" ] || return 1
   [ "$(printf '%s\n' "$negative_status" | sha256_digest)" = "06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2" ] || return 1
-  [ "$(printf '%s\n' "$combined_status" | sha256_digest)" = "56ea3c7291e544029ef08709616ce834e29e6978db4398b3b4d456866922d47e" ] || return 1
+  [ "$(printf '%s\n' "$combined_status" | sha256_digest)" = "9c739ad5d374c4a874fe4c5ac7f57a8233be4a6526d9c35e16c81af5964658f3" ] || return 1
 
   if printf '%s\n%s\n%s\n' "$approval_status" "$negative_status" "$digest_status" | grep -E 'activation_command|tool_args|raw_payload|prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|ranked_payload|entity_hash|supersedes|idempotency|fixture_hash|operator@example\.com|activation-command=(run|enabled|present)|runtime-activation=enabled|production-write=enabled|graph-write=enabled|operator-activation=enabled' >/dev/null; then
     return 1
@@ -178,10 +179,11 @@ line_count_tamper="$(
   printf '%s\n' "$approval_status"
   printf '%s\n' "context-plane-operator-approval-packet.extra-line=unexpected"
 )"
-digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/e85aad630100faabcda6f14dfce9e96d17cefdd7a6d8c96e3f29e05a97858fc7/f85aad630100faabcda6f14dfce9e96d17cefdd7a6d8c96e3f29e05a97858fc7/')"
+digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/462614c9cda6e55d7ce1ea82063375eed2a02485463d26f35dca29c8f8097915/562614c9cda6e55d7ce1ea82063375eed2a02485463d26f35dca29c8f8097915/')"
 canary_partial_checklist_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4/context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=3/')"
 canary_partial_rehearsal_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3/context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=2/')"
 canary_blocker_full_checklist_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=0/context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=1/')"
+ranked_recall_hybrid_counter_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5/context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=4/')"
 activation_command_tamper="$(
   printf '%s\n' "$approval_status"
   printf '%s\n' "context-plane-operator-approval-packet.activation-command=run"
@@ -202,6 +204,7 @@ assert_rejected "digest-value" "$approval_status" "$negative_status" "$digest_va
 assert_rejected "canary partial checklist" "$canary_partial_checklist_tamper" "$negative_status" "$digest_status"
 assert_rejected "canary partial rehearsal" "$canary_partial_rehearsal_tamper" "$negative_status" "$digest_status"
 assert_rejected "canary blocker/full-checklist replay" "$canary_blocker_full_checklist_tamper" "$negative_status" "$digest_status"
+assert_rejected "ranked recall hybrid counter" "$ranked_recall_hybrid_counter_tamper" "$negative_status" "$digest_status"
 assert_rejected "activation-command" "$activation_command_tamper" "$negative_status" "$digest_status"
 assert_rejected "raw-payload" "$raw_payload_tamper" "$negative_status" "$digest_status"
 assert_rejected "PII-shaped value" "$pii_tamper" "$negative_status" "$digest_status"
@@ -214,6 +217,7 @@ echo "context-plane-operator-approval-packet-digest-tamper-matrix.digest-value=r
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.canary-partial-checklist=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.canary-partial-rehearsal=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.canary-blocker-full-checklist=reject"
+echo "context-plane-operator-approval-packet-digest-tamper-matrix.ranked-recall-hybrid-counter=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.activation-command=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.raw-payload=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.pii-shaped=reject"

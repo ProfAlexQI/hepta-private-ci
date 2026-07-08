@@ -10,6 +10,11 @@ use super::target::ContextPlaneActivationTarget;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
+const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
+const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
+const RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS: u32 = 6_000;
+const RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS: u32 = 7_800;
 
 /// One activation-readiness threshold row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +54,18 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_provider_v2_close_check_pass: bool,
     pub memory_provider_v2_candidate_count: usize,
     pub memory_provider_v2_operator_review_required_count: usize,
+    pub ranked_recall_hybrid_signal_required_count: usize,
+    pub ranked_recall_hybrid_signal_pass_count: usize,
+    pub ranked_recall_lexical_bm25_check_pass: bool,
+    pub ranked_recall_recency_check_pass: bool,
+    pub ranked_recall_source_authority_check_pass: bool,
+    pub ranked_recall_temporal_validity_check_pass: bool,
+    pub ranked_recall_feedback_check_pass: bool,
+    pub ranked_recall_positive_hybrid_signal_required_count: usize,
+    pub ranked_recall_positive_hybrid_signal_pass_count: usize,
+    pub ranked_recall_hybrid_regression_blocked_count: usize,
+    pub ranked_recall_hybrid_signal_min_basis_points: u32,
+    pub ranked_recall_min_positive_hybrid_score_basis_points: u32,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -113,6 +130,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryRankedRecallShadowEval,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryProviderBoundary,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly,
@@ -166,14 +187,50 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneActivationBlockerReason::SideEffectFlagEnabled,
             )
             .with_recall_quality_rollup(target, entry)
+            .with_ranked_recall_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
         Self::from_required_status(target, observed_status, required_status)
             .with_recall_quality_rollup(target, entry)
+            .with_ranked_recall_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
+    }
+
+    fn with_ranked_recall_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryRankedRecallShadowEval
+            && let Some(entry) = entry
+        {
+            self.ranked_recall_hybrid_signal_required_count =
+                entry.ranked_recall_hybrid_signal_required_count;
+            self.ranked_recall_hybrid_signal_pass_count =
+                entry.ranked_recall_hybrid_signal_pass_count;
+            self.ranked_recall_lexical_bm25_check_pass =
+                entry.ranked_recall_lexical_bm25_check_pass;
+            self.ranked_recall_recency_check_pass = entry.ranked_recall_recency_check_pass;
+            self.ranked_recall_source_authority_check_pass =
+                entry.ranked_recall_source_authority_check_pass;
+            self.ranked_recall_temporal_validity_check_pass =
+                entry.ranked_recall_temporal_validity_check_pass;
+            self.ranked_recall_feedback_check_pass = entry.ranked_recall_feedback_check_pass;
+            self.ranked_recall_positive_hybrid_signal_required_count =
+                entry.ranked_recall_positive_hybrid_signal_required_count;
+            self.ranked_recall_positive_hybrid_signal_pass_count =
+                entry.ranked_recall_positive_hybrid_signal_pass_count;
+            self.ranked_recall_hybrid_regression_blocked_count =
+                entry.ranked_recall_hybrid_regression_blocked_count;
+            self.ranked_recall_hybrid_signal_min_basis_points =
+                entry.ranked_recall_hybrid_signal_min_basis_points;
+            self.ranked_recall_min_positive_hybrid_score_basis_points =
+                entry.ranked_recall_min_positive_hybrid_score_basis_points;
+        }
+        self
     }
 
     fn with_recall_quality_rollup(
@@ -269,6 +326,7 @@ impl ContextPlaneActivationBlockerRow {
             && !self.blocker_reason.is_unknown()
             && self.threshold_satisfied != self.blocker_reason.is_blocking()
             && self.has_recall_quality_rollup_integrity()
+            && self.has_ranked_recall_rollup_integrity()
             && self.has_canary_promotion_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
@@ -367,6 +425,53 @@ impl ContextPlaneActivationBlockerRow {
                     && kill_switch_rehearsal_complete
                     && soak_readback_complete))
             && (self.canary_promotion_blocker_count == 0 || self.blocker_reason.is_blocking())
+    }
+
+    fn has_ranked_recall_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.ranked_recall_hybrid_signal_required_count,
+            self.ranked_recall_hybrid_signal_pass_count,
+            self.ranked_recall_positive_hybrid_signal_required_count,
+            self.ranked_recall_positive_hybrid_signal_pass_count,
+            self.ranked_recall_hybrid_regression_blocked_count,
+        ];
+        let thresholds = [
+            self.ranked_recall_hybrid_signal_min_basis_points,
+            self.ranked_recall_min_positive_hybrid_score_basis_points,
+        ];
+        let checks = [
+            self.ranked_recall_lexical_bm25_check_pass,
+            self.ranked_recall_recency_check_pass,
+            self.ranked_recall_source_authority_check_pass,
+            self.ranked_recall_temporal_validity_check_pass,
+            self.ranked_recall_feedback_check_pass,
+        ];
+
+        if self.target != ContextPlaneActivationTarget::MemoryRankedRecallShadowEval {
+            return counts.iter().all(|count| *count == 0)
+                && thresholds.iter().all(|threshold| *threshold == 0)
+                && checks.iter().all(|check| !check);
+        }
+
+        let hybrid_signal_pass_count = checks.iter().filter(|check| **check).count();
+        self.ranked_recall_hybrid_signal_required_count
+            == RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT
+            && self.ranked_recall_hybrid_signal_pass_count == hybrid_signal_pass_count
+            && self.ranked_recall_hybrid_signal_pass_count
+                == self.ranked_recall_hybrid_signal_required_count
+            && self.ranked_recall_positive_hybrid_signal_required_count
+                == RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT
+            && self.ranked_recall_positive_hybrid_signal_pass_count
+                == self.ranked_recall_positive_hybrid_signal_required_count
+            && self.ranked_recall_hybrid_regression_blocked_count
+                == RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT
+            && self.ranked_recall_hybrid_signal_min_basis_points
+                == RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS
+            && self.ranked_recall_min_positive_hybrid_score_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS
+            && (self.ranked_recall_positive_hybrid_signal_pass_count
+                == self.ranked_recall_positive_hybrid_signal_required_count
+                || self.blocker_reason.is_blocking())
     }
 
     fn has_memory_provider_v2_rollup_integrity(&self) -> bool {

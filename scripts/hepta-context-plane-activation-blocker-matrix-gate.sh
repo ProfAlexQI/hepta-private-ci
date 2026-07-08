@@ -83,6 +83,13 @@ for term in \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
+  "memory_ranked_recall_shadow_eval" \
+  "memory_ranked_recall_shadow_eval_shadow_only" \
+  "ranked_recall_hybrid_signal_pass_count" \
+  "ranked_recall_lexical_bm25_check_pass" \
+  "ranked_recall_temporal_validity_check_pass" \
+  "ranked_recall_positive_hybrid_signal_pass_count" \
+  "ranked_recall_hybrid_regression_blocked_count" \
   "memory_provider_boundary" \
   "memory_provider_v2_boundary" \
   "memory_provider_v2_lifecycle_pass_count" \
@@ -101,10 +108,14 @@ for term in \
   "recall_quality_blocking_reasons" \
   "context-plane-activation-blockers.recall-quality-blocking-reason-count=0" \
   "context-plane-activation-blockers.recall-quality-blocking-reasons=none" \
+  "context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5" \
+  "context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15" \
+  "context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1" \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
   "temporal_graph_shadow_eval_shadow_only" \
+  "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
   "memory_shadow_canary_readiness_shadow_only" \
@@ -221,10 +232,10 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=7
-context-plane-activation-blockers.rows=17
+context-plane-activation-blockers.schema=8
+context-plane-activation-blockers.rows=18
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=8
+context-plane-activation-blockers.blockers=9
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -238,6 +249,19 @@ context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshol
 context-plane-activation-blockers.recall-quality-gate=ready
 context-plane-activation-blockers.recall-quality-blocking-reason-count=0
 context-plane-activation-blockers.recall-quality-blocking-reasons=none
+context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only
+context-plane-activation-blockers.ranked-recall.hybrid-signal-required-count=5
+context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5
+context-plane-activation-blockers.ranked-recall.lexical-bm25-check=pass
+context-plane-activation-blockers.ranked-recall.recency-check=pass
+context-plane-activation-blockers.ranked-recall.source-authority-check=pass
+context-plane-activation-blockers.ranked-recall.temporal-validity-check=pass
+context-plane-activation-blockers.ranked-recall.feedback-check=pass
+context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-required-count=15
+context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15
+context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1
+context-plane-activation-blockers.ranked-recall.hybrid-signal-min-basis-points=6000
+context-plane-activation-blockers.ranked-recall.min-positive-hybrid-score-basis-points=7800
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6

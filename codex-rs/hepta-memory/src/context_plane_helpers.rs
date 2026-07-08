@@ -162,6 +162,7 @@ impl StoreSnapshot {
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
         let recall_quality_gate =
             ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+        let ranked_recall = self.context_memory_ranked_recall_shadow_eval_report();
         let provider_report = self.context_memory_provider_report(request);
         let provider_v2_write_proposal =
             MemoryProviderWriteProposalReport::from_formation_queue("builtin", &formation_queue);
@@ -188,6 +189,7 @@ impl StoreSnapshot {
             eval_seed: &eval_seed,
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
+            ranked_recall: &ranked_recall,
             provider_report: &provider_report,
             provider_v2_audit: &provider_v2_audit,
             shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,

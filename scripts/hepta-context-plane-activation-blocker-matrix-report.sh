@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=7
-context-plane-activation-blockers.rows=17
+context-plane-activation-blockers.schema=8
+context-plane-activation-blockers.rows=18
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=8
+context-plane-activation-blockers.blockers=9
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -20,6 +20,19 @@ context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshol
 context-plane-activation-blockers.recall-quality-gate=ready
 context-plane-activation-blockers.recall-quality-blocking-reason-count=0
 context-plane-activation-blockers.recall-quality-blocking-reasons=none
+context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only
+context-plane-activation-blockers.ranked-recall.hybrid-signal-required-count=5
+context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5
+context-plane-activation-blockers.ranked-recall.lexical-bm25-check=pass
+context-plane-activation-blockers.ranked-recall.recency-check=pass
+context-plane-activation-blockers.ranked-recall.source-authority-check=pass
+context-plane-activation-blockers.ranked-recall.temporal-validity-check=pass
+context-plane-activation-blockers.ranked-recall.feedback-check=pass
+context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-required-count=15
+context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15
+context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1
+context-plane-activation-blockers.ranked-recall.hybrid-signal-min-basis-points=6000
+context-plane-activation-blockers.ranked-recall.min-positive-hybrid-score-basis-points=7800
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6

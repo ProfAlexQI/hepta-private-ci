@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 17);
+    assert_eq!(matrix.rows.len(), 18);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 8);
+    assert_eq!(matrix.blocker_count, 9);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -50,6 +50,10 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
@@ -119,6 +123,11 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
+    assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -218,9 +227,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 17);
+    assert_eq!(from_store.rows.len(), 18);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 8);
+    assert_eq!(from_store.blocker_count, 9);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -245,6 +254,10 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        from_store.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
     );
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),

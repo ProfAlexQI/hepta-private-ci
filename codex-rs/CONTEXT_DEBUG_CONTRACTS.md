@@ -1487,8 +1487,8 @@ Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation
 receipts, memory formation queue, temporal facts, temporal fact graph, eval
-harness seed, adaptive allocator eval shadow, recall quality gate, memory
-provider boundary, memory shadow canary readiness, memory shadow canary
+harness seed, adaptive allocator eval shadow, recall quality gate, ranked recall
+shadow eval, memory provider boundary, memory shadow canary readiness, memory shadow canary
 promotion readiness, and source-aware front-door
 readiness. The
 machine-readable report is
@@ -1498,13 +1498,34 @@ keys only. The Rust status sections are `source_registry`,
 `memory_formation_receipts`, `memory_formation_queue`, `memory_temporal_facts`,
 `memory_temporal_fact_graph`, `memory_temporal_graph_shadow_eval`,
 `eval_harness_seed`, `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
-`memory_provider_boundary`, `memory_shadow_canary_readiness`,
+`memory_ranked_recall_shadow_eval`, `memory_provider_boundary`, `memory_shadow_canary_readiness`,
 `memory_shadow_canary_promotion_readiness`, and `source_aware_front_door`.
 Section states may be `ready`, `shadow`, `disabled`,
 or `blocked`; they may carry only counts and side-effect booleans. The
 `memory_temporal_graph_shadow_eval` row is shadow-only until a separately
 approved graph route is promoted. The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
+`memory_ranked_recall_shadow_eval` row is shadow-only until a separately
+approved production recall route is promoted. It may expose only the fixed
+hybrid signal counters and thresholds for `lexical_bm25`, `recency`,
+`source_authority`, `temporal_validity`, and `feedback`, plus aggregate
+positive hybrid signal pass counts and hybrid regression blocking counts. The
+typed ranked recall fields are `ranked_recall_hybrid_signal_required_count`,
+`ranked_recall_hybrid_signal_pass_count`,
+`ranked_recall_lexical_bm25_check_pass`,
+`ranked_recall_recency_check_pass`,
+`ranked_recall_source_authority_check_pass`,
+`ranked_recall_temporal_validity_check_pass`,
+`ranked_recall_feedback_check_pass`,
+`ranked_recall_positive_hybrid_signal_required_count`,
+`ranked_recall_positive_hybrid_signal_pass_count`,
+`ranked_recall_hybrid_regression_blocked_count`,
+`ranked_recall_hybrid_signal_min_basis_points`, and
+`ranked_recall_min_positive_hybrid_score_basis_points`. Status integrity must
+reject ranked-recall false-green rows: all five hybrid signal checks must pass,
+the positive hybrid signal pass count must be 15, the hybrid regression blocked
+count must be 1, the hybrid signal floor must be 6000 basis points, and the
+minimum positive hybrid score must be at least 7800 basis points. The
 `memory_shadow_canary_readiness` row is shadow-only until a separately approved
 canary promotion route is designed and explicitly approved. The
 `memory_shadow_canary_promotion_readiness` row is also shadow-only and may carry
@@ -1532,6 +1553,10 @@ recall-quality blocker enums only:
 `precision_regression`, `safety_leak`, `answer_quality_regression`, and
 `side_effect_flag_enabled`. Gate-pass status must export
 `context-plane-status.memory-temporal-graph-shadow-eval=shadow`,
+`context-plane-status.memory-ranked-recall-shadow-eval=shadow`,
+`context-plane-status.ranked-recall.hybrid-signal-pass-count=5`,
+`context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15`,
+`context-plane-status.ranked-recall.hybrid-regression-blocked-count=1`,
 `context-plane-status.memory-provider-boundary=shadow`,
 `context-plane-status.memory-provider-v2-boundary=shadow`,
 `context-plane-status.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1556,7 +1581,7 @@ answer text. It must not expose source ids, session ids, memory ids, trace ids,
 query payloads, ranked payloads, tool arguments, raw fact/entity values,
 email-shaped strings, phone-shaped strings, user identifiers, transcript spans,
 candidate text, entity hashes, fact hashes, edge hashes, supersedes hashes,
-fixture hashes, or idempotency hashes. Status integrity requires all sixteen
+fixture hashes, or idempotency hashes. Status integrity requires all seventeen
 sections, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
@@ -1582,13 +1607,14 @@ Plane status report. The machine-readable report is
 `memory_temporal_facts`, `memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
-`memory_provider_boundary`, `memory_provider_v2_boundary`,
+`memory_ranked_recall_shadow_eval`, `memory_provider_boundary`, `memory_provider_v2_boundary`,
 `memory_shadow_canary_readiness`,
 `memory_shadow_canary_promotion_readiness`, `source_aware_front_door`, and
 `operator_approval`. The current blocker reasons
 are controlled enum values:
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
+`memory_ranked_recall_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
@@ -1598,7 +1624,11 @@ are controlled enum values:
 be added to the enum and gate before export. Matrix rows may carry only
 target/status/required-status taxonomy, threshold booleans, blocker reason
 enums, counts, canary promotion audit checklist pass booleans, and explicit
-side-effect booleans. Canary-promotion matrix row integrity must reject
+side-effect booleans. The `memory_ranked_recall_shadow_eval` matrix row carries
+the same ranked-recall hybrid counters as the status row and must reject missing
+hybrid signals, inflated pass counts, low hybrid scores, unblocked hybrid
+regression fixtures, or ranked-recall fields appearing on non-ranked rows.
+Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
 promotion blocker may not appear with a full checklist. A status input carrying any
@@ -1613,6 +1643,10 @@ controlled recall-quality blocker enums `missing_critical_fact_regression`,
 `answer_quality_regression`, and `side_effect_flag_enabled`. Gate-pass
 activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only`,
+`context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only`,
+`context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5`,
+`context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15`,
+`context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1639,7 +1673,7 @@ It must not expose source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw fact/entity values, email-shaped
 strings, phone-shaped strings, user identifiers, transcript spans, candidate
 text, entity hashes, fact hashes, edge hashes, supersedes hashes, fixture hashes,
-or idempotency hashes. Matrix integrity requires all seventeen targets, exact blocker counts, no production
+or idempotency hashes. Matrix integrity requires all eighteen targets, exact blocker counts, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
 changes, no operator activation allowance, and `activation_allowed=false`. This
@@ -1667,6 +1701,7 @@ payload-light counters only. Required approval scopes are controlled enum values
 counts may include only the controlled activation blocker enum values
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
+`memory_ranked_recall_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
@@ -1689,8 +1724,29 @@ only. Packet integrity must reject false-green canary-promotion receipts:
 `promotion_blocker_count=0` requires a full four-link checklist and complete
 stable-window/pass-streak/rehearsal counts, and any promotion blocker must not be
 paired with a full checklist.
+The packet also carries only payload-light ranked recall hybrid readiness
+counters from the `memory_ranked_recall_shadow_eval` matrix row:
+`ranked_recall_hybrid_signal_required_count`,
+`ranked_recall_hybrid_signal_pass_count`,
+`ranked_recall_lexical_bm25_check_pass`,
+`ranked_recall_recency_check_pass`,
+`ranked_recall_source_authority_check_pass`,
+`ranked_recall_temporal_validity_check_pass`,
+`ranked_recall_feedback_check_pass`,
+`ranked_recall_positive_hybrid_signal_required_count`,
+`ranked_recall_positive_hybrid_signal_pass_count`,
+`ranked_recall_hybrid_regression_blocked_count`,
+`ranked_recall_hybrid_signal_min_basis_points`, and
+`ranked_recall_min_positive_hybrid_score_basis_points`. Packet integrity must
+reject ranked-recall false-green receipts with missing hybrid signals, inflated
+pass counts, unblocked hybrid regression fixtures, or low positive hybrid
+scores.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
+`context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5`,
+`context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-pass-count=15`,
+`context-plane-operator-approval-packet.ranked-recall.hybrid-regression-blocked-count=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1726,7 +1782,7 @@ payloads, tool arguments, raw fact/entity values, email-shaped strings,
 phone-shaped strings, user identifiers, transcript spans, candidate text, entity
 hashes, supersedes hashes, fixture hashes, or idempotency hashes. The packet
 must not include activation commands or any command-shaped field that could be
-executed by an operator path. Packet integrity requires all seventeen matrix rows,
+executed by an operator path. Packet integrity requires all eighteen matrix rows,
 exact threshold counts, exact blocker reason counts, all required approval
 scopes, no production memory writes, no graph writes, no runtime activation, no
 adaptive allocator runtime activation, no source-aware runtime activation, no
@@ -1780,8 +1836,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 58 lines, negative export report 4 lines, and
-combined report 62 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 71 lines, negative export report 4 lines, and
+combined report 75 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool
@@ -1803,7 +1859,7 @@ malformed canonical export variants. The machine-readable matrix is
 `context-plane-operator-approval-packet-digest-tamper-matrix=pass` and must
 cover line-order tamper, line-count tamper, digest-value tamper, canary partial checklist tamper,
 canary partial rehearsal tamper, canary blocker/full-checklist replay,
-activation-command injection, raw-payload injection, PII-shaped value injection,
+ranked recall hybrid counter tamper, activation-command injection, raw-payload injection, PII-shaped value injection,
 and write/activation flag injection. Each fixture must fail the same
 line-count, SHA-256, and no-payload guard used by the canonical digest report;
 no fixture may be accepted as a valid approval packet, negative export, digest

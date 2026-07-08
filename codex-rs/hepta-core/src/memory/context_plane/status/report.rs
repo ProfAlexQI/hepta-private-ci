@@ -10,6 +10,7 @@ use crate::memory::ContextMemoryAdaptiveAllocatorEvalShadowReport;
 use crate::memory::ContextMemoryEvalHarnessReport;
 use crate::memory::ContextMemoryFormationQueueReport;
 use crate::memory::ContextMemoryFormationReceiptReport;
+use crate::memory::ContextMemoryRankedRecallShadowEvalReport;
 use crate::memory::ContextMemoryRecallQualityGateReport;
 use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
@@ -48,6 +49,7 @@ pub struct ContextPlaneStatusReportInput<'a> {
     pub eval_seed: &'a ContextMemoryEvalHarnessReport,
     pub allocator_shadow: &'a ContextMemoryAdaptiveAllocatorEvalShadowReport,
     pub recall_quality_gate: &'a ContextMemoryRecallQualityGateReport,
+    pub ranked_recall: &'a ContextMemoryRankedRecallShadowEvalReport,
     pub provider_report: &'a MemoryProviderReport,
     pub provider_v2_audit: &'a MemoryProviderV2AuditReport,
     pub shadow_quality_trend_snapshot: &'a ContextMemoryShadowQualityTrendSnapshotReport,
@@ -125,6 +127,7 @@ impl ContextPlaneStatusReport {
                     ),
             ),
             ContextPlaneStatusEntry::from_recall_quality_gate(input.recall_quality_gate),
+            ContextPlaneStatusEntry::from_ranked_recall_shadow_eval(input.ranked_recall),
             ContextPlaneStatusEntry::from_memory_provider_report(input.provider_report),
             ContextPlaneStatusEntry::from_memory_provider_v2_audit(input.provider_v2_audit),
             ContextPlaneStatusEntry::from_memory_shadow_canary_readiness(
@@ -147,12 +150,13 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::EvalHarnessSeed => 8,
             ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 9,
             ContextPlaneStatusSection::RecallQualityGate => 10,
-            ContextPlaneStatusSection::MemoryProviderBoundary => 11,
-            ContextPlaneStatusSection::MemoryProviderV2Boundary => 12,
-            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 13,
-            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 14,
-            ContextPlaneStatusSection::SourceAwareFrontDoor => 15,
-            ContextPlaneStatusSection::Unknown => 16,
+            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 11,
+            ContextPlaneStatusSection::MemoryProviderBoundary => 12,
+            ContextPlaneStatusSection::MemoryProviderV2Boundary => 13,
+            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 14,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 15,
+            ContextPlaneStatusSection::SourceAwareFrontDoor => 16,
+            ContextPlaneStatusSection::Unknown => 17,
         });
 
         let production_write = sections.iter().any(|entry| entry.production_write);
@@ -176,7 +180,7 @@ impl ContextPlaneStatusReport {
 
     pub fn has_status_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_STATUS_SCHEMA_VERSION
-            && self.sections.len() == 16
+            && self.sections.len() == 17
             && self.has_required_sections()
             && self
                 .sections
@@ -204,6 +208,7 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::EvalHarnessSeed,
             ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
             ContextPlaneStatusSection::RecallQualityGate,
+            ContextPlaneStatusSection::MemoryRankedRecallShadowEval,
             ContextPlaneStatusSection::MemoryProviderBoundary,
             ContextPlaneStatusSection::MemoryProviderV2Boundary,
             ContextPlaneStatusSection::MemoryShadowCanaryReadiness,

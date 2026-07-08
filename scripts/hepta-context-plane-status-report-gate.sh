@@ -83,6 +83,12 @@ for term in \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
+  "memory_ranked_recall_shadow_eval" \
+  "ranked_recall_hybrid_signal_pass_count" \
+  "ranked_recall_lexical_bm25_check_pass" \
+  "ranked_recall_temporal_validity_check_pass" \
+  "ranked_recall_positive_hybrid_signal_pass_count" \
+  "ranked_recall_hybrid_regression_blocked_count" \
   "memory_provider_boundary" \
   "memory_provider_v2_boundary" \
   "memory_provider_v2_lifecycle_pass_count" \
@@ -115,6 +121,9 @@ for term in \
   "hepta-context-plane-status-report-gate.sh" \
   "context-plane-status.recall-quality-blocking-reason-count=0" \
   "context-plane-status.recall-quality-blocking-reasons=none" \
+  "context-plane-status.ranked-recall.hybrid-signal-pass-count=5" \
+  "context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15" \
+  "context-plane-status.ranked-recall.hybrid-regression-blocked-count=1" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -221,6 +230,19 @@ context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready
 context-plane-status.recall-quality-blocking-reason-count=0
 context-plane-status.recall-quality-blocking-reasons=none
+context-plane-status.memory-ranked-recall-shadow-eval=shadow
+context-plane-status.ranked-recall.hybrid-signal-required-count=5
+context-plane-status.ranked-recall.hybrid-signal-pass-count=5
+context-plane-status.ranked-recall.lexical-bm25-check=pass
+context-plane-status.ranked-recall.recency-check=pass
+context-plane-status.ranked-recall.source-authority-check=pass
+context-plane-status.ranked-recall.temporal-validity-check=pass
+context-plane-status.ranked-recall.feedback-check=pass
+context-plane-status.ranked-recall.positive-hybrid-signal-required-count=15
+context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15
+context-plane-status.ranked-recall.hybrid-regression-blocked-count=1
+context-plane-status.ranked-recall.hybrid-signal-min-basis-points=6000
+context-plane-status.ranked-recall.min-positive-hybrid-score-basis-points=7800
 context-plane-status.memory-provider-boundary=shadow
 context-plane-status.memory-provider-v2-boundary=shadow
 context-plane-status.memory-provider-v2.lifecycle-required-count=6

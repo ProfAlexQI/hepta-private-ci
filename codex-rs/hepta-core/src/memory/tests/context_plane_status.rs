@@ -122,6 +122,7 @@ fn context_plane_status_report_fixture(
         eval_seed: &eval_seed,
         allocator_shadow,
         recall_quality_gate,
+        ranked_recall: &ranked_recall,
         provider_report: &provider_report,
         provider_v2_audit: &provider_v2_audit,
         shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
@@ -136,9 +137,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 16);
+    assert_eq!(report.sections.len(), 17);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 7);
+    assert_eq!(report.shadow_section_count(), 8);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -152,6 +153,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::RecallQualityGate),
         Some(ContextPlaneStatusKind::Ready)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
@@ -184,6 +189,40 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
         .expect("recall quality status row should exist");
     assert_eq!(recall_entry.recall_quality_blocking_reason_count, 0);
     assert!(recall_entry.recall_quality_blocking_reasons.is_empty());
+    let ranked_recall_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval status row should exist");
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_signal_required_count,
+        5
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_signal_pass_count,
+        5
+    );
+    assert!(ranked_recall_entry.ranked_recall_lexical_bm25_check_pass);
+    assert!(ranked_recall_entry.ranked_recall_recency_check_pass);
+    assert!(ranked_recall_entry.ranked_recall_source_authority_check_pass);
+    assert!(ranked_recall_entry.ranked_recall_temporal_validity_check_pass);
+    assert!(ranked_recall_entry.ranked_recall_feedback_check_pass);
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_positive_hybrid_signal_pass_count,
+        15
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_regression_blocked_count,
+        1
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_signal_min_basis_points,
+        6000
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_min_positive_hybrid_score_basis_points,
+        7800
+    );
     let promotion_entry = report
         .sections
         .iter()
@@ -233,6 +272,12 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("eval_harness_seed"));
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval"));
+    assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_lexical_bm25_check_pass"));
+    assert!(json.contains("ranked_recall_temporal_validity_check_pass"));
+    assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -266,6 +311,50 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(!json.contains("\"source_aware_runtime_activation\":true"));
     assert!(!json.contains("\"prompt_assembly_change\":true"));
     assert!(!json.contains("\"operator_activation_allowed\":true"));
+}
+
+#[test]
+fn context_plane_status_report_rejects_ranked_recall_hybrid_false_green() {
+    let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
+    let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+    let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
+    assert!(report.has_status_integrity());
+
+    let mut partial_signal = report.clone();
+    partial_signal
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval status row should exist")
+        .ranked_recall_feedback_check_pass = false;
+    assert!(!partial_signal.has_status_integrity());
+
+    let mut inflated_pass_count = report.clone();
+    inflated_pass_count
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval status row should exist")
+        .ranked_recall_hybrid_signal_pass_count = 6;
+    assert!(!inflated_pass_count.has_status_integrity());
+
+    let mut low_score_false_green = report.clone();
+    low_score_false_green
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval status row should exist")
+        .ranked_recall_min_positive_hybrid_score_basis_points = 5999;
+    assert!(!low_score_false_green.has_status_integrity());
+
+    let mut non_ranked_leak = report.clone();
+    non_ranked_leak
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::RecallQualityGate)
+        .expect("recall quality status row should exist")
+        .ranked_recall_hybrid_signal_pass_count = 1;
+    assert!(!non_ranked_leak.has_status_integrity());
 }
 
 #[test]

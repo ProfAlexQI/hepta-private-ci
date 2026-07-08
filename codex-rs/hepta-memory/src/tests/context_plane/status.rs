@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 16);
+    assert_eq!(report.sections.len(), 17);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 7);
+    assert_eq!(report.shadow_section_count(), 8);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -51,6 +51,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::RecallQualityGate),
         Some(ContextPlaneStatusKind::Ready)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
@@ -83,6 +87,27 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
         .expect("recall quality status row should exist");
     assert_eq!(recall_entry.recall_quality_blocking_reason_count, 0);
     assert!(recall_entry.recall_quality_blocking_reasons.is_empty());
+    let ranked_recall_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval status row should exist");
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_signal_required_count,
+        5
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_signal_pass_count,
+        5
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_positive_hybrid_signal_pass_count,
+        15
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_hybrid_regression_blocked_count,
+        1
+    );
     let promotion_entry = report
         .sections
         .iter()
@@ -132,6 +157,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("eval_harness_seed"));
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval"));
+    assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -221,11 +250,15 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 16);
+    assert_eq!(from_store.sections.len(), 17);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
         Some(ContextPlaneStatusKind::Ready)
+    );
+    assert_eq!(
+        from_store.section_status(ContextPlaneStatusSection::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),

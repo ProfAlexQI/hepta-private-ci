@@ -38,10 +38,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 17);
+    assert_eq!(packet.matrix_row_count, 18);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 8);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 16);
+    assert_eq!(packet.blocker_count, 9);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 17);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -59,6 +59,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly
         ),
         Some(1)
     );
@@ -110,6 +116,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.memory_provider_v2_add_check_pass);
     assert!(packet.memory_provider_v2_clear_check_pass);
     assert!(packet.memory_provider_v2_close_check_pass);
+    assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
+    assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
+    assert_eq!(packet.ranked_recall_positive_hybrid_signal_pass_count, 15);
+    assert_eq!(packet.ranked_recall_hybrid_regression_blocked_count, 1);
 
     let json = serde_json::to_string(&packet).expect("operator approval packet should serialize");
     assert!(json.contains("adaptive_budget_allocation_runtime"));
@@ -119,6 +129,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(json.contains("recall_quality_blocking_reason_counts"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
+    assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -213,10 +227,10 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert!(from_store.dry_run_only);
     assert!(from_store.approval_required);
     assert!(!from_store.activation_command_present);
-    assert_eq!(from_store.matrix_row_count, 17);
+    assert_eq!(from_store.matrix_row_count, 18);
     assert_eq!(from_store.threshold_satisfied_count, 9);
-    assert_eq!(from_store.blocker_count, 8);
-    assert_eq!(from_store.threshold_snapshot.required_ready_count, 16);
+    assert_eq!(from_store.blocker_count, 9);
+    assert_eq!(from_store.threshold_snapshot.required_ready_count, 17);
     assert_eq!(from_store.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(from_store.required_scope_count(), 6);
     assert_eq!(
@@ -234,6 +248,12 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert_eq!(
         from_store.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        from_store.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly
         ),
         Some(1)
     );

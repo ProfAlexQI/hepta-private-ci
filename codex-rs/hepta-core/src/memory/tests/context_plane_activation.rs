@@ -20,6 +20,25 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 4,
             ),
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::RecallQualityGate, 2),
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryRankedRecallShadowEval,
+                    4,
+                );
+                entry.ranked_recall_hybrid_signal_required_count = 5;
+                entry.ranked_recall_hybrid_signal_pass_count = 5;
+                entry.ranked_recall_lexical_bm25_check_pass = true;
+                entry.ranked_recall_recency_check_pass = true;
+                entry.ranked_recall_source_authority_check_pass = true;
+                entry.ranked_recall_temporal_validity_check_pass = true;
+                entry.ranked_recall_feedback_check_pass = true;
+                entry.ranked_recall_positive_hybrid_signal_required_count = 15;
+                entry.ranked_recall_positive_hybrid_signal_pass_count = 15;
+                entry.ranked_recall_hybrid_regression_blocked_count = 1;
+                entry.ranked_recall_hybrid_signal_min_basis_points = 6000;
+                entry.ranked_recall_min_positive_hybrid_score_basis_points = 7800;
+                entry
+            },
             ContextPlaneStatusEntry::shadow(ContextPlaneStatusSection::MemoryProviderBoundary, 1),
             {
                 let mut entry = ContextPlaneStatusEntry::shadow(
@@ -77,9 +96,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 17);
+    assert_eq!(matrix.rows.len(), 18);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 8);
+    assert_eq!(matrix.blocker_count, 9);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -100,6 +119,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
@@ -139,6 +162,13 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_formation_queue"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
     assert!(json.contains("recall_quality_gate"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
+    assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_lexical_bm25_check_pass"));
+    assert!(json.contains("ranked_recall_temporal_validity_check_pass"));
+    assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -150,6 +180,7 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("recall_quality_blocking_reasons"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
@@ -179,6 +210,40 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(!json.contains("\"source_aware_runtime_activation\":true"));
     assert!(!json.contains("\"prompt_assembly_change\":true"));
     assert!(!json.contains("\"operator_activation_allowed\":true"));
+}
+
+#[test]
+fn context_plane_activation_blocker_matrix_rejects_ranked_recall_hybrid_false_green() {
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    assert!(matrix.has_matrix_integrity());
+
+    let mut partial_signal = matrix.clone();
+    partial_signal
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval activation row should exist")
+        .ranked_recall_feedback_check_pass = false;
+    assert!(!partial_signal.has_matrix_integrity());
+
+    let mut inflated_pass_count = matrix.clone();
+    inflated_pass_count
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval activation row should exist")
+        .ranked_recall_hybrid_signal_pass_count = 6;
+    assert!(!inflated_pass_count.has_matrix_integrity());
+
+    let mut non_ranked_leak = matrix.clone();
+    non_ranked_leak
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryProviderBoundary)
+        .expect("memory provider boundary activation row should exist")
+        .ranked_recall_hybrid_signal_pass_count = 1;
+    assert!(!non_ranked_leak.has_matrix_integrity());
 }
 
 #[test]
@@ -266,9 +331,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 17);
+    assert_eq!(matrix.rows.len(), 18);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 9);
+    assert_eq!(matrix.blocker_count, 10);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -284,6 +349,10 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval),
+        Some(ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryShadowCanaryReadiness),
@@ -337,7 +406,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 17);
+    assert_eq!(report_side_effect_matrix.blocker_count, 18);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -370,9 +439,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 17);
+    assert_eq!(matrix.rows.len(), 18);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 9);
+    assert_eq!(matrix.blocker_count, 10);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

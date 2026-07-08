@@ -111,6 +111,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         eval_seed: &eval_seed,
         allocator_shadow: &allocator_shadow,
         recall_quality_gate: &recall_quality_gate,
+        ranked_recall: &ranked_recall,
         provider_report: &provider_report,
         provider_v2_audit: &provider_v2_audit,
         shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
@@ -124,11 +125,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 17);
+    assert_eq!(packet.matrix_row_count, 18);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 8);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 17);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 16);
+    assert_eq!(packet.blocker_count, 9);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 18);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 17);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -152,6 +153,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly
         ),
         Some(1)
     );
@@ -197,6 +204,20 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.memory_provider_v2_add_check_pass);
     assert!(packet.memory_provider_v2_clear_check_pass);
     assert!(packet.memory_provider_v2_close_check_pass);
+    assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
+    assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
+    assert!(packet.ranked_recall_lexical_bm25_check_pass);
+    assert!(packet.ranked_recall_recency_check_pass);
+    assert!(packet.ranked_recall_source_authority_check_pass);
+    assert!(packet.ranked_recall_temporal_validity_check_pass);
+    assert!(packet.ranked_recall_feedback_check_pass);
+    assert_eq!(packet.ranked_recall_positive_hybrid_signal_pass_count, 15);
+    assert_eq!(packet.ranked_recall_hybrid_regression_blocked_count, 1);
+    assert_eq!(packet.ranked_recall_hybrid_signal_min_basis_points, 6000);
+    assert_eq!(
+        packet.ranked_recall_min_positive_hybrid_score_basis_points,
+        7800
+    );
     assert!(!packet.production_write);
     assert!(!packet.graph_write);
     assert!(!packet.runtime_activation);
@@ -213,6 +234,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("recall_quality_blocking_reason_counts"));
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
+    assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
+    assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_lexical_bm25_check_pass"));
+    assert!(json.contains("ranked_recall_temporal_validity_check_pass"));
+    assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
+    assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -245,6 +272,30 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(!json.contains("\"source_aware_runtime_activation\":true"));
     assert!(!json.contains("\"prompt_assembly_change\":true"));
     assert!(!json.contains("\"operator_activation_allowed\":true"));
+}
+
+#[test]
+fn context_plane_operator_approval_packet_rejects_ranked_recall_hybrid_false_green() {
+    let status = super::context_plane_activation::context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    let packet = ContextPlaneOperatorApprovalPacket::from_matrix(&matrix);
+    assert!(packet.has_packet_integrity());
+
+    let mut partial_signal = packet.clone();
+    partial_signal.ranked_recall_feedback_check_pass = false;
+    assert!(!partial_signal.has_packet_integrity());
+
+    let mut inflated_pass_count = packet.clone();
+    inflated_pass_count.ranked_recall_hybrid_signal_pass_count = 6;
+    assert!(!inflated_pass_count.has_packet_integrity());
+
+    let mut regression_false_green = packet.clone();
+    regression_false_green.ranked_recall_hybrid_regression_blocked_count = 0;
+    assert!(!regression_false_green.has_packet_integrity());
+
+    let mut low_score_false_green = packet.clone();
+    low_score_false_green.ranked_recall_min_positive_hybrid_score_basis_points = 5999;
+    assert!(!low_score_false_green.has_packet_integrity());
 }
 
 #[test]
@@ -308,9 +359,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 17);
+    assert_eq!(packet.matrix_row_count, 18);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 9);
+    assert_eq!(packet.blocker_count, 10);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -371,14 +422,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 17,
+        matrix_row_count: 18,
         threshold_satisfied_count: 9,
-        blocker_count: 8,
+        blocker_count: 9,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 17,
+            total_row_count: 18,
             threshold_satisfied_count: 9,
-            blocker_count: 8,
-            required_ready_count: 16,
+            blocker_count: 9,
+            required_ready_count: 17,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -396,6 +447,10 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason: ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason: ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly,
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
@@ -443,6 +498,18 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         memory_provider_v2_close_check_pass: true,
         memory_provider_v2_candidate_count: 1,
         memory_provider_v2_operator_review_required_count: 1,
+        ranked_recall_hybrid_signal_required_count: 5,
+        ranked_recall_hybrid_signal_pass_count: 5,
+        ranked_recall_lexical_bm25_check_pass: true,
+        ranked_recall_recency_check_pass: true,
+        ranked_recall_source_authority_check_pass: true,
+        ranked_recall_temporal_validity_check_pass: true,
+        ranked_recall_feedback_check_pass: true,
+        ranked_recall_positive_hybrid_signal_required_count: 15,
+        ranked_recall_positive_hybrid_signal_pass_count: 15,
+        ranked_recall_hybrid_regression_blocked_count: 1,
+        ranked_recall_hybrid_signal_min_basis_points: 6000,
+        ranked_recall_min_positive_hybrid_score_basis_points: 7800,
         required_approval_scopes: required_operator_approval_scopes(),
         ..ContextPlaneOperatorApprovalPacket::default()
     };

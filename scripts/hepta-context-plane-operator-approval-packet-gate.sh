@@ -83,6 +83,13 @@ for term in \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
   "recall_quality_gate" \
+  "memory_ranked_recall_shadow_eval" \
+  "memory_ranked_recall_shadow_eval_shadow_only" \
+  "ranked_recall_hybrid_signal_pass_count" \
+  "ranked_recall_lexical_bm25_check_pass" \
+  "ranked_recall_temporal_validity_check_pass" \
+  "ranked_recall_positive_hybrid_signal_pass_count" \
+  "ranked_recall_hybrid_regression_blocked_count" \
   "memory_provider_v2_boundary" \
   "memory_provider_v2_lifecycle_pass_count" \
   "memory_provider_v2_propose_write_check_pass" \
@@ -104,6 +111,7 @@ for term in \
   "operator_activation" \
   "adaptive_budget_allocation_shadow_only" \
   "temporal_graph_shadow_eval_shadow_only" \
+  "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
   "memory_shadow_canary_readiness_shadow_only" \
@@ -208,17 +216,18 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=6
+context-plane-operator-approval-packet.schema=7
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=17
+context-plane-operator-approval-packet.rows=18
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=8
-context-plane-operator-approval-packet.threshold.required-ready=16
+context-plane-operator-approval-packet.blockers=9
+context-plane-operator-approval-packet.threshold.required-ready=17
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
+context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1
@@ -251,6 +260,18 @@ context-plane-operator-approval-packet.memory-provider-v2.clear-check=pass
 context-plane-operator-approval-packet.memory-provider-v2.close-check=pass
 context-plane-operator-approval-packet.memory-provider-v2.candidate-count=1
 context-plane-operator-approval-packet.memory-provider-v2.operator-review-required-count=1
+context-plane-operator-approval-packet.ranked-recall.hybrid-signal-required-count=5
+context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5
+context-plane-operator-approval-packet.ranked-recall.lexical-bm25-check=pass
+context-plane-operator-approval-packet.ranked-recall.recency-check=pass
+context-plane-operator-approval-packet.ranked-recall.source-authority-check=pass
+context-plane-operator-approval-packet.ranked-recall.temporal-validity-check=pass
+context-plane-operator-approval-packet.ranked-recall.feedback-check=pass
+context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-required-count=15
+context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-pass-count=15
+context-plane-operator-approval-packet.ranked-recall.hybrid-regression-blocked-count=1
+context-plane-operator-approval-packet.ranked-recall.hybrid-signal-min-basis-points=6000
+context-plane-operator-approval-packet.ranked-recall.min-positive-hybrid-score-basis-points=7800
 context-plane-operator-approval-packet.required-scopes=6
 context-plane-operator-approval-packet.scope.adaptive-budget-allocation-runtime=required
 context-plane-operator-approval-packet.scope.source-aware-runtime-activation=required

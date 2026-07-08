@@ -13,6 +13,11 @@ use super::status::ContextPlaneStatusKind;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
+const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
+const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
+const RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS: u32 = 6_000;
+const RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS: u32 = 7_800;
 
 /// Approval scope that must be covered before any context-plane promotion.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,7 +98,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 17
+        self.total_row_count == 18
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -142,6 +147,18 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub memory_provider_v2_close_check_pass: bool,
     pub memory_provider_v2_candidate_count: usize,
     pub memory_provider_v2_operator_review_required_count: usize,
+    pub ranked_recall_hybrid_signal_required_count: usize,
+    pub ranked_recall_hybrid_signal_pass_count: usize,
+    pub ranked_recall_lexical_bm25_check_pass: bool,
+    pub ranked_recall_recency_check_pass: bool,
+    pub ranked_recall_source_authority_check_pass: bool,
+    pub ranked_recall_temporal_validity_check_pass: bool,
+    pub ranked_recall_feedback_check_pass: bool,
+    pub ranked_recall_positive_hybrid_signal_required_count: usize,
+    pub ranked_recall_positive_hybrid_signal_pass_count: usize,
+    pub ranked_recall_hybrid_regression_blocked_count: usize,
+    pub ranked_recall_hybrid_signal_min_basis_points: u32,
+    pub ranked_recall_min_positive_hybrid_score_basis_points: u32,
     pub required_approval_scopes: Vec<ContextPlaneOperatorApprovalScope>,
     pub production_write: bool,
     pub graph_write: bool,
@@ -193,6 +210,18 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             memory_provider_v2_close_check_pass: false,
             memory_provider_v2_candidate_count: 0,
             memory_provider_v2_operator_review_required_count: 0,
+            ranked_recall_hybrid_signal_required_count: 0,
+            ranked_recall_hybrid_signal_pass_count: 0,
+            ranked_recall_lexical_bm25_check_pass: false,
+            ranked_recall_recency_check_pass: false,
+            ranked_recall_source_authority_check_pass: false,
+            ranked_recall_temporal_validity_check_pass: false,
+            ranked_recall_feedback_check_pass: false,
+            ranked_recall_positive_hybrid_signal_required_count: 0,
+            ranked_recall_positive_hybrid_signal_pass_count: 0,
+            ranked_recall_hybrid_regression_blocked_count: 0,
+            ranked_recall_hybrid_signal_min_basis_points: 0,
+            ranked_recall_min_positive_hybrid_score_basis_points: 0,
             required_approval_scopes: Vec::new(),
             production_write: false,
             graph_write: false,
@@ -244,6 +273,8 @@ impl ContextPlaneOperatorApprovalPacket {
             .row_for_target(ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness);
         let provider_v2_row =
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryProviderV2Boundary);
+        let ranked_recall_row =
+            matrix.row_for_target(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval);
 
         let required_approval_scopes = required_operator_approval_scopes();
 
@@ -339,6 +370,42 @@ impl ContextPlaneOperatorApprovalPacket {
             memory_provider_v2_operator_review_required_count: provider_v2_row
                 .map(|row| row.memory_provider_v2_operator_review_required_count)
                 .unwrap_or_default(),
+            ranked_recall_hybrid_signal_required_count: ranked_recall_row
+                .map(|row| row.ranked_recall_hybrid_signal_required_count)
+                .unwrap_or_default(),
+            ranked_recall_hybrid_signal_pass_count: ranked_recall_row
+                .map(|row| row.ranked_recall_hybrid_signal_pass_count)
+                .unwrap_or_default(),
+            ranked_recall_lexical_bm25_check_pass: ranked_recall_row
+                .map(|row| row.ranked_recall_lexical_bm25_check_pass)
+                .unwrap_or_default(),
+            ranked_recall_recency_check_pass: ranked_recall_row
+                .map(|row| row.ranked_recall_recency_check_pass)
+                .unwrap_or_default(),
+            ranked_recall_source_authority_check_pass: ranked_recall_row
+                .map(|row| row.ranked_recall_source_authority_check_pass)
+                .unwrap_or_default(),
+            ranked_recall_temporal_validity_check_pass: ranked_recall_row
+                .map(|row| row.ranked_recall_temporal_validity_check_pass)
+                .unwrap_or_default(),
+            ranked_recall_feedback_check_pass: ranked_recall_row
+                .map(|row| row.ranked_recall_feedback_check_pass)
+                .unwrap_or_default(),
+            ranked_recall_positive_hybrid_signal_required_count: ranked_recall_row
+                .map(|row| row.ranked_recall_positive_hybrid_signal_required_count)
+                .unwrap_or_default(),
+            ranked_recall_positive_hybrid_signal_pass_count: ranked_recall_row
+                .map(|row| row.ranked_recall_positive_hybrid_signal_pass_count)
+                .unwrap_or_default(),
+            ranked_recall_hybrid_regression_blocked_count: ranked_recall_row
+                .map(|row| row.ranked_recall_hybrid_regression_blocked_count)
+                .unwrap_or_default(),
+            ranked_recall_hybrid_signal_min_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_hybrid_signal_min_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_min_positive_hybrid_score_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_min_positive_hybrid_score_basis_points)
+                .unwrap_or_default(),
             required_approval_scopes,
             production_write: matrix.production_write,
             graph_write: matrix.graph_write,
@@ -356,7 +423,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 17
+            && self.matrix_row_count == 18
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count
@@ -370,6 +437,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.has_recall_quality_blocking_reason_count_integrity()
             && self.has_canary_promotion_checklist_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
+            && self.has_ranked_recall_hybrid_integrity()
             && self.has_required_approval_scopes()
             && !self.production_write
             && !self.graph_write
@@ -519,6 +587,35 @@ impl ContextPlaneOperatorApprovalPacket {
                 <= self.memory_provider_v2_lifecycle_required_count
             && self.memory_provider_v2_operator_review_required_count
                 <= self.memory_provider_v2_candidate_count
+    }
+
+    fn has_ranked_recall_hybrid_integrity(&self) -> bool {
+        let hybrid_signal_pass_count = [
+            self.ranked_recall_lexical_bm25_check_pass,
+            self.ranked_recall_recency_check_pass,
+            self.ranked_recall_source_authority_check_pass,
+            self.ranked_recall_temporal_validity_check_pass,
+            self.ranked_recall_feedback_check_pass,
+        ]
+        .iter()
+        .filter(|check| **check)
+        .count();
+
+        self.ranked_recall_hybrid_signal_required_count
+            == RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT
+            && self.ranked_recall_hybrid_signal_pass_count == hybrid_signal_pass_count
+            && self.ranked_recall_hybrid_signal_pass_count
+                == self.ranked_recall_hybrid_signal_required_count
+            && self.ranked_recall_positive_hybrid_signal_required_count
+                == RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT
+            && self.ranked_recall_positive_hybrid_signal_pass_count
+                == self.ranked_recall_positive_hybrid_signal_required_count
+            && self.ranked_recall_hybrid_regression_blocked_count
+                == RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT
+            && self.ranked_recall_hybrid_signal_min_basis_points
+                == RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS
+            && self.ranked_recall_min_positive_hybrid_score_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS
     }
 }
 
