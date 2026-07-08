@@ -42,7 +42,7 @@ done
 cat <<'EOF'
 ranked-recall-shadow-eval=pass
 ranked-recall-shadow-eval.payload-light=pass
-ranked-recall-shadow-eval.schema=3
+ranked-recall-shadow-eval.schema=4
 ranked-recall-shadow-eval.mode=deterministic-shadow
 ranked-recall-shadow-eval.hybrid-mode=shadow-only
 ranked-recall-shadow-eval.hybrid-signal-count=5
@@ -60,6 +60,18 @@ ranked-recall-shadow-eval.max-positive-latency-delta-ms=10
 ranked-recall-shadow-eval.token-tradeoff-min-basis-points=1000
 ranked-recall-shadow-eval.min-positive-token-tradeoff-basis-points=3000
 ranked-recall-shadow-eval.reranking-regression-delta=blocked
+ranked-recall-shadow-eval.routing-diff=shadow-only
+ranked-recall-shadow-eval.routing-diff-fixture-count=4
+ranked-recall-shadow-eval.routing-diff-shadow-only-count=4
+ranked-recall-shadow-eval.routing-diff-win-count=3
+ranked-recall-shadow-eval.routing-diff-loss-count=1
+ranked-recall-shadow-eval.routing-diff-delta-min-basis-points=400
+ranked-recall-shadow-eval.min-positive-routing-diff-delta-basis-points=640
+ranked-recall-shadow-eval.routing-diff-latency-delta-max-ms=20
+ranked-recall-shadow-eval.max-positive-routing-diff-latency-delta-ms=10
+ranked-recall-shadow-eval.routing-diff-token-tradeoff-min-basis-points=1000
+ranked-recall-shadow-eval.min-positive-routing-diff-token-tradeoff-basis-points=3000
+ranked-recall-shadow-eval.routing-diff-regression=blocked
 ranked-recall-shadow-eval.lexical-bm25=shadow
 ranked-recall-shadow-eval.recency=shadow
 ranked-recall-shadow-eval.source-authority=shadow
@@ -85,5 +97,6 @@ ranked-recall-shadow-eval.regression-fixture=blocked
 ranked-recall-shadow-eval.hybrid-regression-signal=blocked
 ranked-recall-shadow-eval.operator-approval=required
 ranked-recall-shadow-eval.production-route=disabled
+ranked-recall-shadow-eval.production-selection-route=read-only
 ranked-recall-shadow-eval.runtime-activation=disabled
 EOF

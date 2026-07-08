@@ -59,6 +59,14 @@ pub struct ContextMemoryShadowRegressionDashboardReport {
     pub ranked_recall_max_positive_latency_delta_ms: i32,
     pub ranked_recall_min_positive_token_tradeoff_basis_points: u32,
     pub ranked_recall_reranking_regression_blocked_count: usize,
+    pub ranked_recall_routing_diff_fixture_count: usize,
+    pub ranked_recall_routing_diff_shadow_only_count: usize,
+    pub ranked_recall_routing_diff_win_count: usize,
+    pub ranked_recall_routing_diff_loss_count: usize,
+    pub ranked_recall_min_positive_routing_diff_delta_basis_points: i32,
+    pub ranked_recall_max_positive_routing_diff_latency_delta_ms: i32,
+    pub ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: u32,
+    pub ranked_recall_routing_diff_regression_blocked_count: usize,
     pub temporal_graph_fixture_count: usize,
     pub temporal_graph_fixture_pass_count: usize,
     pub temporal_graph_regression_blocked_count: usize,
@@ -118,6 +126,14 @@ impl Default for ContextMemoryShadowRegressionDashboardReport {
             ranked_recall_max_positive_latency_delta_ms: 0,
             ranked_recall_min_positive_token_tradeoff_basis_points: 0,
             ranked_recall_reranking_regression_blocked_count: 0,
+            ranked_recall_routing_diff_fixture_count: 0,
+            ranked_recall_routing_diff_shadow_only_count: 0,
+            ranked_recall_routing_diff_win_count: 0,
+            ranked_recall_routing_diff_loss_count: 0,
+            ranked_recall_min_positive_routing_diff_delta_basis_points: 0,
+            ranked_recall_max_positive_routing_diff_latency_delta_ms: 0,
+            ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: 0,
+            ranked_recall_routing_diff_regression_blocked_count: 0,
             temporal_graph_fixture_count: 0,
             temporal_graph_fixture_pass_count: 0,
             temporal_graph_regression_blocked_count: 0,
@@ -171,7 +187,15 @@ impl ContextMemoryShadowRegressionDashboardReport {
             && ranked_recall.min_positive_reranking_delta_basis_points() >= 640
             && ranked_recall.max_positive_latency_delta_ms() <= 10
             && ranked_recall.min_positive_token_tradeoff_basis_points() >= 3_000
-            && ranked_recall.reranking_regression_blocked_count() == 1;
+            && ranked_recall.reranking_regression_blocked_count() == 1
+            && ranked_recall.routing_diff_fixture_count() == ranked_recall.fixture_count()
+            && ranked_recall.routing_diff_shadow_only_count() == ranked_recall.fixture_count()
+            && ranked_recall.routing_diff_win_count() == ranked_recall.positive_fixture_count()
+            && ranked_recall.routing_diff_loss_count() == ranked_recall.negative_fixture_count()
+            && ranked_recall.min_positive_routing_diff_delta_basis_points() >= 640
+            && ranked_recall.max_positive_routing_diff_latency_delta_ms() <= 10
+            && ranked_recall.min_positive_routing_diff_token_tradeoff_basis_points() >= 3_000
+            && ranked_recall.routing_diff_regression_blocked_count() == 1;
         let temporal_graph_pass = temporal_graph.has_temporal_graph_shadow_integrity();
         let recall_quality_pass = recall_quality.has_quality_gate_integrity();
         let provider_boundary_pass = provider.has_provider_boundary_integrity();
@@ -228,6 +252,19 @@ impl ContextMemoryShadowRegressionDashboardReport {
                 .min_positive_token_tradeoff_basis_points(),
             ranked_recall_reranking_regression_blocked_count: ranked_recall
                 .reranking_regression_blocked_count(),
+            ranked_recall_routing_diff_fixture_count: ranked_recall.routing_diff_fixture_count(),
+            ranked_recall_routing_diff_shadow_only_count: ranked_recall
+                .routing_diff_shadow_only_count(),
+            ranked_recall_routing_diff_win_count: ranked_recall.routing_diff_win_count(),
+            ranked_recall_routing_diff_loss_count: ranked_recall.routing_diff_loss_count(),
+            ranked_recall_min_positive_routing_diff_delta_basis_points: ranked_recall
+                .min_positive_routing_diff_delta_basis_points(),
+            ranked_recall_max_positive_routing_diff_latency_delta_ms: ranked_recall
+                .max_positive_routing_diff_latency_delta_ms(),
+            ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: ranked_recall
+                .min_positive_routing_diff_token_tradeoff_basis_points(),
+            ranked_recall_routing_diff_regression_blocked_count: ranked_recall
+                .routing_diff_regression_blocked_count(),
             temporal_graph_fixture_count: temporal_graph.fixture_count(),
             temporal_graph_fixture_pass_count: temporal_graph.fixture_pass_count(),
             temporal_graph_regression_blocked_count: temporal_graph.regression_blocked_count(),
@@ -310,6 +347,14 @@ impl ContextMemoryShadowRegressionDashboardReport {
             && self.ranked_recall_max_positive_latency_delta_ms <= 10
             && self.ranked_recall_min_positive_token_tradeoff_basis_points >= 3_000
             && self.ranked_recall_reranking_regression_blocked_count == 1
+            && self.ranked_recall_routing_diff_fixture_count == self.ranked_recall_fixture_count
+            && self.ranked_recall_routing_diff_shadow_only_count == self.ranked_recall_fixture_count
+            && self.ranked_recall_routing_diff_win_count == 3
+            && self.ranked_recall_routing_diff_loss_count == 1
+            && self.ranked_recall_min_positive_routing_diff_delta_basis_points >= 640
+            && self.ranked_recall_max_positive_routing_diff_latency_delta_ms <= 10
+            && self.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points >= 3_000
+            && self.ranked_recall_routing_diff_regression_blocked_count == 1
             && self.temporal_graph_fixture_count == 4
             && self.temporal_graph_fixture_pass_count == self.temporal_graph_fixture_count
             && self.temporal_graph_regression_blocked_count == 1

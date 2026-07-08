@@ -218,6 +218,31 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         packet.ranked_recall_min_positive_hybrid_score_basis_points,
         7800
     );
+    assert_eq!(packet.ranked_recall_routing_diff_fixture_count, 4);
+    assert_eq!(packet.ranked_recall_routing_diff_shadow_only_count, 4);
+    assert_eq!(packet.ranked_recall_routing_diff_win_count, 3);
+    assert_eq!(packet.ranked_recall_routing_diff_loss_count, 1);
+    assert_eq!(
+        packet.ranked_recall_routing_diff_delta_min_basis_points,
+        400
+    );
+    assert_eq!(
+        packet.ranked_recall_min_positive_routing_diff_delta_basis_points,
+        640
+    );
+    assert_eq!(packet.ranked_recall_routing_diff_latency_delta_max_ms, 20);
+    assert_eq!(
+        packet.ranked_recall_max_positive_routing_diff_latency_delta_ms,
+        10
+    );
+    assert_eq!(
+        packet.ranked_recall_routing_diff_token_tradeoff_min_basis_points,
+        1_000
+    );
+    assert_eq!(
+        packet.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points,
+        3_000
+    );
     assert!(!packet.production_write);
     assert!(!packet.graph_write);
     assert!(!packet.runtime_activation);
@@ -240,6 +265,9 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("ranked_recall_temporal_validity_check_pass"));
     assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
     assert!(json.contains("ranked_recall_hybrid_regression_blocked_count"));
+    assert!(json.contains("ranked_recall_routing_diff_shadow_only_count"));
+    assert!(json.contains("ranked_recall_min_positive_routing_diff_delta_basis_points"));
+    assert!(json.contains("ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -296,6 +324,10 @@ fn context_plane_operator_approval_packet_rejects_ranked_recall_hybrid_false_gre
     let mut low_score_false_green = packet.clone();
     low_score_false_green.ranked_recall_min_positive_hybrid_score_basis_points = 5999;
     assert!(!low_score_false_green.has_packet_integrity());
+
+    let mut routing_diff_false_green = packet.clone();
+    routing_diff_false_green.ranked_recall_routing_diff_shadow_only_count = 3;
+    assert!(!routing_diff_false_green.has_packet_integrity());
 }
 
 #[test]
@@ -510,6 +542,17 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         ranked_recall_hybrid_regression_blocked_count: 1,
         ranked_recall_hybrid_signal_min_basis_points: 6000,
         ranked_recall_min_positive_hybrid_score_basis_points: 7800,
+        ranked_recall_routing_diff_fixture_count: 4,
+        ranked_recall_routing_diff_shadow_only_count: 4,
+        ranked_recall_routing_diff_win_count: 3,
+        ranked_recall_routing_diff_loss_count: 1,
+        ranked_recall_routing_diff_regression_blocked_count: 1,
+        ranked_recall_routing_diff_delta_min_basis_points: 400,
+        ranked_recall_min_positive_routing_diff_delta_basis_points: 640,
+        ranked_recall_routing_diff_latency_delta_max_ms: 20,
+        ranked_recall_max_positive_routing_diff_latency_delta_ms: 10,
+        ranked_recall_routing_diff_token_tradeoff_min_basis_points: 1_000,
+        ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: 3_000,
         required_approval_scopes: required_operator_approval_scopes(),
         ..ContextPlaneOperatorApprovalPacket::default()
     };

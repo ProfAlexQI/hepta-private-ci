@@ -1094,13 +1094,18 @@ basis points, hybrid signal pass counts, a blocked regression fixture, fixed
 threshold labels (`recall-floor-basis-points`, `precision-floor-basis-points`,
 `token-saved-min-basis-points`, `latency-max-ms`,
 `regret-max-basis-points`, `hybrid-signal-min-basis-points`,
-`reranking-delta-min-basis-points`, and `token-tradeoff-min-basis-points`),
-and explicit side-effect booleans. It must not contain prompt text, transcript
+`reranking-delta-min-basis-points`, `routing-diff-delta-min-basis-points`, and
+`token-tradeoff-min-basis-points`), a payload-light `routing diff shadow-only`
+layer, and explicit side-effect booleans. The routing diff compares the
+read-only current `production selection score` against the
+`hybrid calibrated selection score` as aggregate counters only; it may expose win/loss counts,
+latency delta, token tradeoff, and `routing-diff-regression`, but no candidate
+payload. It must not contain prompt text, transcript
 text, memory text, answer text, query payloads, ranked payloads, raw ranked
 payloads, rank explanations, score reasons, source ids, session ids, memory
 ids, trace ids, tool arguments, tool outputs, raw fact/entity values,
 email-shaped strings, phone-shaped strings, or user identifiers. Shadow
-integrity requires schema version 3, `deterministic-shadow` mode, exactly five
+integrity requires schema version 4, `deterministic-shadow` mode, exactly five
 fixed hybrid signals, `hybrid-positive-signal-pass-count=15`, exactly four
 fixtures, three positive fixtures, one negative regression fixture, ranked item
 counts on every fixture, minimum positive recall and precision of 8000 basis
@@ -1111,7 +1116,13 @@ minimum positive reranking delta 640 basis points, maximum positive latency
 delta 10 ms, minimum positive token tradeoff 3000 basis points, total positive
 token-saved count 2140, maximum positive latency 55 ms, zero positive regret,
 the regression fixture blocked, `hybrid-regression-signal=blocked`, and
-`reranking-regression-delta=blocked`. It must not write production memory, must
+`reranking-regression-delta=blocked`. It must also require routing diff fixture
+count 4, `routing-diff-shadow-only-count=4`, routing diff win/loss counts 3/1,
+routing diff regression blocked count 1, minimum positive routing diff delta
+640 basis points, maximum positive routing diff latency delta 10 ms, and
+minimum positive routing diff token tradeoff 3000 basis points. The routing
+diff layer is observational and must keep `production-selection-route=read-only`.
+It must not write production memory, must
 not write graph facts, must not alter prompt assembly, must not enable runtime
 activation, must not enable a production route, and must not allow operator
 activation. The Rust-backed fixture is
@@ -1135,6 +1146,11 @@ include `ranked-recall-shadow-eval=pass`,
 `ranked-recall-shadow-eval.fixtures=4`,
 `ranked-recall-shadow-eval.hybrid-signals=5`,
 `ranked-recall-shadow-eval.calibrated-reranking=shadow`,
+`ranked-recall-shadow-eval.routing-diff=shadow-only`,
+`ranked-recall-shadow-eval.routing-diff-shadow-only-count=4`,
+`ranked-recall-shadow-eval.min-positive-routing-diff-delta-basis-points=640`,
+`ranked-recall-shadow-eval.min-positive-routing-diff-token-tradeoff-basis-points=3000`,
+`ranked-recall-shadow-eval.production-selection-route=read-only`,
 `ranked-recall-shadow-eval.regression-fixture=blocked`, and
 `ranked-recall-shadow-eval.runtime-activation=disabled`.
 
@@ -1232,13 +1248,20 @@ and token counts, the payload-light ranked recall comparison summary fields
 `ranked_recall_min_positive_hybrid_score_basis_points`,
 `ranked_recall_min_positive_reranking_delta_basis_points`,
 `ranked_recall_max_positive_latency_delta_ms`, and
-`ranked_recall_min_positive_token_tradeoff_basis_points`, and explicit
+`ranked_recall_min_positive_token_tradeoff_basis_points`, plus routing diff
+counters `ranked_recall_routing_diff_shadow_only_count`,
+`ranked_recall_routing_diff_win_count`,
+`ranked_recall_routing_diff_loss_count`,
+`ranked_recall_min_positive_routing_diff_delta_basis_points`,
+`ranked_recall_max_positive_routing_diff_latency_delta_ms`,
+`ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points`, and
+`ranked_recall_routing_diff_regression_blocked_count`, and explicit
 side-effect booleans. It must not contain prompt
 text, query text, transcript text, memory text, answer text, ranked payloads,
 raw ranked payloads, graph payloads, raw graph payloads, source ids, session
 ids, memory ids, trace ids, tool arguments, tool outputs, operator identity,
 email-shaped strings, phone-shaped strings, or user identifiers. Dashboard
-integrity requires schema version 2, shadow-only mode, exactly four input
+integrity requires schema version 3, shadow-only mode, exactly four input
 reports, four passing input reports, zero regression blockers, ranked recall
 and temporal graph regression fixtures blocked, the ranked recall comparison
 summary passing with five hybrid signals, fifteen positive hybrid signal
@@ -1246,6 +1269,10 @@ passes, a minimum positive hybrid score of 7800 basis points, three calibrated
 reranking wins, one calibrated reranking loss, a minimum positive reranking
 delta of 640 basis points, maximum positive latency delta of 10 ms, minimum
 positive token tradeoff of 3000 basis points, reranking regression blocked,
+routing diff shadow-only count 4, routing diff wins/losses 3/1, minimum
+positive routing diff delta 640 basis points, maximum positive routing diff
+latency delta 10 ms, minimum positive routing diff token tradeoff 3000 basis
+points, routing diff regression blocked,
 zero recall-quality blocking reasons, `provider_payload_light=true`, operator
 approval required, no
 production route, no production memory write, no graph write, no prompt
@@ -1257,6 +1284,9 @@ assembly change, no runtime activation, and no operator activation allowance.
 `memory-shadow-regression-dashboard.ranked-recall-comparison-summary=pass`,
 `memory-shadow-regression-dashboard.ranked-recall-min-positive-hybrid-score-basis-points=7800`,
 `memory-shadow-regression-dashboard.ranked-recall-min-positive-reranking-delta-basis-points=640`,
+`memory-shadow-regression-dashboard.ranked-recall-routing-diff-shadow-only-count=4`,
+`memory-shadow-regression-dashboard.ranked-recall-min-positive-routing-diff-delta-basis-points=640`,
+`memory-shadow-regression-dashboard.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000`,
 `memory-shadow-regression-dashboard.regression-blocking-count=0`, and
 `memory-shadow-regression-dashboard.runtime-activation=disabled`.
 `scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` must verify
@@ -1284,18 +1314,25 @@ operator quality dashboard: `ranked_recall_comparison_summary_pass`,
 `ranked_recall_min_positive_hybrid_score_basis_points`,
 `ranked_recall_min_positive_reranking_delta_basis_points`,
 `ranked_recall_max_positive_latency_delta_ms`, and
-`ranked_recall_min_positive_token_tradeoff_basis_points`.
+`ranked_recall_min_positive_token_tradeoff_basis_points`, plus routing diff
+summary counters `ranked_recall_routing_diff_shadow_only_count`,
+`ranked_recall_routing_diff_win_count`,
+`ranked_recall_routing_diff_loss_count`,
+`ranked_recall_min_positive_routing_diff_delta_basis_points`,
+`ranked_recall_max_positive_routing_diff_latency_delta_ms`,
+`ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points`, and
+`ranked_recall_routing_diff_regression_blocked_count`.
 It must not contain prompt text, query text, transcript text, memory text,
 answer text, ranked payloads, raw ranked payloads, graph payloads, raw graph
 payloads, source ids, session ids, memory ids, trace ids, tool arguments, tool
 outputs, operator identity, email-shaped strings, phone-shaped strings, or user
-identifiers. Summary integrity requires schema version 2, shadow-only mode,
+identifiers. Summary integrity requires schema version 3, shadow-only mode,
 `quality_trend=stable_pass`, `operator_summary=ready_shadow_only`, four input
 reports from the source dashboard, four passing quality signals, zero
 regression blockers, `operator_summary_redacted=true`, ranked recall/temporal
 graph/recall quality/provider-boundary signal pass booleans all true, ranked
-recall comparison summary pass true with hybrid score and calibrated reranking
-delta thresholds met, operator
+recall comparison summary pass true with hybrid score, calibrated reranking
+delta, and routing diff shadow-only thresholds met, operator
 approval required, no production route, no production memory write, no graph
 write, no prompt assembly change, no runtime activation, and no operator
 activation allowance. `scripts/hepta-context-memory-shadow-quality-summary-report.sh`
@@ -1306,6 +1343,9 @@ must emit `memory-shadow-quality-summary=pass`,
 `memory-shadow-quality-summary.ranked-recall-comparison-summary=pass`,
 `memory-shadow-quality-summary.ranked-recall-min-positive-hybrid-score-basis-points=7800`,
 `memory-shadow-quality-summary.ranked-recall-min-positive-reranking-delta-basis-points=640`,
+`memory-shadow-quality-summary.ranked-recall-routing-diff-shadow-only-count=4`,
+`memory-shadow-quality-summary.ranked-recall-min-positive-routing-diff-delta-basis-points=640`,
+`memory-shadow-quality-summary.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000`,
 `memory-shadow-quality-summary.regression-blocking-count=0`, and
 `memory-shadow-quality-summary.runtime-activation=disabled`.
 `scripts/hepta-context-memory-shadow-quality-summary-gate.sh` must verify the
@@ -1336,13 +1376,17 @@ must also expose the ranked recall comparison fields
 `ranked_recall_min_positive_hybrid_score_basis_points`,
 `ranked_recall_min_positive_reranking_delta_basis_points`,
 `ranked_recall_max_positive_latency_delta_ms`, and
-`ranked_recall_min_positive_token_tradeoff_basis_points` without exporting
-ranked payloads.
+`ranked_recall_min_positive_token_tradeoff_basis_points`, plus
+`ranked_recall_routing_diff_window_pass_count`,
+`ranked_recall_min_positive_routing_diff_delta_basis_points`,
+`ranked_recall_max_positive_routing_diff_latency_delta_ms`, and
+`ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points` without
+exporting ranked payloads. It
 must not contain prompt text, query text, transcript text, memory text, answer
 text, ranked payloads, raw ranked payloads, graph payloads, raw graph payloads,
 source ids, session ids, memory ids, trace ids, tool arguments, tool outputs,
 operator identity, email-shaped strings, phone-shaped strings, or user
-identifiers. Snapshot integrity requires schema version 2, shadow-only mode,
+identifiers. Snapshot integrity requires schema version 3, shadow-only mode,
 source summary pass, `current_quality_trend=stable_pass`,
 `current_operator_summary=ready_shadow_only`, a three-observation window, a
 three-observation required and observed pass streak, zero regression-window
@@ -1352,7 +1396,10 @@ per-signal window pass count equal to 3, ranked recall comparison window pass
 count equal to 3, minimum positive hybrid score at least 7800 basis points,
 minimum positive reranking delta at least 640 basis points, maximum positive
 latency delta no more than 10 ms, minimum positive token tradeoff at least 3000
-basis points, operator approval required, no history
+basis points, ranked recall routing diff window pass count equal to 3, minimum
+positive routing diff delta at least 640 basis points, maximum positive routing
+diff latency delta no more than 10 ms, minimum positive routing diff token
+tradeoff at least 3000 basis points, operator approval required, no history
 persistence write, no production route, no production memory write, no graph
 write, no prompt assembly change, no runtime activation, and no operator
 activation allowance.
@@ -1363,6 +1410,9 @@ emit `memory-shadow-quality-trend-snapshot=pass`,
 `memory-shadow-quality-trend-snapshot.ranked-recall-comparison-window-pass-count=3`,
 `memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-hybrid-score-basis-points=7800`,
 `memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-reranking-delta-basis-points=640`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-routing-diff-window-pass-count=3`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-routing-diff-delta-basis-points=640`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000`,
 `memory-shadow-quality-trend-snapshot.regression-window-blocking-count=0`,
 `memory-shadow-quality-trend-snapshot.history-persistence-write=disabled`, and
 `memory-shadow-quality-trend-snapshot.runtime-activation=disabled`.
@@ -1568,11 +1618,28 @@ typed ranked recall fields are `ranked_recall_hybrid_signal_required_count`,
 `ranked_recall_positive_hybrid_signal_pass_count`,
 `ranked_recall_hybrid_regression_blocked_count`,
 `ranked_recall_hybrid_signal_min_basis_points`, and
-`ranked_recall_min_positive_hybrid_score_basis_points`. Status integrity must
+`ranked_recall_min_positive_hybrid_score_basis_points`, plus the shadow-only
+routing diff fields `ranked_recall_routing_diff_fixture_count`,
+`ranked_recall_routing_diff_shadow_only_count`,
+`ranked_recall_routing_diff_win_count`,
+`ranked_recall_routing_diff_loss_count`,
+`ranked_recall_routing_diff_regression_blocked_count`,
+`ranked_recall_routing_diff_delta_min_basis_points`,
+`ranked_recall_min_positive_routing_diff_delta_basis_points`,
+`ranked_recall_routing_diff_latency_delta_max_ms`,
+`ranked_recall_max_positive_routing_diff_latency_delta_ms`,
+`ranked_recall_routing_diff_token_tradeoff_min_basis_points`, and
+`ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points`. Status integrity must
 reject ranked-recall false-green rows: all five hybrid signal checks must pass,
 the positive hybrid signal pass count must be 15, the hybrid regression blocked
 count must be 1, the hybrid signal floor must be 6000 basis points, and the
-minimum positive hybrid score must be at least 7800 basis points. The
+minimum positive hybrid score must be at least 7800 basis points. It must also
+reject routing diff drift: routing diff fixture/shadow-only counts must be 4/4,
+win/loss counts 3/1, regression blocked count 1, delta floor 400 basis points,
+minimum positive routing diff delta at least 640 basis points, maximum positive
+routing diff latency delta no more than 10 ms, and minimum positive routing
+diff token tradeoff at least 3000 basis points. Non-ranked rows must not carry
+ranked recall routing diff fields. The
 `memory_shadow_canary_readiness` row is shadow-only until a separately approved
 canary promotion route is designed and explicitly approved. The
 `memory_shadow_canary_promotion_readiness` row is also shadow-only and may carry
@@ -1604,6 +1671,9 @@ recall-quality blocker enums only:
 `context-plane-status.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15`,
 `context-plane-status.ranked-recall.hybrid-regression-blocked-count=1`,
+`context-plane-status.ranked-recall.routing-diff-shadow-only-count=4`,
+`context-plane-status.ranked-recall.min-positive-routing-diff-delta-basis-points=640`,
+`context-plane-status.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000`,
 `context-plane-status.memory-provider-boundary=shadow`,
 `context-plane-status.memory-provider-v2-boundary=shadow`,
 `context-plane-status.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1672,9 +1742,13 @@ be added to the enum and gate before export. Matrix rows may carry only
 target/status/required-status taxonomy, threshold booleans, blocker reason
 enums, counts, canary promotion audit checklist pass booleans, and explicit
 side-effect booleans. The `memory_ranked_recall_shadow_eval` matrix row carries
-the same ranked-recall hybrid counters as the status row and must reject missing
-hybrid signals, inflated pass counts, low hybrid scores, unblocked hybrid
-regression fixtures, or ranked-recall fields appearing on non-ranked rows.
+the same ranked-recall hybrid and shadow-only routing diff counters as the
+status row and must reject missing hybrid signals, inflated pass counts, low
+hybrid scores, unblocked hybrid regression fixtures, routing diff
+false-greens, or ranked-recall fields appearing on non-ranked rows. The routing
+diff counters include `ranked_recall_routing_diff_shadow_only_count`,
+`ranked_recall_min_positive_routing_diff_delta_basis_points`, and
+`ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points`.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -1694,6 +1768,9 @@ activation matrix export must include
 `context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15`,
 `context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1`,
+`context-plane-activation-blockers.ranked-recall.routing-diff-shadow-only-count=4`,
+`context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-delta-basis-points=640`,
+`context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1772,7 +1849,8 @@ only. Packet integrity must reject false-green canary-promotion receipts:
 stable-window/pass-streak/rehearsal counts, and any promotion blocker must not be
 paired with a full checklist.
 The packet also carries only payload-light ranked recall hybrid readiness
-counters from the `memory_ranked_recall_shadow_eval` matrix row:
+counters and shadow-only routing diff readiness counters from the
+`memory_ranked_recall_shadow_eval` matrix row:
 `ranked_recall_hybrid_signal_required_count`,
 `ranked_recall_hybrid_signal_pass_count`,
 `ranked_recall_lexical_bm25_check_pass`,
@@ -1784,16 +1862,22 @@ counters from the `memory_ranked_recall_shadow_eval` matrix row:
 `ranked_recall_positive_hybrid_signal_pass_count`,
 `ranked_recall_hybrid_regression_blocked_count`,
 `ranked_recall_hybrid_signal_min_basis_points`, and
-`ranked_recall_min_positive_hybrid_score_basis_points`. Packet integrity must
-reject ranked-recall false-green receipts with missing hybrid signals, inflated
-pass counts, unblocked hybrid regression fixtures, or low positive hybrid
-scores.
+`ranked_recall_min_positive_hybrid_score_basis_points`, plus
+`ranked_recall_routing_diff_shadow_only_count`,
+`ranked_recall_min_positive_routing_diff_delta_basis_points`, and
+`ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points`. Packet
+integrity must reject ranked-recall false-green receipts with missing hybrid
+signals, inflated pass counts, unblocked hybrid regression fixtures, low
+positive hybrid scores, or routing diff false-green drift.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-pass-count=15`,
 `context-plane-operator-approval-packet.ranked-recall.hybrid-regression-blocked-count=1`,
+`context-plane-operator-approval-packet.ranked-recall.routing-diff-shadow-only-count=4`,
+`context-plane-operator-approval-packet.ranked-recall.min-positive-routing-diff-delta-basis-points=640`,
+`context-plane-operator-approval-packet.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1883,8 +1967,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 71 lines, negative export report 4 lines, and
-combined report 75 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 82 lines, negative export report 4 lines, and
+combined report 86 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool
@@ -1906,7 +1990,8 @@ malformed canonical export variants. The machine-readable matrix is
 `context-plane-operator-approval-packet-digest-tamper-matrix=pass` and must
 cover line-order tamper, line-count tamper, digest-value tamper, canary partial checklist tamper,
 canary partial rehearsal tamper, canary blocker/full-checklist replay,
-ranked recall hybrid counter tamper, activation-command injection, raw-payload injection, PII-shaped value injection,
+ranked recall hybrid counter tamper, ranked recall routing diff counter tamper,
+activation-command injection, raw-payload injection, PII-shaped value injection,
 and write/activation flag injection. Each fixture must fail the same
 line-count, SHA-256, and no-payload guard used by the canonical digest report;
 no fixture may be accepted as a valid approval packet, negative export, digest

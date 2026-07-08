@@ -89,7 +89,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "ranked-recall-shadow-eval=pass"
 assert_report_line "ranked-recall-shadow-eval.payload-light=pass"
-assert_report_line "ranked-recall-shadow-eval.schema=3"
+assert_report_line "ranked-recall-shadow-eval.schema=4"
 assert_report_line "ranked-recall-shadow-eval.mode=deterministic-shadow"
 assert_report_line "ranked-recall-shadow-eval.hybrid-mode=shadow-only"
 assert_report_line "ranked-recall-shadow-eval.hybrid-signal-count=5"
@@ -107,6 +107,18 @@ assert_report_line "ranked-recall-shadow-eval.max-positive-latency-delta-ms=10"
 assert_report_line "ranked-recall-shadow-eval.token-tradeoff-min-basis-points=1000"
 assert_report_line "ranked-recall-shadow-eval.min-positive-token-tradeoff-basis-points=3000"
 assert_report_line "ranked-recall-shadow-eval.reranking-regression-delta=blocked"
+assert_report_line "ranked-recall-shadow-eval.routing-diff=shadow-only"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-fixture-count=4"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-shadow-only-count=4"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-win-count=3"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-loss-count=1"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-delta-min-basis-points=400"
+assert_report_line "ranked-recall-shadow-eval.min-positive-routing-diff-delta-basis-points=640"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-latency-delta-max-ms=20"
+assert_report_line "ranked-recall-shadow-eval.max-positive-routing-diff-latency-delta-ms=10"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-token-tradeoff-min-basis-points=1000"
+assert_report_line "ranked-recall-shadow-eval.min-positive-routing-diff-token-tradeoff-basis-points=3000"
+assert_report_line "ranked-recall-shadow-eval.routing-diff-regression=blocked"
 assert_report_line "ranked-recall-shadow-eval.lexical-bm25=shadow"
 assert_report_line "ranked-recall-shadow-eval.recency=shadow"
 assert_report_line "ranked-recall-shadow-eval.source-authority=shadow"
@@ -132,6 +144,7 @@ assert_report_line "ranked-recall-shadow-eval.regression-fixture=blocked"
 assert_report_line "ranked-recall-shadow-eval.hybrid-regression-signal=blocked"
 assert_report_line "ranked-recall-shadow-eval.operator-approval=required"
 assert_report_line "ranked-recall-shadow-eval.production-route=disabled"
+assert_report_line "ranked-recall-shadow-eval.production-selection-route=read-only"
 assert_report_line "ranked-recall-shadow-eval.runtime-activation=disabled"
 
 for term in \
@@ -160,6 +173,11 @@ for term in \
   "reranking-delta-min-basis-points" \
   "token-tradeoff-min-basis-points" \
   "reranking-regression-delta" \
+  "routing diff shadow-only" \
+  "production selection score" \
+  "hybrid calibrated selection score" \
+  "routing-diff-delta-min-basis-points" \
+  "routing-diff-regression" \
   "recall-floor-basis-points" \
   "precision-floor-basis-points" \
   "token-saved-min-basis-points" \

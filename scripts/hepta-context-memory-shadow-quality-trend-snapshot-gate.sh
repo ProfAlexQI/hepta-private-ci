@@ -91,7 +91,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-quality-trend-snapshot=pass"
 assert_report_line "memory-shadow-quality-trend-snapshot.payload-light=pass"
-assert_report_line "memory-shadow-quality-trend-snapshot.schema=2"
+assert_report_line "memory-shadow-quality-trend-snapshot.schema=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.mode=shadow-only"
 assert_report_line "memory-shadow-quality-trend-snapshot.source-summary=pass"
 assert_report_line "memory-shadow-quality-trend-snapshot.current-quality-trend=stable-pass"
@@ -105,10 +105,14 @@ assert_report_line "memory-shadow-quality-trend-snapshot.regression-window-block
 assert_report_line "memory-shadow-quality-trend-snapshot.quality-signal-window-pass-count=12"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-window-pass-count=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-comparison-window-pass-count=3"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-routing-diff-window-pass-count=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-hybrid-score-basis-points=7800"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-reranking-delta-basis-points=640"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-max-positive-latency-delta-ms=10"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-token-tradeoff-basis-points=3000"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-routing-diff-delta-basis-points=640"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-max-positive-routing-diff-latency-delta-ms=10"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000"
 assert_report_line "memory-shadow-quality-trend-snapshot.temporal-graph-window-pass-count=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.recall-quality-window-pass-count=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.provider-boundary-window-pass-count=3"
@@ -132,9 +136,12 @@ for term in \
   "regression_window_blocking_count" \
   "quality_signal_window_pass_count" \
   "ranked_recall_comparison_window_pass_count" \
+  "ranked_recall_routing_diff_window_pass_count" \
   "ranked_recall_min_positive_hybrid_score_basis_points" \
   "ranked_recall_min_positive_reranking_delta_basis_points" \
   "ranked_recall_min_positive_token_tradeoff_basis_points" \
+  "ranked_recall_min_positive_routing_diff_delta_basis_points" \
+  "ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points" \
   "operator_snapshot_redacted" \
   "stable_window" \
   "history_persistence_write" \

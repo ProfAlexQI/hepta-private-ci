@@ -89,6 +89,9 @@ for term in \
   "ranked_recall_temporal_validity_check_pass" \
   "ranked_recall_positive_hybrid_signal_pass_count" \
   "ranked_recall_hybrid_regression_blocked_count" \
+  "ranked_recall_routing_diff_shadow_only_count" \
+  "ranked_recall_min_positive_routing_diff_delta_basis_points" \
+  "ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points" \
   "memory_provider_boundary" \
   "memory_provider_v2_boundary" \
   "memory_provider_v2_lifecycle_pass_count" \
@@ -124,6 +127,9 @@ for term in \
   "context-plane-status.ranked-recall.hybrid-signal-pass-count=5" \
   "context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15" \
   "context-plane-status.ranked-recall.hybrid-regression-blocked-count=1" \
+  "context-plane-status.ranked-recall.routing-diff-shadow-only-count=4" \
+  "context-plane-status.ranked-recall.min-positive-routing-diff-delta-basis-points=640" \
+  "context-plane-status.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -243,6 +249,17 @@ context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15
 context-plane-status.ranked-recall.hybrid-regression-blocked-count=1
 context-plane-status.ranked-recall.hybrid-signal-min-basis-points=6000
 context-plane-status.ranked-recall.min-positive-hybrid-score-basis-points=7800
+context-plane-status.ranked-recall.routing-diff-fixture-count=4
+context-plane-status.ranked-recall.routing-diff-shadow-only-count=4
+context-plane-status.ranked-recall.routing-diff-win-count=3
+context-plane-status.ranked-recall.routing-diff-loss-count=1
+context-plane-status.ranked-recall.routing-diff-regression-blocked-count=1
+context-plane-status.ranked-recall.routing-diff-delta-min-basis-points=400
+context-plane-status.ranked-recall.min-positive-routing-diff-delta-basis-points=640
+context-plane-status.ranked-recall.routing-diff-latency-delta-max-ms=20
+context-plane-status.ranked-recall.max-positive-routing-diff-latency-delta-ms=10
+context-plane-status.ranked-recall.routing-diff-token-tradeoff-min-basis-points=1000
+context-plane-status.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000
 context-plane-status.memory-provider-boundary=shadow
 context-plane-status.memory-provider-v2-boundary=shadow
 context-plane-status.memory-provider-v2.lifecycle-required-count=6

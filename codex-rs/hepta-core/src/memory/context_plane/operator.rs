@@ -18,6 +18,16 @@ const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
 const RANKED_RECALL_HYBRID_REGRESSION_BLOCKED_REQUIRED_COUNT: usize = 1;
 const RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS: u32 = 6_000;
 const RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS: u32 = 7_800;
+const RANKED_RECALL_ROUTING_DIFF_FIXTURE_REQUIRED_COUNT: usize = 4;
+const RANKED_RECALL_ROUTING_DIFF_WIN_REQUIRED_COUNT: usize = 3;
+const RANKED_RECALL_ROUTING_DIFF_LOSS_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_ROUTING_DIFF_REGRESSION_BLOCKED_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_ROUTING_DIFF_DELTA_MIN_BASIS_POINTS: i32 = 400;
+const RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_DELTA_BASIS_POINTS: i32 = 640;
+const RANKED_RECALL_ROUTING_DIFF_LATENCY_DELTA_MAX_MS: i32 = 20;
+const RANKED_RECALL_MAX_POSITIVE_ROUTING_DIFF_LATENCY_DELTA_MS: i32 = 10;
+const RANKED_RECALL_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS: u32 = 1_000;
+const RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_TOKEN_TRADEOFF_BASIS_POINTS: u32 = 3_000;
 
 /// Approval scope that must be covered before any context-plane promotion.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +169,17 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub ranked_recall_hybrid_regression_blocked_count: usize,
     pub ranked_recall_hybrid_signal_min_basis_points: u32,
     pub ranked_recall_min_positive_hybrid_score_basis_points: u32,
+    pub ranked_recall_routing_diff_fixture_count: usize,
+    pub ranked_recall_routing_diff_shadow_only_count: usize,
+    pub ranked_recall_routing_diff_win_count: usize,
+    pub ranked_recall_routing_diff_loss_count: usize,
+    pub ranked_recall_routing_diff_regression_blocked_count: usize,
+    pub ranked_recall_routing_diff_delta_min_basis_points: i32,
+    pub ranked_recall_min_positive_routing_diff_delta_basis_points: i32,
+    pub ranked_recall_routing_diff_latency_delta_max_ms: i32,
+    pub ranked_recall_max_positive_routing_diff_latency_delta_ms: i32,
+    pub ranked_recall_routing_diff_token_tradeoff_min_basis_points: u32,
+    pub ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: u32,
     pub required_approval_scopes: Vec<ContextPlaneOperatorApprovalScope>,
     pub production_write: bool,
     pub graph_write: bool,
@@ -222,6 +243,17 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             ranked_recall_hybrid_regression_blocked_count: 0,
             ranked_recall_hybrid_signal_min_basis_points: 0,
             ranked_recall_min_positive_hybrid_score_basis_points: 0,
+            ranked_recall_routing_diff_fixture_count: 0,
+            ranked_recall_routing_diff_shadow_only_count: 0,
+            ranked_recall_routing_diff_win_count: 0,
+            ranked_recall_routing_diff_loss_count: 0,
+            ranked_recall_routing_diff_regression_blocked_count: 0,
+            ranked_recall_routing_diff_delta_min_basis_points: 0,
+            ranked_recall_min_positive_routing_diff_delta_basis_points: 0,
+            ranked_recall_routing_diff_latency_delta_max_ms: 0,
+            ranked_recall_max_positive_routing_diff_latency_delta_ms: 0,
+            ranked_recall_routing_diff_token_tradeoff_min_basis_points: 0,
+            ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: 0,
             required_approval_scopes: Vec::new(),
             production_write: false,
             graph_write: false,
@@ -405,6 +437,39 @@ impl ContextPlaneOperatorApprovalPacket {
                 .unwrap_or_default(),
             ranked_recall_min_positive_hybrid_score_basis_points: ranked_recall_row
                 .map(|row| row.ranked_recall_min_positive_hybrid_score_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_fixture_count: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_fixture_count)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_shadow_only_count: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_shadow_only_count)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_win_count: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_win_count)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_loss_count: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_loss_count)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_regression_blocked_count: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_regression_blocked_count)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_delta_min_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_delta_min_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_min_positive_routing_diff_delta_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_min_positive_routing_diff_delta_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_latency_delta_max_ms: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_latency_delta_max_ms)
+                .unwrap_or_default(),
+            ranked_recall_max_positive_routing_diff_latency_delta_ms: ranked_recall_row
+                .map(|row| row.ranked_recall_max_positive_routing_diff_latency_delta_ms)
+                .unwrap_or_default(),
+            ranked_recall_routing_diff_token_tradeoff_min_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_routing_diff_token_tradeoff_min_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points)
                 .unwrap_or_default(),
             required_approval_scopes,
             production_write: matrix.production_write,
@@ -616,6 +681,28 @@ impl ContextPlaneOperatorApprovalPacket {
                 == RANKED_RECALL_HYBRID_SIGNAL_MIN_BASIS_POINTS
             && self.ranked_recall_min_positive_hybrid_score_basis_points
                 >= RANKED_RECALL_MIN_POSITIVE_HYBRID_SCORE_BASIS_POINTS
+            && self.ranked_recall_routing_diff_fixture_count
+                == RANKED_RECALL_ROUTING_DIFF_FIXTURE_REQUIRED_COUNT
+            && self.ranked_recall_routing_diff_shadow_only_count
+                == self.ranked_recall_routing_diff_fixture_count
+            && self.ranked_recall_routing_diff_win_count
+                == RANKED_RECALL_ROUTING_DIFF_WIN_REQUIRED_COUNT
+            && self.ranked_recall_routing_diff_loss_count
+                == RANKED_RECALL_ROUTING_DIFF_LOSS_REQUIRED_COUNT
+            && self.ranked_recall_routing_diff_regression_blocked_count
+                == RANKED_RECALL_ROUTING_DIFF_REGRESSION_BLOCKED_REQUIRED_COUNT
+            && self.ranked_recall_routing_diff_delta_min_basis_points
+                == RANKED_RECALL_ROUTING_DIFF_DELTA_MIN_BASIS_POINTS
+            && self.ranked_recall_min_positive_routing_diff_delta_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_DELTA_BASIS_POINTS
+            && self.ranked_recall_routing_diff_latency_delta_max_ms
+                == RANKED_RECALL_ROUTING_DIFF_LATENCY_DELTA_MAX_MS
+            && self.ranked_recall_max_positive_routing_diff_latency_delta_ms
+                <= RANKED_RECALL_MAX_POSITIVE_ROUTING_DIFF_LATENCY_DELTA_MS
+            && self.ranked_recall_routing_diff_token_tradeoff_min_basis_points
+                == RANKED_RECALL_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS
+            && self.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_TOKEN_TRADEOFF_BASIS_POINTS
     }
 }
 

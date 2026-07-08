@@ -90,6 +90,9 @@ for term in \
   "ranked_recall_temporal_validity_check_pass" \
   "ranked_recall_positive_hybrid_signal_pass_count" \
   "ranked_recall_hybrid_regression_blocked_count" \
+  "ranked_recall_routing_diff_shadow_only_count" \
+  "ranked_recall_min_positive_routing_diff_delta_basis_points" \
+  "ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points" \
   "memory_provider_boundary" \
   "memory_provider_v2_boundary" \
   "memory_provider_v2_lifecycle_pass_count" \
@@ -111,6 +114,9 @@ for term in \
   "context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5" \
   "context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15" \
   "context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1" \
+  "context-plane-activation-blockers.ranked-recall.routing-diff-shadow-only-count=4" \
+  "context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-delta-basis-points=640" \
+  "context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000" \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
@@ -232,7 +238,7 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=8
+context-plane-activation-blockers.schema=9
 context-plane-activation-blockers.rows=18
 context-plane-activation-blockers.satisfied=9
 context-plane-activation-blockers.blockers=9
@@ -262,6 +268,17 @@ context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-coun
 context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1
 context-plane-activation-blockers.ranked-recall.hybrid-signal-min-basis-points=6000
 context-plane-activation-blockers.ranked-recall.min-positive-hybrid-score-basis-points=7800
+context-plane-activation-blockers.ranked-recall.routing-diff-fixture-count=4
+context-plane-activation-blockers.ranked-recall.routing-diff-shadow-only-count=4
+context-plane-activation-blockers.ranked-recall.routing-diff-win-count=3
+context-plane-activation-blockers.ranked-recall.routing-diff-loss-count=1
+context-plane-activation-blockers.ranked-recall.routing-diff-regression-blocked-count=1
+context-plane-activation-blockers.ranked-recall.routing-diff-delta-min-basis-points=400
+context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-delta-basis-points=640
+context-plane-activation-blockers.ranked-recall.routing-diff-latency-delta-max-ms=20
+context-plane-activation-blockers.ranked-recall.max-positive-routing-diff-latency-delta-ms=10
+context-plane-activation-blockers.ranked-recall.routing-diff-token-tradeoff-min-basis-points=1000
+context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6
