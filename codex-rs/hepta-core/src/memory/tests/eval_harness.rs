@@ -297,6 +297,21 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     );
     assert_eq!(report.max_positive_real_workload_trace_latency_ms(), 55);
     assert_eq!(report.real_workload_trace_regression_loss_count(), 1);
+    assert_eq!(report.canary_precondition_fixture_count(), 4);
+    assert_eq!(report.canary_precondition_shadow_only_count(), 4);
+    assert_eq!(report.canary_precondition_pass_count(), 4);
+    assert_eq!(report.canary_feature_flag_registered_count(), 4);
+    assert_eq!(report.canary_feature_flag_disabled_count(), 4);
+    assert_eq!(report.canary_kill_switch_registered_count(), 4);
+    assert_eq!(report.canary_kill_switch_enabled_count(), 4);
+    assert_eq!(report.canary_rollback_rehearsal_covered_count(), 4);
+    assert_eq!(report.canary_activation_denial_covered_count(), 4);
+    assert_eq!(
+        report.canary_precondition_operator_review_required_count(),
+        4
+    );
+    assert_eq!(report.canary_precondition_route_opened_count(), 0);
+    assert_eq!(report.canary_precondition_rollback_write_count(), 0);
     assert_eq!(report.min_positive_recall_basis_points(), 8000);
     assert_eq!(report.min_positive_precision_basis_points(), 8000);
     assert_eq!(report.min_positive_hybrid_score_basis_points(), 7800);
@@ -398,6 +413,18 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert_eq!(query_match.real_workload_trace_latency_ms, 42);
     assert!(query_match.real_workload_trace_win);
     assert!(!query_match.real_workload_trace_loss);
+    assert!(query_match.canary_precondition_fixture);
+    assert!(query_match.canary_precondition_shadow_only);
+    assert!(query_match.canary_precondition_pass);
+    assert!(query_match.canary_feature_flag_registered);
+    assert!(query_match.canary_feature_flag_default_disabled);
+    assert!(query_match.canary_kill_switch_registered);
+    assert!(query_match.canary_kill_switch_default_enabled);
+    assert!(query_match.canary_rollback_rehearsal_covered);
+    assert!(query_match.canary_activation_denial_covered);
+    assert!(query_match.canary_precondition_operator_review_required);
+    assert!(!query_match.canary_precondition_route_opened);
+    assert!(!query_match.canary_precondition_rollback_write);
 
     let regression = report
         .fixture(ContextMemoryRankedRecallShadowEvalFixtureKind::RegressionGuard)
@@ -444,6 +471,9 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert_eq!(regression.real_workload_trace_latency_ms, 125);
     assert!(!regression.real_workload_trace_win);
     assert!(regression.real_workload_trace_loss);
+    assert!(regression.canary_precondition_pass);
+    assert!(!regression.canary_precondition_route_opened);
+    assert!(!regression.canary_precondition_rollback_write);
 
     let json = serde_json::to_string(&report).expect("ranked recall report should serialize");
     assert!(json.contains("deterministic_shadow"));
@@ -477,6 +507,10 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert!(json.contains("real_workload_trace_precision_basis_points"));
     assert!(json.contains("real_workload_trace_leak_rate_basis_points"));
     assert!(json.contains("real_workload_trace_operator_review_required"));
+    assert!(json.contains("canary_precondition_pass"));
+    assert!(json.contains("canary_feature_flag_default_disabled"));
+    assert!(json.contains("canary_kill_switch_default_enabled"));
+    assert!(json.contains("canary_precondition_route_opened"));
     assert!(json.contains("token_saved_min_basis_points"));
     assert!(!json.contains("session-"));
     assert!(!json.contains("memory-"));
@@ -622,6 +656,33 @@ fn context_memory_ranked_recall_shadow_eval_blocks_real_workload_slo_drift() {
     replay_fixture.real_workload_trace_coverage_basis_points = 6_999;
 
     assert!(!replay.has_ranked_recall_shadow_integrity());
+}
+
+#[test]
+fn context_memory_ranked_recall_shadow_eval_blocks_canary_precondition_drift() {
+    let mut missing_flag = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let query_match = missing_flag
+        .fixtures
+        .iter_mut()
+        .find(|fixture| {
+            fixture.fixture_kind == ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch
+        })
+        .expect("query-match fixture should exist");
+    query_match.canary_feature_flag_default_disabled = false;
+
+    assert!(!missing_flag.has_ranked_recall_shadow_integrity());
+
+    let mut route_opened = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let route_fixture = route_opened
+        .fixtures
+        .iter_mut()
+        .find(|fixture| {
+            fixture.fixture_kind == ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch
+        })
+        .expect("query-match fixture should exist");
+    route_fixture.canary_precondition_route_opened = true;
+
+    assert!(!route_opened.has_ranked_recall_shadow_integrity());
 }
 
 #[test]

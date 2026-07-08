@@ -110,6 +110,17 @@ pub struct ContextMemoryShadowQualitySummaryReport {
     pub ranked_recall_total_positive_real_workload_trace_token_saved: usize,
     pub ranked_recall_max_positive_real_workload_trace_latency_ms: u32,
     pub ranked_recall_real_workload_trace_regression_loss_count: usize,
+    pub ranked_recall_canary_precondition_shadow_only_count: usize,
+    pub ranked_recall_canary_precondition_pass_count: usize,
+    pub ranked_recall_canary_feature_flag_registered_count: usize,
+    pub ranked_recall_canary_feature_flag_disabled_count: usize,
+    pub ranked_recall_canary_kill_switch_registered_count: usize,
+    pub ranked_recall_canary_kill_switch_enabled_count: usize,
+    pub ranked_recall_canary_rollback_rehearsal_covered_count: usize,
+    pub ranked_recall_canary_activation_denial_covered_count: usize,
+    pub ranked_recall_canary_precondition_operator_review_required_count: usize,
+    pub ranked_recall_canary_precondition_route_opened_count: usize,
+    pub ranked_recall_canary_precondition_rollback_write_count: usize,
     pub temporal_graph_signal_pass: bool,
     pub temporal_graph_min_positive_node_coverage_basis_points: u32,
     pub temporal_graph_min_positive_edge_coverage_basis_points: u32,
@@ -178,6 +189,17 @@ impl Default for ContextMemoryShadowQualitySummaryReport {
             ranked_recall_total_positive_real_workload_trace_token_saved: 0,
             ranked_recall_max_positive_real_workload_trace_latency_ms: 0,
             ranked_recall_real_workload_trace_regression_loss_count: 0,
+            ranked_recall_canary_precondition_shadow_only_count: 0,
+            ranked_recall_canary_precondition_pass_count: 0,
+            ranked_recall_canary_feature_flag_registered_count: 0,
+            ranked_recall_canary_feature_flag_disabled_count: 0,
+            ranked_recall_canary_kill_switch_registered_count: 0,
+            ranked_recall_canary_kill_switch_enabled_count: 0,
+            ranked_recall_canary_rollback_rehearsal_covered_count: 0,
+            ranked_recall_canary_activation_denial_covered_count: 0,
+            ranked_recall_canary_precondition_operator_review_required_count: 0,
+            ranked_recall_canary_precondition_route_opened_count: 0,
+            ranked_recall_canary_precondition_rollback_write_count: 0,
             temporal_graph_signal_pass: false,
             temporal_graph_min_positive_node_coverage_basis_points: 0,
             temporal_graph_min_positive_edge_coverage_basis_points: 0,
@@ -243,7 +265,27 @@ impl ContextMemoryShadowQualitySummaryReport {
                 >= 8_000
             && dashboard.ranked_recall_total_positive_real_workload_trace_token_saved >= 2_140
             && dashboard.ranked_recall_max_positive_real_workload_trace_latency_ms <= 55
-            && dashboard.ranked_recall_real_workload_trace_regression_loss_count == 1;
+            && dashboard.ranked_recall_real_workload_trace_regression_loss_count == 1
+            && dashboard.ranked_recall_canary_precondition_shadow_only_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_precondition_pass_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_feature_flag_registered_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_feature_flag_disabled_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_kill_switch_registered_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_kill_switch_enabled_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_rollback_rehearsal_covered_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_activation_denial_covered_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_precondition_operator_review_required_count
+                == dashboard.ranked_recall_fixture_count
+            && dashboard.ranked_recall_canary_precondition_route_opened_count == 0
+            && dashboard.ranked_recall_canary_precondition_rollback_write_count == 0;
         let temporal_graph_signal_pass = dashboard.temporal_graph_fixture_count == 4
             && dashboard.temporal_graph_fixture_pass_count
                 == dashboard.temporal_graph_fixture_count
@@ -380,6 +422,28 @@ impl ContextMemoryShadowQualitySummaryReport {
                 .ranked_recall_max_positive_real_workload_trace_latency_ms,
             ranked_recall_real_workload_trace_regression_loss_count: dashboard
                 .ranked_recall_real_workload_trace_regression_loss_count,
+            ranked_recall_canary_precondition_shadow_only_count: dashboard
+                .ranked_recall_canary_precondition_shadow_only_count,
+            ranked_recall_canary_precondition_pass_count: dashboard
+                .ranked_recall_canary_precondition_pass_count,
+            ranked_recall_canary_feature_flag_registered_count: dashboard
+                .ranked_recall_canary_feature_flag_registered_count,
+            ranked_recall_canary_feature_flag_disabled_count: dashboard
+                .ranked_recall_canary_feature_flag_disabled_count,
+            ranked_recall_canary_kill_switch_registered_count: dashboard
+                .ranked_recall_canary_kill_switch_registered_count,
+            ranked_recall_canary_kill_switch_enabled_count: dashboard
+                .ranked_recall_canary_kill_switch_enabled_count,
+            ranked_recall_canary_rollback_rehearsal_covered_count: dashboard
+                .ranked_recall_canary_rollback_rehearsal_covered_count,
+            ranked_recall_canary_activation_denial_covered_count: dashboard
+                .ranked_recall_canary_activation_denial_covered_count,
+            ranked_recall_canary_precondition_operator_review_required_count: dashboard
+                .ranked_recall_canary_precondition_operator_review_required_count,
+            ranked_recall_canary_precondition_route_opened_count: dashboard
+                .ranked_recall_canary_precondition_route_opened_count,
+            ranked_recall_canary_precondition_rollback_write_count: dashboard
+                .ranked_recall_canary_precondition_rollback_write_count,
             temporal_graph_signal_pass,
             temporal_graph_min_positive_node_coverage_basis_points: dashboard
                 .temporal_graph_min_positive_node_coverage_basis_points,
@@ -455,6 +519,17 @@ impl ContextMemoryShadowQualitySummaryReport {
             && self.ranked_recall_total_positive_real_workload_trace_token_saved >= 2_140
             && self.ranked_recall_max_positive_real_workload_trace_latency_ms <= 55
             && self.ranked_recall_real_workload_trace_regression_loss_count == 1
+            && self.ranked_recall_canary_precondition_shadow_only_count == 4
+            && self.ranked_recall_canary_precondition_pass_count == 4
+            && self.ranked_recall_canary_feature_flag_registered_count == 4
+            && self.ranked_recall_canary_feature_flag_disabled_count == 4
+            && self.ranked_recall_canary_kill_switch_registered_count == 4
+            && self.ranked_recall_canary_kill_switch_enabled_count == 4
+            && self.ranked_recall_canary_rollback_rehearsal_covered_count == 4
+            && self.ranked_recall_canary_activation_denial_covered_count == 4
+            && self.ranked_recall_canary_precondition_operator_review_required_count == 4
+            && self.ranked_recall_canary_precondition_route_opened_count == 0
+            && self.ranked_recall_canary_precondition_rollback_write_count == 0
             && self.temporal_graph_signal_pass
             && self.temporal_graph_min_positive_node_coverage_basis_points >= 10_000
             && self.temporal_graph_min_positive_edge_coverage_basis_points >= 10_000

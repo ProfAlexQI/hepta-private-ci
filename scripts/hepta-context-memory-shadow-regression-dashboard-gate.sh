@@ -97,7 +97,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-regression-dashboard=pass"
 assert_report_line "memory-shadow-regression-dashboard.payload-light=pass"
-assert_report_line "memory-shadow-regression-dashboard.schema=4"
+assert_report_line "memory-shadow-regression-dashboard.schema=5"
 assert_report_line "memory-shadow-regression-dashboard.mode=shadow-only"
 assert_report_line "memory-shadow-regression-dashboard.input-report-count=4"
 assert_report_line "memory-shadow-regression-dashboard.input-report-pass-count=4"
@@ -140,6 +140,18 @@ assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positiv
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-total-positive-real-workload-trace-token-saved=2140"
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-max-positive-real-workload-trace-latency-ms=55"
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-regression-loss-count=1"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-precondition-fixture-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-precondition-shadow-only-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-precondition-pass-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-feature-flag-registered-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-feature-flag-disabled-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-kill-switch-registered-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-kill-switch-enabled-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-rollback-rehearsal-covered-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-activation-denial-covered-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-precondition-operator-review-required-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-precondition-route-opened-count=0"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-canary-precondition-rollback-write-count=0"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-fixture-count=4"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-regression-fixture=blocked"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-min-positive-node-coverage-basis-points=10000"
@@ -179,6 +191,9 @@ for term in \
   "ranked_recall_real_workload_trace_total_leak_count" \
   "ranked_recall_min_positive_real_workload_trace_coverage_basis_points" \
   "ranked_recall_real_workload_trace_operator_review_required_count" \
+  "ranked_recall_canary_precondition_pass_count" \
+  "ranked_recall_canary_feature_flag_disabled_count" \
+  "ranked_recall_canary_precondition_route_opened_count" \
   "provider_payload_light" \
   "hepta-context-memory-shadow-regression-dashboard-report.sh" \
   "hepta-context-memory-shadow-regression-dashboard-gate.sh"; do

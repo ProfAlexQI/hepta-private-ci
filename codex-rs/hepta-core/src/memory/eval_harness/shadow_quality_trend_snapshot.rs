@@ -96,6 +96,15 @@ pub struct ContextMemoryShadowQualityTrendSnapshotReport {
     pub ranked_recall_min_positive_real_workload_trace_precision_basis_points: u32,
     pub ranked_recall_total_positive_real_workload_trace_token_saved: usize,
     pub ranked_recall_max_positive_real_workload_trace_latency_ms: u32,
+    pub ranked_recall_canary_precondition_window_pass_count: usize,
+    pub ranked_recall_canary_precondition_pass_count: usize,
+    pub ranked_recall_canary_feature_flag_disabled_count: usize,
+    pub ranked_recall_canary_kill_switch_enabled_count: usize,
+    pub ranked_recall_canary_rollback_rehearsal_covered_count: usize,
+    pub ranked_recall_canary_activation_denial_covered_count: usize,
+    pub ranked_recall_canary_precondition_operator_review_required_count: usize,
+    pub ranked_recall_canary_precondition_route_opened_count: usize,
+    pub ranked_recall_canary_precondition_rollback_write_count: usize,
     pub temporal_graph_min_positive_node_coverage_basis_points: u32,
     pub temporal_graph_min_positive_edge_coverage_basis_points: u32,
     pub temporal_graph_max_positive_latency_ms: u32,
@@ -159,6 +168,15 @@ impl Default for ContextMemoryShadowQualityTrendSnapshotReport {
             ranked_recall_min_positive_real_workload_trace_precision_basis_points: 0,
             ranked_recall_total_positive_real_workload_trace_token_saved: 0,
             ranked_recall_max_positive_real_workload_trace_latency_ms: 0,
+            ranked_recall_canary_precondition_window_pass_count: 0,
+            ranked_recall_canary_precondition_pass_count: 0,
+            ranked_recall_canary_feature_flag_disabled_count: 0,
+            ranked_recall_canary_kill_switch_enabled_count: 0,
+            ranked_recall_canary_rollback_rehearsal_covered_count: 0,
+            ranked_recall_canary_activation_denial_covered_count: 0,
+            ranked_recall_canary_precondition_operator_review_required_count: 0,
+            ranked_recall_canary_precondition_route_opened_count: 0,
+            ranked_recall_canary_precondition_rollback_write_count: 0,
             temporal_graph_min_positive_node_coverage_basis_points: 0,
             temporal_graph_min_positive_edge_coverage_basis_points: 0,
             temporal_graph_max_positive_latency_ms: 0,
@@ -249,6 +267,23 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
         } else {
             0
         };
+        let ranked_recall_canary_precondition_window_pass_count =
+            if summary.ranked_recall_canary_precondition_shadow_only_count == 4
+                && summary.ranked_recall_canary_precondition_pass_count == 4
+                && summary.ranked_recall_canary_feature_flag_registered_count == 4
+                && summary.ranked_recall_canary_feature_flag_disabled_count == 4
+                && summary.ranked_recall_canary_kill_switch_registered_count == 4
+                && summary.ranked_recall_canary_kill_switch_enabled_count == 4
+                && summary.ranked_recall_canary_rollback_rehearsal_covered_count == 4
+                && summary.ranked_recall_canary_activation_denial_covered_count == 4
+                && summary.ranked_recall_canary_precondition_operator_review_required_count == 4
+                && summary.ranked_recall_canary_precondition_route_opened_count == 0
+                && summary.ranked_recall_canary_precondition_rollback_write_count == 0
+            {
+                SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
+            } else {
+                0
+            };
         let temporal_graph_window_pass_count = if summary.temporal_graph_signal_pass {
             SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
         } else {
@@ -350,6 +385,23 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
                 .ranked_recall_total_positive_real_workload_trace_token_saved,
             ranked_recall_max_positive_real_workload_trace_latency_ms: summary
                 .ranked_recall_max_positive_real_workload_trace_latency_ms,
+            ranked_recall_canary_precondition_window_pass_count,
+            ranked_recall_canary_precondition_pass_count: summary
+                .ranked_recall_canary_precondition_pass_count,
+            ranked_recall_canary_feature_flag_disabled_count: summary
+                .ranked_recall_canary_feature_flag_disabled_count,
+            ranked_recall_canary_kill_switch_enabled_count: summary
+                .ranked_recall_canary_kill_switch_enabled_count,
+            ranked_recall_canary_rollback_rehearsal_covered_count: summary
+                .ranked_recall_canary_rollback_rehearsal_covered_count,
+            ranked_recall_canary_activation_denial_covered_count: summary
+                .ranked_recall_canary_activation_denial_covered_count,
+            ranked_recall_canary_precondition_operator_review_required_count: summary
+                .ranked_recall_canary_precondition_operator_review_required_count,
+            ranked_recall_canary_precondition_route_opened_count: summary
+                .ranked_recall_canary_precondition_route_opened_count,
+            ranked_recall_canary_precondition_rollback_write_count: summary
+                .ranked_recall_canary_precondition_rollback_write_count,
             temporal_graph_min_positive_node_coverage_basis_points: summary
                 .temporal_graph_min_positive_node_coverage_basis_points,
             temporal_graph_min_positive_edge_coverage_basis_points: summary
@@ -405,6 +457,8 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
                 == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
             && self.ranked_recall_real_workload_trace_window_pass_count
                 == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
+            && self.ranked_recall_canary_precondition_window_pass_count
+                == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
             && self.temporal_graph_window_pass_count
                 == SHADOW_QUALITY_TREND_SNAPSHOT_WINDOW_OBSERVATION_COUNT
             && self.recall_quality_window_pass_count
@@ -432,6 +486,14 @@ impl ContextMemoryShadowQualityTrendSnapshotReport {
             && self.ranked_recall_min_positive_real_workload_trace_precision_basis_points >= 8_000
             && self.ranked_recall_total_positive_real_workload_trace_token_saved >= 2_140
             && self.ranked_recall_max_positive_real_workload_trace_latency_ms <= 55
+            && self.ranked_recall_canary_precondition_pass_count == 4
+            && self.ranked_recall_canary_feature_flag_disabled_count == 4
+            && self.ranked_recall_canary_kill_switch_enabled_count == 4
+            && self.ranked_recall_canary_rollback_rehearsal_covered_count == 4
+            && self.ranked_recall_canary_activation_denial_covered_count == 4
+            && self.ranked_recall_canary_precondition_operator_review_required_count == 4
+            && self.ranked_recall_canary_precondition_route_opened_count == 0
+            && self.ranked_recall_canary_precondition_rollback_write_count == 0
             && self.temporal_graph_min_positive_node_coverage_basis_points >= 10_000
             && self.temporal_graph_min_positive_edge_coverage_basis_points >= 10_000
             && self.temporal_graph_max_positive_latency_ms <= 47

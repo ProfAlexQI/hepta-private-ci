@@ -35,7 +35,7 @@ done
 cat <<'EOF'
 memory-shadow-quality-summary=pass
 memory-shadow-quality-summary.payload-light=pass
-memory-shadow-quality-summary.schema=4
+memory-shadow-quality-summary.schema=5
 memory-shadow-quality-summary.mode=shadow-only
 memory-shadow-quality-summary.quality-trend=stable-pass
 memory-shadow-quality-summary.operator-summary=ready-shadow-only
@@ -72,6 +72,17 @@ memory-shadow-quality-summary.ranked-recall-min-positive-real-workload-trace-pre
 memory-shadow-quality-summary.ranked-recall-total-positive-real-workload-trace-token-saved=2140
 memory-shadow-quality-summary.ranked-recall-max-positive-real-workload-trace-latency-ms=55
 memory-shadow-quality-summary.ranked-recall-real-workload-trace-regression-loss-count=1
+memory-shadow-quality-summary.ranked-recall-canary-precondition-shadow-only-count=4
+memory-shadow-quality-summary.ranked-recall-canary-precondition-pass-count=4
+memory-shadow-quality-summary.ranked-recall-canary-feature-flag-registered-count=4
+memory-shadow-quality-summary.ranked-recall-canary-feature-flag-disabled-count=4
+memory-shadow-quality-summary.ranked-recall-canary-kill-switch-registered-count=4
+memory-shadow-quality-summary.ranked-recall-canary-kill-switch-enabled-count=4
+memory-shadow-quality-summary.ranked-recall-canary-rollback-rehearsal-covered-count=4
+memory-shadow-quality-summary.ranked-recall-canary-activation-denial-covered-count=4
+memory-shadow-quality-summary.ranked-recall-canary-precondition-operator-review-required-count=4
+memory-shadow-quality-summary.ranked-recall-canary-precondition-route-opened-count=0
+memory-shadow-quality-summary.ranked-recall-canary-precondition-rollback-write-count=0
 memory-shadow-quality-summary.temporal-graph-signal=pass
 memory-shadow-quality-summary.recall-quality-signal=pass
 memory-shadow-quality-summary.provider-boundary-signal=pass

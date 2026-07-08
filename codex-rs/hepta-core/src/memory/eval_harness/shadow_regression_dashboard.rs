@@ -80,6 +80,18 @@ pub struct ContextMemoryShadowRegressionDashboardReport {
     pub ranked_recall_total_positive_real_workload_trace_token_saved: usize,
     pub ranked_recall_max_positive_real_workload_trace_latency_ms: u32,
     pub ranked_recall_real_workload_trace_regression_loss_count: usize,
+    pub ranked_recall_canary_precondition_fixture_count: usize,
+    pub ranked_recall_canary_precondition_shadow_only_count: usize,
+    pub ranked_recall_canary_precondition_pass_count: usize,
+    pub ranked_recall_canary_feature_flag_registered_count: usize,
+    pub ranked_recall_canary_feature_flag_disabled_count: usize,
+    pub ranked_recall_canary_kill_switch_registered_count: usize,
+    pub ranked_recall_canary_kill_switch_enabled_count: usize,
+    pub ranked_recall_canary_rollback_rehearsal_covered_count: usize,
+    pub ranked_recall_canary_activation_denial_covered_count: usize,
+    pub ranked_recall_canary_precondition_operator_review_required_count: usize,
+    pub ranked_recall_canary_precondition_route_opened_count: usize,
+    pub ranked_recall_canary_precondition_rollback_write_count: usize,
     pub temporal_graph_fixture_count: usize,
     pub temporal_graph_fixture_pass_count: usize,
     pub temporal_graph_regression_blocked_count: usize,
@@ -160,6 +172,18 @@ impl Default for ContextMemoryShadowRegressionDashboardReport {
             ranked_recall_total_positive_real_workload_trace_token_saved: 0,
             ranked_recall_max_positive_real_workload_trace_latency_ms: 0,
             ranked_recall_real_workload_trace_regression_loss_count: 0,
+            ranked_recall_canary_precondition_fixture_count: 0,
+            ranked_recall_canary_precondition_shadow_only_count: 0,
+            ranked_recall_canary_precondition_pass_count: 0,
+            ranked_recall_canary_feature_flag_registered_count: 0,
+            ranked_recall_canary_feature_flag_disabled_count: 0,
+            ranked_recall_canary_kill_switch_registered_count: 0,
+            ranked_recall_canary_kill_switch_enabled_count: 0,
+            ranked_recall_canary_rollback_rehearsal_covered_count: 0,
+            ranked_recall_canary_activation_denial_covered_count: 0,
+            ranked_recall_canary_precondition_operator_review_required_count: 0,
+            ranked_recall_canary_precondition_route_opened_count: 0,
+            ranked_recall_canary_precondition_rollback_write_count: 0,
             temporal_graph_fixture_count: 0,
             temporal_graph_fixture_pass_count: 0,
             temporal_graph_regression_blocked_count: 0,
@@ -239,7 +263,24 @@ impl ContextMemoryShadowRegressionDashboardReport {
             && ranked_recall.min_positive_real_workload_trace_precision_basis_points() >= 8_000
             && ranked_recall.total_positive_real_workload_trace_token_saved() >= 2_140
             && ranked_recall.max_positive_real_workload_trace_latency_ms() <= 55
-            && ranked_recall.real_workload_trace_regression_loss_count() == 1;
+            && ranked_recall.real_workload_trace_regression_loss_count() == 1
+            && ranked_recall.canary_precondition_fixture_count() == ranked_recall.fixture_count()
+            && ranked_recall.canary_precondition_shadow_only_count()
+                == ranked_recall.fixture_count()
+            && ranked_recall.canary_precondition_pass_count() == ranked_recall.fixture_count()
+            && ranked_recall.canary_feature_flag_registered_count()
+                == ranked_recall.fixture_count()
+            && ranked_recall.canary_feature_flag_disabled_count() == ranked_recall.fixture_count()
+            && ranked_recall.canary_kill_switch_registered_count() == ranked_recall.fixture_count()
+            && ranked_recall.canary_kill_switch_enabled_count() == ranked_recall.fixture_count()
+            && ranked_recall.canary_rollback_rehearsal_covered_count()
+                == ranked_recall.fixture_count()
+            && ranked_recall.canary_activation_denial_covered_count()
+                == ranked_recall.fixture_count()
+            && ranked_recall.canary_precondition_operator_review_required_count()
+                == ranked_recall.fixture_count()
+            && ranked_recall.canary_precondition_route_opened_count() == 0
+            && ranked_recall.canary_precondition_rollback_write_count() == 0;
         let temporal_graph_pass = temporal_graph.has_temporal_graph_shadow_integrity();
         let recall_quality_pass = recall_quality.has_quality_gate_integrity();
         let provider_boundary_pass = provider.has_provider_boundary_integrity();
@@ -335,6 +376,30 @@ impl ContextMemoryShadowRegressionDashboardReport {
                 .max_positive_real_workload_trace_latency_ms(),
             ranked_recall_real_workload_trace_regression_loss_count: ranked_recall
                 .real_workload_trace_regression_loss_count(),
+            ranked_recall_canary_precondition_fixture_count: ranked_recall
+                .canary_precondition_fixture_count(),
+            ranked_recall_canary_precondition_shadow_only_count: ranked_recall
+                .canary_precondition_shadow_only_count(),
+            ranked_recall_canary_precondition_pass_count: ranked_recall
+                .canary_precondition_pass_count(),
+            ranked_recall_canary_feature_flag_registered_count: ranked_recall
+                .canary_feature_flag_registered_count(),
+            ranked_recall_canary_feature_flag_disabled_count: ranked_recall
+                .canary_feature_flag_disabled_count(),
+            ranked_recall_canary_kill_switch_registered_count: ranked_recall
+                .canary_kill_switch_registered_count(),
+            ranked_recall_canary_kill_switch_enabled_count: ranked_recall
+                .canary_kill_switch_enabled_count(),
+            ranked_recall_canary_rollback_rehearsal_covered_count: ranked_recall
+                .canary_rollback_rehearsal_covered_count(),
+            ranked_recall_canary_activation_denial_covered_count: ranked_recall
+                .canary_activation_denial_covered_count(),
+            ranked_recall_canary_precondition_operator_review_required_count: ranked_recall
+                .canary_precondition_operator_review_required_count(),
+            ranked_recall_canary_precondition_route_opened_count: ranked_recall
+                .canary_precondition_route_opened_count(),
+            ranked_recall_canary_precondition_rollback_write_count: ranked_recall
+                .canary_precondition_rollback_write_count(),
             temporal_graph_fixture_count: temporal_graph.fixture_count(),
             temporal_graph_fixture_pass_count: temporal_graph.fixture_pass_count(),
             temporal_graph_regression_blocked_count: temporal_graph.regression_blocked_count(),
@@ -441,6 +506,27 @@ impl ContextMemoryShadowRegressionDashboardReport {
             && self.ranked_recall_total_positive_real_workload_trace_token_saved >= 2_140
             && self.ranked_recall_max_positive_real_workload_trace_latency_ms <= 55
             && self.ranked_recall_real_workload_trace_regression_loss_count == 1
+            && self.ranked_recall_canary_precondition_fixture_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_precondition_shadow_only_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_precondition_pass_count == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_feature_flag_registered_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_feature_flag_disabled_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_kill_switch_registered_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_kill_switch_enabled_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_rollback_rehearsal_covered_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_activation_denial_covered_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_precondition_operator_review_required_count
+                == self.ranked_recall_fixture_count
+            && self.ranked_recall_canary_precondition_route_opened_count == 0
+            && self.ranked_recall_canary_precondition_rollback_write_count == 0
             && self.temporal_graph_fixture_count == 4
             && self.temporal_graph_fixture_pass_count == self.temporal_graph_fixture_count
             && self.temporal_graph_regression_blocked_count == 1

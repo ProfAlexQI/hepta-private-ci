@@ -41,7 +41,7 @@ done
 cat <<'EOF'
 memory-shadow-regression-dashboard=pass
 memory-shadow-regression-dashboard.payload-light=pass
-memory-shadow-regression-dashboard.schema=4
+memory-shadow-regression-dashboard.schema=5
 memory-shadow-regression-dashboard.mode=shadow-only
 memory-shadow-regression-dashboard.input-report-count=4
 memory-shadow-regression-dashboard.input-report-pass-count=4
@@ -84,6 +84,18 @@ memory-shadow-regression-dashboard.ranked-recall-min-positive-real-workload-trac
 memory-shadow-regression-dashboard.ranked-recall-total-positive-real-workload-trace-token-saved=2140
 memory-shadow-regression-dashboard.ranked-recall-max-positive-real-workload-trace-latency-ms=55
 memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-regression-loss-count=1
+memory-shadow-regression-dashboard.ranked-recall-canary-precondition-fixture-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-precondition-shadow-only-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-precondition-pass-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-feature-flag-registered-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-feature-flag-disabled-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-kill-switch-registered-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-kill-switch-enabled-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-rollback-rehearsal-covered-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-activation-denial-covered-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-precondition-operator-review-required-count=4
+memory-shadow-regression-dashboard.ranked-recall-canary-precondition-route-opened-count=0
+memory-shadow-regression-dashboard.ranked-recall-canary-precondition-rollback-write-count=0
 memory-shadow-regression-dashboard.temporal-graph-fixture-count=4
 memory-shadow-regression-dashboard.temporal-graph-regression-fixture=blocked
 memory-shadow-regression-dashboard.temporal-graph-min-positive-node-coverage-basis-points=10000

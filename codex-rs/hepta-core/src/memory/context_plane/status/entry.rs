@@ -41,6 +41,7 @@ const RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_PRECISION_BASIS_POINTS: u32
 const RANKED_RECALL_TOTAL_POSITIVE_REAL_WORKLOAD_TRACE_TOKEN_SAVED_MIN: usize = 2_140;
 const RANKED_RECALL_MAX_POSITIVE_REAL_WORKLOAD_TRACE_LATENCY_MS: u32 = 55;
 const RANKED_RECALL_REAL_WORKLOAD_TRACE_REGRESSION_LOSS_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_CANARY_PRECONDITION_REQUIRED_COUNT: usize = 4;
 
 /// One payload-light context-plane status row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,6 +117,18 @@ pub struct ContextPlaneStatusEntry {
     pub ranked_recall_total_positive_real_workload_trace_token_saved: usize,
     pub ranked_recall_max_positive_real_workload_trace_latency_ms: u32,
     pub ranked_recall_real_workload_trace_regression_loss_count: usize,
+    pub ranked_recall_canary_precondition_fixture_count: usize,
+    pub ranked_recall_canary_precondition_shadow_only_count: usize,
+    pub ranked_recall_canary_precondition_pass_count: usize,
+    pub ranked_recall_canary_feature_flag_registered_count: usize,
+    pub ranked_recall_canary_feature_flag_disabled_count: usize,
+    pub ranked_recall_canary_kill_switch_registered_count: usize,
+    pub ranked_recall_canary_kill_switch_enabled_count: usize,
+    pub ranked_recall_canary_rollback_rehearsal_covered_count: usize,
+    pub ranked_recall_canary_activation_denial_covered_count: usize,
+    pub ranked_recall_canary_precondition_operator_review_required_count: usize,
+    pub ranked_recall_canary_precondition_route_opened_count: usize,
+    pub ranked_recall_canary_precondition_rollback_write_count: usize,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -385,6 +398,30 @@ impl ContextPlaneStatusEntry {
                 .max_positive_real_workload_trace_latency_ms(),
             ranked_recall_real_workload_trace_regression_loss_count: ranked_recall
                 .real_workload_trace_regression_loss_count(),
+            ranked_recall_canary_precondition_fixture_count: ranked_recall
+                .canary_precondition_fixture_count(),
+            ranked_recall_canary_precondition_shadow_only_count: ranked_recall
+                .canary_precondition_shadow_only_count(),
+            ranked_recall_canary_precondition_pass_count: ranked_recall
+                .canary_precondition_pass_count(),
+            ranked_recall_canary_feature_flag_registered_count: ranked_recall
+                .canary_feature_flag_registered_count(),
+            ranked_recall_canary_feature_flag_disabled_count: ranked_recall
+                .canary_feature_flag_disabled_count(),
+            ranked_recall_canary_kill_switch_registered_count: ranked_recall
+                .canary_kill_switch_registered_count(),
+            ranked_recall_canary_kill_switch_enabled_count: ranked_recall
+                .canary_kill_switch_enabled_count(),
+            ranked_recall_canary_rollback_rehearsal_covered_count: ranked_recall
+                .canary_rollback_rehearsal_covered_count(),
+            ranked_recall_canary_activation_denial_covered_count: ranked_recall
+                .canary_activation_denial_covered_count(),
+            ranked_recall_canary_precondition_operator_review_required_count: ranked_recall
+                .canary_precondition_operator_review_required_count(),
+            ranked_recall_canary_precondition_route_opened_count: ranked_recall
+                .canary_precondition_route_opened_count(),
+            ranked_recall_canary_precondition_rollback_write_count: ranked_recall
+                .canary_precondition_rollback_write_count(),
             production_write: ranked_recall.production_write || ranked_recall.production_route,
             graph_write: ranked_recall.graph_write,
             runtime_activation: ranked_recall.runtime_activation,
@@ -690,6 +727,18 @@ impl ContextPlaneStatusEntry {
             self.ranked_recall_real_workload_trace_operator_review_required_count,
             self.ranked_recall_real_workload_trace_total_leak_count,
             self.ranked_recall_real_workload_trace_regression_loss_count,
+            self.ranked_recall_canary_precondition_fixture_count,
+            self.ranked_recall_canary_precondition_shadow_only_count,
+            self.ranked_recall_canary_precondition_pass_count,
+            self.ranked_recall_canary_feature_flag_registered_count,
+            self.ranked_recall_canary_feature_flag_disabled_count,
+            self.ranked_recall_canary_kill_switch_registered_count,
+            self.ranked_recall_canary_kill_switch_enabled_count,
+            self.ranked_recall_canary_rollback_rehearsal_covered_count,
+            self.ranked_recall_canary_activation_denial_covered_count,
+            self.ranked_recall_canary_precondition_operator_review_required_count,
+            self.ranked_recall_canary_precondition_route_opened_count,
+            self.ranked_recall_canary_precondition_rollback_write_count,
         ];
         let thresholds = [
             self.ranked_recall_hybrid_signal_min_basis_points,
@@ -797,6 +846,28 @@ impl ContextPlaneStatusEntry {
                 <= RANKED_RECALL_MAX_POSITIVE_REAL_WORKLOAD_TRACE_LATENCY_MS
             && self.ranked_recall_real_workload_trace_regression_loss_count
                 == RANKED_RECALL_REAL_WORKLOAD_TRACE_REGRESSION_LOSS_REQUIRED_COUNT
+            && self.ranked_recall_canary_precondition_fixture_count
+                == RANKED_RECALL_CANARY_PRECONDITION_REQUIRED_COUNT
+            && self.ranked_recall_canary_precondition_shadow_only_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_precondition_pass_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_feature_flag_registered_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_feature_flag_disabled_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_kill_switch_registered_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_kill_switch_enabled_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_rollback_rehearsal_covered_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_activation_denial_covered_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_precondition_operator_review_required_count
+                == self.ranked_recall_canary_precondition_fixture_count
+            && self.ranked_recall_canary_precondition_route_opened_count == 0
+            && self.ranked_recall_canary_precondition_rollback_write_count == 0
             && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 

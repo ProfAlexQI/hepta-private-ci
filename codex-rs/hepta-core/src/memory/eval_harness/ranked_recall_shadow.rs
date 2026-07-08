@@ -31,6 +31,7 @@ pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_TOKEN_SAVED_MIN: usize =
     RANKED_RECALL_SHADOW_TOKEN_SAVED_MIN;
 pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_LATENCY_MAX_MS: u32 =
     RANKED_RECALL_SHADOW_LATENCY_MAX_MS;
+pub const RANKED_RECALL_SHADOW_CANARY_PRECONDITION_REQUIRED_COUNT: usize = 4;
 
 /// Payload-light replay mode for ranked recall evaluation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,6 +199,18 @@ pub struct ContextMemoryRankedRecallShadowEvalFixtureResult {
     pub real_workload_trace_latency_ms: u32,
     pub real_workload_trace_win: bool,
     pub real_workload_trace_loss: bool,
+    pub canary_precondition_fixture: bool,
+    pub canary_precondition_shadow_only: bool,
+    pub canary_precondition_pass: bool,
+    pub canary_feature_flag_registered: bool,
+    pub canary_feature_flag_default_disabled: bool,
+    pub canary_kill_switch_registered: bool,
+    pub canary_kill_switch_default_enabled: bool,
+    pub canary_rollback_rehearsal_covered: bool,
+    pub canary_activation_denial_covered: bool,
+    pub canary_precondition_operator_review_required: bool,
+    pub canary_precondition_route_opened: bool,
+    pub canary_precondition_rollback_write: bool,
     pub regression_fixture: bool,
     pub regression_blocked: bool,
     pub production_route: bool,
@@ -327,6 +340,24 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             && !routing_diff_loss;
         let real_workload_trace_win = routing_diff_win;
         let real_workload_trace_loss = routing_diff_loss;
+        let canary_feature_flag_registered = true;
+        let canary_feature_flag_default_disabled = true;
+        let canary_kill_switch_registered = true;
+        let canary_kill_switch_default_enabled = true;
+        let canary_rollback_rehearsal_covered = true;
+        let canary_activation_denial_covered = true;
+        let canary_precondition_operator_review_required = true;
+        let canary_precondition_route_opened = false;
+        let canary_precondition_rollback_write = false;
+        let canary_precondition_pass = canary_feature_flag_registered
+            && canary_feature_flag_default_disabled
+            && canary_kill_switch_registered
+            && canary_kill_switch_default_enabled
+            && canary_rollback_rehearsal_covered
+            && canary_activation_denial_covered
+            && canary_precondition_operator_review_required
+            && !canary_precondition_route_opened
+            && !canary_precondition_rollback_write;
         Self {
             fixture_kind,
             fixture_id_hash: fixture_id_hash(
@@ -367,6 +398,18 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                 latency_ms,
                 real_workload_trace_win,
                 real_workload_trace_loss,
+                true,
+                true,
+                canary_precondition_pass,
+                canary_feature_flag_registered,
+                canary_feature_flag_default_disabled,
+                canary_kill_switch_registered,
+                canary_kill_switch_default_enabled,
+                canary_rollback_rehearsal_covered,
+                canary_activation_denial_covered,
+                canary_precondition_operator_review_required,
+                canary_precondition_route_opened,
+                canary_precondition_rollback_write,
             ),
             gate_pass: true,
             positive_fixture,
@@ -422,6 +465,18 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             real_workload_trace_latency_ms: latency_ms,
             real_workload_trace_win,
             real_workload_trace_loss,
+            canary_precondition_fixture: true,
+            canary_precondition_shadow_only: true,
+            canary_precondition_pass,
+            canary_feature_flag_registered,
+            canary_feature_flag_default_disabled,
+            canary_kill_switch_registered,
+            canary_kill_switch_default_enabled,
+            canary_rollback_rehearsal_covered,
+            canary_activation_denial_covered,
+            canary_precondition_operator_review_required,
+            canary_precondition_route_opened,
+            canary_precondition_rollback_write,
             regression_fixture,
             regression_blocked,
             production_route: false,
@@ -530,6 +585,18 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             && self.real_workload_trace_latency_ms == self.latency_ms
             && self.real_workload_trace_win == self.routing_diff_win
             && self.real_workload_trace_loss == self.routing_diff_loss
+            && self.canary_precondition_fixture
+            && self.canary_precondition_shadow_only
+            && self.canary_precondition_pass
+            && self.canary_feature_flag_registered
+            && self.canary_feature_flag_default_disabled
+            && self.canary_kill_switch_registered
+            && self.canary_kill_switch_default_enabled
+            && self.canary_rollback_rehearsal_covered
+            && self.canary_activation_denial_covered
+            && self.canary_precondition_operator_review_required
+            && !self.canary_precondition_route_opened
+            && !self.canary_precondition_rollback_write
             && self.latency_budget_ms <= latency_max_ms
             && !self.production_route
             && !self.production_write
@@ -704,6 +771,18 @@ fn fixture_id_hash(
     real_workload_trace_latency_ms: u32,
     real_workload_trace_win: bool,
     real_workload_trace_loss: bool,
+    canary_precondition_fixture: bool,
+    canary_precondition_shadow_only: bool,
+    canary_precondition_pass: bool,
+    canary_feature_flag_registered: bool,
+    canary_feature_flag_default_disabled: bool,
+    canary_kill_switch_registered: bool,
+    canary_kill_switch_default_enabled: bool,
+    canary_rollback_rehearsal_covered: bool,
+    canary_activation_denial_covered: bool,
+    canary_precondition_operator_review_required: bool,
+    canary_precondition_route_opened: bool,
+    canary_precondition_rollback_write: bool,
 ) -> String {
     stable_receipt_hash(&[
         "context_memory_ranked_recall_shadow_eval",
@@ -748,6 +827,18 @@ fn fixture_id_hash(
         &real_workload_trace_latency_ms.to_string(),
         &real_workload_trace_win.to_string(),
         &real_workload_trace_loss.to_string(),
+        &canary_precondition_fixture.to_string(),
+        &canary_precondition_shadow_only.to_string(),
+        &canary_precondition_pass.to_string(),
+        &canary_feature_flag_registered.to_string(),
+        &canary_feature_flag_default_disabled.to_string(),
+        &canary_kill_switch_registered.to_string(),
+        &canary_kill_switch_default_enabled.to_string(),
+        &canary_rollback_rehearsal_covered.to_string(),
+        &canary_activation_denial_covered.to_string(),
+        &canary_precondition_operator_review_required.to_string(),
+        &canary_precondition_route_opened.to_string(),
+        &canary_precondition_rollback_write.to_string(),
     ])
 }
 
@@ -922,7 +1013,7 @@ impl ContextMemoryRankedRecallShadowEvalReport {
                 .iter()
                 .all(|signal| !signal.is_unknown())
             && self.hybrid_signal_count() == RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
-            && self.fixture_count() == 4
+            && self.fixture_count() == RANKED_RECALL_SHADOW_CANARY_PRECONDITION_REQUIRED_COUNT
             && self.fixture_pass_count() == 4
             && self.positive_fixture_count() == 3
             && self.negative_fixture_count() == 1
@@ -975,6 +1066,18 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             && self.max_positive_real_workload_trace_latency_ms()
                 <= self.real_workload_latency_max_ms
             && self.real_workload_trace_regression_loss_count() == 1
+            && self.canary_precondition_fixture_count() == self.fixture_count()
+            && self.canary_precondition_shadow_only_count() == self.fixture_count()
+            && self.canary_precondition_pass_count() == self.fixture_count()
+            && self.canary_feature_flag_registered_count() == self.fixture_count()
+            && self.canary_feature_flag_disabled_count() == self.fixture_count()
+            && self.canary_kill_switch_registered_count() == self.fixture_count()
+            && self.canary_kill_switch_enabled_count() == self.fixture_count()
+            && self.canary_rollback_rehearsal_covered_count() == self.fixture_count()
+            && self.canary_activation_denial_covered_count() == self.fixture_count()
+            && self.canary_precondition_operator_review_required_count() == self.fixture_count()
+            && self.canary_precondition_route_opened_count() == 0
+            && self.canary_precondition_rollback_write_count() == 0
             && self.fixtures.iter().all(|fixture| {
                 fixture.has_ranked_recall_fixture_integrity(
                     self.recall_floor_basis_points,
@@ -1205,6 +1308,90 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             .map(|fixture| fixture.real_workload_trace_leak_rate_basis_points)
             .max()
             .unwrap_or(0)
+    }
+
+    pub fn canary_precondition_fixture_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_precondition_fixture)
+            .count()
+    }
+
+    pub fn canary_precondition_shadow_only_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_precondition_shadow_only)
+            .count()
+    }
+
+    pub fn canary_precondition_pass_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_precondition_pass)
+            .count()
+    }
+
+    pub fn canary_feature_flag_registered_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_feature_flag_registered)
+            .count()
+    }
+
+    pub fn canary_feature_flag_disabled_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_feature_flag_default_disabled)
+            .count()
+    }
+
+    pub fn canary_kill_switch_registered_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_kill_switch_registered)
+            .count()
+    }
+
+    pub fn canary_kill_switch_enabled_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_kill_switch_default_enabled)
+            .count()
+    }
+
+    pub fn canary_rollback_rehearsal_covered_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_rollback_rehearsal_covered)
+            .count()
+    }
+
+    pub fn canary_activation_denial_covered_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_activation_denial_covered)
+            .count()
+    }
+
+    pub fn canary_precondition_operator_review_required_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_precondition_operator_review_required)
+            .count()
+    }
+
+    pub fn canary_precondition_route_opened_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_precondition_route_opened)
+            .count()
+    }
+
+    pub fn canary_precondition_rollback_write_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.canary_precondition_rollback_write)
+            .count()
     }
 
     pub fn total_positive_token_saved(&self) -> usize {

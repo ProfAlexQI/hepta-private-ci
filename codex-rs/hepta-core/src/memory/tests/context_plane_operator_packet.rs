@@ -280,6 +280,23 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         packet.ranked_recall_real_workload_trace_regression_loss_count,
         1
     );
+    assert_eq!(packet.ranked_recall_canary_precondition_fixture_count, 4);
+    assert_eq!(
+        packet.ranked_recall_canary_precondition_shadow_only_count,
+        4
+    );
+    assert_eq!(packet.ranked_recall_canary_precondition_pass_count, 4);
+    assert_eq!(packet.ranked_recall_canary_feature_flag_registered_count, 4);
+    assert_eq!(packet.ranked_recall_canary_feature_flag_disabled_count, 4);
+    assert_eq!(packet.ranked_recall_canary_kill_switch_enabled_count, 4);
+    assert_eq!(
+        packet.ranked_recall_canary_precondition_route_opened_count,
+        0
+    );
+    assert_eq!(
+        packet.ranked_recall_canary_precondition_rollback_write_count,
+        0
+    );
     assert!(!packet.production_write);
     assert!(!packet.graph_write);
     assert!(!packet.runtime_activation);
@@ -309,6 +326,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("ranked_recall_real_workload_trace_total_leak_count"));
     assert!(json.contains("ranked_recall_min_positive_real_workload_trace_coverage_basis_points"));
     assert!(json.contains("ranked_recall_real_workload_trace_operator_review_required_count"));
+    assert!(json.contains("ranked_recall_canary_precondition_pass_count"));
+    assert!(json.contains("ranked_recall_canary_feature_flag_disabled_count"));
+    assert!(json.contains("ranked_recall_canary_kill_switch_enabled_count"));
+    assert!(json.contains("ranked_recall_canary_precondition_route_opened_count"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -373,6 +394,14 @@ fn context_plane_operator_approval_packet_rejects_ranked_recall_hybrid_false_gre
     let mut slo_false_green = packet.clone();
     slo_false_green.ranked_recall_real_workload_trace_total_leak_count = 1;
     assert!(!slo_false_green.has_packet_integrity());
+
+    let mut canary_precondition_false_green = packet.clone();
+    canary_precondition_false_green.ranked_recall_canary_feature_flag_disabled_count = 3;
+    assert!(!canary_precondition_false_green.has_packet_integrity());
+
+    let mut canary_route_false_green = packet.clone();
+    canary_route_false_green.ranked_recall_canary_precondition_route_opened_count = 1;
+    assert!(!canary_route_false_green.has_packet_integrity());
 }
 
 #[test]
@@ -611,6 +640,18 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         ranked_recall_total_positive_real_workload_trace_token_saved: 2_140,
         ranked_recall_max_positive_real_workload_trace_latency_ms: 55,
         ranked_recall_real_workload_trace_regression_loss_count: 1,
+        ranked_recall_canary_precondition_fixture_count: 4,
+        ranked_recall_canary_precondition_shadow_only_count: 4,
+        ranked_recall_canary_precondition_pass_count: 4,
+        ranked_recall_canary_feature_flag_registered_count: 4,
+        ranked_recall_canary_feature_flag_disabled_count: 4,
+        ranked_recall_canary_kill_switch_registered_count: 4,
+        ranked_recall_canary_kill_switch_enabled_count: 4,
+        ranked_recall_canary_rollback_rehearsal_covered_count: 4,
+        ranked_recall_canary_activation_denial_covered_count: 4,
+        ranked_recall_canary_precondition_operator_review_required_count: 4,
+        ranked_recall_canary_precondition_route_opened_count: 0,
+        ranked_recall_canary_precondition_rollback_write_count: 0,
         required_approval_scopes: required_operator_approval_scopes(),
         ..ContextPlaneOperatorApprovalPacket::default()
     };

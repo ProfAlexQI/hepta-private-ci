@@ -61,6 +61,18 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 entry.ranked_recall_total_positive_real_workload_trace_token_saved = 2_140;
                 entry.ranked_recall_max_positive_real_workload_trace_latency_ms = 55;
                 entry.ranked_recall_real_workload_trace_regression_loss_count = 1;
+                entry.ranked_recall_canary_precondition_fixture_count = 4;
+                entry.ranked_recall_canary_precondition_shadow_only_count = 4;
+                entry.ranked_recall_canary_precondition_pass_count = 4;
+                entry.ranked_recall_canary_feature_flag_registered_count = 4;
+                entry.ranked_recall_canary_feature_flag_disabled_count = 4;
+                entry.ranked_recall_canary_kill_switch_registered_count = 4;
+                entry.ranked_recall_canary_kill_switch_enabled_count = 4;
+                entry.ranked_recall_canary_rollback_rehearsal_covered_count = 4;
+                entry.ranked_recall_canary_activation_denial_covered_count = 4;
+                entry.ranked_recall_canary_precondition_operator_review_required_count = 4;
+                entry.ranked_recall_canary_precondition_route_opened_count = 0;
+                entry.ranked_recall_canary_precondition_rollback_write_count = 0;
                 entry
             },
             ContextPlaneStatusEntry::shadow(ContextPlaneStatusSection::MemoryProviderBoundary, 1),
@@ -200,6 +212,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("ranked_recall_real_workload_trace_total_leak_count"));
     assert!(json.contains("ranked_recall_min_positive_real_workload_trace_coverage_basis_points"));
     assert!(json.contains("ranked_recall_real_workload_trace_operator_review_required_count"));
+    assert!(json.contains("ranked_recall_canary_precondition_pass_count"));
+    assert!(json.contains("ranked_recall_canary_feature_flag_disabled_count"));
+    assert!(json.contains("ranked_recall_canary_kill_switch_enabled_count"));
+    assert!(json.contains("ranked_recall_canary_precondition_route_opened_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -284,6 +300,15 @@ fn context_plane_activation_blocker_matrix_rejects_ranked_recall_hybrid_false_gr
         .expect("ranked recall shadow eval activation row should exist")
         .ranked_recall_real_workload_trace_total_leak_count = 1;
     assert!(!slo_false_green.has_matrix_integrity());
+
+    let mut canary_route_false_green = matrix.clone();
+    canary_route_false_green
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval activation row should exist")
+        .ranked_recall_canary_precondition_route_opened_count = 1;
+    assert!(!canary_route_false_green.has_matrix_integrity());
 
     let mut non_ranked_leak = matrix.clone();
     non_ranked_leak

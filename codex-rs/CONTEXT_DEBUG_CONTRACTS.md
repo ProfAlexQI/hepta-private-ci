@@ -1142,6 +1142,11 @@ activation. The Rust-backed fixture is
 through `context_memory_ranked_recall_shadow_eval_report` on both
 `StoreSnapshot` and `InMemoryStore`; its hybrid signal enum is
 `ContextMemoryRankedRecallShadowHybridSignal`.
+The canary precondition shadow-only surface is report-only: fixture integrity
+requires `canary_feature_flag_default_disabled`,
+`canary_kill_switch_default_enabled`, rollback rehearsal coverage, activation
+denial coverage, operator review required, and `canary_precondition_route_opened=false`
+before any later canary proposal may be considered.
 
 `scripts/hepta-context-memory-ranked-recall-shadow-eval-report.sh` emits the
 payload-light scoreboard, and
@@ -1165,6 +1170,11 @@ include `ranked-recall-shadow-eval=pass`,
 `ranked-recall-shadow-eval.real-workload-trace-slo-pass-count=3`,
 `ranked-recall-shadow-eval.real-workload-trace-total-leak-count=0`,
 `ranked-recall-shadow-eval.min-positive-real-workload-trace-coverage-basis-points=8000`,
+`ranked-recall-shadow-eval.canary-precondition=shadow-only`,
+`ranked-recall-shadow-eval.canary-precondition-pass-count=4`,
+`ranked-recall-shadow-eval.canary-feature-flag-disabled-count=4`,
+`ranked-recall-shadow-eval.canary-kill-switch-enabled-count=4`,
+`ranked-recall-shadow-eval.canary-precondition-route-opened-count=0`,
 `ranked-recall-shadow-eval.production-selection-route=read-only`,
 `ranked-recall-shadow-eval.regression-fixture=blocked`, and
 `ranked-recall-shadow-eval.runtime-activation=disabled`.
@@ -1313,6 +1323,9 @@ assembly change, no runtime activation, and no operator activation allowance.
 `memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-slo-pass-count=3`,
 `memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-total-leak-count=0`,
 `memory-shadow-regression-dashboard.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000`,
+`memory-shadow-regression-dashboard.ranked-recall-canary-precondition-pass-count=4`,
+`memory-shadow-regression-dashboard.ranked-recall-canary-feature-flag-disabled-count=4`,
+`memory-shadow-regression-dashboard.ranked-recall-canary-precondition-route-opened-count=0`,
 `memory-shadow-regression-dashboard.regression-blocking-count=0`, and
 `memory-shadow-regression-dashboard.runtime-activation=disabled`.
 `scripts/hepta-context-memory-shadow-regression-dashboard-gate.sh` must verify
@@ -1381,6 +1394,9 @@ must emit `memory-shadow-quality-summary=pass`,
 `memory-shadow-quality-summary.ranked-recall-real-workload-trace-slo-pass-count=3`,
 `memory-shadow-quality-summary.ranked-recall-real-workload-trace-total-leak-count=0`,
 `memory-shadow-quality-summary.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000`,
+`memory-shadow-quality-summary.ranked-recall-canary-precondition-pass-count=4`,
+`memory-shadow-quality-summary.ranked-recall-canary-feature-flag-disabled-count=4`,
+`memory-shadow-quality-summary.ranked-recall-canary-precondition-route-opened-count=0`,
 `memory-shadow-quality-summary.regression-blocking-count=0`, and
 `memory-shadow-quality-summary.runtime-activation=disabled`.
 `scripts/hepta-context-memory-shadow-quality-summary-gate.sh` must verify the
@@ -1441,10 +1457,11 @@ diff latency delta no more than 10 ms, minimum positive routing diff token
 tradeoff at least 3000 basis points, real workload trace window pass count
 equal to 3, zero leak count/rate, minimum positive real workload coverage and
 precision at least 8000 basis points, total positive real workload token saved
-2140, maximum positive real workload latency 55 ms, operator approval required, no history
-persistence write, no production route, no production memory write, no graph
-write, no prompt assembly change, no runtime activation, and no operator
-activation allowance.
+2140, maximum positive real workload latency 55 ms,
+`ranked_recall_canary_precondition_window_pass_count`, operator approval
+required, no history persistence write, no production route, no production
+memory write, no graph write, no prompt assembly change, no runtime activation,
+and no operator activation allowance.
 `scripts/hepta-context-memory-shadow-quality-trend-snapshot-report.sh` must
 emit `memory-shadow-quality-trend-snapshot=pass`,
 `memory-shadow-quality-trend-snapshot.payload-light=pass`,
@@ -1458,6 +1475,9 @@ emit `memory-shadow-quality-trend-snapshot=pass`,
 `memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-window-pass-count=3`,
 `memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-total-leak-count=0`,
 `memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-window-pass-count=3`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-canary-feature-flag-disabled-count=4`,
+`memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-route-opened-count=0`,
 `memory-shadow-quality-trend-snapshot.regression-window-blocking-count=0`,
 `memory-shadow-quality-trend-snapshot.history-persistence-write=disabled`, and
 `memory-shadow-quality-trend-snapshot.runtime-activation=disabled`.
@@ -1694,7 +1714,13 @@ real workload fixture/shadow-only counts must be 4/4, SLO pass/win/loss counts
 0 basis points, minimum positive coverage and precision at least 8000 basis
 points, total positive token saved at least 2140, maximum latency no more than
 55 ms, and regression loss count 1. Non-ranked rows must not carry ranked recall
-real workload fields. The
+real workload fields. It must also reject canary precondition drift: the
+canary precondition fixture/shadow-only/pass counts must be 4/4/4, feature flag
+registration/default-disabled counts must be 4/4, kill-switch
+registration/default-enabled counts must be 4/4, rollback rehearsal and
+activation denial coverage counts must be 4/4, operator review required count
+must be 4, and route-opened plus rollback-write counts must be 0/0. Non-ranked
+rows must not carry ranked recall canary precondition fields. The
 `memory_shadow_canary_readiness` row is shadow-only until a separately approved
 canary promotion route is designed and explicitly approved. The
 `memory_shadow_canary_promotion_readiness` row is also shadow-only and may carry
@@ -1732,6 +1758,9 @@ recall-quality blocker enums only:
 `context-plane-status.ranked-recall.real-workload-trace-slo-pass-count=3`,
 `context-plane-status.ranked-recall.real-workload-trace-total-leak-count=0`,
 `context-plane-status.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000`,
+`context-plane-status.ranked-recall.canary-precondition-pass-count=4`,
+`context-plane-status.ranked-recall.canary-feature-flag-disabled-count=4`,
+`context-plane-status.ranked-recall.canary-precondition-route-opened-count=0`,
 `context-plane-status.memory-provider-boundary=shadow`,
 `context-plane-status.memory-provider-v2-boundary=shadow`,
 `context-plane-status.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1811,7 +1840,12 @@ diff counters include `ranked_recall_routing_diff_shadow_only_count`,
 workload counters include `ranked_recall_real_workload_trace_slo_pass_count`,
 `ranked_recall_real_workload_trace_total_leak_count`,
 `ranked_recall_min_positive_real_workload_trace_coverage_basis_points`, and
-`ranked_recall_real_workload_trace_operator_review_required_count`.
+`ranked_recall_real_workload_trace_operator_review_required_count`. Canary
+precondition counters include `ranked_recall_canary_precondition_pass_count`,
+`ranked_recall_canary_feature_flag_disabled_count`,
+`ranked_recall_canary_kill_switch_enabled_count`,
+`ranked_recall_canary_precondition_route_opened_count`, and
+`ranked_recall_canary_precondition_rollback_write_count`.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -1837,6 +1871,9 @@ activation matrix export must include
 `context-plane-activation-blockers.ranked-recall.real-workload-trace-slo-pass-count=3`,
 `context-plane-activation-blockers.ranked-recall.real-workload-trace-total-leak-count=0`,
 `context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000`,
+`context-plane-activation-blockers.ranked-recall.canary-precondition-pass-count=4`,
+`context-plane-activation-blockers.ranked-recall.canary-feature-flag-disabled-count=4`,
+`context-plane-activation-blockers.ranked-recall.canary-precondition-route-opened-count=0`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1935,11 +1972,16 @@ counters and shadow-only routing diff readiness counters from the
 workload SLO counters `ranked_recall_real_workload_trace_slo_pass_count`,
 `ranked_recall_real_workload_trace_total_leak_count`,
 `ranked_recall_min_positive_real_workload_trace_coverage_basis_points`, and
-`ranked_recall_real_workload_trace_operator_review_required_count`. Packet
+`ranked_recall_real_workload_trace_operator_review_required_count`, plus canary
+precondition counters `ranked_recall_canary_precondition_pass_count`,
+`ranked_recall_canary_feature_flag_disabled_count`,
+`ranked_recall_canary_kill_switch_enabled_count`,
+`ranked_recall_canary_precondition_route_opened_count`, and
+`ranked_recall_canary_precondition_rollback_write_count`. Packet
 integrity must reject ranked-recall false-green receipts with missing hybrid
 signals, inflated pass counts, unblocked hybrid regression fixtures, low
-positive hybrid scores, routing diff false-green drift, or real workload SLO
-false-green drift.
+positive hybrid scores, routing diff false-green drift, real workload SLO
+false-green drift, or canary precondition route/write drift.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
@@ -1952,6 +1994,9 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.ranked-recall.real-workload-trace-slo-pass-count=3`,
 `context-plane-operator-approval-packet.ranked-recall.real-workload-trace-total-leak-count=0`,
 `context-plane-operator-approval-packet.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000`,
+`context-plane-operator-approval-packet.ranked-recall.canary-precondition-pass-count=4`,
+`context-plane-operator-approval-packet.ranked-recall.canary-feature-flag-disabled-count=4`,
+`context-plane-operator-approval-packet.ranked-recall.canary-precondition-route-opened-count=0`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6`,
@@ -2041,8 +2086,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 95 lines, negative export report 4 lines, and
-combined report 99 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 107 lines, negative export report 4 lines, and
+combined report 111 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

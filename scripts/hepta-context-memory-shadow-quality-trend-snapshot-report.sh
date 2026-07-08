@@ -35,7 +35,7 @@ done
 cat <<'EOF'
 memory-shadow-quality-trend-snapshot=pass
 memory-shadow-quality-trend-snapshot.payload-light=pass
-memory-shadow-quality-trend-snapshot.schema=4
+memory-shadow-quality-trend-snapshot.schema=5
 memory-shadow-quality-trend-snapshot.mode=shadow-only
 memory-shadow-quality-trend-snapshot.source-summary=pass
 memory-shadow-quality-trend-snapshot.current-quality-trend=stable-pass
@@ -68,6 +68,15 @@ memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-real-workload-tr
 memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-real-workload-trace-precision-basis-points=8000
 memory-shadow-quality-trend-snapshot.ranked-recall-total-positive-real-workload-trace-token-saved=2140
 memory-shadow-quality-trend-snapshot.ranked-recall-max-positive-real-workload-trace-latency-ms=55
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-window-pass-count=3
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-pass-count=4
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-feature-flag-disabled-count=4
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-kill-switch-enabled-count=4
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-rollback-rehearsal-covered-count=4
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-activation-denial-covered-count=4
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-operator-review-required-count=4
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-route-opened-count=0
+memory-shadow-quality-trend-snapshot.ranked-recall-canary-precondition-rollback-write-count=0
 memory-shadow-quality-trend-snapshot.temporal-graph-window-pass-count=3
 memory-shadow-quality-trend-snapshot.recall-quality-window-pass-count=3
 memory-shadow-quality-trend-snapshot.provider-boundary-window-pass-count=3

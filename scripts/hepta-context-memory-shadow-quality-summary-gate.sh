@@ -91,7 +91,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-quality-summary=pass"
 assert_report_line "memory-shadow-quality-summary.payload-light=pass"
-assert_report_line "memory-shadow-quality-summary.schema=4"
+assert_report_line "memory-shadow-quality-summary.schema=5"
 assert_report_line "memory-shadow-quality-summary.mode=shadow-only"
 assert_report_line "memory-shadow-quality-summary.quality-trend=stable-pass"
 assert_report_line "memory-shadow-quality-summary.operator-summary=ready-shadow-only"
@@ -128,6 +128,17 @@ assert_report_line "memory-shadow-quality-summary.ranked-recall-min-positive-rea
 assert_report_line "memory-shadow-quality-summary.ranked-recall-total-positive-real-workload-trace-token-saved=2140"
 assert_report_line "memory-shadow-quality-summary.ranked-recall-max-positive-real-workload-trace-latency-ms=55"
 assert_report_line "memory-shadow-quality-summary.ranked-recall-real-workload-trace-regression-loss-count=1"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-precondition-shadow-only-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-precondition-pass-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-feature-flag-registered-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-feature-flag-disabled-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-kill-switch-registered-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-kill-switch-enabled-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-rollback-rehearsal-covered-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-activation-denial-covered-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-precondition-operator-review-required-count=4"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-precondition-route-opened-count=0"
+assert_report_line "memory-shadow-quality-summary.ranked-recall-canary-precondition-rollback-write-count=0"
 assert_report_line "memory-shadow-quality-summary.temporal-graph-signal=pass"
 assert_report_line "memory-shadow-quality-summary.recall-quality-signal=pass"
 assert_report_line "memory-shadow-quality-summary.provider-boundary-signal=pass"
@@ -156,6 +167,9 @@ for term in \
   "ranked_recall_real_workload_trace_slo_pass_count" \
   "ranked_recall_real_workload_trace_total_leak_count" \
   "ranked_recall_min_positive_real_workload_trace_coverage_basis_points" \
+  "ranked_recall_canary_precondition_pass_count" \
+  "ranked_recall_canary_feature_flag_disabled_count" \
+  "ranked_recall_canary_precondition_route_opened_count" \
   "ready_shadow_only" \
   "stable_pass" \
   "hepta-context-memory-shadow-quality-summary-report.sh" \

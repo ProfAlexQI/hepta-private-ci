@@ -3,7 +3,7 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=9
+context-plane-operator-approval-packet.schema=10
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
@@ -83,6 +83,18 @@ context-plane-operator-approval-packet.ranked-recall.min-positive-real-workload-
 context-plane-operator-approval-packet.ranked-recall.total-positive-real-workload-trace-token-saved=2140
 context-plane-operator-approval-packet.ranked-recall.max-positive-real-workload-trace-latency-ms=55
 context-plane-operator-approval-packet.ranked-recall.real-workload-trace-regression-loss-count=1
+context-plane-operator-approval-packet.ranked-recall.canary-precondition-fixture-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-precondition-shadow-only-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-precondition-pass-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-feature-flag-registered-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-feature-flag-disabled-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-kill-switch-registered-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-kill-switch-enabled-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-rollback-rehearsal-covered-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-activation-denial-covered-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-precondition-operator-review-required-count=4
+context-plane-operator-approval-packet.ranked-recall.canary-precondition-route-opened-count=0
+context-plane-operator-approval-packet.ranked-recall.canary-precondition-rollback-write-count=0
 context-plane-operator-approval-packet.required-scopes=6
 context-plane-operator-approval-packet.scope.adaptive-budget-allocation-runtime=required
 context-plane-operator-approval-packet.scope.source-aware-runtime-activation=required

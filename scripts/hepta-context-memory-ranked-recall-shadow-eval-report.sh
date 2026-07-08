@@ -42,7 +42,7 @@ done
 cat <<'EOF'
 ranked-recall-shadow-eval=pass
 ranked-recall-shadow-eval.payload-light=pass
-ranked-recall-shadow-eval.schema=5
+ranked-recall-shadow-eval.schema=6
 ranked-recall-shadow-eval.mode=deterministic-shadow
 ranked-recall-shadow-eval.hybrid-mode=shadow-only
 ranked-recall-shadow-eval.hybrid-signal-count=5
@@ -86,6 +86,19 @@ ranked-recall-shadow-eval.min-positive-real-workload-trace-precision-basis-point
 ranked-recall-shadow-eval.total-positive-real-workload-trace-token-saved=2140
 ranked-recall-shadow-eval.max-positive-real-workload-trace-latency-ms=55
 ranked-recall-shadow-eval.real-workload-trace-regression-loss=blocked
+ranked-recall-shadow-eval.canary-precondition=shadow-only
+ranked-recall-shadow-eval.canary-precondition-fixture-count=4
+ranked-recall-shadow-eval.canary-precondition-shadow-only-count=4
+ranked-recall-shadow-eval.canary-precondition-pass-count=4
+ranked-recall-shadow-eval.canary-feature-flag-registered-count=4
+ranked-recall-shadow-eval.canary-feature-flag-disabled-count=4
+ranked-recall-shadow-eval.canary-kill-switch-registered-count=4
+ranked-recall-shadow-eval.canary-kill-switch-enabled-count=4
+ranked-recall-shadow-eval.canary-rollback-rehearsal-covered-count=4
+ranked-recall-shadow-eval.canary-activation-denial-covered-count=4
+ranked-recall-shadow-eval.canary-precondition-operator-review-required-count=4
+ranked-recall-shadow-eval.canary-precondition-route-opened-count=0
+ranked-recall-shadow-eval.canary-precondition-rollback-write-count=0
 ranked-recall-shadow-eval.lexical-bm25=shadow
 ranked-recall-shadow-eval.recency=shadow
 ranked-recall-shadow-eval.source-authority=shadow

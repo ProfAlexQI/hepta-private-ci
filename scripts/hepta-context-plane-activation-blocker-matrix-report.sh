@@ -3,7 +3,7 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=10
+context-plane-activation-blockers.schema=11
 context-plane-activation-blockers.rows=18
 context-plane-activation-blockers.satisfied=9
 context-plane-activation-blockers.blockers=9
@@ -57,6 +57,18 @@ context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace
 context-plane-activation-blockers.ranked-recall.total-positive-real-workload-trace-token-saved=2140
 context-plane-activation-blockers.ranked-recall.max-positive-real-workload-trace-latency-ms=55
 context-plane-activation-blockers.ranked-recall.real-workload-trace-regression-loss-count=1
+context-plane-activation-blockers.ranked-recall.canary-precondition-fixture-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-shadow-only-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-pass-count=4
+context-plane-activation-blockers.ranked-recall.canary-feature-flag-registered-count=4
+context-plane-activation-blockers.ranked-recall.canary-feature-flag-disabled-count=4
+context-plane-activation-blockers.ranked-recall.canary-kill-switch-registered-count=4
+context-plane-activation-blockers.ranked-recall.canary-kill-switch-enabled-count=4
+context-plane-activation-blockers.ranked-recall.canary-rollback-rehearsal-covered-count=4
+context-plane-activation-blockers.ranked-recall.canary-activation-denial-covered-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-operator-review-required-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-route-opened-count=0
+context-plane-activation-blockers.ranked-recall.canary-precondition-rollback-write-count=0
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6
