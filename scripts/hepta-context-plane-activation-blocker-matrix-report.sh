@@ -3,7 +3,7 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=9
+context-plane-activation-blockers.schema=10
 context-plane-activation-blockers.rows=18
 context-plane-activation-blockers.satisfied=9
 context-plane-activation-blockers.blockers=9
@@ -44,6 +44,19 @@ context-plane-activation-blockers.ranked-recall.routing-diff-latency-delta-max-m
 context-plane-activation-blockers.ranked-recall.max-positive-routing-diff-latency-delta-ms=10
 context-plane-activation-blockers.ranked-recall.routing-diff-token-tradeoff-min-basis-points=1000
 context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000
+context-plane-activation-blockers.ranked-recall.real-workload-trace-fixture-count=4
+context-plane-activation-blockers.ranked-recall.real-workload-trace-shadow-only-count=4
+context-plane-activation-blockers.ranked-recall.real-workload-trace-slo-pass-count=3
+context-plane-activation-blockers.ranked-recall.real-workload-trace-win-count=3
+context-plane-activation-blockers.ranked-recall.real-workload-trace-loss-count=1
+context-plane-activation-blockers.ranked-recall.real-workload-trace-operator-review-required-count=4
+context-plane-activation-blockers.ranked-recall.real-workload-trace-total-leak-count=0
+context-plane-activation-blockers.ranked-recall.real-workload-trace-max-leak-rate-basis-points=0
+context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000
+context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace-precision-basis-points=8000
+context-plane-activation-blockers.ranked-recall.total-positive-real-workload-trace-token-saved=2140
+context-plane-activation-blockers.ranked-recall.max-positive-real-workload-trace-latency-ms=55
+context-plane-activation-blockers.ranked-recall.real-workload-trace-regression-loss-count=1
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
 context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6

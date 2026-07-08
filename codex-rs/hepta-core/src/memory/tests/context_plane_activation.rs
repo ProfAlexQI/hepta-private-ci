@@ -48,6 +48,19 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 entry.ranked_recall_max_positive_routing_diff_latency_delta_ms = 10;
                 entry.ranked_recall_routing_diff_token_tradeoff_min_basis_points = 1_000;
                 entry.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points = 3_000;
+                entry.ranked_recall_real_workload_trace_fixture_count = 4;
+                entry.ranked_recall_real_workload_trace_shadow_only_count = 4;
+                entry.ranked_recall_real_workload_trace_slo_pass_count = 3;
+                entry.ranked_recall_real_workload_trace_win_count = 3;
+                entry.ranked_recall_real_workload_trace_loss_count = 1;
+                entry.ranked_recall_real_workload_trace_operator_review_required_count = 4;
+                entry.ranked_recall_real_workload_trace_total_leak_count = 0;
+                entry.ranked_recall_real_workload_trace_max_leak_rate_basis_points = 0;
+                entry.ranked_recall_min_positive_real_workload_trace_coverage_basis_points = 8_000;
+                entry.ranked_recall_min_positive_real_workload_trace_precision_basis_points = 8_000;
+                entry.ranked_recall_total_positive_real_workload_trace_token_saved = 2_140;
+                entry.ranked_recall_max_positive_real_workload_trace_latency_ms = 55;
+                entry.ranked_recall_real_workload_trace_regression_loss_count = 1;
                 entry
             },
             ContextPlaneStatusEntry::shadow(ContextPlaneStatusSection::MemoryProviderBoundary, 1),
@@ -183,6 +196,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("ranked_recall_routing_diff_shadow_only_count"));
     assert!(json.contains("ranked_recall_min_positive_routing_diff_delta_basis_points"));
     assert!(json.contains("ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points"));
+    assert!(json.contains("ranked_recall_real_workload_trace_slo_pass_count"));
+    assert!(json.contains("ranked_recall_real_workload_trace_total_leak_count"));
+    assert!(json.contains("ranked_recall_min_positive_real_workload_trace_coverage_basis_points"));
+    assert!(json.contains("ranked_recall_real_workload_trace_operator_review_required_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -258,6 +275,15 @@ fn context_plane_activation_blocker_matrix_rejects_ranked_recall_hybrid_false_gr
         .expect("ranked recall shadow eval activation row should exist")
         .ranked_recall_routing_diff_shadow_only_count = 3;
     assert!(!routing_diff_replay.has_matrix_integrity());
+
+    let mut slo_false_green = matrix.clone();
+    slo_false_green
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval activation row should exist")
+        .ranked_recall_real_workload_trace_total_leak_count = 1;
+    assert!(!slo_false_green.has_matrix_integrity());
 
     let mut non_ranked_leak = matrix.clone();
     non_ranked_leak

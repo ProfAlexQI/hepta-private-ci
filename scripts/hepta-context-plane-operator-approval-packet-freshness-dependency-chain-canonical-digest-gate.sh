@@ -118,16 +118,16 @@ assert_line_before \
 expected_chain_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness-dependency-chain=pass
 context-plane-operator-approval-packet-freshness-dependency-chain.schema=1
-context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-lines=82
-context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-sha256=31c311eac71c837b3ac3ebde95e365e258ee92a87523017a359f47f8dc4eb4e6
+context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-lines=95
+context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-sha256=3079a5e368ab61d13f53607895a8d2f9c50ba962333962dded7aa9979c250304
 context-plane-operator-approval-packet-freshness-dependency-chain.negative-export-report-lines=4
 context-plane-operator-approval-packet-freshness-dependency-chain.negative-export-report-sha256=06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2
 context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-lines=10
-context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-sha256=2312b53a92864cfe32b02a5524a4c36256d03b5fbe217d81e09cf536cb1e6030
-context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-lines=15
-context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-sha256=1f18afd85f8b6622043b2f5170e10cea1344516015791daa66d1af88fa417ff1
+context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-sha256=79c4d446783bf63c6765afdd78372d2bb2c1d13a959278cc5ebd26acc80bdbd8
+context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-lines=16
+context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-sha256=ef83b4e432ea96e5f73f8950f11e215d8149d5c4aa3e4290a5318800b5586e28
 context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-lines=14
-context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-sha256=d12a557b51f2b97f6ea06b9aaf03e44ed13cc6a6e45ede9603ee4d40e2254a80
+context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-sha256=eb369878de0e464f9bbbabbb94a31dab6a7d720899e31bee52ce39f93169f23b
 context-plane-operator-approval-packet-freshness-dependency-chain.readiness-chain-generation=274
 context-plane-operator-approval-packet-freshness-dependency-chain.freshness-source-sequence=273
 context-plane-operator-approval-packet-freshness-dependency-chain.stale-source=reject
@@ -143,7 +143,7 @@ expected_digest_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest=pass
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.schema=1
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.dependency-chain-report-lines=20
-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.dependency-chain-report-sha256=6ed55302689b56aaeca0305d96b95166086bea0764eb51c70d4ed75c1abe9f28
+context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.dependency-chain-report-sha256=91ad2fe699509e13efde327c91cff1f52f041d9d2b9e9bb6f9d2ea4842ea863c
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.readiness-chain-generation=275
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.source-readiness-chain-generation=274
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.source-freshness-sequence=273
@@ -166,7 +166,7 @@ canonical_guard_accepts() {
   [ "$digest_status" = "$expected_digest_status" ] || return 1
   [ "$(line_count "$chain_status")" = "20" ] || return 1
   [ "$(line_count "$digest_status")" = "15" ] || return 1
-  [ "$(printf '%s\n' "$chain_status" | sha256_digest)" = "6ed55302689b56aaeca0305d96b95166086bea0764eb51c70d4ed75c1abe9f28" ] || return 1
+  [ "$(printf '%s\n' "$chain_status" | sha256_digest)" = "91ad2fe699509e13efde327c91cff1f52f041d9d2b9e9bb6f9d2ea4842ea863c" ] || return 1
 
   if printf '%s\n%s\n' "$chain_status" "$digest_status" | grep -E 'activation_command|tool_args|raw_payload|prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|ranked_payload|entity_hash|supersedes|idempotency|fixture_hash|operator@example\.com|activation-command=(run|enabled|present)|runtime-activation=enabled|production-write=enabled|graph-write=enabled|operator-activation=enabled' >/dev/null; then
     return 1
@@ -201,10 +201,10 @@ fi
 reordered_dependency_rows_tamper="$(
   printf '%s\n' "$chain_status" | awk 'NR == 3 { third = $0; next } NR == 4 { print; print third; next } { print }'
 )"
-mismatched_upstream_digest_tamper="$(printf '%s\n' "$chain_status" | sed 's/approval-report-sha256=31c311eac71c837b3ac3ebde95e365e258ee92a87523017a359f47f8dc4eb4e6/approval-report-sha256=41c311eac71c837b3ac3ebde95e365e258ee92a87523017a359f47f8dc4eb4e6/')"
+mismatched_upstream_digest_tamper="$(printf '%s\n' "$chain_status" | sed 's/approval-report-sha256=3079a5e368ab61d13f53607895a8d2f9c50ba962333962dded7aa9979c250304/approval-report-sha256=4079a5e368ab61d13f53607895a8d2f9c50ba962333962dded7aa9979c250304/')"
 mixed_generation_replay_tamper="$(printf '%s\n' "$chain_status" | sed 's/readiness-chain-generation=274/readiness-chain-generation=273/')"
 mixed_sequence_replay_tamper="$(printf '%s\n' "$chain_status" | sed 's/freshness-source-sequence=273/freshness-source-sequence=272/')"
-digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/6ed55302689b56aaeca0305d96b95166086bea0764eb51c70d4ed75c1abe9f28/7ed55302689b56aaeca0305d96b95166086bea0764eb51c70d4ed75c1abe9f28/')"
+digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/91ad2fe699509e13efde327c91cff1f52f041d9d2b9e9bb6f9d2ea4842ea863c/a1ad2fe699509e13efde327c91cff1f52f041d9d2b9e9bb6f9d2ea4842ea863c/')"
 payload_field_tamper="$(
   printf '%s\n' "$chain_status"
   printf '%s\n' "context-plane-operator-approval-packet-freshness-dependency-chain.raw_payload=leak"

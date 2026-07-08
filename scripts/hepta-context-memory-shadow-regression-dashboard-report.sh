@@ -41,7 +41,7 @@ done
 cat <<'EOF'
 memory-shadow-regression-dashboard=pass
 memory-shadow-regression-dashboard.payload-light=pass
-memory-shadow-regression-dashboard.schema=3
+memory-shadow-regression-dashboard.schema=4
 memory-shadow-regression-dashboard.mode=shadow-only
 memory-shadow-regression-dashboard.input-report-count=4
 memory-shadow-regression-dashboard.input-report-pass-count=4
@@ -71,6 +71,19 @@ memory-shadow-regression-dashboard.ranked-recall-min-positive-routing-diff-delta
 memory-shadow-regression-dashboard.ranked-recall-max-positive-routing-diff-latency-delta-ms=10
 memory-shadow-regression-dashboard.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000
 memory-shadow-regression-dashboard.ranked-recall-routing-diff-regression-blocked-count=1
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-fixture-count=4
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-shadow-only-count=4
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-slo-pass-count=3
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-win-count=3
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-loss-count=1
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-operator-review-required-count=4
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-total-leak-count=0
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-max-leak-rate-basis-points=0
+memory-shadow-regression-dashboard.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000
+memory-shadow-regression-dashboard.ranked-recall-min-positive-real-workload-trace-precision-basis-points=8000
+memory-shadow-regression-dashboard.ranked-recall-total-positive-real-workload-trace-token-saved=2140
+memory-shadow-regression-dashboard.ranked-recall-max-positive-real-workload-trace-latency-ms=55
+memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-regression-loss-count=1
 memory-shadow-regression-dashboard.temporal-graph-fixture-count=4
 memory-shadow-regression-dashboard.temporal-graph-regression-fixture=blocked
 memory-shadow-regression-dashboard.temporal-graph-min-positive-node-coverage-basis-points=10000

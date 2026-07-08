@@ -89,7 +89,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "ranked-recall-shadow-eval=pass"
 assert_report_line "ranked-recall-shadow-eval.payload-light=pass"
-assert_report_line "ranked-recall-shadow-eval.schema=4"
+assert_report_line "ranked-recall-shadow-eval.schema=5"
 assert_report_line "ranked-recall-shadow-eval.mode=deterministic-shadow"
 assert_report_line "ranked-recall-shadow-eval.hybrid-mode=shadow-only"
 assert_report_line "ranked-recall-shadow-eval.hybrid-signal-count=5"
@@ -119,6 +119,20 @@ assert_report_line "ranked-recall-shadow-eval.max-positive-routing-diff-latency-
 assert_report_line "ranked-recall-shadow-eval.routing-diff-token-tradeoff-min-basis-points=1000"
 assert_report_line "ranked-recall-shadow-eval.min-positive-routing-diff-token-tradeoff-basis-points=3000"
 assert_report_line "ranked-recall-shadow-eval.routing-diff-regression=blocked"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace=shadow-only"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-fixture-count=4"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-shadow-only-count=4"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-slo-pass-count=3"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-win-count=3"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-loss-count=1"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-operator-review-required-count=4"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-total-leak-count=0"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-max-leak-rate-basis-points=0"
+assert_report_line "ranked-recall-shadow-eval.min-positive-real-workload-trace-coverage-basis-points=8000"
+assert_report_line "ranked-recall-shadow-eval.min-positive-real-workload-trace-precision-basis-points=8000"
+assert_report_line "ranked-recall-shadow-eval.total-positive-real-workload-trace-token-saved=2140"
+assert_report_line "ranked-recall-shadow-eval.max-positive-real-workload-trace-latency-ms=55"
+assert_report_line "ranked-recall-shadow-eval.real-workload-trace-regression-loss=blocked"
 assert_report_line "ranked-recall-shadow-eval.lexical-bm25=shadow"
 assert_report_line "ranked-recall-shadow-eval.recency=shadow"
 assert_report_line "ranked-recall-shadow-eval.source-authority=shadow"
@@ -178,6 +192,11 @@ for term in \
   "hybrid calibrated selection score" \
   "routing-diff-delta-min-basis-points" \
   "routing-diff-regression" \
+  "real workload trace shadow-only" \
+  "real_workload_trace_slo_pass" \
+  "real_workload_trace_operator_review_required" \
+  "real_workload_trace_total_leak_count" \
+  "min-positive-real-workload-trace-coverage-basis-points" \
   "recall-floor-basis-points" \
   "precision-floor-basis-points" \
   "token-saved-min-basis-points" \
@@ -235,6 +254,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_ranked_recall_shadow_eval_blocks_calibrated_reranking_drift" \
   "ranked recall shadow eval hepta-core reranking regression test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_memory_ranked_recall_shadow_eval_blocks_real_workload_slo_drift" \
+  "ranked recall shadow eval hepta-core real workload SLO regression test"
 
 assert_file_contains "$hepta_memory" \
   "ranked-recall shadow eval" \

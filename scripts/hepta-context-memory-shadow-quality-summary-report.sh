@@ -35,7 +35,7 @@ done
 cat <<'EOF'
 memory-shadow-quality-summary=pass
 memory-shadow-quality-summary.payload-light=pass
-memory-shadow-quality-summary.schema=3
+memory-shadow-quality-summary.schema=4
 memory-shadow-quality-summary.mode=shadow-only
 memory-shadow-quality-summary.quality-trend=stable-pass
 memory-shadow-quality-summary.operator-summary=ready-shadow-only
@@ -60,6 +60,18 @@ memory-shadow-quality-summary.ranked-recall-routing-diff-loss-count=1
 memory-shadow-quality-summary.ranked-recall-min-positive-routing-diff-delta-basis-points=640
 memory-shadow-quality-summary.ranked-recall-max-positive-routing-diff-latency-delta-ms=10
 memory-shadow-quality-summary.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-shadow-only-count=4
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-slo-pass-count=3
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-win-count=3
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-loss-count=1
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-operator-review-required-count=4
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-total-leak-count=0
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-max-leak-rate-basis-points=0
+memory-shadow-quality-summary.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000
+memory-shadow-quality-summary.ranked-recall-min-positive-real-workload-trace-precision-basis-points=8000
+memory-shadow-quality-summary.ranked-recall-total-positive-real-workload-trace-token-saved=2140
+memory-shadow-quality-summary.ranked-recall-max-positive-real-workload-trace-latency-ms=55
+memory-shadow-quality-summary.ranked-recall-real-workload-trace-regression-loss-count=1
 memory-shadow-quality-summary.temporal-graph-signal=pass
 memory-shadow-quality-summary.recall-quality-signal=pass
 memory-shadow-quality-summary.provider-boundary-signal=pass

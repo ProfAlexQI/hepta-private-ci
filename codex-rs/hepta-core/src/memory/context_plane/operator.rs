@@ -28,6 +28,17 @@ const RANKED_RECALL_ROUTING_DIFF_LATENCY_DELTA_MAX_MS: i32 = 20;
 const RANKED_RECALL_MAX_POSITIVE_ROUTING_DIFF_LATENCY_DELTA_MS: i32 = 10;
 const RANKED_RECALL_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS: u32 = 1_000;
 const RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_TOKEN_TRADEOFF_BASIS_POINTS: u32 = 3_000;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_FIXTURE_REQUIRED_COUNT: usize = 4;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_SLO_PASS_REQUIRED_COUNT: usize = 3;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_WIN_REQUIRED_COUNT: usize = 3;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_LOSS_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_OPERATOR_REVIEW_REQUIRED_COUNT: usize = 4;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_LEAK_RATE_MAX_BASIS_POINTS: u32 = 0;
+const RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_COVERAGE_BASIS_POINTS: u32 = 8_000;
+const RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_PRECISION_BASIS_POINTS: u32 = 8_000;
+const RANKED_RECALL_TOTAL_POSITIVE_REAL_WORKLOAD_TRACE_TOKEN_SAVED_MIN: usize = 2_140;
+const RANKED_RECALL_MAX_POSITIVE_REAL_WORKLOAD_TRACE_LATENCY_MS: u32 = 55;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_REGRESSION_LOSS_REQUIRED_COUNT: usize = 1;
 
 /// Approval scope that must be covered before any context-plane promotion.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,6 +191,19 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub ranked_recall_max_positive_routing_diff_latency_delta_ms: i32,
     pub ranked_recall_routing_diff_token_tradeoff_min_basis_points: u32,
     pub ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: u32,
+    pub ranked_recall_real_workload_trace_fixture_count: usize,
+    pub ranked_recall_real_workload_trace_shadow_only_count: usize,
+    pub ranked_recall_real_workload_trace_slo_pass_count: usize,
+    pub ranked_recall_real_workload_trace_win_count: usize,
+    pub ranked_recall_real_workload_trace_loss_count: usize,
+    pub ranked_recall_real_workload_trace_operator_review_required_count: usize,
+    pub ranked_recall_real_workload_trace_total_leak_count: usize,
+    pub ranked_recall_real_workload_trace_max_leak_rate_basis_points: u32,
+    pub ranked_recall_min_positive_real_workload_trace_coverage_basis_points: u32,
+    pub ranked_recall_min_positive_real_workload_trace_precision_basis_points: u32,
+    pub ranked_recall_total_positive_real_workload_trace_token_saved: usize,
+    pub ranked_recall_max_positive_real_workload_trace_latency_ms: u32,
+    pub ranked_recall_real_workload_trace_regression_loss_count: usize,
     pub required_approval_scopes: Vec<ContextPlaneOperatorApprovalScope>,
     pub production_write: bool,
     pub graph_write: bool,
@@ -254,6 +278,19 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             ranked_recall_max_positive_routing_diff_latency_delta_ms: 0,
             ranked_recall_routing_diff_token_tradeoff_min_basis_points: 0,
             ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: 0,
+            ranked_recall_real_workload_trace_fixture_count: 0,
+            ranked_recall_real_workload_trace_shadow_only_count: 0,
+            ranked_recall_real_workload_trace_slo_pass_count: 0,
+            ranked_recall_real_workload_trace_win_count: 0,
+            ranked_recall_real_workload_trace_loss_count: 0,
+            ranked_recall_real_workload_trace_operator_review_required_count: 0,
+            ranked_recall_real_workload_trace_total_leak_count: 0,
+            ranked_recall_real_workload_trace_max_leak_rate_basis_points: 0,
+            ranked_recall_min_positive_real_workload_trace_coverage_basis_points: 0,
+            ranked_recall_min_positive_real_workload_trace_precision_basis_points: 0,
+            ranked_recall_total_positive_real_workload_trace_token_saved: 0,
+            ranked_recall_max_positive_real_workload_trace_latency_ms: 0,
+            ranked_recall_real_workload_trace_regression_loss_count: 0,
             required_approval_scopes: Vec::new(),
             production_write: false,
             graph_write: false,
@@ -470,6 +507,48 @@ impl ContextPlaneOperatorApprovalPacket {
                 .unwrap_or_default(),
             ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: ranked_recall_row
                 .map(|row| row.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_fixture_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_fixture_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_shadow_only_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_shadow_only_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_slo_pass_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_slo_pass_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_win_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_win_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_loss_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_loss_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_operator_review_required_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_operator_review_required_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_total_leak_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_total_leak_count)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_max_leak_rate_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_max_leak_rate_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_min_positive_real_workload_trace_coverage_basis_points: ranked_recall_row
+                .map(|row| row.ranked_recall_min_positive_real_workload_trace_coverage_basis_points)
+                .unwrap_or_default(),
+            ranked_recall_min_positive_real_workload_trace_precision_basis_points:
+                ranked_recall_row
+                    .map(|row| {
+                        row.ranked_recall_min_positive_real_workload_trace_precision_basis_points
+                    })
+                    .unwrap_or_default(),
+            ranked_recall_total_positive_real_workload_trace_token_saved: ranked_recall_row
+                .map(|row| row.ranked_recall_total_positive_real_workload_trace_token_saved)
+                .unwrap_or_default(),
+            ranked_recall_max_positive_real_workload_trace_latency_ms: ranked_recall_row
+                .map(|row| row.ranked_recall_max_positive_real_workload_trace_latency_ms)
+                .unwrap_or_default(),
+            ranked_recall_real_workload_trace_regression_loss_count: ranked_recall_row
+                .map(|row| row.ranked_recall_real_workload_trace_regression_loss_count)
                 .unwrap_or_default(),
             required_approval_scopes,
             production_write: matrix.production_write,
@@ -703,6 +782,31 @@ impl ContextPlaneOperatorApprovalPacket {
                 == RANKED_RECALL_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS
             && self.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points
                 >= RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_TOKEN_TRADEOFF_BASIS_POINTS
+            && self.ranked_recall_real_workload_trace_fixture_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_FIXTURE_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_shadow_only_count
+                == self.ranked_recall_real_workload_trace_fixture_count
+            && self.ranked_recall_real_workload_trace_slo_pass_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_SLO_PASS_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_win_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_WIN_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_loss_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_LOSS_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_operator_review_required_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_OPERATOR_REVIEW_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_total_leak_count == 0
+            && self.ranked_recall_real_workload_trace_max_leak_rate_basis_points
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_LEAK_RATE_MAX_BASIS_POINTS
+            && self.ranked_recall_min_positive_real_workload_trace_coverage_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_COVERAGE_BASIS_POINTS
+            && self.ranked_recall_min_positive_real_workload_trace_precision_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_PRECISION_BASIS_POINTS
+            && self.ranked_recall_total_positive_real_workload_trace_token_saved
+                >= RANKED_RECALL_TOTAL_POSITIVE_REAL_WORKLOAD_TRACE_TOKEN_SAVED_MIN
+            && self.ranked_recall_max_positive_real_workload_trace_latency_ms
+                <= RANKED_RECALL_MAX_POSITIVE_REAL_WORKLOAD_TRACE_LATENCY_MS
+            && self.ranked_recall_real_workload_trace_regression_loss_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_REGRESSION_LOSS_REQUIRED_COUNT
     }
 }
 

@@ -30,6 +30,17 @@ const RANKED_RECALL_ROUTING_DIFF_LATENCY_DELTA_MAX_MS: i32 = 20;
 const RANKED_RECALL_MAX_POSITIVE_ROUTING_DIFF_LATENCY_DELTA_MS: i32 = 10;
 const RANKED_RECALL_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS: u32 = 1_000;
 const RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_TOKEN_TRADEOFF_BASIS_POINTS: u32 = 3_000;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_FIXTURE_REQUIRED_COUNT: usize = 4;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_SLO_PASS_REQUIRED_COUNT: usize = 3;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_WIN_REQUIRED_COUNT: usize = 3;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_LOSS_REQUIRED_COUNT: usize = 1;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_OPERATOR_REVIEW_REQUIRED_COUNT: usize = 4;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_LEAK_RATE_MAX_BASIS_POINTS: u32 = 0;
+const RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_COVERAGE_BASIS_POINTS: u32 = 8_000;
+const RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_PRECISION_BASIS_POINTS: u32 = 8_000;
+const RANKED_RECALL_TOTAL_POSITIVE_REAL_WORKLOAD_TRACE_TOKEN_SAVED_MIN: usize = 2_140;
+const RANKED_RECALL_MAX_POSITIVE_REAL_WORKLOAD_TRACE_LATENCY_MS: u32 = 55;
+const RANKED_RECALL_REAL_WORKLOAD_TRACE_REGRESSION_LOSS_REQUIRED_COUNT: usize = 1;
 
 /// One payload-light context-plane status row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +103,19 @@ pub struct ContextPlaneStatusEntry {
     pub ranked_recall_max_positive_routing_diff_latency_delta_ms: i32,
     pub ranked_recall_routing_diff_token_tradeoff_min_basis_points: u32,
     pub ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: u32,
+    pub ranked_recall_real_workload_trace_fixture_count: usize,
+    pub ranked_recall_real_workload_trace_shadow_only_count: usize,
+    pub ranked_recall_real_workload_trace_slo_pass_count: usize,
+    pub ranked_recall_real_workload_trace_win_count: usize,
+    pub ranked_recall_real_workload_trace_loss_count: usize,
+    pub ranked_recall_real_workload_trace_operator_review_required_count: usize,
+    pub ranked_recall_real_workload_trace_total_leak_count: usize,
+    pub ranked_recall_real_workload_trace_max_leak_rate_basis_points: u32,
+    pub ranked_recall_min_positive_real_workload_trace_coverage_basis_points: u32,
+    pub ranked_recall_min_positive_real_workload_trace_precision_basis_points: u32,
+    pub ranked_recall_total_positive_real_workload_trace_token_saved: usize,
+    pub ranked_recall_max_positive_real_workload_trace_latency_ms: u32,
+    pub ranked_recall_real_workload_trace_regression_loss_count: usize,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -335,6 +359,32 @@ impl ContextPlaneStatusEntry {
                 .routing_diff_token_tradeoff_min_basis_points,
             ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: ranked_recall
                 .min_positive_routing_diff_token_tradeoff_basis_points(),
+            ranked_recall_real_workload_trace_fixture_count: ranked_recall
+                .real_workload_trace_fixture_count(),
+            ranked_recall_real_workload_trace_shadow_only_count: ranked_recall
+                .real_workload_trace_shadow_only_count(),
+            ranked_recall_real_workload_trace_slo_pass_count: ranked_recall
+                .real_workload_trace_slo_pass_count(),
+            ranked_recall_real_workload_trace_win_count: ranked_recall
+                .real_workload_trace_win_count(),
+            ranked_recall_real_workload_trace_loss_count: ranked_recall
+                .real_workload_trace_loss_count(),
+            ranked_recall_real_workload_trace_operator_review_required_count: ranked_recall
+                .real_workload_trace_operator_review_required_count(),
+            ranked_recall_real_workload_trace_total_leak_count: ranked_recall
+                .real_workload_trace_total_leak_count(),
+            ranked_recall_real_workload_trace_max_leak_rate_basis_points: ranked_recall
+                .real_workload_trace_max_leak_rate_basis_points(),
+            ranked_recall_min_positive_real_workload_trace_coverage_basis_points: ranked_recall
+                .min_positive_real_workload_trace_coverage_basis_points(),
+            ranked_recall_min_positive_real_workload_trace_precision_basis_points: ranked_recall
+                .min_positive_real_workload_trace_precision_basis_points(),
+            ranked_recall_total_positive_real_workload_trace_token_saved: ranked_recall
+                .total_positive_real_workload_trace_token_saved(),
+            ranked_recall_max_positive_real_workload_trace_latency_ms: ranked_recall
+                .max_positive_real_workload_trace_latency_ms(),
+            ranked_recall_real_workload_trace_regression_loss_count: ranked_recall
+                .real_workload_trace_regression_loss_count(),
             production_write: ranked_recall.production_write || ranked_recall.production_route,
             graph_write: ranked_recall.graph_write,
             runtime_activation: ranked_recall.runtime_activation,
@@ -632,11 +682,25 @@ impl ContextPlaneStatusEntry {
             self.ranked_recall_routing_diff_win_count,
             self.ranked_recall_routing_diff_loss_count,
             self.ranked_recall_routing_diff_regression_blocked_count,
+            self.ranked_recall_real_workload_trace_fixture_count,
+            self.ranked_recall_real_workload_trace_shadow_only_count,
+            self.ranked_recall_real_workload_trace_slo_pass_count,
+            self.ranked_recall_real_workload_trace_win_count,
+            self.ranked_recall_real_workload_trace_loss_count,
+            self.ranked_recall_real_workload_trace_operator_review_required_count,
+            self.ranked_recall_real_workload_trace_total_leak_count,
+            self.ranked_recall_real_workload_trace_regression_loss_count,
         ];
         let thresholds = [
             self.ranked_recall_hybrid_signal_min_basis_points,
             self.ranked_recall_min_positive_hybrid_score_basis_points,
+            self.ranked_recall_real_workload_trace_max_leak_rate_basis_points,
+            self.ranked_recall_min_positive_real_workload_trace_coverage_basis_points,
+            self.ranked_recall_min_positive_real_workload_trace_precision_basis_points,
+            self.ranked_recall_max_positive_real_workload_trace_latency_ms,
         ];
+        let workload_thresholds_usize =
+            [self.ranked_recall_total_positive_real_workload_trace_token_saved];
         let routing_thresholds_i32 = [
             self.ranked_recall_routing_diff_delta_min_basis_points,
             self.ranked_recall_min_positive_routing_diff_delta_basis_points,
@@ -658,6 +722,9 @@ impl ContextPlaneStatusEntry {
         if self.section != ContextPlaneStatusSection::MemoryRankedRecallShadowEval {
             return counts.iter().all(|count| *count == 0)
                 && thresholds.iter().all(|threshold| *threshold == 0)
+                && workload_thresholds_usize
+                    .iter()
+                    .all(|threshold| *threshold == 0)
                 && routing_thresholds_i32
                     .iter()
                     .all(|threshold| *threshold == 0)
@@ -705,6 +772,31 @@ impl ContextPlaneStatusEntry {
                 == RANKED_RECALL_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS
             && self.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points
                 >= RANKED_RECALL_MIN_POSITIVE_ROUTING_DIFF_TOKEN_TRADEOFF_BASIS_POINTS
+            && self.ranked_recall_real_workload_trace_fixture_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_FIXTURE_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_shadow_only_count
+                == self.ranked_recall_real_workload_trace_fixture_count
+            && self.ranked_recall_real_workload_trace_slo_pass_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_SLO_PASS_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_win_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_WIN_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_loss_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_LOSS_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_operator_review_required_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_OPERATOR_REVIEW_REQUIRED_COUNT
+            && self.ranked_recall_real_workload_trace_total_leak_count == 0
+            && self.ranked_recall_real_workload_trace_max_leak_rate_basis_points
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_LEAK_RATE_MAX_BASIS_POINTS
+            && self.ranked_recall_min_positive_real_workload_trace_coverage_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_COVERAGE_BASIS_POINTS
+            && self.ranked_recall_min_positive_real_workload_trace_precision_basis_points
+                >= RANKED_RECALL_MIN_POSITIVE_REAL_WORKLOAD_TRACE_PRECISION_BASIS_POINTS
+            && self.ranked_recall_total_positive_real_workload_trace_token_saved
+                >= RANKED_RECALL_TOTAL_POSITIVE_REAL_WORKLOAD_TRACE_TOKEN_SAVED_MIN
+            && self.ranked_recall_max_positive_real_workload_trace_latency_ms
+                <= RANKED_RECALL_MAX_POSITIVE_REAL_WORKLOAD_TRACE_LATENCY_MS
+            && self.ranked_recall_real_workload_trace_regression_loss_count
+                == RANKED_RECALL_REAL_WORKLOAD_TRACE_REGRESSION_LOSS_REQUIRED_COUNT
             && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 

@@ -22,6 +22,15 @@ pub const RANKED_RECALL_SHADOW_ROUTING_DIFF_LATENCY_DELTA_MAX_MS: i32 =
     RANKED_RECALL_SHADOW_LATENCY_DELTA_MAX_MS;
 pub const RANKED_RECALL_SHADOW_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS: u32 =
     RANKED_RECALL_SHADOW_TOKEN_TRADEOFF_MIN_BASIS_POINTS;
+pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_COVERAGE_FLOOR_BASIS_POINTS: u32 =
+    RANKED_RECALL_SHADOW_RECALL_FLOOR_BASIS_POINTS;
+pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_PRECISION_FLOOR_BASIS_POINTS: u32 =
+    RANKED_RECALL_SHADOW_PRECISION_FLOOR_BASIS_POINTS;
+pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_LEAK_RATE_MAX_BASIS_POINTS: u32 = 0;
+pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_TOKEN_SAVED_MIN: usize =
+    RANKED_RECALL_SHADOW_TOKEN_SAVED_MIN;
+pub const RANKED_RECALL_SHADOW_REAL_WORKLOAD_LATENCY_MAX_MS: u32 =
+    RANKED_RECALL_SHADOW_LATENCY_MAX_MS;
 
 /// Payload-light replay mode for ranked recall evaluation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +186,18 @@ pub struct ContextMemoryRankedRecallShadowEvalFixtureResult {
     pub routing_diff_loss: bool,
     pub routing_diff_latency_delta_ms: i32,
     pub routing_diff_token_tradeoff_basis_points: u32,
+    pub real_workload_trace_fixture: bool,
+    pub real_workload_trace_shadow_only: bool,
+    pub real_workload_trace_slo_pass: bool,
+    pub real_workload_trace_operator_review_required: bool,
+    pub real_workload_trace_coverage_basis_points: u32,
+    pub real_workload_trace_precision_basis_points: u32,
+    pub real_workload_trace_leak_count: usize,
+    pub real_workload_trace_leak_rate_basis_points: u32,
+    pub real_workload_trace_token_saved: usize,
+    pub real_workload_trace_latency_ms: u32,
+    pub real_workload_trace_win: bool,
+    pub real_workload_trace_loss: bool,
     pub regression_fixture: bool,
     pub regression_blocked: bool,
     pub production_route: bool,
@@ -288,6 +309,24 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         let routing_diff_loss = reranking_loss;
         let routing_diff_latency_delta_ms = latency_delta_ms;
         let routing_diff_token_tradeoff_basis_points = token_saved_basis_points;
+        let recall_basis_points = basis_points(recalled_relevant_count, expected_relevant_count);
+        let precision_basis_points =
+            basis_points(recalled_relevant_count, predicted_relevant_count);
+        let real_workload_trace_leak_count = 0;
+        let real_workload_trace_leak_rate_basis_points = 0;
+        let real_workload_trace_slo_pass = positive_fixture
+            && recall_basis_points
+                >= RANKED_RECALL_SHADOW_REAL_WORKLOAD_COVERAGE_FLOOR_BASIS_POINTS
+            && precision_basis_points
+                >= RANKED_RECALL_SHADOW_REAL_WORKLOAD_PRECISION_FLOOR_BASIS_POINTS
+            && real_workload_trace_leak_rate_basis_points
+                == RANKED_RECALL_SHADOW_REAL_WORKLOAD_LEAK_RATE_MAX_BASIS_POINTS
+            && token_saved >= RANKED_RECALL_SHADOW_REAL_WORKLOAD_TOKEN_SAVED_MIN
+            && latency_ms <= RANKED_RECALL_SHADOW_REAL_WORKLOAD_LATENCY_MAX_MS
+            && routing_diff_win
+            && !routing_diff_loss;
+        let real_workload_trace_win = routing_diff_win;
+        let real_workload_trace_loss = routing_diff_loss;
         Self {
             fixture_kind,
             fixture_id_hash: fixture_id_hash(
@@ -316,6 +355,18 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                 routing_diff_loss,
                 routing_diff_latency_delta_ms,
                 routing_diff_token_tradeoff_basis_points,
+                true,
+                true,
+                real_workload_trace_slo_pass,
+                true,
+                recall_basis_points,
+                precision_basis_points,
+                real_workload_trace_leak_count,
+                real_workload_trace_leak_rate_basis_points,
+                token_saved,
+                latency_ms,
+                real_workload_trace_win,
+                real_workload_trace_loss,
             ),
             gate_pass: true,
             positive_fixture,
@@ -327,8 +378,8 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             recalled_relevant_count,
             predicted_relevant_count,
             false_positive_count,
-            recall_basis_points: basis_points(recalled_relevant_count, expected_relevant_count),
-            precision_basis_points: basis_points(recalled_relevant_count, predicted_relevant_count),
+            recall_basis_points,
+            precision_basis_points,
             baseline_token_cost,
             ranked_token_cost,
             token_saved,
@@ -359,6 +410,18 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             routing_diff_loss,
             routing_diff_latency_delta_ms,
             routing_diff_token_tradeoff_basis_points,
+            real_workload_trace_fixture: true,
+            real_workload_trace_shadow_only: true,
+            real_workload_trace_slo_pass,
+            real_workload_trace_operator_review_required: true,
+            real_workload_trace_coverage_basis_points: recall_basis_points,
+            real_workload_trace_precision_basis_points: precision_basis_points,
+            real_workload_trace_leak_count,
+            real_workload_trace_leak_rate_basis_points,
+            real_workload_trace_token_saved: token_saved,
+            real_workload_trace_latency_ms: latency_ms,
+            real_workload_trace_win,
+            real_workload_trace_loss,
             regression_fixture,
             regression_blocked,
             production_route: false,
@@ -386,6 +449,11 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         routing_diff_delta_min_basis_points: i32,
         routing_diff_latency_delta_max_ms: i32,
         routing_diff_token_tradeoff_min_basis_points: u32,
+        real_workload_coverage_floor_basis_points: u32,
+        real_workload_precision_floor_basis_points: u32,
+        real_workload_leak_rate_max_basis_points: u32,
+        real_workload_token_saved_min: usize,
+        real_workload_latency_max_ms: u32,
     ) -> bool {
         !self.fixture_kind.is_unknown()
             && stable_receipt_hash_is_valid(&self.fixture_id_hash)
@@ -449,6 +517,19 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             && self.routing_diff_loss == self.reranking_loss
             && self.routing_diff_latency_delta_ms == self.latency_delta_ms
             && self.routing_diff_token_tradeoff_basis_points == self.token_tradeoff_basis_points
+            && self.real_workload_trace_fixture
+            && self.real_workload_trace_shadow_only
+            && self.real_workload_trace_operator_review_required
+            && self.real_workload_trace_coverage_basis_points == self.recall_basis_points
+            && self.real_workload_trace_precision_basis_points == self.precision_basis_points
+            && self.real_workload_trace_leak_rate_basis_points
+                == basis_points(self.real_workload_trace_leak_count, self.ranked_item_count)
+            && self.real_workload_trace_leak_rate_basis_points
+                <= real_workload_leak_rate_max_basis_points
+            && self.real_workload_trace_token_saved == self.token_saved
+            && self.real_workload_trace_latency_ms == self.latency_ms
+            && self.real_workload_trace_win == self.routing_diff_win
+            && self.real_workload_trace_loss == self.routing_diff_loss
             && self.latency_budget_ms <= latency_max_ms
             && !self.production_route
             && !self.production_write
@@ -484,6 +565,16 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                     && self.routing_diff_latency_delta_ms <= routing_diff_latency_delta_max_ms
                     && self.routing_diff_token_tradeoff_basis_points
                         >= routing_diff_token_tradeoff_min_basis_points
+                    && self.real_workload_trace_slo_pass
+                    && self.real_workload_trace_win
+                    && !self.real_workload_trace_loss
+                    && self.real_workload_trace_coverage_basis_points
+                        >= real_workload_coverage_floor_basis_points
+                    && self.real_workload_trace_precision_basis_points
+                        >= real_workload_precision_floor_basis_points
+                    && self.real_workload_trace_leak_count == 0
+                    && self.real_workload_trace_token_saved >= real_workload_token_saved_min
+                    && self.real_workload_trace_latency_ms <= real_workload_latency_max_ms
             } else {
                 self.regression_fixture
                     && self.regression_blocked
@@ -491,6 +582,9 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                     && self.reranking_loss
                     && !self.routing_diff_win
                     && self.routing_diff_loss
+                    && !self.real_workload_trace_slo_pass
+                    && !self.real_workload_trace_win
+                    && self.real_workload_trace_loss
                     && (self.recall_basis_points < recall_floor_basis_points
                         || self.precision_basis_points < precision_floor_basis_points
                         || self.token_saved < token_saved_min
@@ -504,7 +598,15 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                             < routing_diff_delta_min_basis_points
                         || self.routing_diff_latency_delta_ms > routing_diff_latency_delta_max_ms
                         || self.routing_diff_token_tradeoff_basis_points
-                            < routing_diff_token_tradeoff_min_basis_points)
+                            < routing_diff_token_tradeoff_min_basis_points
+                        || self.real_workload_trace_coverage_basis_points
+                            < real_workload_coverage_floor_basis_points
+                        || self.real_workload_trace_precision_basis_points
+                            < real_workload_precision_floor_basis_points
+                        || self.real_workload_trace_leak_rate_basis_points
+                            > real_workload_leak_rate_max_basis_points
+                        || self.real_workload_trace_token_saved < real_workload_token_saved_min
+                        || self.real_workload_trace_latency_ms > real_workload_latency_max_ms)
             }
     }
 }
@@ -590,6 +692,18 @@ fn fixture_id_hash(
     routing_diff_loss: bool,
     routing_diff_latency_delta_ms: i32,
     routing_diff_token_tradeoff_basis_points: u32,
+    real_workload_trace_fixture: bool,
+    real_workload_trace_shadow_only: bool,
+    real_workload_trace_slo_pass: bool,
+    real_workload_trace_operator_review_required: bool,
+    real_workload_trace_coverage_basis_points: u32,
+    real_workload_trace_precision_basis_points: u32,
+    real_workload_trace_leak_count: usize,
+    real_workload_trace_leak_rate_basis_points: u32,
+    real_workload_trace_token_saved: usize,
+    real_workload_trace_latency_ms: u32,
+    real_workload_trace_win: bool,
+    real_workload_trace_loss: bool,
 ) -> String {
     stable_receipt_hash(&[
         "context_memory_ranked_recall_shadow_eval",
@@ -622,6 +736,18 @@ fn fixture_id_hash(
         &routing_diff_loss.to_string(),
         &routing_diff_latency_delta_ms.to_string(),
         &routing_diff_token_tradeoff_basis_points.to_string(),
+        &real_workload_trace_fixture.to_string(),
+        &real_workload_trace_shadow_only.to_string(),
+        &real_workload_trace_slo_pass.to_string(),
+        &real_workload_trace_operator_review_required.to_string(),
+        &real_workload_trace_coverage_basis_points.to_string(),
+        &real_workload_trace_precision_basis_points.to_string(),
+        &real_workload_trace_leak_count.to_string(),
+        &real_workload_trace_leak_rate_basis_points.to_string(),
+        &real_workload_trace_token_saved.to_string(),
+        &real_workload_trace_latency_ms.to_string(),
+        &real_workload_trace_win.to_string(),
+        &real_workload_trace_loss.to_string(),
     ])
 }
 
@@ -647,6 +773,11 @@ pub struct ContextMemoryRankedRecallShadowEvalReport {
     pub routing_diff_delta_min_basis_points: i32,
     pub routing_diff_latency_delta_max_ms: i32,
     pub routing_diff_token_tradeoff_min_basis_points: u32,
+    pub real_workload_coverage_floor_basis_points: u32,
+    pub real_workload_precision_floor_basis_points: u32,
+    pub real_workload_leak_rate_max_basis_points: u32,
+    pub real_workload_token_saved_min: usize,
+    pub real_workload_latency_max_ms: u32,
     pub operator_approval_required: bool,
     pub production_route: bool,
     pub production_write: bool,
@@ -680,6 +811,14 @@ impl Default for ContextMemoryRankedRecallShadowEvalReport {
                 RANKED_RECALL_SHADOW_ROUTING_DIFF_LATENCY_DELTA_MAX_MS,
             routing_diff_token_tradeoff_min_basis_points:
                 RANKED_RECALL_SHADOW_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS,
+            real_workload_coverage_floor_basis_points:
+                RANKED_RECALL_SHADOW_REAL_WORKLOAD_COVERAGE_FLOOR_BASIS_POINTS,
+            real_workload_precision_floor_basis_points:
+                RANKED_RECALL_SHADOW_REAL_WORKLOAD_PRECISION_FLOOR_BASIS_POINTS,
+            real_workload_leak_rate_max_basis_points:
+                RANKED_RECALL_SHADOW_REAL_WORKLOAD_LEAK_RATE_MAX_BASIS_POINTS,
+            real_workload_token_saved_min: RANKED_RECALL_SHADOW_REAL_WORKLOAD_TOKEN_SAVED_MIN,
+            real_workload_latency_max_ms: RANKED_RECALL_SHADOW_REAL_WORKLOAD_LATENCY_MAX_MS,
             operator_approval_required: true,
             production_route: false,
             production_write: false,
@@ -752,6 +891,14 @@ impl ContextMemoryRankedRecallShadowEvalReport {
                 RANKED_RECALL_SHADOW_ROUTING_DIFF_LATENCY_DELTA_MAX_MS,
             routing_diff_token_tradeoff_min_basis_points:
                 RANKED_RECALL_SHADOW_ROUTING_DIFF_TOKEN_TRADEOFF_MIN_BASIS_POINTS,
+            real_workload_coverage_floor_basis_points:
+                RANKED_RECALL_SHADOW_REAL_WORKLOAD_COVERAGE_FLOOR_BASIS_POINTS,
+            real_workload_precision_floor_basis_points:
+                RANKED_RECALL_SHADOW_REAL_WORKLOAD_PRECISION_FLOOR_BASIS_POINTS,
+            real_workload_leak_rate_max_basis_points:
+                RANKED_RECALL_SHADOW_REAL_WORKLOAD_LEAK_RATE_MAX_BASIS_POINTS,
+            real_workload_token_saved_min: RANKED_RECALL_SHADOW_REAL_WORKLOAD_TOKEN_SAVED_MIN,
+            real_workload_latency_max_ms: RANKED_RECALL_SHADOW_REAL_WORKLOAD_LATENCY_MAX_MS,
             operator_approval_required: true,
             production_route: false,
             production_write: false,
@@ -810,6 +957,24 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             && self.min_positive_routing_diff_token_tradeoff_basis_points()
                 >= self.routing_diff_token_tradeoff_min_basis_points
             && self.routing_diff_regression_blocked_count() == 1
+            && self.real_workload_trace_fixture_count() == self.fixture_count()
+            && self.real_workload_trace_shadow_only_count() == self.fixture_count()
+            && self.real_workload_trace_slo_pass_count() == self.positive_fixture_count()
+            && self.real_workload_trace_win_count() == self.positive_fixture_count()
+            && self.real_workload_trace_loss_count() == self.negative_fixture_count()
+            && self.real_workload_trace_operator_review_required_count() == self.fixture_count()
+            && self.real_workload_trace_total_leak_count() == 0
+            && self.real_workload_trace_max_leak_rate_basis_points()
+                <= self.real_workload_leak_rate_max_basis_points
+            && self.min_positive_real_workload_trace_coverage_basis_points()
+                >= self.real_workload_coverage_floor_basis_points
+            && self.min_positive_real_workload_trace_precision_basis_points()
+                >= self.real_workload_precision_floor_basis_points
+            && self.total_positive_real_workload_trace_token_saved()
+                >= self.real_workload_token_saved_min * self.positive_fixture_count()
+            && self.max_positive_real_workload_trace_latency_ms()
+                <= self.real_workload_latency_max_ms
+            && self.real_workload_trace_regression_loss_count() == 1
             && self.fixtures.iter().all(|fixture| {
                 fixture.has_ranked_recall_fixture_integrity(
                     self.recall_floor_basis_points,
@@ -825,6 +990,11 @@ impl ContextMemoryRankedRecallShadowEvalReport {
                     self.routing_diff_delta_min_basis_points,
                     self.routing_diff_latency_delta_max_ms,
                     self.routing_diff_token_tradeoff_min_basis_points,
+                    self.real_workload_coverage_floor_basis_points,
+                    self.real_workload_precision_floor_basis_points,
+                    self.real_workload_leak_rate_max_basis_points,
+                    self.real_workload_token_saved_min,
+                    self.real_workload_latency_max_ms,
                 )
             })
             && self.operator_approval_required
@@ -968,6 +1138,75 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             .count()
     }
 
+    pub fn real_workload_trace_fixture_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.real_workload_trace_fixture)
+            .count()
+    }
+
+    pub fn real_workload_trace_shadow_only_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.real_workload_trace_shadow_only)
+            .count()
+    }
+
+    pub fn real_workload_trace_slo_pass_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.real_workload_trace_slo_pass)
+            .count()
+    }
+
+    pub fn real_workload_trace_operator_review_required_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.real_workload_trace_operator_review_required)
+            .count()
+    }
+
+    pub fn real_workload_trace_win_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.real_workload_trace_win)
+            .count()
+    }
+
+    pub fn real_workload_trace_loss_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.real_workload_trace_loss)
+            .count()
+    }
+
+    pub fn real_workload_trace_regression_loss_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| {
+                fixture.regression_fixture
+                    && fixture.regression_blocked
+                    && fixture.real_workload_trace_loss
+                    && fixture.real_workload_trace_shadow_only
+            })
+            .count()
+    }
+
+    pub fn real_workload_trace_total_leak_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .map(|fixture| fixture.real_workload_trace_leak_count)
+            .sum()
+    }
+
+    pub fn real_workload_trace_max_leak_rate_basis_points(&self) -> u32 {
+        self.fixtures
+            .iter()
+            .map(|fixture| fixture.real_workload_trace_leak_rate_basis_points)
+            .max()
+            .unwrap_or(0)
+    }
+
     pub fn total_positive_token_saved(&self) -> usize {
         self.fixtures
             .iter()
@@ -1072,6 +1311,41 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             .filter(|fixture| fixture.positive_fixture)
             .map(|fixture| fixture.routing_diff_token_tradeoff_basis_points)
             .min()
+            .unwrap_or(0)
+    }
+
+    pub fn min_positive_real_workload_trace_coverage_basis_points(&self) -> u32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.real_workload_trace_coverage_basis_points)
+            .min()
+            .unwrap_or(0)
+    }
+
+    pub fn min_positive_real_workload_trace_precision_basis_points(&self) -> u32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.real_workload_trace_precision_basis_points)
+            .min()
+            .unwrap_or(0)
+    }
+
+    pub fn total_positive_real_workload_trace_token_saved(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.real_workload_trace_token_saved)
+            .sum()
+    }
+
+    pub fn max_positive_real_workload_trace_latency_ms(&self) -> u32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.real_workload_trace_latency_ms)
+            .max()
             .unwrap_or(0)
     }
 

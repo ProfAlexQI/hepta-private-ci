@@ -3,7 +3,7 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=8
+context-plane-operator-approval-packet.schema=9
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
@@ -70,6 +70,19 @@ context-plane-operator-approval-packet.ranked-recall.routing-diff-latency-delta-
 context-plane-operator-approval-packet.ranked-recall.max-positive-routing-diff-latency-delta-ms=10
 context-plane-operator-approval-packet.ranked-recall.routing-diff-token-tradeoff-min-basis-points=1000
 context-plane-operator-approval-packet.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-fixture-count=4
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-shadow-only-count=4
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-slo-pass-count=3
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-win-count=3
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-loss-count=1
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-operator-review-required-count=4
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-total-leak-count=0
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-max-leak-rate-basis-points=0
+context-plane-operator-approval-packet.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000
+context-plane-operator-approval-packet.ranked-recall.min-positive-real-workload-trace-precision-basis-points=8000
+context-plane-operator-approval-packet.ranked-recall.total-positive-real-workload-trace-token-saved=2140
+context-plane-operator-approval-packet.ranked-recall.max-positive-real-workload-trace-latency-ms=55
+context-plane-operator-approval-packet.ranked-recall.real-workload-trace-regression-loss-count=1
 context-plane-operator-approval-packet.required-scopes=6
 context-plane-operator-approval-packet.scope.adaptive-budget-allocation-runtime=required
 context-plane-operator-approval-packet.scope.source-aware-runtime-activation=required

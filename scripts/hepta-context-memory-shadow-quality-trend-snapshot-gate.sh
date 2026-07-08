@@ -91,7 +91,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-quality-trend-snapshot=pass"
 assert_report_line "memory-shadow-quality-trend-snapshot.payload-light=pass"
-assert_report_line "memory-shadow-quality-trend-snapshot.schema=3"
+assert_report_line "memory-shadow-quality-trend-snapshot.schema=4"
 assert_report_line "memory-shadow-quality-trend-snapshot.mode=shadow-only"
 assert_report_line "memory-shadow-quality-trend-snapshot.source-summary=pass"
 assert_report_line "memory-shadow-quality-trend-snapshot.current-quality-trend=stable-pass"
@@ -113,6 +113,17 @@ assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-posit
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-routing-diff-delta-basis-points=640"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-max-positive-routing-diff-latency-delta-ms=10"
 assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-window-pass-count=3"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-slo-pass-count=3"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-win-count=3"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-loss-count=1"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-operator-review-required-count=4"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-total-leak-count=0"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-real-workload-trace-max-leak-rate-basis-points=0"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-min-positive-real-workload-trace-precision-basis-points=8000"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-total-positive-real-workload-trace-token-saved=2140"
+assert_report_line "memory-shadow-quality-trend-snapshot.ranked-recall-max-positive-real-workload-trace-latency-ms=55"
 assert_report_line "memory-shadow-quality-trend-snapshot.temporal-graph-window-pass-count=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.recall-quality-window-pass-count=3"
 assert_report_line "memory-shadow-quality-trend-snapshot.provider-boundary-window-pass-count=3"
@@ -142,6 +153,9 @@ for term in \
   "ranked_recall_min_positive_token_tradeoff_basis_points" \
   "ranked_recall_min_positive_routing_diff_delta_basis_points" \
   "ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points" \
+  "ranked_recall_real_workload_trace_window_pass_count" \
+  "ranked_recall_min_positive_real_workload_trace_coverage_basis_points" \
+  "ranked_recall_real_workload_trace_total_leak_count" \
   "operator_snapshot_redacted" \
   "stable_window" \
   "history_persistence_write" \

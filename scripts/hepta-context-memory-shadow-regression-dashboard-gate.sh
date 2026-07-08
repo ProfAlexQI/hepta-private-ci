@@ -97,7 +97,7 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "memory-shadow-regression-dashboard=pass"
 assert_report_line "memory-shadow-regression-dashboard.payload-light=pass"
-assert_report_line "memory-shadow-regression-dashboard.schema=3"
+assert_report_line "memory-shadow-regression-dashboard.schema=4"
 assert_report_line "memory-shadow-regression-dashboard.mode=shadow-only"
 assert_report_line "memory-shadow-regression-dashboard.input-report-count=4"
 assert_report_line "memory-shadow-regression-dashboard.input-report-pass-count=4"
@@ -127,6 +127,19 @@ assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positiv
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-max-positive-routing-diff-latency-delta-ms=10"
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-routing-diff-token-tradeoff-basis-points=3000"
 assert_report_line "memory-shadow-regression-dashboard.ranked-recall-routing-diff-regression-blocked-count=1"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-fixture-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-shadow-only-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-slo-pass-count=3"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-win-count=3"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-loss-count=1"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-operator-review-required-count=4"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-total-leak-count=0"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-max-leak-rate-basis-points=0"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-real-workload-trace-coverage-basis-points=8000"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-min-positive-real-workload-trace-precision-basis-points=8000"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-total-positive-real-workload-trace-token-saved=2140"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-max-positive-real-workload-trace-latency-ms=55"
+assert_report_line "memory-shadow-regression-dashboard.ranked-recall-real-workload-trace-regression-loss-count=1"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-fixture-count=4"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-regression-fixture=blocked"
 assert_report_line "memory-shadow-regression-dashboard.temporal-graph-min-positive-node-coverage-basis-points=10000"
@@ -162,6 +175,10 @@ for term in \
   "ranked_recall_routing_diff_shadow_only_count" \
   "ranked_recall_min_positive_routing_diff_delta_basis_points" \
   "ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points" \
+  "ranked_recall_real_workload_trace_slo_pass_count" \
+  "ranked_recall_real_workload_trace_total_leak_count" \
+  "ranked_recall_min_positive_real_workload_trace_coverage_basis_points" \
+  "ranked_recall_real_workload_trace_operator_review_required_count" \
   "provider_payload_light" \
   "hepta-context-memory-shadow-regression-dashboard-report.sh" \
   "hepta-context-memory-shadow-regression-dashboard-gate.sh"; do
@@ -198,6 +215,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_shadow_regression_dashboard_blocks_ranked_recall_comparison_false_green" \
   "memory shadow regression dashboard ranked recall comparison false-green test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_memory_shadow_regression_dashboard_blocks_real_workload_slo_false_green" \
+  "memory shadow regression dashboard real workload SLO false-green test"
 
 assert_file_contains "$hepta_memory" \
   "memory shadow regression dashboard" \

@@ -245,6 +245,58 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
         ranked_recall_entry.ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points,
         3_000
     );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_fixture_count,
+        4
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_shadow_only_count,
+        4
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_slo_pass_count,
+        3
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_win_count,
+        3
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_loss_count,
+        1
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_operator_review_required_count,
+        4
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_total_leak_count,
+        0
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_max_leak_rate_basis_points,
+        0
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_min_positive_real_workload_trace_coverage_basis_points,
+        8_000
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_min_positive_real_workload_trace_precision_basis_points,
+        8_000
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_total_positive_real_workload_trace_token_saved,
+        2_140
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_max_positive_real_workload_trace_latency_ms,
+        55
+    );
+    assert_eq!(
+        ranked_recall_entry.ranked_recall_real_workload_trace_regression_loss_count,
+        1
+    );
     let promotion_entry = report
         .sections
         .iter()
@@ -303,6 +355,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("ranked_recall_routing_diff_shadow_only_count"));
     assert!(json.contains("ranked_recall_min_positive_routing_diff_delta_basis_points"));
     assert!(json.contains("ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points"));
+    assert!(json.contains("ranked_recall_real_workload_trace_slo_pass_count"));
+    assert!(json.contains("ranked_recall_real_workload_trace_total_leak_count"));
+    assert!(json.contains("ranked_recall_min_positive_real_workload_trace_coverage_basis_points"));
+    assert!(json.contains("ranked_recall_real_workload_trace_operator_review_required_count"));
     assert!(json.contains("memory_provider_boundary"));
     assert!(json.contains("memory_provider_v2_boundary"));
     assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
@@ -380,6 +436,15 @@ fn context_plane_status_report_rejects_ranked_recall_hybrid_false_green() {
         .expect("ranked recall shadow eval status row should exist")
         .ranked_recall_routing_diff_shadow_only_count = 3;
     assert!(!routing_diff_replay.has_status_integrity());
+
+    let mut slo_false_green = report.clone();
+    slo_false_green
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryRankedRecallShadowEval)
+        .expect("ranked recall shadow eval status row should exist")
+        .ranked_recall_real_workload_trace_total_leak_count = 1;
+    assert!(!slo_false_green.has_status_integrity());
 
     let mut non_ranked_leak = report.clone();
     non_ranked_leak
