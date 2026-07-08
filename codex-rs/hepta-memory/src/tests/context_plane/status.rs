@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 15);
+    assert_eq!(report.sections.len(), 16);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 6);
+    assert_eq!(report.shadow_section_count(), 7);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -54,6 +54,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryProviderV2Boundary),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -92,6 +96,22 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(promotion_entry.canary_promotion_negative_rehearsal_check_pass);
     assert!(promotion_entry.canary_promotion_audit_digest_check_pass);
     assert!(promotion_entry.canary_promotion_audit_freshness_check_pass);
+    let provider_v2_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryProviderV2Boundary)
+        .expect("memory provider v2 boundary status row should exist");
+    assert_eq!(
+        provider_v2_entry.memory_provider_v2_lifecycle_required_count,
+        6
+    );
+    assert_eq!(provider_v2_entry.memory_provider_v2_lifecycle_pass_count, 6);
+    assert!(provider_v2_entry.memory_provider_v2_query_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_update_context_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_propose_write_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_add_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_clear_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_close_check_pass);
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -113,6 +133,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_provider_boundary"));
+    assert!(json.contains("memory_provider_v2_boundary"));
+    assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
+    assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
+    assert!(json.contains("memory_provider_v2_close_check_pass"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("canary_promotion_required_stable_window_count"));
@@ -197,7 +221,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 15);
+    assert_eq!(from_store.sections.len(), 16);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
@@ -205,6 +229,10 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
     );
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        from_store.section_status(ContextPlaneStatusSection::MemoryProviderV2Boundary),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(

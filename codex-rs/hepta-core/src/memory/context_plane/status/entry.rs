@@ -9,8 +9,10 @@ use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::MemoryProviderReport;
+use crate::memory::MemoryProviderV2AuditReport;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 
 /// One payload-light context-plane status row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +42,16 @@ pub struct ContextPlaneStatusEntry {
     pub canary_promotion_kill_switch_rehearsal_pass_count: usize,
     pub canary_promotion_soak_readback_window_count: usize,
     pub canary_promotion_soak_readback_pass_count: usize,
+    pub memory_provider_v2_lifecycle_required_count: usize,
+    pub memory_provider_v2_lifecycle_pass_count: usize,
+    pub memory_provider_v2_query_check_pass: bool,
+    pub memory_provider_v2_update_context_check_pass: bool,
+    pub memory_provider_v2_propose_write_check_pass: bool,
+    pub memory_provider_v2_add_check_pass: bool,
+    pub memory_provider_v2_clear_check_pass: bool,
+    pub memory_provider_v2_close_check_pass: bool,
+    pub memory_provider_v2_candidate_count: usize,
+    pub memory_provider_v2_operator_review_required_count: usize,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -204,6 +216,83 @@ impl ContextPlaneStatusEntry {
         }
     }
 
+    pub(in crate::memory::context_plane::status) fn from_memory_provider_v2_audit(
+        provider_v2_audit: &MemoryProviderV2AuditReport,
+    ) -> Self {
+        let query_check_pass = provider_v2_audit.descriptor.context_fencing_required
+            && provider_v2_audit.descriptor.provenance_required;
+        let update_context_check_pass = provider_v2_audit
+            .update_context
+            .has_payload_light_boundary();
+        let propose_write_check_pass = provider_v2_audit
+            .write_proposal
+            .has_shadow_boundary_integrity();
+        let add_check_pass = provider_v2_audit.add.has_no_side_effects();
+        let clear_check_pass = provider_v2_audit.clear.has_no_side_effects();
+        let close_check_pass = provider_v2_audit.close.has_no_side_effects();
+        let lifecycle_pass_count = [
+            query_check_pass,
+            update_context_check_pass,
+            propose_write_check_pass,
+            add_check_pass,
+            clear_check_pass,
+            close_check_pass,
+        ]
+        .iter()
+        .filter(|check| **check)
+        .count();
+        let has_integrity = provider_v2_audit.has_shadow_boundary_integrity()
+            && lifecycle_pass_count == MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT;
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryProviderV2Boundary,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT,
+            blocker_count: usize::from(!has_integrity),
+            memory_provider_v2_lifecycle_required_count:
+                MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT,
+            memory_provider_v2_lifecycle_pass_count: lifecycle_pass_count,
+            memory_provider_v2_query_check_pass: query_check_pass,
+            memory_provider_v2_update_context_check_pass: update_context_check_pass,
+            memory_provider_v2_propose_write_check_pass: propose_write_check_pass,
+            memory_provider_v2_add_check_pass: add_check_pass,
+            memory_provider_v2_clear_check_pass: clear_check_pass,
+            memory_provider_v2_close_check_pass: close_check_pass,
+            memory_provider_v2_candidate_count: provider_v2_audit.write_proposal.candidate_count,
+            memory_provider_v2_operator_review_required_count: provider_v2_audit
+                .write_proposal
+                .operator_review_required_count,
+            production_write: provider_v2_audit.update_context.write_performed
+                || provider_v2_audit.write_proposal.write_performed
+                || provider_v2_audit.add.write_performed
+                || provider_v2_audit.clear.write_performed
+                || provider_v2_audit.close.write_performed,
+            graph_write: provider_v2_audit.write_proposal.graph_write_performed
+                || provider_v2_audit.add.graph_write_performed,
+            runtime_activation: provider_v2_audit.update_context.runtime_activation
+                || provider_v2_audit.write_proposal.runtime_activation
+                || provider_v2_audit.add.runtime_activation
+                || provider_v2_audit.clear.runtime_activation
+                || provider_v2_audit.close.runtime_activation,
+            prompt_assembly_change: provider_v2_audit.update_context.prompt_payload_exported
+                || provider_v2_audit.update_context.query_payload_exported
+                || provider_v2_audit.update_context.ranked_payload_exported
+                || provider_v2_audit.write_proposal.prompt_payload_exported
+                || provider_v2_audit.write_proposal.query_payload_exported
+                || provider_v2_audit.write_proposal.candidate_payload_exported
+                || provider_v2_audit.write_proposal.source_payload_exported
+                || provider_v2_audit.add.prompt_payload_exported
+                || provider_v2_audit.add.candidate_payload_exported
+                || provider_v2_audit.clear.prompt_payload_exported
+                || provider_v2_audit.close.prompt_payload_exported,
+            ..Self::default()
+        }
+    }
+
     pub(in crate::memory::context_plane::status) fn from_memory_shadow_canary_readiness(
         trend_snapshot: &ContextMemoryShadowQualityTrendSnapshotReport,
     ) -> Self {
@@ -302,6 +391,7 @@ impl ContextPlaneStatusEntry {
             && (self.status == ContextPlaneStatusKind::Blocked) == (self.blocker_count > 0)
             && self.has_recall_quality_blocker_integrity()
             && self.has_canary_promotion_checklist_integrity()
+            && self.has_memory_provider_v2_lifecycle_integrity()
             && !self.production_write
             && !self.graph_write
             && !self.runtime_activation
@@ -399,6 +489,40 @@ impl ContextPlaneStatusEntry {
                     && soak_readback_complete))
             && (self.status == ContextPlaneStatusKind::Shadow)
                 == (no_promotion_blockers && checklist_complete)
+    }
+
+    fn has_memory_provider_v2_lifecycle_integrity(&self) -> bool {
+        let counts = [
+            self.memory_provider_v2_lifecycle_required_count,
+            self.memory_provider_v2_lifecycle_pass_count,
+            self.memory_provider_v2_candidate_count,
+            self.memory_provider_v2_operator_review_required_count,
+        ];
+        let checks = [
+            self.memory_provider_v2_query_check_pass,
+            self.memory_provider_v2_update_context_check_pass,
+            self.memory_provider_v2_propose_write_check_pass,
+            self.memory_provider_v2_add_check_pass,
+            self.memory_provider_v2_clear_check_pass,
+            self.memory_provider_v2_close_check_pass,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryProviderV2Boundary {
+            return counts.iter().all(|count| *count == 0) && checks.iter().all(|check| !check);
+        }
+
+        let lifecycle_pass_count = checks.iter().filter(|check| **check).count();
+        self.memory_provider_v2_lifecycle_required_count
+            == MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT
+            && self.memory_provider_v2_lifecycle_pass_count == lifecycle_pass_count
+            && self.memory_provider_v2_lifecycle_pass_count
+                <= self.memory_provider_v2_lifecycle_required_count
+            && self.memory_provider_v2_operator_review_required_count
+                <= self.memory_provider_v2_candidate_count
+            && (self.status == ContextPlaneStatusKind::Shadow)
+                == (self.memory_provider_v2_lifecycle_pass_count
+                    == self.memory_provider_v2_lifecycle_required_count
+                    && self.blocker_count == 0)
     }
 }
 

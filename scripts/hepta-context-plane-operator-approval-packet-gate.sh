@@ -83,6 +83,10 @@ for term in \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
   "recall_quality_gate" \
+  "memory_provider_v2_boundary" \
+  "memory_provider_v2_lifecycle_pass_count" \
+  "memory_provider_v2_propose_write_check_pass" \
+  "memory_provider_v2_close_check_pass" \
   "memory_shadow_canary_promotion_readiness" \
   "canary_promotion_checklist_pass_count" \
   "canary_promotion_negative_rehearsal_check_pass" \
@@ -101,6 +105,7 @@ for term in \
   "adaptive_budget_allocation_shadow_only" \
   "temporal_graph_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
+  "memory_provider_v2_boundary_shadow_only" \
   "memory_shadow_canary_readiness_shadow_only" \
   "memory_shadow_canary_promotion_readiness_shadow_only" \
   "source_aware_front_door_disabled" \
@@ -203,18 +208,19 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=5
+context-plane-operator-approval-packet.schema=6
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=16
+context-plane-operator-approval-packet.rows=17
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=7
-context-plane-operator-approval-packet.threshold.required-ready=15
+context-plane-operator-approval-packet.blockers=8
+context-plane-operator-approval-packet.threshold.required-ready=16
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
+context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1
 context-plane-operator-approval-packet.blocker.source-aware-front-door-disabled=1
@@ -235,6 +241,16 @@ context-plane-operator-approval-packet.canary-promotion.audit-freshness-check=pa
 context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3
 context-plane-operator-approval-packet.canary-promotion.kill-switch-rehearsal-pass-count=3
 context-plane-operator-approval-packet.canary-promotion.soak-readback-pass-count=3
+context-plane-operator-approval-packet.memory-provider-v2.lifecycle-required-count=6
+context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6
+context-plane-operator-approval-packet.memory-provider-v2.query-check=pass
+context-plane-operator-approval-packet.memory-provider-v2.update-context-check=pass
+context-plane-operator-approval-packet.memory-provider-v2.propose-write-check=pass
+context-plane-operator-approval-packet.memory-provider-v2.add-check=pass
+context-plane-operator-approval-packet.memory-provider-v2.clear-check=pass
+context-plane-operator-approval-packet.memory-provider-v2.close-check=pass
+context-plane-operator-approval-packet.memory-provider-v2.candidate-count=1
+context-plane-operator-approval-packet.memory-provider-v2.operator-review-required-count=1
 context-plane-operator-approval-packet.required-scopes=6
 context-plane-operator-approval-packet.scope.adaptive-budget-allocation-runtime=required
 context-plane-operator-approval-packet.scope.source-aware-runtime-activation=required

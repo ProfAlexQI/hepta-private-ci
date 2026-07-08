@@ -1526,17 +1526,30 @@ recall-quality blocker enums only:
 `side_effect_flag_enabled`. Gate-pass status must export
 `context-plane-status.memory-temporal-graph-shadow-eval=shadow`,
 `context-plane-status.memory-provider-boundary=shadow`,
+`context-plane-status.memory-provider-v2-boundary=shadow`,
+`context-plane-status.memory-provider-v2.lifecycle-pass-count=6`,
+`context-plane-status.memory-provider-v2.propose-write-check=pass`,
+`context-plane-status.memory-provider-v2.close-check=pass`,
 `context-plane-status.memory-shadow-canary-readiness=shadow`,
 `context-plane-status.memory-shadow-canary-promotion-readiness=shadow`,
 `context-plane-status.recall-quality-blocking-reason-count=0` and
-`context-plane-status.recall-quality-blocking-reasons=none`. The report
-must not
+`context-plane-status.recall-quality-blocking-reasons=none`. The typed V2
+status row fields are `memory_provider_v2_lifecycle_required_count`,
+`memory_provider_v2_lifecycle_pass_count`,
+`memory_provider_v2_query_check_pass`,
+`memory_provider_v2_update_context_check_pass`,
+`memory_provider_v2_propose_write_check_pass`,
+`memory_provider_v2_add_check_pass`,
+`memory_provider_v2_clear_check_pass`,
+`memory_provider_v2_close_check_pass`,
+`memory_provider_v2_candidate_count`, and
+`memory_provider_v2_operator_review_required_count`. The report must not
 contain transcript text, must not contain memory text, and must not contain
 answer text. It must not expose source ids, session ids, memory ids, trace ids,
 query payloads, ranked payloads, tool arguments, raw fact/entity values,
 email-shaped strings, phone-shaped strings, user identifiers, transcript spans,
 candidate text, entity hashes, fact hashes, edge hashes, supersedes hashes,
-fixture hashes, or idempotency hashes. Status integrity requires all fifteen
+fixture hashes, or idempotency hashes. Status integrity requires all sixteen
 sections, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
@@ -1562,13 +1575,15 @@ Plane status report. The machine-readable report is
 `memory_temporal_facts`, `memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
-`memory_provider_boundary`, `memory_shadow_canary_readiness`,
+`memory_provider_boundary`, `memory_provider_v2_boundary`,
+`memory_shadow_canary_readiness`,
 `memory_shadow_canary_promotion_readiness`, `source_aware_front_door`, and
 `operator_approval`. The current blocker reasons
 are controlled enum values:
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
+`memory_provider_v2_boundary_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
 `memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
@@ -1592,18 +1607,32 @@ controlled recall-quality blocker enums `missing_critical_fact_regression`,
 activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
+`context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only`,
+`context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6`,
+`context-plane-activation-blockers.memory-provider-v2.propose-write-check=pass`,
+`context-plane-activation-blockers.memory-provider-v2.close-check=pass`,
 `context-plane-activation-blockers.memory-shadow-canary-readiness=blocked:memory_shadow_canary_readiness_shadow_only`,
 `context-plane-activation-blockers.memory-shadow-canary-promotion-readiness=blocked:memory_shadow_canary_promotion_readiness_shadow_only`,
 `context-plane-activation-blockers.recall-quality-blocking-reason-count=0` and
 `context-plane-activation-blockers.recall-quality-blocking-reasons=none`. The
-matrix must not contain
+typed V2 activation row fields are
+`memory_provider_v2_lifecycle_required_count`,
+`memory_provider_v2_lifecycle_pass_count`,
+`memory_provider_v2_query_check_pass`,
+`memory_provider_v2_update_context_check_pass`,
+`memory_provider_v2_propose_write_check_pass`,
+`memory_provider_v2_add_check_pass`,
+`memory_provider_v2_clear_check_pass`,
+`memory_provider_v2_close_check_pass`,
+`memory_provider_v2_candidate_count`, and
+`memory_provider_v2_operator_review_required_count`. The matrix must not contain
 prompt text, must not contain transcript text, must not contain memory text, and
 must not contain answer text.
 It must not expose source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw fact/entity values, email-shaped
 strings, phone-shaped strings, user identifiers, transcript spans, candidate
 text, entity hashes, fact hashes, edge hashes, supersedes hashes, fixture hashes,
-or idempotency hashes. Matrix integrity requires all sixteen targets, exact blocker counts, no production
+or idempotency hashes. Matrix integrity requires all seventeen targets, exact blocker counts, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
 changes, no operator activation allowance, and `activation_allowed=false`. This
@@ -1632,6 +1661,7 @@ counts may include only the controlled activation blocker enum values
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
+`memory_provider_v2_boundary_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
 `memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
@@ -1655,6 +1685,10 @@ paired with a full checklist.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1`,
+`context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6`,
+`context-plane-operator-approval-packet.memory-provider-v2.propose-write-check=pass`,
+`context-plane-operator-approval-packet.memory-provider-v2.close-check=pass`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4`,
@@ -1667,6 +1701,17 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.recall-quality-blocking-reason-count=0`
 and
 `context-plane-operator-approval-packet.recall-quality-blocking-reasons=none`.
+The typed V2 operator packet fields are
+`memory_provider_v2_lifecycle_required_count`,
+`memory_provider_v2_lifecycle_pass_count`,
+`memory_provider_v2_query_check_pass`,
+`memory_provider_v2_update_context_check_pass`,
+`memory_provider_v2_propose_write_check_pass`,
+`memory_provider_v2_add_check_pass`,
+`memory_provider_v2_clear_check_pass`,
+`memory_provider_v2_close_check_pass`,
+`memory_provider_v2_candidate_count`, and
+`memory_provider_v2_operator_review_required_count`.
 The packet must not contain prompt text, must not contain transcript text,
 must not contain memory text, and must not contain answer text. It must not
 expose source ids, session ids, memory ids, trace ids, query payloads, ranked
@@ -1674,7 +1719,7 @@ payloads, tool arguments, raw fact/entity values, email-shaped strings,
 phone-shaped strings, user identifiers, transcript spans, candidate text, entity
 hashes, supersedes hashes, fixture hashes, or idempotency hashes. The packet
 must not include activation commands or any command-shaped field that could be
-executed by an operator path. Packet integrity requires all sixteen matrix rows,
+executed by an operator path. Packet integrity requires all seventeen matrix rows,
 exact threshold counts, exact blocker reason counts, all required approval
 scopes, no production memory writes, no graph writes, no runtime activation, no
 adaptive allocator runtime activation, no source-aware runtime activation, no
@@ -1728,8 +1773,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 47 lines, negative export report 4 lines, and
-combined report 51 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 58 lines, negative export report 4 lines, and
+combined report 62 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

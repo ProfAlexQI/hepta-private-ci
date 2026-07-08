@@ -12,6 +12,7 @@ use super::activation::activation_blocker_reason_order;
 use super::status::ContextPlaneStatusKind;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 
 /// Approval scope that must be covered before any context-plane promotion.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,7 +93,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 16
+        self.total_row_count == 17
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -131,6 +132,16 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub canary_promotion_kill_switch_rehearsal_pass_count: usize,
     pub canary_promotion_soak_readback_window_count: usize,
     pub canary_promotion_soak_readback_pass_count: usize,
+    pub memory_provider_v2_lifecycle_required_count: usize,
+    pub memory_provider_v2_lifecycle_pass_count: usize,
+    pub memory_provider_v2_query_check_pass: bool,
+    pub memory_provider_v2_update_context_check_pass: bool,
+    pub memory_provider_v2_propose_write_check_pass: bool,
+    pub memory_provider_v2_add_check_pass: bool,
+    pub memory_provider_v2_clear_check_pass: bool,
+    pub memory_provider_v2_close_check_pass: bool,
+    pub memory_provider_v2_candidate_count: usize,
+    pub memory_provider_v2_operator_review_required_count: usize,
     pub required_approval_scopes: Vec<ContextPlaneOperatorApprovalScope>,
     pub production_write: bool,
     pub graph_write: bool,
@@ -172,6 +183,16 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             canary_promotion_kill_switch_rehearsal_pass_count: 0,
             canary_promotion_soak_readback_window_count: 0,
             canary_promotion_soak_readback_pass_count: 0,
+            memory_provider_v2_lifecycle_required_count: 0,
+            memory_provider_v2_lifecycle_pass_count: 0,
+            memory_provider_v2_query_check_pass: false,
+            memory_provider_v2_update_context_check_pass: false,
+            memory_provider_v2_propose_write_check_pass: false,
+            memory_provider_v2_add_check_pass: false,
+            memory_provider_v2_clear_check_pass: false,
+            memory_provider_v2_close_check_pass: false,
+            memory_provider_v2_candidate_count: 0,
+            memory_provider_v2_operator_review_required_count: 0,
             required_approval_scopes: Vec::new(),
             production_write: false,
             graph_write: false,
@@ -221,6 +242,8 @@ impl ContextPlaneOperatorApprovalPacket {
         let recall_quality_blocking_reason_count = recall_quality_blocking_reason_counts.len();
         let canary_promotion_row = matrix
             .row_for_target(ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness);
+        let provider_v2_row =
+            matrix.row_for_target(ContextPlaneActivationTarget::MemoryProviderV2Boundary);
 
         let required_approval_scopes = required_operator_approval_scopes();
 
@@ -286,6 +309,36 @@ impl ContextPlaneOperatorApprovalPacket {
             canary_promotion_soak_readback_pass_count: canary_promotion_row
                 .map(|row| row.canary_promotion_soak_readback_pass_count)
                 .unwrap_or_default(),
+            memory_provider_v2_lifecycle_required_count: provider_v2_row
+                .map(|row| row.memory_provider_v2_lifecycle_required_count)
+                .unwrap_or_default(),
+            memory_provider_v2_lifecycle_pass_count: provider_v2_row
+                .map(|row| row.memory_provider_v2_lifecycle_pass_count)
+                .unwrap_or_default(),
+            memory_provider_v2_query_check_pass: provider_v2_row
+                .map(|row| row.memory_provider_v2_query_check_pass)
+                .unwrap_or_default(),
+            memory_provider_v2_update_context_check_pass: provider_v2_row
+                .map(|row| row.memory_provider_v2_update_context_check_pass)
+                .unwrap_or_default(),
+            memory_provider_v2_propose_write_check_pass: provider_v2_row
+                .map(|row| row.memory_provider_v2_propose_write_check_pass)
+                .unwrap_or_default(),
+            memory_provider_v2_add_check_pass: provider_v2_row
+                .map(|row| row.memory_provider_v2_add_check_pass)
+                .unwrap_or_default(),
+            memory_provider_v2_clear_check_pass: provider_v2_row
+                .map(|row| row.memory_provider_v2_clear_check_pass)
+                .unwrap_or_default(),
+            memory_provider_v2_close_check_pass: provider_v2_row
+                .map(|row| row.memory_provider_v2_close_check_pass)
+                .unwrap_or_default(),
+            memory_provider_v2_candidate_count: provider_v2_row
+                .map(|row| row.memory_provider_v2_candidate_count)
+                .unwrap_or_default(),
+            memory_provider_v2_operator_review_required_count: provider_v2_row
+                .map(|row| row.memory_provider_v2_operator_review_required_count)
+                .unwrap_or_default(),
             required_approval_scopes,
             production_write: matrix.production_write,
             graph_write: matrix.graph_write,
@@ -303,7 +356,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 16
+            && self.matrix_row_count == 17
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count
@@ -316,6 +369,7 @@ impl ContextPlaneOperatorApprovalPacket {
                 .all(ContextPlaneOperatorApprovalBlockerReasonCount::has_count_integrity)
             && self.has_recall_quality_blocking_reason_count_integrity()
             && self.has_canary_promotion_checklist_integrity()
+            && self.has_memory_provider_v2_lifecycle_integrity()
             && self.has_required_approval_scopes()
             && !self.production_write
             && !self.graph_write
@@ -443,6 +497,28 @@ impl ContextPlaneOperatorApprovalPacket {
                     && rollback_rehearsal_complete
                     && kill_switch_rehearsal_complete
                     && soak_readback_complete))
+    }
+
+    fn has_memory_provider_v2_lifecycle_integrity(&self) -> bool {
+        let lifecycle_pass_count = [
+            self.memory_provider_v2_query_check_pass,
+            self.memory_provider_v2_update_context_check_pass,
+            self.memory_provider_v2_propose_write_check_pass,
+            self.memory_provider_v2_add_check_pass,
+            self.memory_provider_v2_clear_check_pass,
+            self.memory_provider_v2_close_check_pass,
+        ]
+        .iter()
+        .filter(|check| **check)
+        .count();
+
+        self.memory_provider_v2_lifecycle_required_count
+            == MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT
+            && self.memory_provider_v2_lifecycle_pass_count == lifecycle_pass_count
+            && self.memory_provider_v2_lifecycle_pass_count
+                <= self.memory_provider_v2_lifecycle_required_count
+            && self.memory_provider_v2_operator_review_required_count
+                <= self.memory_provider_v2_candidate_count
     }
 }
 

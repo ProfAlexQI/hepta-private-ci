@@ -86,6 +86,16 @@ fn context_plane_status_report_fixture(
             runtime_activation: false,
         },
     );
+    let provider_v2_write_proposal =
+        MemoryProviderWriteProposalReport::from_formation_queue("builtin", &formation_queue);
+    let provider_v2_audit = MemoryProviderV2AuditReport::from_parts(
+        provider_report.descriptor.clone(),
+        provider_report.update_context.clone(),
+        provider_v2_write_proposal.clone(),
+        MemoryProviderAddReport::blocked(&provider_v2_write_proposal),
+        MemoryProviderClearReport::blocked("builtin", MemoryProviderClearScope::All),
+        MemoryProviderCloseReport::shadow_noop("builtin"),
+    );
     let ranked_recall = ContextMemoryRankedRecallShadowEvalReport::seeded();
     let dashboard = ContextMemoryShadowRegressionDashboardReport::from_reports(
         &ranked_recall,
@@ -113,6 +123,7 @@ fn context_plane_status_report_fixture(
         allocator_shadow,
         recall_quality_gate,
         provider_report: &provider_report,
+        provider_v2_audit: &provider_v2_audit,
         shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
         shadow_canary_promotion_readiness: &shadow_canary_promotion_readiness,
     })
@@ -125,9 +136,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 15);
+    assert_eq!(report.sections.len(), 16);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 6);
+    assert_eq!(report.shadow_section_count(), 7);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -144,6 +155,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryProviderBoundary),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryProviderV2Boundary),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -182,6 +197,22 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(promotion_entry.canary_promotion_negative_rehearsal_check_pass);
     assert!(promotion_entry.canary_promotion_audit_digest_check_pass);
     assert!(promotion_entry.canary_promotion_audit_freshness_check_pass);
+    let provider_v2_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryProviderV2Boundary)
+        .expect("memory provider v2 boundary status row should exist");
+    assert_eq!(
+        provider_v2_entry.memory_provider_v2_lifecycle_required_count,
+        6
+    );
+    assert_eq!(provider_v2_entry.memory_provider_v2_lifecycle_pass_count, 6);
+    assert!(provider_v2_entry.memory_provider_v2_query_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_update_context_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_propose_write_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_add_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_clear_check_pass);
+    assert!(provider_v2_entry.memory_provider_v2_close_check_pass);
     assert!(!report.production_write);
     assert!(!report.graph_write);
     assert!(!report.runtime_activation);
@@ -203,6 +234,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_provider_boundary"));
+    assert!(json.contains("memory_provider_v2_boundary"));
+    assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
+    assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
+    assert!(json.contains("memory_provider_v2_close_check_pass"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("canary_promotion_required_stable_window_count"));
@@ -272,6 +307,41 @@ fn context_plane_status_report_rejects_canary_promotion_checklist_false_green() 
         .expect("source registry status row should exist")
         .canary_promotion_checklist_pass_count = 1;
     assert!(!non_promotion_leak.has_status_integrity());
+}
+
+#[test]
+fn context_plane_status_report_rejects_memory_provider_v2_lifecycle_false_green() {
+    let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
+    let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+    let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
+    assert!(report.has_status_integrity());
+
+    let mut partial_lifecycle = report.clone();
+    partial_lifecycle
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryProviderV2Boundary)
+        .expect("memory provider v2 boundary status row should exist")
+        .memory_provider_v2_close_check_pass = false;
+    assert!(!partial_lifecycle.has_status_integrity());
+
+    let mut inflated_pass_count = report.clone();
+    inflated_pass_count
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryProviderV2Boundary)
+        .expect("memory provider v2 boundary status row should exist")
+        .memory_provider_v2_lifecycle_pass_count = 7;
+    assert!(!inflated_pass_count.has_status_integrity());
+
+    let mut non_provider_v2_leak = report.clone();
+    non_provider_v2_leak
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryProviderBoundary)
+        .expect("memory provider boundary status row should exist")
+        .memory_provider_v2_lifecycle_pass_count = 1;
+    assert!(!non_provider_v2_leak.has_status_integrity());
 }
 
 #[test]

@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 16);
+    assert_eq!(matrix.rows.len(), 17);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 7);
+    assert_eq!(matrix.blocker_count, 8);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -50,6 +50,10 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
+        Some(ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryShadowCanaryReadiness),
@@ -97,11 +101,29 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(promotion_row.canary_promotion_negative_rehearsal_check_pass);
     assert!(promotion_row.canary_promotion_audit_digest_check_pass);
     assert!(promotion_row.canary_promotion_audit_freshness_check_pass);
+    let provider_v2_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryProviderV2Boundary)
+        .expect("memory provider v2 activation row should exist");
+    assert_eq!(
+        provider_v2_row.memory_provider_v2_lifecycle_required_count,
+        6
+    );
+    assert_eq!(provider_v2_row.memory_provider_v2_lifecycle_pass_count, 6);
+    assert!(provider_v2_row.memory_provider_v2_query_check_pass);
+    assert!(provider_v2_row.memory_provider_v2_update_context_check_pass);
+    assert!(provider_v2_row.memory_provider_v2_propose_write_check_pass);
+    assert!(provider_v2_row.memory_provider_v2_add_check_pass);
+    assert!(provider_v2_row.memory_provider_v2_clear_check_pass);
+    assert!(provider_v2_row.memory_provider_v2_close_check_pass);
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
     assert!(json.contains("memory_provider_boundary"));
+    assert!(json.contains("memory_provider_v2_boundary"));
+    assert!(json.contains("memory_provider_v2_lifecycle_pass_count"));
+    assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
+    assert!(json.contains("memory_provider_v2_close_check_pass"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
@@ -109,6 +131,7 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
+    assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
     assert!(json.contains("canary_promotion_checklist_pass_count"));
@@ -195,9 +218,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 16);
+    assert_eq!(from_store.rows.len(), 17);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 7);
+    assert_eq!(from_store.blocker_count, 8);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -222,6 +245,10 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderBoundary),
         Some(ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly)
+    );
+    assert_eq!(
+        from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
+        Some(ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly)
     );
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryShadowCanaryReadiness),

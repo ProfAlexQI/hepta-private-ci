@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=6
-context-plane-activation-blockers.rows=16
+context-plane-activation-blockers.schema=7
+context-plane-activation-blockers.rows=17
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=7
+context-plane-activation-blockers.blockers=8
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -21,6 +21,17 @@ context-plane-activation-blockers.recall-quality-gate=ready
 context-plane-activation-blockers.recall-quality-blocking-reason-count=0
 context-plane-activation-blockers.recall-quality-blocking-reasons=none
 context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
+context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
+context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6
+context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6
+context-plane-activation-blockers.memory-provider-v2.query-check=pass
+context-plane-activation-blockers.memory-provider-v2.update-context-check=pass
+context-plane-activation-blockers.memory-provider-v2.propose-write-check=pass
+context-plane-activation-blockers.memory-provider-v2.add-check=pass
+context-plane-activation-blockers.memory-provider-v2.clear-check=pass
+context-plane-activation-blockers.memory-provider-v2.close-check=pass
+context-plane-activation-blockers.memory-provider-v2.candidate-count=1
+context-plane-activation-blockers.memory-provider-v2.operator-review-required-count=1
 context-plane-activation-blockers.memory-shadow-canary-readiness=blocked:memory_shadow_canary_readiness_shadow_only
 context-plane-activation-blockers.memory-shadow-canary-promotion-readiness=blocked:memory_shadow_canary_promotion_readiness_shadow_only
 context-plane-activation-blockers.canary-promotion.required-stable-window-count=1

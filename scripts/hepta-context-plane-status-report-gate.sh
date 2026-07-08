@@ -84,6 +84,10 @@ for term in \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
   "memory_provider_boundary" \
+  "memory_provider_v2_boundary" \
+  "memory_provider_v2_lifecycle_pass_count" \
+  "memory_provider_v2_propose_write_check_pass" \
+  "memory_provider_v2_close_check_pass" \
   "memory_shadow_canary_readiness" \
   "memory_shadow_canary_promotion_readiness" \
   "canary_promotion_checklist_pass_count" \
@@ -218,6 +222,17 @@ context-plane-status.recall-quality-gate=ready
 context-plane-status.recall-quality-blocking-reason-count=0
 context-plane-status.recall-quality-blocking-reasons=none
 context-plane-status.memory-provider-boundary=shadow
+context-plane-status.memory-provider-v2-boundary=shadow
+context-plane-status.memory-provider-v2.lifecycle-required-count=6
+context-plane-status.memory-provider-v2.lifecycle-pass-count=6
+context-plane-status.memory-provider-v2.query-check=pass
+context-plane-status.memory-provider-v2.update-context-check=pass
+context-plane-status.memory-provider-v2.propose-write-check=pass
+context-plane-status.memory-provider-v2.add-check=pass
+context-plane-status.memory-provider-v2.clear-check=pass
+context-plane-status.memory-provider-v2.close-check=pass
+context-plane-status.memory-provider-v2.candidate-count=1
+context-plane-status.memory-provider-v2.operator-review-required-count=1
 context-plane-status.memory-shadow-canary-readiness=shadow
 context-plane-status.memory-shadow-canary-promotion-readiness=shadow
 context-plane-status.canary-promotion.required-stable-window-count=1

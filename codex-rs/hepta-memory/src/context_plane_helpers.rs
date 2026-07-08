@@ -17,9 +17,15 @@ use hepta_core::ContextPlaneOperatorApprovalPacket;
 use hepta_core::ContextPlaneStatusReport;
 use hepta_core::ContextPlaneStatusReportInput;
 use hepta_core::ContextRecallRequest;
+use hepta_core::MemoryProviderAddReport;
+use hepta_core::MemoryProviderClearReport;
+use hepta_core::MemoryProviderClearScope;
+use hepta_core::MemoryProviderCloseReport;
 use hepta_core::MemoryProviderContextUpdateEnvelope;
 use hepta_core::MemoryProviderDescriptor;
 use hepta_core::MemoryProviderReport;
+use hepta_core::MemoryProviderV2AuditReport;
+use hepta_core::MemoryProviderWriteProposalReport;
 
 impl StoreSnapshot {
     /// Builds the offline, payload-light eval harness seed report without
@@ -157,6 +163,16 @@ impl StoreSnapshot {
         let recall_quality_gate =
             ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
         let provider_report = self.context_memory_provider_report(request);
+        let provider_v2_write_proposal =
+            MemoryProviderWriteProposalReport::from_formation_queue("builtin", &formation_queue);
+        let provider_v2_audit = MemoryProviderV2AuditReport::from_parts(
+            provider_report.descriptor.clone(),
+            provider_report.update_context.clone(),
+            provider_v2_write_proposal.clone(),
+            MemoryProviderAddReport::blocked(&provider_v2_write_proposal),
+            MemoryProviderClearReport::blocked("builtin", MemoryProviderClearScope::All),
+            MemoryProviderCloseReport::shadow_noop("builtin"),
+        );
         let shadow_quality_trend_snapshot =
             self.context_memory_shadow_quality_trend_snapshot_report(request);
         let shadow_canary_promotion_readiness =
@@ -173,6 +189,7 @@ impl StoreSnapshot {
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
             provider_report: &provider_report,
+            provider_v2_audit: &provider_v2_audit,
             shadow_quality_trend_snapshot: &shadow_quality_trend_snapshot,
             shadow_canary_promotion_readiness: &shadow_canary_promotion_readiness,
         })

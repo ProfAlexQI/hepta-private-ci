@@ -9,6 +9,7 @@ use super::target::ContextPlaneActivationBlockerReason;
 use super::target::ContextPlaneActivationTarget;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
+const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 
 /// One activation-readiness threshold row.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +39,16 @@ pub struct ContextPlaneActivationBlockerRow {
     pub canary_promotion_kill_switch_rehearsal_pass_count: usize,
     pub canary_promotion_soak_readback_window_count: usize,
     pub canary_promotion_soak_readback_pass_count: usize,
+    pub memory_provider_v2_lifecycle_required_count: usize,
+    pub memory_provider_v2_lifecycle_pass_count: usize,
+    pub memory_provider_v2_query_check_pass: bool,
+    pub memory_provider_v2_update_context_check_pass: bool,
+    pub memory_provider_v2_propose_write_check_pass: bool,
+    pub memory_provider_v2_add_check_pass: bool,
+    pub memory_provider_v2_clear_check_pass: bool,
+    pub memory_provider_v2_close_check_pass: bool,
+    pub memory_provider_v2_candidate_count: usize,
+    pub memory_provider_v2_operator_review_required_count: usize,
     pub production_write: bool,
     pub graph_write: bool,
     pub runtime_activation: bool,
@@ -106,6 +117,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryProviderV2Boundary,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryShadowCanaryReadiness,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly,
@@ -151,12 +166,14 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneActivationBlockerReason::SideEffectFlagEnabled,
             )
             .with_recall_quality_rollup(target, entry)
-            .with_canary_promotion_rollup(target, entry);
+            .with_canary_promotion_rollup(target, entry)
+            .with_memory_provider_v2_rollup(target, entry);
         }
 
         Self::from_required_status(target, observed_status, required_status)
             .with_recall_quality_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
+            .with_memory_provider_v2_rollup(target, entry)
     }
 
     fn with_recall_quality_rollup(
@@ -218,6 +235,33 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_provider_v2_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryProviderV2Boundary
+            && let Some(entry) = entry
+        {
+            self.memory_provider_v2_lifecycle_required_count =
+                entry.memory_provider_v2_lifecycle_required_count;
+            self.memory_provider_v2_lifecycle_pass_count =
+                entry.memory_provider_v2_lifecycle_pass_count;
+            self.memory_provider_v2_query_check_pass = entry.memory_provider_v2_query_check_pass;
+            self.memory_provider_v2_update_context_check_pass =
+                entry.memory_provider_v2_update_context_check_pass;
+            self.memory_provider_v2_propose_write_check_pass =
+                entry.memory_provider_v2_propose_write_check_pass;
+            self.memory_provider_v2_add_check_pass = entry.memory_provider_v2_add_check_pass;
+            self.memory_provider_v2_clear_check_pass = entry.memory_provider_v2_clear_check_pass;
+            self.memory_provider_v2_close_check_pass = entry.memory_provider_v2_close_check_pass;
+            self.memory_provider_v2_candidate_count = entry.memory_provider_v2_candidate_count;
+            self.memory_provider_v2_operator_review_required_count =
+                entry.memory_provider_v2_operator_review_required_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -226,6 +270,7 @@ impl ContextPlaneActivationBlockerRow {
             && self.threshold_satisfied != self.blocker_reason.is_blocking()
             && self.has_recall_quality_rollup_integrity()
             && self.has_canary_promotion_rollup_integrity()
+            && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
             && !self.runtime_activation
@@ -322,5 +367,38 @@ impl ContextPlaneActivationBlockerRow {
                     && kill_switch_rehearsal_complete
                     && soak_readback_complete))
             && (self.canary_promotion_blocker_count == 0 || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_provider_v2_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.memory_provider_v2_lifecycle_required_count,
+            self.memory_provider_v2_lifecycle_pass_count,
+            self.memory_provider_v2_candidate_count,
+            self.memory_provider_v2_operator_review_required_count,
+        ];
+        let checks = [
+            self.memory_provider_v2_query_check_pass,
+            self.memory_provider_v2_update_context_check_pass,
+            self.memory_provider_v2_propose_write_check_pass,
+            self.memory_provider_v2_add_check_pass,
+            self.memory_provider_v2_clear_check_pass,
+            self.memory_provider_v2_close_check_pass,
+        ];
+
+        if self.target != ContextPlaneActivationTarget::MemoryProviderV2Boundary {
+            return counts.iter().all(|count| *count == 0) && checks.iter().all(|check| !check);
+        }
+
+        let lifecycle_pass_count = checks.iter().filter(|check| **check).count();
+        self.memory_provider_v2_lifecycle_required_count
+            == MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT
+            && self.memory_provider_v2_lifecycle_pass_count == lifecycle_pass_count
+            && self.memory_provider_v2_lifecycle_pass_count
+                <= self.memory_provider_v2_lifecycle_required_count
+            && self.memory_provider_v2_operator_review_required_count
+                <= self.memory_provider_v2_candidate_count
+            && (self.memory_provider_v2_lifecycle_pass_count
+                == self.memory_provider_v2_lifecycle_required_count
+                || self.blocker_reason.is_blocking())
     }
 }
