@@ -219,6 +219,27 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
 }
 
 #[test]
+fn context_plane_operator_approval_packet_rejects_canary_promotion_checklist_false_green() {
+    let status = super::context_plane_activation::context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    let packet = ContextPlaneOperatorApprovalPacket::from_matrix(&matrix);
+    assert!(packet.has_packet_integrity());
+
+    let mut partial_checklist = packet.clone();
+    partial_checklist.canary_promotion_audit_freshness_check_pass = false;
+    partial_checklist.canary_promotion_checklist_pass_count = 3;
+    assert!(!partial_checklist.has_packet_integrity());
+
+    let mut partial_rehearsal = packet.clone();
+    partial_rehearsal.canary_promotion_rollback_rehearsal_pass_count = 2;
+    assert!(!partial_rehearsal.has_packet_integrity());
+
+    let mut blocker_false_green = packet.clone();
+    blocker_false_green.canary_promotion_blocker_count = 1;
+    assert!(!blocker_false_green.has_packet_integrity());
+}
+
+#[test]
 fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_without_payloads() {
     let mut status = super::context_plane_activation::context_plane_activation_status_fixture();
     let recall_quality_entry = status

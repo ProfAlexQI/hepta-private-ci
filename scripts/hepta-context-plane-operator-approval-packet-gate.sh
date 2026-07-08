@@ -153,6 +153,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_without_payloads" \
   "context plane operator approval recall-quality no-payload rollup hepta-core test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_operator_approval_packet_rejects_canary_promotion_checklist_false_green" \
+  "context plane operator approval canary promotion checklist false-green test"
 
 assert_file_contains "$hepta_memory" \
   "mod context_plane_helpers" \

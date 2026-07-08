@@ -234,6 +234,47 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
 }
 
 #[test]
+fn context_plane_status_report_rejects_canary_promotion_checklist_false_green() {
+    let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
+    let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+    let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
+    assert!(report.has_status_integrity());
+
+    let mut partial_rehearsal = report.clone();
+    partial_rehearsal
+        .sections
+        .iter_mut()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness
+        })
+        .expect("memory shadow canary promotion readiness status row should exist")
+        .canary_promotion_rollback_rehearsal_pass_count = 2;
+    assert!(!partial_rehearsal.has_status_integrity());
+
+    let mut blocker_false_green = report.clone();
+    let promotion_entry = blocker_false_green
+        .sections
+        .iter_mut()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness
+        })
+        .expect("memory shadow canary promotion readiness status row should exist");
+    promotion_entry.status = ContextPlaneStatusKind::Blocked;
+    promotion_entry.blocker_count = 1;
+    promotion_entry.canary_promotion_blocker_count = 1;
+    assert!(!blocker_false_green.has_status_integrity());
+
+    let mut non_promotion_leak = report.clone();
+    non_promotion_leak
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::SourceRegistry)
+        .expect("source registry status row should exist")
+        .canary_promotion_checklist_pass_count = 1;
+    assert!(!non_promotion_leak.has_status_integrity());
+}
+
+#[test]
 fn context_plane_status_report_rolls_up_recall_quality_blockers_without_payloads() {
     let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
     let mut recall_quality_shadow = allocator_shadow.clone();

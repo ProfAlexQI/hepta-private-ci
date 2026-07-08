@@ -148,6 +148,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_plane_status_report_rolls_up_recall_quality_blockers_without_payloads" \
   "context plane status recall-quality blocker rollup test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_status_report_rejects_canary_promotion_checklist_false_green" \
+  "context plane status canary promotion checklist false-green test"
 assert_file_contains "$hepta_core_memory_context_plane_status_entry" \
   "recall_quality_blocking_reason_count" \
   "context plane status recall-quality blocker count"

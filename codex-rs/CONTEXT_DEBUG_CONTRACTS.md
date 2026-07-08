@@ -1451,7 +1451,11 @@ booleans plus required/pass counts. The exported field names include
 `canary_promotion_audit_freshness_check_pass`,
 `canary_promotion_rollback_rehearsal_pass_count`,
 `canary_promotion_kill_switch_rehearsal_pass_count`, and
-`canary_promotion_soak_readback_pass_count`. The
+`canary_promotion_soak_readback_pass_count`. Status integrity must reject
+canary-promotion false-green rows: `promotion_blocker_count=0` requires a full
+four-link checklist and complete stable-window/pass-streak/rollback/kill-switch/soak
+readback counts, while any promotion blocker must not be paired with a full
+checklist. The
 `recall_quality_gate` status row may additionally carry
 `recall_quality_blocking_reason_count` and
 `recall_quality_blocking_reasons`, but those reasons must be controlled
@@ -1511,7 +1515,10 @@ are controlled enum values:
 be added to the enum and gate before export. Matrix rows may carry only
 target/status/required-status taxonomy, threshold booleans, blocker reason
 enums, counts, canary promotion audit checklist pass booleans, and explicit
-side-effect booleans. A status input carrying any
+side-effect booleans. Canary-promotion matrix row integrity must reject
+false-green checklist drift: no promotion blockers requires a full four-link
+checklist and complete stable-window/pass-streak/rehearsal counts, and a
+promotion blocker may not appear with a full checklist. A status input carrying any
 production-write, graph-write, runtime-activation, adaptive-allocator runtime,
 source-aware runtime, prompt-assembly, or operator-activation side-effect flag
 must produce a `side_effect_flag_enabled` blocker without propagating enabled
@@ -1580,7 +1587,10 @@ from the `memory_shadow_canary_promotion_readiness` matrix row: stable-window
 counts, pass streak counts, promotion blocker count, rollback rehearsal pass
 count, kill-switch rehearsal pass count, soak readback pass count, and the
 readiness/negative-rehearsal/audit-digest/audit-freshness checklist pass state
-only.
+only. Packet integrity must reject false-green canary-promotion receipts:
+`promotion_blocker_count=0` requires a full four-link checklist and complete
+stable-window/pass-streak/rehearsal counts, and any promotion blocker must not be
+paired with a full checklist.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,

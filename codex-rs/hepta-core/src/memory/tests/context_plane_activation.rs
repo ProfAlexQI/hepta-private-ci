@@ -156,6 +156,44 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
 }
 
 #[test]
+fn context_plane_activation_blocker_matrix_rejects_canary_promotion_checklist_false_green() {
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    assert!(matrix.has_matrix_integrity());
+
+    let mut partial_rehearsal = matrix.clone();
+    partial_rehearsal
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target == ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness
+        })
+        .expect("memory shadow canary promotion readiness activation row should exist")
+        .canary_promotion_rollback_rehearsal_pass_count = 2;
+    assert!(!partial_rehearsal.has_matrix_integrity());
+
+    let mut blocker_false_green = matrix.clone();
+    blocker_false_green
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target == ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness
+        })
+        .expect("memory shadow canary promotion readiness activation row should exist")
+        .canary_promotion_blocker_count = 1;
+    assert!(!blocker_false_green.has_matrix_integrity());
+
+    let mut non_promotion_leak = matrix.clone();
+    non_promotion_leak
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::SourceRegistry)
+        .expect("source registry activation row should exist")
+        .canary_promotion_checklist_pass_count = 1;
+    assert!(!non_promotion_leak.has_matrix_integrity());
+}
+
+#[test]
 fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_activation() {
     let mut status = context_plane_activation_status_fixture();
     let source_registry = status

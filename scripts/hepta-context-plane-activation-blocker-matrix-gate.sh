@@ -163,6 +163,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_without_payloads" \
   "context plane activation blocker recall-quality no-payload rollup hepta-core test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_activation_blocker_matrix_rejects_canary_promotion_checklist_false_green" \
+  "context plane activation blocker canary promotion checklist false-green test"
 assert_file_contains "$hepta_core_memory_context_plane_activation_row" \
   "ContextPlaneActivationBlockerReason::SideEffectFlagEnabled" \
   "context plane activation blocker side-effect reason"
