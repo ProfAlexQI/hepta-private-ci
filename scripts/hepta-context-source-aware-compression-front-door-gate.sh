@@ -82,6 +82,7 @@ memory_recall_manifest_payload_light_gate_script="hepta-context-memory-recall-ma
 memory_taxonomy_report_gate_script="hepta-context-memory-taxonomy-report-gate.sh"
 memory_formation_receipt_gate_script="hepta-context-memory-formation-receipt-gate.sh"
 memory_formation_queue_gate_script="hepta-context-memory-formation-queue-gate.sh"
+memory_namespace_policy_gate_script="hepta-context-memory-namespace-policy-gate.sh"
 memory_formation_candidate_no_leak_gate_script="hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 memory_temporal_fact_schema_gate_script="hepta-context-memory-temporal-fact-schema-gate.sh"
 memory_temporal_fact_graph_gate_script="hepta-context-memory-temporal-fact-graph-gate.sh"
@@ -132,6 +133,29 @@ required_contract_terms=(
   "operator_review_required"
   "revocation_key_hash"
   "hepta-context-memory-formation-queue-gate.sh"
+  "Memory namespace policy shadow report"
+  "memory_namespace_policy"
+  "core"
+  "session"
+  "procedural"
+  "semantic"
+  "episodic"
+  "archival"
+  "ttl_policy"
+  "privacy_tier"
+  "redaction_policy"
+  "write_policy"
+  "propose_write_required"
+  "policy_approval_required"
+  "shadow_wal_required"
+  "readback_required"
+  "canary_required"
+  "supersede_supported"
+  "tombstone_supported"
+  "rollback_supported"
+  "hot_path_write=false"
+  "hepta-context-memory-namespace-policy-report.sh"
+  "hepta-context-memory-namespace-policy-gate.sh"
   "Memory formation candidate no-leak/export guard"
   "memory_formation_candidates"
   "memory_formation_candidate_previews"
@@ -773,6 +797,11 @@ assert_file_contains \
 
 assert_file_contains \
   "$debug_gate" \
+  "$memory_namespace_policy_gate_script" \
+  "memory namespace policy debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
   "$memory_formation_candidate_no_leak_gate_script" \
   "memory formation candidate no-leak debug gate"
 
@@ -1329,6 +1358,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory formation queue dry-run gate" \
+  "context memory namespace policy shadow gate" \
+  "memory namespace policy preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory namespace policy shadow gate" \
   "context memory formation candidate no-leak export gate" \
   "memory formation candidate no-leak preflight stage order"
 

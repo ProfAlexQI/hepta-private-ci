@@ -830,6 +830,37 @@ run `scripts/hepta-context-memory-formation-queue-gate.sh` after
 `scripts/hepta-context-memory-formation-receipt-gate.sh` and before
 `scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh`. It
 must keep `runtime-activation=disabled`.
+Memory namespace policy shadow report: recall diagnostics may expose a
+payload-light `memory_namespace_policy` report that defines the fixed future
+long-term memory namespace blocks `core`, `session`, `procedural`, `semantic`,
+`episodic`, and `archival`. Blocks may contain only controlled policy metadata:
+`namespace`, `owner`, `ttl_policy`, `ttl_turns`, `privacy_tier`,
+`redaction_policy`, `write_policy`, `budget_tokens`,
+`propose_write_required`, `policy_approval_required`,
+`operator_approval_required`, `shadow_wal_required`, `readback_required`,
+`canary_required`, `supersede_supported`, `tombstone_supported`,
+`rollback_supported`, `production_write=false`, `graph_write=false`,
+`hot_path_write=false`, `prompt_assembly_change=false`, and
+`runtime_activation=false`. The only write policy allowed before a future
+operator-approved WAL exists is `shadow_proposal_only`. Policy integrity
+requires all six namespaces exactly once, known owner/TTL/privacy/redaction
+enums, a valid TTL policy, non-zero token budget, the full
+`propose_write -> policy/operator approval -> shadow WAL -> readback -> canary`
+precondition chain, supersede/tombstone/rollback support, and no side effects.
+The report must not contain prompt text, transcript text, memory text,
+candidate text, source ids, replay keys, text hashes, memory ids, topic ids,
+neuron ids, query payloads, ranked payloads, tool arguments, entity/fact/edge
+hashes, per-source lists, email-shaped strings, phone-shaped strings, user
+identifiers, or any namespace payload. It must not write production memory,
+must not write graph facts, must not promote shadow policy into durable memory,
+must not alter prompt assembly, and must not enable runtime activation. The
+context debug gate and preflight must run
+`scripts/hepta-context-memory-namespace-policy-gate.sh` after
+`scripts/hepta-context-memory-formation-queue-gate.sh` and before
+`scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh`; the
+machine-readable report is
+`scripts/hepta-context-memory-namespace-policy-report.sh`. It must keep
+`runtime-activation=disabled`.
 Memory formation candidate no-leak/export guard: until an eval harness and
 explicit operator-approved write path exist, any future memory formation
 candidate preview surface must remain payload-dark in response-debug/export.

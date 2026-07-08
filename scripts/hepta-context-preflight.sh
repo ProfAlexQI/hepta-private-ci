@@ -91,6 +91,9 @@ run_stage "context memory formation receipt gate" \
 run_stage "context memory formation queue dry-run gate" \
   bash "$repo_root/scripts/hepta-context-memory-formation-queue-gate.sh"
 
+run_stage "context memory namespace policy shadow gate" \
+  bash "$repo_root/scripts/hepta-context-memory-namespace-policy-gate.sh"
+
 run_stage "context memory formation candidate no-leak export gate" \
   bash "$repo_root/scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 

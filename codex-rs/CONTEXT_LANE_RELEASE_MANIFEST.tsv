@@ -229,6 +229,8 @@ scripts/hepta-context-memory-eval-harness-seed-gate.sh	gate_script	hepta-context
 scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-formation-queue-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-formation-receipt-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-namespace-policy-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-namespace-policy-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-provider-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-provider-boundary-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-provider-v2-boundary-gate.sh	gate_script	hepta-context	required

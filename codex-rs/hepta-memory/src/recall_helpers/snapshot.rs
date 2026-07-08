@@ -2,6 +2,7 @@ use crate::StoreSnapshot;
 use hepta_core::ContextBudget;
 use hepta_core::ContextMemoryFormationQueueReport;
 use hepta_core::ContextMemoryFormationReceiptReport;
+use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
@@ -255,6 +256,12 @@ impl StoreSnapshot {
         bundle
             .inspection(availability)
             .memory_taxonomy_report(&source_availability, memory_control_omitted_count)
+    }
+
+    /// Builds the fixed namespace/block shadow policy without inspecting or
+    /// writing memory payloads.
+    pub fn context_memory_namespace_policy_report(&self) -> ContextMemoryNamespacePolicyReport {
+        ContextMemoryNamespacePolicyReport::seeded()
     }
 
     /// Builds receipt-only background memory-formation metadata for transcript

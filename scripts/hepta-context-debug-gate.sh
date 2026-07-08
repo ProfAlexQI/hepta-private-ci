@@ -18,6 +18,7 @@ bash "$repo_root/scripts/hepta-context-memory-recall-manifest-payload-light-gate
 bash "$repo_root/scripts/hepta-context-memory-taxonomy-report-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-formation-receipt-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-formation-queue-gate.sh"
+bash "$repo_root/scripts/hepta-context-memory-namespace-policy-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-temporal-fact-schema-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-temporal-fact-graph-gate.sh"

@@ -175,3 +175,84 @@ async fn store_recall_context_memory_taxonomy_matches_snapshot_helper() {
                 && bucket.omitted_count == 1)
     );
 }
+
+#[test]
+fn store_snapshot_context_memory_namespace_policy_is_payload_light() {
+    let snapshot = StoreSnapshot {
+        sessions: vec![],
+        memories: vec![memory_record(
+            "memory-namespace-payload",
+            MemoryScope::LongTerm,
+            "namespace policy must not include this memory payload",
+        )],
+        transcripts: vec![transcript_entry(
+            "session-namespace",
+            1,
+            TranscriptEntryKind::Message,
+            "namespace policy must not include this transcript payload",
+        )],
+    };
+
+    let report = snapshot.context_memory_namespace_policy_report();
+
+    assert!(report.has_policy_integrity());
+    assert_eq!(report.namespace_count(), 6);
+    assert_eq!(report.operator_approval_required_count(), 6);
+    assert_eq!(report.shadow_wal_required_count(), 6);
+    assert_eq!(report.readback_required_count(), 6);
+    assert_eq!(report.canary_required_count(), 6);
+    assert_eq!(report.production_write_count(), 0);
+    assert_eq!(report.graph_write_count(), 0);
+    assert!(report.blocks.iter().any(|block| block.namespace
+        == ContextMemoryNamespace::Procedural
+        && block.privacy_tier == ContextMemoryNamespacePrivacyTier::WorkspacePrivate
+        && block.write_policy == ContextMemoryNamespaceWritePolicy::ShadowProposalOnly));
+
+    let json = serde_json::to_string(&report).expect("namespace policy should serialize");
+    assert!(json.contains("core"));
+    assert!(json.contains("session"));
+    assert!(json.contains("procedural"));
+    assert!(json.contains("semantic"));
+    assert!(json.contains("episodic"));
+    assert!(json.contains("archival"));
+    assert!(!json.contains("namespace policy must not include this memory payload"));
+    assert!(!json.contains("namespace policy must not include this transcript payload"));
+    assert!(!json.contains("memory-namespace-payload"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+}
+
+#[tokio::test]
+async fn store_context_memory_namespace_policy_matches_snapshot_helper() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-namespace-payload",
+            MemoryScope::LongTerm,
+            "namespace policy must remain static and payload-light",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-namespace",
+            1,
+            TranscriptEntryKind::Message,
+            "namespace policy should not inspect transcript payload",
+        ))
+        .await
+        .expect("append should succeed");
+
+    let snapshot = store.snapshot().expect("snapshot should load");
+    let from_store = store
+        .context_memory_namespace_policy_report()
+        .expect("context memory namespace policy should succeed");
+
+    assert_eq!(
+        from_store,
+        snapshot.context_memory_namespace_policy_report()
+    );
+    assert!(from_store.has_policy_integrity());
+}

@@ -1,6 +1,7 @@
 use crate::InMemoryStore;
 use hepta_core::ContextMemoryFormationQueueReport;
 use hepta_core::ContextMemoryFormationReceiptReport;
+use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
@@ -99,6 +100,12 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .recall_context_memory_taxonomy_report(&request))
+    }
+
+    pub fn context_memory_namespace_policy_report(
+        &self,
+    ) -> Result<ContextMemoryNamespacePolicyReport, hepta_core::MemoryError> {
+        Ok(self.snapshot()?.context_memory_namespace_policy_report())
     }
 
     pub fn recall_context_memory_formation_receipt_report(
