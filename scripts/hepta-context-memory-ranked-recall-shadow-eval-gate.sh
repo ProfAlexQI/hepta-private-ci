@@ -89,13 +89,24 @@ bash "$report_script" >"$report_output"
 
 assert_report_line "ranked-recall-shadow-eval=pass"
 assert_report_line "ranked-recall-shadow-eval.payload-light=pass"
-assert_report_line "ranked-recall-shadow-eval.schema=2"
+assert_report_line "ranked-recall-shadow-eval.schema=3"
 assert_report_line "ranked-recall-shadow-eval.mode=deterministic-shadow"
 assert_report_line "ranked-recall-shadow-eval.hybrid-mode=shadow-only"
 assert_report_line "ranked-recall-shadow-eval.hybrid-signal-count=5"
 assert_report_line "ranked-recall-shadow-eval.hybrid-positive-signal-pass-count=15"
 assert_report_line "ranked-recall-shadow-eval.hybrid-signal-min-basis-points=6000"
 assert_report_line "ranked-recall-shadow-eval.min-positive-hybrid-score-basis-points=7800"
+assert_report_line "ranked-recall-shadow-eval.calibrated-reranking=shadow"
+assert_report_line "ranked-recall-shadow-eval.calibrated-reranking-fixture-count=4"
+assert_report_line "ranked-recall-shadow-eval.calibrated-reranking-win-count=3"
+assert_report_line "ranked-recall-shadow-eval.calibrated-reranking-loss-count=1"
+assert_report_line "ranked-recall-shadow-eval.reranking-delta-min-basis-points=400"
+assert_report_line "ranked-recall-shadow-eval.min-positive-reranking-delta-basis-points=640"
+assert_report_line "ranked-recall-shadow-eval.latency-delta-max-ms=20"
+assert_report_line "ranked-recall-shadow-eval.max-positive-latency-delta-ms=10"
+assert_report_line "ranked-recall-shadow-eval.token-tradeoff-min-basis-points=1000"
+assert_report_line "ranked-recall-shadow-eval.min-positive-token-tradeoff-basis-points=3000"
+assert_report_line "ranked-recall-shadow-eval.reranking-regression-delta=blocked"
 assert_report_line "ranked-recall-shadow-eval.lexical-bm25=shadow"
 assert_report_line "ranked-recall-shadow-eval.recency=shadow"
 assert_report_line "ranked-recall-shadow-eval.source-authority=shadow"
@@ -129,6 +140,7 @@ for term in \
   "hepta-context-memory-ranked-recall-shadow-eval-gate.sh" \
   "deterministic-shadow" \
   "hybrid shadow-only" \
+  "calibrated reranking shadow" \
   "ContextMemoryRankedRecallShadowEvalReport" \
   "ContextMemoryRankedRecallShadowHybridSignal" \
   "context_memory_ranked_recall_shadow_eval_report" \
@@ -144,6 +156,10 @@ for term in \
   "hybrid-signal-min-basis-points" \
   "hybrid-positive-signal-pass-count" \
   "hybrid-regression-signal" \
+  "calibrated-reranking-win-count" \
+  "reranking-delta-min-basis-points" \
+  "token-tradeoff-min-basis-points" \
+  "reranking-regression-delta" \
   "recall-floor-basis-points" \
   "precision-floor-basis-points" \
   "token-saved-min-basis-points" \
@@ -186,6 +202,9 @@ assert_file_contains "$hepta_core_ranked_recall_shadow" \
 assert_file_contains "$hepta_core_ranked_recall_shadow" \
   "RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS" \
   "ranked recall shadow eval hybrid threshold"
+assert_file_contains "$hepta_core_ranked_recall_shadow" \
+  "RANKED_RECALL_SHADOW_RERANKING_DELTA_MIN_BASIS_POINTS" \
+  "ranked recall shadow eval reranking threshold"
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation" \
   "ranked recall shadow eval hepta-core positive test"
@@ -195,6 +214,9 @@ assert_file_contains "$hepta_core_memory_tests" \
 assert_file_contains "$hepta_core_memory_tests" \
   "context_memory_ranked_recall_shadow_eval_blocks_hybrid_signal_drift" \
   "ranked recall shadow eval hepta-core hybrid regression test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_memory_ranked_recall_shadow_eval_blocks_calibrated_reranking_drift" \
+  "ranked recall shadow eval hepta-core reranking regression test"
 
 assert_file_contains "$hepta_memory" \
   "ranked-recall shadow eval" \
@@ -263,5 +285,6 @@ echo "ranked-recall-shadow-eval=pass"
 echo "ranked-recall-shadow-eval.payload-light=pass"
 echo "ranked-recall-shadow-eval.fixtures=4"
 echo "ranked-recall-shadow-eval.hybrid-signals=5"
+echo "ranked-recall-shadow-eval.calibrated-reranking=shadow"
 echo "ranked-recall-shadow-eval.regression-fixture=blocked"
 echo "ranked-recall-shadow-eval.runtime-activation=disabled"

@@ -1093,22 +1093,28 @@ budget, regret basis points, hybrid signal basis-point counters, hybrid score
 basis points, hybrid signal pass counts, a blocked regression fixture, fixed
 threshold labels (`recall-floor-basis-points`, `precision-floor-basis-points`,
 `token-saved-min-basis-points`, `latency-max-ms`,
-`regret-max-basis-points`, and `hybrid-signal-min-basis-points`), and explicit
-side-effect booleans. It must not contain prompt text, transcript text, memory
-text, answer text, query payloads, ranked payloads, raw ranked payloads, rank
-explanations, score reasons, source ids, session ids, memory ids, trace ids,
-tool arguments, tool outputs, raw fact/entity values, email-shaped strings,
-phone-shaped strings, or user identifiers. Shadow integrity requires schema
-version 2, `deterministic-shadow` mode, exactly five fixed hybrid signals,
-`hybrid-positive-signal-pass-count=15`, exactly four fixtures, three positive
-fixtures, one negative regression fixture, ranked item counts on every fixture,
-minimum positive recall and precision of 8000 basis points, minimum positive
-hybrid score of 7800 basis points, total positive token-saved count 2140,
-maximum positive latency 55 ms, zero positive regret, the regression fixture
-blocked, and `hybrid-regression-signal=blocked`. It must not write production
-memory, must not write graph facts, must not alter prompt assembly, must not
-enable runtime activation, must not enable a production route, and must not
-allow operator activation. The Rust-backed fixture is
+`regret-max-basis-points`, `hybrid-signal-min-basis-points`,
+`reranking-delta-min-basis-points`, and `token-tradeoff-min-basis-points`),
+and explicit side-effect booleans. It must not contain prompt text, transcript
+text, memory text, answer text, query payloads, ranked payloads, raw ranked
+payloads, rank explanations, score reasons, source ids, session ids, memory
+ids, trace ids, tool arguments, tool outputs, raw fact/entity values,
+email-shaped strings, phone-shaped strings, or user identifiers. Shadow
+integrity requires schema version 3, `deterministic-shadow` mode, exactly five
+fixed hybrid signals, `hybrid-positive-signal-pass-count=15`, exactly four
+fixtures, three positive fixtures, one negative regression fixture, ranked item
+counts on every fixture, minimum positive recall and precision of 8000 basis
+points, minimum positive hybrid score of 7800 basis points, a payload-light
+`calibrated reranking shadow` layer with `calibrated-reranking-win-count=3`,
+`calibrated-reranking-loss-count=1`, `reranking-delta-min-basis-points=400`,
+minimum positive reranking delta 640 basis points, maximum positive latency
+delta 10 ms, minimum positive token tradeoff 3000 basis points, total positive
+token-saved count 2140, maximum positive latency 55 ms, zero positive regret,
+the regression fixture blocked, `hybrid-regression-signal=blocked`, and
+`reranking-regression-delta=blocked`. It must not write production memory, must
+not write graph facts, must not alter prompt assembly, must not enable runtime
+activation, must not enable a production route, and must not allow operator
+activation. The Rust-backed fixture is
 `ContextMemoryRankedRecallShadowEvalReport` in
 `codex-rs/hepta-core/src/memory/eval_harness/ranked_recall_shadow.rs`, exposed
 through `context_memory_ranked_recall_shadow_eval_report` on both
@@ -1128,6 +1134,7 @@ include `ranked-recall-shadow-eval=pass`,
 `ranked-recall-shadow-eval.payload-light=pass`,
 `ranked-recall-shadow-eval.fixtures=4`,
 `ranked-recall-shadow-eval.hybrid-signals=5`,
+`ranked-recall-shadow-eval.calibrated-reranking=shadow`,
 `ranked-recall-shadow-eval.regression-fixture=blocked`, and
 `ranked-recall-shadow-eval.runtime-activation=disabled`.
 

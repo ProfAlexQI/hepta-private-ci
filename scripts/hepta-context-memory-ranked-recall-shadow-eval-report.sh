@@ -42,13 +42,24 @@ done
 cat <<'EOF'
 ranked-recall-shadow-eval=pass
 ranked-recall-shadow-eval.payload-light=pass
-ranked-recall-shadow-eval.schema=2
+ranked-recall-shadow-eval.schema=3
 ranked-recall-shadow-eval.mode=deterministic-shadow
 ranked-recall-shadow-eval.hybrid-mode=shadow-only
 ranked-recall-shadow-eval.hybrid-signal-count=5
 ranked-recall-shadow-eval.hybrid-positive-signal-pass-count=15
 ranked-recall-shadow-eval.hybrid-signal-min-basis-points=6000
 ranked-recall-shadow-eval.min-positive-hybrid-score-basis-points=7800
+ranked-recall-shadow-eval.calibrated-reranking=shadow
+ranked-recall-shadow-eval.calibrated-reranking-fixture-count=4
+ranked-recall-shadow-eval.calibrated-reranking-win-count=3
+ranked-recall-shadow-eval.calibrated-reranking-loss-count=1
+ranked-recall-shadow-eval.reranking-delta-min-basis-points=400
+ranked-recall-shadow-eval.min-positive-reranking-delta-basis-points=640
+ranked-recall-shadow-eval.latency-delta-max-ms=20
+ranked-recall-shadow-eval.max-positive-latency-delta-ms=10
+ranked-recall-shadow-eval.token-tradeoff-min-basis-points=1000
+ranked-recall-shadow-eval.min-positive-token-tradeoff-basis-points=3000
+ranked-recall-shadow-eval.reranking-regression-delta=blocked
 ranked-recall-shadow-eval.lexical-bm25=shadow
 ranked-recall-shadow-eval.recency=shadow
 ranked-recall-shadow-eval.source-authority=shadow

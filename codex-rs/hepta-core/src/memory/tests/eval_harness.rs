@@ -263,9 +263,16 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert_eq!(report.regression_blocked_count(), 1);
     assert_eq!(report.positive_hybrid_signal_pass_count(), 15);
     assert_eq!(report.hybrid_regression_blocked_count(), 1);
+    assert_eq!(report.calibrated_reranking_fixture_count(), 4);
+    assert_eq!(report.calibrated_reranking_win_count(), 3);
+    assert_eq!(report.calibrated_reranking_loss_count(), 1);
+    assert_eq!(report.reranking_regression_blocked_count(), 1);
     assert_eq!(report.min_positive_recall_basis_points(), 8000);
     assert_eq!(report.min_positive_precision_basis_points(), 8000);
     assert_eq!(report.min_positive_hybrid_score_basis_points(), 7800);
+    assert_eq!(report.min_positive_reranking_delta_basis_points(), 640);
+    assert_eq!(report.max_positive_latency_delta_ms(), 10);
+    assert_eq!(report.min_positive_token_tradeoff_basis_points(), 3_000);
     assert_eq!(report.total_positive_token_saved(), 2_140);
     assert_eq!(report.max_positive_latency_ms(), 55);
     assert_eq!(report.max_positive_regret_basis_points(), 0);
@@ -276,6 +283,9 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert_eq!(report.latency_max_ms, 100);
     assert_eq!(report.regret_max_basis_points, 0);
     assert_eq!(report.hybrid_signal_min_basis_points, 6_000);
+    assert_eq!(report.reranking_delta_min_basis_points, 400);
+    assert_eq!(report.latency_delta_max_ms, 20);
+    assert_eq!(report.token_tradeoff_min_basis_points, 1_000);
     assert!(report.operator_approval_required);
     assert!(!report.production_route);
     assert!(!report.production_write);
@@ -306,6 +316,14 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert_eq!(query_match.feedback_score_basis_points, 7_000);
     assert_eq!(query_match.hybrid_score_basis_points, 7_940);
     assert_eq!(query_match.hybrid_signal_pass_count, 5);
+    assert!(query_match.calibrated_reranking_fixture);
+    assert_eq!(query_match.baseline_rank_window_score_basis_points, 7_400);
+    assert_eq!(query_match.hybrid_rank_window_score_basis_points, 8_140);
+    assert_eq!(query_match.reranking_delta_basis_points, 740);
+    assert!(query_match.reranking_win);
+    assert!(!query_match.reranking_loss);
+    assert_eq!(query_match.latency_delta_ms, 8);
+    assert_eq!(query_match.token_tradeoff_basis_points, 3_500);
 
     let regression = report
         .fixture(ContextMemoryRankedRecallShadowEvalFixtureKind::RegressionGuard)
@@ -320,6 +338,14 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert_eq!(regression.regret_basis_points, 500);
     assert_eq!(regression.hybrid_score_basis_points, 4_300);
     assert_eq!(regression.hybrid_signal_pass_count, 0);
+    assert!(regression.calibrated_reranking_fixture);
+    assert_eq!(regression.baseline_rank_window_score_basis_points, 6_500);
+    assert_eq!(regression.hybrid_rank_window_score_basis_points, 4_300);
+    assert_eq!(regression.reranking_delta_basis_points, -2_200);
+    assert!(!regression.reranking_win);
+    assert!(regression.reranking_loss);
+    assert_eq!(regression.latency_delta_ms, 35);
+    assert_eq!(regression.token_tradeoff_basis_points, 0);
 
     let json = serde_json::to_string(&report).expect("ranked recall report should serialize");
     assert!(json.contains("deterministic_shadow"));
@@ -339,6 +365,9 @@ fn context_memory_ranked_recall_shadow_eval_tracks_metrics_without_activation() 
     assert!(json.contains("ranked_item_count"));
     assert!(json.contains("hybrid_score_basis_points"));
     assert!(json.contains("hybrid_signal_pass_count"));
+    assert!(json.contains("calibrated_reranking_fixture"));
+    assert!(json.contains("reranking_delta_basis_points"));
+    assert!(json.contains("token_tradeoff_basis_points"));
     assert!(json.contains("token_saved_min_basis_points"));
     assert!(!json.contains("session-"));
     assert!(!json.contains("memory-"));
@@ -398,6 +427,23 @@ fn context_memory_ranked_recall_shadow_eval_blocks_hybrid_signal_drift() {
     query_match.lexical_bm25_score_basis_points = 5_999;
 
     assert!(!low_signal_report.has_ranked_recall_shadow_integrity());
+}
+
+#[test]
+fn context_memory_ranked_recall_shadow_eval_blocks_calibrated_reranking_drift() {
+    let mut report = ContextMemoryRankedRecallShadowEvalReport::seeded();
+    let query_match = report
+        .fixtures
+        .iter_mut()
+        .find(|fixture| {
+            fixture.fixture_kind == ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch
+        })
+        .expect("query-match fixture should exist");
+
+    query_match.hybrid_rank_window_score_basis_points = 7_799;
+    query_match.reranking_delta_basis_points = 399;
+
+    assert!(!report.has_ranked_recall_shadow_integrity());
 }
 
 #[test]

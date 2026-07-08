@@ -13,6 +13,9 @@ pub const RANKED_RECALL_SHADOW_LATENCY_MAX_MS: u32 = 100;
 pub const RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS: u32 = 0;
 pub const RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS: u32 = 6_000;
 pub const RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT: usize = 5;
+pub const RANKED_RECALL_SHADOW_RERANKING_DELTA_MIN_BASIS_POINTS: i32 = 400;
+pub const RANKED_RECALL_SHADOW_LATENCY_DELTA_MAX_MS: i32 = 20;
+pub const RANKED_RECALL_SHADOW_TOKEN_TRADEOFF_MIN_BASIS_POINTS: u32 = 1_000;
 
 /// Payload-light replay mode for ranked recall evaluation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +133,7 @@ pub struct ContextMemoryRankedRecallShadowEvalFixtureResult {
     pub positive_fixture: bool,
     pub negative_fixture: bool,
     pub shadow_eval_fixture: bool,
+    pub calibrated_reranking_fixture: bool,
     pub ranked_item_count: usize,
     pub expected_relevant_count: usize,
     pub recalled_relevant_count: usize,
@@ -151,6 +155,13 @@ pub struct ContextMemoryRankedRecallShadowEvalFixtureResult {
     pub feedback_score_basis_points: u32,
     pub hybrid_score_basis_points: u32,
     pub hybrid_signal_pass_count: usize,
+    pub baseline_rank_window_score_basis_points: u32,
+    pub hybrid_rank_window_score_basis_points: u32,
+    pub reranking_delta_basis_points: i32,
+    pub reranking_win: bool,
+    pub reranking_loss: bool,
+    pub latency_delta_ms: i32,
+    pub token_tradeoff_basis_points: u32,
     pub regression_fixture: bool,
     pub regression_blocked: bool,
     pub production_route: bool,
@@ -235,12 +246,25 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         regression_blocked: bool,
     ) -> Self {
         let token_saved = baseline_token_cost.saturating_sub(ranked_token_cost);
+        let token_saved_basis_points = basis_points(token_saved, baseline_token_cost);
         let hybrid_scores = hybrid_signal_scores(fixture_kind, positive_fixture);
         let hybrid_score_basis_points = hybrid_score_basis_points(hybrid_scores);
         let hybrid_signal_pass_count = hybrid_signal_pass_count(
             hybrid_scores,
             RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS,
         );
+        let (
+            baseline_rank_window_score_basis_points,
+            hybrid_rank_window_score_basis_points,
+            latency_delta_ms,
+        ) = calibrated_reranking_delta(fixture_kind, positive_fixture);
+        let reranking_delta_basis_points = hybrid_rank_window_score_basis_points as i32
+            - baseline_rank_window_score_basis_points as i32;
+        let reranking_win = positive_fixture
+            && reranking_delta_basis_points
+                >= RANKED_RECALL_SHADOW_RERANKING_DELTA_MIN_BASIS_POINTS;
+        let reranking_loss = negative_fixture
+            && reranking_delta_basis_points < RANKED_RECALL_SHADOW_RERANKING_DELTA_MIN_BASIS_POINTS;
         Self {
             fixture_kind,
             fixture_id_hash: fixture_id_hash(
@@ -255,11 +279,19 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                 hybrid_scores,
                 hybrid_score_basis_points,
                 hybrid_signal_pass_count,
+                baseline_rank_window_score_basis_points,
+                hybrid_rank_window_score_basis_points,
+                reranking_delta_basis_points,
+                latency_delta_ms,
+                token_saved_basis_points,
+                reranking_win,
+                reranking_loss,
             ),
             gate_pass: true,
             positive_fixture,
             negative_fixture,
             shadow_eval_fixture: true,
+            calibrated_reranking_fixture: true,
             ranked_item_count,
             expected_relevant_count,
             recalled_relevant_count,
@@ -270,7 +302,7 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             baseline_token_cost,
             ranked_token_cost,
             token_saved,
-            token_saved_basis_points: basis_points(token_saved, baseline_token_cost),
+            token_saved_basis_points,
             latency_ms,
             latency_budget_ms,
             regret_basis_points,
@@ -281,6 +313,13 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
             feedback_score_basis_points: hybrid_scores.4,
             hybrid_score_basis_points,
             hybrid_signal_pass_count,
+            baseline_rank_window_score_basis_points,
+            hybrid_rank_window_score_basis_points,
+            reranking_delta_basis_points,
+            reranking_win,
+            reranking_loss,
+            latency_delta_ms,
+            token_tradeoff_basis_points: token_saved_basis_points,
             regression_fixture,
             regression_blocked,
             production_route: false,
@@ -302,12 +341,16 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
         latency_max_ms: u32,
         regret_max_basis_points: u32,
         hybrid_signal_min_basis_points: u32,
+        reranking_delta_min_basis_points: i32,
+        latency_delta_max_ms: i32,
+        token_tradeoff_min_basis_points: u32,
     ) -> bool {
         !self.fixture_kind.is_unknown()
             && stable_receipt_hash_is_valid(&self.fixture_id_hash)
             && self.gate_pass
             && self.positive_fixture != self.negative_fixture
             && self.shadow_eval_fixture
+            && self.calibrated_reranking_fixture
             && self.ranked_item_count > 0
             && self.expected_relevant_count > 0
             && self.predicted_relevant_count > 0
@@ -346,6 +389,10 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                     ),
                     hybrid_signal_min_basis_points,
                 )
+            && self.reranking_delta_basis_points
+                == self.hybrid_rank_window_score_basis_points as i32
+                    - self.baseline_rank_window_score_basis_points as i32
+            && self.token_tradeoff_basis_points == self.token_saved_basis_points
             && self.latency_budget_ms <= latency_max_ms
             && !self.production_route
             && !self.production_write
@@ -370,15 +417,25 @@ impl ContextMemoryRankedRecallShadowEvalFixtureResult {
                     && self.feedback_score_basis_points >= hybrid_signal_min_basis_points
                     && self.hybrid_score_basis_points >= hybrid_signal_min_basis_points
                     && self.hybrid_signal_pass_count == RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
+                    && self.reranking_win
+                    && !self.reranking_loss
+                    && self.reranking_delta_basis_points >= reranking_delta_min_basis_points
+                    && self.latency_delta_ms <= latency_delta_max_ms
+                    && self.token_tradeoff_basis_points >= token_tradeoff_min_basis_points
             } else {
                 self.regression_fixture
                     && self.regression_blocked
+                    && !self.reranking_win
+                    && self.reranking_loss
                     && (self.recall_basis_points < recall_floor_basis_points
                         || self.precision_basis_points < precision_floor_basis_points
                         || self.token_saved < token_saved_min
                         || self.latency_ms > latency_max_ms
                         || self.regret_basis_points > regret_max_basis_points
-                        || self.hybrid_signal_pass_count < RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT)
+                        || self.hybrid_signal_pass_count < RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
+                        || self.reranking_delta_basis_points < reranking_delta_min_basis_points
+                        || self.latency_delta_ms > latency_delta_max_ms
+                        || self.token_tradeoff_basis_points < token_tradeoff_min_basis_points)
             }
     }
 }
@@ -420,6 +477,23 @@ fn hybrid_signal_pass_count(scores: (u32, u32, u32, u32, u32), min_basis_points:
         .count()
 }
 
+fn calibrated_reranking_delta(
+    fixture_kind: ContextMemoryRankedRecallShadowEvalFixtureKind,
+    positive_fixture: bool,
+) -> (u32, u32, i32) {
+    if !positive_fixture {
+        return (6_500, 4_300, 35);
+    }
+
+    match fixture_kind {
+        ContextMemoryRankedRecallShadowEvalFixtureKind::QueryMatch => (7_400, 8_140, 8),
+        ContextMemoryRankedRecallShadowEvalFixtureKind::RecencyTieBreak => (7_100, 7_960, 6),
+        ContextMemoryRankedRecallShadowEvalFixtureKind::BudgetPressure => (7_300, 7_940, 10),
+        ContextMemoryRankedRecallShadowEvalFixtureKind::RegressionGuard
+        | ContextMemoryRankedRecallShadowEvalFixtureKind::Unknown => (6_500, 4_300, 35),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn fixture_id_hash(
     fixture_kind: ContextMemoryRankedRecallShadowEvalFixtureKind,
@@ -433,6 +507,13 @@ fn fixture_id_hash(
     hybrid_scores: (u32, u32, u32, u32, u32),
     hybrid_score_basis_points: u32,
     hybrid_signal_pass_count: usize,
+    baseline_rank_window_score_basis_points: u32,
+    hybrid_rank_window_score_basis_points: u32,
+    reranking_delta_basis_points: i32,
+    latency_delta_ms: i32,
+    token_tradeoff_basis_points: u32,
+    reranking_win: bool,
+    reranking_loss: bool,
 ) -> String {
     stable_receipt_hash(&[
         "context_memory_ranked_recall_shadow_eval",
@@ -451,6 +532,13 @@ fn fixture_id_hash(
         &hybrid_scores.4.to_string(),
         &hybrid_score_basis_points.to_string(),
         &hybrid_signal_pass_count.to_string(),
+        &baseline_rank_window_score_basis_points.to_string(),
+        &hybrid_rank_window_score_basis_points.to_string(),
+        &reranking_delta_basis_points.to_string(),
+        &latency_delta_ms.to_string(),
+        &token_tradeoff_basis_points.to_string(),
+        &reranking_win.to_string(),
+        &reranking_loss.to_string(),
     ])
 }
 
@@ -470,6 +558,9 @@ pub struct ContextMemoryRankedRecallShadowEvalReport {
     pub latency_max_ms: u32,
     pub regret_max_basis_points: u32,
     pub hybrid_signal_min_basis_points: u32,
+    pub reranking_delta_min_basis_points: i32,
+    pub latency_delta_max_ms: i32,
+    pub token_tradeoff_min_basis_points: u32,
     pub operator_approval_required: bool,
     pub production_route: bool,
     pub production_write: bool,
@@ -494,6 +585,9 @@ impl Default for ContextMemoryRankedRecallShadowEvalReport {
             latency_max_ms: RANKED_RECALL_SHADOW_LATENCY_MAX_MS,
             regret_max_basis_points: RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS,
             hybrid_signal_min_basis_points: RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS,
+            reranking_delta_min_basis_points: RANKED_RECALL_SHADOW_RERANKING_DELTA_MIN_BASIS_POINTS,
+            latency_delta_max_ms: RANKED_RECALL_SHADOW_LATENCY_DELTA_MAX_MS,
+            token_tradeoff_min_basis_points: RANKED_RECALL_SHADOW_TOKEN_TRADEOFF_MIN_BASIS_POINTS,
             operator_approval_required: true,
             production_route: false,
             production_write: false,
@@ -557,6 +651,9 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             latency_max_ms: RANKED_RECALL_SHADOW_LATENCY_MAX_MS,
             regret_max_basis_points: RANKED_RECALL_SHADOW_REGRET_MAX_BASIS_POINTS,
             hybrid_signal_min_basis_points: RANKED_RECALL_SHADOW_HYBRID_SIGNAL_MIN_BASIS_POINTS,
+            reranking_delta_min_basis_points: RANKED_RECALL_SHADOW_RERANKING_DELTA_MIN_BASIS_POINTS,
+            latency_delta_max_ms: RANKED_RECALL_SHADOW_LATENCY_DELTA_MAX_MS,
+            token_tradeoff_min_basis_points: RANKED_RECALL_SHADOW_TOKEN_TRADEOFF_MIN_BASIS_POINTS,
             operator_approval_required: true,
             production_route: false,
             production_write: false,
@@ -595,6 +692,15 @@ impl ContextMemoryRankedRecallShadowEvalReport {
                 == self.positive_fixture_count() * RANKED_RECALL_SHADOW_HYBRID_SIGNAL_COUNT
             && self.hybrid_regression_blocked_count() == 1
             && self.min_positive_hybrid_score_basis_points() >= self.hybrid_signal_min_basis_points
+            && self.calibrated_reranking_fixture_count() == self.fixture_count()
+            && self.calibrated_reranking_win_count() == self.positive_fixture_count()
+            && self.calibrated_reranking_loss_count() == self.negative_fixture_count()
+            && self.min_positive_reranking_delta_basis_points()
+                >= self.reranking_delta_min_basis_points
+            && self.max_positive_latency_delta_ms() <= self.latency_delta_max_ms
+            && self.min_positive_token_tradeoff_basis_points()
+                >= self.token_tradeoff_min_basis_points
+            && self.reranking_regression_blocked_count() == 1
             && self.fixtures.iter().all(|fixture| {
                 fixture.has_ranked_recall_fixture_integrity(
                     self.recall_floor_basis_points,
@@ -604,6 +710,9 @@ impl ContextMemoryRankedRecallShadowEvalReport {
                     self.latency_max_ms,
                     self.regret_max_basis_points,
                     self.hybrid_signal_min_basis_points,
+                    self.reranking_delta_min_basis_points,
+                    self.latency_delta_max_ms,
+                    self.token_tradeoff_min_basis_points,
                 )
             })
             && self.operator_approval_required
@@ -677,6 +786,36 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             .count()
     }
 
+    pub fn calibrated_reranking_fixture_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.calibrated_reranking_fixture)
+            .count()
+    }
+
+    pub fn calibrated_reranking_win_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.reranking_win)
+            .count()
+    }
+
+    pub fn calibrated_reranking_loss_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.reranking_loss)
+            .count()
+    }
+
+    pub fn reranking_regression_blocked_count(&self) -> usize {
+        self.fixtures
+            .iter()
+            .filter(|fixture| {
+                fixture.regression_fixture && fixture.regression_blocked && fixture.reranking_loss
+            })
+            .count()
+    }
+
     pub fn total_positive_token_saved(&self) -> usize {
         self.fixtures
             .iter()
@@ -726,6 +865,33 @@ impl ContextMemoryRankedRecallShadowEvalReport {
             .iter()
             .filter(|fixture| fixture.positive_fixture)
             .map(|fixture| fixture.hybrid_score_basis_points)
+            .min()
+            .unwrap_or(0)
+    }
+
+    pub fn min_positive_reranking_delta_basis_points(&self) -> i32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.reranking_delta_basis_points)
+            .min()
+            .unwrap_or(0)
+    }
+
+    pub fn max_positive_latency_delta_ms(&self) -> i32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.latency_delta_ms)
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub fn min_positive_token_tradeoff_basis_points(&self) -> u32 {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.positive_fixture)
+            .map(|fixture| fixture.token_tradeoff_basis_points)
             .min()
             .unwrap_or(0)
     }
