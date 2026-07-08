@@ -1688,7 +1688,8 @@ Context Plane operator approval packet digest tamper fixture negative matrix:
 recall diagnostics must prove the canonical digest/no-payload guard rejects
 malformed canonical export variants. The machine-readable matrix is
 `context-plane-operator-approval-packet-digest-tamper-matrix=pass` and must
-cover line-order tamper, line-count tamper, digest-value tamper,
+cover line-order tamper, line-count tamper, digest-value tamper, canary partial checklist tamper,
+canary partial rehearsal tamper, canary blocker/full-checklist replay,
 activation-command injection, raw-payload injection, PII-shaped value injection,
 and write/activation flag injection. Each fixture must fail the same
 line-count, SHA-256, and no-payload guard used by the canonical digest report;
@@ -1722,8 +1723,9 @@ digest report SHA-256, `approval-readiness-sequence=273`,
 `stale-sequence=reject`, `expired-sequence=reject`, `future-sequence=reject`,
 and `digest-replay=reject`, plus disabled runtime/operator activation
 booleans. The freshness/staleness/replay guard must reject stale sequence,
-expired sequence, future sequence, replayed digest, line-count mutation,
-activation-command injection, and write/activation flag injection fixtures. The
+expired sequence, future sequence, replayed digest, canary false-green source digest replay,
+line-count mutation, activation-command injection, and
+write/activation flag injection fixtures. The
 report and fixture output must not contain prompt text, transcript text, memory
 text, answer text, source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw payloads, raw fact/entity values,

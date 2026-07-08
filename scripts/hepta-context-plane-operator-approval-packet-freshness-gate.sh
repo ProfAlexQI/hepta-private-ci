@@ -66,6 +66,7 @@ for term in \
   "expired-sequence=reject" \
   "future-sequence=reject" \
   "digest-replay=reject" \
+  "canary false-green source digest replay" \
   "freshness/staleness/replay guard" \
   "hepta-context-plane-operator-approval-packet-freshness-report.sh" \
   "hepta-context-plane-operator-approval-packet-freshness-gate.sh" \
@@ -166,6 +167,7 @@ stale_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/approval-rea
 expired_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/expires-after-sequence=274/expires-after-sequence=273/')"
 future_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/approval-readiness-sequence=273/approval-readiness-sequence=274/')"
 source_digest_replay_tamper="$(printf '%s\n' "$freshness_status" | sed 's/e0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b/f0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b/')"
+canary_false_green_source_tamper="$(printf '%s\n' "$freshness_status" | sed 's/e0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b/d0615b767270cb6ca64e5269e0343863544da18befaff9b5c670237323274a6b/')"
 line_count_tamper="$(
   printf '%s\n' "$freshness_status"
   printf '%s\n' "context-plane-operator-approval-packet-freshness.replayed-copy=unexpected"
@@ -180,6 +182,7 @@ assert_rejected "stale-sequence" "$stale_sequence_tamper"
 assert_rejected "expired-sequence" "$expired_sequence_tamper"
 assert_rejected "future-sequence" "$future_sequence_tamper"
 assert_rejected "source-digest-replay" "$source_digest_replay_tamper"
+assert_rejected "canary false-green source digest" "$canary_false_green_source_tamper"
 assert_rejected "line-count" "$line_count_tamper"
 assert_rejected "activation-command" "$activation_command_tamper"
 assert_rejected "write/activation flag" "$write_activation_tamper"
@@ -189,6 +192,7 @@ echo "context-plane-operator-approval-packet-freshness.stale-sequence=reject"
 echo "context-plane-operator-approval-packet-freshness.expired-sequence=reject"
 echo "context-plane-operator-approval-packet-freshness.future-sequence=reject"
 echo "context-plane-operator-approval-packet-freshness.digest-replay=reject"
+echo "context-plane-operator-approval-packet-freshness.canary-false-green-source=reject"
 echo "context-plane-operator-approval-packet-freshness.line-count=reject"
 echo "context-plane-operator-approval-packet-freshness.activation-command=reject"
 echo "context-plane-operator-approval-packet-freshness.write-activation-flag=reject"

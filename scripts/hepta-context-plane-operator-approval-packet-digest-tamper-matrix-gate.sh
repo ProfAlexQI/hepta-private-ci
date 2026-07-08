@@ -66,6 +66,9 @@ for term in \
   "line-order tamper" \
   "line-count tamper" \
   "digest-value tamper" \
+  "canary partial checklist tamper" \
+  "canary partial rehearsal tamper" \
+  "canary blocker/full-checklist replay" \
   "activation-command injection" \
   "raw-payload injection" \
   "PII-shaped value injection" \
@@ -176,6 +179,9 @@ line_count_tamper="$(
   printf '%s\n' "context-plane-operator-approval-packet.extra-line=unexpected"
 )"
 digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/878b02b1ae4681940810c4344f2b3ba600f6e2ee8ae4e12f67b076217ac4a9a7/978b02b1ae4681940810c4344f2b3ba600f6e2ee8ae4e12f67b076217ac4a9a7/')"
+canary_partial_checklist_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4/context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=3/')"
+canary_partial_rehearsal_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3/context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=2/')"
+canary_blocker_full_checklist_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=0/context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=1/')"
 activation_command_tamper="$(
   printf '%s\n' "$approval_status"
   printf '%s\n' "context-plane-operator-approval-packet.activation-command=run"
@@ -193,6 +199,9 @@ write_activation_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-pla
 assert_rejected "line-order" "$line_order_tamper" "$negative_status" "$digest_status"
 assert_rejected "line-count" "$line_count_tamper" "$negative_status" "$digest_status"
 assert_rejected "digest-value" "$approval_status" "$negative_status" "$digest_value_tamper"
+assert_rejected "canary partial checklist" "$canary_partial_checklist_tamper" "$negative_status" "$digest_status"
+assert_rejected "canary partial rehearsal" "$canary_partial_rehearsal_tamper" "$negative_status" "$digest_status"
+assert_rejected "canary blocker/full-checklist replay" "$canary_blocker_full_checklist_tamper" "$negative_status" "$digest_status"
 assert_rejected "activation-command" "$activation_command_tamper" "$negative_status" "$digest_status"
 assert_rejected "raw-payload" "$raw_payload_tamper" "$negative_status" "$digest_status"
 assert_rejected "PII-shaped value" "$pii_tamper" "$negative_status" "$digest_status"
@@ -202,6 +211,9 @@ echo "context-plane-operator-approval-packet-digest-tamper-matrix=pass"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.line-order=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.line-count=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.digest-value=reject"
+echo "context-plane-operator-approval-packet-digest-tamper-matrix.canary-partial-checklist=reject"
+echo "context-plane-operator-approval-packet-digest-tamper-matrix.canary-partial-rehearsal=reject"
+echo "context-plane-operator-approval-packet-digest-tamper-matrix.canary-blocker-full-checklist=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.activation-command=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.raw-payload=reject"
 echo "context-plane-operator-approval-packet-digest-tamper-matrix.pii-shaped=reject"
