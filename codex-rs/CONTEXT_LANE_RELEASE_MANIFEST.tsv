@@ -263,6 +263,8 @@ scripts/hepta-context-memory-temporal-graph-shadow-eval-report.sh	gate_script	he
 scripts/hepta-context-memory-test-module-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-write-chain-readiness-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-write-chain-readiness-report.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-write-chain-receipt-freshness-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-write-chain-receipt-freshness-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-non-runtime-preflight.sh	gate_script	hepta-context	required
 scripts/hepta-context-plane-activation-blocker-matrix-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-plane-activation-blocker-matrix-report.sh	gate_script	hepta-context	required

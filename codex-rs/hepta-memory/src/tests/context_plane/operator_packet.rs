@@ -38,10 +38,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 20);
+    assert_eq!(packet.matrix_row_count, 21);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 11);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 19);
+    assert_eq!(packet.blocker_count, 12);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 20);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -71,6 +71,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryWriteChainReceiptFreshnessShadowOnly
         ),
         Some(1)
     );
@@ -260,10 +266,10 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert!(from_store.dry_run_only);
     assert!(from_store.approval_required);
     assert!(!from_store.activation_command_present);
-    assert_eq!(from_store.matrix_row_count, 20);
+    assert_eq!(from_store.matrix_row_count, 21);
     assert_eq!(from_store.threshold_satisfied_count, 9);
-    assert_eq!(from_store.blocker_count, 11);
-    assert_eq!(from_store.threshold_snapshot.required_ready_count, 19);
+    assert_eq!(from_store.blocker_count, 12);
+    assert_eq!(from_store.threshold_snapshot.required_ready_count, 20);
     assert_eq!(from_store.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(from_store.required_scope_count(), 6);
     assert_eq!(

@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 19);
+    assert_eq!(report.sections.len(), 20);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 10);
+    assert_eq!(report.shadow_section_count(), 11);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -62,6 +62,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryWriteChainReadiness),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -302,7 +306,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 19);
+    assert_eq!(from_store.sections.len(), 20);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),

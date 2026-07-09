@@ -12,6 +12,7 @@ use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::ContextMemoryWriteChainReadinessReport;
+use crate::memory::ContextMemoryWriteChainReceiptFreshnessReport;
 use crate::memory::MemoryProviderReport;
 use crate::memory::MemoryProviderV2AuditReport;
 
@@ -19,6 +20,8 @@ const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_RECEIPT_NAMESPACE_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT: usize = 18;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -106,6 +109,17 @@ pub struct ContextPlaneStatusEntry {
     pub memory_write_chain_rollback_ready_count: usize,
     pub memory_write_chain_production_write_count: usize,
     pub memory_write_chain_graph_write_count: usize,
+    pub memory_write_chain_receipt_namespace_count: usize,
+    pub memory_write_chain_receipt_required_count: usize,
+    pub memory_write_chain_receipt_projected_count: usize,
+    pub memory_write_chain_receipt_digest_count: usize,
+    pub memory_write_chain_receipt_freshness_pass_count: usize,
+    pub memory_write_chain_receipt_replay_guard_pass_count: usize,
+    pub memory_write_chain_receipt_stale_replay_rejected_count: usize,
+    pub memory_write_chain_receipt_recorded_count: usize,
+    pub memory_write_chain_receipt_persisted_count: usize,
+    pub memory_write_chain_receipt_production_write_count: usize,
+    pub memory_write_chain_receipt_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -390,6 +404,44 @@ impl ContextPlaneStatusEntry {
             runtime_activation: write_chain.runtime_activation,
             prompt_assembly_change: write_chain.prompt_assembly_change
                 || write_chain.hot_path_write,
+            ..Self::default()
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_memory_write_chain_receipt_freshness(
+        receipts: &ContextMemoryWriteChainReceiptFreshnessReport,
+    ) -> Self {
+        let has_integrity = receipts.has_receipt_integrity();
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: receipts.namespace_count(),
+            omitted_count: receipts.recorded_receipt_count()
+                + receipts.persisted_receipt_count()
+                + receipts.production_write_count()
+                + receipts.graph_write_count(),
+            blocker_count: usize::from(!has_integrity),
+            memory_write_chain_receipt_namespace_count: receipts.namespace_count(),
+            memory_write_chain_receipt_required_count: receipts.receipt_required_count(),
+            memory_write_chain_receipt_projected_count: receipts.receipt_projected_count(),
+            memory_write_chain_receipt_digest_count: receipts.receipt_digest_count(),
+            memory_write_chain_receipt_freshness_pass_count: receipts.freshness_pass_count(),
+            memory_write_chain_receipt_replay_guard_pass_count: receipts.replay_guard_pass_count(),
+            memory_write_chain_receipt_stale_replay_rejected_count: receipts
+                .stale_replay_rejected_count(),
+            memory_write_chain_receipt_recorded_count: receipts.recorded_receipt_count(),
+            memory_write_chain_receipt_persisted_count: receipts.persisted_receipt_count(),
+            memory_write_chain_receipt_production_write_count: receipts.production_write_count(),
+            memory_write_chain_receipt_graph_write_count: receipts.graph_write_count(),
+            production_write: receipts.production_write,
+            graph_write: receipts.graph_write,
+            runtime_activation: receipts.runtime_activation,
+            prompt_assembly_change: receipts.prompt_assembly_change || receipts.hot_path_write,
             ..Self::default()
         }
     }
@@ -710,6 +762,7 @@ impl ContextPlaneStatusEntry {
             && self.has_canary_promotion_checklist_integrity()
             && self.has_memory_namespace_policy_integrity()
             && self.has_memory_write_chain_readiness_integrity()
+            && self.has_memory_write_chain_receipt_freshness_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && !self.production_write
             && !self.graph_write
@@ -1080,6 +1133,46 @@ impl ContextPlaneStatusEntry {
                 == self.memory_write_chain_namespace_count
             && self.memory_write_chain_production_write_count == 0
             && self.memory_write_chain_graph_write_count == 0
+            && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
+    }
+
+    fn has_memory_write_chain_receipt_freshness_integrity(&self) -> bool {
+        let counts = [
+            self.memory_write_chain_receipt_namespace_count,
+            self.memory_write_chain_receipt_required_count,
+            self.memory_write_chain_receipt_projected_count,
+            self.memory_write_chain_receipt_digest_count,
+            self.memory_write_chain_receipt_freshness_pass_count,
+            self.memory_write_chain_receipt_replay_guard_pass_count,
+            self.memory_write_chain_receipt_stale_replay_rejected_count,
+            self.memory_write_chain_receipt_recorded_count,
+            self.memory_write_chain_receipt_persisted_count,
+            self.memory_write_chain_receipt_production_write_count,
+            self.memory_write_chain_receipt_graph_write_count,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_write_chain_receipt_namespace_count
+            == MEMORY_WRITE_CHAIN_RECEIPT_NAMESPACE_REQUIRED_COUNT
+            && self.memory_write_chain_receipt_required_count
+                == MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT
+            && self.memory_write_chain_receipt_projected_count
+                == self.memory_write_chain_receipt_required_count
+            && self.memory_write_chain_receipt_digest_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_freshness_pass_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_replay_guard_pass_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_stale_replay_rejected_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_recorded_count == 0
+            && self.memory_write_chain_receipt_persisted_count == 0
+            && self.memory_write_chain_receipt_production_write_count == 0
+            && self.memory_write_chain_receipt_graph_write_count == 0
             && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 }

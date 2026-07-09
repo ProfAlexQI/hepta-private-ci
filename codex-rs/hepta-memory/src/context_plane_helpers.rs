@@ -14,6 +14,7 @@ use hepta_core::ContextMemoryShadowRegressionDashboardReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
+use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextPlaneActivationBlockerMatrix;
 use hepta_core::ContextPlaneOperatorApprovalPacket;
 use hepta_core::ContextPlaneStatusReport;
@@ -158,6 +159,8 @@ impl StoreSnapshot {
         let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
         let write_chain_readiness =
             ContextMemoryWriteChainReadinessReport::from_namespace_policy(&namespace_policy);
+        let write_chain_receipt_freshness =
+            ContextMemoryWriteChainReceiptFreshnessReport::from_readiness(&write_chain_readiness);
         let temporal_facts = self.recall_context_memory_temporal_fact_report(request);
         let temporal_fact_graph =
             ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
@@ -190,6 +193,7 @@ impl StoreSnapshot {
             formation_queue: &formation_queue,
             namespace_policy: &namespace_policy,
             write_chain_readiness: &write_chain_readiness,
+            write_chain_receipt_freshness: &write_chain_receipt_freshness,
             temporal_facts: &temporal_facts,
             temporal_fact_graph: &temporal_fact_graph,
             temporal_graph_shadow_eval: &temporal_graph_shadow_eval,

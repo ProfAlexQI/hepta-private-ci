@@ -335,3 +335,82 @@ async fn store_context_memory_write_chain_readiness_matches_snapshot_helper() {
     );
     assert!(from_store.has_readiness_integrity());
 }
+
+#[test]
+fn store_snapshot_context_memory_write_chain_receipt_freshness_is_payload_light() {
+    let snapshot = StoreSnapshot {
+        sessions: vec![],
+        memories: vec![memory_record(
+            "memory-write-chain-receipt-payload",
+            MemoryScope::LongTerm,
+            "write-chain receipt freshness must not include this memory payload",
+        )],
+        transcripts: vec![transcript_entry(
+            "session-write-chain-receipt",
+            1,
+            TranscriptEntryKind::Message,
+            "write-chain receipt freshness must not include this transcript payload",
+        )],
+    };
+
+    let report = snapshot.context_memory_write_chain_receipt_freshness_report();
+
+    assert!(report.has_receipt_integrity());
+    assert_eq!(report.namespace_count(), 6);
+    assert_eq!(report.receipt_required_count(), 18);
+    assert_eq!(report.receipt_projected_count(), 18);
+    assert_eq!(report.receipt_digest_count(), 6);
+    assert_eq!(report.freshness_pass_count(), 6);
+    assert_eq!(report.replay_guard_pass_count(), 6);
+    assert_eq!(report.stale_replay_rejected_count(), 6);
+    assert_eq!(report.recorded_receipt_count(), 0);
+    assert_eq!(report.persisted_receipt_count(), 0);
+
+    let json = serde_json::to_string(&report).expect("receipt report should serialize");
+    assert!(json.contains("receipt_digest"));
+    assert!(json.contains("shadow_wal_receipt_projected"));
+    assert!(!json.contains("write-chain receipt freshness must not include this memory payload"));
+    assert!(
+        !json.contains("write-chain receipt freshness must not include this transcript payload")
+    );
+    assert!(!json.contains("memory-write-chain-receipt-payload"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("\"recorded_receipt\":true"));
+    assert!(!json.contains("\"persisted_receipt\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+}
+
+#[tokio::test]
+async fn store_context_memory_write_chain_receipt_freshness_matches_snapshot_helper() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-write-chain-receipt-payload",
+            MemoryScope::LongTerm,
+            "write-chain receipt freshness should remain static and payload-light",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-write-chain-receipt",
+            1,
+            TranscriptEntryKind::Message,
+            "write-chain receipt freshness should not inspect transcript payload",
+        ))
+        .await
+        .expect("append should succeed");
+
+    let snapshot = store.snapshot().expect("snapshot should load");
+    let from_store = store
+        .context_memory_write_chain_receipt_freshness_report()
+        .expect("context memory write-chain receipt freshness should succeed");
+
+    assert_eq!(
+        from_store,
+        snapshot.context_memory_write_chain_receipt_freshness_report()
+    );
+    assert!(from_store.has_receipt_integrity());
+}

@@ -31,6 +31,7 @@ mod taxonomy;
 mod temporal;
 mod transcript;
 mod write_chain;
+mod write_chain_receipt;
 pub use context_plane::ContextPlaneActivationBlockerMatrix;
 pub use context_plane::ContextPlaneActivationBlockerReason;
 pub use context_plane::ContextPlaneActivationBlockerRow;
@@ -198,6 +199,8 @@ pub use transcript::TranscriptRange;
 pub use transcript::TranscriptSpan;
 pub use write_chain::ContextMemoryWriteChainReadinessBlock;
 pub use write_chain::ContextMemoryWriteChainReadinessReport;
+pub use write_chain_receipt::ContextMemoryWriteChainReceiptFreshnessBlock;
+pub use write_chain_receipt::ContextMemoryWriteChainReceiptFreshnessReport;
 
 pub const CONTEXT_MEMORY_EVAL_HARNESS_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_ADAPTIVE_ALLOCATOR_EVAL_SHADOW_SCHEMA_VERSION: u32 = 1;
@@ -212,10 +215,11 @@ pub const CONTEXT_MEMORY_RECALL_QUALITY_GATE_SCHEMA_VERSION: u32 = 2;
 pub const CONTEXT_MEMORY_FORMATION_QUEUE_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_NAMESPACE_POLICY_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_WRITE_CHAIN_READINESS_SCHEMA_VERSION: u32 = 1;
+pub const CONTEXT_MEMORY_WRITE_CHAIN_RECEIPT_FRESHNESS_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_FACT_GRAPH_SCHEMA_VERSION: u32 = 1;
-pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 13;
-pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 13;
-pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 12;
+pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 14;
+pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 14;
+pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 13;
 
 /// Declares whether a memory record belongs to a single session or to a wider
 /// cross-session corpus.

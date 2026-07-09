@@ -114,7 +114,7 @@ expected_freshness_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness=pass
 context-plane-operator-approval-packet-freshness.schema=1
 context-plane-operator-approval-packet-freshness.source-canonical-digest-report-lines=10
-context-plane-operator-approval-packet-freshness.source-canonical-digest-report-sha256=db1b88d2f6c31a96f9f550116e08a13845c855900413feb94f230cdb78025058
+context-plane-operator-approval-packet-freshness.source-canonical-digest-report-sha256=25ea1326eac056eef81e67ea97a57d3ed917a56737930efa02e391d45b3f0f84
 context-plane-operator-approval-packet-freshness.approval-readiness-sequence=273
 context-plane-operator-approval-packet-freshness.current-readiness-sequence=273
 context-plane-operator-approval-packet-freshness.expires-after-sequence=274
@@ -166,8 +166,8 @@ fi
 stale_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/approval-readiness-sequence=273/approval-readiness-sequence=272/')"
 expired_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/expires-after-sequence=274/expires-after-sequence=273/')"
 future_sequence_tamper="$(printf '%s\n' "$freshness_status" | sed 's/approval-readiness-sequence=273/approval-readiness-sequence=274/')"
-source_digest_replay_tamper="$(printf '%s\n' "$freshness_status" | sed 's/db1b88d2f6c31a96f9f550116e08a13845c855900413feb94f230cdb78025058/eb1b88d2f6c31a96f9f550116e08a13845c855900413feb94f230cdb78025058/')"
-canary_false_green_source_tamper="$(printf '%s\n' "$freshness_status" | sed 's/db1b88d2f6c31a96f9f550116e08a13845c855900413feb94f230cdb78025058/fb1b88d2f6c31a96f9f550116e08a13845c855900413feb94f230cdb78025058/')"
+source_digest_replay_tamper="$(printf '%s\n' "$freshness_status" | sed 's/25ea1326eac056eef81e67ea97a57d3ed917a56737930efa02e391d45b3f0f84/e5ea1326eac056eef81e67ea97a57d3ed917a56737930efa02e391d45b3f0f84/')"
+canary_false_green_source_tamper="$(printf '%s\n' "$freshness_status" | sed 's/25ea1326eac056eef81e67ea97a57d3ed917a56737930efa02e391d45b3f0f84/f5ea1326eac056eef81e67ea97a57d3ed917a56737930efa02e391d45b3f0f84/')"
 line_count_tamper="$(
   printf '%s\n' "$freshness_status"
   printf '%s\n' "context-plane-operator-approval-packet-freshness.replayed-copy=unexpected"

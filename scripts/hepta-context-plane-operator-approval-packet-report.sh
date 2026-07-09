@@ -3,14 +3,14 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=12
+context-plane-operator-approval-packet.schema=13
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=20
+context-plane-operator-approval-packet.rows=21
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=11
-context-plane-operator-approval-packet.threshold.required-ready=19
+context-plane-operator-approval-packet.blockers=12
+context-plane-operator-approval-packet.threshold.required-ready=20
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
@@ -19,6 +19,7 @@ context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-o
 context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-namespace-policy-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-write-chain-readiness-shadow-only=1
+context-plane-operator-approval-packet.blocker.memory-write-chain-receipt-freshness-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1
 context-plane-operator-approval-packet.blocker.source-aware-front-door-disabled=1
@@ -69,6 +70,17 @@ context-plane-operator-approval-packet.memory-write-chain-readiness.canary-ready
 context-plane-operator-approval-packet.memory-write-chain-readiness.rollback-ready-count=6
 context-plane-operator-approval-packet.memory-write-chain-readiness.production-write-count=0
 context-plane-operator-approval-packet.memory-write-chain-readiness.graph-write-count=0
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.namespace-count=6
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.receipt-required-count=18
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.receipt-projected-count=18
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.receipt-digest-count=6
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.freshness-pass-count=6
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.replay-guard-pass-count=6
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.stale-replay-rejected-count=6
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.recorded-receipt-count=0
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.persisted-receipt-count=0
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.production-write-count=0
+context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.graph-write-count=0
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-required-count=5
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5
 context-plane-operator-approval-packet.ranked-recall.lexical-bm25-check=pass

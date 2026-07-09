@@ -46,6 +46,8 @@ fn context_plane_status_report_fixture(
     let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
     let write_chain_readiness =
         ContextMemoryWriteChainReadinessReport::from_namespace_policy(&namespace_policy);
+    let write_chain_receipt_freshness =
+        ContextMemoryWriteChainReceiptFreshnessReport::from_readiness(&write_chain_readiness);
     let temporal_facts = ContextMemoryTemporalFactReport {
         facts: vec![ContextMemoryTemporalFact {
             fact_type: ContextMemoryTemporalFactType::Attribute,
@@ -121,6 +123,7 @@ fn context_plane_status_report_fixture(
         formation_queue: &formation_queue,
         namespace_policy: &namespace_policy,
         write_chain_readiness: &write_chain_readiness,
+        write_chain_receipt_freshness: &write_chain_receipt_freshness,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
         temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
@@ -142,9 +145,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 19);
+    assert_eq!(report.sections.len(), 20);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 10);
+    assert_eq!(report.shadow_section_count(), 11);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -169,6 +172,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryWriteChainReadiness),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -404,6 +411,37 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
         0
     );
     assert_eq!(write_chain_entry.memory_write_chain_graph_write_count, 0);
+    let receipt_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness status row should exist");
+    assert_eq!(receipt_entry.memory_write_chain_receipt_namespace_count, 6);
+    assert_eq!(receipt_entry.memory_write_chain_receipt_required_count, 18);
+    assert_eq!(receipt_entry.memory_write_chain_receipt_projected_count, 18);
+    assert_eq!(receipt_entry.memory_write_chain_receipt_digest_count, 6);
+    assert_eq!(
+        receipt_entry.memory_write_chain_receipt_freshness_pass_count,
+        6
+    );
+    assert_eq!(
+        receipt_entry.memory_write_chain_receipt_replay_guard_pass_count,
+        6
+    );
+    assert_eq!(
+        receipt_entry.memory_write_chain_receipt_stale_replay_rejected_count,
+        6
+    );
+    assert_eq!(receipt_entry.memory_write_chain_receipt_recorded_count, 0);
+    assert_eq!(receipt_entry.memory_write_chain_receipt_persisted_count, 0);
+    assert_eq!(
+        receipt_entry.memory_write_chain_receipt_production_write_count,
+        0
+    );
+    assert_eq!(
+        receipt_entry.memory_write_chain_receipt_graph_write_count,
+        0
+    );
     assert_eq!(
         namespace_policy_entry.memory_namespace_policy_graph_write_count,
         0
@@ -427,6 +465,11 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("memory_write_chain_stage_pass_count"));
     assert!(json.contains("memory_write_chain_readback_ready_count"));
     assert!(json.contains("memory_write_chain_canary_ready_count"));
+    assert!(json.contains("memory_write_chain_receipt_freshness"));
+    assert!(json.contains("memory_write_chain_receipt_projected_count"));
+    assert!(json.contains("memory_write_chain_receipt_digest_count"));
+    assert!(json.contains("memory_write_chain_receipt_freshness_pass_count"));
+    assert!(json.contains("memory_write_chain_receipt_stale_replay_rejected_count"));
     assert!(json.contains("memory_temporal_facts"));
     assert!(json.contains("memory_temporal_fact_graph"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
@@ -700,6 +743,49 @@ fn context_plane_status_report_rejects_memory_write_chain_false_green() {
         .expect("memory namespace policy status row should exist")
         .memory_write_chain_stage_pass_count = 6;
     assert!(!non_write_chain_leak.has_status_integrity());
+}
+
+#[test]
+fn context_plane_status_report_rejects_memory_write_chain_receipt_false_green() {
+    let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
+    let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+    let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
+
+    let mut stale_receipt = report.clone();
+    stale_receipt
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness status row should exist")
+        .memory_write_chain_receipt_freshness_pass_count = 5;
+    assert!(!stale_receipt.has_status_integrity());
+
+    let mut digest_drift = report.clone();
+    digest_drift
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness status row should exist")
+        .memory_write_chain_receipt_digest_count = 5;
+    assert!(!digest_drift.has_status_integrity());
+
+    let mut persistence_drift = report.clone();
+    persistence_drift
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness status row should exist")
+        .memory_write_chain_receipt_persisted_count = 1;
+    assert!(!persistence_drift.has_status_integrity());
+
+    let mut non_receipt_leak = report.clone();
+    non_receipt_leak
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness status row should exist")
+        .memory_write_chain_receipt_projected_count = 18;
+    assert!(!non_receipt_leak.has_status_integrity());
 }
 
 #[test]

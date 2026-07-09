@@ -12,6 +12,8 @@ const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_RECEIPT_NAMESPACE_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT: usize = 18;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -99,6 +101,17 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_write_chain_rollback_ready_count: usize,
     pub memory_write_chain_production_write_count: usize,
     pub memory_write_chain_graph_write_count: usize,
+    pub memory_write_chain_receipt_namespace_count: usize,
+    pub memory_write_chain_receipt_required_count: usize,
+    pub memory_write_chain_receipt_projected_count: usize,
+    pub memory_write_chain_receipt_digest_count: usize,
+    pub memory_write_chain_receipt_freshness_pass_count: usize,
+    pub memory_write_chain_receipt_replay_guard_pass_count: usize,
+    pub memory_write_chain_receipt_stale_replay_rejected_count: usize,
+    pub memory_write_chain_receipt_recorded_count: usize,
+    pub memory_write_chain_receipt_persisted_count: usize,
+    pub memory_write_chain_receipt_production_write_count: usize,
+    pub memory_write_chain_receipt_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -231,6 +244,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::MemoryWriteChainReceiptFreshnessShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryShadowCanaryReadiness,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly,
@@ -280,6 +297,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_canary_promotion_rollup(target, entry)
             .with_memory_namespace_policy_rollup(target, entry)
             .with_memory_write_chain_readiness_rollup(target, entry)
+            .with_memory_write_chain_receipt_freshness_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
@@ -289,6 +307,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_canary_promotion_rollup(target, entry)
             .with_memory_namespace_policy_rollup(target, entry)
             .with_memory_write_chain_readiness_rollup(target, entry)
+            .with_memory_write_chain_receipt_freshness_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
     }
 
@@ -544,6 +563,40 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_write_chain_receipt_freshness_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness
+            && let Some(entry) = entry
+        {
+            self.memory_write_chain_receipt_namespace_count =
+                entry.memory_write_chain_receipt_namespace_count;
+            self.memory_write_chain_receipt_required_count =
+                entry.memory_write_chain_receipt_required_count;
+            self.memory_write_chain_receipt_projected_count =
+                entry.memory_write_chain_receipt_projected_count;
+            self.memory_write_chain_receipt_digest_count =
+                entry.memory_write_chain_receipt_digest_count;
+            self.memory_write_chain_receipt_freshness_pass_count =
+                entry.memory_write_chain_receipt_freshness_pass_count;
+            self.memory_write_chain_receipt_replay_guard_pass_count =
+                entry.memory_write_chain_receipt_replay_guard_pass_count;
+            self.memory_write_chain_receipt_stale_replay_rejected_count =
+                entry.memory_write_chain_receipt_stale_replay_rejected_count;
+            self.memory_write_chain_receipt_recorded_count =
+                entry.memory_write_chain_receipt_recorded_count;
+            self.memory_write_chain_receipt_persisted_count =
+                entry.memory_write_chain_receipt_persisted_count;
+            self.memory_write_chain_receipt_production_write_count =
+                entry.memory_write_chain_receipt_production_write_count;
+            self.memory_write_chain_receipt_graph_write_count =
+                entry.memory_write_chain_receipt_graph_write_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -555,6 +608,7 @@ impl ContextPlaneActivationBlockerRow {
             && self.has_canary_promotion_rollup_integrity()
             && self.has_memory_namespace_policy_rollup_integrity()
             && self.has_memory_write_chain_readiness_rollup_integrity()
+            && self.has_memory_write_chain_receipt_freshness_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
@@ -925,6 +979,46 @@ impl ContextPlaneActivationBlockerRow {
                 == self.memory_write_chain_namespace_count
             && self.memory_write_chain_production_write_count == 0
             && self.memory_write_chain_graph_write_count == 0
+            && (self.threshold_satisfied || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_write_chain_receipt_freshness_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.memory_write_chain_receipt_namespace_count,
+            self.memory_write_chain_receipt_required_count,
+            self.memory_write_chain_receipt_projected_count,
+            self.memory_write_chain_receipt_digest_count,
+            self.memory_write_chain_receipt_freshness_pass_count,
+            self.memory_write_chain_receipt_replay_guard_pass_count,
+            self.memory_write_chain_receipt_stale_replay_rejected_count,
+            self.memory_write_chain_receipt_recorded_count,
+            self.memory_write_chain_receipt_persisted_count,
+            self.memory_write_chain_receipt_production_write_count,
+            self.memory_write_chain_receipt_graph_write_count,
+        ];
+
+        if self.target != ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_write_chain_receipt_namespace_count
+            == MEMORY_WRITE_CHAIN_RECEIPT_NAMESPACE_REQUIRED_COUNT
+            && self.memory_write_chain_receipt_required_count
+                == MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT
+            && self.memory_write_chain_receipt_projected_count
+                == self.memory_write_chain_receipt_required_count
+            && self.memory_write_chain_receipt_digest_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_freshness_pass_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_replay_guard_pass_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_stale_replay_rejected_count
+                == self.memory_write_chain_receipt_namespace_count
+            && self.memory_write_chain_receipt_recorded_count == 0
+            && self.memory_write_chain_receipt_persisted_count == 0
+            && self.memory_write_chain_receipt_production_write_count == 0
+            && self.memory_write_chain_receipt_graph_write_count == 0
             && (self.threshold_satisfied || self.blocker_reason.is_blocking())
     }
 }

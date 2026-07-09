@@ -887,6 +887,33 @@ and preflight must run
 machine-readable report is
 `scripts/hepta-context-memory-write-chain-readiness-report.sh`. It must keep
 `runtime-activation=disabled`.
+Memory write-chain receipt freshness/digest shadow report: recall diagnostics
+may expose a payload-light `memory_write_chain_receipt_freshness` report derived
+from the write-chain readiness surface. Blocks may contain only projected
+receipt metadata: namespace, sequence, expiry sequence,
+`shadow_wal_receipt_projected`, `readback_receipt_projected`,
+`canary_receipt_projected`, `receipt_digest`, `freshness_check_pass`,
+`replay_guard_pass`, `stale_replay_rejected`, `recorded_receipt=false`,
+`persisted_receipt=false`, `production_write=false`, `graph_write=false`,
+`hot_path_write=false`, `prompt_assembly_change=false`, and
+`runtime_activation=false`. Integrity requires all six namespaces exactly once,
+18 projected shadow WAL/readback/canary receipts, six receipt digests, six
+freshness checks, six replay guards, six stale-replay rejections, no recorded
+receipts, no persisted receipts, and no side effects. The report must not
+contain prompt text, transcript text, memory text, candidate text, source ids,
+replay keys, text hashes, memory ids, topic ids, neuron ids, query payloads,
+ranked payloads, tool arguments, entity/fact/edge hashes, per-source lists,
+email-shaped strings, phone-shaped strings, user identifiers, or any write/read
+payload. It must not record receipts, must not persist receipts, must not write
+production memory, must not write graph facts, must not promote shadow
+WAL/readback/canary state into durable memory, must not alter prompt assembly,
+and must not enable runtime activation. The context debug gate and preflight
+must run `scripts/hepta-context-memory-write-chain-receipt-freshness-gate.sh`
+after `scripts/hepta-context-memory-write-chain-readiness-gate.sh` and before
+`scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh`; the
+machine-readable report is
+`scripts/hepta-context-memory-write-chain-receipt-freshness-report.sh`. It must
+keep `runtime-activation=disabled`.
 Memory formation candidate no-leak/export guard: until an eval harness and
 explicit operator-approved write path exist, any future memory formation
 candidate preview surface must remain payload-dark in response-debug/export.
@@ -1706,7 +1733,8 @@ Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation
 receipts, memory formation queue, memory namespace policy shadow readiness,
-memory write-chain readiness/readback shadow state, temporal facts, temporal fact graph, eval
+memory write-chain readiness/readback shadow state, memory write-chain receipt
+freshness/digest shadow state, temporal facts, temporal fact graph, eval
 harness seed, adaptive allocator eval shadow, recall quality gate, ranked recall
 shadow eval, memory provider boundary, memory shadow canary readiness, memory shadow canary
 promotion readiness, and source-aware front-door
@@ -1717,6 +1745,7 @@ keys only. The Rust status sections are `source_registry`,
 `adaptive_budget_allocation`, `memory_taxonomy`,
 `memory_formation_receipts`, `memory_formation_queue`, `memory_temporal_facts`,
 `memory_namespace_policy`, `memory_write_chain_readiness`,
+`memory_write_chain_receipt_freshness`,
 `memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`,
 `eval_harness_seed`, `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
@@ -1756,7 +1785,31 @@ route is promoted. It may carry only aggregate write-chain readiness counters:
 write-chain false-green rows: namespace, stage, propose-write, approval, shadow
 WAL, readback, canary, and rollback counts must be 6, while production-write
 and graph-write counts must be 0. Non-write-chain rows must not carry
-write-chain counters. The
+write-chain counters. The `memory_write_chain_receipt_freshness` row is
+shadow-only until a separately approved shadow WAL/readback receipt path is
+promoted. It may carry only aggregate receipt freshness/digest counters:
+`memory_write_chain_receipt_namespace_count`,
+`memory_write_chain_receipt_required_count`,
+`memory_write_chain_receipt_projected_count`,
+`memory_write_chain_receipt_digest_count`,
+`memory_write_chain_receipt_freshness_pass_count`,
+`memory_write_chain_receipt_replay_guard_pass_count`,
+`memory_write_chain_receipt_stale_replay_rejected_count`,
+`memory_write_chain_receipt_recorded_count`,
+`memory_write_chain_receipt_persisted_count`,
+`memory_write_chain_receipt_production_write_count`, and
+`memory_write_chain_receipt_graph_write_count`. Status integrity must reject
+write-chain receipt false-green rows: namespace, digest, freshness, replay
+guard, and stale-replay rejection counts must be 6, projected receipt count
+must be 18, and recorded, persisted, production-write, and graph-write counts
+must be 0. Non-receipt rows must not carry receipt freshness counters. The
+gate-pass status export must include
+`context-plane-status.memory-write-chain-receipt-freshness=shadow`,
+`context-plane-status.memory-write-chain-receipt-freshness.receipt-projected-count=18`,
+`context-plane-status.memory-write-chain-receipt-freshness.receipt-digest-count=6`,
+`context-plane-status.memory-write-chain-receipt-freshness.freshness-pass-count=6`, and
+`context-plane-status.memory-write-chain-receipt-freshness.recorded-receipt-count=0`.
+The
 `memory_temporal_graph_shadow_eval` row is shadow-only until a separately
 approved graph route is promoted. The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
@@ -1911,6 +1964,7 @@ Plane status report. The machine-readable report is
 `memory_formation_receipts`, `memory_formation_queue`,
 `memory_namespace_policy`,
 `memory_write_chain_readiness`,
+`memory_write_chain_receipt_freshness`,
 `memory_temporal_facts`, `memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
@@ -1926,6 +1980,7 @@ are controlled enum values:
 `memory_provider_v2_boundary_shadow_only`,
 `memory_namespace_policy_shadow_only`,
 `memory_write_chain_readiness_shadow_only`,
+`memory_write_chain_receipt_freshness_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
 `memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
@@ -1962,6 +2017,12 @@ propose-write readiness, approval readiness, shadow WAL readiness, readback
 readiness, canary readiness, rollback readiness, production-write count drift,
 graph-write count drift, or write-chain counters appearing on non-write-chain
 rows.
+The `memory_write_chain_receipt_freshness` matrix row carries the same receipt
+freshness/digest counters as the status row and must reject missing projected
+receipts, missing receipt digests, stale freshness, failed replay guards,
+accepted stale replay, recorded receipts, persisted receipts, production-write
+count drift, graph-write count drift, or receipt counters appearing on
+non-receipt rows.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -1998,6 +2059,12 @@ activation matrix export must include
 `context-plane-activation-blockers.memory-write-chain-readiness.stage-pass-count=6`,
 `context-plane-activation-blockers.memory-write-chain-readiness.readback-ready-count=6`,
 `context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-count=6`,
+`context-plane-activation-blockers.memory-write-chain-receipt-freshness=blocked:memory_write_chain_receipt_freshness_shadow_only`,
+`context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-projected-count=18`,
+`context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-digest-count=6`,
+`context-plane-activation-blockers.memory-write-chain-receipt-freshness.freshness-pass-count=6`,
+`context-plane-activation-blockers.memory-write-chain-receipt-freshness.recorded-receipt-count=0`,
+`context-plane-activation-blockers.memory-write-chain-receipt-freshness.persisted-receipt-count=0`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6`,
@@ -2037,14 +2104,25 @@ row fields are `memory_write_chain_namespace_count`,
 `memory_write_chain_canary_ready_count`,
 `memory_write_chain_rollback_ready_count`,
 `memory_write_chain_production_write_count`, and
-`memory_write_chain_graph_write_count`. The matrix must not contain
+`memory_write_chain_graph_write_count`. The typed write-chain receipt freshness
+activation row fields are `memory_write_chain_receipt_namespace_count`,
+`memory_write_chain_receipt_required_count`,
+`memory_write_chain_receipt_projected_count`,
+`memory_write_chain_receipt_digest_count`,
+`memory_write_chain_receipt_freshness_pass_count`,
+`memory_write_chain_receipt_replay_guard_pass_count`,
+`memory_write_chain_receipt_stale_replay_rejected_count`,
+`memory_write_chain_receipt_recorded_count`,
+`memory_write_chain_receipt_persisted_count`,
+`memory_write_chain_receipt_production_write_count`, and
+`memory_write_chain_receipt_graph_write_count`. The matrix must not contain
 prompt text, must not contain transcript text, must not contain memory text, and
 must not contain answer text.
 It must not expose source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw fact/entity values, email-shaped
 strings, phone-shaped strings, user identifiers, transcript spans, candidate
 text, entity hashes, fact hashes, edge hashes, supersedes hashes, fixture hashes,
-or idempotency hashes. Matrix integrity requires all twenty targets, exact blocker counts, no production
+or idempotency hashes. Matrix integrity requires all twenty-one targets, exact blocker counts, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
 changes, no operator activation allowance, and `activation_allowed=false`. This
@@ -2077,6 +2155,7 @@ counts may include only the controlled activation blocker enum values
 `memory_provider_v2_boundary_shadow_only`,
 `memory_namespace_policy_shadow_only`,
 `memory_write_chain_readiness_shadow_only`,
+`memory_write_chain_receipt_freshness_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
 `memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
@@ -2158,6 +2237,23 @@ the `memory_write_chain_readiness` matrix row:
 write-chain false-green receipts where required namespace, stage, propose-write,
 approval, shadow WAL, readback, canary, and rollback counts are not all 6, or
 where production-write/graph-write counts are nonzero.
+The packet also carries only payload-light write-chain receipt freshness/digest
+counters from the `memory_write_chain_receipt_freshness` matrix row:
+`memory_write_chain_receipt_namespace_count`,
+`memory_write_chain_receipt_required_count`,
+`memory_write_chain_receipt_projected_count`,
+`memory_write_chain_receipt_digest_count`,
+`memory_write_chain_receipt_freshness_pass_count`,
+`memory_write_chain_receipt_replay_guard_pass_count`,
+`memory_write_chain_receipt_stale_replay_rejected_count`,
+`memory_write_chain_receipt_recorded_count`,
+`memory_write_chain_receipt_persisted_count`,
+`memory_write_chain_receipt_production_write_count`, and
+`memory_write_chain_receipt_graph_write_count`. Packet integrity must reject
+write-chain receipt false-green packets where required namespace, digest,
+freshness, replay guard, and stale-replay rejection counts are not all 6, where
+projected receipt count is not 18, or where recorded, persisted,
+production-write, or graph-write counts are nonzero.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
@@ -2177,6 +2273,7 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-namespace-policy-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-write-chain-readiness-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.memory-write-chain-receipt-freshness-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6`,
 `context-plane-operator-approval-packet.memory-provider-v2.propose-write-check=pass`,
 `context-plane-operator-approval-packet.memory-provider-v2.close-check=pass`,
@@ -2186,6 +2283,11 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.memory-write-chain-readiness.stage-pass-count=6`,
 `context-plane-operator-approval-packet.memory-write-chain-readiness.readback-ready-count=6`,
 `context-plane-operator-approval-packet.memory-write-chain-readiness.canary-ready-count=6`,
+`context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.receipt-projected-count=18`,
+`context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.receipt-digest-count=6`,
+`context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.freshness-pass-count=6`,
+`context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.recorded-receipt-count=0`,
+`context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.persisted-receipt-count=0`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4`,
@@ -2228,7 +2330,18 @@ packet fields are `memory_write_chain_namespace_count`,
 `memory_write_chain_canary_ready_count`,
 `memory_write_chain_rollback_ready_count`,
 `memory_write_chain_production_write_count`, and
-`memory_write_chain_graph_write_count`.
+`memory_write_chain_graph_write_count`. The typed write-chain receipt freshness
+operator packet fields are `memory_write_chain_receipt_namespace_count`,
+`memory_write_chain_receipt_required_count`,
+`memory_write_chain_receipt_projected_count`,
+`memory_write_chain_receipt_digest_count`,
+`memory_write_chain_receipt_freshness_pass_count`,
+`memory_write_chain_receipt_replay_guard_pass_count`,
+`memory_write_chain_receipt_stale_replay_rejected_count`,
+`memory_write_chain_receipt_recorded_count`,
+`memory_write_chain_receipt_persisted_count`,
+`memory_write_chain_receipt_production_write_count`, and
+`memory_write_chain_receipt_graph_write_count`.
 The packet must not contain prompt text, must not contain transcript text,
 must not contain memory text, and must not contain answer text. It must not
 expose source ids, session ids, memory ids, trace ids, query payloads, ranked
@@ -2236,7 +2349,7 @@ payloads, tool arguments, raw fact/entity values, email-shaped strings,
 phone-shaped strings, user identifiers, transcript spans, candidate text, entity
 hashes, supersedes hashes, fixture hashes, or idempotency hashes. The packet
 must not include activation commands or any command-shaped field that could be
-executed by an operator path. Packet integrity requires all twenty matrix rows,
+executed by an operator path. Packet integrity requires all twenty-one matrix rows,
 exact threshold counts, exact blocker reason counts, all required approval
 scopes, no production memory writes, no graph writes, no runtime activation, no
 adaptive allocator runtime activation, no source-aware runtime activation, no
@@ -2290,8 +2403,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 129 lines, negative export report 4 lines, and
-combined report 133 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 141 lines, negative export report 4 lines, and
+combined report 145 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

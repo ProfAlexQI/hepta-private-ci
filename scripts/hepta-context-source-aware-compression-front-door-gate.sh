@@ -84,6 +84,7 @@ memory_formation_receipt_gate_script="hepta-context-memory-formation-receipt-gat
 memory_formation_queue_gate_script="hepta-context-memory-formation-queue-gate.sh"
 memory_namespace_policy_gate_script="hepta-context-memory-namespace-policy-gate.sh"
 memory_write_chain_readiness_gate_script="hepta-context-memory-write-chain-readiness-gate.sh"
+memory_write_chain_receipt_freshness_gate_script="hepta-context-memory-write-chain-receipt-freshness-gate.sh"
 memory_formation_candidate_no_leak_gate_script="hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 memory_temporal_fact_schema_gate_script="hepta-context-memory-temporal-fact-schema-gate.sh"
 memory_temporal_fact_graph_gate_script="hepta-context-memory-temporal-fact-graph-gate.sh"
@@ -166,6 +167,17 @@ required_contract_terms=(
   "rollback_ready"
   "hepta-context-memory-write-chain-readiness-report.sh"
   "hepta-context-memory-write-chain-readiness-gate.sh"
+  "Memory write-chain receipt freshness/digest shadow report"
+  "memory_write_chain_receipt_freshness"
+  "shadow_wal_receipt_projected"
+  "readback_receipt_projected"
+  "canary_receipt_projected"
+  "receipt_digest"
+  "freshness_check_pass"
+  "replay_guard_pass"
+  "stale_replay_rejected"
+  "hepta-context-memory-write-chain-receipt-freshness-report.sh"
+  "hepta-context-memory-write-chain-receipt-freshness-gate.sh"
   "Memory formation candidate no-leak/export guard"
   "memory_formation_candidates"
   "memory_formation_candidate_previews"
@@ -625,9 +637,9 @@ required_contract_terms=(
   "hepta-context-plane-operator-approval-packet-negative-export-gate.sh"
   "Context Plane operator approval packet canonical export digest"
   "context-plane-operator-approval-packet-canonical-export-digest=pass"
-  "approval report 129 lines"
+  "approval report 141 lines"
   "negative export report 4 lines"
-  "combined report 133 lines"
+  "combined report 145 lines"
   "deterministic and idempotent"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-gate.sh"
@@ -814,6 +826,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_write_chain_readiness_gate_script" \
   "memory write-chain readiness debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_write_chain_receipt_freshness_gate_script" \
+  "memory write-chain receipt freshness debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -1089,6 +1106,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory write-chain readiness/readback shadow gate" \
   "memory write-chain readiness preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory write-chain receipt freshness/digest shadow gate" \
+  "memory write-chain receipt freshness preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1390,6 +1412,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory write-chain readiness/readback shadow gate" \
+  "context memory write-chain receipt freshness/digest shadow gate" \
+  "memory write-chain receipt freshness preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory write-chain receipt freshness/digest shadow gate" \
   "context memory formation candidate no-leak export gate" \
   "memory formation candidate no-leak preflight stage order"
 

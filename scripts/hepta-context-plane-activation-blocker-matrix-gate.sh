@@ -86,6 +86,11 @@ for term in \
   "memory_write_chain_stage_pass_count" \
   "memory_write_chain_readback_ready_count" \
   "memory_write_chain_canary_ready_count" \
+  "memory_write_chain_receipt_freshness" \
+  "memory_write_chain_receipt_freshness_shadow_only" \
+  "memory_write_chain_receipt_projected_count" \
+  "memory_write_chain_receipt_digest_count" \
+  "memory_write_chain_receipt_freshness_pass_count" \
   "memory_temporal_facts" \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
@@ -145,6 +150,11 @@ for term in \
   "context-plane-activation-blockers.memory-write-chain-readiness.stage-pass-count=6" \
   "context-plane-activation-blockers.memory-write-chain-readiness.readback-ready-count=6" \
   "context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness=blocked:memory_write_chain_receipt_freshness_shadow_only" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-projected-count=18" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-digest-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.freshness-pass-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.recorded-receipt-count=0" \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
@@ -154,6 +164,7 @@ for term in \
   "memory_provider_v2_boundary_shadow_only" \
   "memory_namespace_policy_shadow_only" \
   "memory_write_chain_readiness_shadow_only" \
+  "memory_write_chain_receipt_freshness_shadow_only" \
   "memory_shadow_canary_readiness_shadow_only" \
   "memory_shadow_canary_promotion_readiness_shadow_only" \
   "source_aware_front_door_disabled" \
@@ -268,10 +279,10 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=13
-context-plane-activation-blockers.rows=20
+context-plane-activation-blockers.schema=14
+context-plane-activation-blockers.rows=21
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=11
+context-plane-activation-blockers.blockers=12
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -299,6 +310,18 @@ context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-coun
 context-plane-activation-blockers.memory-write-chain-readiness.rollback-ready-count=6
 context-plane-activation-blockers.memory-write-chain-readiness.production-write-count=0
 context-plane-activation-blockers.memory-write-chain-readiness.graph-write-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness=blocked:memory_write_chain_receipt_freshness_shadow_only
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.namespace-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-required-count=18
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-projected-count=18
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-digest-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.freshness-pass-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.replay-guard-pass-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.stale-replay-rejected-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.recorded-receipt-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.persisted-receipt-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.production-write-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.graph-write-count=0
 context-plane-activation-blockers.memory-temporal-facts=ready
 context-plane-activation-blockers.memory-temporal-fact-graph=ready
 context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only

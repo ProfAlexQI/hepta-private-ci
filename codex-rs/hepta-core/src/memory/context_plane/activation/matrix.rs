@@ -102,6 +102,13 @@ impl ContextPlaneActivationBlockerMatrix {
                 report_side_effect_flag_enabled,
             ),
             row_from_section(
+                ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness,
+                status,
+                ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness,
+                ContextPlaneStatusKind::Ready,
+                report_side_effect_flag_enabled,
+            ),
+            row_from_section(
                 ContextPlaneActivationTarget::MemoryTemporalFacts,
                 status,
                 ContextPlaneStatusSection::MemoryTemporalFacts,
@@ -207,7 +214,7 @@ impl ContextPlaneActivationBlockerMatrix {
 
     pub fn has_matrix_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION
-            && self.rows.len() == 20
+            && self.rows.len() == 21
             && self.has_required_targets()
             && self.blocker_count
                 == self
@@ -238,6 +245,7 @@ impl ContextPlaneActivationBlockerMatrix {
             ContextPlaneActivationTarget::MemoryFormationQueue,
             ContextPlaneActivationTarget::MemoryNamespacePolicy,
             ContextPlaneActivationTarget::MemoryWriteChainReadiness,
+            ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness,
             ContextPlaneActivationTarget::MemoryTemporalFacts,
             ContextPlaneActivationTarget::MemoryTemporalFactGraph,
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval,

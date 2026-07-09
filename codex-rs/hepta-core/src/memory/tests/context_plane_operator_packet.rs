@@ -34,6 +34,8 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
     let write_chain_readiness =
         ContextMemoryWriteChainReadinessReport::from_namespace_policy(&namespace_policy);
+    let write_chain_receipt_freshness =
+        ContextMemoryWriteChainReceiptFreshnessReport::from_readiness(&write_chain_readiness);
     let temporal_facts = ContextMemoryTemporalFactReport {
         facts: vec![ContextMemoryTemporalFact {
             fact_type: ContextMemoryTemporalFactType::Attribute,
@@ -110,6 +112,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         formation_queue: &formation_queue,
         namespace_policy: &namespace_policy,
         write_chain_readiness: &write_chain_readiness,
+        write_chain_receipt_freshness: &write_chain_receipt_freshness,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
         temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
@@ -130,11 +133,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 20);
+    assert_eq!(packet.matrix_row_count, 21);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 11);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 20);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 19);
+    assert_eq!(packet.blocker_count, 12);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 21);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 20);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -377,12 +380,17 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("memory_provider_v2_close_check_pass"));
     assert!(json.contains("memory_namespace_policy_shadow_only"));
     assert!(json.contains("memory_write_chain_readiness_shadow_only"));
+    assert!(json.contains("memory_write_chain_receipt_freshness_shadow_only"));
     assert!(json.contains("memory_namespace_policy_namespace_count"));
     assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
     assert!(json.contains("memory_namespace_policy_operator_approval_required_count"));
     assert!(json.contains("memory_write_chain_stage_pass_count"));
     assert!(json.contains("memory_write_chain_readback_ready_count"));
     assert!(json.contains("memory_write_chain_canary_ready_count"));
+    assert!(json.contains("memory_write_chain_receipt_projected_count"));
+    assert!(json.contains("memory_write_chain_receipt_digest_count"));
+    assert!(json.contains("memory_write_chain_receipt_freshness_pass_count"));
+    assert!(json.contains("memory_write_chain_receipt_stale_replay_rejected_count"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
     assert!(json.contains("canary_promotion_checklist_pass_count"));
@@ -523,6 +531,18 @@ fn context_plane_operator_approval_packet_rejects_memory_write_chain_false_green
     let mut write_false_green = packet.clone();
     write_false_green.memory_write_chain_production_write_count = 1;
     assert!(!write_false_green.has_packet_integrity());
+
+    let mut stale_receipt = packet.clone();
+    stale_receipt.memory_write_chain_receipt_freshness_pass_count = 5;
+    assert!(!stale_receipt.has_packet_integrity());
+
+    let mut receipt_digest_drift = packet.clone();
+    receipt_digest_drift.memory_write_chain_receipt_digest_count = 5;
+    assert!(!receipt_digest_drift.has_packet_integrity());
+
+    let mut receipt_persistence_drift = packet.clone();
+    receipt_persistence_drift.memory_write_chain_receipt_persisted_count = 1;
+    assert!(!receipt_persistence_drift.has_packet_integrity());
 }
 
 #[test]
@@ -549,9 +569,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 20);
+    assert_eq!(packet.matrix_row_count, 21);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 12);
+    assert_eq!(packet.blocker_count, 13);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -612,14 +632,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 20,
+        matrix_row_count: 21,
         threshold_satisfied_count: 9,
-        blocker_count: 11,
+        blocker_count: 12,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 20,
+            total_row_count: 21,
             threshold_satisfied_count: 9,
-            blocker_count: 11,
-            required_ready_count: 19,
+            blocker_count: 12,
+            required_ready_count: 20,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -653,6 +673,11 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason: ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason:
+                    ContextPlaneActivationBlockerReason::MemoryWriteChainReceiptFreshnessShadowOnly,
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
@@ -716,6 +741,17 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         memory_write_chain_rollback_ready_count: 6,
         memory_write_chain_production_write_count: 0,
         memory_write_chain_graph_write_count: 0,
+        memory_write_chain_receipt_namespace_count: 6,
+        memory_write_chain_receipt_required_count: 18,
+        memory_write_chain_receipt_projected_count: 18,
+        memory_write_chain_receipt_digest_count: 6,
+        memory_write_chain_receipt_freshness_pass_count: 6,
+        memory_write_chain_receipt_replay_guard_pass_count: 6,
+        memory_write_chain_receipt_stale_replay_rejected_count: 6,
+        memory_write_chain_receipt_recorded_count: 0,
+        memory_write_chain_receipt_persisted_count: 0,
+        memory_write_chain_receipt_production_write_count: 0,
+        memory_write_chain_receipt_graph_write_count: 0,
         ranked_recall_hybrid_signal_required_count: 5,
         ranked_recall_hybrid_signal_pass_count: 5,
         ranked_recall_lexical_bm25_check_pass: true,

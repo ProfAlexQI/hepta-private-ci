@@ -156,6 +156,11 @@ for term in \
   "context-plane-status.memory-write-chain-readiness.stage-pass-count=6" \
   "context-plane-status.memory-write-chain-readiness.readback-ready-count=6" \
   "context-plane-status.memory-write-chain-readiness.canary-ready-count=6" \
+  "context-plane-status.memory-write-chain-receipt-freshness=shadow" \
+  "context-plane-status.memory-write-chain-receipt-freshness.receipt-projected-count=18" \
+  "context-plane-status.memory-write-chain-receipt-freshness.receipt-digest-count=6" \
+  "context-plane-status.memory-write-chain-receipt-freshness.freshness-pass-count=6" \
+  "context-plane-status.memory-write-chain-receipt-freshness.recorded-receipt-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -276,6 +281,18 @@ context-plane-status.memory-write-chain-readiness.canary-ready-count=6
 context-plane-status.memory-write-chain-readiness.rollback-ready-count=6
 context-plane-status.memory-write-chain-readiness.production-write-count=0
 context-plane-status.memory-write-chain-readiness.graph-write-count=0
+context-plane-status.memory-write-chain-receipt-freshness=shadow
+context-plane-status.memory-write-chain-receipt-freshness.namespace-count=6
+context-plane-status.memory-write-chain-receipt-freshness.receipt-required-count=18
+context-plane-status.memory-write-chain-receipt-freshness.receipt-projected-count=18
+context-plane-status.memory-write-chain-receipt-freshness.receipt-digest-count=6
+context-plane-status.memory-write-chain-receipt-freshness.freshness-pass-count=6
+context-plane-status.memory-write-chain-receipt-freshness.replay-guard-pass-count=6
+context-plane-status.memory-write-chain-receipt-freshness.stale-replay-rejected-count=6
+context-plane-status.memory-write-chain-receipt-freshness.recorded-receipt-count=0
+context-plane-status.memory-write-chain-receipt-freshness.persisted-receipt-count=0
+context-plane-status.memory-write-chain-receipt-freshness.production-write-count=0
+context-plane-status.memory-write-chain-receipt-freshness.graph-write-count=0
 context-plane-status.memory-temporal-facts=ready
 context-plane-status.memory-temporal-fact-graph=ready
 context-plane-status.memory-temporal-graph-shadow-eval=shadow

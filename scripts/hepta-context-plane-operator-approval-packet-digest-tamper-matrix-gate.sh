@@ -121,12 +121,12 @@ assert_line_before \
 expected_digest_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-canonical-export-digest=pass
 context-plane-operator-approval-packet-canonical-export-digest.schema=1
-context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=129
-context-plane-operator-approval-packet-canonical-export-digest.approval-report-sha256=8026268c21e13763e84e03175fe96f24ff23d83cea6ccd3164032a235d692d8a
+context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=141
+context-plane-operator-approval-packet-canonical-export-digest.approval-report-sha256=1ea1d2eddf071ccccc3c7d52724f349988144c847e0b52adf03c92ec81201e3b
 context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-lines=4
 context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-sha256=06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2
-context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=133
-context-plane-operator-approval-packet-canonical-export-digest.combined-report-sha256=ddccb8ebfaf3509fc52e353783e8ab819f43cab0d42317b9627d0c27a2981258
+context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=145
+context-plane-operator-approval-packet-canonical-export-digest.combined-report-sha256=74a27392417e2185a3ea2f1c6987bc4fd9dd5bc3aedc4c7f17a94be5e8f39976
 context-plane-operator-approval-packet-canonical-export-digest.runtime-activation=disabled
 context-plane-operator-approval-packet-canonical-export-digest.operator-activation=disabled
 STATUS
@@ -141,12 +141,12 @@ canonical_guard_accepts() {
   combined_status="$(printf '%s\n%s' "$approval_status" "$negative_status")"
 
   [ "$digest_status" = "$expected_digest_status" ] || return 1
-  [ "$(line_count "$approval_status")" = "129" ] || return 1
+  [ "$(line_count "$approval_status")" = "141" ] || return 1
   [ "$(line_count "$negative_status")" = "4" ] || return 1
-  [ "$(line_count "$combined_status")" = "133" ] || return 1
-  [ "$(printf '%s\n' "$approval_status" | sha256_digest)" = "8026268c21e13763e84e03175fe96f24ff23d83cea6ccd3164032a235d692d8a" ] || return 1
+  [ "$(line_count "$combined_status")" = "145" ] || return 1
+  [ "$(printf '%s\n' "$approval_status" | sha256_digest)" = "1ea1d2eddf071ccccc3c7d52724f349988144c847e0b52adf03c92ec81201e3b" ] || return 1
   [ "$(printf '%s\n' "$negative_status" | sha256_digest)" = "06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2" ] || return 1
-  [ "$(printf '%s\n' "$combined_status" | sha256_digest)" = "ddccb8ebfaf3509fc52e353783e8ab819f43cab0d42317b9627d0c27a2981258" ] || return 1
+  [ "$(printf '%s\n' "$combined_status" | sha256_digest)" = "74a27392417e2185a3ea2f1c6987bc4fd9dd5bc3aedc4c7f17a94be5e8f39976" ] || return 1
 
   if printf '%s\n%s\n%s\n' "$approval_status" "$negative_status" "$digest_status" | grep -E 'activation_command|tool_args|raw_payload|prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|ranked_payload|entity_hash|supersedes|idempotency|fixture_hash|operator@example\.com|activation-command=(run|enabled|present)|runtime-activation=enabled|production-write=enabled|graph-write=enabled|operator-activation=enabled' >/dev/null; then
     return 1
@@ -181,7 +181,7 @@ line_count_tamper="$(
   printf '%s\n' "$approval_status"
   printf '%s\n' "context-plane-operator-approval-packet.extra-line=unexpected"
 )"
-digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/8026268c21e13763e84e03175fe96f24ff23d83cea6ccd3164032a235d692d8a/9026268c21e13763e84e03175fe96f24ff23d83cea6ccd3164032a235d692d8a/')"
+digest_value_tamper="$(printf '%s\n' "$digest_status" | sed 's/1ea1d2eddf071ccccc3c7d52724f349988144c847e0b52adf03c92ec81201e3b/9ea1d2eddf071ccccc3c7d52724f349988144c847e0b52adf03c92ec81201e3b/')"
 canary_partial_checklist_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4/context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=3/')"
 canary_partial_rehearsal_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=3/context-plane-operator-approval-packet.canary-promotion.rollback-rehearsal-pass-count=2/')"
 canary_blocker_full_checklist_tamper="$(printf '%s\n' "$approval_status" | sed 's/context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=0/context-plane-operator-approval-packet.canary-promotion.promotion-blocker-count=1/')"

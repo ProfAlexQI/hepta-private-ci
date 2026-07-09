@@ -38,6 +38,20 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 entry.memory_write_chain_rollback_ready_count = 6;
                 entry
             },
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness,
+                    6,
+                );
+                entry.memory_write_chain_receipt_namespace_count = 6;
+                entry.memory_write_chain_receipt_required_count = 18;
+                entry.memory_write_chain_receipt_projected_count = 18;
+                entry.memory_write_chain_receipt_digest_count = 6;
+                entry.memory_write_chain_receipt_freshness_pass_count = 6;
+                entry.memory_write_chain_receipt_replay_guard_pass_count = 6;
+                entry.memory_write_chain_receipt_stale_replay_rejected_count = 6;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryTemporalFacts, 1),
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::MemoryTemporalFactGraph, 1),
             ContextPlaneStatusEntry::shadow(
@@ -162,9 +176,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 20);
+    assert_eq!(matrix.rows.len(), 21);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 11);
+    assert_eq!(matrix.blocker_count, 12);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -199,8 +213,8 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
         Some(ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly)
     );
     assert_eq!(
-        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryWriteChainReadiness),
-        Some(ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly)
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness),
+        Some(ContextPlaneActivationBlockerReason::MemoryWriteChainReceiptFreshnessShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
@@ -459,9 +473,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 20);
+    assert_eq!(matrix.rows.len(), 21);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 12);
+    assert_eq!(matrix.blocker_count, 13);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -538,7 +552,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 20);
+    assert_eq!(report_side_effect_matrix.blocker_count, 21);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -571,9 +585,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 20);
+    assert_eq!(matrix.rows.len(), 21);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 12);
+    assert_eq!(matrix.blocker_count, 13);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");
@@ -705,4 +719,47 @@ fn context_plane_activation_blocker_matrix_rejects_memory_write_chain_false_gree
         .expect("memory namespace policy activation row should exist")
         .memory_write_chain_stage_pass_count = 6;
     assert!(!non_write_chain_leak.has_matrix_integrity());
+}
+
+#[test]
+fn context_plane_activation_blocker_matrix_rejects_memory_write_chain_receipt_false_green() {
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    assert!(matrix.has_matrix_integrity());
+
+    let mut stale_receipt = matrix.clone();
+    stale_receipt
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness activation row should exist")
+        .memory_write_chain_receipt_freshness_pass_count = 5;
+    assert!(!stale_receipt.has_matrix_integrity());
+
+    let mut digest_drift = matrix.clone();
+    digest_drift
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness activation row should exist")
+        .memory_write_chain_receipt_digest_count = 5;
+    assert!(!digest_drift.has_matrix_integrity());
+
+    let mut persistence_drift = matrix.clone();
+    persistence_drift
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness)
+        .expect("memory write-chain receipt freshness activation row should exist")
+        .memory_write_chain_receipt_persisted_count = 1;
+    assert!(!persistence_drift.has_matrix_integrity());
+
+    let mut non_receipt_leak = matrix.clone();
+    non_receipt_leak
+        .rows
+        .iter_mut()
+        .find(|row| row.target == ContextPlaneActivationTarget::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness activation row should exist")
+        .memory_write_chain_receipt_projected_count = 18;
+    assert!(!non_receipt_leak.has_matrix_integrity());
 }

@@ -97,6 +97,9 @@ run_stage "context memory namespace policy shadow gate" \
 run_stage "context memory write-chain readiness/readback shadow gate" \
   bash "$repo_root/scripts/hepta-context-memory-write-chain-readiness-gate.sh"
 
+run_stage "context memory write-chain receipt freshness/digest shadow gate" \
+  bash "$repo_root/scripts/hepta-context-memory-write-chain-receipt-freshness-gate.sh"
+
 run_stage "context memory formation candidate no-leak export gate" \
   bash "$repo_root/scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 

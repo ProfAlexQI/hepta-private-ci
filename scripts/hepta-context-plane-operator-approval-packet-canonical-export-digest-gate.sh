@@ -63,9 +63,9 @@ sha256_digest() {
 for term in \
   "Context Plane operator approval packet canonical export digest" \
   "context-plane-operator-approval-packet-canonical-export-digest=pass" \
-  "approval report 129 lines" \
+  "approval report 141 lines" \
   "negative export report 4 lines" \
-  "combined report 133 lines" \
+  "combined report 145 lines" \
   "deterministic and idempotent" \
   "SHA-256" \
   "hepta-context-plane-operator-approval-packet-negative-export-report.sh" \
@@ -121,12 +121,12 @@ STATUS
 expected_digest_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-canonical-export-digest=pass
 context-plane-operator-approval-packet-canonical-export-digest.schema=1
-context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=129
-context-plane-operator-approval-packet-canonical-export-digest.approval-report-sha256=8026268c21e13763e84e03175fe96f24ff23d83cea6ccd3164032a235d692d8a
+context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=141
+context-plane-operator-approval-packet-canonical-export-digest.approval-report-sha256=1ea1d2eddf071ccccc3c7d52724f349988144c847e0b52adf03c92ec81201e3b
 context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-lines=4
 context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-sha256=06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2
-context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=133
-context-plane-operator-approval-packet-canonical-export-digest.combined-report-sha256=ddccb8ebfaf3509fc52e353783e8ab819f43cab0d42317b9627d0c27a2981258
+context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=145
+context-plane-operator-approval-packet-canonical-export-digest.combined-report-sha256=74a27392417e2185a3ea2f1c6987bc4fd9dd5bc3aedc4c7f17a94be5e8f39976
 context-plane-operator-approval-packet-canonical-export-digest.runtime-activation=disabled
 context-plane-operator-approval-packet-canonical-export-digest.operator-activation=disabled
 STATUS
@@ -148,23 +148,23 @@ if [ "$digest_status" != "$digest_status_second" ]; then
   fail "operator approval packet canonical digest report is not idempotent"
 fi
 
-if [ "$(line_count "$approval_status")" != "129" ]; then
+if [ "$(line_count "$approval_status")" != "141" ]; then
   fail "approval packet canonical line count changed"
 fi
 if [ "$(line_count "$negative_status")" != "4" ]; then
   fail "negative export canonical line count changed"
 fi
-if [ "$(line_count "$combined_status")" != "133" ]; then
+if [ "$(line_count "$combined_status")" != "145" ]; then
   fail "combined canonical line count changed"
 fi
 
-if [ "$(printf '%s\n' "$approval_status" | sha256_digest)" != "8026268c21e13763e84e03175fe96f24ff23d83cea6ccd3164032a235d692d8a" ]; then
+if [ "$(printf '%s\n' "$approval_status" | sha256_digest)" != "1ea1d2eddf071ccccc3c7d52724f349988144c847e0b52adf03c92ec81201e3b" ]; then
   fail "approval packet canonical digest changed"
 fi
 if [ "$(printf '%s\n' "$negative_status" | sha256_digest)" != "06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2" ]; then
   fail "negative export canonical digest changed"
 fi
-if [ "$(printf '%s\n' "$combined_status" | sha256_digest)" != "ddccb8ebfaf3509fc52e353783e8ab819f43cab0d42317b9627d0c27a2981258" ]; then
+if [ "$(printf '%s\n' "$combined_status" | sha256_digest)" != "74a27392417e2185a3ea2f1c6987bc4fd9dd5bc3aedc4c7f17a94be5e8f39976" ]; then
   fail "combined canonical digest changed"
 fi
 
@@ -173,8 +173,8 @@ if printf '%s\n%s\n%s\n' "$approval_status" "$negative_status" "$digest_status" 
 fi
 
 echo "context-plane-operator-approval-packet-canonical-export-digest=pass"
-echo "context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=129"
+echo "context-plane-operator-approval-packet-canonical-export-digest.approval-report-lines=141"
 echo "context-plane-operator-approval-packet-canonical-export-digest.negative-export-report-lines=4"
-echo "context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=133"
+echo "context-plane-operator-approval-packet-canonical-export-digest.combined-report-lines=145"
 echo "context-plane-operator-approval-packet-canonical-export-digest.runtime-activation=disabled"
 echo "Hepta context plane operator approval packet canonical export digest gate passed"

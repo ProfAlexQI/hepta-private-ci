@@ -7,6 +7,7 @@ use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
+use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextRecallAvailability;
 use hepta_core::ContextRecallBundle;
 use hepta_core::ContextRecallCoverage;
@@ -272,6 +273,16 @@ impl StoreSnapshot {
     ) -> ContextMemoryWriteChainReadinessReport {
         ContextMemoryWriteChainReadinessReport::from_namespace_policy(
             &self.context_memory_namespace_policy_report(),
+        )
+    }
+
+    /// Builds the fixed namespace write-chain projected receipt
+    /// freshness/digest surface without recording or persisting receipts.
+    pub fn context_memory_write_chain_receipt_freshness_report(
+        &self,
+    ) -> ContextMemoryWriteChainReceiptFreshnessReport {
+        ContextMemoryWriteChainReceiptFreshnessReport::from_readiness(
+            &self.context_memory_write_chain_readiness_report(),
         )
     }
 

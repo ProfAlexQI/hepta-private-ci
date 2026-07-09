@@ -276,3 +276,85 @@ fn context_memory_write_chain_readiness_report_rejects_readback_or_write_drift()
     missing_namespace.blocks.pop();
     assert!(!missing_namespace.has_readiness_integrity());
 }
+
+#[test]
+fn context_memory_write_chain_receipt_freshness_report_projects_shadow_receipts_without_payloads() {
+    let readiness = ContextMemoryWriteChainReadinessReport::seeded();
+    let report = ContextMemoryWriteChainReceiptFreshnessReport::from_readiness(&readiness);
+
+    assert!(report.has_receipt_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_WRITE_CHAIN_RECEIPT_FRESHNESS_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.source_readiness_schema_version,
+        CONTEXT_MEMORY_WRITE_CHAIN_READINESS_SCHEMA_VERSION
+    );
+    assert_eq!(report.namespace_count(), 6);
+    assert_eq!(report.receipt_required_count(), 18);
+    assert_eq!(report.receipt_projected_count(), 18);
+    assert_eq!(report.receipt_digest_count(), 6);
+    assert_eq!(report.freshness_pass_count(), 6);
+    assert_eq!(report.replay_guard_pass_count(), 6);
+    assert_eq!(report.stale_replay_rejected_count(), 6);
+    assert_eq!(report.recorded_receipt_count(), 0);
+    assert_eq!(report.persisted_receipt_count(), 0);
+    assert_eq!(report.production_write_count(), 0);
+    assert_eq!(report.graph_write_count(), 0);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.hot_path_write);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.runtime_activation);
+
+    let json = serde_json::to_string(&report)
+        .expect("write-chain receipt freshness report should serialize");
+    assert!(json.contains("receipt_digest"));
+    assert!(json.contains("shadow_wal_receipt_projected"));
+    assert!(json.contains("readback_receipt_projected"));
+    assert!(json.contains("canary_receipt_projected"));
+    assert!(json.contains("freshness_check_pass"));
+    assert!(json.contains("stale_replay_rejected"));
+    assert!(!json.contains("candidate_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("entity_hash"));
+    assert!(!json.contains("fact_hash"));
+    assert!(!json.contains("edge_hash"));
+    assert!(!json.contains("\"recorded_receipt\":true"));
+    assert!(!json.contains("\"persisted_receipt\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
+#[test]
+fn context_memory_write_chain_receipt_freshness_report_rejects_stale_or_write_drift() {
+    let mut stale_drift = ContextMemoryWriteChainReceiptFreshnessReport::seeded();
+    stale_drift.blocks[0].freshness_check_pass = false;
+    assert!(!stale_drift.has_receipt_integrity());
+
+    let mut digest_drift = ContextMemoryWriteChainReceiptFreshnessReport::seeded();
+    digest_drift.blocks[0].receipt_digest = "not-a-digest".into();
+    assert!(!digest_drift.has_receipt_integrity());
+
+    let mut recording_drift = ContextMemoryWriteChainReceiptFreshnessReport::seeded();
+    recording_drift.blocks[0].recorded_receipt = true;
+    assert!(!recording_drift.has_receipt_integrity());
+
+    let mut persistence_drift = ContextMemoryWriteChainReceiptFreshnessReport::seeded();
+    persistence_drift.blocks[0].persisted_receipt = true;
+    assert!(!persistence_drift.has_receipt_integrity());
+
+    let mut write_drift = ContextMemoryWriteChainReceiptFreshnessReport::seeded();
+    write_drift.blocks[0].production_write = true;
+    assert!(!write_drift.has_receipt_integrity());
+
+    let mut missing_namespace = ContextMemoryWriteChainReceiptFreshnessReport::seeded();
+    missing_namespace.blocks.pop();
+    assert!(!missing_namespace.has_receipt_integrity());
+}

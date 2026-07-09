@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=13
-context-plane-activation-blockers.rows=20
+context-plane-activation-blockers.schema=14
+context-plane-activation-blockers.rows=21
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=11
+context-plane-activation-blockers.blockers=12
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -34,6 +34,18 @@ context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-coun
 context-plane-activation-blockers.memory-write-chain-readiness.rollback-ready-count=6
 context-plane-activation-blockers.memory-write-chain-readiness.production-write-count=0
 context-plane-activation-blockers.memory-write-chain-readiness.graph-write-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness=blocked:memory_write_chain_receipt_freshness_shadow_only
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.namespace-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-required-count=18
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-projected-count=18
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-digest-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.freshness-pass-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.replay-guard-pass-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.stale-replay-rejected-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.recorded-receipt-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.persisted-receipt-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.production-write-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.graph-write-count=0
 context-plane-activation-blockers.memory-temporal-facts=ready
 context-plane-activation-blockers.memory-temporal-fact-graph=ready
 context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only
