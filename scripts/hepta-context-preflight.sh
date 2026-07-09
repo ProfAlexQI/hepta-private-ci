@@ -124,6 +124,9 @@ run_stage "context memory temporal graph shadow traversal diff gate" \
 run_stage "context memory temporal graph shadow traversal quality/SLO gate" \
   bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
 
+run_stage "context memory temporal graph shadow retrieval canary guard gate" \
+  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
+
 run_stage "context memory eval harness seed gate" \
   bash "$repo_root/scripts/hepta-context-memory-eval-harness-seed-gate.sh"
 

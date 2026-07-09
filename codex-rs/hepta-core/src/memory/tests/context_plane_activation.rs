@@ -149,6 +149,53 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                     5;
                 entry
             },
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard,
+                    5,
+                );
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count = 0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count = 0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count = 0;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count = 0;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count =
+                    0;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count =
+                    0;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count =
+                    0;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count = 0;
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count = 0;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::EvalHarnessSeed, 2),
             ContextPlaneStatusEntry::shadow(
                 ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
@@ -267,9 +314,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 25);
+    assert_eq!(matrix.rows.len(), 26);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 16);
+    assert_eq!(matrix.blocker_count, 17);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -340,6 +387,14 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality
         ),
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
@@ -459,6 +514,59 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
             .memory_temporal_graph_shadow_traversal_quality_graph_write_count,
         0
     );
+    let temporal_graph_retrieval_canary_guard_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard)
+        .expect("memory temporal graph shadow retrieval canary guard activation row should exist");
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_digest_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
+        0
+    );
     assert!(!matrix.production_write);
     assert!(!matrix.graph_write);
     assert!(!matrix.runtime_activation);
@@ -481,8 +589,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_temporal_graph_shadow_replay"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality"));
+    assert!(json.contains("memory_temporal_graph_shadow_retrieval_canary_guard"));
     assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_traversal_quality_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_retrieval_canary_guard_shadow_only"));
     assert!(
         json.contains(
             "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count"
@@ -491,6 +601,14 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_slo_pass_count"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_token_saved_estimate"));
+    assert!(json.contains(
+        "memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count"
+    ));
+    assert!(
+        json.contains(
+            "memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count"
+        )
+    );
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_ranked_recall_shadow_eval"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
@@ -623,6 +741,61 @@ fn context_plane_activation_blocker_matrix_rejects_ranked_recall_hybrid_false_gr
 }
 
 #[test]
+fn context_plane_activation_blocker_matrix_rejects_temporal_graph_retrieval_canary_guard_false_green()
+ {
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    assert!(matrix.has_matrix_integrity());
+
+    let mut partial_feature_flag = matrix.clone();
+    partial_feature_flag
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        })
+        .expect("retrieval canary guard activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count = 4;
+    assert!(!partial_feature_flag.has_matrix_integrity());
+
+    let mut canary_route_opened = matrix.clone();
+    canary_route_opened
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        })
+        .expect("retrieval canary guard activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count = 1;
+    assert!(!canary_route_opened.has_matrix_integrity());
+
+    let mut rollback_write = matrix.clone();
+    rollback_write
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        })
+        .expect("retrieval canary guard activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count = 1;
+    assert!(!rollback_write.has_matrix_integrity());
+
+    let mut non_guard_leak = matrix.clone();
+    non_guard_leak
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target == ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality
+        })
+        .expect("traversal quality activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count = 5;
+    assert!(!non_guard_leak.has_matrix_integrity());
+}
+
+#[test]
 fn context_plane_activation_blocker_matrix_rejects_canary_promotion_checklist_false_green() {
     let status = context_plane_activation_status_fixture();
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
@@ -707,9 +880,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 25);
+    assert_eq!(matrix.rows.len(), 26);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 17);
+    assert_eq!(matrix.blocker_count, 18);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -761,6 +934,14 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly)
     );
     assert_eq!(
+        matrix.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
+    );
+    assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
         Some(ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled)
     );
@@ -800,7 +981,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 25);
+    assert_eq!(report_side_effect_matrix.blocker_count, 26);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -833,9 +1014,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 25);
+    assert_eq!(matrix.rows.len(), 26);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 17);
+    assert_eq!(matrix.blocker_count, 18);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

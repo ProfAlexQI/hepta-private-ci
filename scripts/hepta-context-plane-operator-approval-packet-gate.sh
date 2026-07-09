@@ -144,6 +144,7 @@ for term in \
   "temporal_graph_shadow_replay_shadow_only" \
   "temporal_graph_shadow_traversal_diff_shadow_only" \
   "temporal_graph_shadow_traversal_quality_shadow_only" \
+  "temporal_graph_shadow_retrieval_canary_guard_shadow_only" \
   "memory_temporal_graph_shadow_traversal_diff" \
   "memory_temporal_graph_shadow_traversal_diff_stage_projected_count" \
   "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count" \
@@ -160,6 +161,13 @@ for term in \
   "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5" \
   "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
   "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
+  "context-plane-operator-approval-packet.blocker.temporal-graph-shadow-retrieval-canary-guard-shadow-only=1" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0" \
   "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
@@ -268,14 +276,14 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=17
+context-plane-operator-approval-packet.schema=18
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=25
+context-plane-operator-approval-packet.rows=26
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=16
-context-plane-operator-approval-packet.threshold.required-ready=24
+context-plane-operator-approval-packet.blockers=17
+context-plane-operator-approval-packet.threshold.required-ready=25
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
@@ -283,6 +291,7 @@ context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shado
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-replay-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-diff-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-quality-shadow-only=1
+context-plane-operator-approval-packet.blocker.temporal-graph-shadow-retrieval-canary-guard-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1
@@ -431,6 +440,30 @@ context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-qu
 context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
 context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
 context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.fixture-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.stage-required-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-required-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-recorded-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-registered-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-required-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.activation-denial-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.digest-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.freshness-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.replay-guard-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.stale-replay-rejected-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.llm-rerank-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.graph-persistence-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.production-route-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-required-count=5
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5
 context-plane-operator-approval-packet.ranked-recall.lexical-bm25-check=pass

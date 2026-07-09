@@ -1,3 +1,4 @@
+mod canary_guard;
 mod fact;
 mod graph;
 mod quality;
@@ -5,6 +6,7 @@ mod replay;
 mod store;
 mod traversal_diff;
 
+pub use canary_guard::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
 pub use fact::ContextMemoryTemporalFact;
 pub use fact::ContextMemoryTemporalFactReport;
 pub use fact::ContextMemoryTemporalFactType;

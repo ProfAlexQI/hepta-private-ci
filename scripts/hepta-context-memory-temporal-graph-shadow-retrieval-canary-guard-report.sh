@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+temporal_graph_shadow_traversal_quality_gate="$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
+
+fail() {
+  echo "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-report: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+bash "$temporal_graph_shadow_traversal_quality_gate" >/dev/null
+
+for term in \
+  "Temporal graph shadow traversal quality/SLO surface" \
+  "Temporal graph shadow retrieval canary guard surface"; do
+  assert_file_contains "$contracts" "$term" "temporal graph shadow retrieval canary guard contract input"
+done
+
+for term in \
+  "context memory temporal graph shadow traversal quality/SLO gate" \
+  "context memory temporal graph shadow retrieval canary guard gate"; do
+  assert_file_contains "$preflight_script" "$term" "temporal graph shadow retrieval canary guard preflight input"
+done
+
+cat <<'STATUS'
+temporal-graph-shadow-retrieval-canary-guard=pass
+temporal-graph-shadow-retrieval-canary-guard.payload-light=pass
+temporal-graph-shadow-retrieval-canary-guard.schema=1
+temporal-graph-shadow-retrieval-canary-guard.source-traversal-quality-schema=1
+temporal-graph-shadow-retrieval-canary-guard.mode=shadow-retrieval-canary-guard
+temporal-graph-shadow-retrieval-canary-guard.fixture-count=5
+temporal-graph-shadow-retrieval-canary-guard.stage-required-count=5
+temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5
+temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.operator-approval-required-count=5
+temporal-graph-shadow-retrieval-canary-guard.operator-approval-recorded-count=0
+temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5
+temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0
+temporal-graph-shadow-retrieval-canary-guard.kill-switch-registered-count=5
+temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5
+temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-required-count=5
+temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.activation-denial-count=5
+temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0
+temporal-graph-shadow-retrieval-canary-guard.digest-count=5
+temporal-graph-shadow-retrieval-canary-guard.freshness-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.replay-guard-pass-count=5
+temporal-graph-shadow-retrieval-canary-guard.stale-replay-rejected-count=5
+temporal-graph-shadow-retrieval-canary-guard.aggregate-counters-only=pass
+temporal-graph-shadow-retrieval-canary-guard.llm-rerank=disabled
+temporal-graph-shadow-retrieval-canary-guard.graph-persistence=disabled
+temporal-graph-shadow-retrieval-canary-guard.production-route=disabled
+temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
+temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
+temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
+temporal-graph-shadow-retrieval-canary-guard.hot-path-write=disabled
+temporal-graph-shadow-retrieval-canary-guard.prompt-assembly-change=disabled
+temporal-graph-shadow-retrieval-canary-guard.runtime-activation=disabled
+temporal-graph-shadow-retrieval-canary-guard.operator-activation=disabled
+STATUS

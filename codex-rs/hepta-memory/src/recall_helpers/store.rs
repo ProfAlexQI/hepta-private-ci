@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -201,6 +202,16 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .recall_context_memory_temporal_graph_shadow_traversal_quality_report(&request))
+    }
+
+    pub fn recall_context_memory_temporal_graph_shadow_retrieval_canary_guard_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport, hepta_core::MemoryError>
+    {
+        Ok(self
+            .snapshot()?
+            .recall_context_memory_temporal_graph_shadow_retrieval_canary_guard_report(&request))
     }
 
     pub fn search_report(

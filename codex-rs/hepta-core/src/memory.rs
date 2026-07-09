@@ -192,6 +192,7 @@ pub use temporal::ContextMemoryTemporalFactGraphReport;
 pub use temporal::ContextMemoryTemporalFactReport;
 pub use temporal::ContextMemoryTemporalFactType;
 pub use temporal::ContextMemoryTemporalGraphShadowReplayReport;
+pub use temporal::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
 pub use temporal::ContextMemoryTemporalGraphShadowStoreReport;
 pub use temporal::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 pub use temporal::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -225,9 +226,10 @@ pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_REPLAY_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_DIFF_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_SCHEMA_VERSION: u32 = 1;
-pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 18;
-pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 18;
-pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 17;
+pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_SCHEMA_VERSION: u32 = 1;
+pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 19;
+pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 19;
+pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 18;
 
 /// Declares whether a memory record belongs to a single session or to a wider
 /// cross-session corpus.

@@ -182,6 +182,13 @@ for term in \
   "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768" \
   "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
   "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard=blocked:temporal_graph_shadow_retrieval_canary_guard_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0" \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
@@ -190,6 +197,7 @@ for term in \
   "temporal_graph_shadow_replay_shadow_only" \
   "temporal_graph_shadow_traversal_diff_shadow_only" \
   "temporal_graph_shadow_traversal_quality_shadow_only" \
+  "temporal_graph_shadow_retrieval_canary_guard_shadow_only" \
   "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
@@ -310,10 +318,10 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=18
-context-plane-activation-blockers.rows=25
+context-plane-activation-blockers.schema=19
+context-plane-activation-blockers.rows=26
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=16
+context-plane-activation-blockers.blockers=17
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -441,6 +449,31 @@ context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality
 context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard=blocked:temporal_graph_shadow_retrieval_canary_guard_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.fixture-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.stage-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-registered-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.activation-denial-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.digest-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.freshness-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.replay-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.stale-replay-rejected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
 context-plane-activation-blockers.eval-harness-seed=ready
 context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
 context-plane-activation-blockers.recall-quality-gate=ready

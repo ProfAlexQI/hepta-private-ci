@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 25);
+    assert_eq!(matrix.rows.len(), 26);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 16);
+    assert_eq!(matrix.blocker_count, 17);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -100,6 +100,14 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality
         ),
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::OperatorApproval),
@@ -354,6 +362,59 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
             .memory_temporal_graph_shadow_traversal_quality_graph_write_count,
         0
     );
+    let temporal_graph_retrieval_canary_guard_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard)
+        .expect("memory temporal graph shadow retrieval canary guard activation row should exist");
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_digest_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_canary_guard_row
+            .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
+        0
+    );
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
@@ -362,10 +423,12 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(json.contains("memory_temporal_graph_shadow_replay"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality"));
+    assert!(json.contains("memory_temporal_graph_shadow_retrieval_canary_guard"));
     assert!(json.contains("temporal_graph_shadow_store_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_replay_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_traversal_quality_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_retrieval_canary_guard_shadow_only"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stale_replay_rejected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_replay_stage_projected_count"));
@@ -378,6 +441,14 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_slo_pass_count"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_token_saved_estimate"));
+    assert!(json.contains(
+        "memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count"
+    ));
+    assert!(
+        json.contains(
+            "memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count"
+        )
+    );
     assert!(json.contains("memory_namespace_policy"));
     assert!(json.contains("memory_ranked_recall_shadow_eval"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
@@ -490,9 +561,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 25);
+    assert_eq!(from_store.rows.len(), 26);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 16);
+    assert_eq!(from_store.blocker_count, 17);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -565,6 +636,14 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality
         ),
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly)
+    );
+    assert_eq!(
+        from_store.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
     );
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::OperatorApproval),

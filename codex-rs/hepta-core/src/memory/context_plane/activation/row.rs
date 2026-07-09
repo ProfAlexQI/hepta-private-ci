@@ -18,6 +18,7 @@ const MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_REPLAY_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_DIFF_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT: usize = 5;
+const MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -197,6 +198,31 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_temporal_graph_shadow_traversal_quality_production_route_count: usize,
     pub memory_temporal_graph_shadow_traversal_quality_production_write_count: usize,
     pub memory_temporal_graph_shadow_traversal_quality_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_digest_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -325,6 +351,12 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard,
+                ContextPlaneStatusKind::Shadow,
+            ) => {
+                ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+            }
+            (
                 ContextPlaneActivationTarget::MemoryRankedRecallShadowEval,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly,
@@ -403,6 +435,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_memory_temporal_graph_shadow_replay_rollup(target, entry)
             .with_memory_temporal_graph_shadow_traversal_diff_rollup(target, entry)
             .with_memory_temporal_graph_shadow_traversal_quality_rollup(target, entry)
+            .with_memory_temporal_graph_shadow_retrieval_canary_guard_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
@@ -417,6 +450,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_memory_temporal_graph_shadow_replay_rollup(target, entry)
             .with_memory_temporal_graph_shadow_traversal_diff_rollup(target, entry)
             .with_memory_temporal_graph_shadow_traversal_quality_rollup(target, entry)
+            .with_memory_temporal_graph_shadow_retrieval_canary_guard_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
     }
 
@@ -916,6 +950,67 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_temporal_graph_shadow_retrieval_canary_guard_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+            && let Some(entry) = entry
+        {
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count;
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count =
+                entry.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -932,6 +1027,7 @@ impl ContextPlaneActivationBlockerRow {
             && self.has_memory_temporal_graph_shadow_replay_rollup_integrity()
             && self.has_memory_temporal_graph_shadow_traversal_diff_rollup_integrity()
             && self.has_memory_temporal_graph_shadow_traversal_quality_rollup_integrity()
+            && self.has_memory_temporal_graph_shadow_retrieval_canary_guard_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
@@ -1604,6 +1700,98 @@ impl ContextPlaneActivationBlockerRow {
             && self.memory_temporal_graph_shadow_traversal_quality_production_route_count == 0
             && self.memory_temporal_graph_shadow_traversal_quality_production_write_count == 0
             && self.memory_temporal_graph_shadow_traversal_quality_graph_write_count == 0
+            && (self.threshold_satisfied || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_temporal_graph_shadow_retrieval_canary_guard_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
+        ];
+
+        if self.target
+            != ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            == MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count
+                == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count
+                == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count == 0
             && (self.threshold_satisfied || self.blocker_reason.is_blocking())
     }
 }

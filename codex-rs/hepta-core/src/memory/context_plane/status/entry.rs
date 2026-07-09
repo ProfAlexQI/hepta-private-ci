@@ -12,6 +12,7 @@ use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::ContextMemoryTemporalGraphShadowReplayReport;
+use crate::memory::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
 use crate::memory::ContextMemoryTemporalGraphShadowStoreReport;
 use crate::memory::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use crate::memory::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -30,6 +31,7 @@ const MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_REPLAY_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_DIFF_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT: usize = 5;
+const MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -209,6 +211,31 @@ pub struct ContextPlaneStatusEntry {
     pub memory_temporal_graph_shadow_traversal_quality_production_route_count: usize,
     pub memory_temporal_graph_shadow_traversal_quality_production_write_count: usize,
     pub memory_temporal_graph_shadow_traversal_quality_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_digest_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -682,6 +709,87 @@ impl ContextPlaneStatusEntry {
         }
     }
 
+    pub(in crate::memory::context_plane::status) fn from_temporal_graph_shadow_retrieval_canary_guard(
+        retrieval_canary_guard: &ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport,
+    ) -> Self {
+        let has_integrity = retrieval_canary_guard.has_retrieval_canary_guard_integrity();
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: retrieval_canary_guard.guard_fixture_count,
+            omitted_count: retrieval_canary_guard.llm_rerank_count()
+                + retrieval_canary_guard.graph_persistence_count()
+                + retrieval_canary_guard.production_route_count()
+                + retrieval_canary_guard.production_write_count()
+                + retrieval_canary_guard.graph_write_count()
+                + retrieval_canary_guard.rollback_write_count()
+                + retrieval_canary_guard.canary_route_opened_count,
+            blocker_count: usize::from(!has_integrity),
+            memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count:
+                retrieval_canary_guard.guard_fixture_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count:
+                retrieval_canary_guard.guard_stage_required_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count:
+                retrieval_canary_guard.guard_stage_projected_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count:
+                retrieval_canary_guard.quality_slo_pass_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count:
+                retrieval_canary_guard.operator_approval_required_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count:
+                retrieval_canary_guard.operator_approval_recorded_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count:
+                retrieval_canary_guard.feature_flag_registered_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count:
+                retrieval_canary_guard.feature_flag_enabled_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count:
+                retrieval_canary_guard.kill_switch_registered_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count:
+                retrieval_canary_guard.kill_switch_ready_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count:
+                retrieval_canary_guard.rollback_rehearsal_required_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count:
+                retrieval_canary_guard.rollback_rehearsal_pass_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count:
+                retrieval_canary_guard.activation_denial_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count:
+                retrieval_canary_guard.canary_route_opened_count,
+            memory_temporal_graph_shadow_retrieval_canary_guard_digest_count:
+                retrieval_canary_guard.retrieval_canary_guard_digest_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count:
+                retrieval_canary_guard.freshness_pass_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count:
+                retrieval_canary_guard.replay_guard_pass_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count:
+                retrieval_canary_guard.stale_replay_rejected_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count:
+                retrieval_canary_guard.llm_rerank_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count:
+                retrieval_canary_guard.graph_persistence_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count:
+                retrieval_canary_guard.production_route_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count:
+                retrieval_canary_guard.production_write_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count:
+                retrieval_canary_guard.graph_write_count(),
+            memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count:
+                retrieval_canary_guard.rollback_write_count(),
+            production_write: retrieval_canary_guard.production_write
+                || retrieval_canary_guard.production_route
+                || retrieval_canary_guard.canary_route_opened_count > 0,
+            graph_write: retrieval_canary_guard.graph_write,
+            runtime_activation: retrieval_canary_guard.runtime_activation,
+            prompt_assembly_change: retrieval_canary_guard.prompt_assembly_change
+                || retrieval_canary_guard.hot_path_write,
+            operator_activation_allowed: retrieval_canary_guard.operator_activation_allowed,
+            ..Self::default()
+        }
+    }
+
     pub(in crate::memory::context_plane::status) fn from_memory_provider_report(
         provider_report: &MemoryProviderReport,
     ) -> Self {
@@ -1139,6 +1247,7 @@ impl ContextPlaneStatusEntry {
             && self.has_memory_temporal_graph_shadow_replay_integrity()
             && self.has_memory_temporal_graph_shadow_traversal_diff_integrity()
             && self.has_memory_temporal_graph_shadow_traversal_quality_integrity()
+            && self.has_memory_temporal_graph_shadow_retrieval_canary_guard_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && !self.production_write
             && !self.graph_write
@@ -1811,6 +1920,97 @@ impl ContextPlaneStatusEntry {
             && self.memory_temporal_graph_shadow_traversal_quality_production_route_count == 0
             && self.memory_temporal_graph_shadow_traversal_quality_production_write_count == 0
             && self.memory_temporal_graph_shadow_traversal_quality_graph_write_count == 0
+            && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
+    }
+
+    fn has_memory_temporal_graph_shadow_retrieval_canary_guard_integrity(&self) -> bool {
+        let counts = [
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count,
+            self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            == MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count
+                == self.memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count
+                == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_digest_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count
+                == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count == 0
+            && self.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count == 0
             && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 }

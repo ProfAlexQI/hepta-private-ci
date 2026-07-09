@@ -212,6 +212,7 @@ codex-rs/hepta-core/src/memory/snapshot_inspection/health.rs
 codex-rs/hepta-core/src/memory/snapshot_inspection/inspected.rs
 codex-rs/hepta-core/src/memory/taxonomy.rs
 codex-rs/hepta-core/src/memory/temporal.rs
+codex-rs/hepta-core/src/memory/temporal/canary_guard.rs
 codex-rs/hepta-core/src/memory/temporal/fact.rs
 codex-rs/hepta-core/src/memory/temporal/graph.rs
 codex-rs/hepta-core/src/memory/temporal/quality.rs

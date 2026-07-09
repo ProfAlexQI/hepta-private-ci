@@ -119,16 +119,16 @@ assert_line_before \
 expected_chain_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness-dependency-chain=pass
 context-plane-operator-approval-packet-freshness-dependency-chain.schema=1
-context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-lines=226
-context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-sha256=ced742a4dc29ab60bc08830c111b69fe07110e7beefd572bb4e0138fdad20dc3
+context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-lines=251
+context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-sha256=c2c3973e8a132deefcc35adf90b3e590f012e0e5752bea24087c1b1bfaf8da1c
 context-plane-operator-approval-packet-freshness-dependency-chain.negative-export-report-lines=4
 context-plane-operator-approval-packet-freshness-dependency-chain.negative-export-report-sha256=06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2
 context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-lines=10
-context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-sha256=f2f6da8cee934d09170530b99cf5cfe0e272092ea24c72124b76b772a592b3de
+context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-sha256=85abdc5b42bec8261f27c9bab5d62058a1a865524f107fd1005bd19ac1ef13a5
 context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-lines=16
 context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-sha256=ef83b4e432ea96e5f73f8950f11e215d8149d5c4aa3e4290a5318800b5586e28
 context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-lines=14
-context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-sha256=8bbf2a266ba459ec1febf9d04d2eaa83788bd56abba55b7b9874f6d6df0a6c08
+context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-sha256=4329305bf27dbe8b2292e8b4bffa4d59e7a643746e175b1aeaeafb57b7277a42
 context-plane-operator-approval-packet-freshness-dependency-chain.readiness-chain-generation=274
 context-plane-operator-approval-packet-freshness-dependency-chain.freshness-source-sequence=273
 context-plane-operator-approval-packet-freshness-dependency-chain.stale-source=reject
@@ -178,11 +178,11 @@ if [ "$chain_status" != "$chain_status_second" ]; then
   fail "operator approval packet freshness dependency-chain report is not idempotent"
 fi
 
-stale_approval_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/approval-report-sha256=ced742a4dc29ab60bc08830c111b69fe07110e7beefd572bb4e0138fdad20dc3/approval-report-sha256=ded742a4dc29ab60bc08830c111b69fe07110e7beefd572bb4e0138fdad20dc3/')"
+stale_approval_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/approval-report-sha256=c2c3973e8a132deefcc35adf90b3e590f012e0e5752bea24087c1b1bfaf8da1c/approval-report-sha256=d2c3973e8a132deefcc35adf90b3e590f012e0e5752bea24087c1b1bfaf8da1c/')"
 stale_negative_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/negative-export-report-sha256=06a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2/negative-export-report-sha256=16a70c53825a9a9d55573a2e108e2beb7a51f78ee4faf834918a656943e8aec2/')"
-stale_canonical_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/canonical-digest-report-sha256=f2f6da8cee934d09170530b99cf5cfe0e272092ea24c72124b76b772a592b3de/canonical-digest-report-sha256=a2f6da8cee934d09170530b99cf5cfe0e272092ea24c72124b76b772a592b3de/')"
+stale_canonical_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/canonical-digest-report-sha256=85abdc5b42bec8261f27c9bab5d62058a1a865524f107fd1005bd19ac1ef13a5/canonical-digest-report-sha256=a5abdc5b42bec8261f27c9bab5d62058a1a865524f107fd1005bd19ac1ef13a5/')"
 tamper_matrix_replay_tamper="$(printf '%s\n' "$chain_status" | sed 's/tamper-matrix-report-sha256=ef83b4e432ea96e5f73f8950f11e215d8149d5c4aa3e4290a5318800b5586e28/tamper-matrix-report-sha256=ff83b4e432ea96e5f73f8950f11e215d8149d5c4aa3e4290a5318800b5586e28/')"
-freshness_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/freshness-report-sha256=8bbf2a266ba459ec1febf9d04d2eaa83788bd56abba55b7b9874f6d6df0a6c08/freshness-report-sha256=9bbf2a266ba459ec1febf9d04d2eaa83788bd56abba55b7b9874f6d6df0a6c08/')"
+freshness_source_tamper="$(printf '%s\n' "$chain_status" | sed 's/freshness-report-sha256=4329305bf27dbe8b2292e8b4bffa4d59e7a643746e175b1aeaeafb57b7277a42/freshness-report-sha256=5329305bf27dbe8b2292e8b4bffa4d59e7a643746e175b1aeaeafb57b7277a42/')"
 mixed_generation_tamper="$(printf '%s\n' "$chain_status" | sed 's/readiness-chain-generation=274/readiness-chain-generation=273/')"
 mixed_sequence_tamper="$(printf '%s\n' "$chain_status" | sed 's/freshness-source-sequence=273/freshness-source-sequence=272/')"
 line_count_tamper="$(

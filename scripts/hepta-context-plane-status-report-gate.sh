@@ -191,6 +191,13 @@ for term in \
   "context-plane-status.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768" \
   "context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
   "context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard=shadow" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -411,6 +418,31 @@ context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-persis
 context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
 context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
 context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard=shadow
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.fixture-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.stage-required-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-required-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-recorded-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-registered-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-required-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.activation-denial-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.digest-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.freshness-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.replay-guard-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.stale-replay-rejected-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.llm-rerank-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.graph-persistence-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.production-route-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
 context-plane-status.eval-harness-seed=ready
 context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready

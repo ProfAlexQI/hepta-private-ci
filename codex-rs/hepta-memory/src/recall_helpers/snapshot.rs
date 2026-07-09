@@ -7,6 +7,7 @@ use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -371,6 +372,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalGraphShadowTraversalQualityReport {
         ContextMemoryTemporalGraphShadowTraversalQualityReport::from_traversal_diff(
             &self.recall_context_memory_temporal_graph_shadow_traversal_diff_report(request),
+        )
+    }
+
+    /// Builds a payload-light temporal graph retrieval canary guard surface
+    /// from traversal quality without opening routes or writing rollback state.
+    pub fn recall_context_memory_temporal_graph_shadow_retrieval_canary_guard_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport {
+        ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport::from_traversal_quality(
+            &self.recall_context_memory_temporal_graph_shadow_traversal_quality_report(request),
         )
     }
 }

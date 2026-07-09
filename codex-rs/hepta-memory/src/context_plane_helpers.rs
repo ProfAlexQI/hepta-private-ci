@@ -14,6 +14,7 @@ use hepta_core::ContextMemoryShadowRegressionDashboardReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -143,6 +144,17 @@ impl StoreSnapshot {
         )
     }
 
+    /// Builds the offline temporal-graph retrieval canary guard report without
+    /// opening a route, recording canary state, or writing rollback state.
+    pub fn context_memory_temporal_graph_shadow_retrieval_canary_guard_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport {
+        ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport::from_traversal_quality(
+            &self.context_memory_temporal_graph_shadow_traversal_quality_report(request),
+        )
+    }
+
     /// Builds a payload-light dashboard that closes the loop across recall,
     /// temporal graph, quality, and provider shadow reports.
     pub fn context_memory_shadow_regression_dashboard_report(
@@ -227,6 +239,10 @@ impl StoreSnapshot {
             ContextMemoryTemporalGraphShadowTraversalQualityReport::from_traversal_diff(
                 &temporal_graph_shadow_traversal_diff,
             );
+        let temporal_graph_shadow_retrieval_canary_guard =
+            ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport::from_traversal_quality(
+                &temporal_graph_shadow_traversal_quality,
+            );
         let eval_seed = self.context_memory_eval_harness_seed_report();
         let allocator_shadow =
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
@@ -263,6 +279,8 @@ impl StoreSnapshot {
             temporal_graph_shadow_replay: &temporal_graph_shadow_replay,
             temporal_graph_shadow_traversal_diff: &temporal_graph_shadow_traversal_diff,
             temporal_graph_shadow_traversal_quality: &temporal_graph_shadow_traversal_quality,
+            temporal_graph_shadow_retrieval_canary_guard:
+                &temporal_graph_shadow_retrieval_canary_guard,
             eval_seed: &eval_seed,
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
@@ -382,6 +400,16 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_temporal_graph_shadow_traversal_quality_report(&request))
+    }
+
+    pub fn context_memory_temporal_graph_shadow_retrieval_canary_guard_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport, hepta_core::MemoryError>
+    {
+        Ok(self
+            .snapshot()?
+            .context_memory_temporal_graph_shadow_retrieval_canary_guard_report(&request))
     }
 
     pub fn context_memory_shadow_regression_dashboard_report(
