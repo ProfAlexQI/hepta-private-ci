@@ -99,6 +99,7 @@ codex-rs/hepta-core/src/memory/taxonomy.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/fact.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/graph.rs	rust_memory	hepta-context	required
+codex-rs/hepta-core/src/memory/temporal/quality.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/replay.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/store.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/traversal_diff.rs	rust_memory	hepta-context	required
@@ -269,6 +270,8 @@ scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh	gate_script	hep
 scripts/hepta-context-memory-temporal-graph-shadow-store-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-report.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-test-module-boundary-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-write-chain-readiness-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-write-chain-readiness-report.sh	gate_script	hepta-context	required

@@ -81,6 +81,10 @@ fn context_plane_status_report_fixture(
         ContextMemoryTemporalGraphShadowTraversalDiffReport::from_shadow_replay(
             &temporal_graph_shadow_replay,
         );
+    let temporal_graph_shadow_traversal_quality =
+        ContextMemoryTemporalGraphShadowTraversalQualityReport::from_traversal_diff(
+            &temporal_graph_shadow_traversal_diff,
+        );
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let provider_report = MemoryProviderReport::from_update(
         MemoryProviderDescriptor::builtin(),
@@ -140,6 +144,7 @@ fn context_plane_status_report_fixture(
         temporal_graph_shadow_store: &temporal_graph_shadow_store,
         temporal_graph_shadow_replay: &temporal_graph_shadow_replay,
         temporal_graph_shadow_traversal_diff: &temporal_graph_shadow_traversal_diff,
+        temporal_graph_shadow_traversal_quality: &temporal_graph_shadow_traversal_quality,
         eval_seed: &eval_seed,
         allocator_shadow,
         recall_quality_gate,
@@ -158,9 +163,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 23);
+    assert_eq!(report.sections.len(), 24);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 14);
+    assert_eq!(report.shadow_section_count(), 15);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -221,6 +226,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -375,6 +384,83 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert_eq!(
         temporal_graph_traversal_diff_entry
             .memory_temporal_graph_shadow_traversal_diff_graph_write_count,
+        0
+    );
+    let temporal_graph_traversal_quality_entry = report
+        .sections
+        .iter()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality
+        })
+        .expect("temporal graph shadow traversal quality status row should exist");
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_fixture_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_slo_pass_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_precision_basis_points,
+        10_000
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_projected_latency_ms,
+        1
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_token_saved_estimate,
+        256
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_digest_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_llm_rerank_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_graph_persistence_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_production_write_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_graph_write_count,
         0
     );
     let ranked_recall_entry = report

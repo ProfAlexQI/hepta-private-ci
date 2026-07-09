@@ -125,7 +125,7 @@ expected_source_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest=pass
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.schema=1
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.dependency-chain-report-lines=20
-context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.dependency-chain-report-sha256=589833a3339d1f568dcc8abbf8b8957d63ac4b0b34e2ce82e22e32fb2aa97b17
+context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.dependency-chain-report-sha256=fdc009047d60b37bd2824de25bea678bad01d7397465435c6b16bd7aaa13a5fa
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.readiness-chain-generation=275
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.source-readiness-chain-generation=274
 context-plane-operator-approval-packet-freshness-dependency-chain-canonical-digest.source-freshness-sequence=273
@@ -144,7 +144,7 @@ expected_expiry_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift=pass
 context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.schema=1
 context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.source-canonical-digest-report-lines=15
-context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.source-canonical-digest-report-sha256=d078e33f036b227076398a57492b61cd67c11575aa8699b47a3111a34bec44f2
+context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.source-canonical-digest-report-sha256=a6ed5fadbbe792fb077116b3da6702a26b223f72b29de3ccfed2b9d572fa495e
 context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.readiness-chain-generation=276
 context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.source-readiness-chain-generation=275
 context-plane-operator-approval-packet-freshness-dependency-chain-expiry-drift.source-dependency-chain-generation=274
@@ -173,7 +173,7 @@ expiry_guard_accepts() {
   [ "$expiry_status" = "$expected_expiry_status" ] || return 1
   [ "$(line_count "$source_status")" = "15" ] || return 1
   [ "$(line_count "$expiry_status")" = "21" ] || return 1
-  [ "$(printf '%s\n' "$source_status" | sha256_digest)" = "d078e33f036b227076398a57492b61cd67c11575aa8699b47a3111a34bec44f2" ] || return 1
+  [ "$(printf '%s\n' "$source_status" | sha256_digest)" = "a6ed5fadbbe792fb077116b3da6702a26b223f72b29de3ccfed2b9d572fa495e" ] || return 1
 
   if printf '%s\n%s\n' "$source_status" "$expiry_status" | grep -E 'activation_command|tool_args|raw_payload|prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|ranked_payload|entity_hash|supersedes|idempotency|fixture_hash|operator@example\.com|activation-command=(run|enabled|present)|runtime-activation=enabled|production-write=enabled|graph-write=enabled|operator-activation=enabled' >/dev/null; then
     return 1
@@ -205,7 +205,7 @@ if [ "$expiry_status" != "$expiry_status_second" ]; then
   fail "operator approval packet freshness dependency-chain expiry drift report is not idempotent"
 fi
 
-source_digest_replay_tamper="$(printf '%s\n' "$expiry_status" | sed 's/d078e33f036b227076398a57492b61cd67c11575aa8699b47a3111a34bec44f2/e078e33f036b227076398a57492b61cd67c11575aa8699b47a3111a34bec44f2/')"
+source_digest_replay_tamper="$(printf '%s\n' "$expiry_status" | sed 's/a6ed5fadbbe792fb077116b3da6702a26b223f72b29de3ccfed2b9d572fa495e/b6ed5fadbbe792fb077116b3da6702a26b223f72b29de3ccfed2b9d572fa495e/')"
 source_generation_tamper="$(printf '%s\n' "$expiry_status" | sed 's/source-readiness-chain-generation=275/source-readiness-chain-generation=274/')"
 dependency_generation_tamper="$(printf '%s\n' "$expiry_status" | sed 's/source-dependency-chain-generation=274/source-dependency-chain-generation=273/')"
 freshness_sequence_tamper="$(printf '%s\n' "$expiry_status" | sed 's/source-freshness-sequence=273/source-freshness-sequence=272/')"

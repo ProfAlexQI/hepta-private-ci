@@ -20,6 +20,7 @@ const MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT: usize = 18;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_REPLAY_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_DIFF_STAGE_REQUIRED_COUNT: usize = 5;
+const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -128,7 +129,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 24
+        self.total_row_count == 25
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -265,6 +266,30 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub memory_temporal_graph_shadow_traversal_diff_production_route_count: usize,
     pub memory_temporal_graph_shadow_traversal_diff_production_write_count: usize,
     pub memory_temporal_graph_shadow_traversal_diff_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_fixture_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_slo_required_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_slo_pass_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_coverage_basis_points: u32,
+    pub memory_temporal_graph_shadow_traversal_quality_precision_basis_points: u32,
+    pub memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points: u32,
+    pub memory_temporal_graph_shadow_traversal_quality_latency_budget_ms: u32,
+    pub memory_temporal_graph_shadow_traversal_quality_projected_latency_ms: u32,
+    pub memory_temporal_graph_shadow_traversal_quality_token_saved_estimate: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_operator_review_required_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_win_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_loss_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_cost_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_stage_required_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_stage_projected_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_digest_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_freshness_pass_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_llm_rerank_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_graph_persistence_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_production_route_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_production_write_count: usize,
+    pub memory_temporal_graph_shadow_traversal_quality_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -452,6 +477,30 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             memory_temporal_graph_shadow_traversal_diff_production_route_count: 0,
             memory_temporal_graph_shadow_traversal_diff_production_write_count: 0,
             memory_temporal_graph_shadow_traversal_diff_graph_write_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_fixture_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_slo_required_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_slo_pass_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_coverage_basis_points: 0,
+            memory_temporal_graph_shadow_traversal_quality_precision_basis_points: 0,
+            memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points: 0,
+            memory_temporal_graph_shadow_traversal_quality_latency_budget_ms: 0,
+            memory_temporal_graph_shadow_traversal_quality_projected_latency_ms: 0,
+            memory_temporal_graph_shadow_traversal_quality_token_saved_estimate: 0,
+            memory_temporal_graph_shadow_traversal_quality_operator_review_required_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_win_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_loss_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_cost_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_stage_required_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_stage_projected_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_digest_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_freshness_pass_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_llm_rerank_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_graph_persistence_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_production_route_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_production_write_count: 0,
+            memory_temporal_graph_shadow_traversal_quality_graph_write_count: 0,
             ranked_recall_hybrid_signal_required_count: 0,
             ranked_recall_hybrid_signal_pass_count: 0,
             ranked_recall_lexical_bm25_check_pass: false,
@@ -563,6 +612,9 @@ impl ContextPlaneOperatorApprovalPacket {
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryTemporalGraphShadowReplay);
         let temporal_graph_shadow_traversal_diff_row = matrix
             .row_for_target(ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff);
+        let temporal_graph_shadow_traversal_quality_row = matrix.row_for_target(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality,
+        );
         let ranked_recall_row =
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval);
 
@@ -1009,6 +1061,132 @@ impl ContextPlaneOperatorApprovalPacket {
                 temporal_graph_shadow_traversal_diff_row
                     .map(|row| row.memory_temporal_graph_shadow_traversal_diff_graph_write_count)
                     .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_fixture_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_fixture_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_slo_required_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_slo_required_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_slo_pass_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_slo_pass_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_coverage_basis_points:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_coverage_basis_points
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_precision_basis_points:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_precision_basis_points
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_latency_budget_ms:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_latency_budget_ms)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_projected_latency_ms:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_projected_latency_ms
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_token_saved_estimate:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_token_saved_estimate
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_operator_review_required_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_operator_review_required_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_win_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_win_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_loss_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_loss_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_cost_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_cost_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_stage_required_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_stage_projected_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_stage_projected_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_digest_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_digest_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_freshness_pass_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_freshness_pass_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_llm_rerank_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_llm_rerank_count)
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_graph_persistence_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_graph_persistence_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_production_route_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_production_route_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_production_write_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| {
+                        row.memory_temporal_graph_shadow_traversal_quality_production_write_count
+                    })
+                    .unwrap_or_default(),
+            memory_temporal_graph_shadow_traversal_quality_graph_write_count:
+                temporal_graph_shadow_traversal_quality_row
+                    .map(|row| row.memory_temporal_graph_shadow_traversal_quality_graph_write_count)
+                    .unwrap_or_default(),
             ranked_recall_hybrid_signal_required_count: ranked_recall_row
                 .map(|row| row.ranked_recall_hybrid_signal_required_count)
                 .unwrap_or_default(),
@@ -1173,7 +1351,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 24
+            && self.matrix_row_count == 25
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count
@@ -1192,6 +1370,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.has_memory_temporal_graph_shadow_store_integrity()
             && self.has_memory_temporal_graph_shadow_replay_integrity()
             && self.has_memory_temporal_graph_shadow_traversal_diff_integrity()
+            && self.has_memory_temporal_graph_shadow_traversal_quality_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && self.has_ranked_recall_hybrid_integrity()
             && self.has_required_approval_scopes()
@@ -1511,6 +1690,44 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.memory_temporal_graph_shadow_traversal_diff_production_route_count == 0
             && self.memory_temporal_graph_shadow_traversal_diff_production_write_count == 0
             && self.memory_temporal_graph_shadow_traversal_diff_graph_write_count == 0
+    }
+
+    fn has_memory_temporal_graph_shadow_traversal_quality_integrity(&self) -> bool {
+        self.memory_temporal_graph_shadow_traversal_quality_fixture_count
+            == MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_traversal_quality_slo_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_traversal_quality_slo_pass_count
+                == self.memory_temporal_graph_shadow_traversal_quality_slo_required_count
+            && self.memory_temporal_graph_shadow_traversal_quality_coverage_basis_points >= 8_000
+            && self.memory_temporal_graph_shadow_traversal_quality_precision_basis_points >= 8_000
+            && self.memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points == 0
+            && self.memory_temporal_graph_shadow_traversal_quality_latency_budget_ms == 20
+            && self.memory_temporal_graph_shadow_traversal_quality_projected_latency_ms
+                <= self.memory_temporal_graph_shadow_traversal_quality_latency_budget_ms
+            && self.memory_temporal_graph_shadow_traversal_quality_token_saved_estimate > 0
+            && self.memory_temporal_graph_shadow_traversal_quality_operator_review_required_count
+                == self.memory_temporal_graph_shadow_traversal_quality_fixture_count
+            && self.memory_temporal_graph_shadow_traversal_quality_win_count > 0
+            && self.memory_temporal_graph_shadow_traversal_quality_loss_count == 0
+            && self.memory_temporal_graph_shadow_traversal_quality_cost_count > 0
+            && self.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_traversal_quality_stage_projected_count
+                == self.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+            && self.memory_temporal_graph_shadow_traversal_quality_digest_count
+                == self.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+            && self.memory_temporal_graph_shadow_traversal_quality_freshness_pass_count
+                == self.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+            && self.memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count
+                == self.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+            && self.memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count
+                == self.memory_temporal_graph_shadow_traversal_quality_stage_required_count
+            && self.memory_temporal_graph_shadow_traversal_quality_llm_rerank_count == 0
+            && self.memory_temporal_graph_shadow_traversal_quality_graph_persistence_count == 0
+            && self.memory_temporal_graph_shadow_traversal_quality_production_route_count == 0
+            && self.memory_temporal_graph_shadow_traversal_quality_production_write_count == 0
+            && self.memory_temporal_graph_shadow_traversal_quality_graph_write_count == 0
     }
 
     fn has_ranked_recall_hybrid_integrity(&self) -> bool {

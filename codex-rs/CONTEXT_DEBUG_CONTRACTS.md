@@ -1179,6 +1179,67 @@ output must include `temporal-graph-shadow-traversal-diff=pass`,
 `temporal-graph-shadow-traversal-diff.production-write=disabled`,
 `temporal-graph-shadow-traversal-diff.graph-write=disabled`, and
 `temporal-graph-shadow-traversal-diff.runtime-activation=disabled`.
+Temporal graph shadow traversal quality/SLO surface: recall diagnostics may
+expose a shadow temporal graph traversal quality/SLO surface derived only from
+the temporal graph shadow traversal diff report. It is an evidence-quality
+projection for aggregate graph traversal behavior, not a production recall
+route, not graph persistence, and not LLM rerank. The surface may carry only
+aggregate counters: `memory_temporal_graph_shadow_traversal_quality`,
+`quality_fixture_count`, `quality_slo_required_count`,
+`quality_slo_pass_count`, `coverage_basis_points`, `precision_basis_points`,
+`leak_rate_basis_points`, `projected_latency_ms`, `token_saved_estimate`,
+`operator_review_required_count`, `traversal_win_count`,
+`traversal_loss_count`, `traversal_cost_count`, stage/digest/freshness/replay
+and stale-replay counts, and `aggregate_counters_only`. It must not export
+candidate payloads, candidate ids, traversal paths, memory text, transcript
+text, prompt text, query payloads, source ids, memory ids, entity hashes, fact
+hashes, edge hashes, raw graph payloads, tool arguments, tool outputs,
+operator identity, or user identifiers. Quality integrity requires schema
+version 1, source traversal diff schema version 1, exactly five quality
+fixtures, all five SLOs projected, coverage and precision at or above 8000
+basis points, leak rate 0, projected latency no greater than 20ms, positive
+token savings, operator review required for each fixture, at least one
+traversal win, zero traversal losses, positive traversal cost accounting,
+digest/freshness/replay/stale-replay evidence for all five stages,
+`llm_rerank=false`, `graph_persistence=false`, `production_route=false`,
+`production_write=false`, and `graph_write=false`. It must not persist graph
+facts, must not enable LLM rerank, must not alter production recall routing,
+must not write production memory, must not alter prompt assembly, must not
+enable runtime activation, and must not allow operator activation. The
+Rust-backed report is
+`ContextMemoryTemporalGraphShadowTraversalQualityReport` in
+`codex-rs/hepta-core/src/memory/temporal/quality.rs`, exposed through
+`context_memory_temporal_graph_shadow_traversal_quality_report` on
+context-plane helpers and
+`recall_context_memory_temporal_graph_shadow_traversal_quality_report` on both
+`StoreSnapshot` and `InMemoryStore`.
+
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-report.sh`
+emits the payload-light shadow traversal quality/SLO scoreboard, and
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh`
+verifies the report, Rust-backed context-plane projections, hepta-core and
+hepta-memory helper tests, debug/preflight wiring, source-aware front-door
+static check, release manifest entries, and no-leak constraints. The context
+debug gate and preflight must run
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh`
+after
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh`
+and before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate
+output must include `temporal-graph-shadow-traversal-quality=pass`,
+`temporal-graph-shadow-traversal-quality.payload-light=pass`,
+`temporal-graph-shadow-traversal-quality.slo-pass-count=5`,
+`temporal-graph-shadow-traversal-quality.coverage-basis-points=10000`,
+`temporal-graph-shadow-traversal-quality.precision-basis-points=10000`,
+`temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0`,
+`temporal-graph-shadow-traversal-quality.projected-latency-ms=5`,
+`temporal-graph-shadow-traversal-quality.token-saved-estimate=768`,
+`temporal-graph-shadow-traversal-quality.stage-projected-count=5`,
+`temporal-graph-shadow-traversal-quality.llm-rerank=disabled`,
+`temporal-graph-shadow-traversal-quality.graph-persistence=disabled`,
+`temporal-graph-shadow-traversal-quality.production-route=disabled`,
+`temporal-graph-shadow-traversal-quality.production-write-count=0`,
+`temporal-graph-shadow-traversal-quality.graph-write-count=0`, and
+`temporal-graph-shadow-traversal-quality.runtime-activation=disabled`.
 Context memory eval harness seed: recall diagnostics may expose an offline,
 behavior-neutral eval harness seed for future quality gates. The seed may
 contain only fixed metric names (`recall_coverage`, `missing_critical_fact`,
@@ -2056,6 +2117,48 @@ Gate-pass status export must include
 `context-plane-status.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
 `context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-route-count=0`, and
 `context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0`.
+The `memory_temporal_graph_shadow_traversal_quality` row is shadow-only until
+a separately approved temporal graph retrieval route is promoted. It may carry
+only aggregate traversal quality/SLO counters:
+`memory_temporal_graph_shadow_traversal_quality_fixture_count`,
+`memory_temporal_graph_shadow_traversal_quality_slo_required_count`,
+`memory_temporal_graph_shadow_traversal_quality_slo_pass_count`,
+`memory_temporal_graph_shadow_traversal_quality_coverage_basis_points`,
+`memory_temporal_graph_shadow_traversal_quality_precision_basis_points`,
+`memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points`,
+`memory_temporal_graph_shadow_traversal_quality_latency_budget_ms`,
+`memory_temporal_graph_shadow_traversal_quality_projected_latency_ms`,
+`memory_temporal_graph_shadow_traversal_quality_token_saved_estimate`,
+`memory_temporal_graph_shadow_traversal_quality_operator_review_required_count`,
+`memory_temporal_graph_shadow_traversal_quality_win_count`,
+`memory_temporal_graph_shadow_traversal_quality_loss_count`,
+`memory_temporal_graph_shadow_traversal_quality_cost_count`,
+`memory_temporal_graph_shadow_traversal_quality_stage_required_count`,
+`memory_temporal_graph_shadow_traversal_quality_stage_projected_count`,
+`memory_temporal_graph_shadow_traversal_quality_digest_count`,
+`memory_temporal_graph_shadow_traversal_quality_freshness_pass_count`,
+`memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_traversal_quality_llm_rerank_count`,
+`memory_temporal_graph_shadow_traversal_quality_graph_persistence_count`,
+`memory_temporal_graph_shadow_traversal_quality_production_route_count`,
+`memory_temporal_graph_shadow_traversal_quality_production_write_count`, and
+`memory_temporal_graph_shadow_traversal_quality_graph_write_count`. Status
+integrity must reject temporal graph traversal quality false-green rows:
+fixture count, required SLO count, pass SLO count, stage projected count,
+digest/freshness/replay/stale-replay counts must all be 5; coverage and
+precision must be at least 8000 basis points; leak rate must be 0; projected
+latency must be within the 20ms budget; token-saved estimate and traversal
+win/cost counts must be positive; loss count and all side-effect counts must
+be 0. Non-temporal-graph-traversal-quality rows must not carry traversal
+quality counters. Gate-pass status export must include
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality=shadow`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-route-count=0`, and
+`context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0`.
 The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
 `memory_ranked_recall_shadow_eval` row is shadow-only until a separately
@@ -2295,6 +2398,17 @@ production-write count drift, graph-write count drift, or temporal graph
 traversal diff counters appearing on non-traversal-diff rows. Until a separate
 operator-approved retrieval route exists, the row must carry the blocker reason
 `temporal_graph_shadow_traversal_diff_shadow_only`.
+The `memory_temporal_graph_shadow_traversal_quality` matrix row carries the
+same temporal graph shadow traversal quality/SLO counters as the status row
+and must reject missing projected SLOs, missing digest/freshness/replay/stale
+replay evidence, coverage or precision drift, leak-rate drift, latency budget
+drift, token-saved drift, operator-review drift, traversal win/loss/cost
+drift, LLM-rerank count drift, graph-persistence count drift, production-route
+count drift, production-write count drift, graph-write count drift, or
+temporal graph traversal quality counters appearing on non-traversal-quality
+rows. Until a separate operator-approved retrieval route exists, the row must
+carry the blocker reason
+`temporal_graph_shadow_traversal_quality_shadow_only`.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -2322,6 +2436,13 @@ activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
 `context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0`,
 `context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality=blocked:temporal_graph_shadow_traversal_quality_shadow_only`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0`,
 `context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2619,11 +2740,46 @@ projected stage count is not 5, digest/freshness/replay/stale-replay counts are
 not 5, aggregate counters do not remain payload-light and aligned, or
 LLM-rerank, graph-persistence, production-route, production-write, or
 graph-write counts are nonzero.
+The operator packet must also surface
+`memory_temporal_graph_shadow_traversal_quality` aggregate quality/SLO
+counters so an operator can inspect graph traversal evidence quality, cost,
+leak rate, token savings, and review load before any retrieval route opens.
+The packet may carry only
+`memory_temporal_graph_shadow_traversal_quality_fixture_count`,
+`memory_temporal_graph_shadow_traversal_quality_slo_required_count`,
+`memory_temporal_graph_shadow_traversal_quality_slo_pass_count`,
+`memory_temporal_graph_shadow_traversal_quality_coverage_basis_points`,
+`memory_temporal_graph_shadow_traversal_quality_precision_basis_points`,
+`memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points`,
+`memory_temporal_graph_shadow_traversal_quality_latency_budget_ms`,
+`memory_temporal_graph_shadow_traversal_quality_projected_latency_ms`,
+`memory_temporal_graph_shadow_traversal_quality_token_saved_estimate`,
+`memory_temporal_graph_shadow_traversal_quality_operator_review_required_count`,
+`memory_temporal_graph_shadow_traversal_quality_win_count`,
+`memory_temporal_graph_shadow_traversal_quality_loss_count`,
+`memory_temporal_graph_shadow_traversal_quality_cost_count`,
+`memory_temporal_graph_shadow_traversal_quality_stage_required_count`,
+`memory_temporal_graph_shadow_traversal_quality_stage_projected_count`,
+`memory_temporal_graph_shadow_traversal_quality_digest_count`,
+`memory_temporal_graph_shadow_traversal_quality_freshness_pass_count`,
+`memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_traversal_quality_llm_rerank_count`,
+`memory_temporal_graph_shadow_traversal_quality_graph_persistence_count`,
+`memory_temporal_graph_shadow_traversal_quality_production_route_count`,
+`memory_temporal_graph_shadow_traversal_quality_production_write_count`, and
+`memory_temporal_graph_shadow_traversal_quality_graph_write_count`. Packet
+integrity must reject temporal graph traversal quality false-green packets
+where SLO pass count is not 5, coverage/precision/leak/latency/token/review
+counters drift, digest/freshness/replay/stale-replay counts are not 5, or
+LLM-rerank, graph-persistence, production-route, production-write, or
+graph-write counts are nonzero.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-replay-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-diff-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-quality-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stage-projected-count=6`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.recorded-receipt-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.graph-write-count=0`,
@@ -2633,6 +2789,11 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.production-route-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-route-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2780,8 +2941,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 201 lines, negative export report 4 lines, and
-combined report 205 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 226 lines, negative export report 4 lines, and
+combined report 230 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

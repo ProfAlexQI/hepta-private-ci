@@ -69,6 +69,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         ContextMemoryTemporalGraphShadowTraversalDiffReport::from_shadow_replay(
             &temporal_graph_shadow_replay,
         );
+    let temporal_graph_shadow_traversal_quality =
+        ContextMemoryTemporalGraphShadowTraversalQualityReport::from_traversal_diff(
+            &temporal_graph_shadow_traversal_diff,
+        );
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
     let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
@@ -129,6 +133,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         temporal_graph_shadow_store: &temporal_graph_shadow_store,
         temporal_graph_shadow_replay: &temporal_graph_shadow_replay,
         temporal_graph_shadow_traversal_diff: &temporal_graph_shadow_traversal_diff,
+        temporal_graph_shadow_traversal_quality: &temporal_graph_shadow_traversal_quality,
         eval_seed: &eval_seed,
         allocator_shadow: &allocator_shadow,
         recall_quality_gate: &recall_quality_gate,
@@ -146,11 +151,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 24);
+    assert_eq!(packet.matrix_row_count, 25);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 15);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 24);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 23);
+    assert_eq!(packet.blocker_count, 16);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 25);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 24);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -186,6 +191,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalDiffShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly
         ),
         Some(1)
     );
@@ -472,6 +483,66 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         packet.memory_temporal_graph_shadow_traversal_diff_graph_write_count,
         0
     );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_fixture_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_slo_pass_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_precision_basis_points,
+        10_000
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_projected_latency_ms,
+        1
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_token_saved_estimate,
+        256
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_operator_review_required_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_digest_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_llm_rerank_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_graph_persistence_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_production_route_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_production_write_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_traversal_quality_graph_write_count,
+        0
+    );
     assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
     assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
     assert!(packet.ranked_recall_lexical_bm25_check_pass);
@@ -584,6 +655,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("temporal_graph_shadow_store_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_replay_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_traversal_quality_shadow_only"));
     assert!(json.contains("memory_temporal_graph_shadow_store_node_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stale_replay_rejected_count"));
@@ -597,6 +669,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     );
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff_llm_rerank_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_slo_pass_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_coverage_basis_points"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_projected_latency_ms"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_token_saved_estimate"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_llm_rerank_count"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
     assert!(json.contains("ranked_recall_lexical_bm25_check_pass"));
@@ -810,9 +887,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 24);
+    assert_eq!(packet.matrix_row_count, 25);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 16);
+    assert_eq!(packet.blocker_count, 17);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -873,14 +950,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 24,
+        matrix_row_count: 25,
         threshold_satisfied_count: 9,
-        blocker_count: 15,
+        blocker_count: 16,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 24,
+            total_row_count: 25,
             threshold_satisfied_count: 9,
-            blocker_count: 15,
-            required_ready_count: 23,
+            blocker_count: 16,
+            required_ready_count: 24,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -907,6 +984,11 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
             ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason:
                     ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalDiffShadowOnly,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason:
+                    ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly,
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
@@ -1061,6 +1143,30 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         memory_temporal_graph_shadow_traversal_diff_production_route_count: 0,
         memory_temporal_graph_shadow_traversal_diff_production_write_count: 0,
         memory_temporal_graph_shadow_traversal_diff_graph_write_count: 0,
+        memory_temporal_graph_shadow_traversal_quality_fixture_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_slo_required_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_slo_pass_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_coverage_basis_points: 10_000,
+        memory_temporal_graph_shadow_traversal_quality_precision_basis_points: 10_000,
+        memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points: 0,
+        memory_temporal_graph_shadow_traversal_quality_latency_budget_ms: 20,
+        memory_temporal_graph_shadow_traversal_quality_projected_latency_ms: 1,
+        memory_temporal_graph_shadow_traversal_quality_token_saved_estimate: 256,
+        memory_temporal_graph_shadow_traversal_quality_operator_review_required_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_win_count: 1,
+        memory_temporal_graph_shadow_traversal_quality_loss_count: 0,
+        memory_temporal_graph_shadow_traversal_quality_cost_count: 1,
+        memory_temporal_graph_shadow_traversal_quality_stage_required_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_stage_projected_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_digest_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_freshness_pass_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count: 5,
+        memory_temporal_graph_shadow_traversal_quality_llm_rerank_count: 0,
+        memory_temporal_graph_shadow_traversal_quality_graph_persistence_count: 0,
+        memory_temporal_graph_shadow_traversal_quality_production_route_count: 0,
+        memory_temporal_graph_shadow_traversal_quality_production_write_count: 0,
+        memory_temporal_graph_shadow_traversal_quality_graph_write_count: 0,
         ranked_recall_hybrid_signal_required_count: 5,
         ranked_recall_hybrid_signal_pass_count: 5,
         ranked_recall_lexical_bm25_check_pass: true,

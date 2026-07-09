@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 23);
+    assert_eq!(report.sections.len(), 24);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 14);
+    assert_eq!(report.shadow_section_count(), 15);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -98,6 +98,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -270,6 +274,83 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
             .memory_temporal_graph_shadow_traversal_diff_graph_write_count,
         0
     );
+    let temporal_graph_traversal_quality_entry = report
+        .sections
+        .iter()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality
+        })
+        .expect("temporal graph shadow traversal quality status row should exist");
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_fixture_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_slo_pass_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_coverage_basis_points,
+        10_000
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_precision_basis_points,
+        10_000
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_projected_latency_ms,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_token_saved_estimate,
+        768
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_digest_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_llm_rerank_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_graph_persistence_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_production_write_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_quality_entry
+            .memory_temporal_graph_shadow_traversal_quality_graph_write_count,
+        0
+    );
     let promotion_entry = report
         .sections
         .iter()
@@ -360,6 +441,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert!(json.contains("memory_temporal_graph_shadow_replay"));
     assert!(json.contains("memory_temporal_graph_shadow_replay_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_replay_stale_replay_rejected_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_slo_pass_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_quality_token_saved_estimate"));
     assert!(json.contains("eval_harness_seed"));
     assert!(json.contains("adaptive_allocator_eval_shadow"));
     assert!(json.contains("recall_quality_gate"));
@@ -459,7 +543,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 23);
+    assert_eq!(from_store.sections.len(), 24);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
@@ -500,6 +584,11 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
     assert_eq!(
         from_store
             .section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        from_store
+            .section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(

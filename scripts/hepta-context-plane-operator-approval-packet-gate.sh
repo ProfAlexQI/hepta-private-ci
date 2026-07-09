@@ -143,6 +143,7 @@ for term in \
   "temporal_graph_shadow_store_shadow_only" \
   "temporal_graph_shadow_replay_shadow_only" \
   "temporal_graph_shadow_traversal_diff_shadow_only" \
+  "temporal_graph_shadow_traversal_quality_shadow_only" \
   "memory_temporal_graph_shadow_traversal_diff" \
   "memory_temporal_graph_shadow_traversal_diff_stage_projected_count" \
   "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count" \
@@ -151,6 +152,14 @@ for term in \
   "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5" \
   "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.production-route-count=0" \
   "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0" \
+  "memory_temporal_graph_shadow_traversal_quality" \
+  "memory_temporal_graph_shadow_traversal_quality_slo_pass_count" \
+  "memory_temporal_graph_shadow_traversal_quality_coverage_basis_points" \
+  "memory_temporal_graph_shadow_traversal_quality_token_saved_estimate" \
+  "context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-quality-shadow-only=1" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
+  "context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
   "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
@@ -259,20 +268,21 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=16
+context-plane-operator-approval-packet.schema=17
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=24
+context-plane-operator-approval-packet.rows=25
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=15
-context-plane-operator-approval-packet.threshold.required-ready=23
+context-plane-operator-approval-packet.blockers=16
+context-plane-operator-approval-packet.threshold.required-ready=24
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-replay-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-diff-shadow-only=1
+context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-quality-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1
@@ -397,6 +407,30 @@ context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-di
 context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.production-route-count=0
 context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.production-write-count=0
 context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.fixture-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.slo-required-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.precision-basis-points=10000
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.latency-budget-ms=20
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.operator-review-required-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.win-count=1
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.loss-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.cost-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.stage-required-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.stage-projected-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.digest-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.freshness-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.replay-guard-pass-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.stale-replay-rejected-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.llm-rerank-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-persistence-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-required-count=5
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5
 context-plane-operator-approval-packet.ranked-recall.lexical-bm25-check=pass

@@ -96,6 +96,10 @@ for term in \
   "memory_temporal_graph_shadow_traversal_diff_stage_projected_count" \
   "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count" \
   "memory_temporal_graph_shadow_traversal_diff_llm_rerank_count" \
+  "memory_temporal_graph_shadow_traversal_quality" \
+  "memory_temporal_graph_shadow_traversal_quality_slo_pass_count" \
+  "memory_temporal_graph_shadow_traversal_quality_coverage_basis_points" \
+  "memory_temporal_graph_shadow_traversal_quality_token_saved_estimate" \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
@@ -181,6 +185,12 @@ for term in \
   "context-plane-status.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5" \
   "context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-route-count=0" \
   "context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-quality=shadow" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -376,6 +386,31 @@ context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-persisten
 context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-route-count=0
 context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-write-count=0
 context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality=shadow
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.fixture-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.slo-required-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.precision-basis-points=10000
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.latency-budget-ms=20
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.operator-review-required-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.win-count=1
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.loss-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.cost-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.stage-required-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.stage-projected-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.digest-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.freshness-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.replay-guard-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.stale-replay-rejected-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.llm-rerank-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-persistence-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
 context-plane-status.eval-harness-seed=ready
 context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready

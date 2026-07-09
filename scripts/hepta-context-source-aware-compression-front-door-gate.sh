@@ -92,6 +92,7 @@ memory_temporal_graph_shadow_eval_gate_script="hepta-context-memory-temporal-gra
 memory_temporal_graph_shadow_store_gate_script="hepta-context-memory-temporal-graph-shadow-store-gate.sh"
 memory_temporal_graph_shadow_replay_gate_script="hepta-context-memory-temporal-graph-shadow-replay-gate.sh"
 memory_temporal_graph_shadow_traversal_diff_gate_script="hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
+memory_temporal_graph_shadow_traversal_quality_gate_script="hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
 memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gate.sh"
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
@@ -454,6 +455,12 @@ required_contract_terms=(
   "context_memory_temporal_graph_shadow_traversal_diff_report"
   "hepta-context-memory-temporal-graph-shadow-traversal-diff-report.sh"
   "hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
+  "Temporal graph shadow traversal quality/SLO surface"
+  "memory_temporal_graph_shadow_traversal_quality"
+  "ContextMemoryTemporalGraphShadowTraversalQualityReport"
+  "context_memory_temporal_graph_shadow_traversal_quality_report"
+  "hepta-context-memory-temporal-graph-shadow-traversal-quality-report.sh"
+  "hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
   "MemoryProvider boundary"
   "MemoryProviderContextUpdateEnvelope"
   "MemoryProviderReport"
@@ -684,9 +691,9 @@ required_contract_terms=(
   "hepta-context-plane-operator-approval-packet-negative-export-gate.sh"
   "Context Plane operator approval packet canonical export digest"
   "context-plane-operator-approval-packet-canonical-export-digest=pass"
-  "approval report 201 lines"
+  "approval report 226 lines"
   "negative export report 4 lines"
-  "combined report 205 lines"
+  "combined report 230 lines"
   "deterministic and idempotent"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-gate.sh"
@@ -913,6 +920,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_temporal_graph_shadow_traversal_diff_gate_script" \
   "memory temporal graph shadow traversal diff debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_temporal_graph_shadow_traversal_quality_gate_script" \
+  "memory temporal graph shadow traversal quality debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -1203,6 +1215,16 @@ assert_file_contains \
   "$preflight_script" \
   "context memory temporal graph shadow replay gate" \
   "memory temporal graph shadow replay preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory temporal graph shadow traversal diff gate" \
+  "memory temporal graph shadow traversal diff preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory temporal graph shadow traversal quality/SLO gate" \
+  "memory temporal graph shadow traversal quality preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1532,6 +1554,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory temporal graph shadow traversal diff gate" \
+  "context memory temporal graph shadow traversal quality/SLO gate" \
+  "memory temporal graph shadow traversal quality preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory temporal graph shadow traversal quality/SLO gate" \
   "context memory eval harness seed gate" \
   "memory eval harness seed preflight stage order"
 

@@ -9,6 +9,7 @@ use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
+use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextRecallAvailability;
@@ -359,6 +360,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalGraphShadowTraversalDiffReport {
         ContextMemoryTemporalGraphShadowTraversalDiffReport::from_shadow_replay(
             &self.recall_context_memory_temporal_graph_shadow_replay_report(request),
+        )
+    }
+
+    /// Builds a payload-light temporal graph traversal quality/SLO surface
+    /// from diff evidence without graph traversal activation or reranking.
+    pub fn recall_context_memory_temporal_graph_shadow_traversal_quality_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowTraversalQualityReport {
+        ContextMemoryTemporalGraphShadowTraversalQualityReport::from_traversal_diff(
+            &self.recall_context_memory_temporal_graph_shadow_traversal_diff_report(request),
         )
     }
 }

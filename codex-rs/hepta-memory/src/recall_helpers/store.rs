@@ -8,6 +8,7 @@ use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
+use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextRecallAvailability;
@@ -190,6 +191,16 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .recall_context_memory_temporal_graph_shadow_traversal_diff_report(&request))
+    }
+
+    pub fn recall_context_memory_temporal_graph_shadow_traversal_quality_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryTemporalGraphShadowTraversalQualityReport, hepta_core::MemoryError>
+    {
+        Ok(self
+            .snapshot()?
+            .recall_context_memory_temporal_graph_shadow_traversal_quality_report(&request))
     }
 
     pub fn search_report(

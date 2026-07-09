@@ -176,6 +176,12 @@ for term in \
   "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5" \
   "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0" \
   "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality=blocked:temporal_graph_shadow_traversal_quality_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
   "source_aware_front_door" \
   "operator_approval" \
   "adaptive_budget_allocation_shadow_only" \
@@ -183,6 +189,7 @@ for term in \
   "temporal_graph_shadow_store_shadow_only" \
   "temporal_graph_shadow_replay_shadow_only" \
   "temporal_graph_shadow_traversal_diff_shadow_only" \
+  "temporal_graph_shadow_traversal_quality_shadow_only" \
   "memory_ranked_recall_shadow_eval_shadow_only" \
   "memory_provider_boundary_shadow_only" \
   "memory_provider_v2_boundary_shadow_only" \
@@ -303,10 +310,10 @@ assert_line_before \
 
 expected_status="$(cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=17
-context-plane-activation-blockers.rows=24
+context-plane-activation-blockers.schema=18
+context-plane-activation-blockers.rows=25
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=15
+context-plane-activation-blockers.blockers=16
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -409,6 +416,31 @@ context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.gr
 context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-write-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality=blocked:temporal_graph_shadow_traversal_quality_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.fixture-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.precision-basis-points=10000
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.latency-budget-ms=20
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.operator-review-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.win-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.loss-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.cost-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.stage-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.stage-projected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.digest-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.freshness-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.replay-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.stale-replay-rejected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
 context-plane-activation-blockers.eval-harness-seed=ready
 context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
 context-plane-activation-blockers.recall-quality-gate=ready
