@@ -14,6 +14,7 @@ const MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_RECEIPT_NAMESPACE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT: usize = 18;
+const MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -112,6 +113,24 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_write_chain_receipt_persisted_count: usize,
     pub memory_write_chain_receipt_production_write_count: usize,
     pub memory_write_chain_receipt_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_store_node_count: usize,
+    pub memory_temporal_graph_shadow_store_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_provenance_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_validity_window_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_supersedes_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_invalidated_node_count: usize,
+    pub memory_temporal_graph_shadow_store_stage_required_count: usize,
+    pub memory_temporal_graph_shadow_store_stage_projected_count: usize,
+    pub memory_temporal_graph_shadow_store_digest_count: usize,
+    pub memory_temporal_graph_shadow_store_freshness_pass_count: usize,
+    pub memory_temporal_graph_shadow_store_replay_guard_pass_count: usize,
+    pub memory_temporal_graph_shadow_store_stale_replay_rejected_count: usize,
+    pub memory_temporal_graph_shadow_store_operator_approval_required_count: usize,
+    pub memory_temporal_graph_shadow_store_operator_approval_recorded_count: usize,
+    pub memory_temporal_graph_shadow_store_recorded_receipt_count: usize,
+    pub memory_temporal_graph_shadow_store_persisted_receipt_count: usize,
+    pub memory_temporal_graph_shadow_store_production_write_count: usize,
+    pub memory_temporal_graph_shadow_store_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -224,6 +243,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::TemporalGraphShadowStoreShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryRankedRecallShadowEval,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly,
@@ -298,6 +321,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_memory_namespace_policy_rollup(target, entry)
             .with_memory_write_chain_readiness_rollup(target, entry)
             .with_memory_write_chain_receipt_freshness_rollup(target, entry)
+            .with_memory_temporal_graph_shadow_store_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
@@ -308,6 +332,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_memory_namespace_policy_rollup(target, entry)
             .with_memory_write_chain_readiness_rollup(target, entry)
             .with_memory_write_chain_receipt_freshness_rollup(target, entry)
+            .with_memory_temporal_graph_shadow_store_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
     }
 
@@ -597,6 +622,54 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_temporal_graph_shadow_store_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore
+            && let Some(entry) = entry
+        {
+            self.memory_temporal_graph_shadow_store_node_count =
+                entry.memory_temporal_graph_shadow_store_node_count;
+            self.memory_temporal_graph_shadow_store_edge_count =
+                entry.memory_temporal_graph_shadow_store_edge_count;
+            self.memory_temporal_graph_shadow_store_provenance_edge_count =
+                entry.memory_temporal_graph_shadow_store_provenance_edge_count;
+            self.memory_temporal_graph_shadow_store_validity_window_edge_count =
+                entry.memory_temporal_graph_shadow_store_validity_window_edge_count;
+            self.memory_temporal_graph_shadow_store_supersedes_edge_count =
+                entry.memory_temporal_graph_shadow_store_supersedes_edge_count;
+            self.memory_temporal_graph_shadow_store_invalidated_node_count =
+                entry.memory_temporal_graph_shadow_store_invalidated_node_count;
+            self.memory_temporal_graph_shadow_store_stage_required_count =
+                entry.memory_temporal_graph_shadow_store_stage_required_count;
+            self.memory_temporal_graph_shadow_store_stage_projected_count =
+                entry.memory_temporal_graph_shadow_store_stage_projected_count;
+            self.memory_temporal_graph_shadow_store_digest_count =
+                entry.memory_temporal_graph_shadow_store_digest_count;
+            self.memory_temporal_graph_shadow_store_freshness_pass_count =
+                entry.memory_temporal_graph_shadow_store_freshness_pass_count;
+            self.memory_temporal_graph_shadow_store_replay_guard_pass_count =
+                entry.memory_temporal_graph_shadow_store_replay_guard_pass_count;
+            self.memory_temporal_graph_shadow_store_stale_replay_rejected_count =
+                entry.memory_temporal_graph_shadow_store_stale_replay_rejected_count;
+            self.memory_temporal_graph_shadow_store_operator_approval_required_count =
+                entry.memory_temporal_graph_shadow_store_operator_approval_required_count;
+            self.memory_temporal_graph_shadow_store_operator_approval_recorded_count =
+                entry.memory_temporal_graph_shadow_store_operator_approval_recorded_count;
+            self.memory_temporal_graph_shadow_store_recorded_receipt_count =
+                entry.memory_temporal_graph_shadow_store_recorded_receipt_count;
+            self.memory_temporal_graph_shadow_store_persisted_receipt_count =
+                entry.memory_temporal_graph_shadow_store_persisted_receipt_count;
+            self.memory_temporal_graph_shadow_store_production_write_count =
+                entry.memory_temporal_graph_shadow_store_production_write_count;
+            self.memory_temporal_graph_shadow_store_graph_write_count =
+                entry.memory_temporal_graph_shadow_store_graph_write_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -609,6 +682,7 @@ impl ContextPlaneActivationBlockerRow {
             && self.has_memory_namespace_policy_rollup_integrity()
             && self.has_memory_write_chain_readiness_rollup_integrity()
             && self.has_memory_write_chain_receipt_freshness_rollup_integrity()
+            && self.has_memory_temporal_graph_shadow_store_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
@@ -1019,6 +1093,60 @@ impl ContextPlaneActivationBlockerRow {
             && self.memory_write_chain_receipt_persisted_count == 0
             && self.memory_write_chain_receipt_production_write_count == 0
             && self.memory_write_chain_receipt_graph_write_count == 0
+            && (self.threshold_satisfied || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_temporal_graph_shadow_store_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.memory_temporal_graph_shadow_store_node_count,
+            self.memory_temporal_graph_shadow_store_edge_count,
+            self.memory_temporal_graph_shadow_store_provenance_edge_count,
+            self.memory_temporal_graph_shadow_store_validity_window_edge_count,
+            self.memory_temporal_graph_shadow_store_supersedes_edge_count,
+            self.memory_temporal_graph_shadow_store_invalidated_node_count,
+            self.memory_temporal_graph_shadow_store_stage_required_count,
+            self.memory_temporal_graph_shadow_store_stage_projected_count,
+            self.memory_temporal_graph_shadow_store_digest_count,
+            self.memory_temporal_graph_shadow_store_freshness_pass_count,
+            self.memory_temporal_graph_shadow_store_replay_guard_pass_count,
+            self.memory_temporal_graph_shadow_store_stale_replay_rejected_count,
+            self.memory_temporal_graph_shadow_store_operator_approval_required_count,
+            self.memory_temporal_graph_shadow_store_operator_approval_recorded_count,
+            self.memory_temporal_graph_shadow_store_recorded_receipt_count,
+            self.memory_temporal_graph_shadow_store_persisted_receipt_count,
+            self.memory_temporal_graph_shadow_store_production_write_count,
+            self.memory_temporal_graph_shadow_store_graph_write_count,
+        ];
+
+        if self.target != ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_temporal_graph_shadow_store_node_count > 0
+            && self.memory_temporal_graph_shadow_store_edge_count
+                >= self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_provenance_edge_count
+                == self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_validity_window_edge_count
+                == self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_supersedes_edge_count
+                <= self.memory_temporal_graph_shadow_store_edge_count
+            && self.memory_temporal_graph_shadow_store_invalidated_node_count
+                <= self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_stage_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_store_stage_projected_count
+                == self.memory_temporal_graph_shadow_store_stage_required_count
+            && self.memory_temporal_graph_shadow_store_digest_count == 1
+            && self.memory_temporal_graph_shadow_store_freshness_pass_count == 1
+            && self.memory_temporal_graph_shadow_store_replay_guard_pass_count == 1
+            && self.memory_temporal_graph_shadow_store_stale_replay_rejected_count == 1
+            && self.memory_temporal_graph_shadow_store_operator_approval_required_count == 1
+            && self.memory_temporal_graph_shadow_store_operator_approval_recorded_count == 0
+            && self.memory_temporal_graph_shadow_store_recorded_receipt_count == 0
+            && self.memory_temporal_graph_shadow_store_persisted_receipt_count == 0
+            && self.memory_temporal_graph_shadow_store_production_write_count == 0
+            && self.memory_temporal_graph_shadow_store_graph_write_count == 0
             && (self.threshold_satisfied || self.blocker_reason.is_blocking())
     }
 }

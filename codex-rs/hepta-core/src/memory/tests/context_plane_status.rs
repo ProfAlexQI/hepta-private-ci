@@ -71,6 +71,8 @@ fn context_plane_status_report_fixture(
     let temporal_fact_graph =
         ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
     let temporal_graph_shadow_eval = ContextMemoryTemporalGraphShadowEvalReport::seeded();
+    let temporal_graph_shadow_store =
+        ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(&temporal_fact_graph);
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let provider_report = MemoryProviderReport::from_update(
         MemoryProviderDescriptor::builtin(),
@@ -127,6 +129,7 @@ fn context_plane_status_report_fixture(
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
         temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
+        temporal_graph_shadow_store: &temporal_graph_shadow_store,
         eval_seed: &eval_seed,
         allocator_shadow,
         recall_quality_gate,
@@ -145,9 +148,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 20);
+    assert_eq!(report.sections.len(), 21);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 11);
+    assert_eq!(report.shadow_section_count(), 12);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -199,6 +202,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowStore),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
         report.section_status(ContextPlaneStatusSection::SourceAwareFrontDoor),
         Some(ContextPlaneStatusKind::Disabled)
     );
@@ -209,6 +216,49 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
         .expect("recall quality status row should exist");
     assert_eq!(recall_entry.recall_quality_blocking_reason_count, 0);
     assert!(recall_entry.recall_quality_blocking_reasons.is_empty());
+    let temporal_graph_store_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryTemporalGraphShadowStore)
+        .expect("temporal graph shadow store status row should exist");
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_node_count,
+        1
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_edge_count,
+        2
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_stage_required_count,
+        6
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_stage_projected_count,
+        6
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_digest_count,
+        1
+    );
+    assert_eq!(
+        temporal_graph_store_entry
+            .memory_temporal_graph_shadow_store_operator_approval_required_count,
+        1
+    );
+    assert_eq!(
+        temporal_graph_store_entry
+            .memory_temporal_graph_shadow_store_operator_approval_recorded_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_production_write_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_graph_write_count,
+        0
+    );
     let ranked_recall_entry = report
         .sections
         .iter()

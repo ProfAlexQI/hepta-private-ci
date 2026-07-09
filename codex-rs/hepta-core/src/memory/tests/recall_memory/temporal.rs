@@ -255,3 +255,104 @@ fn context_recall_memory_temporal_fact_graph_is_payload_light_reversible_and_non
     assert!(!json.contains("\"runtime_activation\":true"));
     assert!(!json.contains("\"prompt_assembly_change\":true"));
 }
+
+#[test]
+fn context_recall_memory_temporal_graph_shadow_store_is_approval_gated_and_non_writing() {
+    let superseded_fact_hash = stable_receipt_hash(&["memory_temporal_graph_store_prior"]);
+    let fact_report = ContextMemoryTemporalFactReport {
+        facts: vec![
+            ContextMemoryTemporalFact {
+                fact_type: ContextMemoryTemporalFactType::Attribute,
+                entity_hash: stable_receipt_hash(&[
+                    "memory_temporal_fact_entity",
+                    "attribute",
+                    "store-test",
+                ]),
+                provenance_span_count: 2,
+                valid_from_sequence: 8,
+                invalid_at_sequence: None,
+                confidence_basis_points: 6200,
+                supersedes_fact_hash: None,
+                privacy_class: "user_private".into(),
+                dry_run_only: true,
+                production_write: false,
+            },
+            ContextMemoryTemporalFact {
+                fact_type: ContextMemoryTemporalFactType::Preference,
+                entity_hash: stable_receipt_hash(&[
+                    "memory_temporal_fact_entity",
+                    "preference",
+                    "store-test",
+                ]),
+                provenance_span_count: 1,
+                valid_from_sequence: 9,
+                invalid_at_sequence: Some(12),
+                confidence_basis_points: 5600,
+                supersedes_fact_hash: Some(superseded_fact_hash),
+                privacy_class: "user_private".into(),
+                dry_run_only: true,
+                production_write: false,
+            },
+        ],
+    };
+    let graph = ContextMemoryTemporalFactGraphReport::from_temporal_facts(&fact_report);
+
+    let store = ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(&graph);
+
+    assert!(store.has_shadow_store_integrity());
+    assert_eq!(
+        store.schema_version,
+        CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_SCHEMA_VERSION
+    );
+    assert_eq!(store.source_graph_schema_version, 1);
+    assert_eq!(store.node_count, 2);
+    assert_eq!(store.edge_count, 5);
+    assert_eq!(store.provenance_edge_count, 2);
+    assert_eq!(store.validity_window_edge_count, 2);
+    assert_eq!(store.supersedes_edge_count, 1);
+    assert_eq!(store.open_node_count, 1);
+    assert_eq!(store.invalidated_node_count, 1);
+    assert_eq!(store.readiness_stage_required_count(), 6);
+    assert_eq!(store.readiness_stage_projected_count(), 6);
+    assert!(store.shadow_wal_projected);
+    assert!(store.provenance_projected);
+    assert!(store.bitemporal_validity_projected);
+    assert!(store.fact_invalidation_projected);
+    assert!(store.supersede_tombstone_projected);
+    assert!(store.digest_freshness_projected);
+    assert_eq!(store.store_digest.len(), 16);
+    assert!(store.freshness_check_pass);
+    assert!(store.replay_guard_pass);
+    assert!(store.stale_replay_rejected);
+    assert!(store.operator_approval_required);
+    assert!(!store.operator_approval_recorded);
+    assert_eq!(store.receipt_recorded_count(), 0);
+    assert_eq!(store.receipt_persisted_count(), 0);
+    assert_eq!(store.production_write_count(), 0);
+    assert_eq!(store.graph_write_count(), 0);
+    assert!(!store.production_route);
+    assert!(!store.production_write);
+    assert!(!store.graph_write);
+    assert!(!store.hot_path_write);
+    assert!(!store.prompt_assembly_change);
+    assert!(!store.runtime_activation);
+    assert!(!store.operator_activation_allowed);
+
+    let json = serde_json::to_string(&store).expect("temporal graph shadow store should serialize");
+    assert!(json.contains("store_digest"));
+    assert!(json.contains("bitemporal_validity_projected"));
+    assert!(json.contains("supersede_tombstone_projected"));
+    assert!(!json.contains("store-test"));
+    assert!(!json.contains("entity_hash"));
+    assert!(!json.contains("fact_text"));
+    assert!(!json.contains("entity_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}

@@ -58,6 +58,24 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 ContextPlaneStatusSection::MemoryTemporalGraphShadowEval,
                 4,
             ),
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryTemporalGraphShadowStore,
+                    5,
+                );
+                entry.memory_temporal_graph_shadow_store_node_count = 5;
+                entry.memory_temporal_graph_shadow_store_edge_count = 10;
+                entry.memory_temporal_graph_shadow_store_provenance_edge_count = 5;
+                entry.memory_temporal_graph_shadow_store_validity_window_edge_count = 5;
+                entry.memory_temporal_graph_shadow_store_stage_required_count = 6;
+                entry.memory_temporal_graph_shadow_store_stage_projected_count = 6;
+                entry.memory_temporal_graph_shadow_store_digest_count = 1;
+                entry.memory_temporal_graph_shadow_store_freshness_pass_count = 1;
+                entry.memory_temporal_graph_shadow_store_replay_guard_pass_count = 1;
+                entry.memory_temporal_graph_shadow_store_stale_replay_rejected_count = 1;
+                entry.memory_temporal_graph_shadow_store_operator_approval_required_count = 1;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::EvalHarnessSeed, 2),
             ContextPlaneStatusEntry::shadow(
                 ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
@@ -176,9 +194,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 21);
+    assert_eq!(matrix.rows.len(), 22);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 12);
+    assert_eq!(matrix.blocker_count, 13);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -231,6 +249,10 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval),
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore),
+        Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowStoreShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
@@ -473,9 +495,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 21);
+    assert_eq!(matrix.rows.len(), 22);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 13);
+    assert_eq!(matrix.blocker_count, 14);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -552,7 +574,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 21);
+    assert_eq!(report_side_effect_matrix.blocker_count, 22);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -585,9 +607,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 21);
+    assert_eq!(matrix.rows.len(), 22);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 13);
+    assert_eq!(matrix.blocker_count, 14);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

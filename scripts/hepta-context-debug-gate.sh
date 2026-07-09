@@ -25,6 +25,7 @@ bash "$repo_root/scripts/hepta-context-memory-formation-candidate-no-leak-export
 bash "$repo_root/scripts/hepta-context-memory-temporal-fact-schema-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-temporal-fact-graph-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
+bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-eval-harness-seed-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 bash "$repo_root/scripts/hepta-context-memory-recall-quality-gate.sh"

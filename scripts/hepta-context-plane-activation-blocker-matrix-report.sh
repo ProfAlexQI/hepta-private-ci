@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=14
-context-plane-activation-blockers.rows=21
+context-plane-activation-blockers.schema=15
+context-plane-activation-blockers.rows=22
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=12
+context-plane-activation-blockers.blockers=13
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -49,6 +49,25 @@ context-plane-activation-blockers.memory-write-chain-receipt-freshness.graph-wri
 context-plane-activation-blockers.memory-temporal-facts=ready
 context-plane-activation-blockers.memory-temporal-fact-graph=ready
 context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-store=blocked:temporal_graph_shadow_store_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.node-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.edge-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.provenance-edge-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.validity-window-edge-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.supersede-edge-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.invalidated-node-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.stage-required-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.stage-projected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.digest-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.freshness-pass-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.replay-guard-pass-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.stale-replay-rejected-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.operator-approval-required-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.recorded-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.persisted-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.graph-write-count=0
 context-plane-activation-blockers.eval-harness-seed=ready
 context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
 context-plane-activation-blockers.recall-quality-gate=ready

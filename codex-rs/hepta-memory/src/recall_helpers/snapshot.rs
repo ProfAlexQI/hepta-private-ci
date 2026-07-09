@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
+use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextRecallAvailability;
@@ -324,5 +325,16 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalFactGraphReport {
         self.recall_context_inspection(request)
             .memory_temporal_fact_graph_report()
+    }
+
+    /// Builds an approval-gated temporal graph shadow store skeleton from the
+    /// dry-run graph topology without persisting graph facts or receipts.
+    pub fn recall_context_memory_temporal_graph_shadow_store_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowStoreReport {
+        ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(
+            &self.recall_context_memory_temporal_fact_graph_report(request),
+        )
     }
 }

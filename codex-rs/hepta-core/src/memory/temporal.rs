@@ -1,5 +1,6 @@
 mod fact;
 mod graph;
+mod store;
 
 pub use fact::ContextMemoryTemporalFact;
 pub use fact::ContextMemoryTemporalFactReport;
@@ -8,3 +9,4 @@ pub use graph::ContextMemoryTemporalFactGraphEdge;
 pub use graph::ContextMemoryTemporalFactGraphEdgeKind;
 pub use graph::ContextMemoryTemporalFactGraphNode;
 pub use graph::ContextMemoryTemporalFactGraphReport;
+pub use store::ContextMemoryTemporalGraphShadowStoreReport;

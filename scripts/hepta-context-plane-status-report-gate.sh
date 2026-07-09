@@ -88,6 +88,10 @@ for term in \
   "memory_temporal_facts" \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
+  "memory_temporal_graph_shadow_store" \
+  "memory_temporal_graph_shadow_store_stage_projected_count" \
+  "memory_temporal_graph_shadow_store_digest_count" \
+  "memory_temporal_graph_shadow_store_stale_replay_rejected_count" \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
@@ -161,6 +165,10 @@ for term in \
   "context-plane-status.memory-write-chain-receipt-freshness.receipt-digest-count=6" \
   "context-plane-status.memory-write-chain-receipt-freshness.freshness-pass-count=6" \
   "context-plane-status.memory-write-chain-receipt-freshness.recorded-receipt-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-store=shadow" \
+  "context-plane-status.memory-temporal-graph-shadow-store.stage-projected-count=6" \
+  "context-plane-status.memory-temporal-graph-shadow-store.recorded-receipt-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-store.graph-write-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -296,6 +304,25 @@ context-plane-status.memory-write-chain-receipt-freshness.graph-write-count=0
 context-plane-status.memory-temporal-facts=ready
 context-plane-status.memory-temporal-fact-graph=ready
 context-plane-status.memory-temporal-graph-shadow-eval=shadow
+context-plane-status.memory-temporal-graph-shadow-store=shadow
+context-plane-status.memory-temporal-graph-shadow-store.node-count=5
+context-plane-status.memory-temporal-graph-shadow-store.edge-count=10
+context-plane-status.memory-temporal-graph-shadow-store.provenance-edge-count=5
+context-plane-status.memory-temporal-graph-shadow-store.validity-window-edge-count=5
+context-plane-status.memory-temporal-graph-shadow-store.supersede-edge-count=0
+context-plane-status.memory-temporal-graph-shadow-store.invalidated-node-count=0
+context-plane-status.memory-temporal-graph-shadow-store.stage-required-count=6
+context-plane-status.memory-temporal-graph-shadow-store.stage-projected-count=6
+context-plane-status.memory-temporal-graph-shadow-store.digest-count=1
+context-plane-status.memory-temporal-graph-shadow-store.freshness-pass-count=1
+context-plane-status.memory-temporal-graph-shadow-store.replay-guard-pass-count=1
+context-plane-status.memory-temporal-graph-shadow-store.stale-replay-rejected-count=1
+context-plane-status.memory-temporal-graph-shadow-store.operator-approval-required-count=1
+context-plane-status.memory-temporal-graph-shadow-store.operator-approval-recorded-count=0
+context-plane-status.memory-temporal-graph-shadow-store.recorded-receipt-count=0
+context-plane-status.memory-temporal-graph-shadow-store.persisted-receipt-count=0
+context-plane-status.memory-temporal-graph-shadow-store.production-write-count=0
+context-plane-status.memory-temporal-graph-shadow-store.graph-write-count=0
 context-plane-status.eval-harness-seed=ready
 context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready

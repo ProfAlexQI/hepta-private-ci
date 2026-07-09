@@ -13,6 +13,7 @@ use hepta_core::ContextMemoryShadowQualityTrendSnapshotReport;
 use hepta_core::ContextMemoryShadowRegressionDashboardReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
+use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextPlaneActivationBlockerMatrix;
@@ -95,6 +96,17 @@ impl StoreSnapshot {
         ContextMemoryTemporalGraphShadowEvalReport::seeded()
     }
 
+    /// Builds the offline temporal-graph shadow store report without writing
+    /// graph facts, receipts, or activation state.
+    pub fn context_memory_temporal_graph_shadow_store_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowStoreReport {
+        ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(
+            &self.recall_context_memory_temporal_fact_graph_report(request),
+        )
+    }
+
     /// Builds a payload-light dashboard that closes the loop across recall,
     /// temporal graph, quality, and provider shadow reports.
     pub fn context_memory_shadow_regression_dashboard_report(
@@ -165,6 +177,8 @@ impl StoreSnapshot {
         let temporal_fact_graph =
             ContextMemoryTemporalFactGraphReport::from_temporal_facts(&temporal_facts);
         let temporal_graph_shadow_eval = self.context_memory_temporal_graph_shadow_eval_report();
+        let temporal_graph_shadow_store =
+            ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(&temporal_fact_graph);
         let eval_seed = self.context_memory_eval_harness_seed_report();
         let allocator_shadow =
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
@@ -197,6 +211,7 @@ impl StoreSnapshot {
             temporal_facts: &temporal_facts,
             temporal_fact_graph: &temporal_fact_graph,
             temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
+            temporal_graph_shadow_store: &temporal_graph_shadow_store,
             eval_seed: &eval_seed,
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
@@ -279,6 +294,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_temporal_graph_shadow_eval_report())
+    }
+
+    pub fn context_memory_temporal_graph_shadow_store_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryTemporalGraphShadowStoreReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_temporal_graph_shadow_store_report(&request))
     }
 
     pub fn context_memory_shadow_regression_dashboard_report(

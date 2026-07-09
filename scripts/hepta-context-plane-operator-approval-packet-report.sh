@@ -3,17 +3,18 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-operator-approval-packet=pass
-context-plane-operator-approval-packet.schema=13
+context-plane-operator-approval-packet.schema=14
 context-plane-operator-approval-packet.dry-run=enabled
 context-plane-operator-approval-packet.approval-required=enabled
 context-plane-operator-approval-packet.activation-command=absent
-context-plane-operator-approval-packet.rows=21
+context-plane-operator-approval-packet.rows=22
 context-plane-operator-approval-packet.satisfied=9
-context-plane-operator-approval-packet.blockers=12
-context-plane-operator-approval-packet.threshold.required-ready=20
+context-plane-operator-approval-packet.blockers=13
+context-plane-operator-approval-packet.threshold.required-ready=21
 context-plane-operator-approval-packet.threshold.required-shadow=1
 context-plane-operator-approval-packet.blocker.adaptive-budget-allocation-shadow-only=1
 context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1
+context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1
 context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1
@@ -81,6 +82,24 @@ context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.reco
 context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.persisted-receipt-count=0
 context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.production-write-count=0
 context-plane-operator-approval-packet.memory-write-chain-receipt-freshness.graph-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.node-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.edge-count=10
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.provenance-edge-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.validity-window-edge-count=5
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.supersede-edge-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.invalidated-node-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stage-required-count=6
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stage-projected-count=6
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.digest-count=1
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.freshness-pass-count=1
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.replay-guard-pass-count=1
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stale-replay-rejected-count=1
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.operator-approval-required-count=1
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.operator-approval-recorded-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.recorded-receipt-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.persisted-receipt-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.production-write-count=0
+context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.graph-write-count=0
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-required-count=5
 context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5
 context-plane-operator-approval-packet.ranked-recall.lexical-bm25-check=pass

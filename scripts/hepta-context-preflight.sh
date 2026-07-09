@@ -112,6 +112,9 @@ run_stage "context memory temporal fact graph dry-run gate" \
 run_stage "context memory temporal graph shadow eval gate" \
   bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh"
 
+run_stage "context memory temporal graph shadow store skeleton gate" \
+  bash "$repo_root/scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh"
+
 run_stage "context memory eval harness seed gate" \
   bash "$repo_root/scripts/hepta-context-memory-eval-harness-seed-gate.sh"
 

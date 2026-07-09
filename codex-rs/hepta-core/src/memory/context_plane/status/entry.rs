@@ -11,6 +11,7 @@ use crate::memory::ContextMemoryRecallQualityGateReport;
 use crate::memory::ContextMemoryShadowCanaryPromotionReadinessReport;
 use crate::memory::ContextMemoryShadowQualityTrendSnapshotReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
+use crate::memory::ContextMemoryTemporalGraphShadowStoreReport;
 use crate::memory::ContextMemoryWriteChainReadinessReport;
 use crate::memory::ContextMemoryWriteChainReceiptFreshnessReport;
 use crate::memory::MemoryProviderReport;
@@ -22,6 +23,7 @@ const MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_RECEIPT_NAMESPACE_REQUIRED_COUNT: usize = 6;
 const MEMORY_WRITE_CHAIN_RECEIPT_REQUIRED_COUNT: usize = 18;
+const MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -120,6 +122,24 @@ pub struct ContextPlaneStatusEntry {
     pub memory_write_chain_receipt_persisted_count: usize,
     pub memory_write_chain_receipt_production_write_count: usize,
     pub memory_write_chain_receipt_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_store_node_count: usize,
+    pub memory_temporal_graph_shadow_store_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_provenance_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_validity_window_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_supersedes_edge_count: usize,
+    pub memory_temporal_graph_shadow_store_invalidated_node_count: usize,
+    pub memory_temporal_graph_shadow_store_stage_required_count: usize,
+    pub memory_temporal_graph_shadow_store_stage_projected_count: usize,
+    pub memory_temporal_graph_shadow_store_digest_count: usize,
+    pub memory_temporal_graph_shadow_store_freshness_pass_count: usize,
+    pub memory_temporal_graph_shadow_store_replay_guard_pass_count: usize,
+    pub memory_temporal_graph_shadow_store_stale_replay_rejected_count: usize,
+    pub memory_temporal_graph_shadow_store_operator_approval_required_count: usize,
+    pub memory_temporal_graph_shadow_store_operator_approval_recorded_count: usize,
+    pub memory_temporal_graph_shadow_store_recorded_receipt_count: usize,
+    pub memory_temporal_graph_shadow_store_persisted_receipt_count: usize,
+    pub memory_temporal_graph_shadow_store_production_write_count: usize,
+    pub memory_temporal_graph_shadow_store_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -306,6 +326,75 @@ impl ContextPlaneStatusEntry {
             runtime_activation: temporal_graph_shadow_eval.runtime_activation,
             prompt_assembly_change: temporal_graph_shadow_eval.prompt_assembly_change,
             operator_activation_allowed: temporal_graph_shadow_eval.operator_activation_allowed,
+            ..Self::default()
+        }
+    }
+
+    pub(in crate::memory::context_plane::status) fn from_temporal_graph_shadow_store(
+        temporal_graph_shadow_store: &ContextMemoryTemporalGraphShadowStoreReport,
+    ) -> Self {
+        let has_integrity = temporal_graph_shadow_store.has_shadow_store_integrity();
+
+        Self {
+            section: ContextPlaneStatusSection::MemoryTemporalGraphShadowStore,
+            status: if has_integrity {
+                ContextPlaneStatusKind::Shadow
+            } else {
+                ContextPlaneStatusKind::Blocked
+            },
+            observed_count: temporal_graph_shadow_store.node_count,
+            omitted_count: temporal_graph_shadow_store.receipt_recorded_count()
+                + temporal_graph_shadow_store.receipt_persisted_count()
+                + temporal_graph_shadow_store.production_write_count()
+                + temporal_graph_shadow_store.graph_write_count(),
+            blocker_count: usize::from(!has_integrity),
+            memory_temporal_graph_shadow_store_node_count: temporal_graph_shadow_store.node_count,
+            memory_temporal_graph_shadow_store_edge_count: temporal_graph_shadow_store.edge_count,
+            memory_temporal_graph_shadow_store_provenance_edge_count: temporal_graph_shadow_store
+                .provenance_edge_count,
+            memory_temporal_graph_shadow_store_validity_window_edge_count:
+                temporal_graph_shadow_store.validity_window_edge_count,
+            memory_temporal_graph_shadow_store_supersedes_edge_count: temporal_graph_shadow_store
+                .supersedes_edge_count,
+            memory_temporal_graph_shadow_store_invalidated_node_count: temporal_graph_shadow_store
+                .invalidated_node_count,
+            memory_temporal_graph_shadow_store_stage_required_count: temporal_graph_shadow_store
+                .readiness_stage_required_count(),
+            memory_temporal_graph_shadow_store_stage_projected_count: temporal_graph_shadow_store
+                .readiness_stage_projected_count(),
+            memory_temporal_graph_shadow_store_digest_count: usize::from(
+                !temporal_graph_shadow_store.store_digest.is_empty(),
+            ),
+            memory_temporal_graph_shadow_store_freshness_pass_count: usize::from(
+                temporal_graph_shadow_store.freshness_check_pass,
+            ),
+            memory_temporal_graph_shadow_store_replay_guard_pass_count: usize::from(
+                temporal_graph_shadow_store.replay_guard_pass,
+            ),
+            memory_temporal_graph_shadow_store_stale_replay_rejected_count: usize::from(
+                temporal_graph_shadow_store.stale_replay_rejected,
+            ),
+            memory_temporal_graph_shadow_store_operator_approval_required_count: usize::from(
+                temporal_graph_shadow_store.operator_approval_required,
+            ),
+            memory_temporal_graph_shadow_store_operator_approval_recorded_count: usize::from(
+                temporal_graph_shadow_store.operator_approval_recorded,
+            ),
+            memory_temporal_graph_shadow_store_recorded_receipt_count: temporal_graph_shadow_store
+                .receipt_recorded_count(),
+            memory_temporal_graph_shadow_store_persisted_receipt_count: temporal_graph_shadow_store
+                .receipt_persisted_count(),
+            memory_temporal_graph_shadow_store_production_write_count: temporal_graph_shadow_store
+                .production_write_count(),
+            memory_temporal_graph_shadow_store_graph_write_count: temporal_graph_shadow_store
+                .graph_write_count(),
+            production_write: temporal_graph_shadow_store.production_write
+                || temporal_graph_shadow_store.production_route,
+            graph_write: temporal_graph_shadow_store.graph_write,
+            runtime_activation: temporal_graph_shadow_store.runtime_activation,
+            prompt_assembly_change: temporal_graph_shadow_store.prompt_assembly_change
+                || temporal_graph_shadow_store.hot_path_write,
+            operator_activation_allowed: temporal_graph_shadow_store.operator_activation_allowed,
             ..Self::default()
         }
     }
@@ -763,6 +852,7 @@ impl ContextPlaneStatusEntry {
             && self.has_memory_namespace_policy_integrity()
             && self.has_memory_write_chain_readiness_integrity()
             && self.has_memory_write_chain_receipt_freshness_integrity()
+            && self.has_memory_temporal_graph_shadow_store_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && !self.production_write
             && !self.graph_write
@@ -1173,6 +1263,60 @@ impl ContextPlaneStatusEntry {
             && self.memory_write_chain_receipt_persisted_count == 0
             && self.memory_write_chain_receipt_production_write_count == 0
             && self.memory_write_chain_receipt_graph_write_count == 0
+            && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
+    }
+
+    fn has_memory_temporal_graph_shadow_store_integrity(&self) -> bool {
+        let counts = [
+            self.memory_temporal_graph_shadow_store_node_count,
+            self.memory_temporal_graph_shadow_store_edge_count,
+            self.memory_temporal_graph_shadow_store_provenance_edge_count,
+            self.memory_temporal_graph_shadow_store_validity_window_edge_count,
+            self.memory_temporal_graph_shadow_store_supersedes_edge_count,
+            self.memory_temporal_graph_shadow_store_invalidated_node_count,
+            self.memory_temporal_graph_shadow_store_stage_required_count,
+            self.memory_temporal_graph_shadow_store_stage_projected_count,
+            self.memory_temporal_graph_shadow_store_digest_count,
+            self.memory_temporal_graph_shadow_store_freshness_pass_count,
+            self.memory_temporal_graph_shadow_store_replay_guard_pass_count,
+            self.memory_temporal_graph_shadow_store_stale_replay_rejected_count,
+            self.memory_temporal_graph_shadow_store_operator_approval_required_count,
+            self.memory_temporal_graph_shadow_store_operator_approval_recorded_count,
+            self.memory_temporal_graph_shadow_store_recorded_receipt_count,
+            self.memory_temporal_graph_shadow_store_persisted_receipt_count,
+            self.memory_temporal_graph_shadow_store_production_write_count,
+            self.memory_temporal_graph_shadow_store_graph_write_count,
+        ];
+
+        if self.section != ContextPlaneStatusSection::MemoryTemporalGraphShadowStore {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_temporal_graph_shadow_store_node_count > 0
+            && self.memory_temporal_graph_shadow_store_edge_count
+                >= self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_provenance_edge_count
+                == self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_validity_window_edge_count
+                == self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_supersedes_edge_count
+                <= self.memory_temporal_graph_shadow_store_edge_count
+            && self.memory_temporal_graph_shadow_store_invalidated_node_count
+                <= self.memory_temporal_graph_shadow_store_node_count
+            && self.memory_temporal_graph_shadow_store_stage_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_STAGE_REQUIRED_COUNT
+            && self.memory_temporal_graph_shadow_store_stage_projected_count
+                == self.memory_temporal_graph_shadow_store_stage_required_count
+            && self.memory_temporal_graph_shadow_store_digest_count == 1
+            && self.memory_temporal_graph_shadow_store_freshness_pass_count == 1
+            && self.memory_temporal_graph_shadow_store_replay_guard_pass_count == 1
+            && self.memory_temporal_graph_shadow_store_stale_replay_rejected_count == 1
+            && self.memory_temporal_graph_shadow_store_operator_approval_required_count == 1
+            && self.memory_temporal_graph_shadow_store_operator_approval_recorded_count == 0
+            && self.memory_temporal_graph_shadow_store_recorded_receipt_count == 0
+            && self.memory_temporal_graph_shadow_store_persisted_receipt_count == 0
+            && self.memory_temporal_graph_shadow_store_production_write_count == 0
+            && self.memory_temporal_graph_shadow_store_graph_write_count == 0
             && (self.status == ContextPlaneStatusKind::Shadow) == (self.blocker_count == 0)
     }
 }

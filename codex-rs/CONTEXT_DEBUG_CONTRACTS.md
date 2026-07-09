@@ -1029,6 +1029,56 @@ include `temporal-graph-shadow-eval=pass`,
 `temporal-graph-shadow-eval.regression-fixture=blocked`,
 `temporal-graph-shadow-eval.graph-write=disabled`, and
 `temporal-graph-shadow-eval.runtime-activation=disabled`.
+
+Temporal graph shadow store skeleton: recall diagnostics may expose an
+approval-gated shadow temporal graph store readiness surface derived from the
+temporal fact graph. It is not a production graph store and must remain
+report/gate only. The surface may carry only aggregate counts for WAL
+projection, provenance projection, bi-temporal validity projection, fact
+invalidation projection, supersede/tombstone projection, digest freshness,
+node count, edge count, provenance edge count, validity-window edge count,
+supersede edge count, open/invalidated node counts, a payload-light
+`store_digest`, freshness/replay/stale-replay booleans, operator approval
+required/recorded counts, receipt recorded/persisted counts, production route,
+production write, graph write, hot-path write, prompt assembly change, runtime
+activation, and operator activation. It must not contain memory text,
+transcript text, candidate text, prompt text, query payloads, source ids,
+memory ids, entity hashes, fact hashes, edge hashes, raw graph payloads, tool
+arguments, tool outputs, operator identity, or user identifiers. Store
+integrity requires schema version 1, source graph schema version 1, exactly
+six projected stages (`shadow_wal_projected`, `provenance_projected`,
+`bitemporal_validity_projected`, `fact_invalidation_projected`,
+`supersede_tombstone_projected`, and `digest_freshness_projected`), nonempty
+node/edge counts, provenance and validity-window edge counts matching the node
+count, `freshness_check_pass`, `replay_guard_pass`,
+`stale_replay_rejected`, `recorded_receipt=false`,
+`persisted_receipt=false`, `production_write=false`, and `graph_write=false`.
+It must not persist receipts, must not write graph facts, must not write
+production memory, must not alter prompt assembly, must not enable runtime
+activation, and must not allow operator activation. The Rust-backed report is
+`ContextMemoryTemporalGraphShadowStoreReport` in
+`codex-rs/hepta-core/src/memory/temporal/store.rs`, exposed through
+`context_memory_temporal_graph_shadow_store_report` on context-plane helpers
+and `recall_context_memory_temporal_graph_shadow_store_report` on both
+`StoreSnapshot` and `InMemoryStore`.
+
+`scripts/hepta-context-memory-temporal-graph-shadow-store-report.sh` emits the
+payload-light shadow store skeleton scoreboard, and
+`scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh` verifies the
+report, Rust-backed fixture boundary, hepta-core/hepta-memory helper tests,
+debug/preflight wiring, source-aware front-door static check, release manifest
+entries, and no-leak constraints. The context debug gate and preflight must run
+`scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh` after
+`scripts/hepta-context-memory-temporal-graph-shadow-eval-gate.sh` and before
+`scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate output must
+include `temporal-graph-shadow-store=pass`,
+`temporal-graph-shadow-store.payload-light=pass`,
+`temporal-graph-shadow-store.stage-projected-count=6`,
+`temporal-graph-shadow-store.recorded-receipt-count=0`,
+`temporal-graph-shadow-store.persisted-receipt-count=0`,
+`temporal-graph-shadow-store.production-write=disabled`,
+`temporal-graph-shadow-store.graph-write=disabled`, and
+`temporal-graph-shadow-store.runtime-activation=disabled`.
 Context memory eval harness seed: recall diagnostics may expose an offline,
 behavior-neutral eval harness seed for future quality gates. The seed may
 contain only fixed metric names (`recall_coverage`, `missing_critical_fact`,
@@ -1748,6 +1798,7 @@ keys only. The Rust status sections are `source_registry`,
 `memory_write_chain_receipt_freshness`,
 `memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`,
+`memory_temporal_graph_shadow_store`,
 `eval_harness_seed`, `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
 `memory_ranked_recall_shadow_eval`, `memory_provider_boundary`, `memory_shadow_canary_readiness`,
 `memory_shadow_canary_promotion_readiness`, and `source_aware_front_door`.
@@ -1811,7 +1862,37 @@ gate-pass status export must include
 `context-plane-status.memory-write-chain-receipt-freshness.recorded-receipt-count=0`.
 The
 `memory_temporal_graph_shadow_eval` row is shadow-only until a separately
-approved graph route is promoted. The `memory_provider_boundary` row is
+approved graph route is promoted. The `memory_temporal_graph_shadow_store` row
+is shadow-only until a separately approved approval-gated graph store route is
+promoted. It may carry only aggregate temporal graph store counters:
+`memory_temporal_graph_shadow_store_node_count`,
+`memory_temporal_graph_shadow_store_edge_count`,
+`memory_temporal_graph_shadow_store_provenance_edge_count`,
+`memory_temporal_graph_shadow_store_validity_window_edge_count`,
+`memory_temporal_graph_shadow_store_supersedes_edge_count`,
+`memory_temporal_graph_shadow_store_invalidated_node_count`,
+`memory_temporal_graph_shadow_store_stage_required_count`,
+`memory_temporal_graph_shadow_store_stage_projected_count`,
+`memory_temporal_graph_shadow_store_digest_count`,
+`memory_temporal_graph_shadow_store_freshness_pass_count`,
+`memory_temporal_graph_shadow_store_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_store_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_store_operator_approval_required_count`,
+`memory_temporal_graph_shadow_store_operator_approval_recorded_count`,
+`memory_temporal_graph_shadow_store_recorded_receipt_count`,
+`memory_temporal_graph_shadow_store_persisted_receipt_count`,
+`memory_temporal_graph_shadow_store_production_write_count`, and
+`memory_temporal_graph_shadow_store_graph_write_count`. Status integrity must
+reject temporal graph store false-green rows: stage projected count must be 6,
+digest/freshness/replay/stale-replay counts must be 1, operator approval must
+be required but not recorded, recorded/persisted receipt counts must be 0, and
+production-write/graph-write counts must be 0. Non-temporal-graph-store rows
+must not carry temporal graph store counters. Gate-pass status export must
+include `context-plane-status.memory-temporal-graph-shadow-store=shadow`,
+`context-plane-status.memory-temporal-graph-shadow-store.stage-projected-count=6`,
+`context-plane-status.memory-temporal-graph-shadow-store.recorded-receipt-count=0`, and
+`context-plane-status.memory-temporal-graph-shadow-store.graph-write-count=0`.
+The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
 `memory_ranked_recall_shadow_eval` row is shadow-only until a separately
 approved production recall route is promoted. It may expose only the fixed
@@ -1894,6 +1975,10 @@ recall-quality blocker enums only:
 `precision_regression`, `safety_leak`, `answer_quality_regression`, and
 `side_effect_flag_enabled`. Gate-pass status must export
 `context-plane-status.memory-temporal-graph-shadow-eval=shadow`,
+`context-plane-status.memory-temporal-graph-shadow-store=shadow`,
+`context-plane-status.memory-temporal-graph-shadow-store.stage-projected-count=6`,
+`context-plane-status.memory-temporal-graph-shadow-store.recorded-receipt-count=0`,
+`context-plane-status.memory-temporal-graph-shadow-store.graph-write-count=0`,
 `context-plane-status.memory-ranked-recall-shadow-eval=shadow`,
 `context-plane-status.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-status.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -1939,7 +2024,7 @@ answer text. It must not expose source ids, session ids, memory ids, trace ids,
 query payloads, ranked payloads, tool arguments, raw fact/entity values,
 email-shaped strings, phone-shaped strings, user identifiers, transcript spans,
 candidate text, entity hashes, fact hashes, edge hashes, supersedes hashes,
-fixture hashes, or idempotency hashes. Status integrity requires all nineteen
+fixture hashes, or idempotency hashes. Status integrity requires all twenty-one
 sections, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
@@ -1966,7 +2051,8 @@ Plane status report. The machine-readable report is
 `memory_write_chain_readiness`,
 `memory_write_chain_receipt_freshness`,
 `memory_temporal_facts`, `memory_temporal_fact_graph`,
-`memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
+`memory_temporal_graph_shadow_eval`, `memory_temporal_graph_shadow_store`,
+`eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
 `memory_ranked_recall_shadow_eval`, `memory_provider_boundary`, `memory_provider_v2_boundary`,
 `memory_shadow_canary_readiness`,
@@ -1975,6 +2061,7 @@ Plane status report. The machine-readable report is
 are controlled enum values:
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
+`temporal_graph_shadow_store_shadow_only`,
 `memory_ranked_recall_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
@@ -2023,6 +2110,12 @@ receipts, missing receipt digests, stale freshness, failed replay guards,
 accepted stale replay, recorded receipts, persisted receipts, production-write
 count drift, graph-write count drift, or receipt counters appearing on
 non-receipt rows.
+The `memory_temporal_graph_shadow_store` matrix row carries the same temporal
+graph shadow store counters as the status row and must reject missing projected
+stages, missing digest/freshness/replay/stale-replay evidence, recorded
+operator approval, recorded/persisted receipts, production-write count drift,
+graph-write count drift, or temporal graph store counters appearing on
+non-store rows.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -2038,6 +2131,10 @@ controlled recall-quality blocker enums `missing_critical_fact_regression`,
 `answer_quality_regression`, and `side_effect_flag_enabled`. Gate-pass
 activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-store=blocked:temporal_graph_shadow_store_shadow_only`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-store.stage-projected-count=6`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-store.recorded-receipt-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-store.graph-write-count=0`,
 `context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2150,6 +2247,7 @@ payload-light counters only. Required approval scopes are controlled enum values
 counts may include only the controlled activation blocker enum values
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
+`temporal_graph_shadow_store_shadow_only`,
 `memory_ranked_recall_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
@@ -2254,8 +2352,37 @@ write-chain receipt false-green packets where required namespace, digest,
 freshness, replay guard, and stale-replay rejection counts are not all 6, where
 projected receipt count is not 18, or where recorded, persisted,
 production-write, or graph-write counts are nonzero.
+The packet also carries only payload-light temporal graph shadow store counters
+from the `memory_temporal_graph_shadow_store` matrix row:
+`memory_temporal_graph_shadow_store_node_count`,
+`memory_temporal_graph_shadow_store_edge_count`,
+`memory_temporal_graph_shadow_store_provenance_edge_count`,
+`memory_temporal_graph_shadow_store_validity_window_edge_count`,
+`memory_temporal_graph_shadow_store_supersedes_edge_count`,
+`memory_temporal_graph_shadow_store_invalidated_node_count`,
+`memory_temporal_graph_shadow_store_stage_required_count`,
+`memory_temporal_graph_shadow_store_stage_projected_count`,
+`memory_temporal_graph_shadow_store_digest_count`,
+`memory_temporal_graph_shadow_store_freshness_pass_count`,
+`memory_temporal_graph_shadow_store_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_store_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_store_operator_approval_required_count`,
+`memory_temporal_graph_shadow_store_operator_approval_recorded_count`,
+`memory_temporal_graph_shadow_store_recorded_receipt_count`,
+`memory_temporal_graph_shadow_store_persisted_receipt_count`,
+`memory_temporal_graph_shadow_store_production_write_count`, and
+`memory_temporal_graph_shadow_store_graph_write_count`. Packet integrity must
+reject temporal graph store false-green packets where projected stage count is
+not 6, digest/freshness/replay/stale-replay counts are not 1, operator
+approval is not required or has already been recorded, recorded/persisted
+receipt counts are nonzero, or production-write/graph-write counts are
+nonzero.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shadow-only=1`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stage-projected-count=6`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.recorded-receipt-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.graph-write-count=0`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2403,8 +2530,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 141 lines, negative export report 4 lines, and
-combined report 145 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 160 lines, negative export report 4 lines, and
+combined report 164 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

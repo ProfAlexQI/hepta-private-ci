@@ -5,6 +5,7 @@ use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
+use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextRecallAvailability;
@@ -160,6 +161,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .recall_context_memory_temporal_fact_graph_report(&request))
+    }
+
+    pub fn recall_context_memory_temporal_graph_shadow_store_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryTemporalGraphShadowStoreReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .recall_context_memory_temporal_graph_shadow_store_report(&request))
     }
 
     pub fn search_report(

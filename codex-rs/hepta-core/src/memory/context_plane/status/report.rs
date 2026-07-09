@@ -19,6 +19,7 @@ use crate::memory::ContextMemoryTaxonomyReport;
 use crate::memory::ContextMemoryTemporalFactGraphReport;
 use crate::memory::ContextMemoryTemporalFactReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
+use crate::memory::ContextMemoryTemporalGraphShadowStoreReport;
 use crate::memory::ContextMemoryWriteChainReadinessReport;
 use crate::memory::ContextMemoryWriteChainReceiptFreshnessReport;
 use crate::memory::MemoryProviderReport;
@@ -52,6 +53,7 @@ pub struct ContextPlaneStatusReportInput<'a> {
     pub temporal_facts: &'a ContextMemoryTemporalFactReport,
     pub temporal_fact_graph: &'a ContextMemoryTemporalFactGraphReport,
     pub temporal_graph_shadow_eval: &'a ContextMemoryTemporalGraphShadowEvalReport,
+    pub temporal_graph_shadow_store: &'a ContextMemoryTemporalGraphShadowStoreReport,
     pub eval_seed: &'a ContextMemoryEvalHarnessReport,
     pub allocator_shadow: &'a ContextMemoryAdaptiveAllocatorEvalShadowReport,
     pub recall_quality_gate: &'a ContextMemoryRecallQualityGateReport,
@@ -121,6 +123,9 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusEntry::from_temporal_graph_shadow_eval(
                 input.temporal_graph_shadow_eval,
             ),
+            ContextPlaneStatusEntry::from_temporal_graph_shadow_store(
+                input.temporal_graph_shadow_store,
+            ),
             ContextPlaneStatusEntry::from_integrity(
                 ContextPlaneStatusSection::EvalHarnessSeed,
                 input.eval_seed.has_eval_integrity(),
@@ -161,16 +166,17 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTemporalFacts => 8,
             ContextPlaneStatusSection::MemoryTemporalFactGraph => 9,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowEval => 10,
-            ContextPlaneStatusSection::EvalHarnessSeed => 11,
-            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 12,
-            ContextPlaneStatusSection::RecallQualityGate => 13,
-            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 14,
-            ContextPlaneStatusSection::MemoryProviderBoundary => 15,
-            ContextPlaneStatusSection::MemoryProviderV2Boundary => 16,
-            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 17,
-            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 18,
-            ContextPlaneStatusSection::SourceAwareFrontDoor => 19,
-            ContextPlaneStatusSection::Unknown => 20,
+            ContextPlaneStatusSection::MemoryTemporalGraphShadowStore => 11,
+            ContextPlaneStatusSection::EvalHarnessSeed => 12,
+            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 13,
+            ContextPlaneStatusSection::RecallQualityGate => 14,
+            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 15,
+            ContextPlaneStatusSection::MemoryProviderBoundary => 16,
+            ContextPlaneStatusSection::MemoryProviderV2Boundary => 17,
+            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 18,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 19,
+            ContextPlaneStatusSection::SourceAwareFrontDoor => 20,
+            ContextPlaneStatusSection::Unknown => 21,
         });
 
         let production_write = sections.iter().any(|entry| entry.production_write);
@@ -194,7 +200,7 @@ impl ContextPlaneStatusReport {
 
     pub fn has_status_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_STATUS_SCHEMA_VERSION
-            && self.sections.len() == 20
+            && self.sections.len() == 21
             && self.has_required_sections()
             && self
                 .sections
@@ -222,6 +228,7 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTemporalFacts,
             ContextPlaneStatusSection::MemoryTemporalFactGraph,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowEval,
+            ContextPlaneStatusSection::MemoryTemporalGraphShadowStore,
             ContextPlaneStatusSection::EvalHarnessSeed,
             ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
             ContextPlaneStatusSection::RecallQualityGate,

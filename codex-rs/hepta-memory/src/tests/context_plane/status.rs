@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 20);
+    assert_eq!(report.sections.len(), 21);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 11);
+    assert_eq!(report.shadow_section_count(), 12);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -89,6 +89,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowStore),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
         report.section_status(ContextPlaneStatusSection::SourceAwareFrontDoor),
         Some(ContextPlaneStatusKind::Disabled)
     );
@@ -119,6 +123,35 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     assert_eq!(
         ranked_recall_entry.ranked_recall_hybrid_regression_blocked_count,
         1
+    );
+    let temporal_graph_store_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryTemporalGraphShadowStore)
+        .expect("temporal graph shadow store status row should exist");
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_node_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_edge_count,
+        10
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_stage_projected_count,
+        6
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_digest_count,
+        1
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_recorded_receipt_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_store_entry.memory_temporal_graph_shadow_store_graph_write_count,
+        0
     );
     let promotion_entry = report
         .sections
@@ -306,7 +339,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 20);
+    assert_eq!(from_store.sections.len(), 21);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
