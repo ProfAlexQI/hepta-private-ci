@@ -1309,6 +1309,57 @@ output must include `temporal-graph-shadow-retrieval-canary-guard=pass`,
 `temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0`,
 `temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0`, and
 `temporal-graph-shadow-retrieval-canary-guard.runtime-activation=disabled`.
+Temporal graph shadow retrieval rollback/kill-switch evidence surface:
+recall diagnostics may expose a shadow temporal graph retrieval rollback
+kill-switch surface derived only from the retrieval canary guard. This shadow
+temporal graph retrieval rollback kill-switch surface is a
+shadow temporal graph retrieval rollback kill-switch
+route-denial, rollback-write-denial, kill-switch-readback, and
+rollback-rehearsal-readback evidence surface, not a production recall route,
+not graph persistence, and not LLM rerank. The surface may carry only aggregate
+counters: `memory_temporal_graph_shadow_retrieval_rollback_kill_switch`,
+`evidence_fixture_count`, `evidence_stage_projected_count`,
+`canary_guard_pass_count`, `kill_switch_readback_count`,
+`rollback_rehearsal_readback_count`, `route_denial_count`,
+`rollback_write_denial_count`, `canary_route_opened_count`, digest/freshness/
+replay and stale-replay counts, and `aggregate_counters_only`. It must not
+export retrieval payloads, candidate payloads, candidate ids, traversal paths,
+memory text, transcript text, prompt text, query payloads, source ids, memory
+ids, entity hashes, fact hashes, edge hashes, raw graph payloads, tool
+arguments, tool outputs, operator identity, or user identifiers. Integrity
+requires schema version 1, source retrieval canary guard schema version 1,
+five evidence fixtures, six projected evidence stages, five canary guard
+passes, five kill-switch readbacks, five rollback rehearsal readbacks, five
+route denials, five rollback-write denials, canary route opened count 0,
+digest/freshness/replay/stale-replay evidence for all six stages,
+`rollback_write=false`, `llm_rerank=false`, `graph_persistence=false`,
+`production_route=false`, `production_write=false`, `graph_write=false`,
+`hot_path_write=false`, `prompt_assembly_change=false`,
+`runtime_activation=false`, and `operator_activation_allowed=false`. It must
+not open a canary route, must not write rollback state, must not persist graph
+facts, must not enable LLM rerank, must not alter production recall routing,
+must not write production memory, must not alter prompt assembly, must not
+enable runtime activation, and must not allow operator activation. The
+Rust-backed report is
+`ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport` in
+`codex-rs/hepta-core/src/memory/temporal/rollback_kill_switch.rs`, exposed
+through
+`context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report`
+on context-plane helpers and
+`recall_context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report`
+on both `StoreSnapshot` and `InMemoryStore`.
+
+`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-report.sh`
+emits the payload-light shadow retrieval rollback/kill-switch scoreboard, and
+`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh`
+verifies the report, Rust-backed context-plane projections, hepta-core and
+hepta-memory helper tests, debug/preflight wiring, source-aware front-door
+static check, release manifest entries, and no-leak constraints. The context
+debug gate and preflight must run
+`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh`
+after
+`scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh`
+and before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`.
 Context memory eval harness seed: recall diagnostics may expose an offline,
 behavior-neutral eval harness seed for future quality gates. The seed may
 contain only fixed metric names (`recall_coverage`, `missing_critical_fact`,
@@ -2270,6 +2321,51 @@ guard counters. Gate-pass status export must include
 `context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5`,
 `context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0`, and
 `context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0`.
+The `memory_temporal_graph_shadow_retrieval_rollback_kill_switch` row is
+shadow-only until a separately approved temporal graph retrieval route is
+promoted. It may carry only aggregate rollback/kill-switch counters:
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_required_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_guard_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_required_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_recorded_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_registered_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_enabled_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_registered_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_required_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_freshness_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_llm_rerank_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_persistence_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count`, and
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count`.
+Status integrity must reject temporal graph retrieval rollback/kill-switch
+false-green rows: canary guard, kill-switch readback, rollback rehearsal
+readback, route denial, rollback-write denial, and digest/freshness/replay/
+stale-replay counters must match the projected evidence; operator approval
+recorded, feature flag enabled, canary route opened, LLM-rerank,
+graph-persistence, production-route, production-write, graph-write, and
+rollback-write counts must be 0. Gate-pass status export must include
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch=shadow`,
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stage-projected-count=6`,
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5`,
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5`,
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5`,
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5`,
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0`, and
+`context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0`.
 The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
 `memory_ranked_recall_shadow_eval` row is shadow-only until a separately
@@ -2440,6 +2536,7 @@ are controlled enum values:
 `adaptive_budget_allocation_shadow_only`,
 `temporal_graph_shadow_eval_shadow_only`,
 `temporal_graph_shadow_store_shadow_only`,
+`temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only`,
 `memory_ranked_recall_shadow_eval_shadow_only`,
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
@@ -2532,6 +2629,18 @@ graph retrieval canary guard counters appearing on non-retrieval-canary-guard
 rows. Until a separate operator-approved retrieval route exists, the row must
 carry the blocker reason
 `temporal_graph_shadow_retrieval_canary_guard_shadow_only`.
+The `memory_temporal_graph_shadow_retrieval_rollback_kill_switch` matrix row
+carries the same temporal graph retrieval rollback/kill-switch counters as the
+status row and must reject missing canary guard passes, missing kill-switch
+readback, missing rollback rehearsal readback, missing route-denial evidence,
+missing rollback-write-denial evidence, opened canary routes, missing
+digest/freshness/replay/stale-replay evidence, LLM-rerank count drift,
+graph-persistence count drift, production-route count drift, production-write
+count drift, graph-write count drift, rollback-write count drift, or temporal
+graph retrieval rollback/kill-switch counters appearing on non-retrieval-
+rollback-kill-switch rows. Until a separate operator-approved retrieval route
+exists, the row must carry the blocker reason
+`temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only`.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -2573,6 +2682,13 @@ activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5`,
 `context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0`,
 `context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch=blocked:temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0`,
 `context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2939,6 +3055,46 @@ rehearsal, quality SLO, or digest/freshness/replay/stale-replay counters drift,
 or where operator approval recorded, feature flag enabled, canary route opened,
 LLM-rerank, graph-persistence, production-route, production-write, graph-write,
 or rollback-write counts are nonzero.
+The operator packet must also surface
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch` aggregate
+rollback and kill-switch evidence counters so an operator can inspect
+kill-switch readback, rollback rehearsal readback, route-denial coverage, and
+rollback-write denial before any retrieval canary opens. The packet may carry
+only
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_required_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_guard_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_required_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_recorded_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_registered_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_enabled_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_registered_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_required_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_freshness_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_llm_rerank_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_persistence_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count`,
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count`, and
+`memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count`.
+Packet integrity must reject temporal graph retrieval rollback/kill-switch
+false-green packets where canary guard, kill-switch readback, rollback
+rehearsal readback, route denial, rollback-write denial, or digest/freshness/
+replay/stale-replay counters drift, or where operator approval recorded,
+feature flag enabled, canary route opened, LLM-rerank, graph-persistence,
+production-route, production-write, graph-write, or rollback-write counts are
+nonzero.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shadow-only=1`,
@@ -2946,6 +3102,7 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-diff-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-quality-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-retrieval-canary-guard-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.temporal-graph-shadow-retrieval-rollback-kill-switch-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stage-projected-count=6`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.recorded-receipt-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.graph-write-count=0`,
@@ -2965,6 +3122,12 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5`,
@@ -3113,8 +3276,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 251 lines, negative export report 4 lines, and
-combined report 255 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 279 lines, negative export report 4 lines, and
+combined report 283 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

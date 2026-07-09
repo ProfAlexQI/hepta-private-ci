@@ -102,6 +102,7 @@ codex-rs/hepta-core/src/memory/temporal/fact.rs	rust_memory	hepta-context	requir
 codex-rs/hepta-core/src/memory/temporal/graph.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/quality.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/replay.rs	rust_memory	hepta-context	required
+codex-rs/hepta-core/src/memory/temporal/rollback_kill_switch.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/store.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/temporal/traversal_diff.rs	rust_memory	hepta-context	required
 codex-rs/hepta-core/src/memory/tests.rs	rust_memory	hepta-context	required
@@ -269,6 +270,8 @@ scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh	gate_script	he
 scripts/hepta-context-memory-temporal-graph-shadow-replay-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-report.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh	gate_script	hepta-context	required
+scripts/hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-store-gate.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-store-report.sh	gate_script	hepta-context	required
 scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh	gate_script	hepta-context	required

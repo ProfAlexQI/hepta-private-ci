@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 26);
+    assert_eq!(matrix.rows.len(), 27);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 17);
+    assert_eq!(matrix.blocker_count, 18);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -107,6 +107,14 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
         ),
         Some(
             ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
+    );
+    assert_eq!(
+        matrix.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly
         )
     );
     assert_eq!(
@@ -415,6 +423,36 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
             .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
         0
     );
+    let temporal_graph_retrieval_rollback_kill_switch_row = matrix
+        .row_for_target(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
+        )
+        .expect("memory temporal graph shadow retrieval rollback/kill-switch activation row should exist");
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count,
+        6
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count,
+        0
+    );
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
@@ -561,9 +599,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 26);
+    assert_eq!(from_store.rows.len(), 27);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 17);
+    assert_eq!(from_store.blocker_count, 18);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -643,6 +681,14 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         ),
         Some(
             ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
+    );
+    assert_eq!(
+        from_store.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly
         )
     );
     assert_eq!(

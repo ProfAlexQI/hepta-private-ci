@@ -94,6 +94,7 @@ memory_temporal_graph_shadow_replay_gate_script="hepta-context-memory-temporal-g
 memory_temporal_graph_shadow_traversal_diff_gate_script="hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh"
 memory_temporal_graph_shadow_traversal_quality_gate_script="hepta-context-memory-temporal-graph-shadow-traversal-quality-gate.sh"
 memory_temporal_graph_shadow_retrieval_canary_guard_gate_script="hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
+memory_temporal_graph_shadow_retrieval_rollback_kill_switch_gate_script="hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh"
 memory_eval_harness_seed_gate_script="hepta-context-memory-eval-harness-seed-gate.sh"
 memory_adaptive_allocator_eval_shadow_gate_script="hepta-context-memory-adaptive-allocator-eval-shadow-gate.sh"
 memory_recall_quality_gate_script="hepta-context-memory-recall-quality-gate.sh"
@@ -468,6 +469,12 @@ required_contract_terms=(
   "context_memory_temporal_graph_shadow_retrieval_canary_guard_report"
   "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-report.sh"
   "hepta-context-memory-temporal-graph-shadow-retrieval-canary-guard-gate.sh"
+  "Temporal graph shadow retrieval rollback/kill-switch evidence surface"
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch"
+  "ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport"
+  "context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report"
+  "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-report.sh"
+  "hepta-context-memory-temporal-graph-shadow-retrieval-rollback-kill-switch-gate.sh"
   "MemoryProvider boundary"
   "MemoryProviderContextUpdateEnvelope"
   "MemoryProviderReport"
@@ -698,9 +705,9 @@ required_contract_terms=(
   "hepta-context-plane-operator-approval-packet-negative-export-gate.sh"
   "Context Plane operator approval packet canonical export digest"
   "context-plane-operator-approval-packet-canonical-export-digest=pass"
-  "approval report 251 lines"
+  "approval report 279 lines"
   "negative export report 4 lines"
-  "combined report 255 lines"
+  "combined report 283 lines"
   "deterministic and idempotent"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-gate.sh"
@@ -937,6 +944,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_temporal_graph_shadow_retrieval_canary_guard_gate_script" \
   "memory temporal graph shadow retrieval canary guard debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_temporal_graph_shadow_retrieval_rollback_kill_switch_gate_script" \
+  "memory temporal graph shadow retrieval rollback/kill-switch debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -1242,6 +1254,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory temporal graph shadow retrieval canary guard gate" \
   "memory temporal graph shadow retrieval canary guard preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory temporal graph shadow retrieval rollback/kill-switch gate" \
+  "memory temporal graph shadow retrieval rollback/kill-switch preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1583,6 +1600,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory temporal graph shadow retrieval canary guard gate" \
+  "context memory temporal graph shadow retrieval rollback/kill-switch gate" \
+  "memory temporal graph shadow retrieval rollback/kill-switch preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory temporal graph shadow retrieval rollback/kill-switch gate" \
   "context memory eval harness seed gate" \
   "memory eval harness seed preflight stage order"
 

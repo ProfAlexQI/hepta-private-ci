@@ -8,6 +8,7 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -383,6 +384,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport {
         ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport::from_traversal_quality(
             &self.recall_context_memory_temporal_graph_shadow_traversal_quality_report(request),
+        )
+    }
+
+    /// Builds a payload-light temporal graph retrieval rollback/kill-switch
+    /// evidence surface without route activation or rollback writes.
+    pub fn recall_context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport {
+        ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
+            &self.recall_context_memory_temporal_graph_shadow_retrieval_canary_guard_report(request),
         )
     }
 }

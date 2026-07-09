@@ -196,6 +196,88 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 entry.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count = 0;
                 entry
             },
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
+                    5,
+                );
+                entry.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_required_count =
+                    6;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count =
+                    6;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_guard_pass_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_required_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_recorded_count =
+                    0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_registered_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_enabled_count =
+                    0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_registered_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_pass_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_required_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_pass_count =
+                    5;
+                entry.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count =
+                    5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count =
+                    0;
+                entry.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count = 6;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_freshness_pass_count =
+                    6;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_replay_guard_pass_count =
+                    6;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stale_replay_rejected_count =
+                    6;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_llm_rerank_count =
+                    0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_persistence_count =
+                    0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count =
+                    0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count =
+                    0;
+                entry.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count =
+                    0;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count =
+                    0;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::EvalHarnessSeed, 2),
             ContextPlaneStatusEntry::shadow(
                 ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
@@ -314,9 +396,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 26);
+    assert_eq!(matrix.rows.len(), 27);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 17);
+    assert_eq!(matrix.blocker_count, 18);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -394,6 +476,14 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
         ),
         Some(
             ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        )
+    );
+    assert_eq!(
+        matrix.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly
         )
     );
     assert_eq!(
@@ -567,6 +657,63 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
             .memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
         0
     );
+    let temporal_graph_retrieval_rollback_kill_switch_row = matrix
+        .row_for_target(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
+        )
+        .expect(
+            "memory temporal graph shadow retrieval rollback/kill-switch activation row should exist",
+        );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count,
+        6
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count,
+        6
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_retrieval_rollback_kill_switch_row
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count,
+        0
+    );
     assert!(!matrix.production_write);
     assert!(!matrix.graph_write);
     assert!(!matrix.runtime_activation);
@@ -590,9 +737,11 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_temporal_graph_shadow_traversal_diff"));
     assert!(json.contains("memory_temporal_graph_shadow_traversal_quality"));
     assert!(json.contains("memory_temporal_graph_shadow_retrieval_canary_guard"));
+    assert!(json.contains("memory_temporal_graph_shadow_retrieval_rollback_kill_switch"));
     assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_traversal_quality_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_retrieval_canary_guard_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only"));
     assert!(
         json.contains(
             "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count"
@@ -609,6 +758,12 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
             "memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count"
         )
     );
+    assert!(json.contains(
+        "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count"
+    ));
+    assert!(json.contains(
+        "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count"
+    ));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_ranked_recall_shadow_eval"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
@@ -796,6 +951,62 @@ fn context_plane_activation_blocker_matrix_rejects_temporal_graph_retrieval_cana
 }
 
 #[test]
+fn context_plane_activation_blocker_matrix_rejects_temporal_graph_retrieval_rollback_kill_switch_false_green()
+ {
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    assert!(matrix.has_matrix_integrity());
+
+    let mut partial_kill_switch_readback = matrix.clone();
+    partial_kill_switch_readback
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        })
+        .expect("retrieval rollback/kill-switch activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count = 4;
+    assert!(!partial_kill_switch_readback.has_matrix_integrity());
+
+    let mut route_opened = matrix.clone();
+    route_opened
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        })
+        .expect("retrieval rollback/kill-switch activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count = 1;
+    assert!(!route_opened.has_matrix_integrity());
+
+    let mut rollback_write = matrix.clone();
+    rollback_write
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        })
+        .expect("retrieval rollback/kill-switch activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count = 1;
+    assert!(!rollback_write.has_matrix_integrity());
+
+    let mut non_rollback_kill_switch_leak = matrix.clone();
+    non_rollback_kill_switch_leak
+        .rows
+        .iter_mut()
+        .find(|row| {
+            row.target
+                == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard
+        })
+        .expect("retrieval canary guard activation row should exist")
+        .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count = 5;
+    assert!(!non_rollback_kill_switch_leak.has_matrix_integrity());
+}
+
+#[test]
 fn context_plane_activation_blocker_matrix_rejects_canary_promotion_checklist_false_green() {
     let status = context_plane_activation_status_fixture();
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
@@ -880,9 +1091,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 26);
+    assert_eq!(matrix.rows.len(), 27);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 18);
+    assert_eq!(matrix.blocker_count, 19);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -942,6 +1153,14 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
         )
     );
     assert_eq!(
+        matrix.blocker_reason(
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch
+        ),
+        Some(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly
+        )
+    );
+    assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
         Some(ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled)
     );
@@ -981,7 +1200,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 26);
+    assert_eq!(report_side_effect_matrix.blocker_count, 27);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -1014,9 +1233,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 26);
+    assert_eq!(matrix.rows.len(), 27);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 18);
+    assert_eq!(matrix.blocker_count, 19);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

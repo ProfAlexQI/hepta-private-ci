@@ -198,6 +198,20 @@ for term in \
   "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5" \
   "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0" \
   "context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0" \
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch" \
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count" \
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count" \
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count" \
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count" \
+  "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch=shadow" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stage-projected-count=6" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -443,6 +457,34 @@ context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.product
 context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
 context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
 context-plane-status.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch=shadow
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.fixture-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stage-required-count=6
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stage-projected-count=6
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-guard-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.operator-approval-required-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.operator-approval-recorded-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.feature-flag-registered-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.feature-flag-enabled-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-registered-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-required-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.digest-count=6
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.freshness-pass-count=6
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.replay-guard-pass-count=6
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stale-replay-rejected-count=6
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.llm-rerank-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.graph-persistence-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.production-route-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.production-write-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.graph-write-count=0
+context-plane-status.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0
 context-plane-status.eval-harness-seed=ready
 context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready

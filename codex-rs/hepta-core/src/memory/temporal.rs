@@ -3,6 +3,7 @@ mod fact;
 mod graph;
 mod quality;
 mod replay;
+mod rollback_kill_switch;
 mod store;
 mod traversal_diff;
 
@@ -16,5 +17,6 @@ pub use graph::ContextMemoryTemporalFactGraphNode;
 pub use graph::ContextMemoryTemporalFactGraphReport;
 pub use quality::ContextMemoryTemporalGraphShadowTraversalQualityReport;
 pub use replay::ContextMemoryTemporalGraphShadowReplayReport;
+pub use rollback_kill_switch::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 pub use store::ContextMemoryTemporalGraphShadowStoreReport;
 pub use traversal_diff::ContextMemoryTemporalGraphShadowTraversalDiffReport;

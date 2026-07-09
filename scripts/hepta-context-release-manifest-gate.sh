@@ -217,6 +217,7 @@ codex-rs/hepta-core/src/memory/temporal/fact.rs
 codex-rs/hepta-core/src/memory/temporal/graph.rs
 codex-rs/hepta-core/src/memory/temporal/quality.rs
 codex-rs/hepta-core/src/memory/temporal/replay.rs
+codex-rs/hepta-core/src/memory/temporal/rollback_kill_switch.rs
 codex-rs/hepta-core/src/memory/temporal/store.rs
 codex-rs/hepta-core/src/memory/temporal/traversal_diff.rs
 codex-rs/hepta-core/src/memory/tests.rs

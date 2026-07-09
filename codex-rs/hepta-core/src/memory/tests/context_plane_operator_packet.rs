@@ -77,6 +77,10 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport::from_traversal_quality(
             &temporal_graph_shadow_traversal_quality,
         );
+    let temporal_graph_shadow_retrieval_rollback_kill_switch =
+        ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
+            &temporal_graph_shadow_retrieval_canary_guard,
+        );
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
     let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
@@ -139,6 +143,8 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         temporal_graph_shadow_traversal_diff: &temporal_graph_shadow_traversal_diff,
         temporal_graph_shadow_traversal_quality: &temporal_graph_shadow_traversal_quality,
         temporal_graph_shadow_retrieval_canary_guard: &temporal_graph_shadow_retrieval_canary_guard,
+        temporal_graph_shadow_retrieval_rollback_kill_switch:
+            &temporal_graph_shadow_retrieval_rollback_kill_switch,
         eval_seed: &eval_seed,
         allocator_shadow: &allocator_shadow,
         recall_quality_gate: &recall_quality_gate,
@@ -156,11 +162,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 26);
+    assert_eq!(packet.matrix_row_count, 27);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 17);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 26);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 25);
+    assert_eq!(packet.blocker_count, 18);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 27);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 26);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -208,6 +214,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly
         ),
         Some(1)
     );
@@ -618,6 +630,66 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         packet.memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count,
         0
     );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_required_count,
+        6
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count,
+        6
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_guard_pass_count,
+        5
+    );
+    assert_eq!(
+        packet
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count,
+        5
+    );
+    assert_eq!(
+        packet
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count,
+        5
+    );
+    assert_eq!(
+        packet
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count,
+        5
+    );
+    assert_eq!(
+        packet
+            .memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count,
+        6
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count,
+        0
+    );
     assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
     assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
     assert!(packet.ranked_recall_lexical_bm25_check_pass);
@@ -732,6 +804,7 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_traversal_quality_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_retrieval_canary_guard_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only"));
     assert!(json.contains("memory_temporal_graph_shadow_store_node_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stale_replay_rejected_count"));
@@ -758,6 +831,12 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
             "memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count"
         )
     );
+    assert!(json.contains(
+        "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count"
+    ));
+    assert!(json.contains(
+        "memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count"
+    ));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
     assert!(json.contains("ranked_recall_lexical_bm25_check_pass"));
@@ -994,9 +1073,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 26);
+    assert_eq!(packet.matrix_row_count, 27);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 18);
+    assert_eq!(packet.blocker_count, 19);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -1057,14 +1136,14 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
     let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 26,
+        matrix_row_count: 27,
         threshold_satisfied_count: 9,
-        blocker_count: 17,
+        blocker_count: 18,
         threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 26,
+            total_row_count: 27,
             threshold_satisfied_count: 9,
-            blocker_count: 17,
-            required_ready_count: 25,
+            blocker_count: 18,
+            required_ready_count: 26,
             required_shadow_count: 1,
         },
         blocker_reason_counts: vec![
@@ -1101,6 +1180,11 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
             ContextPlaneOperatorApprovalBlockerReasonCount {
                 reason:
                     ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly,
+                count: 1,
+            },
+            ContextPlaneOperatorApprovalBlockerReasonCount {
+                reason:
+                    ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly,
                 count: 1,
             },
             ContextPlaneOperatorApprovalBlockerReasonCount {
@@ -1303,6 +1387,33 @@ fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
         memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count: 0,
         memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count: 0,
         memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_required_count: 6,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count: 6,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_guard_pass_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_required_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_recorded_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_registered_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_enabled_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_registered_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_pass_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_required_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_pass_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count: 5,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count: 6,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_freshness_pass_count: 6,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_replay_guard_pass_count: 6,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stale_replay_rejected_count: 6,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_llm_rerank_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_persistence_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count: 0,
+        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count: 0,
         ranked_recall_hybrid_signal_required_count: 5,
         ranked_recall_hybrid_signal_pass_count: 5,
         ranked_recall_lexical_bm25_check_pass: true,

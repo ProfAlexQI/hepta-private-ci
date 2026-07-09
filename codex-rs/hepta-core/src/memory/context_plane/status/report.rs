@@ -21,6 +21,7 @@ use crate::memory::ContextMemoryTemporalFactReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::ContextMemoryTemporalGraphShadowReplayReport;
 use crate::memory::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+use crate::memory::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 use crate::memory::ContextMemoryTemporalGraphShadowStoreReport;
 use crate::memory::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use crate::memory::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -65,6 +66,8 @@ pub struct ContextPlaneStatusReportInput<'a> {
         &'a ContextMemoryTemporalGraphShadowTraversalQualityReport,
     pub temporal_graph_shadow_retrieval_canary_guard:
         &'a ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport,
+    pub temporal_graph_shadow_retrieval_rollback_kill_switch:
+        &'a ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport,
     pub eval_seed: &'a ContextMemoryEvalHarnessReport,
     pub allocator_shadow: &'a ContextMemoryAdaptiveAllocatorEvalShadowReport,
     pub recall_quality_gate: &'a ContextMemoryRecallQualityGateReport,
@@ -149,6 +152,9 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusEntry::from_temporal_graph_shadow_retrieval_canary_guard(
                 input.temporal_graph_shadow_retrieval_canary_guard,
             ),
+            ContextPlaneStatusEntry::from_temporal_graph_shadow_retrieval_rollback_kill_switch(
+                input.temporal_graph_shadow_retrieval_rollback_kill_switch,
+            ),
             ContextPlaneStatusEntry::from_integrity(
                 ContextPlaneStatusSection::EvalHarnessSeed,
                 input.eval_seed.has_eval_integrity(),
@@ -194,16 +200,17 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff => 13,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality => 14,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard => 15,
-            ContextPlaneStatusSection::EvalHarnessSeed => 16,
-            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 17,
-            ContextPlaneStatusSection::RecallQualityGate => 18,
-            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 19,
-            ContextPlaneStatusSection::MemoryProviderBoundary => 20,
-            ContextPlaneStatusSection::MemoryProviderV2Boundary => 21,
-            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 22,
-            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 23,
-            ContextPlaneStatusSection::SourceAwareFrontDoor => 24,
-            ContextPlaneStatusSection::Unknown => 25,
+            ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch => 16,
+            ContextPlaneStatusSection::EvalHarnessSeed => 17,
+            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 18,
+            ContextPlaneStatusSection::RecallQualityGate => 19,
+            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 20,
+            ContextPlaneStatusSection::MemoryProviderBoundary => 21,
+            ContextPlaneStatusSection::MemoryProviderV2Boundary => 22,
+            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 23,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 24,
+            ContextPlaneStatusSection::SourceAwareFrontDoor => 25,
+            ContextPlaneStatusSection::Unknown => 26,
         });
 
         let production_write = sections.iter().any(|entry| entry.production_write);
@@ -227,7 +234,7 @@ impl ContextPlaneStatusReport {
 
     pub fn has_status_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_STATUS_SCHEMA_VERSION
-            && self.sections.len() == 25
+            && self.sections.len() == 26
             && self.has_required_sections()
             && self
                 .sections
@@ -260,6 +267,7 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard,
+            ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
             ContextPlaneStatusSection::EvalHarnessSeed,
             ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
             ContextPlaneStatusSection::RecallQualityGate,

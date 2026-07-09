@@ -21,6 +21,7 @@ pub enum ContextPlaneStatusSection {
     MemoryTemporalGraphShadowTraversalDiff,
     MemoryTemporalGraphShadowTraversalQuality,
     MemoryTemporalGraphShadowRetrievalCanaryGuard,
+    MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
     EvalHarnessSeed,
     AdaptiveAllocatorEvalShadow,
     RecallQualityGate,

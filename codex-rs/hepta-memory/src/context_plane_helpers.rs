@@ -15,6 +15,7 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalQualityReport;
@@ -155,6 +156,17 @@ impl StoreSnapshot {
         )
     }
 
+    /// Builds the offline temporal-graph retrieval rollback/kill-switch
+    /// evidence report without opening a route or writing rollback state.
+    pub fn context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport {
+        ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
+            &self.context_memory_temporal_graph_shadow_retrieval_canary_guard_report(request),
+        )
+    }
+
     /// Builds a payload-light dashboard that closes the loop across recall,
     /// temporal graph, quality, and provider shadow reports.
     pub fn context_memory_shadow_regression_dashboard_report(
@@ -243,6 +255,10 @@ impl StoreSnapshot {
             ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport::from_traversal_quality(
                 &temporal_graph_shadow_traversal_quality,
             );
+        let temporal_graph_shadow_retrieval_rollback_kill_switch =
+            ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
+                &temporal_graph_shadow_retrieval_canary_guard,
+            );
         let eval_seed = self.context_memory_eval_harness_seed_report();
         let allocator_shadow =
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
@@ -281,6 +297,8 @@ impl StoreSnapshot {
             temporal_graph_shadow_traversal_quality: &temporal_graph_shadow_traversal_quality,
             temporal_graph_shadow_retrieval_canary_guard:
                 &temporal_graph_shadow_retrieval_canary_guard,
+            temporal_graph_shadow_retrieval_rollback_kill_switch:
+                &temporal_graph_shadow_retrieval_rollback_kill_switch,
             eval_seed: &eval_seed,
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
@@ -410,6 +428,18 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_temporal_graph_shadow_retrieval_canary_guard_report(&request))
+    }
+
+    pub fn context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<
+        ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport,
+        hepta_core::MemoryError,
+    > {
+        Ok(self
+            .snapshot()?
+            .context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(&request))
     }
 
     pub fn context_memory_shadow_regression_dashboard_report(
