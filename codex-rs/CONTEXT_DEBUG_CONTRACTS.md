@@ -861,6 +861,32 @@ context debug gate and preflight must run
 machine-readable report is
 `scripts/hepta-context-memory-namespace-policy-report.sh`. It must keep
 `runtime-activation=disabled`.
+Memory write-chain readiness/readback shadow report: recall diagnostics may
+expose a payload-light `memory_write_chain_readiness` report derived from the
+namespace policy surface before any durable memory write path exists. Blocks may
+contain only controlled readiness metadata: namespace, stage required/pass
+booleans, `propose_write_ready`, `policy_approval_ready`,
+`operator_approval_ready`, `shadow_wal_ready`, `readback_ready`,
+`canary_ready`, `rollback_ready`, `production_write=false`,
+`graph_write=false`, `hot_path_write=false`,
+`prompt_assembly_change=false`, and `runtime_activation=false`. Integrity
+requires all six namespaces exactly once, complete
+`propose_write -> policy/operator approval -> shadow WAL -> readback -> canary`
+readiness, rollback readiness, and no side effects. The report must not contain
+prompt text, transcript text, memory text, candidate text, source ids, replay
+keys, text hashes, memory ids, topic ids, neuron ids, query payloads, ranked
+payloads, tool arguments, entity/fact/edge hashes, per-source lists,
+email-shaped strings, phone-shaped strings, user identifiers, or any write/read
+payload. It must not write production memory, must not write graph facts, must
+not promote shadow WAL/readback/canary state into durable memory, must not alter
+prompt assembly, and must not enable runtime activation. The context debug gate
+and preflight must run
+`scripts/hepta-context-memory-write-chain-readiness-gate.sh` after
+`scripts/hepta-context-memory-namespace-policy-gate.sh` and before
+`scripts/hepta-context-memory-formation-candidate-no-leak-export-gate.sh`; the
+machine-readable report is
+`scripts/hepta-context-memory-write-chain-readiness-report.sh`. It must keep
+`runtime-activation=disabled`.
 Memory formation candidate no-leak/export guard: until an eval harness and
 explicit operator-approved write path exist, any future memory formation
 candidate preview surface must remain payload-dark in response-debug/export.
@@ -1680,7 +1706,7 @@ Context Plane status/export report: recall diagnostics may expose a unified,
 payload-light operator status surface that stitches together the source
 registry, adaptive budget allocation dry-run, memory taxonomy, memory formation
 receipts, memory formation queue, memory namespace policy shadow readiness,
-temporal facts, temporal fact graph, eval
+memory write-chain readiness/readback shadow state, temporal facts, temporal fact graph, eval
 harness seed, adaptive allocator eval shadow, recall quality gate, ranked recall
 shadow eval, memory provider boundary, memory shadow canary readiness, memory shadow canary
 promotion readiness, and source-aware front-door
@@ -1690,7 +1716,8 @@ machine-readable report is
 keys only. The Rust status sections are `source_registry`,
 `adaptive_budget_allocation`, `memory_taxonomy`,
 `memory_formation_receipts`, `memory_formation_queue`, `memory_temporal_facts`,
-`memory_namespace_policy`, `memory_temporal_fact_graph`,
+`memory_namespace_policy`, `memory_write_chain_readiness`,
+`memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`,
 `eval_harness_seed`, `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
 `memory_ranked_recall_shadow_eval`, `memory_provider_boundary`, `memory_shadow_canary_readiness`,
@@ -1711,7 +1738,25 @@ policy counters:
 namespace-policy false-green rows: namespace, operator approval, shadow WAL,
 readback, canary, and rollback counts must be 6, while production-write and
 graph-write counts must be 0. Non-namespace rows must not carry namespace
-policy counters. The
+policy counters. The `memory_write_chain_readiness` row is shadow-only until a
+separately approved production memory-write path, WAL, readback, and canary
+route is promoted. It may carry only aggregate write-chain readiness counters:
+`memory_write_chain_namespace_count`,
+`memory_write_chain_stage_required_count`,
+`memory_write_chain_stage_pass_count`,
+`memory_write_chain_propose_write_ready_count`,
+`memory_write_chain_policy_approval_ready_count`,
+`memory_write_chain_operator_approval_ready_count`,
+`memory_write_chain_shadow_wal_ready_count`,
+`memory_write_chain_readback_ready_count`,
+`memory_write_chain_canary_ready_count`,
+`memory_write_chain_rollback_ready_count`,
+`memory_write_chain_production_write_count`, and
+`memory_write_chain_graph_write_count`. Status integrity must reject
+write-chain false-green rows: namespace, stage, propose-write, approval, shadow
+WAL, readback, canary, and rollback counts must be 6, while production-write
+and graph-write counts must be 0. Non-write-chain rows must not carry
+write-chain counters. The
 `memory_temporal_graph_shadow_eval` row is shadow-only until a separately
 approved graph route is promoted. The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
@@ -1813,6 +1858,10 @@ recall-quality blocker enums only:
 `context-plane-status.memory-namespace-policy.namespace-count=6`,
 `context-plane-status.memory-namespace-policy.shadow-wal-required-count=6`,
 `context-plane-status.memory-namespace-policy.production-write-count=0`,
+`context-plane-status.memory-write-chain-readiness=shadow`,
+`context-plane-status.memory-write-chain-readiness.stage-pass-count=6`,
+`context-plane-status.memory-write-chain-readiness.readback-ready-count=6`,
+`context-plane-status.memory-write-chain-readiness.canary-ready-count=6`,
 `context-plane-status.memory-provider-boundary=shadow`,
 `context-plane-status.memory-provider-v2-boundary=shadow`,
 `context-plane-status.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1837,7 +1886,7 @@ answer text. It must not expose source ids, session ids, memory ids, trace ids,
 query payloads, ranked payloads, tool arguments, raw fact/entity values,
 email-shaped strings, phone-shaped strings, user identifiers, transcript spans,
 candidate text, entity hashes, fact hashes, edge hashes, supersedes hashes,
-fixture hashes, or idempotency hashes. Status integrity requires all eighteen
+fixture hashes, or idempotency hashes. Status integrity requires all nineteen
 sections, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
@@ -1861,6 +1910,7 @@ Plane status report. The machine-readable report is
 `source_registry`, `adaptive_budget_allocation`, `memory_taxonomy`,
 `memory_formation_receipts`, `memory_formation_queue`,
 `memory_namespace_policy`,
+`memory_write_chain_readiness`,
 `memory_temporal_facts`, `memory_temporal_fact_graph`,
 `memory_temporal_graph_shadow_eval`, `eval_harness_seed`,
 `adaptive_allocator_eval_shadow`, `recall_quality_gate`,
@@ -1875,6 +1925,7 @@ are controlled enum values:
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
 `memory_namespace_policy_shadow_only`,
+`memory_write_chain_readiness_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
 `memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
@@ -1904,6 +1955,12 @@ The `memory_namespace_policy` matrix row carries the same namespace policy
 aggregate counters as the status row and must reject missing shadow WAL,
 approval/readback/canary/rollback coverage, production-write count drift,
 graph-write count drift, or namespace-policy counters appearing on non-namespace
+rows.
+The `memory_write_chain_readiness` matrix row carries the same write-chain
+readiness/readback counters as the status row and must reject missing
+propose-write readiness, approval readiness, shadow WAL readiness, readback
+readiness, canary readiness, rollback readiness, production-write count drift,
+graph-write count drift, or write-chain counters appearing on non-write-chain
 rows.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
@@ -1937,6 +1994,10 @@ activation matrix export must include
 `context-plane-activation-blockers.memory-namespace-policy.namespace-count=6`,
 `context-plane-activation-blockers.memory-namespace-policy.shadow-wal-required-count=6`,
 `context-plane-activation-blockers.memory-namespace-policy.production-write-count=0`,
+`context-plane-activation-blockers.memory-write-chain-readiness=blocked:memory_write_chain_readiness_shadow_only`,
+`context-plane-activation-blockers.memory-write-chain-readiness.stage-pass-count=6`,
+`context-plane-activation-blockers.memory-write-chain-readiness.readback-ready-count=6`,
+`context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-count=6`,
 `context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only`,
 `context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6`,
@@ -1964,14 +2025,26 @@ activation row fields are `memory_namespace_policy_namespace_count`,
 `memory_namespace_policy_canary_required_count`,
 `memory_namespace_policy_rollback_supported_count`,
 `memory_namespace_policy_production_write_count`, and
-`memory_namespace_policy_graph_write_count`. The matrix must not contain
+`memory_namespace_policy_graph_write_count`. The typed write-chain activation
+row fields are `memory_write_chain_namespace_count`,
+`memory_write_chain_stage_required_count`,
+`memory_write_chain_stage_pass_count`,
+`memory_write_chain_propose_write_ready_count`,
+`memory_write_chain_policy_approval_ready_count`,
+`memory_write_chain_operator_approval_ready_count`,
+`memory_write_chain_shadow_wal_ready_count`,
+`memory_write_chain_readback_ready_count`,
+`memory_write_chain_canary_ready_count`,
+`memory_write_chain_rollback_ready_count`,
+`memory_write_chain_production_write_count`, and
+`memory_write_chain_graph_write_count`. The matrix must not contain
 prompt text, must not contain transcript text, must not contain memory text, and
 must not contain answer text.
 It must not expose source ids, session ids, memory ids, trace ids, query
 payloads, ranked payloads, tool arguments, raw fact/entity values, email-shaped
 strings, phone-shaped strings, user identifiers, transcript spans, candidate
 text, entity hashes, fact hashes, edge hashes, supersedes hashes, fixture hashes,
-or idempotency hashes. Matrix integrity requires all nineteen targets, exact blocker counts, no production
+or idempotency hashes. Matrix integrity requires all twenty targets, exact blocker counts, no production
 memory writes, no graph writes, no runtime activation, no adaptive allocator
 runtime activation, no source-aware runtime activation, no prompt assembly
 changes, no operator activation allowance, and `activation_allowed=false`. This
@@ -2003,6 +2076,7 @@ counts may include only the controlled activation blocker enum values
 `memory_provider_boundary_shadow_only`,
 `memory_provider_v2_boundary_shadow_only`,
 `memory_namespace_policy_shadow_only`,
+`memory_write_chain_readiness_shadow_only`,
 `memory_shadow_canary_readiness_shadow_only`,
 `memory_shadow_canary_promotion_readiness_shadow_only`,
 `source_aware_front_door_disabled`,
@@ -2067,6 +2141,23 @@ from the `memory_namespace_policy` matrix row:
 namespace policy false-green receipts where required namespace, approval, shadow
 WAL, readback, canary, and rollback counts are not all 6, or where
 production-write/graph-write counts are nonzero.
+The packet also carries only payload-light write-chain readiness counters from
+the `memory_write_chain_readiness` matrix row:
+`memory_write_chain_namespace_count`,
+`memory_write_chain_stage_required_count`,
+`memory_write_chain_stage_pass_count`,
+`memory_write_chain_propose_write_ready_count`,
+`memory_write_chain_policy_approval_ready_count`,
+`memory_write_chain_operator_approval_ready_count`,
+`memory_write_chain_shadow_wal_ready_count`,
+`memory_write_chain_readback_ready_count`,
+`memory_write_chain_canary_ready_count`,
+`memory_write_chain_rollback_ready_count`,
+`memory_write_chain_production_write_count`, and
+`memory_write_chain_graph_write_count`. Packet integrity must reject
+write-chain false-green receipts where required namespace, stage, propose-write,
+approval, shadow WAL, readback, canary, and rollback counts are not all 6, or
+where production-write/graph-write counts are nonzero.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
@@ -2085,12 +2176,16 @@ Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.memory-provider-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-provider-v2-boundary-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-namespace-policy-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.memory-write-chain-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-provider-v2.lifecycle-pass-count=6`,
 `context-plane-operator-approval-packet.memory-provider-v2.propose-write-check=pass`,
 `context-plane-operator-approval-packet.memory-provider-v2.close-check=pass`,
 `context-plane-operator-approval-packet.memory-namespace-policy.namespace-count=6`,
 `context-plane-operator-approval-packet.memory-namespace-policy.shadow-wal-required-count=6`,
 `context-plane-operator-approval-packet.memory-namespace-policy.production-write-count=0`,
+`context-plane-operator-approval-packet.memory-write-chain-readiness.stage-pass-count=6`,
+`context-plane-operator-approval-packet.memory-write-chain-readiness.readback-ready-count=6`,
+`context-plane-operator-approval-packet.memory-write-chain-readiness.canary-ready-count=6`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.memory-shadow-canary-promotion-readiness-shadow-only=1`,
 `context-plane-operator-approval-packet.canary-promotion.checklist-pass-count=4`,
@@ -2121,7 +2216,19 @@ operator packet fields are `memory_namespace_policy_namespace_count`,
 `memory_namespace_policy_canary_required_count`,
 `memory_namespace_policy_rollback_supported_count`,
 `memory_namespace_policy_production_write_count`, and
-`memory_namespace_policy_graph_write_count`.
+`memory_namespace_policy_graph_write_count`. The typed write-chain operator
+packet fields are `memory_write_chain_namespace_count`,
+`memory_write_chain_stage_required_count`,
+`memory_write_chain_stage_pass_count`,
+`memory_write_chain_propose_write_ready_count`,
+`memory_write_chain_policy_approval_ready_count`,
+`memory_write_chain_operator_approval_ready_count`,
+`memory_write_chain_shadow_wal_ready_count`,
+`memory_write_chain_readback_ready_count`,
+`memory_write_chain_canary_ready_count`,
+`memory_write_chain_rollback_ready_count`,
+`memory_write_chain_production_write_count`, and
+`memory_write_chain_graph_write_count`.
 The packet must not contain prompt text, must not contain transcript text,
 must not contain memory text, and must not contain answer text. It must not
 expose source ids, session ids, memory ids, trace ids, query payloads, ranked
@@ -2129,7 +2236,7 @@ payloads, tool arguments, raw fact/entity values, email-shaped strings,
 phone-shaped strings, user identifiers, transcript spans, candidate text, entity
 hashes, supersedes hashes, fixture hashes, or idempotency hashes. The packet
 must not include activation commands or any command-shaped field that could be
-executed by an operator path. Packet integrity requires all nineteen matrix rows,
+executed by an operator path. Packet integrity requires all twenty matrix rows,
 exact threshold counts, exact blocker reason counts, all required approval
 scopes, no production memory writes, no graph writes, no runtime activation, no
 adaptive allocator runtime activation, no source-aware runtime activation, no
@@ -2183,8 +2290,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 116 lines, negative export report 4 lines, and
-combined report 120 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 129 lines, negative export report 4 lines, and
+combined report 133 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

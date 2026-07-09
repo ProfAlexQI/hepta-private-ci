@@ -83,6 +83,7 @@ memory_taxonomy_report_gate_script="hepta-context-memory-taxonomy-report-gate.sh
 memory_formation_receipt_gate_script="hepta-context-memory-formation-receipt-gate.sh"
 memory_formation_queue_gate_script="hepta-context-memory-formation-queue-gate.sh"
 memory_namespace_policy_gate_script="hepta-context-memory-namespace-policy-gate.sh"
+memory_write_chain_readiness_gate_script="hepta-context-memory-write-chain-readiness-gate.sh"
 memory_formation_candidate_no_leak_gate_script="hepta-context-memory-formation-candidate-no-leak-export-gate.sh"
 memory_temporal_fact_schema_gate_script="hepta-context-memory-temporal-fact-schema-gate.sh"
 memory_temporal_fact_graph_gate_script="hepta-context-memory-temporal-fact-graph-gate.sh"
@@ -156,6 +157,15 @@ required_contract_terms=(
   "hot_path_write=false"
   "hepta-context-memory-namespace-policy-report.sh"
   "hepta-context-memory-namespace-policy-gate.sh"
+  "Memory write-chain readiness/readback shadow report"
+  "memory_write_chain_readiness"
+  "propose_write_ready"
+  "shadow_wal_ready"
+  "readback_ready"
+  "canary_ready"
+  "rollback_ready"
+  "hepta-context-memory-write-chain-readiness-report.sh"
+  "hepta-context-memory-write-chain-readiness-gate.sh"
   "Memory formation candidate no-leak/export guard"
   "memory_formation_candidates"
   "memory_formation_candidate_previews"
@@ -615,9 +625,9 @@ required_contract_terms=(
   "hepta-context-plane-operator-approval-packet-negative-export-gate.sh"
   "Context Plane operator approval packet canonical export digest"
   "context-plane-operator-approval-packet-canonical-export-digest=pass"
-  "approval report 116 lines"
+  "approval report 129 lines"
   "negative export report 4 lines"
-  "combined report 120 lines"
+  "combined report 133 lines"
   "deterministic and idempotent"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
   "hepta-context-plane-operator-approval-packet-canonical-export-digest-gate.sh"
@@ -799,6 +809,11 @@ assert_file_contains \
   "$debug_gate" \
   "$memory_namespace_policy_gate_script" \
   "memory namespace policy debug gate"
+
+assert_file_contains \
+  "$debug_gate" \
+  "$memory_write_chain_readiness_gate_script" \
+  "memory write-chain readiness debug gate"
 
 assert_file_contains \
   "$debug_gate" \
@@ -1069,6 +1084,11 @@ assert_file_contains \
   "$preflight_script" \
   "context memory formation receipt gate" \
   "memory formation receipt preflight stage"
+
+assert_file_contains \
+  "$preflight_script" \
+  "context memory write-chain readiness/readback shadow gate" \
+  "memory write-chain readiness preflight stage"
 
 assert_file_contains \
   "$preflight_script" \
@@ -1364,6 +1384,12 @@ assert_line_before \
 assert_line_before \
   "$preflight_script" \
   "context memory namespace policy shadow gate" \
+  "context memory write-chain readiness/readback shadow gate" \
+  "memory write-chain readiness preflight stage order"
+
+assert_line_before \
+  "$preflight_script" \
+  "context memory write-chain readiness/readback shadow gate" \
   "context memory formation candidate no-leak export gate" \
   "memory formation candidate no-leak preflight stage order"
 

@@ -81,6 +81,10 @@ for term in \
   "memory_namespace_policy_namespace_count" \
   "memory_namespace_policy_shadow_wal_required_count" \
   "memory_namespace_policy_operator_approval_required_count" \
+  "memory_write_chain_readiness" \
+  "memory_write_chain_stage_pass_count" \
+  "memory_write_chain_readback_ready_count" \
+  "memory_write_chain_canary_ready_count" \
   "memory_temporal_facts" \
   "memory_temporal_fact_graph" \
   "memory_temporal_graph_shadow_eval" \
@@ -148,6 +152,10 @@ for term in \
   "context-plane-status.memory-namespace-policy.namespace-count=6" \
   "context-plane-status.memory-namespace-policy.shadow-wal-required-count=6" \
   "context-plane-status.memory-namespace-policy.production-write-count=0" \
+  "context-plane-status.memory-write-chain-readiness=shadow" \
+  "context-plane-status.memory-write-chain-readiness.stage-pass-count=6" \
+  "context-plane-status.memory-write-chain-readiness.readback-ready-count=6" \
+  "context-plane-status.memory-write-chain-readiness.canary-ready-count=6" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -255,6 +263,19 @@ context-plane-status.memory-namespace-policy.canary-required-count=6
 context-plane-status.memory-namespace-policy.rollback-supported-count=6
 context-plane-status.memory-namespace-policy.production-write-count=0
 context-plane-status.memory-namespace-policy.graph-write-count=0
+context-plane-status.memory-write-chain-readiness=shadow
+context-plane-status.memory-write-chain-readiness.namespace-count=6
+context-plane-status.memory-write-chain-readiness.stage-required-count=6
+context-plane-status.memory-write-chain-readiness.stage-pass-count=6
+context-plane-status.memory-write-chain-readiness.propose-write-ready-count=6
+context-plane-status.memory-write-chain-readiness.policy-approval-ready-count=6
+context-plane-status.memory-write-chain-readiness.operator-approval-ready-count=6
+context-plane-status.memory-write-chain-readiness.shadow-wal-ready-count=6
+context-plane-status.memory-write-chain-readiness.readback-ready-count=6
+context-plane-status.memory-write-chain-readiness.canary-ready-count=6
+context-plane-status.memory-write-chain-readiness.rollback-ready-count=6
+context-plane-status.memory-write-chain-readiness.production-write-count=0
+context-plane-status.memory-write-chain-readiness.graph-write-count=0
 context-plane-status.memory-temporal-facts=ready
 context-plane-status.memory-temporal-fact-graph=ready
 context-plane-status.memory-temporal-graph-shadow-eval=shadow

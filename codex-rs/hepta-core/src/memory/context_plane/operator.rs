@@ -13,6 +13,8 @@ use super::status::ContextPlaneStatusKind;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -121,7 +123,7 @@ impl ContextPlaneOperatorApprovalThresholdSnapshot {
     }
 
     pub fn has_snapshot_integrity(&self) -> bool {
-        self.total_row_count == 19
+        self.total_row_count == 20
             && self.threshold_satisfied_count + self.blocker_count == self.total_row_count
             && self.required_ready_count + self.required_shadow_count == self.total_row_count
     }
@@ -178,6 +180,18 @@ pub struct ContextPlaneOperatorApprovalPacket {
     pub memory_namespace_policy_rollback_supported_count: usize,
     pub memory_namespace_policy_production_write_count: usize,
     pub memory_namespace_policy_graph_write_count: usize,
+    pub memory_write_chain_namespace_count: usize,
+    pub memory_write_chain_stage_required_count: usize,
+    pub memory_write_chain_stage_pass_count: usize,
+    pub memory_write_chain_propose_write_ready_count: usize,
+    pub memory_write_chain_policy_approval_ready_count: usize,
+    pub memory_write_chain_operator_approval_ready_count: usize,
+    pub memory_write_chain_shadow_wal_ready_count: usize,
+    pub memory_write_chain_readback_ready_count: usize,
+    pub memory_write_chain_canary_ready_count: usize,
+    pub memory_write_chain_rollback_ready_count: usize,
+    pub memory_write_chain_production_write_count: usize,
+    pub memory_write_chain_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -285,6 +299,18 @@ impl Default for ContextPlaneOperatorApprovalPacket {
             memory_namespace_policy_rollback_supported_count: 0,
             memory_namespace_policy_production_write_count: 0,
             memory_namespace_policy_graph_write_count: 0,
+            memory_write_chain_namespace_count: 0,
+            memory_write_chain_stage_required_count: 0,
+            memory_write_chain_stage_pass_count: 0,
+            memory_write_chain_propose_write_ready_count: 0,
+            memory_write_chain_policy_approval_ready_count: 0,
+            memory_write_chain_operator_approval_ready_count: 0,
+            memory_write_chain_shadow_wal_ready_count: 0,
+            memory_write_chain_readback_ready_count: 0,
+            memory_write_chain_canary_ready_count: 0,
+            memory_write_chain_rollback_ready_count: 0,
+            memory_write_chain_production_write_count: 0,
+            memory_write_chain_graph_write_count: 0,
             ranked_recall_hybrid_signal_required_count: 0,
             ranked_recall_hybrid_signal_pass_count: 0,
             ranked_recall_lexical_bm25_check_pass: false,
@@ -386,6 +412,8 @@ impl ContextPlaneOperatorApprovalPacket {
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryProviderV2Boundary);
         let namespace_policy_row =
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryNamespacePolicy);
+        let write_chain_row =
+            matrix.row_for_target(ContextPlaneActivationTarget::MemoryWriteChainReadiness);
         let ranked_recall_row =
             matrix.row_for_target(ContextPlaneActivationTarget::MemoryRankedRecallShadowEval);
 
@@ -506,6 +534,42 @@ impl ContextPlaneOperatorApprovalPacket {
                 .unwrap_or_default(),
             memory_namespace_policy_graph_write_count: namespace_policy_row
                 .map(|row| row.memory_namespace_policy_graph_write_count)
+                .unwrap_or_default(),
+            memory_write_chain_namespace_count: write_chain_row
+                .map(|row| row.memory_write_chain_namespace_count)
+                .unwrap_or_default(),
+            memory_write_chain_stage_required_count: write_chain_row
+                .map(|row| row.memory_write_chain_stage_required_count)
+                .unwrap_or_default(),
+            memory_write_chain_stage_pass_count: write_chain_row
+                .map(|row| row.memory_write_chain_stage_pass_count)
+                .unwrap_or_default(),
+            memory_write_chain_propose_write_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_propose_write_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_policy_approval_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_policy_approval_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_operator_approval_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_operator_approval_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_shadow_wal_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_shadow_wal_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_readback_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_readback_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_canary_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_canary_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_rollback_ready_count: write_chain_row
+                .map(|row| row.memory_write_chain_rollback_ready_count)
+                .unwrap_or_default(),
+            memory_write_chain_production_write_count: write_chain_row
+                .map(|row| row.memory_write_chain_production_write_count)
+                .unwrap_or_default(),
+            memory_write_chain_graph_write_count: write_chain_row
+                .map(|row| row.memory_write_chain_graph_write_count)
                 .unwrap_or_default(),
             ranked_recall_hybrid_signal_required_count: ranked_recall_row
                 .map(|row| row.ranked_recall_hybrid_signal_required_count)
@@ -671,7 +735,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.dry_run_only
             && self.approval_required
             && !self.activation_command_present
-            && self.matrix_row_count == 19
+            && self.matrix_row_count == 20
             && self.threshold_satisfied_count + self.blocker_count == self.matrix_row_count
             && self.threshold_snapshot.has_snapshot_integrity()
             && self.threshold_snapshot.total_row_count == self.matrix_row_count
@@ -685,6 +749,7 @@ impl ContextPlaneOperatorApprovalPacket {
             && self.has_recall_quality_blocking_reason_count_integrity()
             && self.has_canary_promotion_checklist_integrity()
             && self.has_memory_namespace_policy_integrity()
+            && self.has_memory_write_chain_readiness_integrity()
             && self.has_memory_provider_v2_lifecycle_integrity()
             && self.has_ranked_recall_hybrid_integrity()
             && self.has_required_approval_scopes()
@@ -852,6 +917,29 @@ impl ContextPlaneOperatorApprovalPacket {
                 == self.memory_namespace_policy_namespace_count
             && self.memory_namespace_policy_production_write_count == 0
             && self.memory_namespace_policy_graph_write_count == 0
+    }
+
+    fn has_memory_write_chain_readiness_integrity(&self) -> bool {
+        self.memory_write_chain_namespace_count == MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT
+            && self.memory_write_chain_stage_required_count
+                == MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT
+            && self.memory_write_chain_stage_pass_count
+                == self.memory_write_chain_stage_required_count
+            && self.memory_write_chain_propose_write_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_policy_approval_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_operator_approval_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_shadow_wal_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_readback_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_canary_ready_count == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_rollback_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_production_write_count == 0
+            && self.memory_write_chain_graph_write_count == 0
     }
 
     fn has_ranked_recall_hybrid_integrity(&self) -> bool {

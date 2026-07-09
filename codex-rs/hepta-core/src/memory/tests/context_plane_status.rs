@@ -44,6 +44,8 @@ fn context_plane_status_report_fixture(
     };
     let formation_queue = ContextMemoryFormationQueueReport::from_receipts(&formation_receipts);
     let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
+    let write_chain_readiness =
+        ContextMemoryWriteChainReadinessReport::from_namespace_policy(&namespace_policy);
     let temporal_facts = ContextMemoryTemporalFactReport {
         facts: vec![ContextMemoryTemporalFact {
             fact_type: ContextMemoryTemporalFactType::Attribute,
@@ -118,6 +120,7 @@ fn context_plane_status_report_fixture(
         formation_receipts: &formation_receipts,
         formation_queue: &formation_queue,
         namespace_policy: &namespace_policy,
+        write_chain_readiness: &write_chain_readiness,
         temporal_facts: &temporal_facts,
         temporal_fact_graph: &temporal_fact_graph,
         temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
@@ -139,9 +142,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 18);
+    assert_eq!(report.sections.len(), 19);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 9);
+    assert_eq!(report.shadow_section_count(), 10);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -162,6 +165,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryNamespacePolicy),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryWriteChainReadiness),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -365,6 +372,38 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
         namespace_policy_entry.memory_namespace_policy_production_write_count,
         0
     );
+    let write_chain_entry = report
+        .sections
+        .iter()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness status row should exist");
+    assert_eq!(write_chain_entry.memory_write_chain_namespace_count, 6);
+    assert_eq!(write_chain_entry.memory_write_chain_stage_required_count, 6);
+    assert_eq!(write_chain_entry.memory_write_chain_stage_pass_count, 6);
+    assert_eq!(
+        write_chain_entry.memory_write_chain_propose_write_ready_count,
+        6
+    );
+    assert_eq!(
+        write_chain_entry.memory_write_chain_policy_approval_ready_count,
+        6
+    );
+    assert_eq!(
+        write_chain_entry.memory_write_chain_operator_approval_ready_count,
+        6
+    );
+    assert_eq!(
+        write_chain_entry.memory_write_chain_shadow_wal_ready_count,
+        6
+    );
+    assert_eq!(write_chain_entry.memory_write_chain_readback_ready_count, 6);
+    assert_eq!(write_chain_entry.memory_write_chain_canary_ready_count, 6);
+    assert_eq!(write_chain_entry.memory_write_chain_rollback_ready_count, 6);
+    assert_eq!(
+        write_chain_entry.memory_write_chain_production_write_count,
+        0
+    );
+    assert_eq!(write_chain_entry.memory_write_chain_graph_write_count, 0);
     assert_eq!(
         namespace_policy_entry.memory_namespace_policy_graph_write_count,
         0
@@ -384,6 +423,10 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     assert!(json.contains("memory_formation_receipts"));
     assert!(json.contains("memory_formation_queue"));
     assert!(json.contains("memory_namespace_policy"));
+    assert!(json.contains("memory_write_chain_readiness"));
+    assert!(json.contains("memory_write_chain_stage_pass_count"));
+    assert!(json.contains("memory_write_chain_readback_ready_count"));
+    assert!(json.contains("memory_write_chain_canary_ready_count"));
     assert!(json.contains("memory_temporal_facts"));
     assert!(json.contains("memory_temporal_fact_graph"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
@@ -613,6 +656,50 @@ fn context_plane_status_report_rejects_namespace_policy_false_green() {
         .expect("memory provider boundary status row should exist")
         .memory_namespace_policy_namespace_count = 6;
     assert!(!non_policy_leak.has_status_integrity());
+}
+
+#[test]
+fn context_plane_status_report_rejects_memory_write_chain_false_green() {
+    let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::seeded();
+    let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
+    let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
+    assert!(report.has_status_integrity());
+
+    let mut partial_readback = report.clone();
+    partial_readback
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness status row should exist")
+        .memory_write_chain_readback_ready_count = 5;
+    assert!(!partial_readback.has_status_integrity());
+
+    let mut partial_canary = report.clone();
+    partial_canary
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness status row should exist")
+        .memory_write_chain_canary_ready_count = 5;
+    assert!(!partial_canary.has_status_integrity());
+
+    let mut write_false_green = report.clone();
+    write_false_green
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness status row should exist")
+        .memory_write_chain_production_write_count = 1;
+    assert!(!write_false_green.has_status_integrity());
+
+    let mut non_write_chain_leak = report.clone();
+    non_write_chain_leak
+        .sections
+        .iter_mut()
+        .find(|entry| entry.section == ContextPlaneStatusSection::MemoryNamespacePolicy)
+        .expect("memory namespace policy status row should exist")
+        .memory_write_chain_stage_pass_count = 6;
+    assert!(!non_write_chain_leak.has_status_integrity());
 }
 
 #[test]

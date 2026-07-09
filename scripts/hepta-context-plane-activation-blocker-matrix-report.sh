@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=12
-context-plane-activation-blockers.rows=19
+context-plane-activation-blockers.schema=13
+context-plane-activation-blockers.rows=20
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=10
+context-plane-activation-blockers.blockers=11
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -21,6 +21,19 @@ context-plane-activation-blockers.memory-namespace-policy.canary-required-count=
 context-plane-activation-blockers.memory-namespace-policy.rollback-supported-count=6
 context-plane-activation-blockers.memory-namespace-policy.production-write-count=0
 context-plane-activation-blockers.memory-namespace-policy.graph-write-count=0
+context-plane-activation-blockers.memory-write-chain-readiness=blocked:memory_write_chain_readiness_shadow_only
+context-plane-activation-blockers.memory-write-chain-readiness.namespace-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.stage-required-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.stage-pass-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.propose-write-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.policy-approval-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.operator-approval-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.shadow-wal-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.readback-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.rollback-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.production-write-count=0
+context-plane-activation-blockers.memory-write-chain-readiness.graph-write-count=0
 context-plane-activation-blockers.memory-temporal-facts=ready
 context-plane-activation-blockers.memory-temporal-fact-graph=ready
 context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only

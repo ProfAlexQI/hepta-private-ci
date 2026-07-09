@@ -5,6 +5,7 @@ use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
+use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextRecallAvailability;
 use hepta_core::ContextRecallBundle;
 use hepta_core::ContextRecallCoverage;
@@ -106,6 +107,14 @@ impl InMemoryStore {
         &self,
     ) -> Result<ContextMemoryNamespacePolicyReport, hepta_core::MemoryError> {
         Ok(self.snapshot()?.context_memory_namespace_policy_report())
+    }
+
+    pub fn context_memory_write_chain_readiness_report(
+        &self,
+    ) -> Result<ContextMemoryWriteChainReadinessReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_write_chain_readiness_report())
     }
 
     pub fn recall_context_memory_formation_receipt_report(

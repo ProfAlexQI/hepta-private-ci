@@ -11,6 +11,7 @@ pub enum ContextPlaneStatusSection {
     MemoryFormationReceipts,
     MemoryFormationQueue,
     MemoryNamespacePolicy,
+    MemoryWriteChainReadiness,
     MemoryTemporalFacts,
     MemoryTemporalFactGraph,
     MemoryTemporalGraphShadowEval,

@@ -206,3 +206,73 @@ fn context_memory_namespace_policy_report_rejects_write_or_namespace_drift() {
     duplicate_namespace.blocks[0].namespace = ContextMemoryNamespace::Session;
     assert!(!duplicate_namespace.has_policy_integrity());
 }
+
+#[test]
+fn context_memory_write_chain_readiness_report_defines_shadow_readback_without_payloads() {
+    let namespace_policy = ContextMemoryNamespacePolicyReport::seeded();
+    let report = ContextMemoryWriteChainReadinessReport::from_namespace_policy(&namespace_policy);
+
+    assert!(report.has_readiness_integrity());
+    assert_eq!(
+        report.schema_version,
+        CONTEXT_MEMORY_WRITE_CHAIN_READINESS_SCHEMA_VERSION
+    );
+    assert_eq!(report.namespace_count(), 6);
+    assert_eq!(report.stage_required_count(), 6);
+    assert_eq!(report.stage_pass_count(), 6);
+    assert_eq!(report.propose_write_ready_count(), 6);
+    assert_eq!(report.policy_approval_ready_count(), 6);
+    assert_eq!(report.operator_approval_ready_count(), 6);
+    assert_eq!(report.shadow_wal_ready_count(), 6);
+    assert_eq!(report.readback_ready_count(), 6);
+    assert_eq!(report.canary_ready_count(), 6);
+    assert_eq!(report.rollback_ready_count(), 6);
+    assert_eq!(report.production_write_count(), 0);
+    assert_eq!(report.graph_write_count(), 0);
+    assert!(!report.production_write);
+    assert!(!report.graph_write);
+    assert!(!report.hot_path_write);
+    assert!(!report.prompt_assembly_change);
+    assert!(!report.runtime_activation);
+
+    let json =
+        serde_json::to_string(&report).expect("write-chain readiness report should serialize");
+    assert!(json.contains("core"));
+    assert!(json.contains("session"));
+    assert!(json.contains("procedural"));
+    assert!(json.contains("semantic"));
+    assert!(json.contains("episodic"));
+    assert!(json.contains("archival"));
+    assert!(json.contains("propose_write_ready"));
+    assert!(json.contains("shadow_wal_ready"));
+    assert!(json.contains("readback_ready"));
+    assert!(json.contains("canary_ready"));
+    assert!(!json.contains("candidate_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
+#[test]
+fn context_memory_write_chain_readiness_report_rejects_readback_or_write_drift() {
+    let mut readback_drift = ContextMemoryWriteChainReadinessReport::seeded();
+    readback_drift.blocks[0].readback_ready = false;
+    assert!(!readback_drift.has_readiness_integrity());
+
+    let mut canary_drift = ContextMemoryWriteChainReadinessReport::seeded();
+    canary_drift.blocks[0].canary_ready = false;
+    assert!(!canary_drift.has_readiness_integrity());
+
+    let mut write_drift = ContextMemoryWriteChainReadinessReport::seeded();
+    write_drift.blocks[0].production_write = true;
+    assert!(!write_drift.has_readiness_integrity());
+
+    let mut missing_namespace = ContextMemoryWriteChainReadinessReport::seeded();
+    missing_namespace.blocks.pop();
+    assert!(!missing_namespace.has_readiness_integrity());
+}

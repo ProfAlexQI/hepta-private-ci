@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 19);
+    assert_eq!(matrix.rows.len(), 20);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 10);
+    assert_eq!(matrix.blocker_count, 11);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -58,6 +58,10 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryNamespacePolicy),
         Some(ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly)
+    );
+    assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryWriteChainReadiness),
+        Some(ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),
@@ -142,6 +146,16 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
         namespace_policy_row.memory_namespace_policy_production_write_count,
         0
     );
+    let write_chain_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryWriteChainReadiness)
+        .expect("memory write-chain readiness activation row should exist");
+    assert_eq!(write_chain_row.memory_write_chain_namespace_count, 6);
+    assert_eq!(write_chain_row.memory_write_chain_stage_required_count, 6);
+    assert_eq!(write_chain_row.memory_write_chain_stage_pass_count, 6);
+    assert_eq!(write_chain_row.memory_write_chain_readback_ready_count, 6);
+    assert_eq!(write_chain_row.memory_write_chain_canary_ready_count, 6);
+    assert_eq!(write_chain_row.memory_write_chain_production_write_count, 0);
+    assert_eq!(write_chain_row.memory_write_chain_graph_write_count, 0);
 
     let json = serde_json::to_string(&matrix).expect("activation blocker matrix should serialize");
     assert!(json.contains("recall_quality_gate"));
@@ -158,8 +172,12 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
     assert!(json.contains("memory_namespace_policy_shadow_only"));
+    assert!(json.contains("memory_write_chain_readiness_shadow_only"));
     assert!(json.contains("memory_namespace_policy_namespace_count"));
     assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
+    assert!(json.contains("memory_write_chain_stage_pass_count"));
+    assert!(json.contains("memory_write_chain_readback_ready_count"));
+    assert!(json.contains("memory_write_chain_canary_ready_count"));
     assert!(json.contains("memory_shadow_canary_readiness"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness"));
     assert!(json.contains("recall_quality_blocking_reason_count"));
@@ -254,9 +272,9 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 19);
+    assert_eq!(from_store.rows.len(), 20);
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 10);
+    assert_eq!(from_store.blocker_count, 11);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)
@@ -289,6 +307,10 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryNamespacePolicy),
         Some(ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly)
+    );
+    assert_eq!(
+        from_store.blocker_reason(ContextPlaneActivationTarget::MemoryWriteChainReadiness),
+        Some(ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly)
     );
     assert_eq!(
         from_store.blocker_reason(ContextPlaneActivationTarget::MemoryProviderV2Boundary),

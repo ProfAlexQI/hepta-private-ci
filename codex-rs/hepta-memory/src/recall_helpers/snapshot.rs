@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
+use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextRecallAvailability;
 use hepta_core::ContextRecallBundle;
 use hepta_core::ContextRecallCoverage;
@@ -262,6 +263,16 @@ impl StoreSnapshot {
     /// writing memory payloads.
     pub fn context_memory_namespace_policy_report(&self) -> ContextMemoryNamespacePolicyReport {
         ContextMemoryNamespacePolicyReport::seeded()
+    }
+
+    /// Builds the fixed namespace write-chain readiness/readback surface
+    /// without inspecting or writing memory payloads.
+    pub fn context_memory_write_chain_readiness_report(
+        &self,
+    ) -> ContextMemoryWriteChainReadinessReport {
+        ContextMemoryWriteChainReadinessReport::from_namespace_policy(
+            &self.context_memory_namespace_policy_report(),
+        )
     }
 
     /// Builds receipt-only background memory-formation metadata for transcript

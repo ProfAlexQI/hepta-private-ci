@@ -38,10 +38,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 19);
+    assert_eq!(packet.matrix_row_count, 20);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 10);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 18);
+    assert_eq!(packet.blocker_count, 11);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 19);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -77,6 +77,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert_eq!(
         packet.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly
         ),
         Some(1)
     );
@@ -129,6 +135,13 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     );
     assert_eq!(packet.memory_namespace_policy_shadow_wal_required_count, 6);
     assert_eq!(packet.memory_namespace_policy_production_write_count, 0);
+    assert_eq!(packet.memory_write_chain_namespace_count, 6);
+    assert_eq!(packet.memory_write_chain_stage_required_count, 6);
+    assert_eq!(packet.memory_write_chain_stage_pass_count, 6);
+    assert_eq!(packet.memory_write_chain_readback_ready_count, 6);
+    assert_eq!(packet.memory_write_chain_canary_ready_count, 6);
+    assert_eq!(packet.memory_write_chain_production_write_count, 0);
+    assert_eq!(packet.memory_write_chain_graph_write_count, 0);
     assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
     assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
     assert_eq!(packet.ranked_recall_positive_hybrid_signal_pass_count, 15);
@@ -152,8 +165,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(json.contains("memory_provider_v2_propose_write_check_pass"));
     assert!(json.contains("memory_provider_v2_close_check_pass"));
     assert!(json.contains("memory_namespace_policy_shadow_only"));
+    assert!(json.contains("memory_write_chain_readiness_shadow_only"));
     assert!(json.contains("memory_namespace_policy_namespace_count"));
     assert!(json.contains("memory_namespace_policy_shadow_wal_required_count"));
+    assert!(json.contains("memory_write_chain_stage_pass_count"));
+    assert!(json.contains("memory_write_chain_readback_ready_count"));
+    assert!(json.contains("memory_write_chain_canary_ready_count"));
     assert!(json.contains("memory_shadow_canary_readiness_shadow_only"));
     assert!(json.contains("memory_shadow_canary_promotion_readiness_shadow_only"));
     assert!(json.contains("canary_promotion_checklist_pass_count"));
@@ -243,10 +260,10 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert!(from_store.dry_run_only);
     assert!(from_store.approval_required);
     assert!(!from_store.activation_command_present);
-    assert_eq!(from_store.matrix_row_count, 19);
+    assert_eq!(from_store.matrix_row_count, 20);
     assert_eq!(from_store.threshold_satisfied_count, 9);
-    assert_eq!(from_store.blocker_count, 10);
-    assert_eq!(from_store.threshold_snapshot.required_ready_count, 18);
+    assert_eq!(from_store.blocker_count, 11);
+    assert_eq!(from_store.threshold_snapshot.required_ready_count, 19);
     assert_eq!(from_store.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(from_store.required_scope_count(), 6);
     assert_eq!(
@@ -282,6 +299,12 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert_eq!(
         from_store.blocker_reason_count(
             ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        from_store.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly
         ),
         Some(1)
     );

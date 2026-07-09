@@ -10,6 +10,8 @@ use super::target::ContextPlaneActivationTarget;
 
 const CANARY_PROMOTION_CHECKLIST_REQUIRED_COUNT: usize = 4;
 const MEMORY_NAMESPACE_POLICY_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT: usize = 6;
+const MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT: usize = 6;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -85,6 +87,18 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_namespace_policy_rollback_supported_count: usize,
     pub memory_namespace_policy_production_write_count: usize,
     pub memory_namespace_policy_graph_write_count: usize,
+    pub memory_write_chain_namespace_count: usize,
+    pub memory_write_chain_stage_required_count: usize,
+    pub memory_write_chain_stage_pass_count: usize,
+    pub memory_write_chain_propose_write_ready_count: usize,
+    pub memory_write_chain_policy_approval_ready_count: usize,
+    pub memory_write_chain_operator_approval_ready_count: usize,
+    pub memory_write_chain_shadow_wal_ready_count: usize,
+    pub memory_write_chain_readback_ready_count: usize,
+    pub memory_write_chain_canary_ready_count: usize,
+    pub memory_write_chain_rollback_ready_count: usize,
+    pub memory_write_chain_production_write_count: usize,
+    pub memory_write_chain_graph_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -213,6 +227,10 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly,
             (
+                ContextPlaneActivationTarget::MemoryWriteChainReadiness,
+                ContextPlaneStatusKind::Shadow,
+            ) => ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly,
+            (
                 ContextPlaneActivationTarget::MemoryShadowCanaryReadiness,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly,
@@ -261,6 +279,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_ranked_recall_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
             .with_memory_namespace_policy_rollup(target, entry)
+            .with_memory_write_chain_readiness_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
@@ -269,6 +288,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_ranked_recall_rollup(target, entry)
             .with_canary_promotion_rollup(target, entry)
             .with_memory_namespace_policy_rollup(target, entry)
+            .with_memory_write_chain_readiness_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
     }
 
@@ -491,6 +511,39 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_write_chain_readiness_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target == ContextPlaneActivationTarget::MemoryWriteChainReadiness
+            && let Some(entry) = entry
+        {
+            self.memory_write_chain_namespace_count = entry.memory_write_chain_namespace_count;
+            self.memory_write_chain_stage_required_count =
+                entry.memory_write_chain_stage_required_count;
+            self.memory_write_chain_stage_pass_count = entry.memory_write_chain_stage_pass_count;
+            self.memory_write_chain_propose_write_ready_count =
+                entry.memory_write_chain_propose_write_ready_count;
+            self.memory_write_chain_policy_approval_ready_count =
+                entry.memory_write_chain_policy_approval_ready_count;
+            self.memory_write_chain_operator_approval_ready_count =
+                entry.memory_write_chain_operator_approval_ready_count;
+            self.memory_write_chain_shadow_wal_ready_count =
+                entry.memory_write_chain_shadow_wal_ready_count;
+            self.memory_write_chain_readback_ready_count =
+                entry.memory_write_chain_readback_ready_count;
+            self.memory_write_chain_canary_ready_count =
+                entry.memory_write_chain_canary_ready_count;
+            self.memory_write_chain_rollback_ready_count =
+                entry.memory_write_chain_rollback_ready_count;
+            self.memory_write_chain_production_write_count =
+                entry.memory_write_chain_production_write_count;
+            self.memory_write_chain_graph_write_count = entry.memory_write_chain_graph_write_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -501,6 +554,7 @@ impl ContextPlaneActivationBlockerRow {
             && self.has_ranked_recall_rollup_integrity()
             && self.has_canary_promotion_rollup_integrity()
             && self.has_memory_namespace_policy_rollup_integrity()
+            && self.has_memory_write_chain_readiness_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
@@ -828,6 +882,49 @@ impl ContextPlaneActivationBlockerRow {
                 == self.memory_namespace_policy_namespace_count
             && self.memory_namespace_policy_production_write_count == 0
             && self.memory_namespace_policy_graph_write_count == 0
+            && (self.threshold_satisfied || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_write_chain_readiness_rollup_integrity(&self) -> bool {
+        let counts = [
+            self.memory_write_chain_namespace_count,
+            self.memory_write_chain_stage_required_count,
+            self.memory_write_chain_stage_pass_count,
+            self.memory_write_chain_propose_write_ready_count,
+            self.memory_write_chain_policy_approval_ready_count,
+            self.memory_write_chain_operator_approval_ready_count,
+            self.memory_write_chain_shadow_wal_ready_count,
+            self.memory_write_chain_readback_ready_count,
+            self.memory_write_chain_canary_ready_count,
+            self.memory_write_chain_rollback_ready_count,
+            self.memory_write_chain_production_write_count,
+            self.memory_write_chain_graph_write_count,
+        ];
+
+        if self.target != ContextPlaneActivationTarget::MemoryWriteChainReadiness {
+            return counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_write_chain_namespace_count == MEMORY_WRITE_CHAIN_NAMESPACE_REQUIRED_COUNT
+            && self.memory_write_chain_stage_required_count
+                == MEMORY_WRITE_CHAIN_STAGE_REQUIRED_COUNT
+            && self.memory_write_chain_stage_pass_count
+                == self.memory_write_chain_stage_required_count
+            && self.memory_write_chain_propose_write_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_policy_approval_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_operator_approval_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_shadow_wal_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_readback_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_canary_ready_count == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_rollback_ready_count
+                == self.memory_write_chain_namespace_count
+            && self.memory_write_chain_production_write_count == 0
+            && self.memory_write_chain_graph_write_count == 0
             && (self.threshold_satisfied || self.blocker_reason.is_blocking())
     }
 }

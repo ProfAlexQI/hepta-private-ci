@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+manifest="$repo_root/codex-rs/Cargo.toml"
+hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
+hepta_core_write_chain="$repo_root/codex-rs/hepta-core/src/memory/write_chain.rs"
+hepta_core_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/recall_memory/taxonomy.rs"
+hepta_memory_snapshot_helpers="$repo_root/codex-rs/hepta-memory/src/recall_helpers/snapshot.rs"
+hepta_memory_store_helpers="$repo_root/codex-rs/hepta-memory/src/recall_helpers/store.rs"
+hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/recall_memory/taxonomy.rs"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+front_door_gate="$repo_root/scripts/hepta-context-source-aware-compression-front-door-gate.sh"
+release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
+report_script="$repo_root/scripts/hepta-context-memory-write-chain-readiness-report.sh"
+lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
+target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
+target_leaf="$lane"
+if [[ "$target_leaf" != hepta-* ]]; then
+  target_leaf="hepta-$target_leaf"
+fi
+export CARGO_TARGET_DIR="${HEPTA_CARGO_TARGET_DIR:-$target_root/$target_leaf}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+
+report_output="$(mktemp -t hepta-context-memory-write-chain-readiness.XXXXXX)"
+trap 'rm -f "$report_output"' EXIT
+
+fail() {
+  echo "hepta-context-memory-write-chain-readiness-gate: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+line_number_of() {
+  local file_path="$1"
+  local needle="$2"
+  local line
+
+  line="$(grep -n -F "$needle" "$file_path" | head -n 1 | cut -d: -f1 || true)"
+  if [ -z "$line" ]; then
+    fail "$file_path is missing required text: $needle"
+  fi
+  printf '%s\n' "$line"
+}
+
+assert_line_before() {
+  local file_path="$1"
+  local before_needle="$2"
+  local after_needle="$3"
+  local label="$4"
+  local before_line
+  local after_line
+
+  before_line="$(line_number_of "$file_path" "$before_needle")"
+  after_line="$(line_number_of "$file_path" "$after_needle")"
+  if [ "$before_line" -ge "$after_line" ]; then
+    fail "$label expected '$before_needle' before '$after_needle'"
+  fi
+}
+
+for term in \
+  "Memory write-chain readiness/readback shadow report" \
+  "memory_write_chain_readiness" \
+  "propose_write_ready" \
+  "policy_approval_ready" \
+  "operator_approval_ready" \
+  "shadow_wal_ready" \
+  "readback_ready" \
+  "canary_ready" \
+  "rollback_ready" \
+  "production_write=false" \
+  "graph_write=false" \
+  "hot_path_write=false" \
+  "must not write production memory" \
+  "must not write graph facts" \
+  "must not alter prompt assembly" \
+  "hepta-context-memory-write-chain-readiness-report.sh" \
+  "hepta-context-memory-write-chain-readiness-gate.sh" \
+  "runtime-activation=disabled"; do
+  assert_file_contains "$contracts" "$term" "memory write-chain readiness contract"
+done
+
+assert_file_contains "$hepta_core_memory" \
+  "CONTEXT_MEMORY_WRITE_CHAIN_READINESS_SCHEMA_VERSION" \
+  "memory write-chain readiness schema version"
+assert_file_contains "$hepta_core_memory" \
+  "ContextMemoryWriteChainReadinessReport" \
+  "memory write-chain readiness re-export"
+assert_file_contains "$hepta_core_write_chain" \
+  "ContextMemoryWriteChainReadinessBlock" \
+  "memory write-chain readiness block"
+assert_file_contains "$hepta_core_write_chain" \
+  "from_namespace_policy" \
+  "memory write-chain readiness namespace policy constructor"
+assert_file_contains "$hepta_core_tests" \
+  "context_memory_write_chain_readiness_report_defines_shadow_readback_without_payloads" \
+  "memory write-chain readiness hepta-core payload-light test"
+assert_file_contains "$hepta_core_tests" \
+  "context_memory_write_chain_readiness_report_rejects_readback_or_write_drift" \
+  "memory write-chain readiness hepta-core negative test"
+
+assert_file_contains "$hepta_memory_snapshot_helpers" \
+  "context_memory_write_chain_readiness_report" \
+  "memory write-chain readiness hepta-memory snapshot helper"
+assert_file_contains "$hepta_memory_store_helpers" \
+  "context_memory_write_chain_readiness_report" \
+  "memory write-chain readiness hepta-memory store helper"
+assert_file_contains "$hepta_memory_tests" \
+  "store_snapshot_context_memory_write_chain_readiness_is_payload_light" \
+  "memory write-chain readiness hepta-memory snapshot test"
+assert_file_contains "$hepta_memory_tests" \
+  "store_context_memory_write_chain_readiness_matches_snapshot_helper" \
+  "memory write-chain readiness hepta-memory store test"
+
+assert_file_contains "$debug_gate" \
+  "hepta-context-memory-write-chain-readiness-gate.sh" \
+  "memory write-chain readiness debug gate"
+assert_file_contains "$preflight_script" \
+  "context memory write-chain readiness/readback shadow gate" \
+  "memory write-chain readiness preflight stage"
+assert_file_contains "$front_door_gate" \
+  "memory_write_chain_readiness_gate_script" \
+  "memory write-chain readiness front-door static check"
+assert_file_contains "$release_manifest" \
+  "scripts/hepta-context-memory-write-chain-readiness-gate.sh" \
+  "memory write-chain readiness release manifest gate entry"
+assert_file_contains "$release_manifest" \
+  "scripts/hepta-context-memory-write-chain-readiness-report.sh" \
+  "memory write-chain readiness release manifest report entry"
+
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-memory-namespace-policy-gate.sh" \
+  "hepta-context-memory-write-chain-readiness-gate.sh" \
+  "memory write-chain readiness debug gate order"
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-memory-write-chain-readiness-gate.sh" \
+  "hepta-context-memory-formation-candidate-no-leak-export-gate.sh" \
+  "memory write-chain readiness debug gate order"
+assert_line_before \
+  "$preflight_script" \
+  "context memory namespace policy shadow gate" \
+  "context memory write-chain readiness/readback shadow gate" \
+  "memory write-chain readiness preflight order"
+assert_line_before \
+  "$preflight_script" \
+  "context memory write-chain readiness/readback shadow gate" \
+  "context memory formation candidate no-leak export gate" \
+  "memory write-chain readiness preflight order"
+
+cargo test --manifest-path "$manifest" -p hepta-core \
+  context_memory_write_chain \
+  --lib --message-format=short
+
+cargo test --manifest-path "$manifest" -p hepta-memory \
+  context_memory_write_chain \
+  --lib --message-format=short
+
+bash "$report_script" >"$report_output"
+
+for line in \
+  "context-memory-write-chain-readiness=pass" \
+  "context-memory-write-chain-readiness.payload-light=pass" \
+  "context-memory-write-chain-readiness.schema=1" \
+  "context-memory-write-chain-readiness.namespace-count=6" \
+  "context-memory-write-chain-readiness.stage-required-count=6" \
+  "context-memory-write-chain-readiness.stage-pass-count=6" \
+  "context-memory-write-chain-readiness.propose-write-ready-count=6" \
+  "context-memory-write-chain-readiness.policy-approval-ready-count=6" \
+  "context-memory-write-chain-readiness.operator-approval-ready-count=6" \
+  "context-memory-write-chain-readiness.shadow-wal-ready-count=6" \
+  "context-memory-write-chain-readiness.readback-ready-count=6" \
+  "context-memory-write-chain-readiness.canary-ready-count=6" \
+  "context-memory-write-chain-readiness.rollback-ready-count=6" \
+  "context-memory-write-chain-readiness.production-write-count=0" \
+  "context-memory-write-chain-readiness.graph-write-count=0" \
+  "context-memory-write-chain-readiness.production-write=disabled" \
+  "context-memory-write-chain-readiness.graph-write=disabled" \
+  "context-memory-write-chain-readiness.hot-path-write=disabled" \
+  "context-memory-write-chain-readiness.prompt-assembly-change=disabled" \
+  "context-memory-write-chain-readiness.runtime-activation=disabled"; do
+  assert_file_contains "$report_output" "$line" "memory write-chain readiness report"
+done
+
+if rg -n 'candidate_text|transcript_text|memory_text|source_id|memory_id|query_text|raw_|entity_hash|fact_hash|edge_hash' "$report_output"; then
+  fail "memory write-chain readiness report exposed payload-shaped fields"
+fi
+
+echo "context-memory-write-chain-readiness=pass"
+echo "context-memory-write-chain-readiness.payload-light=pass"
+echo "context-memory-write-chain-readiness.production-write=disabled"
+echo "context-memory-write-chain-readiness.graph-write=disabled"
+echo "context-memory-write-chain-readiness.runtime-activation=disabled"
+echo "Hepta context memory write-chain readiness gate passed"
