@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=15
-context-plane-activation-blockers.rows=22
+context-plane-activation-blockers.schema=16
+context-plane-activation-blockers.rows=23
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=13
+context-plane-activation-blockers.blockers=14
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -68,6 +68,25 @@ context-plane-activation-blockers.memory-temporal-graph-shadow-store.recorded-re
 context-plane-activation-blockers.memory-temporal-graph-shadow-store.persisted-receipt-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-store.production-write-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-store.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay=blocked:temporal_graph_shadow_replay_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.node-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.edge-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.provenance-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.bitemporal-validity-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.fact-invalidation-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.supersede-tombstone-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stage-required-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stage-projected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.digest-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.freshness-pass-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.replay-guard-pass-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stale-replay-rejected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.operator-approval-required-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.recorded-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.persisted-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.graph-write-count=0
 context-plane-activation-blockers.eval-harness-seed=ready
 context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
 context-plane-activation-blockers.recall-quality-gate=ready

@@ -248,6 +248,94 @@ fn store_snapshot_recall_context_memory_temporal_graph_shadow_store_is_payload_l
     assert!(!json.contains("\"runtime_activation\":true"));
 }
 
+#[test]
+fn store_snapshot_recall_context_memory_temporal_graph_shadow_replay_is_payload_light() {
+    let snapshot = StoreSnapshot {
+        sessions: vec![],
+        memories: vec![memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        )],
+        transcripts: vec![
+            transcript_entry(
+                "session-1",
+                1,
+                TranscriptEntryKind::Message,
+                "timeout surfaced during tool run",
+            ),
+            transcript_entry(
+                "session-1",
+                2,
+                TranscriptEntryKind::Summary,
+                "timeout retried successfully",
+            ),
+        ],
+    };
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout".into()),
+        recent_window_limit: 1,
+        transcript_limit: 1,
+        memory_limit: 1,
+        allow_cross_session: true,
+    };
+
+    let replay = snapshot.recall_context_memory_temporal_graph_shadow_replay_report(&request);
+
+    assert!(replay.has_shadow_replay_integrity());
+    assert_eq!(replay.node_count, 5);
+    assert_eq!(replay.edge_count, 10);
+    assert_eq!(replay.provenance_replay_count, 5);
+    assert_eq!(replay.bitemporal_validity_replay_count, 5);
+    assert_eq!(replay.fact_invalidation_replay_count, 0);
+    assert_eq!(replay.supersede_tombstone_replay_count, 0);
+    assert_eq!(replay.replay_stage_projected_count(), 6);
+    assert_eq!(replay.replay_digest_count(), 6);
+    assert_eq!(replay.freshness_pass_count(), 6);
+    assert_eq!(replay.replay_guard_pass_count(), 6);
+    assert_eq!(replay.stale_replay_rejected_count(), 6);
+    assert_eq!(replay.wal_replay_digest.len(), 16);
+    assert!(replay.freshness_check_pass);
+    assert!(replay.replay_guard_pass);
+    assert!(replay.stale_replay_rejected);
+    assert!(replay.operator_approval_required);
+    assert!(!replay.operator_approval_recorded);
+    assert_eq!(replay.receipt_recorded_count(), 0);
+    assert_eq!(replay.receipt_persisted_count(), 0);
+    assert_eq!(replay.production_write_count(), 0);
+    assert_eq!(replay.graph_write_count(), 0);
+    assert!(!replay.production_write);
+    assert!(!replay.graph_write);
+    assert!(!replay.hot_path_write);
+    assert!(!replay.prompt_assembly_change);
+    assert!(!replay.runtime_activation);
+
+    let json =
+        serde_json::to_string(&replay).expect("temporal graph shadow replay should serialize");
+    assert!(json.contains("wal_replay_digest"));
+    assert!(json.contains("wal_receipt_replay_projected"));
+    assert!(json.contains("digest_freshness_replay_projected"));
+    assert!(!json.contains("timeout surfaced during tool run"));
+    assert!(!json.contains("timeout retried successfully"));
+    assert!(!json.contains("session-1"));
+    assert!(!json.contains("memory-1"));
+    assert!(!json.contains("entity_hash"));
+    assert!(!json.contains("fact_text"));
+    assert!(!json.contains("entity_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("\"recorded_receipt\":true"));
+    assert!(!json.contains("\"persisted_receipt\":true"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
+
 #[tokio::test]
 async fn store_recall_context_memory_temporal_facts_match_snapshot_helper() {
     let store = InMemoryStore::default();
@@ -418,6 +506,65 @@ async fn store_recall_context_memory_temporal_graph_shadow_store_matches_snapsho
     );
     assert!(from_store.has_shadow_store_integrity());
     assert_eq!(from_store.readiness_stage_projected_count(), 6);
+    assert_eq!(from_store.receipt_recorded_count(), 0);
+    assert_eq!(from_store.receipt_persisted_count(), 0);
+    assert_eq!(from_store.production_write_count(), 0);
+    assert_eq!(from_store.graph_write_count(), 0);
+}
+
+#[tokio::test]
+async fn store_recall_context_memory_temporal_graph_shadow_replay_matches_snapshot_helper() {
+    let store = InMemoryStore::default();
+    store
+        .put(memory_record(
+            "memory-1",
+            MemoryScope::LongTerm,
+            "timeout retry guidance",
+        ))
+        .await
+        .expect("put should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            1,
+            TranscriptEntryKind::Message,
+            "timeout surfaced during tool run",
+        ))
+        .await
+        .expect("append should succeed");
+    store
+        .append(transcript_entry(
+            "session-1",
+            2,
+            TranscriptEntryKind::Summary,
+            "timeout retried successfully",
+        ))
+        .await
+        .expect("append should succeed");
+
+    let request = ContextRecallRequest {
+        session_id: SessionId("session-1".into()),
+        query_text: Some("timeout".into()),
+        recent_window_limit: 1,
+        transcript_limit: 1,
+        memory_limit: 1,
+        allow_cross_session: true,
+    };
+    let snapshot = store.snapshot().expect("snapshot should load");
+    let from_store = store
+        .recall_context_memory_temporal_graph_shadow_replay_report(request.clone())
+        .expect("context recall memory temporal graph shadow replay should succeed");
+
+    assert_eq!(
+        from_store,
+        snapshot.recall_context_memory_temporal_graph_shadow_replay_report(&request)
+    );
+    assert!(from_store.has_shadow_replay_integrity());
+    assert_eq!(from_store.replay_stage_projected_count(), 6);
+    assert_eq!(from_store.replay_digest_count(), 6);
+    assert_eq!(from_store.freshness_pass_count(), 6);
+    assert_eq!(from_store.replay_guard_pass_count(), 6);
+    assert_eq!(from_store.stale_replay_rejected_count(), 6);
     assert_eq!(from_store.receipt_recorded_count(), 0);
     assert_eq!(from_store.receipt_persisted_count(), 0);
     assert_eq!(from_store.production_write_count(), 0);

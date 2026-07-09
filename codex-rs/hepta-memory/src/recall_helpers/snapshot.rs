@@ -6,6 +6,7 @@ use hepta_core::ContextMemoryNamespacePolicyReport;
 use hepta_core::ContextMemoryTaxonomyReport;
 use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
+use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
@@ -335,6 +336,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalGraphShadowStoreReport {
         ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(
             &self.recall_context_memory_temporal_fact_graph_report(request),
+        )
+    }
+
+    /// Builds a payload-light shadow WAL replay evidence surface from the
+    /// temporal graph shadow store without recording or persisting receipts.
+    pub fn recall_context_memory_temporal_graph_shadow_replay_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowReplayReport {
+        ContextMemoryTemporalGraphShadowReplayReport::from_shadow_store(
+            &self.recall_context_memory_temporal_graph_shadow_store_report(request),
         )
     }
 }

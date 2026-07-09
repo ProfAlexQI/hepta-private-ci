@@ -38,10 +38,10 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 22);
+    assert_eq!(packet.matrix_row_count, 23);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 13);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 21);
+    assert_eq!(packet.blocker_count, 14);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 22);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -117,6 +117,12 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
         Some(1)
     );
     assert_eq!(
+        packet.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowReplayShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::OperatorApprovalMissing),
         Some(1)
     );
@@ -169,6 +175,33 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
         packet.memory_temporal_graph_shadow_store_graph_write_count,
         0
     );
+    assert_eq!(packet.memory_temporal_graph_shadow_replay_node_count, 5);
+    assert_eq!(packet.memory_temporal_graph_shadow_replay_edge_count, 10);
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_replay_provenance_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_replay_bitemporal_validity_count,
+        5
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_replay_stage_projected_count,
+        6
+    );
+    assert_eq!(packet.memory_temporal_graph_shadow_replay_digest_count, 6);
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_replay_stale_replay_rejected_count,
+        6
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_replay_recorded_receipt_count,
+        0
+    );
+    assert_eq!(
+        packet.memory_temporal_graph_shadow_replay_graph_write_count,
+        0
+    );
     assert_eq!(packet.ranked_recall_hybrid_signal_required_count, 5);
     assert_eq!(packet.ranked_recall_hybrid_signal_pass_count, 5);
     assert_eq!(packet.ranked_recall_positive_hybrid_signal_pass_count, 15);
@@ -183,9 +216,13 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_store_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_replay_shadow_only"));
     assert!(json.contains("memory_temporal_graph_shadow_store_node_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stage_projected_count"));
     assert!(json.contains("memory_temporal_graph_shadow_store_stale_replay_rejected_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_replay_node_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_replay_stage_projected_count"));
+    assert!(json.contains("memory_temporal_graph_shadow_replay_stale_replay_rejected_count"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("ranked_recall_hybrid_signal_pass_count"));
     assert!(json.contains("ranked_recall_positive_hybrid_signal_pass_count"));
@@ -291,10 +328,10 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert!(from_store.dry_run_only);
     assert!(from_store.approval_required);
     assert!(!from_store.activation_command_present);
-    assert_eq!(from_store.matrix_row_count, 22);
+    assert_eq!(from_store.matrix_row_count, 23);
     assert_eq!(from_store.threshold_satisfied_count, 9);
-    assert_eq!(from_store.blocker_count, 13);
-    assert_eq!(from_store.threshold_snapshot.required_ready_count, 21);
+    assert_eq!(from_store.blocker_count, 14);
+    assert_eq!(from_store.threshold_snapshot.required_ready_count, 22);
     assert_eq!(from_store.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(from_store.required_scope_count(), 6);
     assert_eq!(
@@ -365,6 +402,12 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert_eq!(
         from_store.blocker_reason_count(
             ContextPlaneActivationBlockerReason::TemporalGraphShadowStoreShadowOnly
+        ),
+        Some(1)
+    );
+    assert_eq!(
+        from_store.blocker_reason_count(
+            ContextPlaneActivationBlockerReason::TemporalGraphShadowReplayShadowOnly
         ),
         Some(1)
     );

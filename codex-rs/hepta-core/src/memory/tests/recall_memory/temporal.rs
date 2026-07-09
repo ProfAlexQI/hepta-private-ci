@@ -356,3 +356,114 @@ fn context_recall_memory_temporal_graph_shadow_store_is_approval_gated_and_non_w
     assert!(!json.contains("\"graph_write\":true"));
     assert!(!json.contains("\"runtime_activation\":true"));
 }
+
+#[test]
+fn context_recall_memory_temporal_graph_shadow_replay_is_gateable_and_non_persistent() {
+    let superseded_fact_hash = stable_receipt_hash(&["memory_temporal_graph_replay_prior"]);
+    let fact_report = ContextMemoryTemporalFactReport {
+        facts: vec![
+            ContextMemoryTemporalFact {
+                fact_type: ContextMemoryTemporalFactType::Attribute,
+                entity_hash: stable_receipt_hash(&[
+                    "memory_temporal_fact_entity",
+                    "attribute",
+                    "replay-test",
+                ]),
+                provenance_span_count: 2,
+                valid_from_sequence: 8,
+                invalid_at_sequence: None,
+                confidence_basis_points: 6200,
+                supersedes_fact_hash: None,
+                privacy_class: "user_private".into(),
+                dry_run_only: true,
+                production_write: false,
+            },
+            ContextMemoryTemporalFact {
+                fact_type: ContextMemoryTemporalFactType::Preference,
+                entity_hash: stable_receipt_hash(&[
+                    "memory_temporal_fact_entity",
+                    "preference",
+                    "replay-test",
+                ]),
+                provenance_span_count: 1,
+                valid_from_sequence: 9,
+                invalid_at_sequence: Some(12),
+                confidence_basis_points: 5600,
+                supersedes_fact_hash: Some(superseded_fact_hash),
+                privacy_class: "user_private".into(),
+                dry_run_only: true,
+                production_write: false,
+            },
+        ],
+    };
+    let graph = ContextMemoryTemporalFactGraphReport::from_temporal_facts(&fact_report);
+    let store = ContextMemoryTemporalGraphShadowStoreReport::from_fact_graph(&graph);
+
+    let replay = ContextMemoryTemporalGraphShadowReplayReport::from_shadow_store(&store);
+
+    assert!(replay.has_shadow_replay_integrity());
+    assert_eq!(
+        replay.schema_version,
+        CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_REPLAY_SCHEMA_VERSION
+    );
+    assert_eq!(
+        replay.source_store_schema_version,
+        CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_SCHEMA_VERSION
+    );
+    assert_eq!(replay.node_count, 2);
+    assert_eq!(replay.edge_count, 5);
+    assert_eq!(replay.provenance_replay_count, 2);
+    assert_eq!(replay.bitemporal_validity_replay_count, 2);
+    assert_eq!(replay.fact_invalidation_replay_count, 1);
+    assert_eq!(replay.supersede_tombstone_replay_count, 2);
+    assert_eq!(replay.replay_stage_required_count(), 6);
+    assert_eq!(replay.replay_stage_projected_count(), 6);
+    assert_eq!(replay.replay_digest_count(), 6);
+    assert_eq!(replay.freshness_pass_count(), 6);
+    assert_eq!(replay.replay_guard_pass_count(), 6);
+    assert_eq!(replay.stale_replay_rejected_count(), 6);
+    assert!(replay.wal_receipt_replay_projected);
+    assert!(replay.provenance_replay_projected);
+    assert!(replay.bitemporal_validity_replay_projected);
+    assert!(replay.fact_invalidation_replay_projected);
+    assert!(replay.supersede_tombstone_replay_projected);
+    assert!(replay.digest_freshness_replay_projected);
+    assert_eq!(replay.wal_replay_digest.len(), 16);
+    assert!(replay.freshness_check_pass);
+    assert!(replay.replay_guard_pass);
+    assert!(replay.stale_replay_rejected);
+    assert!(replay.operator_approval_required);
+    assert!(!replay.operator_approval_recorded);
+    assert_eq!(replay.receipt_recorded_count(), 0);
+    assert_eq!(replay.receipt_persisted_count(), 0);
+    assert_eq!(replay.production_write_count(), 0);
+    assert_eq!(replay.graph_write_count(), 0);
+    assert!(!replay.production_route);
+    assert!(!replay.production_write);
+    assert!(!replay.graph_write);
+    assert!(!replay.hot_path_write);
+    assert!(!replay.prompt_assembly_change);
+    assert!(!replay.runtime_activation);
+    assert!(!replay.operator_activation_allowed);
+
+    let json =
+        serde_json::to_string(&replay).expect("temporal graph shadow replay should serialize");
+    assert!(json.contains("wal_replay_digest"));
+    assert!(json.contains("bitemporal_validity_replay_projected"));
+    assert!(json.contains("supersede_tombstone_replay_projected"));
+    assert!(!json.contains("replay-test"));
+    assert!(!json.contains("entity_hash"));
+    assert!(!json.contains("fact_text"));
+    assert!(!json.contains("entity_text"));
+    assert!(!json.contains("transcript_text"));
+    assert!(!json.contains("memory_text"));
+    assert!(!json.contains("source_id"));
+    assert!(!json.contains("memory_id"));
+    assert!(!json.contains("query_text"));
+    assert!(!json.contains("\"recorded_receipt\":true"));
+    assert!(!json.contains("\"persisted_receipt\":true"));
+    assert!(!json.contains("\"production_route\":true"));
+    assert!(!json.contains("\"production_write\":true"));
+    assert!(!json.contains("\"graph_write\":true"));
+    assert!(!json.contains("\"runtime_activation\":true"));
+}
