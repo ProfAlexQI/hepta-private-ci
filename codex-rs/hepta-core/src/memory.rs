@@ -193,6 +193,7 @@ pub use temporal::ContextMemoryTemporalFactReport;
 pub use temporal::ContextMemoryTemporalFactType;
 pub use temporal::ContextMemoryTemporalGraphShadowReplayReport;
 pub use temporal::ContextMemoryTemporalGraphShadowStoreReport;
+pub use temporal::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 pub use transcript::TranscriptEntry;
 pub use transcript::TranscriptEntryKind;
 pub use transcript::TranscriptQuery;
@@ -221,9 +222,10 @@ pub const CONTEXT_MEMORY_WRITE_CHAIN_RECEIPT_FRESHNESS_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_FACT_GRAPH_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_STORE_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_REPLAY_SCHEMA_VERSION: u32 = 1;
-pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 16;
-pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 16;
-pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 15;
+pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_DIFF_SCHEMA_VERSION: u32 = 1;
+pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 17;
+pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 17;
+pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 16;
 
 /// Declares whether a memory record belongs to a single session or to a wider
 /// cross-session corpus.

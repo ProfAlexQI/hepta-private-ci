@@ -1127,6 +1127,58 @@ include `temporal-graph-shadow-replay=pass`,
 `temporal-graph-shadow-replay.production-write=disabled`,
 `temporal-graph-shadow-replay.graph-write=disabled`, and
 `temporal-graph-shadow-replay.runtime-activation=disabled`.
+
+Temporal graph shadow traversal diff surface: recall diagnostics may expose a
+shadow temporal graph retrieval/traversal diff surface derived only from the
+temporal graph shadow replay report. It compares the current production
+selection count with lexical/BM25, semantic, and graph traversal candidate
+aggregate counts, but it is not a production recall route, not graph
+persistence, not LLM rerank, and must remain report/gate only. The surface may
+carry only aggregate counters: `memory_temporal_graph_shadow_traversal_diff`,
+`lexical_bm25_candidate_count`, `semantic_candidate_count`,
+`graph_traversal_candidate_count`, `hybrid_candidate_count`,
+`overlap_candidate_count`, `graph_expansion_candidate_count`,
+`traversal_diff_win_count`, `traversal_diff_loss_count`,
+`traversal_diff_cost_count`, stage/digest/freshness/replay/stale-replay counts,
+and disabled side-effect counters. It must not export candidate payloads,
+candidate ids, traversal paths, memory text, transcript text, prompt text,
+query payloads, source ids, memory ids, entity hashes, fact hashes, edge
+hashes, raw graph payloads, tool arguments, tool outputs, operator identity, or
+user identifiers. Traversal diff integrity requires schema version 1, source
+replay schema version 1, exactly five projected stages,
+`aggregate_counters_only`, production/lexical/semantic counts aligned, graph
+traversal and hybrid counts at least the production count, graph expansion
+equal to graph traversal minus overlap, replay digest/freshness/guard/stale
+rejection projected, `llm_rerank=false`, `graph_persistence=false`,
+`production_route=false`, `production_write=false`, and `graph_write=false`.
+It must not persist graph facts, must not enable LLM rerank, must not alter production recall routing, must not write production memory, must not alter
+prompt assembly, must not enable runtime activation, and must not allow
+operator activation. The Rust-backed report is
+`ContextMemoryTemporalGraphShadowTraversalDiffReport` in
+`codex-rs/hepta-core/src/memory/temporal/traversal_diff.rs`, exposed through
+`context_memory_temporal_graph_shadow_traversal_diff_report` on context-plane
+helpers and `recall_context_memory_temporal_graph_shadow_traversal_diff_report`
+on both `StoreSnapshot` and `InMemoryStore`.
+
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-report.sh`
+emits the payload-light shadow traversal diff scoreboard, and
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh`
+verifies the report, Rust-backed context-plane projections, hepta-core and
+hepta-memory helper tests, debug/preflight wiring, source-aware front-door
+static check, release manifest entries, and no-leak constraints. The context
+debug gate and preflight must run
+`scripts/hepta-context-memory-temporal-graph-shadow-traversal-diff-gate.sh`
+after `scripts/hepta-context-memory-temporal-graph-shadow-replay-gate.sh` and
+before `scripts/hepta-context-memory-eval-harness-seed-gate.sh`. The gate
+output must include `temporal-graph-shadow-traversal-diff=pass`,
+`temporal-graph-shadow-traversal-diff.payload-light=pass`,
+`temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
+`temporal-graph-shadow-traversal-diff.llm-rerank=disabled`,
+`temporal-graph-shadow-traversal-diff.graph-persistence=disabled`,
+`temporal-graph-shadow-traversal-diff.production-route=disabled`,
+`temporal-graph-shadow-traversal-diff.production-write=disabled`,
+`temporal-graph-shadow-traversal-diff.graph-write=disabled`, and
+`temporal-graph-shadow-traversal-diff.runtime-activation=disabled`.
 Context memory eval harness seed: recall diagnostics may expose an offline,
 behavior-neutral eval harness seed for future quality gates. The seed may
 contain only fixed metric names (`recall_coverage`, `missing_critical_fact`,
@@ -1969,6 +2021,41 @@ include `context-plane-status.memory-temporal-graph-shadow-replay=shadow`,
 `context-plane-status.memory-temporal-graph-shadow-replay.stage-projected-count=6`,
 `context-plane-status.memory-temporal-graph-shadow-replay.recorded-receipt-count=0`, and
 `context-plane-status.memory-temporal-graph-shadow-replay.graph-write-count=0`.
+The `memory_temporal_graph_shadow_traversal_diff` row is shadow-only until a
+separately approved temporal graph retrieval route is promoted. It may carry
+only aggregate temporal graph traversal diff counters:
+`memory_temporal_graph_shadow_traversal_diff_production_selection_count`,
+`memory_temporal_graph_shadow_traversal_diff_lexical_bm25_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_semantic_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_hybrid_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_overlap_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_graph_expansion_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_win_count`,
+`memory_temporal_graph_shadow_traversal_diff_loss_count`,
+`memory_temporal_graph_shadow_traversal_diff_cost_count`,
+`memory_temporal_graph_shadow_traversal_diff_stage_required_count`,
+`memory_temporal_graph_shadow_traversal_diff_stage_projected_count`,
+`memory_temporal_graph_shadow_traversal_diff_digest_count`,
+`memory_temporal_graph_shadow_traversal_diff_freshness_pass_count`,
+`memory_temporal_graph_shadow_traversal_diff_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_traversal_diff_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_traversal_diff_llm_rerank_count`,
+`memory_temporal_graph_shadow_traversal_diff_graph_persistence_count`,
+`memory_temporal_graph_shadow_traversal_diff_production_route_count`,
+`memory_temporal_graph_shadow_traversal_diff_production_write_count`, and
+`memory_temporal_graph_shadow_traversal_diff_graph_write_count`. Status
+integrity must reject temporal graph traversal diff false-green rows: projected
+stage count must be 5, digest/freshness/replay/stale-replay counts must be 5,
+production/lexical/semantic counts must align, graph traversal and hybrid
+counts must cover production selection, and LLM-rerank, graph-persistence,
+production-route, production-write, and graph-write counts must be 0.
+Non-temporal-graph-traversal-diff rows must not carry traversal diff counters.
+Gate-pass status export must include
+`context-plane-status.memory-temporal-graph-shadow-traversal-diff=shadow`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
+`context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-route-count=0`, and
+`context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0`.
 The `memory_provider_boundary` row is
 shadow-only until a separately approved provider route is promoted. The
 `memory_ranked_recall_shadow_eval` row is shadow-only until a separately
@@ -2199,6 +2286,15 @@ projected stages, missing digest/freshness/replay/stale-replay evidence,
 recorded operator approval, recorded/persisted receipts, production-write count
 drift, graph-write count drift, or temporal graph replay counters appearing on
 non-replay rows.
+The `memory_temporal_graph_shadow_traversal_diff` matrix row carries the same
+temporal graph shadow traversal diff counters as the status row and must reject
+missing projected stages, missing digest/freshness/replay/stale-replay
+evidence, lexical/semantic/graph traversal aggregate drift, LLM-rerank count
+drift, graph-persistence count drift, production-route count drift,
+production-write count drift, graph-write count drift, or temporal graph
+traversal diff counters appearing on non-traversal-diff rows. Until a separate
+operator-approved retrieval route exists, the row must carry the blocker reason
+`temporal_graph_shadow_traversal_diff_shadow_only`.
 Canary-promotion matrix row integrity must reject
 false-green checklist drift: no promotion blockers requires a full four-link
 checklist and complete stable-window/pass-streak/rehearsal counts, and a
@@ -2222,6 +2318,10 @@ activation matrix export must include
 `context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stage-projected-count=6`,
 `context-plane-activation-blockers.memory-temporal-graph-shadow-replay.recorded-receipt-count=0`,
 `context-plane-activation-blockers.memory-temporal-graph-shadow-replay.graph-write-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff=blocked:temporal_graph_shadow_traversal_diff_shadow_only`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0`,
+`context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0`,
 `context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only`,
 `context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2489,16 +2589,50 @@ not 6, digest/freshness/replay/stale-replay counts are not 6, operator
 approval is not required or has already been recorded, recorded/persisted
 receipt counts are nonzero, or production-write/graph-write counts are
 nonzero.
+The operator packet must also surface `memory_temporal_graph_shadow_traversal_diff`
+aggregate counters so an operator can inspect how lexical/BM25, semantic, and
+graph traversal candidates would differ without enabling a production route.
+The packet may carry only
+`memory_temporal_graph_shadow_traversal_diff_production_selection_count`,
+`memory_temporal_graph_shadow_traversal_diff_lexical_bm25_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_semantic_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_hybrid_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_overlap_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_graph_expansion_candidate_count`,
+`memory_temporal_graph_shadow_traversal_diff_win_count`,
+`memory_temporal_graph_shadow_traversal_diff_loss_count`,
+`memory_temporal_graph_shadow_traversal_diff_cost_count`,
+`memory_temporal_graph_shadow_traversal_diff_stage_required_count`,
+`memory_temporal_graph_shadow_traversal_diff_stage_projected_count`,
+`memory_temporal_graph_shadow_traversal_diff_digest_count`,
+`memory_temporal_graph_shadow_traversal_diff_freshness_pass_count`,
+`memory_temporal_graph_shadow_traversal_diff_replay_guard_pass_count`,
+`memory_temporal_graph_shadow_traversal_diff_stale_replay_rejected_count`,
+`memory_temporal_graph_shadow_traversal_diff_llm_rerank_count`,
+`memory_temporal_graph_shadow_traversal_diff_graph_persistence_count`,
+`memory_temporal_graph_shadow_traversal_diff_production_route_count`,
+`memory_temporal_graph_shadow_traversal_diff_production_write_count`, and
+`memory_temporal_graph_shadow_traversal_diff_graph_write_count`. Packet
+integrity must reject temporal graph traversal diff false-green packets where
+projected stage count is not 5, digest/freshness/replay/stale-replay counts are
+not 5, aggregate counters do not remain payload-light and aligned, or
+LLM-rerank, graph-persistence, production-route, production-write, or
+graph-write counts are nonzero.
 Gate-pass operator approval export must include
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-store-shadow-only=1`,
 `context-plane-operator-approval-packet.blocker.temporal-graph-shadow-replay-shadow-only=1`,
+`context-plane-operator-approval-packet.blocker.temporal-graph-shadow-traversal-diff-shadow-only=1`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.stage-projected-count=6`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.recorded-receipt-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-store.graph-write-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-replay.stage-projected-count=6`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-replay.recorded-receipt-count=0`,
 `context-plane-operator-approval-packet.memory-temporal-graph-shadow-replay.graph-write-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.production-route-count=0`,
+`context-plane-operator-approval-packet.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0`,
 `context-plane-operator-approval-packet.blocker.memory-ranked-recall-shadow-eval-shadow-only=1`,
 `context-plane-operator-approval-packet.ranked-recall.hybrid-signal-pass-count=5`,
 `context-plane-operator-approval-packet.ranked-recall.positive-hybrid-signal-pass-count=15`,
@@ -2646,8 +2780,8 @@ allowlisted `context-plane-operator-approval-packet-canonical-export-digest.*`
 keys only. It may carry only schema version, canonical line counts, SHA-256
 digests for the approval report, negative export report, and combined report,
 plus explicit disabled runtime/operator activation booleans. Current canonical
-line counts are approval report 179 lines, negative export report 4 lines, and
-combined report 183 lines. The digest report must be deterministic and idempotent:
+line counts are approval report 201 lines, negative export report 4 lines, and
+combined report 205 lines. The digest report must be deterministic and idempotent:
 two consecutive runs over unchanged inputs must be byte-for-byte equal. It must not contain activation commands, command-shaped fields, raw
 payloads, prompt text, transcript text, memory text, answer text, source ids,
 session ids, memory ids, trace ids, query payloads, ranked payloads, tool

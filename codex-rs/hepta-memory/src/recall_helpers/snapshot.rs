@@ -8,6 +8,7 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
+use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextRecallAvailability;
@@ -347,6 +348,17 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalGraphShadowReplayReport {
         ContextMemoryTemporalGraphShadowReplayReport::from_shadow_store(
             &self.recall_context_memory_temporal_graph_shadow_store_report(request),
+        )
+    }
+
+    /// Builds a payload-light temporal graph retrieval/traversal diff surface
+    /// from replay evidence without graph traversal activation or reranking.
+    pub fn recall_context_memory_temporal_graph_shadow_traversal_diff_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowTraversalDiffReport {
+        ContextMemoryTemporalGraphShadowTraversalDiffReport::from_shadow_replay(
+            &self.recall_context_memory_temporal_graph_shadow_replay_report(request),
         )
     }
 }

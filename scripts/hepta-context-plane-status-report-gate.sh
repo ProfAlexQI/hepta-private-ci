@@ -92,6 +92,10 @@ for term in \
   "memory_temporal_graph_shadow_store_stage_projected_count" \
   "memory_temporal_graph_shadow_store_digest_count" \
   "memory_temporal_graph_shadow_store_stale_replay_rejected_count" \
+  "memory_temporal_graph_shadow_traversal_diff" \
+  "memory_temporal_graph_shadow_traversal_diff_stage_projected_count" \
+  "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count" \
+  "memory_temporal_graph_shadow_traversal_diff_llm_rerank_count" \
   "eval_harness_seed" \
   "adaptive_allocator_eval_shadow" \
   "recall_quality_gate" \
@@ -173,6 +177,10 @@ for term in \
   "context-plane-status.memory-temporal-graph-shadow-replay.stage-projected-count=6" \
   "context-plane-status.memory-temporal-graph-shadow-replay.recorded-receipt-count=0" \
   "context-plane-status.memory-temporal-graph-shadow-replay.graph-write-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-diff=shadow" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-route-count=0" \
+  "context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0" \
   "runtime-activation=disabled"; do
   assert_file_contains "$contracts" "$term" "context plane status contract"
 done
@@ -346,6 +354,28 @@ context-plane-status.memory-temporal-graph-shadow-replay.recorded-receipt-count=
 context-plane-status.memory-temporal-graph-shadow-replay.persisted-receipt-count=0
 context-plane-status.memory-temporal-graph-shadow-replay.production-write-count=0
 context-plane-status.memory-temporal-graph-shadow-replay.graph-write-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-diff=shadow
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-selection-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.lexical-bm25-candidate-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.semantic-candidate-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-traversal-candidate-count=10
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.hybrid-candidate-count=10
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.overlap-candidate-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-expansion-candidate-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.win-count=1
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.loss-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.cost-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.stage-required-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.digest-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.freshness-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.replay-guard-pass-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.stale-replay-rejected-count=5
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.llm-rerank-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-persistence-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-route-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.production-write-count=0
+context-plane-status.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0
 context-plane-status.eval-harness-seed=ready
 context-plane-status.adaptive-allocator-eval-shadow=shadow
 context-plane-status.recall-quality-gate=ready

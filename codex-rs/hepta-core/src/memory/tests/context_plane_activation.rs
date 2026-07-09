@@ -94,6 +94,31 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                 entry.memory_temporal_graph_shadow_replay_operator_approval_required_count = 1;
                 entry
             },
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff,
+                    5,
+                );
+                entry.memory_temporal_graph_shadow_traversal_diff_production_selection_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_lexical_bm25_candidate_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_semantic_candidate_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count =
+                    10;
+                entry.memory_temporal_graph_shadow_traversal_diff_hybrid_candidate_count = 10;
+                entry.memory_temporal_graph_shadow_traversal_diff_overlap_candidate_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_graph_expansion_candidate_count =
+                    5;
+                entry.memory_temporal_graph_shadow_traversal_diff_win_count = 1;
+                entry.memory_temporal_graph_shadow_traversal_diff_loss_count = 0;
+                entry.memory_temporal_graph_shadow_traversal_diff_cost_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_stage_required_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_stage_projected_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_digest_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_freshness_pass_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_replay_guard_pass_count = 5;
+                entry.memory_temporal_graph_shadow_traversal_diff_stale_replay_rejected_count = 5;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::EvalHarnessSeed, 2),
             ContextPlaneStatusEntry::shadow(
                 ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
@@ -212,9 +237,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 23);
+    assert_eq!(matrix.rows.len(), 24);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 14);
+    assert_eq!(matrix.blocker_count, 15);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -277,12 +302,63 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowReplayShadowOnly)
     );
     assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff),
+        Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalDiffShadowOnly)
+    );
+    assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
         Some(ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled)
     );
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::OperatorApproval),
         Some(ContextPlaneActivationBlockerReason::OperatorApprovalMissing)
+    );
+    let temporal_graph_traversal_diff_row = matrix
+        .row_for_target(ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff)
+        .expect("memory temporal graph shadow traversal diff activation row should exist");
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_production_selection_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count,
+        10
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row.memory_temporal_graph_shadow_traversal_diff_digest_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_llm_rerank_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_graph_persistence_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_production_write_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_row
+            .memory_temporal_graph_shadow_traversal_diff_graph_write_count,
+        0
     );
     assert!(!matrix.production_write);
     assert!(!matrix.graph_write);
@@ -304,6 +380,14 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("memory_write_chain_canary_ready_count"));
     assert!(json.contains("memory_temporal_graph_shadow_eval"));
     assert!(json.contains("memory_temporal_graph_shadow_replay"));
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_diff"));
+    assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
+    assert!(
+        json.contains(
+            "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count"
+        )
+    );
+    assert!(json.contains("memory_temporal_graph_shadow_traversal_diff_stage_projected_count"));
     assert!(json.contains("recall_quality_gate"));
     assert!(json.contains("memory_ranked_recall_shadow_eval"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
@@ -339,6 +423,7 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     assert!(json.contains("adaptive_budget_allocation_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_eval_shadow_only"));
     assert!(json.contains("temporal_graph_shadow_replay_shadow_only"));
+    assert!(json.contains("temporal_graph_shadow_traversal_diff_shadow_only"));
     assert!(json.contains("memory_ranked_recall_shadow_eval_shadow_only"));
     assert!(json.contains("memory_provider_boundary_shadow_only"));
     assert!(json.contains("memory_provider_v2_boundary_shadow_only"));
@@ -519,9 +604,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 23);
+    assert_eq!(matrix.rows.len(), 24);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 15);
+    assert_eq!(matrix.blocker_count, 16);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -563,6 +648,10 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
         Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowReplayShadowOnly)
     );
     assert_eq!(
+        matrix.blocker_reason(ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff),
+        Some(ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalDiffShadowOnly)
+    );
+    assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::SourceAwareFrontDoor),
         Some(ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled)
     );
@@ -602,7 +691,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 23);
+    assert_eq!(report_side_effect_matrix.blocker_count, 24);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -635,9 +724,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 23);
+    assert_eq!(matrix.rows.len(), 24);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 15);
+    assert_eq!(matrix.blocker_count, 16);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

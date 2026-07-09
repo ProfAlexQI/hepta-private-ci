@@ -216,6 +216,7 @@ codex-rs/hepta-core/src/memory/temporal/fact.rs
 codex-rs/hepta-core/src/memory/temporal/graph.rs
 codex-rs/hepta-core/src/memory/temporal/replay.rs
 codex-rs/hepta-core/src/memory/temporal/store.rs
+codex-rs/hepta-core/src/memory/temporal/traversal_diff.rs
 codex-rs/hepta-core/src/memory/tests.rs
 codex-rs/hepta-core/src/memory/tests/context_plane_activation.rs
 codex-rs/hepta-core/src/memory/tests/context_plane_operator_packet.rs

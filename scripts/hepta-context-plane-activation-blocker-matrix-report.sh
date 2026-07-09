@@ -3,10 +3,10 @@ set -euo pipefail
 
 cat <<'STATUS'
 context-plane-activation-blockers=pass
-context-plane-activation-blockers.schema=16
-context-plane-activation-blockers.rows=23
+context-plane-activation-blockers.schema=17
+context-plane-activation-blockers.rows=24
 context-plane-activation-blockers.satisfied=9
-context-plane-activation-blockers.blockers=14
+context-plane-activation-blockers.blockers=15
 context-plane-activation-blockers.source-registry=ready
 context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
 context-plane-activation-blockers.memory-taxonomy=ready
@@ -87,6 +87,28 @@ context-plane-activation-blockers.memory-temporal-graph-shadow-replay.recorded-r
 context-plane-activation-blockers.memory-temporal-graph-shadow-replay.persisted-receipt-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-replay.production-write-count=0
 context-plane-activation-blockers.memory-temporal-graph-shadow-replay.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff=blocked:temporal_graph_shadow_traversal_diff_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-selection-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.lexical-bm25-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.semantic-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-traversal-candidate-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.hybrid-candidate-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.overlap-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-expansion-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.win-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.loss-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.cost-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.digest-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.freshness-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.replay-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stale-replay-rejected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0
 context-plane-activation-blockers.eval-harness-seed=ready
 context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
 context-plane-activation-blockers.recall-quality-gate=ready

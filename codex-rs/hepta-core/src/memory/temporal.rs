@@ -2,6 +2,7 @@ mod fact;
 mod graph;
 mod replay;
 mod store;
+mod traversal_diff;
 
 pub use fact::ContextMemoryTemporalFact;
 pub use fact::ContextMemoryTemporalFactReport;
@@ -12,3 +13,4 @@ pub use graph::ContextMemoryTemporalFactGraphNode;
 pub use graph::ContextMemoryTemporalFactGraphReport;
 pub use replay::ContextMemoryTemporalGraphShadowReplayReport;
 pub use store::ContextMemoryTemporalGraphShadowStoreReport;
+pub use traversal_diff::ContextMemoryTemporalGraphShadowTraversalDiffReport;

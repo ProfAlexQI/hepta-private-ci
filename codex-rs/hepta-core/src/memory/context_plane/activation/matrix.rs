@@ -144,6 +144,13 @@ impl ContextPlaneActivationBlockerMatrix {
                 report_side_effect_flag_enabled,
             ),
             row_from_section(
+                ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff,
+                status,
+                ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff,
+                ContextPlaneStatusKind::Ready,
+                report_side_effect_flag_enabled,
+            ),
+            row_from_section(
                 ContextPlaneActivationTarget::EvalHarnessSeed,
                 status,
                 ContextPlaneStatusSection::EvalHarnessSeed,
@@ -228,7 +235,7 @@ impl ContextPlaneActivationBlockerMatrix {
 
     pub fn has_matrix_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION
-            && self.rows.len() == 23
+            && self.rows.len() == 24
             && self.has_required_targets()
             && self.blocker_count
                 == self
@@ -265,6 +272,7 @@ impl ContextPlaneActivationBlockerMatrix {
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval,
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore,
             ContextPlaneActivationTarget::MemoryTemporalGraphShadowReplay,
+            ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff,
             ContextPlaneActivationTarget::EvalHarnessSeed,
             ContextPlaneActivationTarget::AdaptiveAllocatorEvalShadow,
             ContextPlaneActivationTarget::RecallQualityGate,

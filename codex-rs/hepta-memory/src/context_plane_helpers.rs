@@ -15,6 +15,7 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalGraphShadowEvalReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
+use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
 use hepta_core::ContextMemoryWriteChainReadinessReport;
 use hepta_core::ContextMemoryWriteChainReceiptFreshnessReport;
 use hepta_core::ContextPlaneActivationBlockerMatrix;
@@ -119,6 +120,17 @@ impl StoreSnapshot {
         )
     }
 
+    /// Builds the offline temporal-graph retrieval/traversal diff report
+    /// without enabling graph traversal, reranking, or a production route.
+    pub fn context_memory_temporal_graph_shadow_traversal_diff_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowTraversalDiffReport {
+        ContextMemoryTemporalGraphShadowTraversalDiffReport::from_shadow_replay(
+            &self.context_memory_temporal_graph_shadow_replay_report(request),
+        )
+    }
+
     /// Builds a payload-light dashboard that closes the loop across recall,
     /// temporal graph, quality, and provider shadow reports.
     pub fn context_memory_shadow_regression_dashboard_report(
@@ -195,6 +207,10 @@ impl StoreSnapshot {
             ContextMemoryTemporalGraphShadowReplayReport::from_shadow_store(
                 &temporal_graph_shadow_store,
             );
+        let temporal_graph_shadow_traversal_diff =
+            ContextMemoryTemporalGraphShadowTraversalDiffReport::from_shadow_replay(
+                &temporal_graph_shadow_replay,
+            );
         let eval_seed = self.context_memory_eval_harness_seed_report();
         let allocator_shadow =
             ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
@@ -229,6 +245,7 @@ impl StoreSnapshot {
             temporal_graph_shadow_eval: &temporal_graph_shadow_eval,
             temporal_graph_shadow_store: &temporal_graph_shadow_store,
             temporal_graph_shadow_replay: &temporal_graph_shadow_replay,
+            temporal_graph_shadow_traversal_diff: &temporal_graph_shadow_traversal_diff,
             eval_seed: &eval_seed,
             allocator_shadow: &allocator_shadow,
             recall_quality_gate: &recall_quality_gate,
@@ -329,6 +346,15 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .context_memory_temporal_graph_shadow_replay_report(&request))
+    }
+
+    pub fn context_memory_temporal_graph_shadow_traversal_diff_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<ContextMemoryTemporalGraphShadowTraversalDiffReport, hepta_core::MemoryError> {
+        Ok(self
+            .snapshot()?
+            .context_memory_temporal_graph_shadow_traversal_diff_report(&request))
     }
 
     pub fn context_memory_shadow_regression_dashboard_report(

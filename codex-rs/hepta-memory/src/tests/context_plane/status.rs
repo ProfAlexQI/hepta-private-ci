@@ -35,9 +35,9 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     let report = snapshot.context_plane_status_report(&request);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 22);
+    assert_eq!(report.sections.len(), 23);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 13);
+    assert_eq!(report.shadow_section_count(), 14);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(
@@ -94,6 +94,10 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowReplay),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        report.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
@@ -212,6 +216,58 @@ fn store_snapshot_context_plane_status_report_is_payload_light() {
     );
     assert_eq!(
         temporal_graph_replay_entry.memory_temporal_graph_shadow_replay_graph_write_count,
+        0
+    );
+    let temporal_graph_traversal_diff_entry = report
+        .sections
+        .iter()
+        .find(|entry| {
+            entry.section == ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff
+        })
+        .expect("temporal graph shadow traversal diff status row should exist");
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_production_selection_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count,
+        10
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_stage_projected_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_digest_count,
+        5
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_llm_rerank_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_graph_persistence_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_production_route_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_production_write_count,
+        0
+    );
+    assert_eq!(
+        temporal_graph_traversal_diff_entry
+            .memory_temporal_graph_shadow_traversal_diff_graph_write_count,
         0
     );
     let promotion_entry = report
@@ -403,7 +459,7 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
 
     assert_eq!(from_store, snapshot.context_plane_status_report(&request));
     assert!(from_store.has_status_integrity());
-    assert_eq!(from_store.sections.len(), 22);
+    assert_eq!(from_store.sections.len(), 23);
     assert_eq!(from_store.blocker_count(), 0);
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::RecallQualityGate),
@@ -439,6 +495,11 @@ async fn store_context_plane_status_report_matches_snapshot_helper() {
     );
     assert_eq!(
         from_store.section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowReplay),
+        Some(ContextPlaneStatusKind::Shadow)
+    );
+    assert_eq!(
+        from_store
+            .section_status(ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff),
         Some(ContextPlaneStatusKind::Shadow)
     );
     assert_eq!(
