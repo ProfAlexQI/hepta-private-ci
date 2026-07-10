@@ -35,6 +35,7 @@ struct ShellPairManifest {
 #[serde(deny_unknown_fields)]
 struct ShellPairMigrationSpec {
     id: String,
+    template: String,
     capability: String,
     receipt_state: String,
     side_effect_boundary: String,
@@ -44,6 +45,7 @@ struct ShellPairMigrationSpec {
     readback_surface: String,
     acknowledgement_prefix: String,
     summary_prefix: String,
+    observability_prefix: Option<String>,
     blocker_count: u64,
     next_migration_step: String,
     missing_source_message: String,
@@ -86,6 +88,7 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "runner": "hepta gate",
             "mode": "declarative_shell_pair_migration",
             "id": spec.id,
+            "template": spec.template,
             "capability": spec.capability,
             "receipt_state": spec.receipt_state,
             "side_effect_boundary": spec.side_effect_boundary,
@@ -150,6 +153,16 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
     let mut specs = BTreeMap::new();
     for spec in manifest.pairs {
         validate_id(&spec.id)?;
+        if !matches!(
+            spec.template.as_str(),
+            "signing_final_ack_readback" | "signing_summary_readback"
+        ) {
+            anyhow::bail!(
+                "Hepta migrated gate pair {} has invalid template: {}",
+                spec.id,
+                spec.template
+            );
+        }
         let expected_report_path = format!("scripts/{}-report.sh", spec.id);
         if spec.report_path != expected_report_path {
             anyhow::bail!(
@@ -179,7 +192,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             &spec.source_report,
             &spec.side_effect_boundary,
         )
-        .map(|state| state.as_str());
+        .map(super::gate_spec::ReceiptState::as_str);
         if classified_state != Some(spec.receipt_state.as_str()) {
             anyhow::bail!(
                 "Hepta migrated gate pair {} receipt state does not match ReceiptStateMachine",
@@ -187,6 +200,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             );
         }
         let required_fields = [
+            spec.template.as_str(),
             spec.capability.as_str(),
             spec.side_effect_boundary.as_str(),
             spec.attachment_surface.as_str(),
@@ -201,6 +215,17 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         if required_fields.iter().any(|field| field.trim().is_empty()) || spec.blocker_count == 0 {
             anyhow::bail!(
                 "Hepta migrated gate pair {} has empty required fields",
+                spec.id
+            );
+        }
+        if spec.template == "signing_summary_readback"
+            && spec
+                .observability_prefix
+                .as_deref()
+                .is_none_or(|prefix| prefix.trim().is_empty())
+        {
+            anyhow::bail!(
+                "Hepta migrated summary pair {} has no observability prefix",
                 spec.id
             );
         }
@@ -604,10 +629,10 @@ mod tests {
                 .as_u64()
                 .is_some_and(|count| count > 0)
         );
-        assert_eq!(value["thin_wrapper_pair_count"], 3);
+        assert_eq!(value["thin_wrapper_pair_count"], 6);
         assert_eq!(
             value["legacy_pair_count"].as_u64(),
-            value["exact_pair_count"].as_u64().map(|count| count - 3)
+            value["exact_pair_count"].as_u64().map(|count| count - 6)
         );
         assert_eq!(value["execution_requires_explicit_flag"], true);
         assert_eq!(value["repo_root_required"], true);
@@ -643,8 +668,8 @@ mod tests {
         );
         assert_eq!(first["script_execution_performed"], false);
         assert_eq!(first["side_effect_free"], true);
-        assert_eq!(first["thin_wrapper_pair_count"], 3);
-        assert_eq!(first["legacy_pair_count"], 1279);
+        assert_eq!(first["thin_wrapper_pair_count"], 6);
+        assert_eq!(first["legacy_pair_count"], 1276);
         assert_eq!(first["catalog_sha256"].as_str().map(str::len), Some(64));
         assert_eq!(
             first["exact_pair_id_sha256"].as_str().map(str::len),
@@ -670,14 +695,14 @@ mod tests {
                 .iter()
                 .filter(|entry| entry["thin_wrapper_migrated"] == true)
                 .count()),
-            Some(3)
+            Some(6)
         );
     }
 
     #[test]
     fn migrated_pair_specs_use_the_receipt_state_machine() {
         let specs = migrated_pair_specs().expect("migrated pair specs");
-        assert_eq!(specs.len(), 3);
+        assert_eq!(specs.len(), 6);
         assert!(specs.values().all(|spec| {
             ReceiptStateMachine::classify_fields(
                 &spec.capability,
@@ -694,6 +719,7 @@ mod tests {
         )
         .expect("migrated pair value");
         assert_eq!(value["mode"], "declarative_shell_pair_migration");
+        assert_eq!(value["template"], "signing_final_ack_readback");
         assert_eq!(value["receipt_state"], "terminal");
         assert_eq!(value["report_execution_performed"], false);
     }
@@ -756,7 +782,12 @@ mod tests {
             snapshot["legacy_pair_count"],
             latest["remaining_legacy_pair_count"]
         );
-        assert_eq!(latest["successful_output_byte_parity_count"], 6);
+        assert_eq!(
+            latest["successful_output_byte_parity_count"].as_u64(),
+            latest["migrated_pair_count"]
+                .as_u64()
+                .map(|count| count * 2)
+        );
         assert_eq!(latest["report_output_byte_parity_ready"], true);
         assert_eq!(latest["gate_output_byte_parity_ready"], true);
 
