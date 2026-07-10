@@ -1726,6 +1726,9 @@ scripts/hepta-json-report-capture-migration-inventory-gate.sh
 echo "[hepta-preflight] route gate dynamic count regression gate"
 scripts/hepta-route-gate-dynamic-count-regression-gate.sh
 
+echo "[hepta-preflight] suffix-ladder freeze"
+scripts/check-hepta-suffix-ladder-freeze.sh
+
 echo "[hepta-preflight] preflight terminal coverage inventory gate"
 scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 
