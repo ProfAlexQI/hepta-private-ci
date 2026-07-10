@@ -5,6 +5,7 @@ mod native_gateway;
 mod native_telegram;
 mod provider_domain;
 mod route_registry;
+mod ui_domain;
 
 pub use native_gateway::NativeGatewayOptions;
 pub use native_gateway::gate_command_json;
