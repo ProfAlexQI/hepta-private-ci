@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -7,6 +8,14 @@ use std::process::Command;
 
 use anyhow::Context;
 use anyhow::Result;
+use sha2::Digest;
+use sha2::Sha256;
+
+#[derive(Debug, Default)]
+struct ShellScriptAvailability {
+    gate: Option<PathBuf>,
+    report: Option<PathBuf>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GateScriptKind {
@@ -25,6 +34,11 @@ pub(crate) fn execute_report(id: &str) -> Result<String> {
 pub(crate) fn shell_gate_catalog_json() -> Result<String> {
     let repo_root = execution_repo_root()?;
     shell_gate_catalog_json_for_root(&repo_root)
+}
+
+pub(crate) fn shell_gate_snapshot_json() -> Result<String> {
+    let repo_root = execution_repo_root()?;
+    shell_gate_snapshot_json_for_root(&repo_root)
 }
 
 fn execute_compatibility_script(id: &str, kind: GateScriptKind) -> Result<String> {
@@ -103,45 +117,25 @@ fn resolve_compatibility_script(
 }
 
 fn shell_gate_catalog_json_for_root(repo_root: &Path) -> Result<String> {
-    let scripts_root = fs::canonicalize(repo_root.join("scripts"))
-        .context("HEPTA_REPO_ROOT does not contain a scripts directory")?;
-    let mut catalog = BTreeMap::<String, (bool, bool)>::new();
-    for entry in fs::read_dir(&scripts_root).context("failed to read Hepta scripts directory")? {
-        let entry = entry.context("failed to read Hepta scripts entry")?;
-        if !entry
-            .file_type()
-            .context("failed to read Hepta scripts entry type")?
-            .is_file()
-        {
-            continue;
-        }
-        let filename = entry.file_name().to_string_lossy().into_owned();
-        let (id, kind) = if let Some(id) = filename.strip_suffix("-gate.sh") {
-            (id, GateScriptKind::Gate)
-        } else if let Some(id) = filename.strip_suffix("-report.sh") {
-            (id, GateScriptKind::Report)
-        } else {
-            continue;
-        };
-        if validate_id(id).is_err() {
-            continue;
-        }
-        let availability = catalog.entry(id.to_string()).or_default();
-        match kind {
-            GateScriptKind::Gate => availability.0 = true,
-            GateScriptKind::Report => availability.1 = true,
-        }
-    }
+    let catalog = shell_gate_catalog_for_root(repo_root)?;
 
-    let gate_count = catalog.values().filter(|(gate, _)| *gate).count();
-    let report_count = catalog.values().filter(|(_, report)| *report).count();
+    let gate_count = catalog
+        .values()
+        .filter(|availability| availability.gate.is_some())
+        .count();
+    let report_count = catalog
+        .values()
+        .filter(|availability| availability.report.is_some())
+        .count();
     let exact_pair_count = catalog
         .values()
-        .filter(|(gate, report)| *gate && *report)
+        .filter(|availability| availability.gate.is_some() && availability.report.is_some())
         .count();
     let entries = catalog
         .into_iter()
-        .map(|(id, (gate, report))| {
+        .map(|(id, availability)| {
+            let gate = availability.gate.is_some();
+            let report = availability.report.is_some();
             serde_json::json!({
                 "id": id,
                 "gate": gate,
@@ -165,6 +159,174 @@ fn shell_gate_catalog_json_for_root(repo_root: &Path) -> Result<String> {
         "repo_root_required": true,
         "entries": entries,
     })))
+}
+
+fn shell_gate_snapshot_json_for_root(repo_root: &Path) -> Result<String> {
+    let catalog = shell_gate_catalog_for_root(repo_root)?;
+    let gate_count = catalog
+        .values()
+        .filter(|availability| availability.gate.is_some())
+        .count();
+    let report_count = catalog
+        .values()
+        .filter(|availability| availability.report.is_some())
+        .count();
+    let exact_pair_count = catalog
+        .values()
+        .filter(|availability| availability.gate.is_some() && availability.report.is_some())
+        .count();
+    let mut catalog_hasher = Sha256::new();
+    let mut pair_id_hasher = Sha256::new();
+    let mut entries = Vec::with_capacity(catalog.len());
+
+    for (id, availability) in catalog {
+        let gate = script_snapshot(repo_root, availability.gate.as_deref())?;
+        let report = script_snapshot(repo_root, availability.report.as_deref())?;
+        let exact_pair = gate.is_some() && report.is_some();
+        let gate_path = gate
+            .as_ref()
+            .map(|snapshot| snapshot.relative_path.as_str())
+            .unwrap_or("");
+        let gate_sha256 = gate
+            .as_ref()
+            .map(|snapshot| snapshot.sha256.as_str())
+            .unwrap_or("");
+        let report_path = report
+            .as_ref()
+            .map(|snapshot| snapshot.relative_path.as_str())
+            .unwrap_or("");
+        let report_sha256 = report
+            .as_ref()
+            .map(|snapshot| snapshot.sha256.as_str())
+            .unwrap_or("");
+
+        catalog_hasher.update(id.as_bytes());
+        catalog_hasher.update(b"\t");
+        catalog_hasher.update(gate_path.as_bytes());
+        catalog_hasher.update(b"\t");
+        catalog_hasher.update(gate_sha256.as_bytes());
+        catalog_hasher.update(b"\t");
+        catalog_hasher.update(report_path.as_bytes());
+        catalog_hasher.update(b"\t");
+        catalog_hasher.update(report_sha256.as_bytes());
+        catalog_hasher.update(b"\n");
+        if exact_pair {
+            pair_id_hasher.update(id.as_bytes());
+            pair_id_hasher.update(b"\n");
+        }
+
+        entries.push(serde_json::json!({
+            "id": id,
+            "gate_path": gate.as_ref().map(|snapshot| snapshot.relative_path.as_str()),
+            "gate_sha256": gate.as_ref().map(|snapshot| snapshot.sha256.as_str()),
+            "report_path": report.as_ref().map(|snapshot| snapshot.relative_path.as_str()),
+            "report_sha256": report.as_ref().map(|snapshot| snapshot.sha256.as_str()),
+            "exact_pair": exact_pair,
+        }));
+    }
+
+    Ok(json_or_error(&serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": "ready",
+        "runner": "hepta gate",
+        "mode": "legacy_shell_compatibility_parity_snapshot",
+        "schema_version": "hepta_shell_gate_parity_snapshot_v1",
+        "gate_count": gate_count,
+        "report_count": report_count,
+        "exact_pair_count": exact_pair_count,
+        "entry_count": entries.len(),
+        "catalog_sha256": hex_digest(catalog_hasher.finalize()),
+        "exact_pair_id_sha256": hex_digest(pair_id_hasher.finalize()),
+        "script_execution_performed": false,
+        "side_effect_free": true,
+        "entries": entries,
+    })))
+}
+
+fn shell_gate_catalog_for_root(
+    repo_root: &Path,
+) -> Result<BTreeMap<String, ShellScriptAvailability>> {
+    let scripts_root = fs::canonicalize(repo_root.join("scripts"))
+        .context("HEPTA_REPO_ROOT does not contain a scripts directory")?;
+    let mut catalog = BTreeMap::<String, ShellScriptAvailability>::new();
+    for entry in fs::read_dir(&scripts_root).context("failed to read Hepta scripts directory")? {
+        let entry = entry.context("failed to read Hepta scripts entry")?;
+        if !entry
+            .file_type()
+            .context("failed to read Hepta scripts entry type")?
+            .is_file()
+        {
+            continue;
+        }
+        let filename = entry.file_name().to_string_lossy().into_owned();
+        let (id, kind) = if let Some(id) = filename.strip_suffix("-gate.sh") {
+            (id, GateScriptKind::Gate)
+        } else if let Some(id) = filename.strip_suffix("-report.sh") {
+            (id, GateScriptKind::Report)
+        } else {
+            continue;
+        };
+        if validate_id(id).is_err() {
+            continue;
+        }
+        let path = fs::canonicalize(entry.path())
+            .with_context(|| format!("failed to canonicalize {filename}"))?;
+        if !path.starts_with(&scripts_root) {
+            anyhow::bail!(
+                "Hepta shell catalog entry escapes scripts root: {}",
+                path.display()
+            );
+        }
+        let availability = catalog.entry(id.to_string()).or_default();
+        let slot = match kind {
+            GateScriptKind::Gate => &mut availability.gate,
+            GateScriptKind::Report => &mut availability.report,
+        };
+        if let Some(existing) = slot {
+            anyhow::bail!(
+                "duplicate Hepta {} catalog entry for {id}: {} and {}",
+                kind.label(),
+                existing.display(),
+                path.display()
+            );
+        }
+        *slot = Some(path);
+    }
+    Ok(catalog)
+}
+
+#[derive(Debug)]
+struct ScriptSnapshot {
+    relative_path: String,
+    sha256: String,
+}
+
+fn script_snapshot(repo_root: &Path, path: Option<&Path>) -> Result<Option<ScriptSnapshot>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let relative_path = path
+        .strip_prefix(repo_root)
+        .with_context(|| format!("script is outside Hepta repo root: {}", path.display()))?
+        .to_string_lossy()
+        .into_owned();
+    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    Ok(Some(ScriptSnapshot {
+        relative_path,
+        sha256: hex_digest(hasher.finalize()),
+    }))
+}
+
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    let bytes = bytes.as_ref();
+    let mut digest = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(&mut digest, "{byte:02x}");
+    }
+    digest
 }
 
 fn validate_id(id: &str) -> Result<()> {
@@ -263,5 +425,87 @@ mod tests {
         );
         assert_eq!(value["execution_requires_explicit_flag"], true);
         assert_eq!(value["repo_root_required"], true);
+    }
+
+    #[test]
+    fn shell_snapshot_is_deterministic_and_content_addressed() {
+        let first: serde_json::Value = serde_json::from_str(
+            &shell_gate_snapshot_json_for_root(repo_root()).expect("first shell snapshot"),
+        )
+        .expect("first shell snapshot value");
+        let second: serde_json::Value = serde_json::from_str(
+            &shell_gate_snapshot_json_for_root(repo_root()).expect("second shell snapshot"),
+        )
+        .expect("second shell snapshot value");
+        let catalog: serde_json::Value = serde_json::from_str(
+            &shell_gate_catalog_json_for_root(repo_root()).expect("shell catalog"),
+        )
+        .expect("shell catalog value");
+
+        assert_eq!(
+            first["schema_version"],
+            "hepta_shell_gate_parity_snapshot_v1"
+        );
+        assert_eq!(first["gate_count"], catalog["gate_count"]);
+        assert_eq!(first["report_count"], catalog["report_count"]);
+        assert_eq!(first["exact_pair_count"], catalog["exact_pair_count"]);
+        assert_eq!(first["entry_count"], catalog["entry_count"]);
+        assert_eq!(first["catalog_sha256"], second["catalog_sha256"]);
+        assert_eq!(
+            first["exact_pair_id_sha256"],
+            second["exact_pair_id_sha256"]
+        );
+        assert_eq!(first["script_execution_performed"], false);
+        assert_eq!(first["side_effect_free"], true);
+        assert_eq!(first["catalog_sha256"].as_str().map(str::len), Some(64));
+        assert_eq!(
+            first["exact_pair_id_sha256"].as_str().map(str::len),
+            Some(64)
+        );
+        assert!(first["entries"].as_array().is_some_and(|entries| {
+            entries.iter().all(|entry| {
+                let gate_ready = entry["gate_path"].is_null()
+                    || (entry["gate_path"]
+                        .as_str()
+                        .is_some_and(|path| path.starts_with("scripts/"))
+                        && entry["gate_sha256"].as_str().map(str::len) == Some(64));
+                let report_ready = entry["report_path"].is_null()
+                    || (entry["report_path"]
+                        .as_str()
+                        .is_some_and(|path| path.starts_with("scripts/"))
+                        && entry["report_sha256"].as_str().map(str::len) == Some(64));
+                gate_ready && report_ready
+            })
+        }));
+    }
+
+    #[test]
+    fn shell_snapshot_matches_the_frozen_pre_migration_baseline() {
+        let snapshot: serde_json::Value = serde_json::from_str(
+            &shell_gate_snapshot_json_for_root(repo_root()).expect("shell snapshot"),
+        )
+        .expect("shell snapshot value");
+        let baseline_path =
+            repo_root().join("docs/architecture/HEPTA_SHELL_GATE_PARITY_BASELINE_V1.json");
+        let baseline: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&baseline_path)
+                .with_context(|| format!("failed to read {}", baseline_path.display()))
+                .expect("parity baseline"),
+        )
+        .expect("parity baseline value");
+
+        for field in [
+            "schema_version",
+            "gate_count",
+            "report_count",
+            "exact_pair_count",
+            "entry_count",
+            "catalog_sha256",
+            "exact_pair_id_sha256",
+            "script_execution_performed",
+            "side_effect_free",
+        ] {
+            assert_eq!(snapshot[field], baseline[field], "baseline field {field}");
+        }
     }
 }

@@ -230,15 +230,16 @@ pub fn gate_command_json(raw_args: &[String]) -> Result<String> {
     match raw_args {
         [flag] if flag == "--list" => gate_registry_json(),
         [flag] if flag == "--shell-list" => gate_runner::shell_gate_catalog_json(),
+        [flag] if flag == "--shell-snapshot" => gate_runner::shell_gate_snapshot_json(),
         [id] => gate_spec_json(id),
         [id, flag] if flag == "--json" => gate_spec_json(id),
         [id, flag] if flag == "--execute" => gate_runner::execute_gate(id),
         [id, flag] if flag == "--report" => gate_runner::execute_report(id),
         [] => anyhow::bail!(
-            "usage: hepta gate <id> [--json|--execute|--report] | hepta gate [--list|--shell-list]"
+            "usage: hepta gate <id> [--json|--execute|--report] | hepta gate [--list|--shell-list|--shell-snapshot]"
         ),
         _ => anyhow::bail!(
-            "usage: hepta gate <id> [--json|--execute|--report] | hepta gate [--list|--shell-list]"
+            "usage: hepta gate <id> [--json|--execute|--report] | hepta gate [--list|--shell-list|--shell-snapshot]"
         ),
     }
 }

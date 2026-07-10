@@ -1,0 +1,15 @@
+{
+  "schema_version": "hepta_shell_gate_parity_snapshot_v1",
+  "source_git_commit": "f40b0ad8aa8a22bc4ca7e36359e894fe5eeaf6a0",
+  "scope": "top-level scripts/*-gate.sh and scripts/*-report.sh compatibility surface",
+  "gate_count": 1982,
+  "report_count": 1283,
+  "exact_pair_count": 1282,
+  "entry_count": 1983,
+  "catalog_sha256": "97d1a90d3f5fb31fa0155458a47f3d8b78f216360c8dc316222e3801ce344def",
+  "exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+  "digest_algorithm": "sha256",
+  "catalog_row_format": "id\\tgate_path\\tgate_sha256\\treport_path\\treport_sha256\\n",
+  "script_execution_performed": false,
+  "side_effect_free": true
+}
