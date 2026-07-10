@@ -53,9 +53,41 @@ done < <(
   find scripts -type f \( -name '*route-gate.sh' -o -name '*lane-gate.sh' \) -print0
 )
 
+while IFS= read -r -d '' script; do
+  perl -ne '
+    if (/(?<![A-Za-z0-9_])(?:native_gateway_source_command_count|route_count|implemented_route_count|expected_route_count):\s*[1-9][0-9]*/) {
+      print "$ARGV:$.:static_route_registry_output_count:$&\n";
+    }
+    if (/\.(?:local_capability_count|source_matrix_capability_count|source_matrix_ready_count|source_matrix_capability_ready_count|capability_row_count|capability_ready_count)\s*==\s*[1-9][0-9]*/) {
+      print "$ARGV:$.:static_capability_registry_count:$&\n";
+    }
+  ' "$script" >>"$violations_file"
+done < <(find scripts -type f -name '*.sh' -print0)
+
+perl -ne '
+  if (/CONTEXT_RECALL_SOURCE_COUNT\s*:\s*usize\s*=\s*[1-9][0-9]*/) {
+    print "$ARGV:$.:static_context_recall_source_count:$&\n";
+  }
+  if (/fn\s+source_index\s*\(/) {
+    print "$ARGV:$.:static_context_recall_source_index:$&\n";
+  }
+' codex-rs/hepta-runtime/src/query.rs >>"$violations_file"
+
+for source in \
+  codex-rs/hepta-runtime/src/current_reality_matrix_compact_cache_boundary_readback.rs \
+  codex-rs/hepta-runtime/src/hepta_systems_matrix_report_single_render_cache_boundary_readback.rs \
+  codex-rs/hepta-runtime/src/controlled_live_operator_readiness_dashboard.rs
+do
+  perl -ne '
+    if (/(?:source_matrix_capability_count|source_matrix_ready_count|capability_row_count|capability_ready_count):\s*[1-9][0-9]*/) {
+      print "$ARGV:$.:static_rust_capability_registry_count:$&\n";
+    }
+  ' "$source" >>"$violations_file"
+done
+
 violation_count="$(wc -l <"$violations_file" | tr -d '[:space:]')"
 if [[ "$violation_count" != "0" ]]; then
-  echo "route/lane gates must derive route and terminal counts dynamically; found static-count regressions:" >&2
+  echo "route, capability, context, and terminal counts must be registry-derived; found static-count regressions:" >&2
   sed -n '1,120p' "$violations_file" >&2
   exit 1
 fi
@@ -71,8 +103,12 @@ jq -n \
     scanned_gate_count:$scanned_gate_count,
     static_native_gateway_source_command_count_regression:false,
     static_route_count_regression:false,
+    static_capability_count_regression:false,
+    static_context_count_regression:false,
     static_terminal_marker_count_regression:false,
     route_count_source:"CONTROL_UI_ROUTE_SPECS",
+    capability_count_source:"current_reality_capability_matrix_report_capabilities_registry",
+    context_count_source:"ContextRecallSource::ALL",
     derived_route_count:$derived_route_count,
     dynamic_count_contract_ready:true
   }'
