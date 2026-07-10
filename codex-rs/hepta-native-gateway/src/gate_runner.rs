@@ -47,6 +47,8 @@ struct ShellPairMigrationSpec {
     summary_prefix: String,
     observability_prefix: Option<String>,
     final_ack_denial_side_effect_key: Option<String>,
+    final_ack_attachment_surface: Option<String>,
+    readback_mode: Option<String>,
     blocker_count: u64,
     attachment_blocker_count: Option<u64>,
     source_gate: Option<String>,
@@ -169,6 +171,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             "signing_final_ack_readback"
                 | "signing_final_ack_final_index"
                 | "signing_terminal_status_attachment"
+                | "signing_terminal_status_readback"
                 | "signing_summary_readback"
         ) {
             anyhow::bail!(
@@ -273,6 +276,26 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             {
                 anyhow::bail!(
                     "Hepta migrated terminal-status pair {} has empty template fields",
+                    spec.id
+                );
+            }
+        }
+        if spec.template == "signing_terminal_status_readback" {
+            let required_template_fields = [
+                spec.readback_mode.as_deref(),
+                spec.final_ack_attachment_surface.as_deref(),
+                spec.source_gate.as_deref(),
+                spec.architecture_note.as_deref(),
+                spec.architecture_title.as_deref(),
+                spec.missing_source_gate_message.as_deref(),
+                spec.missing_architecture_note_message.as_deref(),
+            ];
+            if required_template_fields
+                .iter()
+                .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+            {
+                anyhow::bail!(
+                    "Hepta migrated terminal-status readback pair {} has empty template fields",
                     spec.id
                 );
             }
