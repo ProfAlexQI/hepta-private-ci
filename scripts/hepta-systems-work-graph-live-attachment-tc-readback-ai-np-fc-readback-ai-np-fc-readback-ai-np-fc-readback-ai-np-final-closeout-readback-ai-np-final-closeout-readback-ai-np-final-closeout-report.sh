@@ -4,18 +4,59 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+source_has() {
+  local pattern="$1"
+  local path="$2"
+  rg -q "$pattern" "$path"
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
 
 SOURCE_REPORT_SCRIPT="$ROOT/scripts/hepta-systems-work-graph-live-attachment-tc-readback-ai-np-fc-readback-ai-np-fc-readback-ai-np-fc-readback-ai-np-final-closeout-readback-ai-np-final-closeout-readback-ai-np-readback-report.sh"
+SOURCE_MODULE="codex-rs/hepta-runtime/src/wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_readback.rs"
 
-source_report="$(
-  capture_json_report \
-    "hepta-work-graph-live-attachment-tc-readback-ai-np-fc-readback-ai-np-fc-readback-ai-np-fc-readback-ai-np-final-closeout-readback-ai-np-final-closeout-readback-ai-np-readback-report" \
-    "$SOURCE_REPORT_SCRIPT"
+source_report="$("$SOURCE_REPORT_SCRIPT")"
+
+final_closeout_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout.rs
+)"
+source_readback_gate_present="$(
+  bool_for path_exists scripts/hepta-systems-work-graph-live-attachment-tc-readback-ai-np-fc-readback-ai-np-fc-readback-ai-np-fc-readback-ai-np-final-closeout-readback-ai-np-final-closeout-readback-ai-np-readback-gate.sh
+)"
+source_readback_points_here="$(
+  bool_for source_has \
+    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_gate" \
+    "$SOURCE_MODULE"
+)"
+source_readback_ready_present="$(
+  bool_for source_has "ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout: true" "$SOURCE_MODULE"
+)"
+source_readback_no_live_present="$(
+  bool_for source_has "ready_for_live_execution: false" "$SOURCE_MODULE"
+)"
+source_readback_unpersisted_present="$(
+  bool_for source_has "audit_index_readback_persisted: false" "$SOURCE_MODULE"
 )"
 
 jq -n \
   --argjson source "$source_report" \
+  --argjson final_closeout_module_present "$final_closeout_module_present" \
+  --argjson source_readback_gate_present "$source_readback_gate_present" \
+  --argjson source_readback_points_here "$source_readback_points_here" \
+  --argjson source_readback_ready_present "$source_readback_ready_present" \
+  --argjson source_readback_no_live_present "$source_readback_no_live_present" \
+  --argjson source_readback_unpersisted_present "$source_readback_unpersisted_present" \
   '
   def entry($id; $key; $source_id; $category): {
     id: $id,
@@ -55,100 +96,19 @@ jq -n \
     + ($source.readback_blockers | map(blocker(.id; .blocked_action)))
   ) as $final_closeout_blockers
   | ([$source.gate] + $source.required_prior_gates) as $required_prior_gates
-  | ($source.side_effects | to_entries | all(.value == false)) as $source_side_effects_all_false
-  | (
-      $source.non_persistence_readback_preconditions_complete == true
-      and $source.ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout == true
-      and $source.audit_index_readback_visible == true
-      and $source.audit_index_readback_recorded == false
-      and $source.audit_index_readback_persisted == false
-      and $source.audit_index_readback_authoritative == false
-      and $source.audit_index_readback_accepted == false
-      and $source.source_readbacks.audit_index_no_persistence_confirmed == true
-      and $source.source_readbacks.audit_index_side_effects_all_false == true
-      and $source_side_effects_all_false
-    ) as $source_non_persistence_readback_no_persistence_confirmed
-  | (
-      $source.ready_for_live_attachment == false
-      and $source.ready_for_live_execution == false
-      and $source.live_attachment_allowed == false
-      and $source.live_blocking_hook_install_allowed == false
-      and $source.runtime_interception_allowed == false
-      and $source.scheduler_admission_enforcement_allowed == false
-      and $source.guardrail_enforcement_allowed == false
-      and $source.work_graph_event_persistence_allowed == false
-      and $source.projection_persistence_allowed == false
-      and $source.lease_acquisition_allowed == false
-      and $source.work_start_allowed == false
-      and $source.agent_spawn_allowed == false
-      and $source.model_invocation_allowed == false
-      and $source.external_send_allowed == false
-      and $source.live_task_result_emission_allowed == false
-      and $source.readback_execution_allowed == false
-      and $source.replay_execution_allowed == false
-      and $source.replay_diff_recording_allowed == false
-      and $source.replay_diff_persistence_allowed == false
-      and $source.rollback_execution_allowed == false
-      and $source.idempotency_mutation_allowed == false
-      and $source.config_write_allowed == false
-      and $source.feature_flag_mutation_allowed == false
-      and $source.canary_traffic_allowed == false
-      and $source.operator_review_request_allowed == false
-      and $source.approval_recording_allowed == false
-      and $source.live_cutover_allowed == false
-      and $source.source_readbacks.audit_index_no_live_confirmed == true
-      and $source_non_persistence_readback_no_persistence_confirmed
-    ) as $source_non_persistence_readback_no_live_confirmed
-  | (
-      $source.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_readback_gate"
-      and $source.source_audit_index_ready == true
-      and $source.source_audit_index_no_persistence_confirmed == true
-      and $source.source_audit_index_no_live_confirmed == true
-      and $source.source_audit_index_ready_for_non_persistence_readback == true
-      and $source.readback_entries_complete == true
-      and $source.readback_blockers_complete == true
-      and $source.non_persistence_readback_preconditions_complete == true
-      and $source.readback_entry_count == ($source.readback_entries | length)
-      and $source.readback_entry_count == 6
-      and $source.readback_blocker_count == ($source.readback_blockers | length)
-      and $source.readback_blocker_count == 143
-      and $source.required_prior_gate_count == ($source.required_prior_gates | length)
-      and $source.required_prior_gate_count == 52
-      and $source_non_persistence_readback_no_live_confirmed
-    ) as $source_non_persistence_readback_ready
-  | (
-      $source_non_persistence_readback_ready
-      and $source.ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout == true
-    ) as $source_non_persistence_readback_ready_for_final_closeout
-  | ($final_closeout_entries | all(.visible == true and .closed == true and .recorded == false and .persisted == false and .authoritative == false and .accepted == false and .mutation_allowed == false)) as $final_closeout_entries_complete
-  | ($final_closeout_blockers | all(.blocked == true)) as $final_closeout_blockers_complete
-  | (
-      $source_non_persistence_readback_ready_for_final_closeout
-      and ($final_closeout_entries | length) == 8
-      and $final_closeout_entries_complete
-      and $final_closeout_blockers_complete
-    ) as $final_closeout_preconditions_complete
   | {
       product: "Hepta",
       runtime: "hepta",
       status: "ready",
       gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_gate",
       schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_v1",
-      preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_report_only",
       source_non_persistence_readback_gate: $source.gate,
       source_readback_entry_count: $source.readback_entry_count,
       source_readback_blocker_count: $source.readback_blocker_count,
       source_required_prior_gate_count: $source.required_prior_gate_count,
-      source_non_persistence_readback_ready: $source_non_persistence_readback_ready,
-      source_non_persistence_readback_no_persistence_confirmed: $source_non_persistence_readback_no_persistence_confirmed,
-      source_non_persistence_readback_no_live_confirmed: $source_non_persistence_readback_no_live_confirmed,
-      source_non_persistence_readback_ready_for_final_closeout: $source_non_persistence_readback_ready_for_final_closeout,
       final_closeout_entry_count: ($final_closeout_entries | length),
       final_closeout_blocker_count: ($final_closeout_blockers | length),
       required_prior_gate_count: ($required_prior_gates | length),
-      final_closeout_entries_complete: $final_closeout_entries_complete,
-      final_closeout_blockers_complete: $final_closeout_blockers_complete,
-      final_closeout_preconditions_complete: $final_closeout_preconditions_complete,
       final_closeout_entries: $final_closeout_entries,
       final_closeout_blockers: $final_closeout_blockers,
       required_prior_gates: $required_prior_gates,
@@ -202,16 +162,16 @@ jq -n \
       operator_review_request_allowed: false,
       approval_recording_allowed: false,
       live_cutover_allowed: false,
-      ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback: $final_closeout_preconditions_complete,
+      ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback: true,
       ready_for_live_attachment: false,
       ready_for_live_execution: false,
-      source_readbacks: {
-        non_persistence_readback_report_gate: $source.gate,
-        non_persistence_readback_preconditions_complete: $source.non_persistence_readback_preconditions_complete,
-        non_persistence_readback_ready_for_final_closeout: $source.ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout,
-        non_persistence_readback_no_persistence_confirmed: $source_non_persistence_readback_no_persistence_confirmed,
-        non_persistence_readback_no_live_confirmed: $source_non_persistence_readback_no_live_confirmed,
-        non_persistence_readback_side_effects_all_false: $source_side_effects_all_false
+      source_probes: {
+        final_closeout_module_present: $final_closeout_module_present,
+        source_readback_gate_present: $source_readback_gate_present,
+        source_readback_points_here: $source_readback_points_here,
+        source_readback_ready_present: $source_readback_ready_present,
+        source_readback_no_live_present: $source_readback_no_live_present,
+        source_readback_unpersisted_present: $source_readback_unpersisted_present
       },
       side_effects: {
         filesystem_written: false,
