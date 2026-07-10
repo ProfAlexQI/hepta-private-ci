@@ -5,10 +5,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::io::Read;
-use std::io::Write;
 use std::net::TcpListener;
-use std::net::TcpStream;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -84,6 +81,7 @@ use sha2::Sha256;
 use crate::gate_runner;
 use crate::gate_spec::GateSpec as ControlUiRouteSpec;
 use crate::gate_spec::ReceiptStateMachine;
+use crate::http_transport::*;
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
 use crate::route_registry::*;
@@ -122311,80 +122309,6 @@ fn is_loopback_bind_addr(bind_addr: &str) -> bool {
         .unwrap_or(bind_addr)
         .trim();
     matches!(host, "127.0.0.1" | "localhost" | "::1")
-}
-
-fn read_http_request(stream: &mut TcpStream) -> Result<String> {
-    let mut buffer = [0_u8; 8192];
-    let mut bytes = Vec::new();
-    let first_read = stream.read(&mut buffer).context("read request")?;
-    bytes.extend_from_slice(&buffer[..first_read]);
-    let content_length = String::from_utf8_lossy(&bytes)
-        .lines()
-        .find_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            if name.eq_ignore_ascii_case("content-length") {
-                value.trim().parse::<usize>().ok()
-            } else {
-                None
-            }
-        })
-        .unwrap_or(0);
-    while request_body_bytes(&bytes).len() < content_length {
-        let read = stream.read(&mut buffer).context("read request body")?;
-        if read == 0 {
-            break;
-        }
-        bytes.extend_from_slice(&buffer[..read]);
-    }
-    Ok(String::from_utf8_lossy(&bytes).to_string())
-}
-
-fn request_body_bytes(bytes: &[u8]) -> &[u8] {
-    bytes
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .map(|index| &bytes[index + 4..])
-        .unwrap_or(&[])
-}
-
-fn request_body_text(request: &str) -> Option<&str> {
-    request
-        .split_once("\r\n\r\n")
-        .map(|(_, body)| body)
-        .filter(|body| !body.is_empty())
-}
-
-fn request_method_and_path(request: &str) -> Option<(&str, &str)> {
-    let first_line = request.lines().next()?;
-    let mut parts = first_line.split_whitespace();
-    let method = parts.next()?;
-    let raw_path = parts.next()?;
-    Some((method, raw_path.split('?').next().unwrap_or(raw_path)))
-}
-
-fn write_http_response(
-    stream: &mut TcpStream,
-    status: &str,
-    content_type: &str,
-    body: &[u8],
-) -> Result<()> {
-    let header = format!(
-        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
-        body.len()
-    );
-    stream
-        .write_all(header.as_bytes())
-        .context("write header")?;
-    stream.write_all(body).context("write body")?;
-    stream.flush().context("flush response")?;
-    Ok(())
-}
-
-fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 #[cfg(test)]

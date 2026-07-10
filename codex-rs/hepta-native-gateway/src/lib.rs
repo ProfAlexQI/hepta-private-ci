@@ -1,5 +1,6 @@
 mod gate_runner;
 mod gate_spec;
+mod http_transport;
 mod native_gateway;
 mod native_telegram;
 mod route_registry;
