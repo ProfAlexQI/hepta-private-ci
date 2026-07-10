@@ -84,6 +84,8 @@ use crate::gate_spec::ReceiptStateMachine;
 use crate::http_transport::*;
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
+use crate::provider_domain::ProviderChannelDryRunPlanResponse;
+use crate::provider_domain::ProviderReportContext;
 use crate::route_registry::*;
 
 const DEFAULT_BIND_ADDR: &str = "127.0.0.1:7373";
@@ -7733,82 +7735,6 @@ struct HeptaReleaseHardeningStatusGateSideEffects {
 }
 
 #[derive(Debug, Serialize)]
-struct HeptaProviderChannelDryRunPlanResponse {
-    product: &'static str,
-    runtime: &'static str,
-    status: &'static str,
-    source_command: &'static str,
-    native_route: bool,
-    compatibility_mode: &'static str,
-    side_effect_free: bool,
-    audit_date: &'static str,
-    dry_run_plan_doc: &'static str,
-    current_hepta_codex_script_total: usize,
-    native_gateway_source_command_count: usize,
-    route_count: usize,
-    missing_route_count: usize,
-    plan_family_count: usize,
-    covered_old_ops_file_count: usize,
-    covered_provider_ops_file_count: usize,
-    covered_search_ops_file_count: usize,
-    covered_channel_ops_file_count: usize,
-    covered_runtime_ops_file_count: usize,
-    dry_run_plan_ready_count: usize,
-    isolated_fixture_contract_count: usize,
-    live_invocation_enabled_count: usize,
-    credential_read_required_count: usize,
-    operator_approval_required_count: usize,
-    provider_prompt_execution_enabled: bool,
-    search_network_query_enabled: bool,
-    channel_delivery_enabled: bool,
-    runtime_store_mutation_enabled: bool,
-    isolated_fixture_materialized: bool,
-    dry_run_plan_ready: bool,
-    script_inventory_script: &'static str,
-    dry_run_families: &'static [HeptaProviderChannelDryRunFamily],
-    next_slices: &'static [&'static str],
-    blockers: &'static [&'static str],
-    side_effects: HeptaProviderChannelDryRunPlanSideEffects,
-}
-
-#[derive(Debug, Serialize)]
-struct HeptaProviderChannelDryRunFamily {
-    name: &'static str,
-    family: &'static str,
-    covered_old_ops_file_count: usize,
-    representative_surfaces: &'static [&'static str],
-    dry_run_plan_mode: &'static str,
-    isolated_fixture_contract: &'static str,
-    dry_run_plan_ready: bool,
-    live_invocation_enabled: bool,
-    credential_read_required: bool,
-    operator_approval_required: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct HeptaProviderChannelDryRunPlanSideEffects {
-    provider_invoked: bool,
-    model_invoked: bool,
-    credential_read: bool,
-    external_network_read: bool,
-    search_query_performed: bool,
-    channel_read_performed: bool,
-    channel_send_performed: bool,
-    telegram_owner_handoff_performed: bool,
-    telegram_read_performed: bool,
-    telegram_send_performed: bool,
-    process_spawned: bool,
-    filesystem_read: bool,
-    filesystem_written: bool,
-    task_registry_mutated: bool,
-    session_store_mutated: bool,
-    gateway_event_enqueued: bool,
-    native_post_mutation_performed: bool,
-    gateway_mutation_performed: bool,
-    external_send_performed: bool,
-}
-
-#[derive(Debug, Serialize)]
 struct HeptaNativePackagingGateResponse {
     product: &'static str,
     runtime: &'static str,
@@ -9024,175 +8950,14 @@ const HEPTA_RELEASE_HARDENING_STATUS_GATES: &[HeptaReleaseHardeningStatusGate] =
     },
 ];
 
-const HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES: &[HeptaProviderChannelDryRunFamily] = &[
-    HeptaProviderChannelDryRunFamily {
-        name: "provider-prompt-plan",
-        family: "provider_metadata_bridges",
-        covered_old_ops_file_count: 12,
-        representative_surfaces: &[
-            "anthropic",
-            "deepinfra",
-            "google-vertex",
-            "mistral",
-            "openai",
-            "openrouter",
-            "xai",
-        ],
-        dry_run_plan_mode: "credentialless_request_envelope_and_response_shape_plan",
-        isolated_fixture_contract: "synthetic_prompt_fixture_without_provider_call",
-        dry_run_plan_ready: true,
-        live_invocation_enabled: false,
-        credential_read_required: false,
-        operator_approval_required: true,
-    },
-    HeptaProviderChannelDryRunFamily {
-        name: "local-provider-registry-plan",
-        family: "provider_metadata_bridges",
-        covered_old_ops_file_count: 3,
-        representative_surfaces: &["native-model-provider", "ollama", "provider-registration"],
-        dry_run_plan_mode: "local_registry_contract_plan_without_daemon_or_registry_mutation",
-        isolated_fixture_contract: "synthetic_provider_catalog_fixture_without_model_load",
-        dry_run_plan_ready: true,
-        live_invocation_enabled: false,
-        credential_read_required: false,
-        operator_approval_required: true,
-    },
-    HeptaProviderChannelDryRunFamily {
-        name: "search-readability-plan",
-        family: "adjacent_search_metadata",
-        covered_old_ops_file_count: 3,
-        representative_surfaces: &["native-search-provider", "search-tools", "web-readability"],
-        dry_run_plan_mode: "offline_query_and_extraction_contract_without_network_fetch",
-        isolated_fixture_contract: "static_html_and_query_fixture_without_external_read",
-        dry_run_plan_ready: true,
-        live_invocation_enabled: false,
-        credential_read_required: false,
-        operator_approval_required: true,
-    },
-    HeptaProviderChannelDryRunFamily {
-        name: "channel-delivery-plan",
-        family: "channel_runtime_adapters",
-        covered_old_ops_file_count: 13,
-        representative_surfaces: &[
-            "discord",
-            "feishu",
-            "google-chat",
-            "imessage",
-            "message-gateway",
-            "telegram",
-            "webhooks",
-        ],
-        dry_run_plan_mode: "recipient_policy_and_delivery_envelope_plan_without_connector_call",
-        isolated_fixture_contract: "synthetic_channel_message_fixture_without_read_or_send",
-        dry_run_plan_ready: true,
-        live_invocation_enabled: false,
-        credential_read_required: false,
-        operator_approval_required: true,
-    },
-    HeptaProviderChannelDryRunFamily {
-        name: "runtime-session-plan",
-        family: "runtime_ops_admin",
-        covered_old_ops_file_count: 12,
-        representative_surfaces: &[
-            "gateway-admin",
-            "heartbeat",
-            "runtime-event",
-            "session-orchestration",
-            "task-provenance",
-            "thread-binding",
-        ],
-        dry_run_plan_mode: "event_task_session_plan_without_queue_or_store_mutation",
-        isolated_fixture_contract: "synthetic_runtime_event_fixture_without_registry_write",
-        dry_run_plan_ready: true,
-        live_invocation_enabled: false,
-        credential_read_required: false,
-        operator_approval_required: true,
-    },
-];
-
-fn hepta_provider_channel_dry_run_plan_report() -> HeptaProviderChannelDryRunPlanResponse {
+fn hepta_provider_channel_dry_run_plan_report() -> ProviderChannelDryRunPlanResponse {
     let route_matrix = control_ui_route_parity_report();
-    HeptaProviderChannelDryRunPlanResponse {
-        product: "Hepta",
-        runtime: "hepta",
-        status: "attention",
-        source_command: "/hepta-provider-channel-dry-run-plan --json",
-        native_route: true,
-        compatibility_mode: "native_provider_channel_runtime_dry_run_plan",
-        side_effect_free: true,
-        audit_date: "2026-05-20",
-        dry_run_plan_doc: "docs/release/HEPTA_PROVIDER_CHANNEL_DRY_RUN_PLAN_2026-05-20.md",
-        current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
-        native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
+    crate::provider_domain::provider_channel_dry_run_plan_report(ProviderReportContext {
+        current_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
+        source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         missing_route_count: route_matrix.missing_route_count,
-        plan_family_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES.len(),
-        covered_old_ops_file_count: 43,
-        covered_provider_ops_file_count: 15,
-        covered_search_ops_file_count: 3,
-        covered_channel_ops_file_count: 13,
-        covered_runtime_ops_file_count: 12,
-        dry_run_plan_ready_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
-            .iter()
-            .filter(|family| family.dry_run_plan_ready)
-            .count(),
-        isolated_fixture_contract_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES.len(),
-        live_invocation_enabled_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
-            .iter()
-            .filter(|family| family.live_invocation_enabled)
-            .count(),
-        credential_read_required_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
-            .iter()
-            .filter(|family| family.credential_read_required)
-            .count(),
-        operator_approval_required_count: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES
-            .iter()
-            .filter(|family| family.operator_approval_required)
-            .count(),
-        provider_prompt_execution_enabled: false,
-        search_network_query_enabled: false,
-        channel_delivery_enabled: false,
-        runtime_store_mutation_enabled: false,
-        isolated_fixture_materialized: false,
-        dry_run_plan_ready: true,
-        script_inventory_script: "scripts/hepta-provider-channel-dry-run-plan.sh",
-        dry_run_families: HEPTA_PROVIDER_CHANNEL_DRY_RUN_FAMILIES,
-        next_slices: &[
-            "expand individual old CLI shims only as no-side-effect dry-run contracts",
-            "keep provider prompts, channel delivery, and runtime store mutation blocked until scoped approval",
-            "continue live install verification after each local-only route addition",
-        ],
-        blockers: &[
-            "provider_prompt_execution_not_operator_approved",
-            "provider_credentials_not_read_by_dry_run_plan",
-            "search_live_network_query_not_operator_approved",
-            "channel_delivery_not_operator_approved",
-            "runtime_store_mutation_not_operator_approved",
-            "isolated_fixture_materialization_not_requested",
-            "old_cli_invocation_compatibility_not_claimed",
-        ],
-        side_effects: HeptaProviderChannelDryRunPlanSideEffects {
-            provider_invoked: false,
-            model_invoked: false,
-            credential_read: false,
-            external_network_read: false,
-            search_query_performed: false,
-            channel_read_performed: false,
-            channel_send_performed: false,
-            telegram_owner_handoff_performed: false,
-            telegram_read_performed: false,
-            telegram_send_performed: false,
-            process_spawned: false,
-            filesystem_read: false,
-            filesystem_written: false,
-            task_registry_mutated: false,
-            session_store_mutated: false,
-            gateway_event_enqueued: false,
-            native_post_mutation_performed: false,
-            gateway_mutation_performed: false,
-            external_send_performed: false,
-        },
-    }
+    })
 }
 
 fn hepta_channel_adapter_status_inventory_report() -> HeptaChannelAdapterStatusInventoryResponse {

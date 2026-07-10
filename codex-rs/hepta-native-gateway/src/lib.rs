@@ -3,6 +3,7 @@ mod gate_spec;
 mod http_transport;
 mod native_gateway;
 mod native_telegram;
+mod provider_domain;
 mod route_registry;
 
 pub use native_gateway::NativeGatewayOptions;
