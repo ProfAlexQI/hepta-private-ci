@@ -7,7 +7,7 @@ pub const HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_GATE
 pub const HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_SCHEMA_VERSION: &str =
     "hepta_systems_matrix_report_single_render_cache_boundary_readback_v1";
 pub const HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_RECOMMENDED_NEXT_GATE:
-    &str = "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence";
+    &str = "close_controlled_live_evidence_before_status_canary_start";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeptaSystemsMatrixReportSingleRenderCacheBoundaryReadbackReport {

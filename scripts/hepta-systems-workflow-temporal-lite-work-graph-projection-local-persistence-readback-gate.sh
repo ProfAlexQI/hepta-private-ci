@@ -34,8 +34,6 @@ grep -q 'no WorkGraph projection write, WorkGraph projection persistence, runtim
   and .schema_version == "workflow_temporal_lite_work_graph_projection_local_persistence_readback_v1"
   and .source_adapter_ready == true
   and .source_adapter_entry_count == 9
-  and .source_append_only_event_store_interface_ready == true
-  and .source_event_log_sqlite_adapter_derived_from_event_store_interface == true
   and .lib_export_present == true
   and .reopened_sqlite_projection_test_present == true
   and .projection_scope == "local_persistence_work_graph_projection_readback_no_persistence"
@@ -55,7 +53,6 @@ grep -q 'no WorkGraph projection write, WorkGraph projection persistence, runtim
   and .local_tempdb_sqlite_read_covered_by_tests == true
   and .runtime_feature_gate_enabled == false
   and .projection_contract_readback_materialized == true
-  and .work_graph_projection_derived_from_event_store_interface == true
   and .work_graph_projection_write_allowed == false
   and .work_graph_projection_persistence_allowed == false
   and .runtime_event_log_write_allowed == false

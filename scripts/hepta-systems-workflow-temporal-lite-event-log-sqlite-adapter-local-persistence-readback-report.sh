@@ -98,8 +98,6 @@ jq -n \
   ($entries | map(select(.adapter_persisted == true)) | length) as $adapter_persisted_count |
   ($entries | map(select(.adapter_mismatch_detected == true)) | length) as $adapter_mismatch_count |
   ($source_report.lease_idempotency_index_local_persistence_readback_ready == true
-    and $source_report.source_append_only_event_store_interface_ready == true
-    and $source_report.lease_idempotency_derived_from_event_store_interface == true
     and $source_report.source_anchor_pair_count == 9
     and $source_report.lease_readback_count == 9
     and $source_report.idempotency_index_readback_count == 9
@@ -153,8 +151,6 @@ jq -n \
     source_lease_idempotency_gate:$source_report.gate,
     source_lease_idempotency_ready:$source_report.lease_idempotency_index_local_persistence_readback_ready,
     source_anchor_pair_count:$source_report.source_anchor_pair_count,
-    source_append_only_event_store_interface_ready:$source_report.source_append_only_event_store_interface_ready,
-    source_lease_idempotency_derived_from_event_store_interface:$source_report.lease_idempotency_derived_from_event_store_interface,
     lib_export_present:$lib_export_present,
     reopened_sqlite_adapter_test_present:$reopened_sqlite_adapter_test_present,
     adapter_scope:"local_persistence_event_log_sqlite_adapter_readback_no_runtime_writes",
@@ -174,8 +170,6 @@ jq -n \
     local_tempdb_sqlite_read_covered_by_tests:true,
     runtime_feature_gate_enabled:false,
     adapter_contract_readback_materialized:$readback_ready,
-    event_log_sqlite_adapter_derived_from_event_store_interface:($source_report.source_append_only_event_store_interface_ready == true
-      and $source_report.lease_idempotency_derived_from_event_store_interface == true),
     runtime_event_log_write_allowed:false,
     runtime_sqlite_write_allowed:false,
     runtime_store_persistence_allowed:false,

@@ -8,8 +8,7 @@ is not a new current-reality matrix capability row.
 
 The dashboard consumes four existing read-only sources:
 
-- the current reality capability matrix with 109 ready rows out of 111 and zero
-  live-enabled paths
+- the current reality capability matrix with 104 ready rows and zero live paths
 - the live-cutover closure index with one selected local read-only status canary
   and one preflight-only connector candidate
 - the required-evidence collection plan with seven missing evidence items
@@ -18,8 +17,8 @@ The dashboard consumes four existing read-only sources:
 
 It collapses those sources into one operator-facing surface:
 
-- 111 capability rows
-- 109 ready capability rows
+- 104 capability rows
+- 104 ready capability rows
 - 0 live-enabled capability rows
 - 1 selected status canary:
   `preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp`
@@ -527,7 +526,7 @@ Closed dashboard boundary: no approval request, approval acceptance, approval re
 
 The local gate validates:
 
-- the current reality matrix is 109/111 ready with zero live-enabled paths
+- the current reality matrix is still 104/104 ready with zero live paths
 - Phase 5n kill-switch rehearsal boundary readback is ready and closed
 - the selected status canary remains the single MCP status candidate
 - the connector remains preflight-only and non-selected
@@ -547,8 +546,9 @@ The local gate validates:
 
 ## Next Move
 
-Keep closing
-`close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence`.
-The next hard step is to add retention/replay invariants to the persistence
-denial, without recording evidence, persisting receipts, registering or
-invoking ToolRegistry tools, starting canary, or opening live execution.
+Keep closing `close_controlled_live_evidence_before_status_canary_start`
+against the packet, start guard, start-request gate, runner adapter, and runner
+start surface. The next hard step is to make the future canary runner entry
+point consume only this start-surface plan, so no runner path can bypass packet
+completeness, the explicit canary switch, the selected-candidate gate, or the
+runner adapter boundary.

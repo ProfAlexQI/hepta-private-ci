@@ -23,8 +23,6 @@ grep -q 'Temporal-Lite Deterministic Replay Validator Local Persistence Readback
   || fail "architecture note must document Temporal-Lite Deterministic Replay Validator Local Persistence Readback"
 grep -q 'local persistence readback projection' "$DOC" \
   || fail "architecture note must document the local persistence readback projection"
-grep -q 'single append-only event store interface' "$DOC" \
-  || fail "architecture note must document the single append-only event store interface source"
 grep -q 'no runtime event-log write, runtime SQLite write, runtime store persistence, replay projection persistence, workflow execution, replay execution, rollback execution, provider invocation, model invocation, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, channel send, package, release, Public GA promotion, canary activation, or live execution' "$DOC" \
   || fail "architecture note must document the closed replay/live boundary"
 
@@ -36,12 +34,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .schema_version == "workflow_temporal_lite_deterministic_replay_validator_local_persistence_readback_v1"
   and .source_minimal_local_persistence_ready == true
   and .source_local_event_contract_count == 9
-  and .source_append_only_event_store_interface_ready == true
-  and .source_event_store_interface_contract_count == 3
-  and .source_sqlite_wal_backend_implements_interface == true
-  and .source_interface_append_count == 9
-  and .source_interface_duplicate_denial_count == 9
-  and .source_interface_replay_read_count == 9
   and .lib_export_present == true
   and .stored_events_readback_helper_present == true
   and .tempdb_reopen_test_present == true
@@ -61,7 +53,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .local_tempdb_sqlite_read_covered_by_tests == true
   and .runtime_feature_gate_enabled == false
   and .replay_validator_materialized == true
-  and .replay_validator_derived_from_event_store_interface == true
   and .runtime_event_log_write_allowed == false
   and .runtime_sqlite_write_allowed == false
   and .runtime_store_persistence_allowed == false

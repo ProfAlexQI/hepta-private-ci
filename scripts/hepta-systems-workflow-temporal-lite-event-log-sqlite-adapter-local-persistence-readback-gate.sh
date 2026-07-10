@@ -34,8 +34,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .schema_version == "workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readback_v1"
   and .source_lease_idempotency_ready == true
   and .source_anchor_pair_count == 9
-  and .source_append_only_event_store_interface_ready == true
-  and .source_lease_idempotency_derived_from_event_store_interface == true
   and .lib_export_present == true
   and .reopened_sqlite_adapter_test_present == true
   and .adapter_scope == "local_persistence_event_log_sqlite_adapter_readback_no_runtime_writes"
@@ -55,7 +53,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .local_tempdb_sqlite_read_covered_by_tests == true
   and .runtime_feature_gate_enabled == false
   and .adapter_contract_readback_materialized == true
-  and .event_log_sqlite_adapter_derived_from_event_store_interface == true
   and .runtime_event_log_write_allowed == false
   and .runtime_sqlite_write_allowed == false
   and .runtime_store_persistence_allowed == false

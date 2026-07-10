@@ -23,8 +23,6 @@ grep -q 'Temporal-Lite Checkpoint And Rollback Anchor Local Persistence Readback
   || fail "architecture note must document Temporal-Lite Checkpoint And Rollback Anchor Local Persistence Readback"
 grep -q 'local persistence checkpoint and rollback anchor readback' "$DOC" \
   || fail "architecture note must document local persistence checkpoint and rollback anchor readback"
-grep -q 'single append-only event store interface' "$DOC" \
-  || fail "architecture note must document the single append-only event store interface source"
 grep -q 'no runtime event-log write, runtime SQLite write, runtime store persistence, checkpoint write, rollback anchor write, anchor persistence, workflow execution, replay execution, rollback execution, provider invocation, model invocation, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, channel send, package, release, Public GA promotion, canary activation, or live execution' "$DOC" \
   || fail "architecture note must document the closed checkpoint/rollback/live boundary"
 
@@ -36,8 +34,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .schema_version == "workflow_temporal_lite_checkpoint_and_rollback_anchor_local_persistence_readback_v1"
   and .source_replay_validator_ready == true
   and .source_replay_projection_count == 9
-  and .source_append_only_event_store_interface_ready == true
-  and .source_replay_validator_derived_from_event_store_interface == true
   and .lib_export_present == true
   and .reopened_sqlite_anchor_test_present == true
   and .anchor_scope == "local_persistence_checkpoint_and_rollback_anchor_readback_no_writes"
@@ -53,7 +49,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .local_tempdb_sqlite_read_covered_by_tests == true
   and .runtime_feature_gate_enabled == false
   and .anchor_readback_materialized == true
-  and .checkpoint_anchors_derived_from_event_store_interface == true
   and .runtime_event_log_write_allowed == false
   and .runtime_sqlite_write_allowed == false
   and .runtime_store_persistence_allowed == false

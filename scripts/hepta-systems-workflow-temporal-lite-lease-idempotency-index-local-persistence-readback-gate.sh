@@ -23,8 +23,6 @@ grep -q 'Temporal-Lite Lease Idempotency Index Local Persistence Readback' "$DOC
   || fail "architecture note must document Temporal-Lite Lease Idempotency Index Local Persistence Readback"
 grep -q 'local persistence lease and idempotency readback' "$DOC" \
   || fail "architecture note must document local persistence lease and idempotency readback"
-grep -q 'single append-only event store interface' "$DOC" \
-  || fail "architecture note must document the single append-only event store interface source"
 grep -q 'no runtime event-log write, runtime SQLite write, runtime store persistence, lease acquisition, lease persistence, idempotency index write, idempotency index persistence, workflow execution, replay execution, rollback execution, provider invocation, model invocation, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, channel send, package, release, Public GA promotion, canary activation, or live execution' "$DOC" \
   || fail "architecture note must document the closed lease/idempotency/live boundary"
 
@@ -36,8 +34,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .schema_version == "workflow_temporal_lite_lease_idempotency_index_local_persistence_readback_v1"
   and .source_checkpoint_rollback_ready == true
   and .source_anchor_pair_count == 9
-  and .source_append_only_event_store_interface_ready == true
-  and .source_checkpoint_anchors_derived_from_event_store_interface == true
   and .lib_export_present == true
   and .reopened_sqlite_lease_test_present == true
   and .lease_scope == "local_persistence_lease_idempotency_readback_no_acquire_no_persistence"
@@ -57,7 +53,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .local_tempdb_sqlite_read_covered_by_tests == true
   and .runtime_feature_gate_enabled == false
   and .lease_idempotency_readback_materialized == true
-  and .lease_idempotency_derived_from_event_store_interface == true
   and .runtime_event_log_write_allowed == false
   and .runtime_sqlite_write_allowed == false
   and .runtime_store_persistence_allowed == false

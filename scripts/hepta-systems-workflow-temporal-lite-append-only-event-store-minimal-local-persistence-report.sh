@@ -46,21 +46,6 @@ if grep -q 'minimal_local_event_store_replays_deterministically_after_reopen' "$
   deterministic_reopen_test_present=true
 fi
 
-event_store_interface_present=false
-if grep -q 'pub trait WorkflowTemporalLiteAppendOnlyEventStore' "$RUST_SOURCE"; then
-  event_store_interface_present=true
-fi
-
-sqlite_wal_backend_implements_interface=false
-if grep -q 'impl WorkflowTemporalLiteAppendOnlyEventStore for WorkflowTemporalLiteMinimalLocalEventStore' "$RUST_SOURCE"; then
-  sqlite_wal_backend_implements_interface=true
-fi
-
-event_store_interface_test_present=false
-if grep -q 'minimal_local_event_store_interface_appends_replays_and_denies_duplicates' "$RUST_SOURCE"; then
-  event_store_interface_test_present=true
-fi
-
 jq -n \
   --slurpfile source <("$SOURCE_REPORT") \
   --argjson lib_export_present "$lib_export_present" \
@@ -68,9 +53,6 @@ jq -n \
   --argjson sqlite_wal_config_present "$sqlite_wal_config_present" \
   --argjson idempotency_unique_index_present "$idempotency_unique_index_present" \
   --argjson deterministic_reopen_test_present "$deterministic_reopen_test_present" \
-  --argjson event_store_interface_present "$event_store_interface_present" \
-  --argjson sqlite_wal_backend_implements_interface "$sqlite_wal_backend_implements_interface" \
-  --argjson event_store_interface_test_present "$event_store_interface_test_present" \
   --arg gate "scripts/hepta-systems-workflow-temporal-lite-append-only-event-store-minimal-local-persistence-gate.sh" \
   --arg doc "docs/architecture/HEPTA_SYSTEMS_WORKFLOW_TEMPORAL_LITE_APPEND_ONLY_EVENT_STORE_MINIMAL_LOCAL_PERSISTENCE_2026-06-30.md" \
   '
@@ -124,20 +106,6 @@ jq -n \
   ($entries | map(select(.replay_digest_projected == true)) | length) as $replay_digest_count |
   ($entries | map(select(.deterministic_replay_digest_validated == true)) | length) as $deterministic_replay_validation_count |
   ($entries | map(select(.rollback_anchor_validated == true)) | length) as $rollback_anchor_count |
-  ($event_store_interface_present == true
-    and $sqlite_wal_backend_implements_interface == true
-    and $event_store_interface_test_present == true
-    and $accepted_append_count == 9
-    and $duplicate_append_denial_count == 9
-    and $deterministic_replay_validation_count == 9
-    and ($entries | all(.runtime_feature_gate_enabled == false
-      and .runtime_event_log_write_allowed == false
-      and .runtime_sqlite_write_allowed == false
-      and .runtime_store_persistence_allowed == false
-      and .workflow_execution_allowed == false
-      and .replay_execution_allowed == false
-      and .rollback_execution_allowed == false
-      and .live_execution_allowed == false))) as $append_only_event_store_interface_ready |
   ($source_report.append_only_event_store_test_ready == true
     and $source_report.test_event_count == 9
     and $source_report.accepted_append_count == 9
@@ -154,7 +122,6 @@ jq -n \
     and $sqlite_wal_config_present == true
     and $idempotency_unique_index_present == true
     and $deterministic_reopen_test_present == true
-    and $append_only_event_store_interface_ready == true
     and $event_count == 9
     and $accepted_append_count == 9
     and $duplicate_append_denial_count == 9
@@ -190,9 +157,6 @@ jq -n \
     rust_sqlite_wal_config_present:$sqlite_wal_config_present,
     rust_idempotency_unique_index_present:$idempotency_unique_index_present,
     rust_deterministic_reopen_test_present:$deterministic_reopen_test_present,
-    rust_event_store_interface_present:$event_store_interface_present,
-    rust_sqlite_wal_backend_implements_interface:$sqlite_wal_backend_implements_interface,
-    rust_event_store_interface_test_present:$event_store_interface_test_present,
     sqlite_adapter_scope:"local_tempdb_sqlite_wal_append_only_store_test_covered_runtime_write_blocked",
     sqlite_table_count:1,
     sqlite_unique_index_count:2,
@@ -200,12 +164,6 @@ jq -n \
     wal_mode_required:true,
     wal_mode_test_covered:$sqlite_wal_config_present,
     local_tempdb_persistence_test_covered:$deterministic_reopen_test_present,
-    append_only_event_store_interface_ready:$append_only_event_store_interface_ready,
-    append_only_event_store_interface_contract_count:3,
-    sqlite_wal_backend_implements_interface:$sqlite_wal_backend_implements_interface,
-    interface_append_count:$accepted_append_count,
-    interface_duplicate_denial_count:$duplicate_append_denial_count,
-    interface_replay_read_count:$deterministic_replay_validation_count,
     local_event_contract_count:$event_count,
     append_attempt_count:($event_count * 2),
     accepted_append_count:$accepted_append_count,

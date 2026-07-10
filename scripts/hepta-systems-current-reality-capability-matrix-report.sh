@@ -57,26 +57,9 @@ CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_ROLLBACK_REHEAR
 CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_KILL_SWITCH_REHEARSAL_BOUNDARY_REPORT="$ROOT/scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-report.sh"
 CURRENT_SUMMARY_REPORT="$ROOT/scripts/hepta-systems-current-compact-capability-summary-report.sh"
 CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_REPORT="$ROOT/scripts/hepta-systems-current-reality-matrix-compact-cache-boundary-readback-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_POSITIVE_PRECONDITIONS_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-positive-preconditions-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_RETENTION_REPLAY_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-retention-replay-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-positive-preconditions-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_REPORT="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-persistence-denial-report.sh"
-READ_ONLY_STATUS_TOOL_REGISTRATION_PRECONDITIONS_REPORT="$ROOT/scripts/hepta-systems-plugin-tool-invocation-read-only-status-tool-registration-preconditions-readback-without-registration-report.sh"
-READ_ONLY_STATUS_TOOL_REGISTRATION_DENIAL_REPORT="$ROOT/scripts/hepta-systems-plugin-tool-invocation-read-only-status-tool-registration-denial-readback-without-registration-report.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-gate.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_POSITIVE_PRECONDITIONS_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-positive-preconditions-gate.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-gate.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-gate.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_RETENTION_REPLAY_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-retention-replay-gate.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-positive-preconditions-gate.sh"
-STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_GATE="$ROOT/scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-persistence-denial-gate.sh"
 DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_REALITY_CAPABILITY_MATRIX_2026-06-27.md"
 
 PLUGIN_MANIFEST="$ROOT/plugins/hepta-system/.codex-plugin/plugin.json"
-HEPTA_RUNTIME_LIB="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
 PLUGIN_LIFECYCLE_STATE_MACHINE="$ROOT/codex-rs/core-plugins/src/lifecycle_state_machine.rs"
 PLUGIN_LIFECYCLE_PHASE_SUMMARY="$ROOT/codex-rs/core-plugins/src/lifecycle_phase_summary.rs"
 WORKFLOW_DURABLE_STORE_ADAPTER="$ROOT/codex-rs/hepta-runtime/src/workflow_durable_store_adapter.rs"
@@ -147,23 +130,6 @@ bool_for() {
 [[ -x "$CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_KILL_SWITCH_REHEARSAL_BOUNDARY_REPORT" ]] || fail "missing executable controlled-live required evidence gap operator packet attachment kill-switch rehearsal boundary readback report: $CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_KILL_SWITCH_REHEARSAL_BOUNDARY_REPORT"
 [[ -x "$CURRENT_SUMMARY_REPORT" ]] || fail "missing executable current compact capability summary report: $CURRENT_SUMMARY_REPORT"
 [[ -x "$CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_REPORT" ]] || fail "missing executable current reality matrix compact cache boundary readback report: $CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_REPORT" ]] || fail "missing executable status canary evidence closeout report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_POSITIVE_PRECONDITIONS_REPORT" ]] || fail "missing executable status canary evidence closeout positive-preconditions report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_POSITIVE_PRECONDITIONS_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_REPORT" ]] || fail "missing executable status canary evidence closeout recording-denial report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_REPORT" ]] || fail "missing executable status canary evidence closeout recording-denial receipt report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_RETENTION_REPLAY_REPORT" ]] || fail "missing executable status canary evidence closeout recording-denial receipt retention/replay report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_RETENTION_REPLAY_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_REPORT" ]] || fail "missing executable status canary evidence closeout recording-denial receipt positive-preconditions report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_REPORT" ]] || fail "missing executable status canary evidence closeout recording-denial receipt persistence-denial report: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_REPORT"
-[[ -x "$READ_ONLY_STATUS_TOOL_REGISTRATION_PRECONDITIONS_REPORT" ]] || fail "missing executable read-only status tool registration preconditions report: $READ_ONLY_STATUS_TOOL_REGISTRATION_PRECONDITIONS_REPORT"
-[[ -x "$READ_ONLY_STATUS_TOOL_REGISTRATION_DENIAL_REPORT" ]] || fail "missing executable read-only status tool registration denial report: $READ_ONLY_STATUS_TOOL_REGISTRATION_DENIAL_REPORT"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_GATE" ]] || fail "missing executable status canary evidence closeout gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_GATE"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_POSITIVE_PRECONDITIONS_GATE" ]] || fail "missing executable status canary evidence closeout positive-preconditions gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_POSITIVE_PRECONDITIONS_GATE"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_GATE" ]] || fail "missing executable status canary evidence closeout recording-denial gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_GATE"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_GATE" ]] || fail "missing executable status canary evidence closeout recording-denial receipt gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_GATE"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_RETENTION_REPLAY_GATE" ]] || fail "missing executable status canary evidence closeout recording-denial receipt retention/replay gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_RETENTION_REPLAY_GATE"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_GATE" ]] || fail "missing executable status canary evidence closeout recording-denial receipt positive-preconditions gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_POSITIVE_PRECONDITIONS_GATE"
-[[ -x "$STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_GATE" ]] || fail "missing executable status canary evidence closeout recording-denial receipt persistence-denial gate: $STATUS_CANARY_EVIDENCE_CLOSEOUT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_GATE"
-[[ -f "$HEPTA_RUNTIME_LIB" ]] || fail "missing hepta-runtime lib source: $HEPTA_RUNTIME_LIB"
 
 if ! command -v jq >/dev/null 2>&1; then
   fail "jq is required to render the current reality capability matrix report"
@@ -175,27 +141,6 @@ plugin_lifecycle_phase_summary_present="$(bool_for path_exists "$PLUGIN_LIFECYCL
 workflow_durable_store_adapter_present="$(bool_for path_exists "$WORKFLOW_DURABLE_STORE_ADAPTER")"
 workflow_durable_store_append_plan_present="$(bool_for path_exists "$WORKFLOW_DURABLE_STORE_APPEND_PLAN")"
 workflow_durable_store_adapter_harness_present="$(bool_for path_exists "$WORKFLOW_DURABLE_STORE_ADAPTER_HARNESS")"
-status_canary_evidence_closeout_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_positive_preconditions_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_positive_preconditions_readback_without_recording_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_readback_without_recording_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_receipt_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_receipt_retention_replay_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_retention_replay_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_receipt_positive_preconditions_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_positive_preconditions_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_retention_replay_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_terminal_no_persistence_export_present="$(bool_for grep -q 'close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_terminal_no_persistence_readback_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_preconditions_export_present="$(bool_for grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_preconditions_readback_without_registration_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_denial_export_present="$(bool_for grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_denial_receipt_export_present="$(bool_for grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_denial_receipt_retention_replay_export_present="$(bool_for grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_retention_replay_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_denial_receipt_positive_preconditions_export_present="$(bool_for grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_positive_preconditions_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_denial_receipt_persistence_denial_export_present="$(bool_for grep -q 'hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_persistence_denial_readback_without_persistence_report' "$HEPTA_RUNTIME_LIB")"
-read_only_status_tool_registration_preconditions_capability="{\"id\":\"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_preconditions_readback_without_registration\",\"ready\":${read_only_status_tool_registration_preconditions_export_present},\"live_enabled\":false}"
-read_only_status_tool_registration_denial_capability="{\"id\":\"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration\",\"ready\":${read_only_status_tool_registration_denial_export_present},\"live_enabled\":false}"
-read_only_status_tool_registration_denial_receipt_capability="{\"id\":\"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_readback_without_persistence\",\"ready\":${read_only_status_tool_registration_denial_receipt_export_present},\"live_enabled\":false}"
-read_only_status_tool_registration_denial_receipt_retention_replay_capability="{\"id\":\"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_retention_replay_readback_without_persistence\",\"ready\":${read_only_status_tool_registration_denial_receipt_retention_replay_export_present},\"live_enabled\":false}"
-read_only_status_tool_registration_denial_receipt_positive_preconditions_capability="{\"id\":\"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_positive_preconditions_readback_without_persistence\",\"ready\":${read_only_status_tool_registration_denial_receipt_positive_preconditions_export_present},\"live_enabled\":false}"
-read_only_status_tool_registration_denial_receipt_persistence_denial_capability="{\"id\":\"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_persistence_denial_readback_without_persistence\",\"ready\":${read_only_status_tool_registration_denial_receipt_persistence_denial_export_present},\"live_enabled\":false}"
 
 if [[ "$plugin_manifest_present" == "true" ]]; then
   manifest_dir="$(dirname "$PLUGIN_MANIFEST")"
@@ -440,69 +385,11 @@ jq -n \
   --argjson workflow_durable_store_adapter_present "$workflow_durable_store_adapter_present" \
   --argjson workflow_durable_store_append_plan_present "$workflow_durable_store_append_plan_present" \
   --argjson workflow_durable_store_adapter_harness_present "$workflow_durable_store_adapter_harness_present" \
-  --argjson status_canary_evidence_closeout_export_present "$status_canary_evidence_closeout_export_present" \
-  --argjson status_canary_evidence_closeout_positive_preconditions_export_present "$status_canary_evidence_closeout_positive_preconditions_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_export_present "$status_canary_evidence_closeout_recording_denial_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_receipt_export_present "$status_canary_evidence_closeout_recording_denial_receipt_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_receipt_retention_replay_export_present "$status_canary_evidence_closeout_recording_denial_receipt_retention_replay_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_receipt_positive_preconditions_export_present "$status_canary_evidence_closeout_recording_denial_receipt_positive_preconditions_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_export_present "$status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_retention_replay_export_present "$status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_retention_replay_export_present" \
-  --argjson status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_terminal_no_persistence_export_present "$status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_terminal_no_persistence_export_present" \
   --argjson git_status_entry_count "$git_status_entry_count" \
   --argjson git_untracked_count "$git_untracked_count" \
   --argjson git_tracked_change_count "$git_tracked_change_count" \
-  --arg ng "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_receipt_retention_replay_readback_without_persistence" \
   --arg doc "docs/architecture/HEPTA_SYSTEMS_CURRENT_REALITY_CAPABILITY_MATRIX_2026-06-27.md" \
   '
-  def release_risk_snapshot_ready($r):
-    $r.release_risk_snapshot_ready == true
-    and $r.risk_snapshot_visible == true
-    and $r.risk_snapshot_persisted == false
-    and $r.risk_entry_count == $r.source_boundary_entry_count
-    and $r.stable_snapshot_key_count == $r.risk_entry_count
-    and $r.snapshot_route_count == $r.risk_entry_count
-    and $r.snapshot_ready_count == $r.risk_entry_count
-    and $r.risk_entry_count > 0
-    and ($r.critical_risk_count + $r.high_risk_count + $r.medium_risk_count) == $r.risk_entry_count
-    and $r.high_or_critical_risk_count == ($r.critical_risk_count + $r.high_risk_count)
-    and $r.release_blocked_count == $r.risk_entry_count
-    and $r.rehearsal_candidate_count == $r.risk_entry_count
-    and $r.pending_operator_decision_count == $r.risk_entry_count
-    and $r.evidence_recording_blocked_count == $r.risk_entry_count
-    and $r.git_mutation_blocked_count == $r.risk_entry_count
-    and $r.cleanup_delete_blocked_count == $r.risk_entry_count
-    and $r.evidence_recorded == false
-    and $r.evidence_recording_persisted == false
-    and $r.evidence_receipt_persisted == false
-    and $r.approval_request_sent == false
-    and $r.approval_accepted == false
-    and $r.approval_recorded == false
-    and $r.approval_receipt_persisted == false
-    and $r.decision_recorded == false
-    and $r.decision_recording_persisted == false
-    and $r.decision_receipt_persisted == false
-    and $r.operator_packet_sent == false
-    and $r.operator_packet_persisted == false
-    and $r.readback_persisted == false
-    and $r.strategy_applied == false
-    and $r.release_cutover_allowed == false
-    and $r.git_add_allowed == false
-    and $r.git_index_mutated == false
-    and $r.git_commit_allowed == false
-    and $r.git_push_allowed == false
-    and $r.git_reset_allowed == false
-    and $r.git_checkout_allowed == false
-    and $r.git_revert_allowed == false
-    and $r.cleanup_allowed == false
-    and $r.delete_allowed == false
-    and $r.blocker_waiver_allowed == false
-    and $r.package_or_release_allowed == false
-    and $r.public_ga_allowed == false
-    and $r.canary_activation_allowed == false
-    and $r.live_activation_allowed == false
-    and $r.live_execution_allowed == false;
-
   ($plugin_abi[0]) as $plugin_abi |
   ($plugin_loader[0]) as $plugin_loader |
   ($plugin_tool_inventory[0]) as $plugin_tool_inventory |
@@ -965,83 +852,6 @@ jq -n \
       current_fact:"controlled canary readiness is planned from the Phase 9 approval protocol and seven controlled-live blocker readbacks while canary activation, Gateway/Auth, Native POST, Telegram/channel transport, credentials, persistence, Public GA, and live execution remain disabled"
     },
     {
-      id:"close_controlled_live_evidence_before_status_canary_start",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-report.sh",
-      current_fact:"status canary evidence closeout before start is queryable for 7 missing evidence blockers while evidence recording, approval, transport, ToolRegistry registration/invocation, persistence, canary start, and live execution remain disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_positive_preconditions_readback_without_recording",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_positive_preconditions_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-positive-preconditions-report.sh",
-      current_fact:"status canary evidence closeout recording positive preconditions are projected for all 7 blockers while all 12 required preconditions remain missing and recording stays disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_readback_without_recording",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_recording_denial_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-report.sh",
-      current_fact:"status canary evidence closeout recording denial is projected for all 7 blockers while recording, ledger, receipt persistence, ToolRegistry mutation/invocation, canary start, and live execution remain disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_readback_without_persistence",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_recording_denial_receipt_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-report.sh",
-      current_fact:"status canary evidence closeout recording-denial receipt is queryable for all 7 blockers while receipt persistence, ledger, runtime event-log, SQLite, ToolRegistry mutation/invocation, canary start, and live execution remain disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_retention_replay_readback_without_persistence",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_recording_denial_receipt_retention_replay_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-retention-replay-report.sh",
-      current_fact:"status canary evidence closeout recording-denial receipt retention/replay invariants are projected for all 7 blockers while retention policy persistence, replay index writes, expiry enforcement, garbage collection, receipt persistence, canary start, and live execution remain disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_positive_preconditions_readback_without_persistence",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_recording_denial_receipt_positive_preconditions_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-positive-preconditions-report.sh",
-      current_fact:"status canary recording-denial receipt persistence preconditions remain missing while persistence, canary, and live stay disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_readback_without_persistence",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-persistence-denial-report.sh",
-      current_fact:"status canary evidence closeout recording-denial receipt persistence denial is projected for all 7 blockers while denial receipt persistence, ToolRegistry registration/mutation/invocation, ledger, runtime event-log, SQLite, canary start, and live execution remain disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence",
-      layer:"live_readiness",
-      status:"ready_blocked",
-      ready:($status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_retention_replay_export_present == true),
-      live_enabled:false,
-      source:"scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-receipt-persistence-denial-retention-replay-report.sh",
-      current_fact:"status canary evidence closeout recording-denial receipt persistence-denial retention/replay invariants are projected for all 7 blockers while retention policy persistence, replay-index writes, expiry enforcement, garbage collection, receipt persistence, ToolRegistry mutation, canary start, and live execution remain disabled"
-    },
-    {
-      id:"close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_terminal_no_persistence_readback",
-      ready:($status_canary_evidence_closeout_recording_denial_receipt_persistence_denial_terminal_no_persistence_export_present == true),
-      live_enabled:false
-    },
-    {
       id:"dirty_worktree_release_boundary_inventory",
       layer:"release_boundary",
       status:$dirty_worktree_release_boundary_inventory.status,
@@ -1153,10 +963,10 @@ jq -n \
       id:"dirty_worktree_release_boundary_release_risk_snapshot",
       layer:"release_boundary",
       status:$dirty_worktree_release_boundary_release_risk_snapshot.status,
-      ready:release_risk_snapshot_ready($dirty_worktree_release_boundary_release_risk_snapshot),
+      ready:($dirty_worktree_release_boundary_release_risk_snapshot.release_risk_snapshot_ready == true and $dirty_worktree_release_boundary_release_risk_snapshot.risk_snapshot_visible == true and $dirty_worktree_release_boundary_release_risk_snapshot.risk_snapshot_persisted == false and $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count == $dirty_worktree_release_boundary_release_risk_snapshot.source_boundary_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.stable_snapshot_key_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.snapshot_route_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.snapshot_ready_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.critical_risk_count == 1 and $dirty_worktree_release_boundary_release_risk_snapshot.high_risk_count == 4 and $dirty_worktree_release_boundary_release_risk_snapshot.medium_risk_count == 2 and $dirty_worktree_release_boundary_release_risk_snapshot.high_or_critical_risk_count == 5 and $dirty_worktree_release_boundary_release_risk_snapshot.release_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.rehearsal_candidate_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.pending_operator_decision_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recording_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.git_mutation_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.cleanup_delete_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count and $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recorded == false and $dirty_worktree_release_boundary_release_risk_snapshot.approval_accepted == false and $dirty_worktree_release_boundary_release_risk_snapshot.decision_recorded == false and $dirty_worktree_release_boundary_release_risk_snapshot.operator_packet_sent == false and $dirty_worktree_release_boundary_release_risk_snapshot.readback_persisted == false and $dirty_worktree_release_boundary_release_risk_snapshot.strategy_applied == false),
       live_enabled:($dirty_worktree_release_boundary_release_risk_snapshot.risk_snapshot_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recorded == true or $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recording_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.evidence_receipt_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.approval_request_sent == true or $dirty_worktree_release_boundary_release_risk_snapshot.approval_accepted == true or $dirty_worktree_release_boundary_release_risk_snapshot.approval_recorded == true or $dirty_worktree_release_boundary_release_risk_snapshot.approval_receipt_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.decision_recorded == true or $dirty_worktree_release_boundary_release_risk_snapshot.decision_recording_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.decision_receipt_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.operator_packet_sent == true or $dirty_worktree_release_boundary_release_risk_snapshot.operator_packet_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.readback_persisted == true or $dirty_worktree_release_boundary_release_risk_snapshot.strategy_applied == true or $dirty_worktree_release_boundary_release_risk_snapshot.release_cutover_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_add_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_index_mutated == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_commit_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_push_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_reset_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_checkout_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.git_revert_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.cleanup_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.delete_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.blocker_waiver_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.package_or_release_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.public_ga_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.canary_activation_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.live_activation_allowed == true or $dirty_worktree_release_boundary_release_risk_snapshot.live_execution_allowed == true or ($dirty_worktree_release_boundary_release_risk_snapshot.side_effects | to_entries | any(.value == true))),
       source:"scripts/hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot-report.sh",
-      current_fact:"dirty worktree release risk is collapsed into dynamic critical, high, and medium risk entries while snapshot persistence, evidence recording, approval, decision recording, git mutation, cleanup, release, canary activation, and live remain disabled"
+      current_fact:"dirty worktree release risk is collapsed into one critical, four high, and two medium risk entries while snapshot persistence, evidence recording, approval, decision recording, git mutation, cleanup, release, canary activation, and live remain disabled"
     },
     {
       id:"dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal",
@@ -2017,7 +1827,53 @@ jq -n \
     and $dirty_worktree_release_boundary_clean_worktree_strategy_operator_evidence_recording_boundary_readback.canary_activation_allowed == false
     and $dirty_worktree_release_boundary_clean_worktree_strategy_operator_evidence_recording_boundary_readback.live_activation_allowed == false
     and $dirty_worktree_release_boundary_clean_worktree_strategy_operator_evidence_recording_boundary_readback.live_execution_allowed == false
-    and release_risk_snapshot_ready($dirty_worktree_release_boundary_release_risk_snapshot)
+    and $dirty_worktree_release_boundary_release_risk_snapshot.release_risk_snapshot_ready == true
+    and $dirty_worktree_release_boundary_release_risk_snapshot.risk_snapshot_visible == true
+    and $dirty_worktree_release_boundary_release_risk_snapshot.risk_snapshot_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count == $dirty_worktree_release_boundary_release_risk_snapshot.source_boundary_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.stable_snapshot_key_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.snapshot_route_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.snapshot_ready_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.critical_risk_count == 1
+    and $dirty_worktree_release_boundary_release_risk_snapshot.high_risk_count == 4
+    and $dirty_worktree_release_boundary_release_risk_snapshot.medium_risk_count == 2
+    and $dirty_worktree_release_boundary_release_risk_snapshot.high_or_critical_risk_count == 5
+    and $dirty_worktree_release_boundary_release_risk_snapshot.release_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.rehearsal_candidate_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.pending_operator_decision_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recording_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_mutation_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.cleanup_delete_blocked_count == $dirty_worktree_release_boundary_release_risk_snapshot.risk_entry_count
+    and $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recorded == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.evidence_recording_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.evidence_receipt_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.approval_request_sent == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.approval_accepted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.approval_recorded == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.approval_receipt_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.decision_recorded == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.decision_recording_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.decision_receipt_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.operator_packet_sent == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.operator_packet_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.readback_persisted == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.strategy_applied == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.release_cutover_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_add_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_index_mutated == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_commit_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_push_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_reset_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_checkout_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.git_revert_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.cleanup_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.delete_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.blocker_waiver_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.package_or_release_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.public_ga_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.canary_activation_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.live_activation_allowed == false
+    and $dirty_worktree_release_boundary_release_risk_snapshot.live_execution_allowed == false
     and $dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal.test_only_clean_worktree_strategy_rehearsal_ready == true
     and $dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal.test_only_rehearsal_visible == true
     and $dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal.test_only_rehearsal_persisted == false
@@ -2048,19 +1904,112 @@ jq -n \
     capabilities:$capabilities,
     memory_drift_entries:$memory_drift_entries,
     blockers:[
-      "workflow_durable_runtime_disabled",
+      "workflow_durable_store_write_blocked_by_feature_gate",
+      "workflow_durable_store_test_only_append_fixture_blocks_runtime_writes",
+      "workflow_temporal_lite_append_only_event_store_test_implementation_blocks_runtime_writes_and_live",
+      "workflow_temporal_lite_append_only_event_store_minimal_local_persistence_blocks_runtime_event_log_sqlite_store_workflow_replay_rollback_and_live",
+      "workflow_temporal_lite_deterministic_replay_validator_local_persistence_readback_blocks_runtime_replay_projection_persistence_replay_execution_and_live",
+      "workflow_temporal_lite_checkpoint_and_rollback_anchor_local_persistence_readback_blocks_checkpoint_rollback_anchor_writes_persistence_and_live",
+      "workflow_temporal_lite_lease_idempotency_index_local_persistence_readback_blocks_lease_acquire_idempotency_write_persistence_and_live",
+      "workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readback_blocks_event_log_sqlite_adapter_writes_persistence_and_live",
+      "workflow_temporal_lite_work_graph_projection_local_persistence_readback_blocks_projection_persistence_writes_and_live",
+      "workflow_temporal_lite_work_graph_projection_replay_alignment_local_persistence_readback_blocks_replay_alignment_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_checkpoint_consistency_local_persistence_readback_blocks_checkpoint_consistency_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_rollback_consistency_local_persistence_readback_blocks_rollback_consistency_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_recovery_window_local_persistence_readback_blocks_recovery_window_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_recovery_receipt_local_persistence_readback_blocks_recovery_receipt_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_deterministic_replay_validator_feature_gated_readback_blocks_replay_execution_persistence_and_live",
+      "workflow_temporal_lite_checkpoint_and_rollback_anchor_feature_gated_readback_blocks_checkpoint_rollback_writes_persistence_and_live",
+      "workflow_temporal_lite_lease_idempotency_index_feature_gated_readback_blocks_lease_acquire_idempotency_write_persistence_and_live",
+      "workflow_temporal_lite_event_log_sqlite_adapter_feature_gated_readback_blocks_event_log_sqlite_adapter_writes_persistence_and_live",
+      "workflow_temporal_lite_work_graph_projection_feature_gated_readback_blocks_projection_persistence_writes_and_live",
+      "workflow_temporal_lite_work_graph_projection_replay_alignment_feature_gated_readback_blocks_replay_alignment_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_checkpoint_consistency_feature_gated_readback_blocks_checkpoint_consistency_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_rollback_consistency_feature_gated_readback_blocks_rollback_consistency_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_recovery_window_feature_gated_readback_blocks_recovery_window_execution_persistence_writes_and_live",
+      "workflow_temporal_lite_replay_alignment_recovery_receipt_feature_gated_readback_blocks_recovery_receipt_execution_persistence_writes_and_live",
+      "hepta_systems_gate_recursion_cost_boundary_readback_blocks_matrix_cache_source_semantic_changes_gate_chain_invocation_and_live",
+      "hepta_systems_gate_recursion_lean_contract_readback_blocks_recursive_source_gate_chain_cache_persistence_source_semantics_and_live",
+      "hepta_systems_workgraph_legacy_gate_recursion_inventory_readback_blocks_legacy_workgraph_recursive_gate_chains_source_semantics_and_live",
+      "hepta_systems_tool_registry_minimal_read_only_invocation_ledger_receipt_readback_blocks_tool_write_ledger_approval_receipt_persistence_and_live",
+      "hepta_systems_plugin_canonical_manifest_permission_activation_contract_readback_blocks_plugin_install_cache_activation_signature_trust_and_live",
+      "hepta_systems_plugin_signature_trust_install_cache_boundary_readback_blocks_signature_trust_install_cache_evidence_acceptance_and_live",
+      "hepta_systems_plugin_operator_evidence_acceptance_packet_readback_blocks_packet_send_evidence_acceptance_install_cache_and_live",
+      "hepta_systems_plugin_install_cache_noop_preflight_readback_blocks_preflight_execution_cache_materialization_install_receipt_persistence_and_live",
+      "hepta_systems_plugin_install_cache_idempotency_denial_receipt_readback_blocks_idempotency_index_write_denial_receipt_persistence_install_cache_and_live",
+      "hepta_systems_plugin_install_cache_rollback_uninstall_noop_readback_blocks_rollback_uninstall_execution_plan_persistence_install_cache_and_live",
+      "hepta_systems_plugin_dynamic_activation_connector_start_boundary_readback_blocks_activation_permission_connector_start_tool_registration_ledger_receipt_and_live",
+      "hepta_systems_plugin_tool_registry_registration_denial_receipt_readback_blocks_tool_registry_registration_lookup_invocation_ledger_receipt_and_live",
+      "hepta_systems_plugin_tool_invocation_noop_denial_receipt_readback_blocks_tool_invocation_noop_result_ledger_approval_receipt_and_live",
+      "hepta_systems_plugin_tool_invocation_policy_approval_ledger_boundary_readback_blocks_policy_approval_ledger_receipt_persistence_invocation_and_live",
+      "hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback_blocks_feature_gate_open_dry_run_execution_tool_invocation_ledger_receipt_and_live",
+      "hepta_systems_plugin_tool_invocation_dry_run_receipt_ledger_preview_readback_blocks_feature_gate_open_dry_run_execution_receipt_ledger_persistence_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_packet_readback_blocks_operator_packet_send_persistence_acceptance_recording_tool_invocation_ledger_receipt_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_acceptance_recording_boundary_readback_blocks_acceptance_recording_receipt_persistence_tool_invocation_runtime_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_execution_open_preconditions_readback_blocks_operator_evidence_acceptance_ledger_receipt_registration_invocation_connector_runtime_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback_blocks_evidence_packet_send_recording_acceptance_ledger_receipt_registration_invocation_connector_runtime_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_boundary_readback_blocks_acceptance_recording_evidence_recording_receipt_persistence_invocation_runtime_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_open_preconditions_readback_blocks_evidence_artifact_identity_acceptance_recording_ledger_receipt_registration_invocation_connector_runtime_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_denial_receipt_readback_blocks_acceptance_record_persistence_denial_receipt_idempotency_ledger_receipt_registration_invocation_runtime_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_open_preconditions_readback_blocks_acceptance_record_store_binding_idempotency_ledger_receipt_runtime_rollback_kill_switch_evidence_feature_gate_and_live",
+      "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback_blocks_shadow_execution_store_write_registry_lookup_invocation_runtime_and_live",
+      "hepta_systems_tool_registry_shadow_registration_lookup_readback_blocks_shadow_registry_lookup_registration_invocation_ledger_runtime_and_live",
+      "hepta_systems_matrix_report_single_render_cache_boundary_readback_blocks_cache_persistence_downstream_direct_matrix_render_and_live",
+      "current_reality_matrix_compact_cache_boundary_readback_blocks_cache_persistence_evidence_approval_decision_and_live",
+      "hepta_system_status_internal_read_only_invocation_blocks_external_network_credentials_mutation_and_live",
+      "hepta_system_status_operator_approval_protocol_blocks_auto_acceptance_broker_write_persistence_and_live",
       "tool_registry_dispatch_live_mutation_blocked_by_design",
-      "plugin_lifecycle_live_mutation_blocked_by_design",
-      "read_only_status_tool_registration_denial_pending",
+      "workflow_durable_runtime_disabled",
+      "native_read_only_console_live_mutation_blocked_by_design",
       "controlled_live_cutover_blocked_by_operator_approval_and_evidence",
-      "dirty_worktree_boundary",
+      "controlled_live_denial_readback_index_blocks_waiver_and_acceptance",
+      "controlled_live_operator_packet_preview_blocks_approval_request",
+      "controlled_live_operator_packet_non_send_readback_blocks_send_and_persistence",
+      "controlled_live_required_evidence_plan_blocks_recording_and_acceptance",
+      "controlled_live_required_evidence_readback_index_blocks_recording_and_acceptance",
+      "controlled_live_required_evidence_gap_summary_blocks_acceptance_and_recording",
+      "controlled_live_required_evidence_gap_diff_view_blocks_acceptance_and_recording",
+      "controlled_live_required_evidence_gap_operator_readback_blocks_acceptance_and_persistence",
+      "controlled_live_required_evidence_gap_operator_packet_attachment_blocks_acceptance_send_and_persistence",
+      "controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback_blocks_send_persistence_and_approval_request",
+      "controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback_blocks_transport_mutation",
+      "controlled_live_required_evidence_gap_operator_packet_attachment_credential_boundary_readback_blocks_credential_access",
+      "controlled_live_required_evidence_gap_operator_packet_attachment_rollback_rehearsal_boundary_readback_blocks_rehearsal_execution",
+      "controlled_live_required_evidence_gap_operator_packet_attachment_kill_switch_rehearsal_boundary_readback_blocks_kill_switch_mutation",
+      "controlled_canary_readiness_plan_blocks_activation_transport_persistence_and_live",
+      "dirty_worktree_release_boundary_inventory_blocks_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_grouping_freeze_plan_blocks_freeze_application_git_mutation_release_and_live",
+      "dirty_worktree_release_boundary_grouping_freeze_operator_readback_blocks_git_mutation_release_and_live",
+      "dirty_worktree_release_boundary_actionable_clean_worktree_strategy_blocks_strategy_application_git_mutation_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_blocks_send_persistence_git_mutation_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_non_send_readback_blocks_send_persistence_git_mutation_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_git_mutation_boundary_readback_blocks_git_mutation_cleanup_delete_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist_blocks_decision_recording_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist_packet_readback_blocks_packet_persistence_decision_recording_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_recording_boundary_readback_blocks_decision_recording_persistence_receipt_approval_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_approval_acceptance_boundary_readback_blocks_approval_acceptance_receipt_decision_recording_evidence_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_clean_worktree_strategy_operator_evidence_recording_boundary_readback_blocks_evidence_recording_persistence_receipt_approval_decision_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_release_risk_snapshot_blocks_release_cutover_git_mutation_cleanup_evidence_approval_decision_recording_and_live",
+      "dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal_blocks_test_probe_git_mutation_cleanup_evidence_approval_decision_recording_and_live",
+      "dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback_blocks_test_probe_git_mutation_cleanup_evidence_approval_decision_recording_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_rehearsal_blocks_owner_persistence_freeze_application_classification_persistence_git_mutation_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback_blocks_owner_assignment_freeze_classification_operator_packet_git_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send_blocks_packet_send_persistence_owner_assignment_git_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback_without_git_mutation_blocks_git_mutation_cleanup_delete_owner_freeze_classification_packet_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_without_git_mutation_blocks_decision_recording_approval_evidence_git_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_checklist_packet_readback_without_git_mutation_blocks_packet_readback_decision_recording_approval_evidence_git_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_decision_recording_boundary_readback_without_recording_blocks_decision_recording_persistence_receipt_approval_evidence_owner_freeze_classification_test_probe_git_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_approval_acceptance_boundary_readback_without_acceptance_blocks_approval_request_acceptance_recording_receipt_decision_evidence_owner_freeze_classification_test_probe_git_cleanup_release_and_live",
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_evidence_recording_boundary_readback_without_recording_blocks_evidence_recording_persistence_receipt_approval_decision_owner_freeze_classification_test_probe_git_cleanup_release_and_live",
+      "plugin_lifecycle_live_mutation_blocked_by_design",
       "workgraph_suffix_ladder_accretion",
+      "dirty_worktree_boundary",
       "live_and_public_ga_blocked_by_design"
     ],
     next_actions:[
-      $ng
+      "close_controlled_live_evidence_before_status_canary_start"
     ],
-    next_migration_step:$ng,
+    next_migration_step:"close_controlled_live_evidence_before_status_canary_start",
     architecture_note:$doc,
     side_effect_free:true,
     side_effects:{
@@ -2087,16 +2036,4 @@ jq -n \
       package_or_release_written:false,
       public_ga_promoted:false
     }
-  }' | jq \
-    --argjson rp_cap "$read_only_status_tool_registration_preconditions_capability" \
-    --arg next_gate "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration" \
-    '
-      .capabilities = ([.capabilities[] | select(.id != $rp_cap.id)] + [$rp_cap])
-      | .local_capability_count = (.capabilities | length)
-      | .local_capability_ready_count = ([.capabilities[] | select(.ready == true)] | length)
-      | .local_capability_blocked_count = ([.capabilities[] | select(.ready == false)] | length)
-      | .live_enabled_count = ([.capabilities[] | select(.live_enabled == true)] | length)
-      | .all_live_paths_blocked = (.live_enabled_count == 0)
-      | .next_actions = [$next_gate]
-      | .next_migration_step = $next_gate
-    '
+  }'

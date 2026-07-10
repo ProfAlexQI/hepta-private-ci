@@ -63,8 +63,8 @@ grep -q 'no cache write, compact cache persistence, evidence recording, approval
   and (.blockers | index("approval_acceptance_disabled")) != null
   and (.blockers | index("decision_recording_disabled")) != null
   and (.blockers | index("live_execution_disabled")) != null
-  and (.next_actions | index("hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration")) != null
-  and .recommended_next_gate == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
+  and (.next_actions | index("close_controlled_live_evidence_before_status_canary_start")) != null
+  and .recommended_next_gate == "close_controlled_live_evidence_before_status_canary_start"
   and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null

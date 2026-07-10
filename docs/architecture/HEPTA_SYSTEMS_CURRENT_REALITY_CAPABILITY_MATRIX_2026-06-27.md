@@ -52,9 +52,6 @@ The matrix reads existing local reports instead of replaying historical patches:
 - `scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback-report.sh`
 - `scripts/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback-report.sh`
 - `scripts/hepta-systems-current-compact-capability-summary-report.sh`
-- `scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-report.sh`
-- `scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-positive-preconditions-report.sh`
-- `scripts/hepta-systems-close-controlled-live-evidence-before-status-canary-start-recording-denial-report.sh`
 
 The `hepta-system` fixture is present in the current checkout. Its manifest
 uses path fields for skills, MCP servers, and app connectors, so the matrix
@@ -68,12 +65,11 @@ resolves those paths before counting declarations:
 - 2 activation event declarations
 - 2 tool policy declarations
 
-The matrix is ready only when all local capability rows are ready and no row
-enables live execution, public GA, tool invocation, ToolRegistry mutation,
+The matrix is ready only when all forty-four local capability rows are ready and no
+row enables live execution, public GA, tool invocation, ToolRegistry mutation,
 ledger writes, approval requests, WorkGraph execution, replay, rollback,
 provider/model calls, gateway/auth mutation, Native POST mutation, package or
-release writes, or channel sends. The 2026-07-08 refresh tracks 111 rows: 109
-ready rows, 2 blocked rows, and zero live-enabled rows.
+release writes, or channel sends.
 
 The workflow durable-store test-only append fixture row is ready: it covers all
 nine durable workflow event contracts with append-only sequence, idempotency,
@@ -196,8 +192,8 @@ recording, packet send, packet persistence, readback persistence, git mutation,
 cleanup, release, canary activation, and live execution remain disabled.
 
 The dirty worktree release-boundary release risk snapshot row is
-`ready_blocked`: it collapses the current dirty-worktree strategy groups into
-dynamic critical, high, and medium release-risk entries while snapshot
+`ready_blocked`: it collapses the same seven dirty-worktree strategy groups into
+one critical, four high, and two medium release-risk entries while snapshot
 persistence, evidence recording, approval acceptance, decision recording, git
 mutation, cleanup, release, canary activation, and live execution remain
 disabled.
@@ -251,23 +247,6 @@ new current-reality matrix capability row. It consumes this matrix and the
 Phase 5n kill-switch rehearsal boundary readback, then collapses the current
 ready rows plus seven unchanged-missing blockers into one operator-facing
 dashboard.
-
-The 2026-07-08 status-canary closeout refresh adds seven current-reality rows:
-`close_controlled_live_evidence_before_status_canary_start`,
-`close_controlled_live_evidence_before_status_canary_start_positive_preconditions_readback_without_recording`,
-`close_controlled_live_evidence_before_status_canary_start_recording_denial_readback_without_recording`,
-and
-`close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_readback_without_persistence`,
-plus
-`close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_retention_replay_readback_without_persistence`,
-and
-`close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_positive_preconditions_readback_without_persistence`,
-and
-`close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_readback_without_persistence`.
-They make the latest status-canary evidence closeout chain visible to the
-matrix while keeping evidence recording, waiver, approval, ToolRegistry
-registration/invocation, ledger writes, retention/replay persistence, receipt
-persistence, canary start, and live execution disabled.
 
 The controlled-live operator packet preview row is `ready_blocked`: the packet
 assembles scope, payload hash, rollback owner, all seven blocker readbacks, and

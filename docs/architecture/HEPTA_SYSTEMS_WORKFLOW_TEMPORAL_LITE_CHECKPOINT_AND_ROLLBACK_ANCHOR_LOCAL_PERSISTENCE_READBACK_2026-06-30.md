@@ -13,15 +13,6 @@ append-only `temporal_lite_events` history, project deterministic replay
 readback rows, and then project checkpoint/rollback anchor keys and digests
 from those replay rows.
 
-The checkpoint and rollback anchor readback is now explicitly derived from the
-same single append-only event store interface provenance carried by the
-deterministic replay validator. The source replay validator must report
-`source_append_only_event_store_interface_ready = true` and
-`replay_validator_derived_from_event_store_interface = true` before this slice
-can be ready. This keeps checkpoint and rollback anchors derived from the local
-event-store interface without writing checkpoints, rollback anchors, or runtime
-state.
-
 ## Source Boundary
 
 - Source report:
@@ -29,10 +20,6 @@ state.
 - Source surface:
   `workflow_temporal_lite_deterministic_replay_validator_local_persistence_readback`
 - Source entries: 9
-- Source interface:
-  `WorkflowTemporalLiteAppendOnlyEventStore`
-- Source interface provenance:
-  `source_append_only_event_store_interface_ready = true`
 - Source table:
   `temporal_lite_events`
 - Source scope:
@@ -63,7 +50,6 @@ Expected counts:
 - `checkpoint_digest_count = 9`
 - `rollback_digest_count = 9`
 - `anchor_mismatch_count = 0`
-- `checkpoint_anchors_derived_from_event_store_interface = true`
 
 ## Closed Boundary
 

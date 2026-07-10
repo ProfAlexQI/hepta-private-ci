@@ -922,11 +922,11 @@ jq -n \
     entries:$entries,
     status_canary_evidence_closure_entries:$status_canary_evidence_closure_entries,
     next_actions:[
-      "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration",
+      "close_controlled_live_evidence_before_status_canary_start",
       "keep_status_canary_final_guard_read_only",
       "keep_connector_candidate_preflight_only"
     ],
-    next_migration_step:"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration",
+    next_migration_step:"close_controlled_live_evidence_before_status_canary_start",
     local_gate:$gate,
     architecture_note:$doc,
     side_effect_free:true,

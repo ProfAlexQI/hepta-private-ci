@@ -6,9 +6,6 @@ It consumes the SQLite/WAL-backed lease and idempotency-index readback and
 projects event-log plus SQLite adapter readback rows while keeping runtime
 event-log writes, runtime SQLite writes, adapter persistence, canary, and live
 paths closed.
-It also carries forward the single append-only event store interface provenance
-from lease/idempotency so the adapter cannot be counted ready unless it is
-derived from that interface path.
 
 This is a local persistence event-log and SQLite adapter readback. The Rust
 tests write only to a temporary SQLite database, reopen that database, read the
@@ -23,10 +20,6 @@ event-log/SQLite adapter keys from those local rows.
 - Source surface:
   `workflow_temporal_lite_lease_idempotency_index_local_persistence_readback`
 - Source entries: 9
-- Source interface provenance:
-  `source_append_only_event_store_interface_ready = true`
-- Source derivation:
-  `source_lease_idempotency_derived_from_event_store_interface = true`
 - Source table:
   `temporal_lite_events`
 - Source scope:
@@ -65,7 +58,6 @@ Expected counts:
 - `sqlite_row_written_count = 0`
 - `adapter_persisted_count = 0`
 - `adapter_mismatch_count = 0`
-- `event_log_sqlite_adapter_derived_from_event_store_interface = true`
 
 ## Closed Boundary
 

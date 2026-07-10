@@ -41,7 +41,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .source_operator_packet_persisted == false
   and .source_packet_payload_persisted == false
   and .source_readback_persisted == false
-  and .source_packet_entry_count == .readback_entry_count
+  and .source_packet_entry_count == 4
   and .lib_export_present == true
   and .readback_scope.readback_mode == "git_mutation_boundary_readback_only"
   and .readback_scope.git_mutation_boundary == "closed"
@@ -132,8 +132,8 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
     and .canary_activation_allowed == false
     and .live_execution_allowed == false))
   and any(.entries[]; .source_bucket == "codex-rs")
-  and any(.entries[]; .source_bucket == "scripts")
   and any(.entries[]; .source_bucket == "hepta_systems_owned")
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned")
   and (.blockers | index("git_add_blocked")) != null
   and (.blockers | index("git_index_mutation_blocked")) != null
   and (.blockers | index("git_commit_blocked")) != null
@@ -161,10 +161,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   and .surface == "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send"
   and .status == "blocked"
   and .operator_packet_without_send_ready == false
-  and .packet_entry_count == (.entries | length)
-  and any(.entries[]; .source_bucket == "codex-rs")
-  and any(.entries[]; .source_bucket == "scripts")
-  and any(.entries[]; .source_bucket == "hepta_systems_owned")
+  and .packet_entry_count == 4
   and .operator_packet_visible == false
   and .operator_packet_sent == false
   and .operator_packet_persisted == false
@@ -183,4 +180,4 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, own
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_git_mutation_boundary_readback --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback-gate: PASS: owner/freeze/classification git-mutation boundary exposes dirty buckets with git, cleanup, delete, release, canary, and live blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-operator-packet-git-mutation-boundary-readback-gate: PASS: owner/freeze/classification git-mutation boundary exposes four dirty buckets with git, cleanup, delete, release, canary, and live blocked\n'

@@ -6,7 +6,8 @@ pub const CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_GATE: &str =
     "current_reality_matrix_compact_cache_boundary_readback_gate";
 pub const CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_SCHEMA_VERSION: &str =
     "current_reality_matrix_compact_cache_boundary_readback_v1";
-pub const CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_RECOMMENDED_NEXT_GATE: &str = "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence";
+pub const CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_RECOMMENDED_NEXT_GATE: &str =
+    "close_controlled_live_evidence_before_status_canary_start";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CurrentRealityMatrixCompactCacheBoundaryReadbackReport {

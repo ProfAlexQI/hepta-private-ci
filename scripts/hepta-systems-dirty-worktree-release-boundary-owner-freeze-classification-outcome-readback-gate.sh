@@ -38,16 +38,18 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   and .source_rehearsal_ready == false
   and .source_rehearsal_visible == false
   and .source_rehearsal_persisted == false
-  and .source_classification_entry_count >= 1
+  and .source_classification_entry_count == 4
   and .lib_export_present == true
   and .outcome_entry_count == .source_classification_entry_count
   and .stable_outcome_key_count == .outcome_entry_count
   and .outcome_route_count == .outcome_entry_count
   and .outcome_ready_count == .outcome_entry_count
-  and (.owner_attribution_outcome_required_count + .targeted_gate_outcome_required_count + .owned_lane_freeze_outcome_required_count + .artifact_classification_outcome_required_count) == .outcome_entry_count
-  and .targeted_gate_outcome_required_count >= 1
-  and .owned_lane_freeze_outcome_required_count >= 1
-  and (.hepta_systems_owner_route_count + .cross_lane_owner_route_count) == .outcome_entry_count
+  and .owner_attribution_outcome_required_count == 1
+  and .targeted_gate_outcome_required_count == 2
+  and .owned_lane_freeze_outcome_required_count == 1
+  and .artifact_classification_outcome_required_count == 0
+  and .hepta_systems_owner_route_count == 3
+  and .cross_lane_owner_route_count == 1
   and .release_blocked_count == .outcome_entry_count
   and .test_probe_execution_blocked_count == .outcome_entry_count
   and .git_mutation_blocked_count == .outcome_entry_count
@@ -97,7 +99,7 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
     and .canary_activation_allowed == false
     and .live_execution_allowed == false
     and .operator_packet_candidate == true))
-  and (if .owner_attribution_outcome_required_count > 0 then any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .outcome_category == "owner_attribution_outcome_required") else true end)
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .outcome_category == "owner_attribution_outcome_required")
   and any(.entries[]; .source_bucket == "codex-rs" and .outcome_category == "targeted_gate_outcome_required")
   and any(.entries[]; .source_bucket == "scripts" and .outcome_category == "targeted_gate_outcome_required")
   and any(.entries[]; .source_bucket == "hepta_systems_owned" and .outcome_category == "owned_lane_freeze_outcome_required")
@@ -121,7 +123,7 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   and .owner_freeze_classification_rehearsal_ready == false
   and .owner_freeze_classification_readback_visible == false
   and .owner_freeze_classification_readback_persisted == false
-  and .classification_entry_count >= 1
+  and .classification_entry_count == 4
   and .test_probe_executed == false
   and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
@@ -132,4 +134,4 @@ grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_operator_pa
   cargo test -p hepta-runtime dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback-gate: PASS: owner/freeze/classification outcome exposes current dirty buckets with owner assignment, freeze, classification, git, cleanup, evidence, approval, decision, operator packet, release, canary, and live paths blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback-gate: PASS: owner/freeze/classification outcome exposes four dirty buckets with owner assignment, freeze, classification, git, cleanup, evidence, approval, decision, operator packet, release, canary, and live paths blocked\n'

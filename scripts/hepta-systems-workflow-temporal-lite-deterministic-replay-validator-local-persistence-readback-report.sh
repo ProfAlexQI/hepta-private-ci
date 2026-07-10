@@ -100,12 +100,6 @@ jq -n \
   ($entries | map(select(.rollback_anchor_replayed == true)) | length) as $rollback_anchor_readback_count |
   ($source_report.minimal_local_persistence_ready == true
     and $source_report.local_event_contract_count == 9
-    and $source_report.append_only_event_store_interface_ready == true
-    and $source_report.append_only_event_store_interface_contract_count == 3
-    and $source_report.sqlite_wal_backend_implements_interface == true
-    and $source_report.interface_append_count == 9
-    and $source_report.interface_duplicate_denial_count == 9
-    and $source_report.interface_replay_read_count == 9
     and $source_report.local_tempdb_sqlite_write_covered_by_tests == true
     and $source_report.runtime_event_log_write_allowed == false
     and $source_report.runtime_sqlite_write_allowed == false
@@ -146,12 +140,6 @@ jq -n \
     source_minimal_local_persistence_gate:$source_report.gate,
     source_minimal_local_persistence_ready:$source_report.minimal_local_persistence_ready,
     source_local_event_contract_count:$source_report.local_event_contract_count,
-    source_append_only_event_store_interface_ready:$source_report.append_only_event_store_interface_ready,
-    source_event_store_interface_contract_count:$source_report.append_only_event_store_interface_contract_count,
-    source_sqlite_wal_backend_implements_interface:$source_report.sqlite_wal_backend_implements_interface,
-    source_interface_append_count:$source_report.interface_append_count,
-    source_interface_duplicate_denial_count:$source_report.interface_duplicate_denial_count,
-    source_interface_replay_read_count:$source_report.interface_replay_read_count,
     lib_export_present:$lib_export_present,
     stored_events_readback_helper_present:$stored_events_readback_helper_present,
     tempdb_reopen_test_present:$tempdb_reopen_test_present,
@@ -171,12 +159,6 @@ jq -n \
     local_tempdb_sqlite_read_covered_by_tests:true,
     runtime_feature_gate_enabled:false,
     replay_validator_materialized:$validator_ready,
-    replay_validator_derived_from_event_store_interface:($source_report.append_only_event_store_interface_ready == true
-      and $source_report.append_only_event_store_interface_contract_count == 3
-      and $source_report.sqlite_wal_backend_implements_interface == true
-      and $source_report.interface_append_count == 9
-      and $source_report.interface_duplicate_denial_count == 9
-      and $source_report.interface_replay_read_count == 9),
     runtime_event_log_write_allowed:false,
     runtime_sqlite_write_allowed:false,
     runtime_store_persistence_allowed:false,

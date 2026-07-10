@@ -12,13 +12,6 @@ temporary SQLite database, reopen that database, read the append-only
 `temporal_lite_events` history, and validate deterministic replay projection
 rows from the persisted event order and replay digests.
 
-The replay validator is now explicitly derived from the single append-only event store interface exposed by the minimal local persistence slice. The
-source must report `append_only_event_store_interface_ready = true`, three
-interface contracts, SQLite/WAL backend interface coverage, 9 interface
-appends, 9 duplicate denials, and 9 replay reads before this readback can be
-ready. This is provenance only; it does not enable replay execution or runtime
-persistence.
-
 ## Source Boundary
 
 - Source report:
@@ -26,10 +19,6 @@ persistence.
 - Source surface:
   `workflow_temporal_lite_append_only_event_store_minimal_local_persistence`
 - Source entries: 9
-- Source interface:
-  `WorkflowTemporalLiteAppendOnlyEventStore`
-- Source interface contract count: 3
-- Source interface append / duplicate-denial / replay-read counts: 9 / 9 / 9
 - Source table:
   `temporal_lite_events`
 - Source scope:
@@ -63,7 +52,6 @@ Expected counts:
 - `idempotency_readback_count = 9`
 - `checkpoint_readback_count = 9`
 - `rollback_anchor_readback_count = 9`
-- `replay_validator_derived_from_event_store_interface = true`
 
 ## Closed Boundary
 

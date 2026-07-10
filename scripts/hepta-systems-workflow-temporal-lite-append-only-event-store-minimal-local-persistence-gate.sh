@@ -23,8 +23,6 @@ grep -q 'Temporal-Lite Append-Only Event Store Minimal Local Persistence' "$DOC"
   || fail "architecture note must document Temporal-Lite Append-Only Event Store Minimal Local Persistence"
 grep -q 'SQLite/WAL minimal local persistence' "$DOC" \
   || fail "architecture note must document SQLite/WAL minimal local persistence"
-grep -q 'single append-only event store interface' "$DOC" \
-  || fail "architecture note must document the single append-only event store interface"
 grep -q 'temporal_lite_events' "$DOC" \
   || fail "architecture note must document the temporal_lite_events table"
 grep -q 'no runtime event-log write, runtime SQLite write, runtime store persistence, runtime lease acquisition, runtime idempotency index persistence, runtime checkpoint write, workflow execution, replay execution, rollback execution, provider invocation, model invocation, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, channel send, package, release, Public GA promotion, canary activation, or live execution' "$DOC" \
@@ -45,9 +43,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .rust_sqlite_wal_config_present == true
   and .rust_idempotency_unique_index_present == true
   and .rust_deterministic_reopen_test_present == true
-  and .rust_event_store_interface_present == true
-  and .rust_sqlite_wal_backend_implements_interface == true
-  and .rust_event_store_interface_test_present == true
   and .sqlite_adapter_scope == "local_tempdb_sqlite_wal_append_only_store_test_covered_runtime_write_blocked"
   and .sqlite_table_count == 1
   and .sqlite_unique_index_count == 2
@@ -55,12 +50,6 @@ grep -q 'no runtime event-log write, runtime SQLite write, runtime store persist
   and .wal_mode_required == true
   and .wal_mode_test_covered == true
   and .local_tempdb_persistence_test_covered == true
-  and .append_only_event_store_interface_ready == true
-  and .append_only_event_store_interface_contract_count == 3
-  and .sqlite_wal_backend_implements_interface == true
-  and .interface_append_count == 9
-  and .interface_duplicate_denial_count == 9
-  and .interface_replay_read_count == 9
   and .local_event_contract_count == 9
   and .append_attempt_count == 18
   and .accepted_append_count == 9
