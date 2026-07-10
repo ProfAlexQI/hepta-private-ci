@@ -21,6 +21,7 @@ use crate::LogQuery;
 use crate::LogRow;
 use crate::STATE_DB_FILENAME;
 use crate::SortKey;
+use crate::THREAD_HISTORY_DB_FILENAME;
 use crate::ThreadMetadata;
 use crate::ThreadMetadataBuilder;
 use crate::ThreadsPage;
@@ -108,9 +109,9 @@ pub struct StateRuntime {
 impl StateRuntime {
     /// Initialize the state runtime using the provided Hepta home and default provider.
     ///
-    /// This opens (and migrates) the SQLite databases under `codex_home`,
-    /// keeping logs in a dedicated file to reduce lock contention with the
-    /// rest of the state store.
+    /// This opens (and migrates) the state and logs databases under `codex_home`.
+    /// Paginated thread history has a dedicated path and migrator, but remains
+    /// unopened until the history projector takes ownership of it.
     pub async fn init(codex_home: PathBuf, default_provider: String) -> anyhow::Result<Arc<Self>> {
         Self::init_inner(
             codex_home,
@@ -316,6 +317,14 @@ pub fn logs_db_path(codex_home: &Path) -> PathBuf {
     codex_home.join(logs_db_filename())
 }
 
+pub fn thread_history_db_filename() -> String {
+    THREAD_HISTORY_DB_FILENAME.to_string()
+}
+
+pub fn thread_history_db_path(codex_home: &Path) -> PathBuf {
+    codex_home.join(thread_history_db_filename())
+}
+
 /// Run SQLite's built-in integrity check against an existing database file.
 pub async fn sqlite_integrity_check(path: &Path) -> anyhow::Result<Vec<String>> {
     let options = SqliteConnectOptions::new()
@@ -342,9 +351,11 @@ mod tests {
     use super::sqlite_integrity_check;
     use super::state_db_path;
     use super::test_support::unique_temp_dir;
+    use super::thread_history_db_path;
     use crate::DB_INIT_METRIC;
     use crate::DbTelemetry;
     use crate::migrations::STATE_MIGRATOR;
+    use crate::migrations::runtime_thread_history_migrator;
     use pretty_assertions::assert_eq;
     use sqlx::SqlitePool;
     use sqlx::migrate::MigrateError;
@@ -440,6 +451,48 @@ mod tests {
             .expect("integrity check should run");
 
         assert_eq!(result, vec!["ok".to_string()]);
+        let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn thread_history_migrator_creates_dedicated_projection_schema() {
+        let codex_home = unique_temp_dir();
+        tokio::fs::create_dir_all(&codex_home)
+            .await
+            .expect("create codex home");
+        let history_path = thread_history_db_path(codex_home.as_path());
+        let pool = SqlitePool::connect_with(
+            SqliteConnectOptions::new()
+                .filename(&history_path)
+                .create_if_missing(true),
+        )
+        .await
+        .expect("open thread history db");
+
+        runtime_thread_history_migrator()
+            .run(&pool)
+            .await
+            .expect("migrate thread history db");
+
+        let tables = sqlx::query_scalar::<_, String>(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'thread_%'",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("list thread history tables")
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        let expected = [
+            "thread_history_projection_state",
+            "thread_items",
+            "thread_turns",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+        assert_eq!(tables, expected);
+
+        pool.close().await;
         let _ = tokio::fs::remove_dir_all(codex_home).await;
     }
 
