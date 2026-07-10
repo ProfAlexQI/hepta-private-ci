@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::work_graph_canonical_schema_fixture_report_generation::WORK_GRAPH_CANONICAL_SCHEMA_FIXTURE_REPORT_GENERATION_GATE;
+use crate::work_graph_schema_registry::WORK_GRAPH_CANONICAL_SCHEMA_FIXTURE_REPORT_GENERATION_GATE;
 
 pub const WORK_GRAPH_APPEND_ONLY_EVENT_STORE_FEATURE_GATED_WAL_PRECONDITION_GATE: &str =
     "hepta_work_graph_append_only_event_store_feature_gated_wal_precondition_gate";
