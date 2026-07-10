@@ -279,31 +279,35 @@ fn gate_registry_json() -> Result<String> {
 }
 
 fn gate_spec_json(id: &str) -> Result<String> {
-    let spec = CONTROL_UI_ROUTE_SPECS
+    if let Some(spec) = CONTROL_UI_ROUTE_SPECS
         .iter()
         .find(|spec| gate_spec_matches_id(spec, id))
-        .with_context(|| format!("unknown Hepta gate id: {id}"))?;
-
-    Ok(json_or_error(&serde_json::json!({
-        "product": "Hepta",
-        "runtime": "hepta",
-        "status": "ready",
-        "runner": "hepta gate",
-        "mode": "declarative_registry_read_only",
-        "id": spec.capability,
-        "method": spec.method,
-        "pattern": spec.pattern,
-        "source_command": spec.source_command,
-        "side_effect_boundary": spec.side_effect_boundary,
-        "read_only": spec.is_read_only(),
-        "dry_run_only": spec.is_dry_run(),
-        "guarded": spec.is_guarded(),
-        "requires_confirmation": spec.requires_confirmation(),
-        "receipt_state": spec.receipt_state(),
-        "registered_route_count": CONTROL_UI_ROUTE_SPECS.len(),
-        "report_execution_performed": false,
-        "side_effect_free": true,
-    })))
+    {
+        return Ok(json_or_error(&serde_json::json!({
+            "product": "Hepta",
+            "runtime": "hepta",
+            "status": "ready",
+            "runner": "hepta gate",
+            "mode": "declarative_registry_read_only",
+            "id": spec.capability,
+            "method": spec.method,
+            "pattern": spec.pattern,
+            "source_command": spec.source_command,
+            "side_effect_boundary": spec.side_effect_boundary,
+            "read_only": spec.is_read_only(),
+            "dry_run_only": spec.is_dry_run(),
+            "guarded": spec.is_guarded(),
+            "requires_confirmation": spec.requires_confirmation(),
+            "receipt_state": spec.receipt_state(),
+            "registered_route_count": CONTROL_UI_ROUTE_SPECS.len(),
+            "report_execution_performed": false,
+            "side_effect_free": true,
+        })));
+    }
+    if let Some(spec_json) = gate_runner::migrated_pair_spec_json(id)? {
+        return Ok(spec_json);
+    }
+    anyhow::bail!("unknown Hepta gate id: {id}")
 }
 
 fn gate_spec_matches_id(spec: &ControlUiRouteSpec, id: &str) -> bool {
@@ -122406,6 +122410,22 @@ mod tests {
             by_endpoint["registered_route_count"],
             CONTROL_UI_ROUTE_SPECS.len()
         );
+    }
+
+    #[test]
+    fn gate_command_resolves_a_migrated_shell_pair_from_the_declarative_specs() {
+        let id = "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-final-ack-readback";
+        let value: serde_json::Value = serde_json::from_str(
+            &gate_command_json(&[id.to_string(), "--json".to_string()])
+                .expect("migrated gate pair spec"),
+        )
+        .expect("migrated gate pair value");
+
+        assert_eq!(value["mode"], "declarative_shell_pair_migration");
+        assert_eq!(value["id"], id);
+        assert_eq!(value["receipt_state"], "terminal");
+        assert_eq!(value["report_execution_performed"], false);
+        assert_eq!(value["side_effect_free"], true);
     }
 
     #[test]

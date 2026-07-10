@@ -1,0 +1,37 @@
+{
+  "schema_version": "hepta_shell_gate_parity_ledger_v1",
+  "baseline": {
+    "source_git_commit": "f40b0ad8aa8a22bc4ca7e36359e894fe5eeaf6a0",
+    "catalog_sha256": "97d1a90d3f5fb31fa0155458a47f3d8b78f216360c8dc316222e3801ce344def",
+    "exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+    "gate_count": 1982,
+    "report_count": 1283,
+    "exact_pair_count": 1282
+  },
+  "batches": [
+    {
+      "batch_id": "terminal_final_ack_readback_v1",
+      "migration_parent_commit": "62f455309ad0593dd4ebcd7e3c8899487ff47eea",
+      "migrated_pair_count": 3,
+      "remaining_legacy_pair_count": 1279,
+      "post_migration_catalog_sha256": "a40a2ee872e90d4963a161b7861bcbaf8607c226570dd3e21934b0df330746df",
+      "post_migration_exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+      "gate_count": 1982,
+      "report_count": 1283,
+      "exact_pair_count": 1282,
+      "legacy_wrapper_line_count_before": 351,
+      "thin_wrapper_line_count_after": 30,
+      "shared_runner_and_spec_line_count": 254,
+      "script_family_line_count_after": 284,
+      "successful_output_byte_parity_count": 6,
+      "report_output_byte_parity_ready": true,
+      "gate_output_byte_parity_ready": true,
+      "script_execution_side_effects_observed": false,
+      "migrated_ids": [
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-final-ack-readback",
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-final-ack-readback",
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-final-ack-readback"
+      ]
+    }
+  ]
+}

@@ -54,6 +54,19 @@ pub(crate) enum ReceiptState {
     Terminal,
 }
 
+impl ReceiptState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Precondition => "precondition",
+            Self::Denial => "denial",
+            Self::Receipt => "receipt",
+            Self::Persistence => "persistence",
+            Self::Retention => "retention",
+            Self::Terminal => "terminal",
+        }
+    }
+}
+
 pub(crate) struct ReceiptStateMachine;
 
 impl ReceiptStateMachine {
@@ -67,11 +80,19 @@ impl ReceiptStateMachine {
     ];
 
     pub(crate) fn classify(spec: &GateSpec) -> Option<ReceiptState> {
-        let fields = [
+        Self::classify_fields(
             spec.capability,
             spec.source_command,
             spec.side_effect_boundary,
-        ];
+        )
+    }
+
+    pub(crate) fn classify_fields(
+        capability: &str,
+        source_command: &str,
+        side_effect_boundary: &str,
+    ) -> Option<ReceiptState> {
+        let fields = [capability, source_command, side_effect_boundary];
         let contains = |needle: &str| fields.iter().any(|field| field.contains(needle));
 
         if contains("terminal") {
@@ -89,6 +110,12 @@ impl ReceiptStateMachine {
         } else {
             None
         }
+    }
+
+    pub(crate) fn contains_label(label: &str) -> bool {
+        Self::ORDERED_STATES
+            .iter()
+            .any(|state| state.as_str() == label)
     }
 }
 
@@ -150,5 +177,7 @@ mod tests {
             Some(ReceiptState::Terminal)
         );
         assert_eq!(ReceiptStateMachine::ORDERED_STATES.len(), 6);
+        assert!(ReceiptStateMachine::contains_label("terminal"));
+        assert!(!ReceiptStateMachine::contains_label("unknown"));
     }
 }

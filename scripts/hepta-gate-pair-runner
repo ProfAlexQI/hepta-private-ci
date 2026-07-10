@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+
+usage() {
+  printf '%s\n' 'usage: scripts/hepta-gate-pair-runner <report|gate> <id>' >&2
+  exit 2
+}
+
+[[ $# == 2 ]] || usage
+kind="$1"
+id="$2"
+[[ "$kind" == "report" || "$kind" == "gate" ]] || usage
+[[ "$id" =~ ^[a-z0-9-]+$ ]] || usage
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required" >&2
+  exit 1
+}
+[[ -f "$SPEC_FILE" ]] || {
+  echo "missing Hepta gate pair spec registry: $SPEC_FILE" >&2
+  exit 1
+}
+
+spec="$(jq -cer --arg id "$id" '.pairs[] | select(.id == $id)' "$SPEC_FILE")" || {
+  echo "unknown Hepta migrated gate pair id: $id" >&2
+  exit 1
+}
+
+source_report_rel="$(jq -r '.source_report' <<<"$spec")"
+report_rel="$(jq -r '.report_path' <<<"$spec")"
+receipt_state="$(jq -r '.receipt_state' <<<"$spec")"
+attachment_surface="$(jq -r '.attachment_surface' <<<"$spec")"
+readback_surface="$(jq -r '.readback_surface' <<<"$spec")"
+acknowledgement_prefix="$(jq -r '.acknowledgement_prefix' <<<"$spec")"
+summary_prefix="$(jq -r '.summary_prefix' <<<"$spec")"
+blocker_count="$(jq -r '.blocker_count' <<<"$spec")"
+next_migration_step="$(jq -r '.next_migration_step' <<<"$spec")"
+missing_source_message="$(jq -r '.missing_source_message' <<<"$spec")"
+missing_report_message="$(jq -r '.missing_report_message' <<<"$spec")"
+pass_message="$(jq -r '.pass_message' <<<"$spec")"
+
+[[ "$source_report_rel" == scripts/*-report.sh ]] || {
+  echo "invalid Hepta migrated source report path for: $id" >&2
+  exit 1
+}
+[[ "$report_rel" == "scripts/$id-report.sh" ]] || {
+  echo "invalid Hepta migrated report path for: $id" >&2
+  exit 1
+}
+[[ "$receipt_state" == "terminal" ]] || {
+  echo "unexpected Hepta migrated receipt state for: $id" >&2
+  exit 1
+}
+
+render_report() {
+  local source_report="$ROOT/$source_report_rel"
+  [[ -x "$source_report" ]] || {
+    echo "$missing_source_message: $source_report" >&2
+    exit 1
+  }
+
+  local source_json
+  source_json="$("$source_report")"
+  jq -e \
+    --arg attachment_surface "$attachment_surface" \
+    --arg attachment_ready_key "${attachment_surface}_ready" \
+    --arg attachment_blocked_key "${attachment_surface}_blocked" \
+    --argjson blocker_count "$blocker_count" \
+    '
+      .surface == $attachment_surface
+      and .[$attachment_ready_key] == true
+      and .[$attachment_blocked_key] == true
+      and .attachment_blocker_count == $blocker_count
+      and .signing_receipt_final_acknowledgement_recorded == false
+      and .signing_receipt_operator_received_recorded == false
+      and .telegram_signing_receipt_acknowledgement_sent == false
+      and .release_publication_authority_from_signing_receipt_acknowledgement_derived == false
+    ' <<<"$source_json" >/dev/null
+
+  jq -n \
+    --argjson source "$source_json" \
+    --arg attachment_surface "$attachment_surface" \
+    --arg readback_surface "$readback_surface" \
+    --arg acknowledgement_prefix "$acknowledgement_prefix" \
+    --arg summary_prefix "$summary_prefix" \
+    --argjson blocker_count "$blocker_count" \
+    --arg next_migration_step "$next_migration_step" \
+    '{
+      runtime: "hepta",
+      surface: $readback_surface,
+      plugin_id: "hepta-system@hepta-local",
+      status: "ready_blocked",
+      ("source_" + $attachment_surface + "_surface"): $source.surface,
+      ("source_" + $attachment_surface + "_ready"): $source[($attachment_surface + "_ready")],
+      ("source_" + $attachment_surface + "_blocked"): $source[($attachment_surface + "_blocked")],
+      ($readback_surface + "_ready"): true,
+      ($readback_surface + "_blocked"): true,
+      ($attachment_surface + "_attached"): true,
+      ($acknowledgement_prefix + "_denial_gate_present"): $source[($acknowledgement_prefix + "_denial_gate_present")],
+      ($acknowledgement_prefix + "_denial_doc_present"): $source[($acknowledgement_prefix + "_denial_doc_present")],
+      ($acknowledgement_prefix + "_denial_gate_invoked"): false,
+      ($summary_prefix + "_summary_briefing_denial_gate_invoked"): false,
+      signing_receipt_final_acknowledgement_recorded: false,
+      signing_receipt_operator_received_recorded: false,
+      signing_receipt_operator_confirmed_recorded: false,
+      signing_receipt_operator_read_recorded: false,
+      signing_receipt_operator_seen_recorded: false,
+      signing_receipt_final_response_recorded: false,
+      signing_receipt_completion_acknowledgement_recorded: false,
+      signing_receipt_status_acknowledgement_recorded: false,
+      signing_receipt_summary_acknowledgement_recorded: false,
+      signing_receipt_briefing_acknowledgement_recorded: false,
+      signing_receipt_readback_digest_acknowledgement_recorded: false,
+      signing_receipt_dashboard_acknowledgement_recorded: false,
+      signing_receipt_notification_acknowledgement_recorded: false,
+      external_signing_receipt_acknowledgement_sent: false,
+      telegram_signing_receipt_acknowledgement_sent: false,
+      signing_receipt_acknowledgement_acceptance_recorded: false,
+      operator_acceptance_from_signing_receipt_acknowledgement_recorded: false,
+      operator_approval_from_signing_receipt_acknowledgement_derived: false,
+      release_publication_authority_from_signing_receipt_acknowledgement_derived: false,
+      activation_authority_from_signing_receipt_acknowledgement_derived: false,
+      install_from_signing_receipt_acknowledgement_executed: false,
+      service_restart_from_signing_receipt_acknowledgement_performed: false,
+      active_binary_from_signing_receipt_acknowledgement_mutated: false,
+      result_receipt_from_signing_receipt_acknowledgement_recorded: false,
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      secret_file_read: false,
+      readback_blocker_count: $blocker_count,
+      public_ga_claim_allowed: false,
+      public_ga_claimed: false,
+      public_release_published: false,
+      rollback_execution_allowed: false,
+      next_migration_step: $next_migration_step,
+      side_effect_free: true,
+      side_effects: ($source.side_effects)
+    }'
+}
+
+verify_gate() {
+  local report="$ROOT/$report_rel"
+  [[ -x "$report" ]] || {
+    echo "$missing_report_message: $report" >&2
+    exit 1
+  }
+
+  local json
+  json="$("$report")"
+  jq -e \
+    --arg attachment_surface "$attachment_surface" \
+    --arg readback_surface "$readback_surface" \
+    --arg acknowledgement_prefix "$acknowledgement_prefix" \
+    --argjson blocker_count "$blocker_count" \
+    --arg next_migration_step "$next_migration_step" \
+    '
+      .runtime == "hepta"
+      and .surface == $readback_surface
+      and .[($readback_surface + "_ready")] == true
+      and .[($readback_surface + "_blocked")] == true
+      and .[("source_" + $attachment_surface + "_ready")] == true
+      and .[($acknowledgement_prefix + "_denial_gate_invoked")] == false
+      and .signing_receipt_final_acknowledgement_recorded == false
+      and .signing_receipt_operator_received_recorded == false
+      and .signing_receipt_operator_read_recorded == false
+      and .telegram_signing_receipt_acknowledgement_sent == false
+      and .release_publication_authority_from_signing_receipt_acknowledgement_derived == false
+      and .activation_authority_from_signing_receipt_acknowledgement_derived == false
+      and .install_from_signing_receipt_acknowledgement_executed == false
+      and .active_binary_from_signing_receipt_acknowledgement_mutated == false
+      and .provider_invoked == false
+      and .credential_read == false
+      and .readback_blocker_count == $blocker_count
+      and .public_ga_claim_allowed == false
+      and .public_ga_claimed == false
+      and .public_release_published == false
+      and .next_migration_step == $next_migration_step
+      and (.side_effects | to_entries | all(.value == false))
+    ' <<<"$json" >/dev/null
+
+  printf '%s\n' "$pass_message"
+}
+
+case "$kind" in
+  report) render_report ;;
+  gate) verify_gate ;;
+esac

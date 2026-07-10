@@ -1,0 +1,64 @@
+{
+  "schema_version": "hepta_gate_pair_specs_v1",
+  "receipt_state_machine": [
+    "precondition",
+    "denial",
+    "receipt",
+    "persistence",
+    "retention",
+    "terminal"
+  ],
+  "pairs": [
+    {
+      "id": "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-final-ack-readback",
+      "capability": "public-ga-signing-receipt-final-acknowledgement-readback",
+      "receipt_state": "terminal",
+      "side_effect_boundary": "read-only terminal acknowledgement denial; never publishes, sends, installs, restarts, or mutates",
+      "source_report": "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-final-index-delivery-receipt-signing-final-ack-report.sh",
+      "report_path": "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-final-ack-readback-report.sh",
+      "attachment_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_final_acknowledgement_attachment",
+      "readback_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_final_acknowledgement_readback",
+      "acknowledgement_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_final_acknowledgement",
+      "summary_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt",
+      "blocker_count": 136,
+      "next_migration_step": "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_final_acknowledgement_final_index_without_summary",
+      "missing_source_message": "missing executable terminal public claim delivery receipt artifact signing receipt final acknowledgement attachment report",
+      "missing_report_message": "missing executable signing receipt final acknowledgement readback report",
+      "pass_message": "hepta-systems-terminal-public-claim-delivery-receipt-signing-final-ack-readback-gate: PASS: artifact signing receipt final acknowledgement readback is ready but blocked"
+    },
+    {
+      "id": "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-final-ack-readback",
+      "capability": "public-ga-signing-receipt-signing-receipt-final-acknowledgement-readback",
+      "receipt_state": "terminal",
+      "side_effect_boundary": "read-only terminal acknowledgement denial; never publishes, sends, installs, restarts, or mutates",
+      "source_report": "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-final-index-delivery-receipt-signing-receipt-final-ack-report.sh",
+      "report_path": "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-final-ack-readback-report.sh",
+      "attachment_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_attachment",
+      "readback_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_readback",
+      "acknowledgement_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement",
+      "summary_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt",
+      "blocker_count": 164,
+      "next_migration_step": "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_final_index_without_summary",
+      "missing_source_message": "missing executable terminal public claim delivery receipt artifact signing receipt signing receipt final acknowledgement attachment report",
+      "missing_report_message": "missing executable signing receipt signing receipt final acknowledgement readback report",
+      "pass_message": "hepta-systems-terminal-public-claim-delivery-receipt-signing-receipt-final-ack-readback-gate: PASS: artifact signing receipt signing receipt final acknowledgement readback is ready but blocked"
+    },
+    {
+      "id": "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-final-ack-readback",
+      "capability": "public-ga-signing-receipt-signing-receipt-signing-receipt-final-acknowledgement-readback",
+      "receipt_state": "terminal",
+      "side_effect_boundary": "read-only terminal acknowledgement denial; never publishes, sends, installs, restarts, or mutates",
+      "source_report": "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-final-index-delivery-receipt-signing-receipt-signing-receipt-final-ack-report.sh",
+      "report_path": "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-final-ack-readback-report.sh",
+      "attachment_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_final_acknowledgement_attachment",
+      "readback_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_final_acknowledgement_readback",
+      "acknowledgement_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_final_acknowledgement",
+      "summary_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt",
+      "blocker_count": 276,
+      "next_migration_step": "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_final_acknowledgement_final_index_without_summary",
+      "missing_source_message": "missing executable terminal public claim delivery receipt artifact signing receipt signing receipt signing receipt final acknowledgement attachment report",
+      "missing_report_message": "missing executable signing receipt signing receipt signing receipt final acknowledgement readback report",
+      "pass_message": "hepta-systems-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-final-ack-readback-gate: PASS: artifact signing receipt signing receipt signing receipt final acknowledgement readback is ready but blocked"
+    }
+  ]
+}
