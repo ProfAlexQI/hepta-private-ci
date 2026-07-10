@@ -1,4 +1,5 @@
 use hepta_native_gateway as native_gateway;
+mod workgraph_cmd;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -8,9 +9,13 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if args.first().is_some_and(|arg| arg == "workgraph") {
+        return workgraph_cmd::run(&args[1..]);
+    }
+
     let Some(options) = native_gateway::parse_serve_ui_args(&args)? else {
         anyhow::bail!(
-            "hepta-cli supports --serve-ui plus `hepta gate` registry and explicit source compatibility execution; legacy CLI compatibility remains outside the active service binary"
+            "hepta-cli supports --serve-ui, `hepta gate`, and `hepta workgraph`; legacy CLI compatibility remains outside the active service binary"
         );
     };
 

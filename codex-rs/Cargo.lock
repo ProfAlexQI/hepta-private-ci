@@ -7149,6 +7149,10 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "hepta-native-gateway",
+ "hepta-runtime",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -7247,8 +7251,10 @@ dependencies = [
  "hepta-kernel",
  "hepta-memory",
  "hepta-plugins",
+ "pretty_assertions",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tempfile",
  "tokio",
