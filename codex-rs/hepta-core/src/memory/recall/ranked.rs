@@ -21,6 +21,28 @@ pub enum ContextRecallSource {
     KnowledgeGraph,
 }
 
+impl ContextRecallSource {
+    /// Canonical registry for recall source lanes.
+    pub const ALL: &'static [Self] = &[
+        Self::RecentWindow,
+        Self::Transcript,
+        Self::DurableMemory,
+        Self::SummaryMemory,
+        Self::ActiveTopicSession,
+        Self::ActiveNeuron,
+        Self::KnowledgeGraph,
+    ];
+
+    pub const COUNT: usize = Self::ALL.len();
+
+    pub fn registry_index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|source| *source == self)
+            .expect("context recall source must be registered")
+    }
+}
+
 /// Explainable score used to rank items inside an intelligence turn frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextRecallScore {

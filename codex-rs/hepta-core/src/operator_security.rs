@@ -5,6 +5,8 @@ use crate::control_ui::CONTROL_UI_RUST_RENDERER_MARKERS;
 
 pub const HEPTA_NATIVE_GATEWAY_RS: &str =
     include_str!("../../hepta-native-gateway/src/native_gateway.rs");
+pub const HEPTA_NATIVE_HTTP_TRANSPORT_RS: &str =
+    include_str!("../../hepta-native-gateway/src/http_transport.rs");
 pub const HEPTA_NATIVE_POST_RS: &str = include_str!("../../hepta-gateway/src/native_post.rs");
 pub const HEPTA_KERNEL_RS: &str = include_str!("../../hepta-kernel/src/lib.rs");
 
@@ -180,9 +182,10 @@ pub fn operator_security_report() -> OperatorSecurityReport {
     let loopback_bind_enforced = HEPTA_NATIVE_GATEWAY_RS.contains("is_loopback_bind_addr")
         && HEPTA_NATIVE_GATEWAY_RS.contains("HEPTA_ALLOW_NON_LOOPBACK_UI")
         && HEPTA_NATIVE_GATEWAY_RS.contains("refusing to serve UI on non-loopback address");
-    let security_headers_present = HEPTA_NATIVE_GATEWAY_RS.contains("Content-Security-Policy")
-        && HEPTA_NATIVE_GATEWAY_RS.contains("X-Content-Type-Options: nosniff")
-        && HEPTA_NATIVE_GATEWAY_RS.contains("Referrer-Policy: no-referrer");
+    let security_headers_present = HEPTA_NATIVE_HTTP_TRANSPORT_RS
+        .contains("Content-Security-Policy")
+        && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("X-Content-Type-Options: nosniff")
+        && HEPTA_NATIVE_HTTP_TRANSPORT_RS.contains("Referrer-Policy: no-referrer");
     let post_actions_dry_run_only = native_post_contract_source_contains("/api/actions/<action>")
         && native_post_contract_source_contains("/ui-action-plan <action> --dry-run --json")
         && native_post_contract_source_contains("native_action_post_dry_run");

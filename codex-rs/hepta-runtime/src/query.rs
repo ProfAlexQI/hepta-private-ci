@@ -1628,34 +1628,32 @@ mod context_recall_provider_rollup {
     use super::RuntimeContextRecallSelectionSummary;
     use super::RuntimeContextRecallSlice;
 
-    const CONTEXT_RECALL_SOURCE_COUNT: usize = 7;
-
     pub(super) fn build(slice: &RuntimeContextRecallSlice) -> RuntimeContextRecallProviderRollup {
-        let mut returned_sources = [false; CONTEXT_RECALL_SOURCE_COUNT];
-        let mut ranked_sources = [false; CONTEXT_RECALL_SOURCE_COUNT];
+        let mut returned_sources = [false; ContextRecallSource::COUNT];
+        let mut ranked_sources = [false; ContextRecallSource::COUNT];
 
         if slice.recent_entry_count > 0 {
-            returned_sources[source_index(ContextRecallSource::RecentWindow)] = true;
+            returned_sources[ContextRecallSource::RecentWindow.registry_index()] = true;
         }
         if slice.transcript_returned_count > 0 {
-            returned_sources[source_index(ContextRecallSource::Transcript)] = true;
+            returned_sources[ContextRecallSource::Transcript.registry_index()] = true;
         }
         if slice.durable_memory_hit_count > 0 {
-            returned_sources[source_index(ContextRecallSource::DurableMemory)] = true;
+            returned_sources[ContextRecallSource::DurableMemory.registry_index()] = true;
         }
         if slice.summary_hit_count > 0 {
-            returned_sources[source_index(ContextRecallSource::SummaryMemory)] = true;
+            returned_sources[ContextRecallSource::SummaryMemory.registry_index()] = true;
         }
         if slice.active_topic_session_count > 0 {
-            returned_sources[source_index(ContextRecallSource::ActiveTopicSession)] = true;
+            returned_sources[ContextRecallSource::ActiveTopicSession.registry_index()] = true;
         }
         if !slice.bundle.active_neurons.is_empty() {
-            returned_sources[source_index(ContextRecallSource::ActiveNeuron)] = true;
+            returned_sources[ContextRecallSource::ActiveNeuron.registry_index()] = true;
         }
 
         for item in &slice.bundle.ranked_items {
-            returned_sources[source_index(item.source)] = true;
-            ranked_sources[source_index(item.source)] = true;
+            returned_sources[item.source.registry_index()] = true;
+            ranked_sources[item.source.registry_index()] = true;
         }
 
         let returned_source_count = count_sources(&returned_sources);
@@ -1684,19 +1682,7 @@ mod context_recall_provider_rollup {
         }
     }
 
-    fn source_index(source: ContextRecallSource) -> usize {
-        match source {
-            ContextRecallSource::RecentWindow => 0,
-            ContextRecallSource::Transcript => 1,
-            ContextRecallSource::DurableMemory => 2,
-            ContextRecallSource::SummaryMemory => 3,
-            ContextRecallSource::ActiveTopicSession => 4,
-            ContextRecallSource::ActiveNeuron => 5,
-            ContextRecallSource::KnowledgeGraph => 6,
-        }
-    }
-
-    fn count_sources(sources: &[bool; CONTEXT_RECALL_SOURCE_COUNT]) -> u32 {
+    fn count_sources(sources: &[bool; ContextRecallSource::COUNT]) -> u32 {
         to_u32(sources.iter().filter(|selected| **selected).count())
     }
 
