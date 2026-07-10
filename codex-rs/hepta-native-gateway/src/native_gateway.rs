@@ -75,6 +75,8 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::gate_spec::GateSpec as ControlUiRouteSpec;
+use crate::gate_spec::ReceiptStateMachine;
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
 
@@ -2656,6 +2658,82 @@ pub fn parse_serve_ui_args(raw_args: &[String]) -> Result<Option<NativeGatewayOp
 pub fn parse_serve_ui_args_from_env() -> Result<Option<NativeGatewayOptions>> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     parse_serve_ui_args(&args)
+}
+
+pub fn gate_command_json(raw_args: &[String]) -> Result<String> {
+    match raw_args {
+        [flag] if flag == "--list" => gate_registry_json(),
+        [id] => gate_spec_json(id),
+        [id, flag] if flag == "--json" => gate_spec_json(id),
+        [] => anyhow::bail!("usage: hepta gate <id> [--json] | hepta gate --list"),
+        _ => anyhow::bail!("usage: hepta gate <id> [--json] | hepta gate --list"),
+    }
+}
+
+fn gate_registry_json() -> Result<String> {
+    let gates = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .map(|spec| {
+            serde_json::json!({
+                "id": spec.capability,
+                "method": spec.method,
+                "pattern": spec.pattern,
+                "source_command": spec.source_command,
+                "side_effect_boundary": spec.side_effect_boundary,
+                "read_only": spec.is_read_only(),
+                "dry_run_only": spec.is_dry_run(),
+                "guarded": spec.is_guarded(),
+                "requires_confirmation": spec.requires_confirmation(),
+                "receipt_state": spec.receipt_state(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json_or_error(&serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": "ready",
+        "runner": "hepta gate",
+        "mode": "declarative_registry_read_only",
+        "gate_count": gates.len(),
+        "route_count_source": "CONTROL_UI_ROUTE_SPECS",
+        "receipt_state_machine": ReceiptStateMachine::ORDERED_STATES,
+        "report_execution_performed": false,
+        "side_effect_free": true,
+        "gates": gates,
+    })))
+}
+
+fn gate_spec_json(id: &str) -> Result<String> {
+    let spec = CONTROL_UI_ROUTE_SPECS
+        .iter()
+        .find(|spec| gate_spec_matches_id(spec, id))
+        .with_context(|| format!("unknown Hepta gate id: {id}"))?;
+
+    Ok(json_or_error(&serde_json::json!({
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": "ready",
+        "runner": "hepta gate",
+        "mode": "declarative_registry_read_only",
+        "id": spec.capability,
+        "method": spec.method,
+        "pattern": spec.pattern,
+        "source_command": spec.source_command,
+        "side_effect_boundary": spec.side_effect_boundary,
+        "read_only": spec.is_read_only(),
+        "dry_run_only": spec.is_dry_run(),
+        "guarded": spec.is_guarded(),
+        "requires_confirmation": spec.requires_confirmation(),
+        "receipt_state": spec.receipt_state(),
+        "registered_route_count": CONTROL_UI_ROUTE_SPECS.len(),
+        "report_execution_performed": false,
+        "side_effect_free": true,
+    })))
+}
+
+fn gate_spec_matches_id(spec: &ControlUiRouteSpec, id: &str) -> bool {
+    spec.capability == id || spec.pattern.strip_prefix("/api/") == Some(id)
 }
 
 pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
@@ -6655,27 +6733,24 @@ fn native_control_ui_audit_report(
     let gateway_replacement = gateway_replacement_readiness(options, telegram_plugin);
     let get_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "GET")
+        .filter(|route| !route.is_post())
         .count();
     let post_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "POST")
+        .filter(|route| route.is_post())
         .count();
     let guarded_post_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "POST")
-        .filter(|route| post_route_is_guarded(route))
+        .filter(|route| route.is_post())
+        .filter(|route| route.is_guarded())
         .count();
     let dry_run_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| {
-            route.side_effect_boundary.contains("dry-run")
-                || route.side_effect_boundary.contains("plan only")
-        })
+        .filter(|route| route.is_dry_run())
         .count();
     let read_only_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.side_effect_boundary.contains("read-only"))
+        .filter(|route| route.is_read_only())
         .count();
     let ready = route_matrix.ready
         && approvals.status == "ready"
@@ -6743,19 +6818,16 @@ fn native_approvals_json() -> String {
 fn native_approvals_report() -> NativeApprovalsResponse {
     let approval_routes = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "POST")
+        .filter(|route| route.is_post())
         .map(|route| NativeApprovalRoute {
             method: route.method,
             pattern: route.pattern,
             capability: route.capability,
             source_command: route.source_command,
             side_effect_boundary: route.side_effect_boundary,
-            dry_run_only: route.side_effect_boundary.contains("dry-run")
-                || route.side_effect_boundary.contains("plan only"),
-            guarded: post_route_is_guarded(route),
-            confirmation_required_for_real_mutation: !route
-                .side_effect_boundary
-                .contains("read-only"),
+            dry_run_only: route.is_dry_run(),
+            guarded: route.is_guarded(),
+            confirmation_required_for_real_mutation: route.requires_confirmation(),
         })
         .collect::<Vec<_>>();
     let guarded_route_count = approval_routes.iter().filter(|route| route.guarded).count();
@@ -7230,20 +7302,17 @@ fn operator_security_json(
     let gateway_replacement_readiness = gateway_replacement_readiness(options, telegram_plugin);
     let post_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "POST")
+        .filter(|route| route.is_post())
         .count();
     let dry_run_post_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "POST")
-        .filter(|route| {
-            route.side_effect_boundary.contains("dry-run")
-                || route.side_effect_boundary.contains("plan only")
-        })
+        .filter(|route| route.is_post())
+        .filter(|route| route.is_dry_run())
         .count();
     let guarded_post_route_count = CONTROL_UI_ROUTE_SPECS
         .iter()
-        .filter(|route| route.method == "POST")
-        .filter(|route| post_route_is_guarded(route))
+        .filter(|route| route.is_post())
+        .filter(|route| route.is_guarded())
         .count();
     let telegram_production_readiness_status =
         native_telegram::telegram_production_readiness_status(
@@ -7645,18 +7714,6 @@ fn non_empty_trimmed(value: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
-}
-
-fn post_route_is_guarded(route: &ControlUiRouteSpec) -> bool {
-    let boundary = route.side_effect_boundary;
-    boundary.contains("dry-run")
-        || boundary.contains("plan only")
-        || boundary.contains("not executed")
-        || boundary.contains("confirm-required")
-        || boundary.contains("requires confirmation")
-        || boundary.contains("never mutates")
-        || boundary.contains("never publishes")
-        || boundary.contains("never sends")
 }
 
 fn gateway_replacement_readiness(
@@ -19216,7 +19273,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
             "replacement_receipt_persisted_count": 0,
             "tombstone_recorded_count": 0,
             "delete_marker_recorded_count": 0,
-            "denied_by_cancellation_supersession": denials_value.clone(),
+            "denied_by_cancellation_supersession": denials_value,
             "denied_by_cancellation_supersession_count": denied_count,
             "denied_by_activation_command_result_receipt_cancellation_supersession": denials_value,
             "denied_by_activation_command_result_receipt_cancellation_supersession_count": denied_count,
@@ -19868,7 +19925,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
             "ledger_evidence_recorded_count": 0,
             "index_evidence_recorded_count": 0,
             "delivery_evidence_recorded_count": 0,
-            "denied_by_audit_trail_immutable_evidence": denials_value.clone(),
+            "denied_by_audit_trail_immutable_evidence": denials_value,
             "denied_by_audit_trail_immutable_evidence_count": denied_count,
             "denied_by_activation_command_result_receipt_audit_trail_immutable_evidence": denials_value,
             "denied_by_activation_command_result_receipt_audit_trail_immutable_evidence_count": denied_count,
@@ -20651,7 +20708,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
     extend_json_object(
         &mut report,
         serde_json::json!({
-            "denied_by_retention_expiry_garbage_collection": denials_value.clone(),
+            "denied_by_retention_expiry_garbage_collection": denials_value,
             "denied_by_retention_expiry_garbage_collection_count": denied_count,
             "denied_by_activation_command_result_receipt_retention_expiry_garbage_collection": denials_value,
             "denied_by_activation_command_result_receipt_retention_expiry_garbage_collection_count": denied_count,
@@ -21461,7 +21518,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
     extend_json_object(
         &mut report,
         serde_json::json!({
-            "denied_by_export_query_observability": denials_value.clone(),
+            "denied_by_export_query_observability": denials_value,
             "denied_by_export_query_observability_count": denied_count,
             "denied_by_activation_command_result_receipt_export_query_observability": denials_value,
             "denied_by_activation_command_result_receipt_export_query_observability_count": denied_count,
@@ -22217,7 +22274,7 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activati
     extend_json_object(
         &mut report,
         serde_json::json!({
-            "denied_by_operator_facing_summary_briefing": denials_value.clone(),
+            "denied_by_operator_facing_summary_briefing": denials_value,
             "denied_by_operator_facing_summary_briefing_count": denied_count,
             "denied_by_activation_command_result_receipt_operator_facing_summary_briefing": denials_value,
             "denied_by_activation_command_result_receipt_operator_facing_summary_briefing_count": denied_count,
@@ -58283,12 +58340,12 @@ fn hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_t
         && source_u64(
             "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_cancellation_supersession_denied_count",
         ) == 18
-        && source_bool("operator_approval_recorded") == false
-        && source_bool("release_publication_authority_derived") == false
-        && source_bool("activation_authority_derived") == false
-        && source_bool("install_executed") == false
-        && source_bool("service_restarted") == false
-        && source_bool("active_binary_mutated") == false
+        && !source_bool("operator_approval_recorded")
+        && !source_bool("release_publication_authority_derived")
+        && !source_bool("activation_authority_derived")
+        && !source_bool("install_executed")
+        && !source_bool("service_restarted")
+        && !source_bool("active_binary_mutated")
         && surface_count == 18;
     let denials = vec![
         "source_cancellation_supersession_report_required",
@@ -68312,25 +68369,25 @@ fn hepta_first_model_positive_approval_packet_boundary_report() -> serde_json::V
     let artifact_bool = |key: &str| {
         artifact_publication
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let artifact_u64 = |key: &str| {
         artifact_publication
             .get(key)
-            .and_then(|value| value.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
     };
     let first_model_bool = |key: &str| {
         first_model_terminal
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let first_model_u64 = |key: &str| {
         first_model_terminal
             .get(key)
-            .and_then(|value| value.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
     };
 
@@ -68343,23 +68400,23 @@ fn hepta_first_model_positive_approval_packet_boundary_report() -> serde_json::V
                 == Some("prepare_first_model_positive_approval_packet_boundary_gate")
                 && item
                     .get("derives_operator_approval")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("derives_activation_authority")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("writes_release_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("reads_credentials")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
         })
         .unwrap_or(false);
@@ -68374,21 +68431,21 @@ fn hepta_first_model_positive_approval_packet_boundary_report() -> serde_json::V
                 )
                 && item
                     .get("accepts_terminal_decision")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("claims_public_release")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("writes_release_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("activates_runtime").and_then(|value| value.as_bool())
+                && item.get("activates_runtime").and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool())
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
 
@@ -68558,7 +68615,7 @@ fn hepta_first_model_positive_approval_packet_boundary_report() -> serde_json::V
     let packet_item_count = packet_items.len();
     let accepted_packet_item_count = packet_items
         .iter()
-        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .filter(|item| item.get("accepted").and_then(serde_json::Value::as_bool) == Some(true))
         .count();
     let denied_by = vec![
         "positive_approval_packet_boundary_not_operator_approval",
@@ -68857,18 +68914,18 @@ fn hepta_scoped_memory_canary_durable_receipt_boundary_report() -> serde_json::V
                 == Some("prepare_minimal_memory_canary_scoped_operator_packet")
                 && item
                     .get("accepts_positive_approval_packet")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("writes_memory").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("writes_kg").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("writes_memory").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("writes_kg").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("sends_externally")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
         })
         .unwrap_or(false);
@@ -68881,21 +68938,21 @@ fn hepta_scoped_memory_canary_durable_receipt_boundary_report() -> serde_json::V
                 == Some("hepta_intelligence_bounded_context_attachment_preview_readback")
                 && item
                     .get("uses_memory_canary_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("mutates_durable_memory")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("writes_kg").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("writes_kg").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("sends_externally")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
         })
         .unwrap_or(false);
@@ -69063,7 +69120,7 @@ fn hepta_scoped_memory_canary_durable_receipt_boundary_report() -> serde_json::V
     let receipt_candidate_count = receipt_candidates.len();
     let accepted_receipt_candidate_count = receipt_candidates
         .iter()
-        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .filter(|item| item.get("accepted").and_then(serde_json::Value::as_bool) == Some(true))
         .count();
     let denied_by = vec![
         "durable_receipt_boundary_not_durable_memory_write",
@@ -69975,7 +70032,7 @@ fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report() -
     let context_handoff_candidate_count = context_handoff_candidates.len();
     let accepted_context_handoff_candidate_count = context_handoff_candidates
         .iter()
-        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .filter(|item| item.get("accepted").and_then(serde_json::Value::as_bool) == Some(true))
         .count();
     let prompt_preview_candidates = vec![
         serde_json::json!({
@@ -70018,11 +70075,11 @@ fn hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report() -
     let prompt_preview_candidate_count = prompt_preview_candidates.len();
     let rendered_prompt_preview_candidate_count = prompt_preview_candidates
         .iter()
-        .filter(|item| item.get("rendered").and_then(|value| value.as_bool()) == Some(true))
+        .filter(|item| item.get("rendered").and_then(serde_json::Value::as_bool) == Some(true))
         .count();
     let accepted_prompt_preview_candidate_count = prompt_preview_candidates
         .iter()
-        .filter(|item| item.get("accepted").and_then(|value| value.as_bool()) == Some(true))
+        .filter(|item| item.get("accepted").and_then(serde_json::Value::as_bool) == Some(true))
         .count();
     let denied_by = vec![
         "raw_memory_context_materialization_denied",
@@ -71513,21 +71570,21 @@ fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundar
                 == Some("first_model_invocation_separate_approval_slice")
                 && item
                     .get("uses_activation_evidence_no_write_provider_router_dry_run_boundary")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_fresh_operator_approval")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_fresh_long_soak_evidence")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let approval_next_action_review = approval_preflight
@@ -71539,17 +71596,17 @@ fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundar
                 == Some("first_model_invocation_operator_approval_packet_review")
                 && item
                     .get("requires_fresh_operator_approval")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
 
@@ -83633,7 +83690,7 @@ fn hepta_memory_live_mutation_operator_write_execution_activation_command_result
     );
     insert_report_json!(
         "source_activation_command_result_receipt_export_query_observability_boundary_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     insert_report_json!(
         "source_activation_command_result_receipt_export_query_observability_report_sha256",
@@ -84407,7 +84464,7 @@ fn hepta_memory_live_mutation_operator_write_execution_activation_command_result
     );
     insert_report_json!(
         "source_activation_command_result_receipt_operator_facing_summary_briefing_boundary_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     insert_report_json!(
         "source_activation_command_result_receipt_operator_facing_summary_briefing_report_sha256",
@@ -91838,9 +91895,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             })
         })
         .unwrap_or(false);
-    let rollback_ok = before_snapshot
-        .clone()
-        .map(|snapshot| store.restore(snapshot).is_ok())
+    let rollback_ok = before_snapshot.map(|snapshot| store.restore(snapshot).is_ok())
         .unwrap_or(false);
     let after_rollback_snapshot = store.snapshot().ok();
     let after_rollback_memory_count = after_rollback_snapshot
@@ -91865,8 +91920,8 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
                 "approved_namespace": "hepta.memory.canary",
                 "approved_store": "in-memory-reference",
                 "approved_scope": "session",
-                "canary_record_id": canary_record.id.clone(),
-                "canary_payload_digest_sha256": canary_payload_digest_sha256.clone()
+                "canary_record_id": canary_record.id,
+                "canary_payload_digest_sha256": canary_payload_digest_sha256
             }),
         ),
         execution_fixture(
@@ -91992,14 +92047,14 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
         &readback_report
             .as_ref()
             .map(serde_json::to_string)
-            .and_then(|result| result.ok())
+            .and_then(std::result::Result::ok)
             .unwrap_or_default(),
     );
     let rollback_report_sha256 = sha256_text_value(
         &post_rollback_report
             .as_ref()
             .map(serde_json::to_string)
-            .and_then(|result| result.ok())
+            .and_then(std::result::Result::ok)
             .unwrap_or_default(),
     );
     let boundary_hash_sha256 = sha256_text_value(&format!(
@@ -92180,10 +92235,10 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     insert_report_json!("approved_namespace", "hepta.memory.canary");
     insert_report_json!("approved_store", "in-memory-reference");
     insert_report_json!("approved_scope", "session");
-    insert_report_json!("canary_record_id", canary_record.id.clone());
+    insert_report_json!("canary_record_id", canary_record.id);
     insert_report_json!(
         "canary_payload_digest_sha256",
-        canary_payload_digest_sha256.clone()
+        canary_payload_digest_sha256
     );
     insert_report_json!("canary_payload_plaintext_recorded", false);
     insert_report_json!("pre_write_snapshot_memory_count", before_memory_count);
@@ -92621,21 +92676,21 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
         "approved_namespace": approved_namespace,
         "approved_store": approved_store,
         "approved_scope": approved_scope,
-        "payload_digest_sha256": canary_payload_digest_sha256.clone(),
+        "payload_digest_sha256": canary_payload_digest_sha256,
         "payload_plaintext_recorded": false,
-        "source_execution_report_sha256": source_report_sha256.clone(),
-        "previous_hash_sha256": wal_hash_chain_previous_sha256.clone(),
+        "source_execution_report_sha256": source_report_sha256,
+        "previous_hash_sha256": wal_hash_chain_previous_sha256,
     });
     let wal_record_sha256 = sha256_text_value(&wal_payload.to_string());
     let receipt_payload = serde_json::json!({
         "receipt_id": receipt_id,
         "wal_record_id": wal_record_id,
-        "wal_record_sha256": wal_record_sha256.clone(),
+        "wal_record_sha256": wal_record_sha256,
         "receipt_status": "persisted_canary_artifact",
         "approved_namespace": approved_namespace,
         "approved_store": approved_store,
         "approved_scope": approved_scope,
-        "source_execution_report_sha256": source_report_sha256.clone(),
+        "source_execution_report_sha256": source_report_sha256,
     });
     let receipt_sha256 = sha256_text_value(&receipt_payload.to_string());
     let receipt_hash_chain_sha256 = sha256_text_value(&format!(
@@ -92654,7 +92709,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     let receipt_path = artifact_dir.join("receipt.json");
     let count_artifacts = |dir: &Path| -> usize {
         fs::read_dir(dir)
-            .map(|entries| entries.filter_map(|entry| entry.ok()).count())
+            .map(|entries| entries.filter_map(std::result::Result::ok).count())
             .unwrap_or(0)
     };
     let cleanup_existing_ok = match fs::remove_dir_all(&artifact_dir) {
@@ -92713,8 +92768,8 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
                 "approved_scope": approved_scope,
                 "wal_record_id": wal_record_id,
                 "receipt_id": receipt_id,
-                "payload_digest_sha256": canary_payload_digest_sha256.clone(),
-                "receipt_hash_chain_sha256": receipt_hash_chain_sha256.clone()
+                "payload_digest_sha256": canary_payload_digest_sha256,
+                "receipt_hash_chain_sha256": receipt_hash_chain_sha256
             }),
         ),
         persistence_fixture(
@@ -92974,7 +93029,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     );
     insert_report_json!(
         "source_minimal_scoped_memory_real_write_canary_execution_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     for key in [
         "accepted_minimal_scoped_memory_real_write_canary_execution_fixture_count",
@@ -93002,26 +93057,26 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     insert_report_json!("receipt_id", receipt_id);
     insert_report_json!(
         "canary_payload_digest_sha256",
-        canary_payload_digest_sha256.clone()
+        canary_payload_digest_sha256
     );
     insert_report_json!("canary_payload_plaintext_recorded", false);
     insert_report_json!(
         "wal_hash_chain_previous_sha256",
-        wal_hash_chain_previous_sha256.clone()
+        wal_hash_chain_previous_sha256
     );
-    insert_report_json!("wal_record_sha256", wal_record_sha256.clone());
+    insert_report_json!("wal_record_sha256", wal_record_sha256);
     insert_report_json!(
         "wal_artifact_readback_sha256",
         sha256_text_value(&wal_readback)
     );
-    insert_report_json!("receipt_sha256", receipt_sha256.clone());
+    insert_report_json!("receipt_sha256", receipt_sha256);
     insert_report_json!(
         "receipt_artifact_readback_sha256",
         sha256_text_value(&receipt_readback)
     );
     insert_report_json!(
         "receipt_hash_chain_sha256",
-        receipt_hash_chain_sha256.clone()
+        receipt_hash_chain_sha256
     );
     insert_report_json!("receipt_hash_chain_verified", receipt_hash_chain_verified);
     insert_report_json!(
@@ -93803,7 +93858,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     );
     insert_report_json!(
         "source_minimal_scoped_memory_real_write_canary_durable_wal_receipt_persistence_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     for key in [
         "accepted_minimal_scoped_memory_real_write_canary_durable_wal_receipt_persistence_fixture_count",
@@ -94617,7 +94672,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     );
     insert_report_json!(
         "source_minimal_scoped_memory_real_write_canary_durable_readback_receipt_acceptance_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     for key in [
         "accepted_minimal_scoped_memory_real_write_canary_durable_readback_receipt_acceptance_fixture_count",
@@ -94640,26 +94695,26 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             serde_json::json!(json_u64(&source, key)),
         );
     }
-    insert_report_json!("approved_namespace", approved_namespace.clone());
-    insert_report_json!("approved_store", approved_store.clone());
-    insert_report_json!("approved_scope", approved_scope.clone());
+    insert_report_json!("approved_namespace", approved_namespace);
+    insert_report_json!("approved_store", approved_store);
+    insert_report_json!("approved_scope", approved_scope);
     insert_report_json!(
         "source_receipt_acceptance_hash_sha256",
-        source_receipt_acceptance_hash_sha256.clone()
+        source_receipt_acceptance_hash_sha256
     );
     insert_report_json!(
         "source_receipt_readback_report_sha256",
-        source_receipt_readback_report_sha256.clone()
+        source_receipt_readback_report_sha256
     );
     insert_report_json!(
         "source_receipt_hash_chain_sha256",
-        source_receipt_hash_chain_sha256.clone()
+        source_receipt_hash_chain_sha256
     );
     insert_report_json!("rollback_receipt_id", rollback_receipt_id);
-    insert_report_json!("rollback_receipt_sha256", rollback_receipt_sha256.clone());
+    insert_report_json!("rollback_receipt_sha256", rollback_receipt_sha256);
     insert_report_json!(
         "rollback_receipt_hash_chain_sha256",
-        rollback_receipt_hash_chain_sha256.clone()
+        rollback_receipt_hash_chain_sha256
     );
     insert_report_json!(
         "rollback_receipt_acceptance_hash_sha256",
@@ -95441,7 +95496,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     );
     insert_report_json!(
         "source_minimal_scoped_memory_real_write_canary_rollback_receipt_acceptance_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     for key in [
         "accepted_minimal_scoped_memory_real_write_canary_rollback_receipt_acceptance_fixture_count",
@@ -95464,33 +95519,33 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             serde_json::json!(json_u64(&source, key)),
         );
     }
-    insert_report_json!("approved_namespace", approved_namespace.clone());
-    insert_report_json!("approved_store", approved_store.clone());
-    insert_report_json!("approved_scope", approved_scope.clone());
+    insert_report_json!("approved_namespace", approved_namespace);
+    insert_report_json!("approved_store", approved_store);
+    insert_report_json!("approved_scope", approved_scope);
     insert_report_json!(
         "source_rollback_receipt_acceptance_hash_sha256",
-        source_rollback_receipt_acceptance_hash_sha256.clone()
+        source_rollback_receipt_acceptance_hash_sha256
     );
     insert_report_json!(
         "source_rollback_receipt_sha256",
-        source_rollback_receipt_sha256.clone()
+        source_rollback_receipt_sha256
     );
     insert_report_json!(
         "source_rollback_receipt_hash_chain_sha256",
-        source_rollback_receipt_hash_chain_sha256.clone()
+        source_rollback_receipt_hash_chain_sha256
     );
     insert_report_json!("tombstone_cleanup_target_id", tombstone_cleanup_target_id);
     insert_report_json!(
         "tombstone_cleanup_plan_sha256",
-        tombstone_cleanup_plan_sha256.clone()
+        tombstone_cleanup_plan_sha256
     );
     insert_report_json!(
         "tombstone_cleanup_target_sha256",
-        tombstone_cleanup_target_sha256.clone()
+        tombstone_cleanup_target_sha256
     );
     insert_report_json!(
         "tombstone_cleanup_receipt_linkage_sha256",
-        tombstone_cleanup_receipt_linkage_sha256.clone()
+        tombstone_cleanup_receipt_linkage_sha256
     );
     insert_report_json!(
         "tombstone_cleanup_acceptance_hash_sha256",
@@ -96062,22 +96117,22 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             "durable_store_target_write_envelope_wal_receipt_readback_rollback_tombstone_cleanup_operator_handoff_plan_accepted",
             true,
             serde_json::json!({
-                "approved_namespace": approved_namespace.clone(),
-                "approved_store": approved_store.clone(),
-                "approved_scope": approved_scope.clone(),
+                "approved_namespace": approved_namespace,
+                "approved_store": approved_store,
+                "approved_scope": approved_scope,
                 "durable_store_write_target_id": durable_store_write_target_id,
                 "durable_store_target_store_id": durable_store_target_store_id,
-                "source_tombstone_cleanup_acceptance_hash_sha256": source_tombstone_cleanup_acceptance_hash_sha256.clone(),
-                "source_tombstone_cleanup_receipt_linkage_sha256": source_tombstone_cleanup_receipt_linkage_sha256.clone(),
-                "durable_store_write_payload_digest_sha256": durable_store_write_payload_digest_sha256.clone(),
-                "durable_store_write_target_sha256": durable_store_write_target_sha256.clone(),
-                "durable_store_write_envelope_sha256": durable_store_write_envelope_sha256.clone(),
-                "durable_store_write_wal_receipt_plan_sha256": durable_store_write_wal_receipt_plan_sha256.clone(),
-                "durable_store_write_readback_plan_sha256": durable_store_write_readback_plan_sha256.clone(),
-                "durable_store_write_rollback_plan_sha256": durable_store_write_rollback_plan_sha256.clone(),
-                "durable_store_write_tombstone_cleanup_plan_sha256": durable_store_write_tombstone_cleanup_plan_sha256.clone(),
-                "durable_store_write_operator_handoff_sha256": durable_store_write_operator_handoff_sha256.clone(),
-                "durable_store_write_plan_hash_sha256": durable_store_write_plan_hash_sha256.clone(),
+                "source_tombstone_cleanup_acceptance_hash_sha256": source_tombstone_cleanup_acceptance_hash_sha256,
+                "source_tombstone_cleanup_receipt_linkage_sha256": source_tombstone_cleanup_receipt_linkage_sha256,
+                "durable_store_write_payload_digest_sha256": durable_store_write_payload_digest_sha256,
+                "durable_store_write_target_sha256": durable_store_write_target_sha256,
+                "durable_store_write_envelope_sha256": durable_store_write_envelope_sha256,
+                "durable_store_write_wal_receipt_plan_sha256": durable_store_write_wal_receipt_plan_sha256,
+                "durable_store_write_readback_plan_sha256": durable_store_write_readback_plan_sha256,
+                "durable_store_write_rollback_plan_sha256": durable_store_write_rollback_plan_sha256,
+                "durable_store_write_tombstone_cleanup_plan_sha256": durable_store_write_tombstone_cleanup_plan_sha256,
+                "durable_store_write_operator_handoff_sha256": durable_store_write_operator_handoff_sha256,
+                "durable_store_write_plan_hash_sha256": durable_store_write_plan_hash_sha256,
             }),
         ),
         plan_fixture(
@@ -96338,7 +96393,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     );
     insert_report_json!(
         "source_minimal_scoped_memory_real_write_canary_tombstone_cleanup_acceptance_report_sha256",
-        source_report_sha256.clone()
+        source_report_sha256
     );
     for key in [
         "accepted_minimal_scoped_memory_real_write_canary_tombstone_cleanup_acceptance_fixture_count",
@@ -96360,20 +96415,20 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             serde_json::json!(json_u64(&source, key)),
         );
     }
-    insert_report_json!("approved_namespace", approved_namespace.clone());
-    insert_report_json!("approved_store", approved_store.clone());
-    insert_report_json!("approved_scope", approved_scope.clone());
+    insert_report_json!("approved_namespace", approved_namespace);
+    insert_report_json!("approved_store", approved_store);
+    insert_report_json!("approved_scope", approved_scope);
     insert_report_json!(
         "source_tombstone_cleanup_acceptance_hash_sha256",
-        source_tombstone_cleanup_acceptance_hash_sha256.clone()
+        source_tombstone_cleanup_acceptance_hash_sha256
     );
     insert_report_json!(
         "source_tombstone_cleanup_receipt_linkage_sha256",
-        source_tombstone_cleanup_receipt_linkage_sha256.clone()
+        source_tombstone_cleanup_receipt_linkage_sha256
     );
     insert_report_json!(
         "source_tombstone_cleanup_target_sha256",
-        source_tombstone_cleanup_target_sha256.clone()
+        source_tombstone_cleanup_target_sha256
     );
     insert_report_json!(
         "durable_store_write_target_id",
@@ -96385,35 +96440,35 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     );
     insert_report_json!(
         "durable_store_write_payload_digest_sha256",
-        durable_store_write_payload_digest_sha256.clone()
+        durable_store_write_payload_digest_sha256
     );
     insert_report_json!(
         "durable_store_write_target_sha256",
-        durable_store_write_target_sha256.clone()
+        durable_store_write_target_sha256
     );
     insert_report_json!(
         "durable_store_write_envelope_sha256",
-        durable_store_write_envelope_sha256.clone()
+        durable_store_write_envelope_sha256
     );
     insert_report_json!(
         "durable_store_write_wal_receipt_plan_sha256",
-        durable_store_write_wal_receipt_plan_sha256.clone()
+        durable_store_write_wal_receipt_plan_sha256
     );
     insert_report_json!(
         "durable_store_write_readback_plan_sha256",
-        durable_store_write_readback_plan_sha256.clone()
+        durable_store_write_readback_plan_sha256
     );
     insert_report_json!(
         "durable_store_write_rollback_plan_sha256",
-        durable_store_write_rollback_plan_sha256.clone()
+        durable_store_write_rollback_plan_sha256
     );
     insert_report_json!(
         "durable_store_write_tombstone_cleanup_plan_sha256",
-        durable_store_write_tombstone_cleanup_plan_sha256.clone()
+        durable_store_write_tombstone_cleanup_plan_sha256
     );
     insert_report_json!(
         "durable_store_write_operator_handoff_sha256",
-        durable_store_write_operator_handoff_sha256.clone()
+        durable_store_write_operator_handoff_sha256
     );
     insert_report_json!(
         "durable_store_write_plan_hash_sha256",
@@ -97025,14 +97080,14 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             "durable_store_target_namespace_redaction_wal_receipt_readback_rollback_tombstone_idempotency_operator_handoff_preflight_accepted",
             true,
             serde_json::json!({
-                "approved_namespace": approved_namespace.clone(),
-                "approved_store": approved_store.clone(),
-                "approved_scope": approved_scope.clone(),
-                "durable_store_write_target_id": durable_store_write_target_id.clone(),
-                "durable_store_target_store_id": durable_store_target_store_id.clone(),
-                "source_durable_store_write_plan_hash_sha256": source_durable_store_write_plan_hash_sha256.clone(),
-                "durable_store_write_preflight_hash_sha256": durable_store_write_preflight_hash_sha256.clone(),
-                "durable_store_write_preflight_operator_handoff_sha256": durable_store_write_preflight_operator_handoff_sha256.clone()
+                "approved_namespace": approved_namespace,
+                "approved_store": approved_store,
+                "approved_scope": approved_scope,
+                "durable_store_write_target_id": durable_store_write_target_id,
+                "durable_store_target_store_id": durable_store_target_store_id,
+                "source_durable_store_write_plan_hash_sha256": source_durable_store_write_plan_hash_sha256,
+                "durable_store_write_preflight_hash_sha256": durable_store_write_preflight_hash_sha256,
+                "durable_store_write_preflight_operator_handoff_sha256": durable_store_write_preflight_operator_handoff_sha256
             }),
         ),
         preflight_fixture(
@@ -97962,14 +98017,14 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
                 && tombstone_cleanup_plan_bound
                 && guard_hashes_bound,
             serde_json::json!({
-                "approved_namespace": approved_namespace.clone(),
-                "approved_store": approved_store.clone(),
-                "approved_scope": approved_scope.clone(),
-                "durable_store_write_target_id": durable_store_write_target_id.clone(),
-                "durable_store_target_store_id": durable_store_target_store_id.clone(),
-                "source_durable_store_write_preflight_hash_sha256": source_durable_store_write_preflight_hash_sha256.clone(),
-                "guarded_execution_readiness_hash_sha256": guarded_execution_readiness_hash_sha256.clone(),
-                "operator_guarded_execution_handoff_sha256": operator_guarded_execution_handoff_sha256.clone()
+                "approved_namespace": approved_namespace,
+                "approved_store": approved_store,
+                "approved_scope": approved_scope,
+                "durable_store_write_target_id": durable_store_write_target_id,
+                "durable_store_target_store_id": durable_store_target_store_id,
+                "source_durable_store_write_preflight_hash_sha256": source_durable_store_write_preflight_hash_sha256,
+                "guarded_execution_readiness_hash_sha256": guarded_execution_readiness_hash_sha256,
+                "operator_guarded_execution_handoff_sha256": operator_guarded_execution_handoff_sha256
             }),
         ),
         readiness_fixture(
@@ -98877,14 +98932,14 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             "minimal_scoped_memory_real_write_canary_durable_store_write_guarded_execution_boundary_accepted",
             accepted_path_ready,
             serde_json::json!({
-                "approved_namespace": approved_namespace.clone(),
-                "approved_store": approved_store.clone(),
-                "approved_scope": approved_scope.clone(),
-                "durable_store_write_target_id": durable_store_write_target_id.clone(),
-                "durable_store_target_store_id": durable_store_target_store_id.clone(),
-                "source_guarded_execution_readiness_hash_sha256": source_guarded_execution_readiness_hash_sha256.clone(),
-                "guarded_execution_boundary_hash_sha256": guarded_execution_boundary_hash_sha256.clone(),
-                "operator_guarded_execution_boundary_handoff_sha256": operator_guarded_execution_boundary_handoff_sha256.clone()
+                "approved_namespace": approved_namespace,
+                "approved_store": approved_store,
+                "approved_scope": approved_scope,
+                "durable_store_write_target_id": durable_store_write_target_id,
+                "durable_store_target_store_id": durable_store_target_store_id,
+                "source_guarded_execution_readiness_hash_sha256": source_guarded_execution_readiness_hash_sha256,
+                "guarded_execution_boundary_hash_sha256": guarded_execution_boundary_hash_sha256,
+                "operator_guarded_execution_boundary_handoff_sha256": operator_guarded_execution_boundary_handoff_sha256
             }),
         ),
         execution_fixture(
@@ -99516,7 +99571,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             .ok()
             .map(|entries| {
                 entries
-                    .filter_map(|entry| entry.ok())
+                    .filter_map(std::result::Result::ok)
                     .filter(|entry| {
                         entry
                             .file_type()
@@ -99817,9 +99872,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             })
         })
         .unwrap_or(false);
-    let rollback_ok = before_snapshot
-        .clone()
-        .map(|snapshot| store.restore(snapshot).is_ok())
+    let rollback_ok = before_snapshot.map(|snapshot| store.restore(snapshot).is_ok())
         .unwrap_or(false);
     let after_rollback_snapshot = store.snapshot().ok();
     let after_rollback_memory_count = after_rollback_snapshot
@@ -99914,10 +99967,10 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             "request_local_canary_store_write_wal_receipt_readback_rollback_tombstone_cleanup_zero_residue_succeeded",
             canary_execution_ready,
             serde_json::json!({
-                "canary_record_id": canary_record.id.clone(),
-                "canary_payload_digest_sha256": canary_payload_digest_sha256.clone(),
-                "single_shot_execution_hash_sha256": single_shot_execution_hash_sha256.clone(),
-                "receipt_hash_chain_sha256": receipt_hash_chain_sha256.clone()
+                "canary_record_id": canary_record.id,
+                "canary_payload_digest_sha256": canary_payload_digest_sha256,
+                "single_shot_execution_hash_sha256": single_shot_execution_hash_sha256,
+                "receipt_hash_chain_sha256": receipt_hash_chain_sha256
             }),
         ),
         execution_fixture(
@@ -101706,15 +101759,15 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             "single_shot_rollback_tombstone_cleanup_artifact_zero_residue_accepted",
             true,
             serde_json::json!({
-                "approved_namespace": approved_namespace.clone(),
-                "approved_store": approved_store.clone(),
-                "approved_scope": approved_scope.clone(),
-                "durable_store_write_target_id": durable_store_write_target_id.clone(),
-                "durable_store_target_store_id": durable_store_target_store_id.clone(),
-                "canary_record_id": canary_record_id.clone(),
-                "receipt_acceptance_hash_sha256": receipt_acceptance_hash_sha256.clone(),
-                "single_shot_cleanup_receipt_hash_sha256": single_shot_cleanup_receipt_hash_sha256.clone(),
-                "zero_residue_acceptance_hash_sha256": zero_residue_acceptance_hash_sha256.clone(),
+                "approved_namespace": approved_namespace,
+                "approved_store": approved_store,
+                "approved_scope": approved_scope,
+                "durable_store_write_target_id": durable_store_write_target_id,
+                "durable_store_target_store_id": durable_store_target_store_id,
+                "canary_record_id": canary_record_id,
+                "receipt_acceptance_hash_sha256": receipt_acceptance_hash_sha256,
+                "single_shot_cleanup_receipt_hash_sha256": single_shot_cleanup_receipt_hash_sha256,
+                "zero_residue_acceptance_hash_sha256": zero_residue_acceptance_hash_sha256,
             }),
         ),
         zero_residue_fixture(
@@ -115069,13 +115122,13 @@ fn hepta_first_model_invocation_separate_approval_slice_preflight_report() -> se
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -115093,13 +115146,13 @@ fn hepta_first_model_invocation_separate_approval_slice_preflight_report() -> se
                 == Some("first_model_invocation_separate_approval_slice")
                 && item
                     .get("requires_fresh_operator_approval")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_provider_router_dry_run_ready =
@@ -115370,13 +115423,13 @@ fn hepta_first_model_invocation_operator_approval_packet_review_acceptance_denia
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -115394,17 +115447,17 @@ fn hepta_first_model_invocation_operator_approval_packet_review_acceptance_denia
                 == Some("first_model_invocation_operator_approval_packet_review")
                 && item
                     .get("requires_fresh_operator_approval")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_approval_preflight_ready =
@@ -115724,13 +115777,13 @@ fn hepta_first_model_invocation_operator_approval_acceptance_artifact_preconditi
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -115748,25 +115801,25 @@ fn hepta_first_model_invocation_operator_approval_acceptance_artifact_preconditi
                 == Some("first_model_invocation_operator_approval_acceptance_artifact_precondition")
                 && item
                     .get("requires_fresh_accepted_operator_approval_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_single_use_approval_nonce")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_operator_identity_session_binding")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_review_ready = source_bool(
@@ -116138,13 +116191,13 @@ fn hepta_first_model_invocation_operator_approval_nonce_session_command_binding_
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -116162,25 +116215,25 @@ fn hepta_first_model_invocation_operator_approval_nonce_session_command_binding_
                 == Some("first_model_invocation_operator_approval_nonce_session_command_binding_preflight")
                 && item
                     .get("requires_fresh_accepted_operator_approval_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_single_use_approval_nonce")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_operator_identity_session_binding")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_artifact_precondition_ready =
@@ -116558,13 +116611,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_en
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -116582,25 +116635,25 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_en
                 == Some("first_model_invocation_operator_approval_final_authorization_dry_run_envelope_preflight")
                 && item
                     .get("requires_fresh_accepted_operator_approval_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_single_use_approval_nonce")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_operator_identity_session_binding")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_nonce_session_command_ready = source_bool(
@@ -116965,13 +117018,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -116989,33 +117042,33 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 == Some("first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_no_persistence")
                 && item
                     .get("requires_fresh_accepted_operator_approval_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_single_use_approval_nonce")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_operator_identity_session_binding")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("reads_credentials")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("writes_kg").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("writes_kg").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("sends_externally")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
         })
         .unwrap_or(false);
@@ -117413,13 +117466,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -117439,37 +117492,37 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("records_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("persists_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("accepts_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("requires_fresh_accepted_operator_approval_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_single_use_approval_nonce")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_operator_identity_session_binding")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_result_receipt_ready = source_bool(
@@ -118032,13 +118085,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -118058,45 +118111,45 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("records_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("persists_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("accepts_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("registers_idempotency_key")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("writes_idempotency_cache")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("requires_fresh_accepted_operator_approval_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_single_use_approval_nonce")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_operator_identity_session_binding")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("requires_explicit_command")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(true)
                 && item
                     .get("invokes_provider")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_replay_idempotency_ready = source_bool(
@@ -118604,13 +118657,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -118630,18 +118683,18 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("records_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("records_sequence_cursor")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("persists_monotonicity_state")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_ordering_ready = source_bool(
@@ -119006,13 +119059,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -119032,18 +119085,18 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("records_result_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("records_cancellation")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("records_supersession")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_cancellation_ready = source_bool(
@@ -119399,13 +119452,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -119425,22 +119478,22 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("records_audit")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("records_immutable_evidence")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("persists_ledger")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("exports_evidence")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_audit_ready = source_bool(
@@ -119807,13 +119860,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -119833,19 +119886,19 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("records_retention")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("records_expiry").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("records_expiry").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("records_garbage_collection")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("exports_receipt")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_retention_ready = source_bool(
@@ -120217,13 +120270,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -120241,15 +120294,15 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 == Some(
                     "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_operator_facing_summary_briefing_non_persistence_denial",
                 )
-                && item.get("exports_receipt").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("registers_query").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("exports_receipt").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("registers_query").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("records_observability")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("delivers_briefing").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("delivers_briefing").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_export_query_observability_ready = source_bool(
@@ -120594,13 +120647,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -120618,15 +120671,15 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 == Some(
                     "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_final_operator_acknowledgement_non_acceptance_denial",
                 )
-                && item.get("records_summary").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("persists_briefing").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("delivers_briefing").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("records_summary").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("persists_briefing").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("delivers_briefing").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("accepts_acknowledgement")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool()) == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_summary_briefing_ready = source_bool(
@@ -121103,13 +121156,13 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
     let source_bool = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     };
     let source_i64 = |key: &str| {
         source
             .get(key)
-            .and_then(|value| value.as_i64())
+            .and_then(serde_json::Value::as_i64)
             .unwrap_or(-1)
     };
     let source_str = |key: &str| {
@@ -121129,25 +121182,25 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
                 )
                 && item
                     .get("accepts_acknowledgement")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("accepts_terminal_decision")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("claims_public_release")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
                 && item
                     .get("writes_release_artifact")
-                    .and_then(|value| value.as_bool())
+                    .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("activates_runtime").and_then(|value| value.as_bool())
+                && item.get("activates_runtime").and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_provider").and_then(|value| value.as_bool())
+                && item.get("invokes_provider").and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(|value| value.as_bool()) == Some(false)
+                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
         })
         .unwrap_or(false);
     let source_final_acknowledgement_ready = source_bool(
@@ -121789,7 +121842,7 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
             "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_no_status_exposure_no_public_claim_no_release_no_artifact_no_provider_model_invocation",
             "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ENDPOINT,
             "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_ready": source_terminal_decision_ready,
-            "source_terminal_operator_decision_public_claim_report_sha256": source_terminal_decision_hash.clone(),
+            "source_terminal_operator_decision_public_claim_report_sha256": source_terminal_decision_hash,
             "source_terminal_operator_decision_public_claim_readback_hash_sha256": source_terminal_decision_readback_hash,
             "native_gateway_source_command_count": NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
             "route_count": route_matrix.route_count,
@@ -122273,7 +122326,7 @@ fn hepta_first_model_invocation_operator_approval_final_authorization_dry_run_re
             "result_receipt_terminal_public_claim_delivery_readback_state": "final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denied",
             "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_endpoint": HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_ENDPOINT,
             "source_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_ready": source_status_exposure_ready,
-            "source_terminal_public_claim_status_exposure_report_sha256": source_status_exposure_hash.clone(),
+            "source_terminal_public_claim_status_exposure_report_sha256": source_status_exposure_hash,
             "source_terminal_public_claim_status_exposure_readback_hash_sha256": source_status_exposure_readback_hash,
             "source_terminal_public_claim_status_exposure_surface_count": source_u64("terminal_public_claim_status_exposure_surface_count"),
             "source_terminal_public_claim_status_exposed_count": source_u64("terminal_public_claim_status_exposed_count"),
@@ -124514,15 +124567,6 @@ struct NativeGatewayLiveActivationSafety {
     raw_response_text_exposed: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-struct ControlUiRouteSpec {
-    method: &'static str,
-    pattern: &'static str,
-    source_command: &'static str,
-    capability: &'static str,
-    side_effect_boundary: &'static str,
-}
-
 #[derive(Debug, Serialize)]
 struct ControlUiRouteParityReport {
     product: &'static str,
@@ -124600,9 +124644,8 @@ fn control_ui_route_response(method: &str, path: &str) -> Option<String> {
         capability: route.capability,
         side_effect_boundary: route.side_effect_boundary,
         compatibility_mode: "native_control_ui_route_parity_shell",
-        dry_run_only: route.method == "POST",
-        confirmation_required_for_real_mutation: route.method == "POST"
-            && !route.side_effect_boundary.contains("read-only"),
+        dry_run_only: route.is_post(),
+        confirmation_required_for_real_mutation: route.requires_confirmation(),
         external_side_effects: false,
         gateway_mutation_performed: false,
         telegram_read_performed: false,
@@ -124783,6 +124826,70 @@ mod tests {
         let args = vec!["--serve-ui".to_string(), "--unknown".to_string()];
         let err = parse_serve_ui_args(&args).expect_err("unknown arg should fail");
         assert!(err.to_string().contains("unexpected --serve-ui argument"));
+    }
+
+    #[test]
+    fn gate_command_lists_the_declarative_registry_without_executing_reports() {
+        let value: serde_json::Value = serde_json::from_str(
+            &gate_command_json(&["--list".to_string()]).expect("gate registry json"),
+        )
+        .expect("gate registry value");
+
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["runner"], "hepta gate");
+        assert_eq!(value["gate_count"], CONTROL_UI_ROUTE_SPECS.len());
+        assert_eq!(value["report_execution_performed"], false);
+        assert_eq!(value["side_effect_free"], true);
+        assert_eq!(
+            value["receipt_state_machine"],
+            serde_json::json!([
+                "precondition",
+                "denial",
+                "receipt",
+                "persistence",
+                "retention",
+                "terminal"
+            ])
+        );
+    }
+
+    #[test]
+    fn gate_command_resolves_capability_or_endpoint_id_as_registry_metadata() {
+        let by_capability: serde_json::Value = serde_json::from_str(
+            &gate_command_json(&["hepta-full-live-activation-closure-index".to_string()])
+                .expect("gate spec by capability"),
+        )
+        .expect("gate spec value");
+        let by_endpoint: serde_json::Value = serde_json::from_str(
+            &gate_command_json(&[
+                "hepta-memory-intelligence-kg-activation-truth-index".to_string(),
+                "--json".to_string(),
+            ])
+            .expect("gate spec by endpoint id"),
+        )
+        .expect("endpoint gate spec value");
+
+        assert_eq!(
+            by_capability["pattern"],
+            HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT
+        );
+        assert_eq!(by_capability["receipt_state"], serde_json::Value::Null);
+        assert_eq!(by_capability["report_execution_performed"], false);
+        assert_eq!(
+            by_endpoint["pattern"],
+            HEPTA_MEMORY_INTELLIGENCE_KG_ACTIVATION_TRUTH_INDEX_ENDPOINT
+        );
+        assert_eq!(
+            by_endpoint["registered_route_count"],
+            CONTROL_UI_ROUTE_SPECS.len()
+        );
+    }
+
+    #[test]
+    fn gate_command_rejects_unknown_ids() {
+        let err =
+            gate_command_json(&["missing-gate".to_string()]).expect_err("unknown gate should fail");
+        assert!(err.to_string().contains("unknown Hepta gate id"));
     }
 
     #[test]
@@ -140771,13 +140878,11 @@ mod tests {
         assert_eq!(value["fresh_durable_memory_write_command_present"], false);
         assert_eq!(value["fresh_durable_memory_write_command_accepted"], false);
         assert_eq!(value["accepted_scoped_memory_write_command"], false);
-        assert_eq!(
-            value["source_memory_canary_idempotency_receipt_hash_sha256"].is_string(),
-            true
+        assert!(
+            value["source_memory_canary_idempotency_receipt_hash_sha256"].is_string()
         );
-        assert_eq!(
-            value["source_memory_canary_post_rollback_store_hash_sha256"].is_string(),
-            true
+        assert!(
+            value["source_memory_canary_post_rollback_store_hash_sha256"].is_string()
         );
 
         let candidates = value["durable_receipt_candidates"]
