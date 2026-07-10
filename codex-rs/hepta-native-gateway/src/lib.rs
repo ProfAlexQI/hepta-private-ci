@@ -1,3 +1,4 @@
+mod gate_runner;
 mod gate_spec;
 mod native_gateway;
 mod native_telegram;
