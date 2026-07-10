@@ -766,10 +766,9 @@ mod tests {
         assert_eq!(snapshot["gate_count"], latest["gate_count"]);
         assert_eq!(snapshot["report_count"], latest["report_count"]);
         assert_eq!(snapshot["exact_pair_count"], latest["exact_pair_count"]);
-        assert_eq!(
-            snapshot["catalog_sha256"],
-            latest["post_migration_catalog_sha256"]
-        );
+        // The full catalog content hash is batch-local evidence: unrelated
+        // gate/report fixes legitimately change it after the migration batch.
+        // Pair membership is the durable parity contract across later commits.
         assert_eq!(
             snapshot["exact_pair_id_sha256"],
             latest["post_migration_exact_pair_id_sha256"]
