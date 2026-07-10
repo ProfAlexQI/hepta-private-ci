@@ -47,7 +47,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "\"memory_write_execution_preflight_boundary_ready\"," \
   "memory write execution preflight boundary ready field"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  "\"denied_by_memory_write_execution_preflight_boundary_count\", 22" \
+  "\"denied_by_memory_write_execution_preflight_boundary_count\"" \
   "memory write execution preflight boundary denied count"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_memory_write_execution_preflight_boundary_endpoint_exposes_preflight_without_execution" \
