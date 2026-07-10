@@ -6,6 +6,7 @@ SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-status-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-final-index-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-public-status-v1.sh"
+source "$ROOT/scripts/lib/hepta-gate-pair-public-status-final-index-v1.sh"
 usage() {
   printf '%s\n' 'usage: scripts/hepta-gate-pair-runner <report|gate> <id>' >&2
   exit 2
@@ -58,7 +59,7 @@ pass_message="$(jq -r '.pass_message' <<<"$spec")"
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
-[[ "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_summary_readback" ]] || {
+[[ "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_readback" ]] || {
   echo "unexpected Hepta migrated pair template for: $id" >&2
   exit 1
 }
@@ -489,10 +490,8 @@ case "$kind:$template" in
   gate:signing_terminal_status_readback) verify_signing_terminal_status_readback ;;
   report:signing_terminal_status_final_index) render_signing_terminal_status_final_index ;;
   gate:signing_terminal_status_final_index) verify_signing_terminal_status_final_index ;;
-  report:signing_public_status_attachment) render_signing_public_status_attachment ;;
-  gate:signing_public_status_attachment) verify_signing_public_status_attachment ;;
-  report:signing_public_status_readback) render_signing_public_status_readback ;;
-  gate:signing_public_status_readback) verify_signing_public_status_readback ;;
+  report:signing_public_status_*) "render_${template}" ;;
+  gate:signing_public_status_*) "verify_${template}" ;;
   report:signing_summary_readback) render_summary_report ;;
   gate:signing_summary_readback) verify_summary_gate ;;
 esac
