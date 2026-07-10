@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(bash "$REPO_ROOT/scripts/lib/hepta-native-route-count.sh")}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
 cd "$REPO_ROOT"
@@ -144,6 +145,7 @@ jq -n \
   --arg cancellation_result_hash_sha256 "$cancellation_result_hash_sha256" \
   --arg cancellation_boundary_hash_sha256 "$cancellation_boundary_hash_sha256" \
   --arg cancellation_boundary_policy_hash_sha256 "$cancellation_boundary_policy_hash_sha256" \
+  --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
   --argjson source "$SOURCE_JSON" \
   '
   def zero_fields($keys): reduce $keys[] as $k ({}; .[$k]=false | .[$k + "_count"]=0);
@@ -356,9 +358,9 @@ jq -n \
       gate:$gate,
       endpoint:$endpoint,
       source_command:$source_command,
-      native_gateway_source_command_count:274,
-      route_count:274,
-      implemented_route_count:274,
+      native_gateway_source_command_count:$expected_route_count,
+      route_count:$expected_route_count,
+      implemented_route_count:$expected_route_count,
       missing_route_count:0,
       route_count_source_command_accepted:true,
       memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_ready:true,
