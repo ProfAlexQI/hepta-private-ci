@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::hepta_current_reality_matrix_compact_cache_boundary_readback_report;
+
 pub const HEPTA_SYSTEMS_GATE_RECURSION_COST_BOUNDARY_READBACK_GATE: &str =
     "hepta_systems_gate_recursion_cost_boundary_readback_gate";
 pub const HEPTA_SYSTEMS_GATE_RECURSION_COST_BOUNDARY_READBACK_SCHEMA_VERSION: &str =
@@ -86,6 +88,7 @@ pub struct HeptaSystemsGateRecursionCostBoundaryReadbackSideEffects {
 
 pub fn hepta_systems_gate_recursion_cost_boundary_readback_report()
 -> HeptaSystemsGateRecursionCostBoundaryReadbackReport {
+    let current_reality = hepta_current_reality_matrix_compact_cache_boundary_readback_report();
     let entries = hepta_systems_gate_recursion_cost_boundary_readback_entries();
     let boundary_projection_count = entries
         .iter()
@@ -107,23 +110,26 @@ pub fn hepta_systems_gate_recursion_cost_boundary_readback_report()
         .iter()
         .filter(|entry| entry.lane_lock_serialization_required)
         .count();
-    let gate_recursion_cost_boundary_readback_ready = entries.len() == 4
-        && boundary_projection_count == 4
-        && source_gate_recursion_boundary_count == 2
-        && bounded_source_gate_count == 1
-        && full_matrix_render_boundary_count == 1
-        && lane_lock_boundary_count == 1
-        && entries.iter().all(|entry| {
-            !entry.matrix_cache_written
-                && !entry.compact_cache_persisted
-                && !entry.source_report_semantics_changed
-                && !entry.cargo_test_executed_by_report
-                && !entry.workflow_execution_started
-                && !entry.replay_executed
-                && !entry.event_log_written
-                && !entry.sqlite_written
-                && !entry.live_execution_started
-        });
+    let gate_recursion_cost_boundary_readback_ready =
+        current_reality.source_matrix_capability_count > 0
+            && current_reality.source_live_enabled_count == 0
+            && entries.len() == 4
+            && boundary_projection_count == 4
+            && source_gate_recursion_boundary_count == 2
+            && bounded_source_gate_count == 1
+            && full_matrix_render_boundary_count == 1
+            && lane_lock_boundary_count == 1
+            && entries.iter().all(|entry| {
+                !entry.matrix_cache_written
+                    && !entry.compact_cache_persisted
+                    && !entry.source_report_semantics_changed
+                    && !entry.cargo_test_executed_by_report
+                    && !entry.workflow_execution_started
+                    && !entry.replay_executed
+                    && !entry.event_log_written
+                    && !entry.sqlite_written
+                    && !entry.live_execution_started
+            });
 
     HeptaSystemsGateRecursionCostBoundaryReadbackReport {
         runtime: "hepta",
@@ -135,8 +141,8 @@ pub fn hepta_systems_gate_recursion_cost_boundary_readback_report()
         },
         gate: HEPTA_SYSTEMS_GATE_RECURSION_COST_BOUNDARY_READBACK_GATE,
         schema_version: HEPTA_SYSTEMS_GATE_RECURSION_COST_BOUNDARY_READBACK_SCHEMA_VERSION,
-        source_matrix_capability_count: 58,
-        source_matrix_live_enabled_count: 0,
+        source_matrix_capability_count: current_reality.source_matrix_capability_count,
+        source_matrix_live_enabled_count: current_reality.source_live_enabled_count,
         controlled_live_blocker_count: 7,
         cost_scope: "readback_only_gate_recursion_cost_boundary_no_cache_write",
         boundary_projection_count,
@@ -296,7 +302,11 @@ mod tests {
         let report = hepta_systems_gate_recursion_cost_boundary_readback_report();
 
         assert_eq!(report.status, "ready_blocked");
-        assert_eq!(report.source_matrix_capability_count, 58);
+        assert_eq!(
+            report.source_matrix_capability_count,
+            hepta_current_reality_matrix_compact_cache_boundary_readback_report()
+                .source_matrix_capability_count
+        );
         assert_eq!(report.source_matrix_live_enabled_count, 0);
         assert_eq!(report.controlled_live_blocker_count, 7);
         assert_eq!(report.boundary_projection_count, 4);

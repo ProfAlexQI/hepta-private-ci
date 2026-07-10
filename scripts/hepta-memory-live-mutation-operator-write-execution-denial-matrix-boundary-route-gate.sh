@@ -30,7 +30,7 @@ ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-denial-matrix
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-denial-matrix-boundary --json"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = ${EXPECTED_ROUTE_COUNT};" \
+  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes memory write execution denial matrix boundary"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_DENIAL_MATRIX_BOUNDARY_ENDPOINT" \

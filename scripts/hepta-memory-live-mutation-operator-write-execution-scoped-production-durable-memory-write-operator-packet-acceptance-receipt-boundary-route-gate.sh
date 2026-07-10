@@ -35,7 +35,7 @@ SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-scoped-prod
 FOCUSED_TEST="hepta_memory_write_execution_scoped_production_durable_memory_write_operator_packet_acceptance_receipt_binds_receipt_without_persistence_or_production_side_effects"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = ${EXPECTED_ROUTE_COUNT};" \
+  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes scoped production durable Memory write operator packet acceptance receipt boundary"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_OPERATOR_PACKET_ACCEPTANCE_RECEIPT_BOUNDARY_ENDPOINT" \

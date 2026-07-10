@@ -4,6 +4,36 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT"
 
+NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+ROUTE_COUNT_HELPER="scripts/lib/hepta-native-route-count.sh"
+
+grep -Fq \
+  'const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();' \
+  "$NATIVE_GATEWAY_SOURCE" \
+  || {
+    echo "native gateway source command count must be derived from CONTROL_UI_ROUTE_SPECS" >&2
+    exit 1
+  }
+
+grep -Fq 'const CONTROL_UI_ROUTE_SPECS:' "$ROUTE_COUNT_HELPER" \
+  || {
+    echo "route count helper must derive its value from CONTROL_UI_ROUTE_SPECS" >&2
+    exit 1
+  }
+
+derived_route_count="$(bash "$ROUTE_COUNT_HELPER")"
+case "$derived_route_count" in
+  ''|*[!0-9]*)
+    echo "route count helper did not return a positive integer" >&2
+    exit 1
+    ;;
+esac
+(( derived_route_count > 0 )) \
+  || {
+    echo "route count helper returned an empty registry" >&2
+    exit 1
+  }
+
 violations_file="$(mktemp "${TMPDIR:-/tmp}/hepta-route-gate-dynamic-count.XXXXXX")"
 trap 'rm -f "$violations_file"' EXIT
 
@@ -33,6 +63,7 @@ fi
 jq -n \
   --arg status "ready" \
   --arg gate "hepta_route_gate_dynamic_count_regression_gate" \
+  --argjson derived_route_count "$derived_route_count" \
   --argjson scanned_gate_count "$(find scripts -type f \( -name '*route-gate.sh' -o -name '*lane-gate.sh' \) | wc -l | tr -d '[:space:]')" \
   '{
     status:$status,
@@ -41,5 +72,7 @@ jq -n \
     static_native_gateway_source_command_count_regression:false,
     static_route_count_regression:false,
     static_terminal_marker_count_regression:false,
+    route_count_source:"CONTROL_UI_ROUTE_SPECS",
+    derived_route_count:$derived_route_count,
     dynamic_count_contract_ready:true
   }'

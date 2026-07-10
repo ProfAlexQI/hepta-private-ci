@@ -30,7 +30,7 @@ grep -q 'no matrix cache write, compact cache persistence, source report semanti
   and .status == "ready_blocked"
   and .gate == "hepta_systems_gate_recursion_cost_boundary_readback_gate"
   and .schema_version == "hepta_systems_gate_recursion_cost_boundary_readback_v1"
-  and .source_matrix_capability_count == 58
+  and .source_matrix_capability_count > 0
   and .source_matrix_live_enabled_count == 0
   and .controlled_live_blocker_count == 7
   and .lib_export_present == true

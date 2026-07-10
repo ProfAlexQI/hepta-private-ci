@@ -43,10 +43,23 @@ if grep -q 'SOURCE_GATE=' "$UPSTREAM_RECOVERY_WINDOW_GATE" \
   upstream_recovery_window_uses_source_gate=true
 fi
 
+matrix_report_json="$("$MATRIX_REPORT")" \
+  || fail "failed to render current reality matrix report"
+source_matrix_capability_count="$(
+  jq -er '.local_capability_count | select(type == "number" and . > 0)' \
+    <<<"$matrix_report_json"
+)" || fail "current reality matrix report has no positive local capability count"
+source_matrix_live_enabled_count="$(
+  jq -er '.live_enabled_count | select(type == "number" and . >= 0)' \
+    <<<"$matrix_report_json"
+)" || fail "current reality matrix report has no live-enabled count"
+
 jq -n \
   --argjson lib_export_present "$lib_export_present" \
   --argjson recovery_receipt_uses_source_report "$recovery_receipt_uses_source_report" \
   --argjson upstream_recovery_window_uses_source_gate "$upstream_recovery_window_uses_source_gate" \
+  --argjson source_matrix_capability_count "$source_matrix_capability_count" \
+  --argjson source_matrix_live_enabled_count "$source_matrix_live_enabled_count" \
   --arg gate "scripts/hepta-systems-gate-recursion-cost-boundary-readback-gate.sh" \
   --arg doc "docs/architecture/HEPTA_SYSTEMS_GATE_RECURSION_COST_BOUNDARY_READBACK_2026-06-29.md" \
   '
@@ -124,6 +137,8 @@ jq -n \
   ($entries | map(select(.full_matrix_render_required == true)) | length) as $full_matrix_render_boundary_count |
   ($entries | map(select(.lane_lock_serialization_required == true)) | length) as $lane_lock_boundary_count |
   ($lib_export_present == true
+    and $source_matrix_capability_count > 0
+    and $source_matrix_live_enabled_count == 0
     and $boundary_projection_count == 4
     and $source_gate_recursion_boundary_count == 2
     and $bounded_source_gate_count == 1
@@ -144,8 +159,8 @@ jq -n \
     status:(if $ready then "ready_blocked" else "blocked" end),
     gate:"hepta_systems_gate_recursion_cost_boundary_readback_gate",
     schema_version:"hepta_systems_gate_recursion_cost_boundary_readback_v1",
-    source_matrix_capability_count:58,
-    source_matrix_live_enabled_count:0,
+    source_matrix_capability_count:$source_matrix_capability_count,
+    source_matrix_live_enabled_count:$source_matrix_live_enabled_count,
     controlled_live_blocker_count:7,
     lib_export_present:$lib_export_present,
     recovery_receipt_uses_source_report:$recovery_receipt_uses_source_report,

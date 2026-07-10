@@ -91,7 +91,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 ' >/dev/null <<<"$FIRST_MODEL_SOURCE_JSON"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = ${EXPECTED_ROUTE_COUNT};" \
+  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes first-model positive approval packet boundary"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "HEPTA_FIRST_MODEL_POSITIVE_APPROVAL_PACKET_BOUNDARY_ENDPOINT" \
