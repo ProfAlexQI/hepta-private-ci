@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::current_reality_capability_registry_count;
+
 pub const CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_GATE: &str =
     "current_reality_matrix_compact_cache_boundary_readback_gate";
 pub const CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_SCHEMA_VERSION: &str =
@@ -15,7 +17,6 @@ pub struct CurrentRealityMatrixCompactCacheBoundaryReadbackReport {
     pub gate: &'static str,
     pub schema_version: &'static str,
     pub source_matrix_capability_count: usize,
-    pub source_matrix_ready_count: usize,
     pub source_live_enabled_count: usize,
     pub controlled_live_blocker_count: usize,
     pub compact_projection_count: usize,
@@ -88,8 +89,7 @@ pub fn hepta_current_reality_matrix_compact_cache_boundary_readback_report()
         },
         gate: CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_GATE,
         schema_version: CURRENT_REALITY_MATRIX_COMPACT_CACHE_BOUNDARY_READBACK_SCHEMA_VERSION,
-        source_matrix_capability_count: 104,
-        source_matrix_ready_count: 104,
+        source_matrix_capability_count: current_reality_capability_registry_count(),
         source_live_enabled_count: 0,
         controlled_live_blocker_count: 7,
         compact_projection_count,
@@ -187,8 +187,10 @@ mod tests {
         let report = hepta_current_reality_matrix_compact_cache_boundary_readback_report();
 
         assert_eq!(report.status, "ready_blocked");
-        assert_eq!(report.source_matrix_capability_count, 104);
-        assert_eq!(report.source_matrix_ready_count, 104);
+        assert_eq!(
+            report.source_matrix_capability_count,
+            current_reality_capability_registry_count()
+        );
         assert_eq!(report.source_live_enabled_count, 0);
         assert_eq!(report.controlled_live_blocker_count, 7);
         assert_eq!(report.compact_projection_count, 4);

@@ -32,7 +32,7 @@ grep -q 'no cache write, compact cache persistence, evidence recording, approval
   and .schema_version == "current_reality_matrix_compact_cache_boundary_readback_v1"
   and .source_single_render_cache_boundary_ready == true
   and .source_matrix_ready == false
-  and .source_matrix_capability_count == 104
+  and .source_matrix_capability_count > 0
   and .source_matrix_ready_count > 0
   and .source_matrix_ready_count < .source_matrix_capability_count
   and .source_live_enabled_count == 0

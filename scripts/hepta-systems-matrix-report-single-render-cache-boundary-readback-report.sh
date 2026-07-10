@@ -84,7 +84,7 @@ jq -n \
   ($entries | map(select(.consumer_route | startswith("scripts/hepta-systems-"))) | length) as $downstream_consumer_count |
   ($matrix_report.status == "blocked"
     and $matrix_report.current_reality_capability_matrix_ready == false
-    and $matrix_report.local_capability_count == 104
+    and $matrix_report.local_capability_count == ($matrix_report.capabilities | length)
     and $matrix_report.local_capability_ready_count > 0
     and $matrix_report.local_capability_ready_count < $matrix_report.local_capability_count
     and $matrix_report.local_capability_blocked_count > 0

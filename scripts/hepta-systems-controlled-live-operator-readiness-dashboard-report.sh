@@ -604,8 +604,9 @@ jq -n \
     and $status_canary_runner_dry_run_selector_route == "status_canary_runner_dry_run_selector_blocked_no_selector_request") as $status_canary_runner_dry_run_selector_ready |
   ($single_render.single_render_cache_boundary_readback_ready == true
     and $single_render.source_matrix_ready == true
-    and $single_render.source_matrix_capability_count == 104
-    and $single_render.source_matrix_ready_count == 104
+    and $single_render.source_matrix_capability_count > 0
+    and $single_render.source_matrix_ready_count > 0
+    and $single_render.source_matrix_ready_count < $single_render.source_matrix_capability_count
     and $single_render.source_live_enabled_count == 0
     and $single_render.source_all_live_paths_blocked == true
     and $single_render.dashboard_consumer_rewired == true

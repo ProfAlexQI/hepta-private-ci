@@ -29,7 +29,7 @@ grep -q 'does not open live execution' "$DOC" \
   and .surface == "current_reality_capability_matrix"
   and .status == "blocked"
   and .matrix_date == "2026-06-27"
-  and .local_capability_count == 104
+  and .local_capability_count == (.capabilities | length)
   and .local_capability_ready_count > 0
   and .local_capability_blocked_count > 0
   and (.local_capability_ready_count + .local_capability_blocked_count) == .local_capability_count

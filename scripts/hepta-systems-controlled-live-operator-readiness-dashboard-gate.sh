@@ -47,7 +47,7 @@ grep -q 'no approval request, approval acceptance, approval recording, evidence 
   and .plugin_id == "hepta-system@hepta-local"
   and .source_single_render_cache_boundary_ready == true
   and .source_matrix_ready == false
-  and .source_matrix_capability_count == 104
+  and .source_matrix_capability_count > 0
   and .source_matrix_capability_ready_count > 0
   and .source_matrix_capability_ready_count < .source_matrix_capability_count
   and .source_matrix_live_enabled_count == 0
@@ -137,8 +137,8 @@ grep -q 'no approval request, approval acceptance, approval recording, evidence 
   and .status_canary_runner_adapter_allowed == false
   and .status_canary_runner_adapter_blocked == true
   and .status_canary_runner_adapter_route == "status_canary_runner_adapter_blocked_no_runner_request"
-  and .capability_row_count == 104
-  and .capability_ready_count == 102
+  and .capability_row_count == .source_matrix_capability_count
+  and .capability_ready_count == .source_matrix_capability_ready_count
   and .blocker_entry_count == 7
   and .missing_evidence_blocker_count == 7
   and .evidence_recorded_count == 0

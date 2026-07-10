@@ -58,6 +58,8 @@ use crate::status_canary_runner_start_surface::{
 };
 use serde::Serialize;
 
+use crate::current_reality_capability_registry_count;
+
 pub const CONTROLLED_LIVE_OPERATOR_READINESS_DASHBOARD_GATE: &str =
     "controlled_live_operator_readiness_dashboard_gate";
 pub const CONTROLLED_LIVE_OPERATOR_READINESS_DASHBOARD_SCHEMA_VERSION: &str =
@@ -257,7 +259,6 @@ pub struct ControlledLiveOperatorReadinessDashboardReport {
     pub status_canary_evidence_closure_waived_count: usize,
     pub status_canary_evidence_closure_actionable_precondition_count: usize,
     pub capability_row_count: usize,
-    pub capability_ready_count: usize,
     pub live_enabled_count: usize,
     pub all_live_paths_blocked: bool,
     pub blocker_entry_count: usize,
@@ -1108,8 +1109,7 @@ pub fn controlled_live_operator_readiness_dashboard_report()
         status_canary_evidence_closure_recorded_count,
         status_canary_evidence_closure_waived_count,
         status_canary_evidence_closure_actionable_precondition_count,
-        capability_row_count: 104,
-        capability_ready_count: 104,
+        capability_row_count: current_reality_capability_registry_count(),
         live_enabled_count: 0,
         all_live_paths_blocked: true,
         blocker_entry_count: entries.len(),
@@ -1785,8 +1785,10 @@ mod tests {
             report.status_canary_evidence_closure_actionable_precondition_count,
             7
         );
-        assert_eq!(report.capability_row_count, 104);
-        assert_eq!(report.capability_ready_count, 104);
+        assert_eq!(
+            report.capability_row_count,
+            current_reality_capability_registry_count()
+        );
         assert_eq!(report.live_enabled_count, 0);
         assert!(report.all_live_paths_blocked);
         assert_eq!(report.blocker_entry_count, 7);

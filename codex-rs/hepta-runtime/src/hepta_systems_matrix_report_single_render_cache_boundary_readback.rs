@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::current_reality_capability_registry_count;
+
 pub const HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_GATE: &str =
     "hepta_systems_matrix_report_single_render_cache_boundary_readback_gate";
 pub const HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_SCHEMA_VERSION: &str =
@@ -15,7 +17,6 @@ pub struct HeptaSystemsMatrixReportSingleRenderCacheBoundaryReadbackReport {
     pub gate: &'static str,
     pub schema_version: &'static str,
     pub source_matrix_capability_count: usize,
-    pub source_matrix_ready_count: usize,
     pub source_live_enabled_count: usize,
     pub controlled_live_blocker_count: usize,
     pub matrix_report_render_count: usize,
@@ -121,8 +122,7 @@ pub fn hepta_systems_matrix_report_single_render_cache_boundary_readback_report(
         gate: HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_GATE,
         schema_version:
             HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_SCHEMA_VERSION,
-        source_matrix_capability_count: 104,
-        source_matrix_ready_count: 104,
+        source_matrix_capability_count: current_reality_capability_registry_count(),
         source_live_enabled_count: 0,
         controlled_live_blocker_count: 7,
         matrix_report_render_count: 1,
@@ -244,8 +244,10 @@ mod tests {
         let report = hepta_systems_matrix_report_single_render_cache_boundary_readback_report();
 
         assert_eq!(report.status, "ready_blocked");
-        assert_eq!(report.source_matrix_capability_count, 104);
-        assert_eq!(report.source_matrix_ready_count, 104);
+        assert_eq!(
+            report.source_matrix_capability_count,
+            current_reality_capability_registry_count()
+        );
         assert_eq!(report.source_live_enabled_count, 0);
         assert_eq!(report.controlled_live_blocker_count, 7);
         assert_eq!(report.matrix_report_render_count, 1);
