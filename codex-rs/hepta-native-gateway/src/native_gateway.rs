@@ -81,6 +81,13 @@ use sha2::Sha256;
 #[cfg(test)]
 use crate::gate_command::gate_command_json;
 use crate::gate_spec::GateSpec as ControlUiRouteSpec;
+#[cfg(test)]
+use crate::gateway_options::DEFAULT_BIND_ADDR;
+#[cfg(test)]
+use crate::gateway_options::DEFAULT_TELEGRAM_POLL_MS;
+use crate::gateway_options::NativeGatewayOptions;
+#[cfg(test)]
+use crate::gateway_options::parse_serve_ui_args;
 use crate::http_transport::*;
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
@@ -90,8 +97,6 @@ use crate::route_registry::*;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
-const DEFAULT_BIND_ADDR: &str = "127.0.0.1:7373";
-const DEFAULT_TELEGRAM_POLL_MS: u64 = 1500;
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
 const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV: &str =
@@ -161,74 +166,6 @@ const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
         compatibility_mode: "native_handoff_bundle_redacted",
     },
 ];
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeGatewayOptions {
-    pub(crate) bind_addr: String,
-    pub(crate) with_telegram_plugin: bool,
-    pub(crate) telegram_plugin_poll_ms: u64,
-}
-
-impl NativeGatewayOptions {
-    fn from_env_and_args(args: &[String]) -> Result<Self> {
-        let mut options = Self {
-            bind_addr: DEFAULT_BIND_ADDR.to_string(),
-            with_telegram_plugin: env_truthy("HEPTA_GATEWAY_ENABLE_TELEGRAM_PLUGIN"),
-            telegram_plugin_poll_ms: env_u64("HEPTA_GATEWAY_TELEGRAM_POLL_MS")
-                .unwrap_or(DEFAULT_TELEGRAM_POLL_MS),
-        };
-
-        let mut index = 0usize;
-        if let Some(bind_addr) = args.first().filter(|arg| !arg.starts_with("--")) {
-            options.bind_addr = bind_addr.clone();
-            index = 1;
-        }
-
-        while index < args.len() {
-            match args[index].as_str() {
-                "--with-telegram-plugin" | "--gateway-owned-telegram-plugin" => {
-                    options.with_telegram_plugin = true;
-                }
-                "--without-telegram-plugin" | "--no-telegram-plugin" => {
-                    options.with_telegram_plugin = false;
-                }
-                "--telegram-plugin-poll-ms" => {
-                    index += 1;
-                    let raw_value = args
-                        .get(index)
-                        .context("--telegram-plugin-poll-ms requires milliseconds")?;
-                    let value = raw_value
-                        .parse::<u64>()
-                        .context("--telegram-plugin-poll-ms requires a positive integer")?;
-                    if value == 0 {
-                        anyhow::bail!("--telegram-plugin-poll-ms requires a positive integer");
-                    }
-                    options.telegram_plugin_poll_ms = value;
-                }
-                other => anyhow::bail!("unexpected --serve-ui argument: {other}"),
-            }
-            index += 1;
-        }
-
-        options.telegram_plugin_poll_ms = options.telegram_plugin_poll_ms.clamp(500, 60_000);
-        Ok(options)
-    }
-}
-
-pub fn parse_serve_ui_args(raw_args: &[String]) -> Result<Option<NativeGatewayOptions>> {
-    match raw_args.first().map(String::as_str) {
-        Some("--serve-ui") => {
-            let options = NativeGatewayOptions::from_env_and_args(&raw_args[1..])?;
-            Ok(Some(options))
-        }
-        _ => Ok(None),
-    }
-}
-
-pub fn parse_serve_ui_args_from_env() -> Result<Option<NativeGatewayOptions>> {
-    let args = env::args().skip(1).collect::<Vec<_>>();
-    parse_serve_ui_args(&args)
-}
 
 pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
     if !is_loopback_bind_addr(&options.bind_addr) && !allow_non_loopback_ui() {

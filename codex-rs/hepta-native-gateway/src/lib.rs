@@ -1,6 +1,7 @@
 mod gate_command;
 mod gate_runner;
 mod gate_spec;
+mod gateway_options;
 mod http_transport;
 mod native_gateway;
 mod native_telegram;
@@ -9,7 +10,7 @@ mod route_registry;
 mod ui_domain;
 
 pub use gate_command::gate_command_json;
-pub use native_gateway::NativeGatewayOptions;
-pub use native_gateway::parse_serve_ui_args;
-pub use native_gateway::parse_serve_ui_args_from_env;
+pub use gateway_options::NativeGatewayOptions;
+pub use gateway_options::parse_serve_ui_args;
+pub use gateway_options::parse_serve_ui_args_from_env;
 pub use native_gateway::run_native_gateway;

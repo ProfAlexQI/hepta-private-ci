@@ -1,5 +1,5 @@
+use crate::gateway_options::NativeGatewayOptions;
 use crate::http_transport::escape_html;
-use crate::native_gateway::NativeGatewayOptions;
 use crate::native_gateway::native_gateway_json;
 use crate::native_telegram::NativeTelegramPluginStatus;
 
