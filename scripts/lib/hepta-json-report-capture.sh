@@ -39,7 +39,7 @@ hepta_emit_capture_tail() {
 }
 
 hepta_json_report_capture_cache_file() {
-  local command_name="$1"
+  # The first argument is a diagnostic label, not part of the report DAG identity.
   shift
 
   local cache_dir="${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}"
@@ -54,7 +54,6 @@ hepta_json_report_capture_cache_file() {
     {
       printf '%s\0' "$PWD"
       printf '%s\0' "${HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT:-}"
-      printf '%s\0' "$command_name"
       printf '%s\0' "$@"
     } | shasum -a 256 | awk '{print $1}'
   )"

@@ -152,6 +152,26 @@ cached_second_report="$(
         "}"
     ' bash "$cache_counter_path"
 )"
+cached_alias_report="$(
+  HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$cache_fixture_dir" \
+    HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT="diagnostic-cache-fixture" \
+    capture_json_report "cache-json-fixture-alias" bash -c '
+      counter_file="$1"
+      run_count=0
+      if [[ -f "$counter_file" ]]; then
+        run_count="$(cat "$counter_file")"
+      fi
+      run_count=$((run_count + 1))
+      printf "%s\n" "$run_count" >"$counter_file"
+      printf "%s\n" \
+        "{" \
+        "  \"status\": \"ready\"," \
+        "  \"gate\": \"cache_json_fixture\"," \
+        "  \"run_count\": $run_count," \
+        "  \"side_effects\": {\"filesystem_written\": false}" \
+        "}"
+    ' bash "$cache_counter_path"
+)"
 cache_counter_value=0
 if [[ -f "$cache_counter_path" ]]; then
   cache_counter_value="$(cat "$cache_counter_path")"
@@ -232,6 +252,12 @@ if jq -e '
     and .run_count == 1
     and .side_effects.filesystem_written == false
   ' >/dev/null <<<"$cached_second_report" \
+  && jq -e '
+    .status == "ready"
+    and .gate == "cache_json_fixture"
+    and .run_count == 1
+    and .side_effects.filesystem_written == false
+  ' >/dev/null <<<"$cached_alias_report" \
   && [[ "$cache_counter_value" -eq 1 ]]; then
   cache_fixture_ok=true
 fi
