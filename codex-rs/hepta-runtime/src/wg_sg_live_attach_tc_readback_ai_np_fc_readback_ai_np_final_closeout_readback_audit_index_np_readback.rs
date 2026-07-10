@@ -7,6 +7,7 @@ use serde::Serialize;
 use crate::wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index::{
     WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_PRECONDITION_READINESS_READBACK_TERMINAL_NO_ATTACHMENT_FINAL_CLOSEOUT_READBACK_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_READBACK_AUDIT_INDEX_GATE,
     WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackAuditIndexReport,
+    WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackAuditIndexSideEffects as SourceAuditIndexSideEffects,
     hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_report,
 };
 
@@ -186,6 +187,32 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_readback_blockers_for_source(source);
     let required_prior_gates =
         work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_readback_required_prior_gates_for_source(source);
+    let source_side_effects_all_false = source.side_effects == SourceAuditIndexSideEffects::none();
+    let readback_entries_complete = readback_entries.iter().all(|entry| {
+        entry.visible
+            && entry.ready
+            && !entry.recorded
+            && !entry.persisted
+            && !entry.authoritative
+            && !entry.accepted
+            && !entry.mutation_allowed
+    });
+    let readback_blockers_complete = readback_blockers.iter().all(|blocker| blocker.blocked);
+    let ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout =
+        source.gate
+            == WORK_GRAPH_AGENT_JOBS_TASK_BOARD_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_PRECONDITION_READINESS_READBACK_TERMINAL_NO_ATTACHMENT_FINAL_CLOSEOUT_READBACK_TERMINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_READBACK_AUDIT_INDEX_NON_PERSISTENCE_FINAL_CLOSEOUT_READBACK_AUDIT_INDEX_GATE
+            && source.ready_for_non_persistence_readback
+            && source.audit_index_visible
+            && !source.audit_index_recorded
+            && !source.audit_index_persisted
+            && !source.audit_index_authoritative
+            && !source.audit_index_accepted
+            && !source.ready_for_live_attachment
+            && !source.ready_for_live_execution
+            && source_side_effects_all_false
+            && readback_entries.len() == 6
+            && readback_entries_complete
+            && readback_blockers_complete;
 
     WorkGraphLiveAttachmentTerminalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackAuditIndexNonPersistenceFinalCloseoutReadbackAuditIndexNonPersistenceReadbackReport {
         product: "Hepta",
@@ -261,7 +288,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_r
         operator_review_request_allowed: false,
         approval_recording_allowed: false,
         live_cutover_allowed: false,
-        ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout: true,
+        ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout,
         ready_for_live_attachment: false,
         ready_for_live_execution: false,
         side_effects:

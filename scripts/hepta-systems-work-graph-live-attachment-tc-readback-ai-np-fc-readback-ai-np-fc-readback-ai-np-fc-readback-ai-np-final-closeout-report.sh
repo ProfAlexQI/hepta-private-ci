@@ -162,7 +162,27 @@ jq -n \
       operator_review_request_allowed: false,
       approval_recording_allowed: false,
       live_cutover_allowed: false,
-      ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback: true,
+      ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback: (
+        $source.ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout == true
+        and $source.audit_index_readback_visible == true
+        and $source.audit_index_readback_recorded == false
+        and $source.audit_index_readback_persisted == false
+        and $source.audit_index_readback_authoritative == false
+        and $source.audit_index_readback_accepted == false
+        and $source.ready_for_live_attachment == false
+        and $source.ready_for_live_execution == false
+        and ($source.side_effects | to_entries | all(.value == false))
+        and ($final_closeout_entries | all(
+          .visible == true
+          and .recorded == false
+          and .persisted == false
+          and .authoritative == false
+          and .accepted == false
+          and .mutation_allowed == false
+          and .closed == true
+        ))
+        and ($final_closeout_blockers | all(.blocked == true))
+      ),
       ready_for_live_attachment: false,
       ready_for_live_execution: false,
       source_probes: {

@@ -20,13 +20,27 @@ jq -e '
   and .runtime == "hepta"
   and .status == "ready"
   and .gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_gate"
+  and .schema_version == "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_v1"
   and .source_final_closeout_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_gate"
   and .source_final_closeout_entry_count == 8
   and .source_final_closeout_blocker_count == 146
   and .source_required_prior_gate_count == 53
+  and .source_final_closeout_ready == true
+  and .source_final_closeout_no_persistence_confirmed == true
+  and .source_final_closeout_no_live_confirmed == true
+  and .source_final_closeout_ready_for_readback == true
+  and .source_readbacks.final_closeout_report_gate == .source_final_closeout_gate
+  and .source_readbacks.final_closeout_preconditions_complete == true
+  and .source_readbacks.final_closeout_ready_for_readback == true
+  and .source_readbacks.final_closeout_no_persistence_confirmed == true
+  and .source_readbacks.final_closeout_no_live_confirmed == true
+  and .source_readbacks.final_closeout_side_effects_all_false == true
   and .readback_entry_count == 6
   and .readback_blocker_count == 149
   and .required_prior_gate_count == 54
+  and .readback_entries_complete == true
+  and .readback_blockers_complete == true
+  and .final_closeout_readback_preconditions_complete == true
   and (.readback_entries | all(.visible == true and .ready == true and .recorded == false and .persisted == false and .authoritative == false and .accepted == false and .mutation_allowed == false))
   and (.readback_blockers | all(.blocked == true))
   and (.readback_blockers | map(.blocked_action) | index("record_live_attachment_attachability_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback") != null)
@@ -49,7 +63,7 @@ jq -e '
   and (.readback_blockers | map(.blocked_action) | index("request_operator_review") != null)
   and (.readback_blockers | map(.blocked_action) | index("record_operator_approval") != null)
   and (.readback_blockers | map(.blocked_action) | index("perform_live_cutover") != null)
-  and .required_prior_gates[0] == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_gate"
+  and .required_prior_gates[0] == .source_final_closeout_gate
   and (.required_prior_gates | length == 54)
   and .recommended_next_gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_terminal_no_attachment_final_closeout_readback_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index_gate"
   and .source_final_closeout_visible == true
@@ -104,16 +118,19 @@ jq -e '
   and .ready_for_terminal_closeout_readback_audit_index_non_persistence_final_closeout_readback_audit_index == true
   and .ready_for_live_attachment == false
   and .ready_for_live_execution == false
-  and .source_probes.final_closeout_readback_module_present == true
-  and .source_probes.final_closeout_gate_present == true
-  and .source_probes.final_closeout_points_here == true
-  and .source_probes.final_closeout_ready_present == true
-  and .source_probes.final_closeout_no_live_present == true
-  and .source_probes.final_closeout_unpersisted_present == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$report"
 
 cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
-  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback --lib
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback::tests::final_closeout_readback_derives_from_final_closeout --lib
 
-echo "Hepta WorkGraph live attachment terminal closeout readback audit index non-persistence final closeout readback audit-index non-persistence final closeout readback audit-index non-persistence final closeout readback audit-index non-persistence final closeout readback audit-index non-persistence final closeout readback gate passed"
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback::tests::final_closeout_readback_is_visible_only --lib
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback::tests::final_closeout_readback_blocks_live_paths --lib
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  wg_sg_live_attach_tc_readback_ai_np_fc_readback_ai_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback_audit_index_np_final_closeout_readback::tests::final_closeout_readback_links_priors_and_side_effects --lib
+
+echo "Hepta WorkGraph live attachment terminal closeout readback audit index non-persistence final closeout readback audit-index non-persistence final closeout readback audit-index non-persistence final closeout readback audit-index non-persistence final closeout readback audit-index non-persistence final-closeout-readback gate passed"
