@@ -1,3 +1,5 @@
+pub use crate::manifest_tool_declarations::PluginManifestActivationEventDeclaration;
+pub use crate::manifest_tool_declarations::PluginManifestPermissionDeclaration;
 pub use crate::manifest_tool_declarations::PluginManifestToolDeclarations;
 pub use crate::manifest_tool_declarations::PluginManifestToolPolicyDeclaration;
 pub use crate::manifest_tool_declarations::PluginManifestToolSchemaDeclaration;

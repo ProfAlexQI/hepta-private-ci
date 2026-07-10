@@ -7,6 +7,7 @@ pub mod loader;
 mod manager;
 pub mod manifest;
 mod manifest_tool_declarations;
+pub mod manifest_v1_validator;
 pub mod marketplace;
 pub mod marketplace_add;
 pub mod marketplace_remove;
