@@ -11,6 +11,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
@@ -124567,7 +124568,7 @@ struct NativeGatewayLiveActivationSafety {
     raw_response_text_exposed: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ControlUiRouteParityReport {
     product: &'static str,
     runtime: &'static str,
@@ -124581,6 +124582,9 @@ struct ControlUiRouteParityReport {
     legacy_source: &'static str,
     routes: &'static [ControlUiRouteSpec],
 }
+
+static CONTROL_UI_ROUTE_PARITY_REPORT_CACHE: OnceLock<ControlUiRouteParityReport> =
+    OnceLock::new();
 
 #[derive(Debug, Serialize)]
 struct ControlUiRouteCompatibilityResponse {
@@ -124605,26 +124609,30 @@ struct ControlUiRouteCompatibilityResponse {
 }
 
 fn control_ui_route_parity_report() -> ControlUiRouteParityReport {
-    let missing_routes = CONTROL_UI_ROUTE_SPECS
-        .iter()
-        .filter(|route| !control_ui_route_has_handler(route))
-        .map(|route| format!("{} {}", route.method, route.pattern))
-        .collect::<Vec<_>>();
-    let implemented_route_count = CONTROL_UI_ROUTE_SPECS.len() - missing_routes.len();
-    let ready = missing_routes.is_empty();
-    ControlUiRouteParityReport {
-        product: "Hepta",
-        runtime: "hepta",
-        status: if ready { "ready" } else { "blocked" },
-        ready,
-        route_count: CONTROL_UI_ROUTE_SPECS.len(),
-        implemented_route_count,
-        missing_route_count: missing_routes.len(),
-        missing_routes,
-        side_effect_free: true,
-        legacy_source: "Hepta Control UI live operator DevEx 100 route matrix and hepta-core::control_ui markers",
-        routes: CONTROL_UI_ROUTE_SPECS,
-    }
+    CONTROL_UI_ROUTE_PARITY_REPORT_CACHE
+        .get_or_init(|| {
+            let missing_routes = CONTROL_UI_ROUTE_SPECS
+                .iter()
+                .filter(|route| !control_ui_route_has_handler(route))
+                .map(|route| format!("{} {}", route.method, route.pattern))
+                .collect::<Vec<_>>();
+            let implemented_route_count = CONTROL_UI_ROUTE_SPECS.len() - missing_routes.len();
+            let ready = missing_routes.is_empty();
+            ControlUiRouteParityReport {
+                product: "Hepta",
+                runtime: "hepta",
+                status: if ready { "ready" } else { "blocked" },
+                ready,
+                route_count: CONTROL_UI_ROUTE_SPECS.len(),
+                implemented_route_count,
+                missing_route_count: missing_routes.len(),
+                missing_routes,
+                side_effect_free: true,
+                legacy_source: "Hepta Control UI live operator DevEx 100 route matrix and hepta-core::control_ui markers",
+                routes: CONTROL_UI_ROUTE_SPECS,
+            }
+        })
+        .clone()
 }
 
 fn control_ui_route_response(method: &str, path: &str) -> Option<String> {
