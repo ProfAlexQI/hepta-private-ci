@@ -128,7 +128,11 @@ checkpoint_tmp="$STATE_FILE.tmp.$$"
 trap 'rm -f "$generated" "$checkpoint_tmp"' EXIT
 
 if [[ "$start_line" == "1" ]]; then
-  cp "$PREFLIGHT" "$generated"
+  {
+    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail'
+    printf 'cd %q\n' "$ROOT"
+    sed -n '6,$p' "$PREFLIGHT"
+  } >"$generated"
 else
   {
     printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail'
