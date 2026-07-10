@@ -56,10 +56,15 @@ struct ShellPairMigrationSpec {
     architecture_title: Option<String>,
     terminal_status_gate: Option<String>,
     terminal_status_doc: Option<String>,
+    public_status_gate: Option<String>,
+    public_status_doc: Option<String>,
+    source_file_prefix: Option<String>,
     missing_source_gate_message: Option<String>,
     missing_architecture_note_message: Option<String>,
     missing_terminal_status_gate_message: Option<String>,
     missing_terminal_status_doc_message: Option<String>,
+    missing_public_status_gate_message: Option<String>,
+    missing_public_status_doc_message: Option<String>,
     next_migration_step: String,
     missing_source_message: String,
     missing_report_message: String,
@@ -173,6 +178,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 | "signing_terminal_status_attachment"
                 | "signing_terminal_status_final_index"
                 | "signing_terminal_status_readback"
+                | "signing_public_status_attachment"
                 | "signing_summary_readback"
         ) {
             anyhow::bail!(
@@ -316,6 +322,30 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             {
                 anyhow::bail!(
                     "Hepta migrated terminal-status final-index pair {} has empty template fields",
+                    spec.id
+                );
+            }
+        }
+        if spec.template == "signing_public_status_attachment" {
+            let required_template_fields = [
+                spec.source_gate.as_deref(),
+                spec.architecture_note.as_deref(),
+                spec.architecture_title.as_deref(),
+                spec.public_status_gate.as_deref(),
+                spec.public_status_doc.as_deref(),
+                spec.source_file_prefix.as_deref(),
+                spec.missing_source_gate_message.as_deref(),
+                spec.missing_architecture_note_message.as_deref(),
+                spec.missing_public_status_gate_message.as_deref(),
+                spec.missing_public_status_doc_message.as_deref(),
+            ];
+            if spec.attachment_blocker_count.is_none_or(|count| count == 0)
+                || required_template_fields
+                    .iter()
+                    .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+            {
+                anyhow::bail!(
+                    "Hepta migrated public-status pair {} has empty template fields",
                     spec.id
                 );
             }
