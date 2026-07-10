@@ -225,6 +225,7 @@ jq -n \
   --arg live_route_status "$live_route_status" \
   --arg next_slice "operator_identity_session_revocation_logout_replay_reinstatement_ordering_monotonicity_denial" \
   --argjson require_live_endpoint "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
+  --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
   --argjson live_route_count "$live_route_count" \
   --argjson live_missing_route_count "$live_missing_route_count" \
   '{
@@ -244,7 +245,7 @@ jq -n \
     live_route_status:$live_route_status,
     live_route_count:$live_route_count,
     live_missing_route_count:$live_missing_route_count,
-    expected_route_count:160,
+    expected_route_count:$expected_route_count,
     expected_terminal_required_marker_count:300,
     route_gate_ready:true,
     source_gate_ready:true,
