@@ -132,10 +132,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_DENIAL_ENDPOINT' \
   "runtime provider-router activation command result receipt release artifact publication endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-release-artifact-publication-denial' \
   "runtime provider-router activation command result receipt release artifact publication endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-release-artifact-publication-denial --json' \
   "runtime provider-router activation command result receipt release artifact publication source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

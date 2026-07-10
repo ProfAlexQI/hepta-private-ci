@@ -70,19 +70,19 @@ ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes context handoff acceptance lane and preserved systems routes"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
   "native gateway systems tool registry inventory route preserved"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_ACCEPTANCE_LANE_ENDPOINT' \
   "native gateway operator-approved context handoff acceptance lane endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane' \
   "native gateway operator-approved context handoff acceptance lane endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane --json' \
   "native gateway operator-approved context handoff acceptance lane source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

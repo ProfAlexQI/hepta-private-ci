@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_PROVIDER_ROUTER_DRY_RUN_ENVELOPE_READBACK_AUDIT_ENDPOINT' \
   "native gateway provider-router dry-run envelope readback audit endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-provider-router-dry-run-envelope-readback-audit' \
   "native gateway provider-router dry-run envelope readback audit endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-provider-router-dry-run-envelope-readback-audit --json' \
   "native gateway provider-router dry-run envelope readback audit source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

@@ -115,10 +115,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_READBACK_INDEX_NO_PERSISTENCE_ENDPOINT' \
   "native gateway operator-review/readback index endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-readback-index-no-persistence' \
   "native gateway operator-review/readback index endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-readback-index-no-persistence --json' \
   "native gateway operator-review/readback index source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

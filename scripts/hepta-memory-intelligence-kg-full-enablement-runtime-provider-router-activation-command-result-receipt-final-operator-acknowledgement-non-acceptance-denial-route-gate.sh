@@ -137,10 +137,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_ACTIVATION_COMMAND_RESULT_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_ENDPOINT' \
   "runtime provider-router activation command result receipt final operator acknowledgement endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial' \
   "runtime provider-router activation command result receipt final operator acknowledgement endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-final-operator-acknowledgement-non-acceptance-denial --json' \
   "runtime provider-router activation command result receipt final operator acknowledgement source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

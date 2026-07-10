@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_NONCE_SESSION_COMMAND_BINDING_PREFLIGHT_ENDPOINT' \
   "native gateway first model invocation nonce/session/command binding endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-first-model-invocation-operator-approval-nonce-session-command-binding-preflight' \
   "native gateway first model invocation nonce/session/command binding endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-first-model-invocation-operator-approval-nonce-session-command-binding-preflight --json' \
   "native gateway first model invocation nonce/session/command binding source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

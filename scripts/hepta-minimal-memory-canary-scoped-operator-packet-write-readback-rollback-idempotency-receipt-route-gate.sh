@@ -29,10 +29,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MINIMAL_MEMORY_CANARY_SCOPED_OPERATOR_PACKET_WRITE_READBACK_ROLLBACK_IDEMPOTENCY_RECEIPT_ENDPOINT' \
   "minimal memory canary endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt' \
   "minimal memory canary endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt --json' \
   "minimal memory canary source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_FIRST_MODEL_INVOCATION_SEPARATE_APPROVAL_SLICE_PREFLIGHT_ENDPOINT' \
   "native gateway first model invocation approval preflight endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-first-model-invocation-separate-approval-slice-preflight' \
   "native gateway first model invocation approval preflight endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-first-model-invocation-separate-approval-slice-preflight --json' \
   "native gateway first model invocation approval preflight source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

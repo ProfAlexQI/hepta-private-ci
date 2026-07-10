@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_INTELLIGENCE_BOUNDED_CONTEXT_ATTACHMENT_PREVIEW_READBACK_ENDPOINT' \
   "native gateway Intelligence bounded context preview endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-intelligence-bounded-context-attachment-preview-readback' \
   "native gateway Intelligence bounded context preview endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-intelligence-bounded-context-attachment-preview-readback --json' \
   "native gateway Intelligence bounded context preview source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

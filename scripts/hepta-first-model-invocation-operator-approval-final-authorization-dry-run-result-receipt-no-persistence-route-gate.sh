@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_NO_PERSISTENCE_ENDPOINT' \
   "native gateway first model invocation final authorization dry-run result receipt endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-no-persistence' \
   "native gateway first model invocation final authorization dry-run result receipt endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-no-persistence --json' \
   "native gateway first model invocation final authorization dry-run result receipt source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

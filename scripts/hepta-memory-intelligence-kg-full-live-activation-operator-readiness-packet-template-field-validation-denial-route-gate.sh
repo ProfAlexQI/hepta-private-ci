@@ -104,10 +104,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_FIELD_VALIDATION_DENIAL_ENDPOINT' \
   "native gateway operator readiness packet template field-validation endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial' \
   "native gateway operator readiness packet template field-validation endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-field-validation-denial --json' \
   "native gateway operator readiness packet template field-validation source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

@@ -63,10 +63,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_UPSTREAM_CODEX_LATEST_MULTISURFACE_ABSORPTION_ENDPOINT' \
   "upstream Codex latest multisurface absorption endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-upstream-codex-latest-multisurface-absorption' \
   "upstream Codex latest multisurface absorption endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-upstream-codex-latest-multisurface-absorption --json' \
   "upstream Codex latest multisurface absorption source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

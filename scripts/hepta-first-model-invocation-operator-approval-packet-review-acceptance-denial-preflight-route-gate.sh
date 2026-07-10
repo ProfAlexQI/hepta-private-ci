@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_PACKET_REVIEW_ACCEPTANCE_DENIAL_PREFLIGHT_ENDPOINT' \
   "native gateway first model invocation approval review endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-first-model-invocation-operator-approval-packet-review-acceptance-denial-preflight' \
   "native gateway first model invocation approval review endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-first-model-invocation-operator-approval-packet-review-acceptance-denial-preflight --json' \
   "native gateway first model invocation approval review source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

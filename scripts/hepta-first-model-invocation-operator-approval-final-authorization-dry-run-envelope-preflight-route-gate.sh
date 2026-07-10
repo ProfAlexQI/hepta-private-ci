@@ -33,10 +33,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_ENVELOPE_PREFLIGHT_ENDPOINT' \
   "native gateway first model invocation final authorization dry-run endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-envelope-preflight' \
   "native gateway first model invocation final authorization dry-run endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-envelope-preflight --json' \
   "native gateway first model invocation final authorization dry-run source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

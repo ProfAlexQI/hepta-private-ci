@@ -82,19 +82,19 @@ ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes bounded provider-router injection dry-run envelope lane and preserved systems routes"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
   "native gateway systems tool registry inventory route preserved"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_LANE_ENDPOINT' \
   "native gateway operator-approved bounded provider-router injection dry-run envelope lane endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane' \
   "native gateway operator-approved bounded provider-router injection dry-run envelope lane endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-operator-approved-bounded-provider-router-injection-dry-run-envelope-lane --json' \
   "native gateway operator-approved bounded provider-router injection dry-run envelope lane source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

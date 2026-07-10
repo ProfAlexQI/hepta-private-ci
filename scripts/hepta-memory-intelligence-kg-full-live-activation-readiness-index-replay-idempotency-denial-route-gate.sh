@@ -127,10 +127,10 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_READINESS_INDEX_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT' \
   "native gateway readiness index replay/idempotency endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial' \
   "native gateway readiness index replay/idempotency endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-live-activation-readiness-index-replay-idempotency-denial --json' \
   "native gateway readiness index replay/idempotency source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

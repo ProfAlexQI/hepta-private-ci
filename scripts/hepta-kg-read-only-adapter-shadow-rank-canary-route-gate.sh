@@ -36,10 +36,10 @@ require_source_text "$ROUTE_REGISTRY_SOURCE" \
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT' \
   "native gateway bounded Intelligence context handoff prompt preview boundary source endpoint"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-kg-read-only-adapter-shadow-rank-canary' \
   "native gateway KG shadow-rank canary endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-kg-read-only-adapter-shadow-rank-canary --json' \
   "native gateway KG shadow-rank canary source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

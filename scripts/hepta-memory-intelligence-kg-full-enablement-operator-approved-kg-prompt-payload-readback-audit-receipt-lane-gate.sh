@@ -62,22 +62,22 @@ ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes context handoff acceptance lane and preserved systems routes"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-systems-tool-registry-inventory' \
   "native gateway systems tool registry inventory route preserved"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
 require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PAYLOAD_READBACK_AUDIT_RECEIPT_LANE_ENDPOINT' \
   "native gateway operator-approved KG prompt payload readback audit receipt lane endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane' \
   "native gateway operator-approved KG prompt payload readback audit receipt lane endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-operator-approved-kg-prompt-payload-readback-audit-receipt-lane --json' \
   "native gateway operator-approved KG prompt payload readback audit receipt lane source command"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-operator-approved-context-handoff-acceptance-lane' \
   "native gateway operator-approved context handoff acceptance lane route preserved"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
