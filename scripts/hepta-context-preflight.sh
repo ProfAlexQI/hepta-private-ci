@@ -357,7 +357,7 @@ run_stage "selected snippet API/caller surface gate" \
   bash "$repo_root/scripts/hepta-context-selected-snippet-api-surface-gate.sh"
 
 run_runtime_stage "native gateway context-recall worker scheduler route fixture" \
-  cargo test --manifest-path "$manifest" -p codex-cli \
+  cargo test --manifest-path "$manifest" -p hepta-native-gateway \
     hepta_context_recall_worker_scheduler_handoff \
     --lib --message-format=short
 

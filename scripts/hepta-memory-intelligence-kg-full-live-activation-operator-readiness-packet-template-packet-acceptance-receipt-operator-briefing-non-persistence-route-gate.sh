@@ -139,7 +139,7 @@ jq -e '
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$OPERATOR_BRIEFING_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -173,7 +173,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "packet acceptance receipt Telegram send denied"
 
 TEST_LOG="$(mktemp /tmp/hepta-operator-readiness-packet-template-packet-acceptance-receipt-operator-briefing-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_operator_briefing_endpoint_blocks_delivery_and_authority \
   -- --nocapture >"$TEST_LOG"
 

@@ -64,7 +64,7 @@ jq -e '
   and .side_effects.channel_send_performed == false
 ' >/dev/null <<<"$KG_READBACK_AUDIT_RECEIPT_LANE_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -116,7 +116,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "channel delivery lane remains disabled"
 
 TEST_LOG="$(mktemp /tmp/hepta-operator-approved-context-handoff-acceptance-lane-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_enablement_operator_approved_context_handoff_acceptance_lane_endpoint_enables_redacted_context_handoff_acceptance_shape_only \
   -- --nocapture >"$TEST_LOG"
 

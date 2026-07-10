@@ -26,7 +26,7 @@ require_source_text() {
 }
 
 SOURCE_SCOPED_GATE="scripts/hepta-scoped-memory-canary-durable-receipt-boundary-route-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary"
 SOURCE_COMMAND="/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary --json"
 
@@ -90,7 +90,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused bounded Intelligence handoff boundary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_endpoint_blocks_prompt_injection_and_provider_invocation \
   -- --nocapture >"$TEST_LOG"
 

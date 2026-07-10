@@ -118,7 +118,7 @@ jq -e '
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$SOURCE_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -143,7 +143,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "runtime provider-router activation command result receipt operator summary/briefing focused test"
 
 TEST_LOG="$(mktemp /tmp/hepta-runtime-provider-router-activation-command-result-receipt-operator-summary-briefing-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_result_receipt_operator_summary_briefing_endpoint_blocks_delivery_and_authority \
   -- --nocapture >"$TEST_LOG"
 

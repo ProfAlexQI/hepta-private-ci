@@ -29,7 +29,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary --json"
 FOCUSED_TEST="hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_durable_store_write_rollback_tombstone_zero_residue_acceptance_accepts_cleanup_evidence_without_new_memory_or_external_side_effects"
@@ -57,7 +57,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" "$FOCUSED_TEST" \
   "focused minimal scoped Memory canary durable store write rollback/tombstone zero-residue acceptance unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-minimal-scoped-memory-real-write-canary-durable-store-write-zero-residue-acceptance-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   "$FOCUSED_TEST" \
   -- --nocapture >"$TEST_LOG"
 

@@ -27,7 +27,7 @@ require_source_text() {
 
 SOURCE_TRUTH_GATE="scripts/hepta-memory-intelligence-kg-activation-truth-index-route-gate.sh"
 SOURCE_EXPLICIT_GATE="scripts/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary-route-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-full-live-activation-closure-index"
 SOURCE_COMMAND="/hepta-full-live-activation-closure-index --json"
 
@@ -55,7 +55,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused full-live closure index unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-full-live-activation-closure-index-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_full_live_activation_closure_index_endpoint_summarizes_blockers_without_side_effects \
   -- --nocapture >"$TEST_LOG"
 

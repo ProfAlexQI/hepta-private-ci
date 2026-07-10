@@ -37,7 +37,7 @@ attempt_log_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-browser-smoke.XXX
 
 start_server() {
   : >"$SERVER_LOG"
-  cargo run --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
+  cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
     >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
 }

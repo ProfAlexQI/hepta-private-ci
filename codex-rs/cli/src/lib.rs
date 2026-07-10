@@ -1,8 +1,7 @@
 pub(crate) mod debug_sandbox;
 mod exit_status;
 pub(crate) mod login;
-pub mod native_gateway;
-mod native_telegram;
+pub use hepta_native_gateway as native_gateway;
 
 use clap::Parser;
 use codex_utils_absolute_path::AbsolutePathBuf;

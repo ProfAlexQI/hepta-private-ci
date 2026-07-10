@@ -97,7 +97,7 @@ trap cleanup EXIT
 start_server() {
   : >"$SERVER_LOG"
   HEPTA_AUTOLOAD=0 HEPTA_AUTOSAVE=0 CARGO_INCREMENTAL=0 \
-    cargo run --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
+    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
     >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
 }

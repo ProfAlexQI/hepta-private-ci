@@ -24,7 +24,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -52,7 +52,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "truth index lane-ready/full-live separation denial"
 
 TEST_LOG="$(mktemp /tmp/hepta-memory-intelligence-kg-activation-truth-index-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_activation_truth_index_endpoint_separates_lane_readiness_from_full_live_activation \
   -- --nocapture >"$TEST_LOG"
 

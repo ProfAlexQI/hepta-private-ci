@@ -3,7 +3,8 @@ use serde::Serialize;
 use crate::control_ui::CONTROL_UI_README;
 use crate::control_ui::CONTROL_UI_RUST_RENDERER_MARKERS;
 
-pub const HEPTA_NATIVE_GATEWAY_RS: &str = include_str!("../../cli/src/native_gateway.rs");
+pub const HEPTA_NATIVE_GATEWAY_RS: &str =
+    include_str!("../../hepta-native-gateway/src/native_gateway.rs");
 pub const HEPTA_NATIVE_POST_RS: &str = include_str!("../../hepta-gateway/src/native_post.rs");
 pub const HEPTA_KERNEL_RS: &str = include_str!("../../hepta-kernel/src/lib.rs");
 
@@ -224,7 +225,7 @@ pub fn operator_security_report() -> OperatorSecurityReport {
             "loopback-bind-guard",
             "Loopback-only serving guard",
             loopback_bind_enforced,
-            "codex-rs/cli/src/native_gateway.rs refuses non-loopback UI bind unless explicitly overridden",
+            "codex-rs/hepta-native-gateway/src/native_gateway.rs refuses non-loopback UI bind unless explicitly overridden",
         ),
         lane(
             "security-headers",

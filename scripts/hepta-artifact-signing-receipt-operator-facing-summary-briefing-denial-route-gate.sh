@@ -45,7 +45,7 @@ if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
 fi
 
 SOURCE_SUMMARY_BRIEFING_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-summary-briefing-denial-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-operator-facing-summary-briefing-non-persistence-denial"
 SOURCE_COMMAND="/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-operator-facing-summary-briefing-non-persistence-denial --json"
 
@@ -189,7 +189,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "artifact signing receipt operator-facing summary/briefing focused endpoint test"
 
 TEST_LOG="$(mktemp /tmp/hepta-artifact-signing-receipt-operator-summary-briefing-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_operator_summary_briefing_endpoint_blocks_delivery_and_authority \
   -- --nocapture >"$TEST_LOG"
 

@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary --json"
 
@@ -53,7 +53,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused memory terminal operator decision public-claim boundary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-memory-write-execution-activation-command-result-receipt-terminal-decision-public-claim-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_write_execution_activation_command_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_endpoint_blocks_public_claim_and_authority \
   -- --nocapture >"$TEST_LOG"
 

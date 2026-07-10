@@ -27,7 +27,7 @@ require_source_text() {
 
 SOURCE_ARTIFACT_GATE="scripts/hepta-artifact-signing-receipt-release-public-artifact-publication-denial-route-gate.sh"
 SOURCE_FIRST_MODEL_GATE="scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-route-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-first-model-positive-approval-packet-boundary"
 SOURCE_COMMAND="/hepta-first-model-positive-approval-packet-boundary --json"
 
@@ -114,7 +114,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused first-model positive approval packet boundary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-first-model-positive-approval-packet-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_first_model_positive_approval_packet_boundary_endpoint_blocks_approval_and_invocation_authority \
   -- --nocapture >"$TEST_LOG"
 

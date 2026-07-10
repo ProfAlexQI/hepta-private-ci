@@ -2262,6 +2262,7 @@ dependencies = [
  "hepta-core",
  "hepta-gateway",
  "hepta-memory",
+ "hepta-native-gateway",
  "http 1.4.0",
  "libc",
  "owo-colors",
@@ -7147,14 +7148,7 @@ name = "hepta-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "hepta-core",
- "hepta-gateway",
- "hepta-memory",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
+ "hepta-native-gateway",
  "tokio",
 ]
 
@@ -7216,6 +7210,24 @@ dependencies = [
  "hepta-core",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "hepta-native-gateway"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "codex-arg0",
+ "codex-exec",
+ "hepta-core",
+ "hepta-gateway",
+ "hepta-memory",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
 ]
 

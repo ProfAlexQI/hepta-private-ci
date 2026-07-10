@@ -24,7 +24,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial"
 SOURCE_COMMAND="/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial --json"
 FOCUSED_TEST="hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_endpoint_blocks_public_status_exposure_and_authority"
@@ -56,7 +56,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "next action remains terminal public-claim delivery readback denial"
 
 TEST_LOG="$(mktemp /tmp/hepta-first-model-invocation-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   "$FOCUSED_TEST" \
   -- --nocapture >"$TEST_LOG"
 

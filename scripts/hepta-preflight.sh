@@ -34,13 +34,12 @@ cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-plugins \
   -p hepta-runtime \
   -p hepta-gateway \
-  -p codex-cli --bin hepta \
   -p hepta-cli --bin hepta
 
 echo "[hepta-preflight] adapter behavior-equivalence gate"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
   codex_engine_adapter_behavior_equivalence_gate -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_codex_engine_adapter_boundary -- --nocapture
 
 echo "[hepta-preflight] adapter shadow-replay gate"
@@ -50,7 +49,7 @@ cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
 echo "[hepta-preflight] name/repository closure gate"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
   name_repository_closure -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_name_repository_closure -- --nocapture
 
 echo "[hepta-preflight] active service dependency isolation gate"
@@ -1749,9 +1748,10 @@ echo "[hepta-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
 echo "[hepta-preflight] codex-cli native tests"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta native_gateway -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta native_telegram -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta native_post -- --nocapture
+echo "[hepta-preflight] Hepta-owned native gateway tests"
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_gateway -- --nocapture
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_telegram -- --nocapture
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_post -- --nocapture
 
 echo "[hepta-preflight] control-ui smoke"
 CARGO_NET_OFFLINE=true scripts/hepta-control-ui-smoke.sh

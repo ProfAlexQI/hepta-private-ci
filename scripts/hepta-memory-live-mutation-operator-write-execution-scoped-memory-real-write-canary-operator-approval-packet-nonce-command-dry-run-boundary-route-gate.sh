@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-scoped-memory-real-write-canary-operator-approval-packet-nonce-command-dry-run-boundary --json"
 
@@ -53,7 +53,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused scoped Memory real-write canary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-scoped-memory-real-write-canary-approval-nonce-command-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_write_execution_scoped_memory_real_write_canary_operator_approval_packet_nonce_command_dry_run_boundary_blocks_real_write \
   -- --nocapture >"$TEST_LOG"
 

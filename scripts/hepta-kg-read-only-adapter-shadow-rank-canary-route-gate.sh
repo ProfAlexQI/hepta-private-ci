@@ -24,7 +24,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -55,7 +55,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "provider-router dry-run next slice"
 
 TEST_LOG="$(mktemp /tmp/hepta-kg-read-only-shadow-rank-canary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_kg_read_only_adapter_shadow_rank_canary_endpoint_compares_without_live_kg_or_secret_side_effects \
   -- --nocapture >"$TEST_LOG"
 

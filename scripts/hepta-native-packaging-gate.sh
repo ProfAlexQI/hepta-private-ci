@@ -236,7 +236,7 @@ else
   BASE_URL="http://${BIND_ADDR}"
 
   mkdir -p "$SERVER_CARGO_TARGET_DIR"
-  CARGO_TARGET_DIR="$SERVER_CARGO_TARGET_DIR" cargo build --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta
+  CARGO_TARGET_DIR="$SERVER_CARGO_TARGET_DIR" cargo build --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
   SERVER_BINARY_PATH="$SERVER_CARGO_TARGET_DIR/debug/hepta"
   if [[ ! -x "$SERVER_BINARY_PATH" ]]; then
     echo "missing built Hepta serve-ui binary for native packaging gate: $SERVER_BINARY_PATH" >&2

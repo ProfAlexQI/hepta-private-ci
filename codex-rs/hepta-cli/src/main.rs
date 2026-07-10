@@ -1,7 +1,4 @@
-#[path = "../../cli/src/native_gateway.rs"]
-mod native_gateway;
-#[path = "../../cli/src/native_telegram.rs"]
-mod native_telegram;
+use hepta_native_gateway as native_gateway;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

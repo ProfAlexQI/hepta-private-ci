@@ -149,7 +149,7 @@ jq -e '
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$REPLAY_IDEMPOTENCY_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -183,7 +183,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "activation from result receipt replay denied"
 
 TEST_LOG="$(mktemp /tmp/hepta-operator-canary-activation-command-result-receipt-replay-idempotency-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_enablement_operator_canary_controlled_request_harness_operator_review_acknowledgement_activation_command_result_receipt_replay_idempotency_endpoint_blocks_replay \
   -- --nocapture >"$TEST_LOG"
 

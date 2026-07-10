@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-post-write-readback-binding-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-post-write-readback-binding-boundary --json"
 
@@ -53,7 +53,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused minimal scoped Memory canary post-write readback binding unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-minimal-scoped-memory-real-write-canary-post-write-readback-binding-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_post_write_readback_binding_accepts_bindings_without_reads_or_writes \
   -- --nocapture >"$TEST_LOG"
 

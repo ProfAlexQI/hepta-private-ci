@@ -83,6 +83,7 @@ members = [
     "git-utils",
     "hepta-core",
     "hepta-cli",
+    "hepta-native-gateway",
     "hepta-kernel",
     "hepta-intelligence",
     "hepta-kg",
@@ -183,6 +184,7 @@ codex-file-watcher = { path = "file-watcher" }
 codex-git-utils = { path = "git-utils" }
 hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }
+hepta-native-gateway = { path = "hepta-native-gateway" }
 hepta-intelligence = { path = "hepta-intelligence" }
 hepta-kernel = { path = "hepta-kernel" }
 hepta-kg = { path = "hepta-kg" }

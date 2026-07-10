@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-boundary --json"
 
@@ -53,7 +53,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused minimal scoped Memory canary rollback/tombstone proof unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-minimal-scoped-memory-real-write-canary-rollback-tombstone-proof-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_write_execution_minimal_scoped_memory_real_write_canary_rollback_tombstone_proof_accepts_proof_without_rollback_or_writes \
   -- --nocapture >"$TEST_LOG"
 

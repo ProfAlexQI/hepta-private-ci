@@ -85,7 +85,7 @@ production_roots=(
   "$repo_root/codex-rs/app-server-protocol/src"
   "$repo_root/codex-rs/app-server/src"
   "$repo_root/codex-rs/app-server/tests"
-  "$repo_root/codex-rs/cli/src/native_gateway.rs"
+  "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs"
   "$repo_root/codex-rs/exec/src"
   "$repo_root/codex-rs/hepta-runtime/src"
   "$repo_root/codex-rs/response-debug-context/src"

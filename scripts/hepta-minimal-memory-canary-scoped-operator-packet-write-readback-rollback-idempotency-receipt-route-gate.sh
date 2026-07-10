@@ -20,7 +20,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -45,7 +45,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "minimal memory canary focused route test"
 
 TEST_LOG="$(mktemp /tmp/hepta-minimal-memory-canary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_minimal_memory_canary_endpoint_runs_ephemeral_write_readback_rollback_idempotency_without_durable_side_effects \
   -- --nocapture >"$TEST_LOG"
 

@@ -24,7 +24,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -52,7 +52,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "KG read-only canary next slice"
 
 TEST_LOG="$(mktemp /tmp/hepta-intelligence-bounded-context-preview-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_intelligence_bounded_context_preview_endpoint_renders_readback_without_provider_or_kg_side_effects \
   -- --nocapture >"$TEST_LOG"
 

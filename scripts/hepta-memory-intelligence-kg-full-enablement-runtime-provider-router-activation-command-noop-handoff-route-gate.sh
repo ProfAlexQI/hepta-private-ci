@@ -132,7 +132,7 @@ jq -e '
 assert_source_contains() {
   local needle="$1"
   local description="$2"
-  if ! grep -Fq -- "$needle" codex-rs/cli/src/native_gateway.rs; then
+  if ! grep -Fq -- "$needle" codex-rs/hepta-native-gateway/src/native_gateway.rs; then
     echo "native gateway source missing ${description}: ${needle}" >&2
     exit 1
   fi
@@ -158,7 +158,7 @@ assert_source_contains \
   "runtime provider-router activation command no-op handoff focused test"
 
 TEST_LOG="$(mktemp /tmp/hepta-runtime-provider-router-activation-command-noop-handoff-route-tests.XXXXXX)"
-cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p codex-cli --lib \
+cargo test --offline --manifest-path codex-rs/Cargo.toml -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_endpoint_blocks_activation_commands \
   -- --nocapture >"$TEST_LOG"
 
@@ -207,7 +207,7 @@ if [[ "${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}" == "1" ]]; then
   live_checked=true
 fi
 
-native_gateway_sha256="$(shasum -a 256 codex-rs/cli/src/native_gateway.rs | awk '{print $1}')"
+native_gateway_sha256="$(shasum -a 256 codex-rs/hepta-native-gateway/src/native_gateway.rs | awk '{print $1}')"
 
 jq -n \
   --arg product "Hepta" \

@@ -80,7 +80,7 @@ lines.
 ### Codex CLI / Gateway Integration
 
 The active runtime is `codex-cli --bin hepta` through the installed
-`hepta-codex` binary. `codex-rs/cli/src/native_gateway.rs` exposes the current
+`hepta-codex` binary. `codex-rs/hepta-native-gateway/src/native_gateway.rs` exposes the current
 native gateway surface and delegates significant native POST logic to
 `hepta-gateway`.
 

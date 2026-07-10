@@ -65,7 +65,7 @@ jq -e '
   and .side_effects.channel_send_performed == false
 ' >/dev/null <<<"$CONTEXT_LANE_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_KG_PROMPT_PREVIEW_READ_ONLY_ADAPTER_LANE_ENDPOINT' \
@@ -102,7 +102,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "channel delivery lane remains disabled"
 
 TEST_LOG="$(mktemp /tmp/hepta-operator-approved-kg-prompt-preview-read-only-adapter-lane-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_enablement_operator_approved_kg_prompt_preview_read_only_adapter_lane_endpoint_enables_preview_adapter_lane_only \
   -- --nocapture >"$TEST_LOG"
 

@@ -26,7 +26,7 @@ require_source_text() {
 }
 
 SOURCE_REPLAY_IDEMPOTENCY_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-replay-idempotency-denial-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$SOURCE_REPLAY_IDEMPOTENCY_GATE" \
   'hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_gate' \
@@ -73,7 +73,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "artifact download/install affordance result receipt replay/idempotency focused endpoint test"
 
 TEST_LOG="$(mktemp /tmp/hepta-artifact-download-install-affordance-result-receipt-replay-idempotency-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_endpoint_blocks_replay_and_authority \
   -- --nocapture >"$TEST_LOG"
 

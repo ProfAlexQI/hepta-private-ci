@@ -19,7 +19,7 @@ workspace = true
 
 [features]
 default = ["codex-in-process-runner"]
-codex-in-process-runner = []
+codex-in-process-runner = ["hepta-native-gateway/codex-in-process-runner"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -64,6 +64,7 @@ crossterm = { workspace = true }
 hepta-gateway = { workspace = true }
 hepta-core = { workspace = true }
 hepta-memory = { workspace = true }
+hepta-native-gateway = { workspace = true }
 http = { workspace = true }
 libc = { workspace = true }
 owo-colors = { workspace = true }

@@ -118,7 +118,7 @@ jq -e '
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$REPLAY_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -149,7 +149,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "activation authority derivation denied"
 
 TEST_LOG="$(mktemp /tmp/hepta-readiness-index-replay-idempotency-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_intelligence_kg_full_live_activation_readiness_index_replay_idempotency_endpoint_blocks_authority \
   -- --nocapture >"$TEST_LOG"
 
@@ -251,7 +251,7 @@ jq -n \
     source_replay_gate_sha256:$source_replay_gate_sha256,
     source_route_wired:true,
     source_route_count_expected:153,
-    native_gateway_source:"codex-rs/cli/src/native_gateway.rs",
+    native_gateway_source:"codex-rs/hepta-native-gateway/src/native_gateway.rs",
     native_gateway_sha256:$native_gateway_sha256,
     native_gateway_unit_test_log:$test_log,
     live_endpoint_required:($live != null),

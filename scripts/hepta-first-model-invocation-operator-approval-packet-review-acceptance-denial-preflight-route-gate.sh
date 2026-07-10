@@ -24,7 +24,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -52,7 +52,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "next action remains acceptance artifact precondition before invocation"
 
 TEST_LOG="$(mktemp /tmp/hepta-first-model-invocation-approval-review-acceptance-denial-preflight-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_first_model_invocation_operator_approval_packet_review_acceptance_denial_preflight_endpoint_blocks_implicit_acceptance_without_invocation_side_effects \
   -- --nocapture >"$TEST_LOG"
 

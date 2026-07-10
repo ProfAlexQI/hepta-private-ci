@@ -4725,7 +4725,7 @@ fn autonomous_coding_target_paths(workspace_root: &Path) -> Vec<String> {
         "codex-rs/hepta-runtime/src/worker_tasks.rs",
         "codex-rs/cli/src/main.rs",
         "codex-rs/cli/src/lib.rs",
-        "codex-rs/cli/src/native_gateway.rs",
+        "codex-rs/hepta-native-gateway/src/native_gateway.rs",
     ]
     .into_iter()
     .filter(|path| workspace_root.join(path).exists())

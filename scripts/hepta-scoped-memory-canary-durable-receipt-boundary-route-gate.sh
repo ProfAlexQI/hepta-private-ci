@@ -27,7 +27,7 @@ require_source_text() {
 
 SOURCE_POSITIVE_GATE="scripts/hepta-first-model-positive-approval-packet-boundary-route-gate.sh"
 SOURCE_MEMORY_GATE="scripts/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt-route-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-scoped-memory-canary-durable-receipt-boundary"
 SOURCE_COMMAND="/hepta-scoped-memory-canary-durable-receipt-boundary --json"
 
@@ -109,7 +109,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused scoped Memory durable receipt boundary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-scoped-memory-canary-durable-receipt-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_scoped_memory_canary_durable_receipt_boundary_endpoint_blocks_durable_memory_mutation \
   -- --nocapture >"$TEST_LOG"
 

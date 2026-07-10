@@ -51,8 +51,7 @@ mod desktop_app;
 mod doctor;
 mod marketplace_cmd;
 mod mcp_cmd;
-mod native_gateway;
-mod native_telegram;
+use hepta_native_gateway as native_gateway;
 mod plugin_cmd;
 mod state_db_recovery;
 #[cfg(not(windows))]

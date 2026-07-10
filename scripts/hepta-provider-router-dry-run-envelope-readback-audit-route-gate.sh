@@ -24,7 +24,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -52,7 +52,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "first real model invocation remains a separate approval slice"
 
 TEST_LOG="$(mktemp /tmp/hepta-provider-router-dry-run-envelope-readback-audit-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_provider_router_dry_run_envelope_readback_audit_endpoint_builds_preview_without_provider_model_or_persistence_side_effects \
   -- --nocapture >"$TEST_LOG"
 

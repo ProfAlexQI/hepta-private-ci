@@ -439,7 +439,7 @@ assert_context_gate_target_dir_contract() {
 
 turn_protocol_source="$repo_root/codex-rs/app-server-protocol/src/protocol/v2/turn.rs"
 app_server_readme="$repo_root/codex-rs/app-server/README.md"
-native_gateway_source="$repo_root/codex-rs/cli/src/native_gateway.rs"
+native_gateway_source="$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs"
 context_gate_cargo_scripts=(
   "$repo_root/scripts/hepta-context-preflight.sh:context preflight"
   "$repo_root/scripts/hepta-context-response-debug-export-gate.sh:response-debug export gate"
@@ -548,7 +548,7 @@ done < <(
     "$repo_root/codex-rs/app-server/README.md" \
     "$repo_root/codex-rs/app-server/src" \
     "$repo_root/codex-rs/app-server/tests" \
-    "$repo_root/codex-rs/cli/src/native_gateway.rs" \
+    "$repo_root/codex-rs/hepta-native-gateway/src/native_gateway.rs" \
     "$repo_root/codex-rs/exec/src" \
     "$repo_root/codex-rs/tui/src" \
     | sort

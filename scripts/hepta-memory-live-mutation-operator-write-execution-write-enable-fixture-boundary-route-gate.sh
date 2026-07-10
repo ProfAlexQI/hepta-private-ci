@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-write-enable-fixture-boundary --json"
 
@@ -53,7 +53,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused memory write execution write-enable fixture boundary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-memory-write-execution-write-enable-fixture-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_write_execution_write_enable_fixture_boundary_endpoint_blocks_write_enablement_without_store_write \
   -- --nocapture >"$TEST_LOG"
 

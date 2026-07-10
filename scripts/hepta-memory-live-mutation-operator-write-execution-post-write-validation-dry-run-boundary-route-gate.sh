@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-post-write-validation-dry-run-boundary --json"
 
@@ -53,7 +53,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused memory write execution post-write validation dry-run boundary unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-memory-write-execution-post-write-validation-dry-run-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_memory_write_execution_post_write_validation_dry_run_boundary_endpoint_blocks_validation_without_store_write \
   -- --nocapture >"$TEST_LOG"
 

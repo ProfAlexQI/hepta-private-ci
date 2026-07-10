@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
-NATIVE_GATEWAY_SOURCE="${HEPTA_NATIVE_GATEWAY_SOURCE:-$REPO_ROOT/codex-rs/cli/src/native_gateway.rs}"
+NATIVE_GATEWAY_SOURCE="${HEPTA_NATIVE_GATEWAY_SOURCE:-$REPO_ROOT/codex-rs/hepta-native-gateway/src/native_gateway.rs}"
 
 route_count="$(
   awk '

@@ -24,7 +24,7 @@ The old Hepta architecture has now been absorbed as first-class crates under
 - `crates/hepta-cli`
 
 Some compatibility and HTTP routing logic still lives inside
-`codex-rs/cli/src/native_gateway.rs` and `codex-rs/cli/src/native_telegram.rs`,
+`codex-rs/hepta-native-gateway/src/native_gateway.rs` and `codex-rs/hepta-native-gateway/src/native_telegram.rs`,
 but the runtime policy, gateway, memory, intelligence, plugin, and core layers
 are now workspace-native crates inside the new product line.
 
@@ -59,7 +59,7 @@ Ownership rules:
   reports.
 - Telegram ownership must not be flipped again unless explicitly requested.
   Current owner remains old OpenClaw Telegram.
-- `codex-rs/cli/src/native_gateway.rs` must be shrunk over time into a shell
+- `codex-rs/hepta-native-gateway/src/native_gateway.rs` must be shrunk over time into a shell
   that calls `hepta-gateway` and `hepta-runtime`, not a growing monolith.
 
 ## Current Audit Snapshot
@@ -88,7 +88,7 @@ Size/risk indicators from audit:
 - Old Hepta selected Rust surface is about 254k lines across core, memory,
   intelligence, runtime, gateway, and CLI.
 - Current `hepta-codex` Hepta-specific native gateway proving code is concentrated
-  in `codex-rs/cli/src/native_gateway.rs` and `codex-rs/cli/src/native_telegram.rs`.
+  in `codex-rs/hepta-native-gateway/src/native_gateway.rs` and `codex-rs/hepta-native-gateway/src/native_telegram.rs`.
 - Therefore the next phase must reduce monolith growth and restore Hepta's
   crate boundaries inside the Codex fork.
 
@@ -1042,7 +1042,7 @@ Actions:
 1. Copy `Hepta/crates/hepta-gateway` to `hepta-codex/codex-rs/hepta-gateway`.
 2. Add `hepta-gateway` to the workspace.
 3. Move route contracts, dispatch policy, delivery ledger, transport decisions,
-   and native POST planning out of `codex-rs/cli/src/native_gateway.rs` into
+   and native POST planning out of `codex-rs/hepta-native-gateway/src/native_gateway.rs` into
    `hepta-gateway` and `hepta-runtime` modules.
 4. Keep `codex-rs/cli` responsible only for:
    - `--serve-ui` argument parsing
@@ -1167,7 +1167,7 @@ Exit criterion:
 ## Explicit Non-Goals
 
 - Do not create another adapter-first layer.
-- Do not keep adding real architecture into `codex-rs/cli/src/native_gateway.rs`.
+- Do not keep adding real architecture into `codex-rs/hepta-native-gateway/src/native_gateway.rs`.
 - Do not disable old OpenClaw Telegram again without explicit instruction.
 - Do not port old `hepta-cli` wholesale as a giant parser blob.
 - Do not activate live memory attachment, live Telegram polling, or POST
@@ -1182,7 +1182,7 @@ Continue Lane C monolith reduction.
 Completed in the current Lane C slice:
 
 1. Moved plugin/model-turn/model-bridge/send-plan/poll-loop/live-soak status
-   builders from `codex-rs/cli/src/native_telegram.rs` into
+   builders from `codex-rs/hepta-native-gateway/src/native_telegram.rs` into
    `hepta-gateway::telegram_status`.
 2. Moved drain-once final report assembly into
    `hepta-gateway::telegram_status` via `NativeTelegramDrainOnceStatusInput`
@@ -1652,7 +1652,7 @@ small receive/drain status wrapper whose inputs are already side-effect-free.
 Completed in the follow-up Lane C shrink pass:
 
 1. Removed `22` duplicate Telegram CLI tests from
-   `codex-rs/cli/src/native_telegram.rs` after confirming their behaviors are
+   `codex-rs/hepta-native-gateway/src/native_telegram.rs` after confirming their behaviors are
    already covered in `hepta-gateway` modules.
 2. The removed wrappers covered candidate-material privacy, cursor offset
    parsing/writes, getUpdates/send request shaping, send/model execution gates,

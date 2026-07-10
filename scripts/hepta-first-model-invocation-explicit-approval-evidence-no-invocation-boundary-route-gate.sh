@@ -27,7 +27,7 @@ require_source_text() {
 
 SOURCE_ACTIVATION_GATE="scripts/hepta-activation-evidence-no-write-provider-router-dry-run-boundary-route-gate.sh"
 SOURCE_APPROVAL_GATE="scripts/hepta-first-model-invocation-separate-approval-slice-preflight-route-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary"
 SOURCE_COMMAND="/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary --json"
 
@@ -120,7 +120,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused explicit approval evidence no-invocation unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-first-model-explicit-approval-evidence-no-invocation-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundary_endpoint_blocks_approval_acceptance_and_invocation_side_effects \
   -- --nocapture >"$TEST_LOG"
 

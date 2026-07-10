@@ -11,8 +11,8 @@ Tracked modified files:
 - `codex-rs/Cargo.lock`
 - `codex-rs/Cargo.toml`
 - `codex-rs/cli/Cargo.toml`
-- `codex-rs/cli/src/native_gateway.rs`
-- `codex-rs/cli/src/native_telegram.rs`
+- `codex-rs/hepta-native-gateway/src/native_gateway.rs`
+- `codex-rs/hepta-native-gateway/src/native_telegram.rs`
 
 Tracked diff shortstat:
 
@@ -87,8 +87,8 @@ Recommended local packaging order:
 
 2. `refactor: route native gateway surfaces through hepta-gateway`
    - `codex-rs/cli/Cargo.toml`
-   - `codex-rs/cli/src/native_gateway.rs`
-   - `codex-rs/cli/src/native_telegram.rs`
+   - `codex-rs/hepta-native-gateway/src/native_gateway.rs`
+   - `codex-rs/hepta-native-gateway/src/native_telegram.rs`
    - `HEPTA_ARCHITECTURE_MERGE_ROUTE_2026-05-19.md`
 
 3. `feat: add Hepta control UI app assets`

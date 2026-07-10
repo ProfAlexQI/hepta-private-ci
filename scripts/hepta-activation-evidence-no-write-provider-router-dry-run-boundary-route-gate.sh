@@ -27,7 +27,7 @@ require_source_text() {
 
 SOURCE_PROVIDER_GATE="scripts/hepta-provider-router-dry-run-envelope-readback-audit-route-gate.sh"
 SOURCE_EVIDENCE_GATE="scripts/hepta-core-activation-evidence-receipt-materialization-dry-run-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/cli/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
 ENDPOINT="/api/hepta-activation-evidence-no-write-provider-router-dry-run-boundary"
 SOURCE_COMMAND="/hepta-activation-evidence-no-write-provider-router-dry-run-boundary --json"
 
@@ -126,7 +126,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "focused activation evidence no-write unit test"
 
 TEST_LOG="$(mktemp /tmp/hepta-activation-evidence-no-write-provider-router-boundary-route-tests.XXXXXX)"
-cargo test --offline --manifest-path "$MANIFEST" -q -p codex-cli --lib \
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_activation_evidence_no_write_provider_router_dry_run_boundary_endpoint_blocks_evidence_persistence_and_invocation_side_effects \
   -- --nocapture >"$TEST_LOG"
 

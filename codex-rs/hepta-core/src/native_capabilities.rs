@@ -336,7 +336,7 @@ pub fn hepta_native_capability_registry() -> Vec<HeptaNativeCapability> {
                 "codex-rs/hepta-core/src/operator_dashboard_polish.rs",
                 "codex-rs/hepta-core/src/operator_security.rs",
                 "codex-rs/hepta-gateway/src/native_post.rs",
-                "codex-rs/cli/src/native_gateway.rs",
+                "codex-rs/hepta-native-gateway/src/native_gateway.rs",
                 "scripts/hepta-control-ui-smoke.sh",
             ],
             gates: &[
