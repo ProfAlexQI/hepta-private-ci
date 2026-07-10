@@ -30,6 +30,7 @@ require_source_text() {
 }
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-receipt-acceptance-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-receipt-acceptance-boundary --json"
 
@@ -41,7 +42,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "minimal scoped Memory canary rollback receipt acceptance endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "minimal scoped Memory canary rollback receipt acceptance endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "minimal scoped Memory canary rollback receipt acceptance source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_real_write_canary_rollback_receipt_acceptance_boundary_report" \

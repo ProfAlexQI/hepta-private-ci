@@ -30,6 +30,7 @@ require_source_text() {
 }
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary --json"
 FOCUSED_TEST="hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_binds_receipt_without_execution_persistence_or_production_side_effects"
@@ -42,7 +43,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "scoped production durable Memory write dry-run execution result receipt endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "scoped production durable Memory write dry-run execution result receipt endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "scoped production durable Memory write dry-run execution result receipt source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_report" \

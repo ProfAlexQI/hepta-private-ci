@@ -26,6 +26,7 @@ require_source_text() {
 }
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary --json"
 FOCUSED_TEST="hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_blocks_terminal_decision_public_claim_authority_execution_and_production_side_effects"
@@ -38,7 +39,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "scoped production durable Memory write dry-run result receipt terminal operator decision public claim endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "scoped production durable Memory write dry-run result receipt terminal operator decision public claim endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "scoped production durable Memory write dry-run result receipt terminal operator decision public claim source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_terminal_operator_decision_public_claim_non_promotion_denial_boundary_report" \

@@ -28,6 +28,7 @@ require_source_text() {
 SOURCE_TRUTH_GATE="scripts/hepta-memory-intelligence-kg-activation-truth-index-route-gate.sh"
 SOURCE_EXPLICIT_GATE="scripts/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary-route-gate.sh"
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-full-live-activation-closure-index"
 SOURCE_COMMAND="/hepta-full-live-activation-closure-index --json"
 
@@ -39,7 +40,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "full-live closure index endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "full-live closure index endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "full-live closure index source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_full_live_activation_closure_index_report" \

@@ -26,6 +26,7 @@ require_source_text() {
 }
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-memory-live-mutation-operator-write-execution-preflight-boundary"
 SOURCE_COMMAND="/hepta-memory-live-mutation-operator-write-execution-preflight-boundary --json"
 
@@ -37,7 +38,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "memory write execution preflight boundary endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "memory write execution preflight boundary endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "memory write execution preflight boundary source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_memory_live_mutation_operator_write_execution_preflight_boundary_report" \

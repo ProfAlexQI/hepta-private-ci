@@ -28,6 +28,7 @@ require_source_text() {
 SOURCE_ARTIFACT_GATE="scripts/hepta-artifact-signing-receipt-release-public-artifact-publication-denial-route-gate.sh"
 SOURCE_FIRST_MODEL_GATE="scripts/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-route-gate.sh"
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-first-model-positive-approval-packet-boundary"
 SOURCE_COMMAND="/hepta-first-model-positive-approval-packet-boundary --json"
 
@@ -98,7 +99,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "first-model positive approval packet boundary endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "first-model positive approval packet boundary endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "first-model positive approval packet boundary source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_first_model_positive_approval_packet_boundary_report" \

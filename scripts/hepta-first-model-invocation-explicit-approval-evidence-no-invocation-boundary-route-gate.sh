@@ -28,6 +28,7 @@ require_source_text() {
 SOURCE_ACTIVATION_GATE="scripts/hepta-activation-evidence-no-write-provider-router-dry-run-boundary-route-gate.sh"
 SOURCE_APPROVAL_GATE="scripts/hepta-first-model-invocation-separate-approval-slice-preflight-route-gate.sh"
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary"
 SOURCE_COMMAND="/hepta-first-model-invocation-explicit-approval-evidence-no-invocation-boundary --json"
 
@@ -104,7 +105,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "explicit approval evidence no-invocation endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "explicit approval evidence no-invocation endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "explicit approval evidence no-invocation source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundary_report" \

@@ -27,6 +27,7 @@ require_source_text() {
 
 SOURCE_SCOPED_GATE="scripts/hepta-scoped-memory-canary-durable-receipt-boundary-route-gate.sh"
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary"
 SOURCE_COMMAND="/hepta-bounded-intelligence-context-handoff-prompt-preview-boundary --json"
 
@@ -68,7 +69,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "bounded Intelligence handoff endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "bounded Intelligence handoff endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "bounded Intelligence handoff source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_bounded_intelligence_context_handoff_prompt_preview_boundary_report" \

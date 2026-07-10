@@ -28,6 +28,7 @@ require_source_text() {
 SOURCE_PROVIDER_GATE="scripts/hepta-provider-router-dry-run-envelope-readback-audit-route-gate.sh"
 SOURCE_EVIDENCE_GATE="scripts/hepta-core-activation-evidence-receipt-materialization-dry-run-gate.sh"
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-activation-evidence-no-write-provider-router-dry-run-boundary"
 SOURCE_COMMAND="/hepta-activation-evidence-no-write-provider-router-dry-run-boundary --json"
 
@@ -107,7 +108,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "activation evidence no-write endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
   "activation evidence no-write endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$SOURCE_COMMAND" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "activation evidence no-write source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "hepta_activation_evidence_no_write_provider_router_dry_run_boundary_report" \

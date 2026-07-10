@@ -25,6 +25,7 @@ require_source_text() {
 }
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial"
 SOURCE_COMMAND="/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-delivery-readback-denial --json"
 FOCUSED_TEST="hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_delivery_readback_denial_endpoint_blocks_delivery_readback_receipts_and_authority"
@@ -39,7 +40,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "$ENDPOINT" \
   "terminal public-claim delivery/readback endpoint path"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   "$SOURCE_COMMAND" \
   "terminal public-claim delivery/readback source command"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

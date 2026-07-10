@@ -10,7 +10,7 @@ async fn main() -> anyhow::Result<()> {
 
     let Some(options) = native_gateway::parse_serve_ui_args(&args)? else {
         anyhow::bail!(
-            "hepta-cli supports --serve-ui and the read-only `hepta gate <id> [--json]` registry runner; legacy CLI compatibility remains outside the active service binary"
+            "hepta-cli supports --serve-ui plus `hepta gate` registry and explicit source compatibility execution; legacy CLI compatibility remains outside the active service binary"
         );
     };
 
