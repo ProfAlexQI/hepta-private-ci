@@ -1,6 +1,7 @@
 mod gate_spec;
 mod native_gateway;
 mod native_telegram;
+mod route_registry;
 
 pub use native_gateway::NativeGatewayOptions;
 pub use native_gateway::gate_command_json;
