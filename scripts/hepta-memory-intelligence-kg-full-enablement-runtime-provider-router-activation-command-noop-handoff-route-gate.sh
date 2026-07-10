@@ -5,6 +5,8 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 EXPECTED_ROUTE_COUNT="$(bash "$REPO_ROOT/scripts/lib/hepta-native-route-count.sh")"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
+NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 cd "$REPO_ROOT"
 
@@ -130,30 +132,37 @@ jq -e '
 ' >/dev/null <<<"$SOURCE_JSON"
 
 assert_source_contains() {
-  local needle="$1"
-  local description="$2"
-  if ! grep -Fq -- "$needle" codex-rs/hepta-native-gateway/src/native_gateway.rs; then
-    echo "native gateway source missing ${description}: ${needle}" >&2
+  local source_file="$1"
+  local needle="$2"
+  local description="$3"
+  if ! grep -Fq -- "$needle" "$source_file"; then
+    echo "$source_file missing ${description}: ${needle}" >&2
     exit 1
   fi
 }
 
 assert_source_contains \
+  "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native source command count"
 assert_source_contains \
+  "$ROUTE_REGISTRY_SOURCE" \
   '/api/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff' \
   "runtime provider-router activation command no-op handoff endpoint"
 assert_source_contains \
+  "$ROUTE_REGISTRY_SOURCE" \
   '/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-noop-handoff --json' \
   "runtime provider-router activation command no-op handoff source command"
 assert_source_contains \
+  "$NATIVE_GATEWAY_SOURCE" \
   'hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_report' \
   "runtime provider-router activation command no-op handoff report function"
 assert_source_contains \
+  "$NATIVE_GATEWAY_SOURCE" \
   '"runtime_provider_router_activation_command_noop_handoff_route_enabled": true' \
   "runtime provider-router activation command no-op handoff route enabled field"
 assert_source_contains \
+  "$NATIVE_GATEWAY_SOURCE" \
   'hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_activation_command_noop_handoff_endpoint_blocks_activation_commands' \
   "runtime provider-router activation command no-op handoff focused test"
 
