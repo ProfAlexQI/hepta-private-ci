@@ -175,7 +175,7 @@ pub fn hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_reque
     let required_prior_gates =
         work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_denial_readback_required_prior_gates();
     let source_request_blocker_matrix_no_request_confirmed = source.request_decision == "deny"
-        && source.operator_review_request_allowed == false
+        && !source.operator_review_request_allowed
         && !source.operator_review_requested
         && !source.operator_review_request_recorded
         && !source.operator_review_request_persisted
