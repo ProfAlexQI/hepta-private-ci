@@ -1,3 +1,4 @@
+use super::context_plane_activation::context_plane_activation_status_fixture;
 use super::*;
 
 #[test]
@@ -81,6 +82,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
             &temporal_graph_shadow_retrieval_canary_guard,
         );
+    let temporal_graph_shadow_retrieval_promotion_readiness =
+        ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport::from_rollback_kill_switch_and_traversal_quality(
+            &temporal_graph_shadow_retrieval_rollback_kill_switch,
+            &temporal_graph_shadow_traversal_quality,
+        );
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let allocator_shadow = ContextMemoryAdaptiveAllocatorEvalShadowReport::from_seed(&eval_seed);
     let recall_quality_gate = ContextMemoryRecallQualityGateReport::from_shadow(&allocator_shadow);
@@ -145,6 +151,8 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
         temporal_graph_shadow_retrieval_canary_guard: &temporal_graph_shadow_retrieval_canary_guard,
         temporal_graph_shadow_retrieval_rollback_kill_switch:
             &temporal_graph_shadow_retrieval_rollback_kill_switch,
+        temporal_graph_shadow_retrieval_promotion_readiness:
+            &temporal_graph_shadow_retrieval_promotion_readiness,
         eval_seed: &eval_seed,
         allocator_shadow: &allocator_shadow,
         recall_quality_gate: &recall_quality_gate,
@@ -162,11 +170,11 @@ fn context_plane_operator_approval_packet_is_payload_light_dry_run() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 27);
+    assert_eq!(packet.matrix_row_count, 28);
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 18);
-    assert_eq!(packet.threshold_snapshot.total_row_count, 27);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 26);
+    assert_eq!(packet.blocker_count, 19);
+    assert_eq!(packet.threshold_snapshot.total_row_count, 28);
+    assert_eq!(packet.threshold_snapshot.required_ready_count, 27);
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -1073,9 +1081,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 27);
+    assert_eq!(packet.matrix_row_count, 28);
     assert_eq!(packet.threshold_satisfied_count, 8);
-    assert_eq!(packet.blocker_count, 19);
+    assert_eq!(packet.blocker_count, 20);
     assert_eq!(
         packet.blocker_reason_count(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled),
         Some(1)
@@ -1135,336 +1143,9 @@ fn context_plane_operator_approval_packet_rolls_up_recall_quality_blockers_witho
 
 #[test]
 fn context_plane_operator_approval_packet_rejects_activation_shaped_input() {
-    let packet = ContextPlaneOperatorApprovalPacket {
-        matrix_row_count: 27,
-        threshold_satisfied_count: 9,
-        blocker_count: 18,
-        threshold_snapshot: ContextPlaneOperatorApprovalThresholdSnapshot {
-            total_row_count: 27,
-            threshold_satisfied_count: 9,
-            blocker_count: 18,
-            required_ready_count: 26,
-            required_shadow_count: 1,
-        },
-        blocker_reason_counts: vec![
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::AdaptiveBudgetAllocationShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::SourceAwareFrontDoorDisabled,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::TemporalGraphShadowEvalShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::TemporalGraphShadowStoreShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::TemporalGraphShadowReplayShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason:
-                    ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalDiffShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason:
-                    ContextPlaneActivationBlockerReason::TemporalGraphShadowTraversalQualityShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason:
-                    ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalCanaryGuardShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason:
-                    ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::MemoryProviderBoundaryShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::MemoryProviderV2BoundaryShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::MemoryNamespacePolicyShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::MemoryWriteChainReadinessShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason:
-                    ContextPlaneActivationBlockerReason::MemoryWriteChainReceiptFreshnessShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::MemoryShadowCanaryReadinessShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason:
-                    ContextPlaneActivationBlockerReason::MemoryShadowCanaryPromotionReadinessShadowOnly,
-                count: 1,
-            },
-            ContextPlaneOperatorApprovalBlockerReasonCount {
-                reason: ContextPlaneActivationBlockerReason::OperatorApprovalMissing,
-                count: 1,
-            },
-        ],
-        canary_promotion_required_stable_window_count: 1,
-        canary_promotion_observed_stable_window_count: 1,
-        canary_promotion_required_pass_streak: 3,
-        canary_promotion_observed_pass_streak: 3,
-        canary_promotion_blocker_count: 0,
-        canary_promotion_checklist_required_count: 4,
-        canary_promotion_checklist_pass_count: 4,
-        canary_promotion_readiness_check_pass: true,
-        canary_promotion_negative_rehearsal_check_pass: true,
-        canary_promotion_audit_digest_check_pass: true,
-        canary_promotion_audit_freshness_check_pass: true,
-        canary_promotion_rollback_rehearsal_count: 3,
-        canary_promotion_rollback_rehearsal_pass_count: 3,
-        canary_promotion_kill_switch_rehearsal_count: 3,
-        canary_promotion_kill_switch_rehearsal_pass_count: 3,
-        canary_promotion_soak_readback_window_count: 3,
-        canary_promotion_soak_readback_pass_count: 3,
-        memory_provider_v2_lifecycle_required_count: 6,
-        memory_provider_v2_lifecycle_pass_count: 6,
-        memory_provider_v2_query_check_pass: true,
-        memory_provider_v2_update_context_check_pass: true,
-        memory_provider_v2_propose_write_check_pass: true,
-        memory_provider_v2_add_check_pass: true,
-        memory_provider_v2_clear_check_pass: true,
-        memory_provider_v2_close_check_pass: true,
-        memory_provider_v2_candidate_count: 1,
-        memory_provider_v2_operator_review_required_count: 1,
-        memory_namespace_policy_namespace_count: 6,
-        memory_namespace_policy_operator_approval_required_count: 6,
-        memory_namespace_policy_shadow_wal_required_count: 6,
-        memory_namespace_policy_readback_required_count: 6,
-        memory_namespace_policy_canary_required_count: 6,
-        memory_namespace_policy_rollback_supported_count: 6,
-        memory_namespace_policy_production_write_count: 0,
-        memory_namespace_policy_graph_write_count: 0,
-        memory_write_chain_namespace_count: 6,
-        memory_write_chain_stage_required_count: 6,
-        memory_write_chain_stage_pass_count: 6,
-        memory_write_chain_propose_write_ready_count: 6,
-        memory_write_chain_policy_approval_ready_count: 6,
-        memory_write_chain_operator_approval_ready_count: 6,
-        memory_write_chain_shadow_wal_ready_count: 6,
-        memory_write_chain_readback_ready_count: 6,
-        memory_write_chain_canary_ready_count: 6,
-        memory_write_chain_rollback_ready_count: 6,
-        memory_write_chain_production_write_count: 0,
-        memory_write_chain_graph_write_count: 0,
-        memory_write_chain_receipt_namespace_count: 6,
-        memory_write_chain_receipt_required_count: 18,
-        memory_write_chain_receipt_projected_count: 18,
-        memory_write_chain_receipt_digest_count: 6,
-        memory_write_chain_receipt_freshness_pass_count: 6,
-        memory_write_chain_receipt_replay_guard_pass_count: 6,
-        memory_write_chain_receipt_stale_replay_rejected_count: 6,
-        memory_write_chain_receipt_recorded_count: 0,
-        memory_write_chain_receipt_persisted_count: 0,
-        memory_write_chain_receipt_production_write_count: 0,
-        memory_write_chain_receipt_graph_write_count: 0,
-        memory_temporal_graph_shadow_store_node_count: 1,
-        memory_temporal_graph_shadow_store_edge_count: 2,
-        memory_temporal_graph_shadow_store_provenance_edge_count: 1,
-        memory_temporal_graph_shadow_store_validity_window_edge_count: 1,
-        memory_temporal_graph_shadow_store_stage_required_count: 6,
-        memory_temporal_graph_shadow_store_stage_projected_count: 6,
-        memory_temporal_graph_shadow_store_digest_count: 1,
-        memory_temporal_graph_shadow_store_freshness_pass_count: 1,
-        memory_temporal_graph_shadow_store_replay_guard_pass_count: 1,
-        memory_temporal_graph_shadow_store_stale_replay_rejected_count: 1,
-        memory_temporal_graph_shadow_store_operator_approval_required_count: 1,
-        memory_temporal_graph_shadow_store_operator_approval_recorded_count: 0,
-        memory_temporal_graph_shadow_store_recorded_receipt_count: 0,
-        memory_temporal_graph_shadow_store_persisted_receipt_count: 0,
-        memory_temporal_graph_shadow_store_production_write_count: 0,
-        memory_temporal_graph_shadow_store_graph_write_count: 0,
-        memory_temporal_graph_shadow_replay_node_count: 1,
-        memory_temporal_graph_shadow_replay_edge_count: 2,
-        memory_temporal_graph_shadow_replay_provenance_count: 1,
-        memory_temporal_graph_shadow_replay_bitemporal_validity_count: 1,
-        memory_temporal_graph_shadow_replay_fact_invalidation_count: 0,
-        memory_temporal_graph_shadow_replay_supersede_tombstone_count: 0,
-        memory_temporal_graph_shadow_replay_stage_required_count: 6,
-        memory_temporal_graph_shadow_replay_stage_projected_count: 6,
-        memory_temporal_graph_shadow_replay_digest_count: 6,
-        memory_temporal_graph_shadow_replay_freshness_pass_count: 6,
-        memory_temporal_graph_shadow_replay_guard_pass_count: 6,
-        memory_temporal_graph_shadow_replay_stale_replay_rejected_count: 6,
-        memory_temporal_graph_shadow_replay_operator_approval_required_count: 1,
-        memory_temporal_graph_shadow_replay_operator_approval_recorded_count: 0,
-        memory_temporal_graph_shadow_replay_recorded_receipt_count: 0,
-        memory_temporal_graph_shadow_replay_persisted_receipt_count: 0,
-        memory_temporal_graph_shadow_replay_production_write_count: 0,
-        memory_temporal_graph_shadow_replay_graph_write_count: 0,
-        memory_temporal_graph_shadow_traversal_diff_production_selection_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_lexical_bm25_candidate_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_semantic_candidate_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count: 2,
-        memory_temporal_graph_shadow_traversal_diff_hybrid_candidate_count: 2,
-        memory_temporal_graph_shadow_traversal_diff_overlap_candidate_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_graph_expansion_candidate_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_win_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_loss_count: 0,
-        memory_temporal_graph_shadow_traversal_diff_cost_count: 1,
-        memory_temporal_graph_shadow_traversal_diff_stage_required_count: 5,
-        memory_temporal_graph_shadow_traversal_diff_stage_projected_count: 5,
-        memory_temporal_graph_shadow_traversal_diff_digest_count: 5,
-        memory_temporal_graph_shadow_traversal_diff_freshness_pass_count: 5,
-        memory_temporal_graph_shadow_traversal_diff_replay_guard_pass_count: 5,
-        memory_temporal_graph_shadow_traversal_diff_stale_replay_rejected_count: 5,
-        memory_temporal_graph_shadow_traversal_diff_llm_rerank_count: 0,
-        memory_temporal_graph_shadow_traversal_diff_graph_persistence_count: 0,
-        memory_temporal_graph_shadow_traversal_diff_production_route_count: 0,
-        memory_temporal_graph_shadow_traversal_diff_production_write_count: 0,
-        memory_temporal_graph_shadow_traversal_diff_graph_write_count: 0,
-        memory_temporal_graph_shadow_traversal_quality_fixture_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_slo_required_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_slo_pass_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_coverage_basis_points: 10_000,
-        memory_temporal_graph_shadow_traversal_quality_precision_basis_points: 10_000,
-        memory_temporal_graph_shadow_traversal_quality_leak_rate_basis_points: 0,
-        memory_temporal_graph_shadow_traversal_quality_latency_budget_ms: 20,
-        memory_temporal_graph_shadow_traversal_quality_projected_latency_ms: 1,
-        memory_temporal_graph_shadow_traversal_quality_token_saved_estimate: 256,
-        memory_temporal_graph_shadow_traversal_quality_operator_review_required_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_win_count: 1,
-        memory_temporal_graph_shadow_traversal_quality_loss_count: 0,
-        memory_temporal_graph_shadow_traversal_quality_cost_count: 1,
-        memory_temporal_graph_shadow_traversal_quality_stage_required_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_stage_projected_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_digest_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_freshness_pass_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_replay_guard_pass_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_stale_replay_rejected_count: 5,
-        memory_temporal_graph_shadow_traversal_quality_llm_rerank_count: 0,
-        memory_temporal_graph_shadow_traversal_quality_graph_persistence_count: 0,
-        memory_temporal_graph_shadow_traversal_quality_production_route_count: 0,
-        memory_temporal_graph_shadow_traversal_quality_production_write_count: 0,
-        memory_temporal_graph_shadow_traversal_quality_graph_write_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_fixture_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_stage_required_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_stage_projected_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_quality_slo_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_required_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_operator_approval_recorded_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_registered_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_feature_flag_enabled_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_registered_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_kill_switch_ready_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_required_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_rollback_rehearsal_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_activation_denial_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_canary_route_opened_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_digest_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_freshness_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_replay_guard_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_stale_replay_rejected_count: 5,
-        memory_temporal_graph_shadow_retrieval_canary_guard_llm_rerank_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_graph_persistence_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_production_route_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_production_write_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_graph_write_count: 0,
-        memory_temporal_graph_shadow_retrieval_canary_guard_rollback_write_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_fixture_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_required_count: 6,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stage_projected_count: 6,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_guard_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_required_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_operator_approval_recorded_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_registered_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_feature_flag_enabled_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_registered_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_readback_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_kill_switch_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_required_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_readback_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_rehearsal_pass_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_route_denial_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_denial_count: 5,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_canary_route_opened_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_digest_count: 6,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_freshness_pass_count: 6,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_replay_guard_pass_count: 6,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_stale_replay_rejected_count: 6,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_llm_rerank_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_persistence_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_route_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count: 0,
-        memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count: 0,
-        ranked_recall_hybrid_signal_required_count: 5,
-        ranked_recall_hybrid_signal_pass_count: 5,
-        ranked_recall_lexical_bm25_check_pass: true,
-        ranked_recall_recency_check_pass: true,
-        ranked_recall_source_authority_check_pass: true,
-        ranked_recall_temporal_validity_check_pass: true,
-        ranked_recall_feedback_check_pass: true,
-        ranked_recall_positive_hybrid_signal_required_count: 15,
-        ranked_recall_positive_hybrid_signal_pass_count: 15,
-        ranked_recall_hybrid_regression_blocked_count: 1,
-        ranked_recall_hybrid_signal_min_basis_points: 6000,
-        ranked_recall_min_positive_hybrid_score_basis_points: 7800,
-        ranked_recall_routing_diff_fixture_count: 4,
-        ranked_recall_routing_diff_shadow_only_count: 4,
-        ranked_recall_routing_diff_win_count: 3,
-        ranked_recall_routing_diff_loss_count: 1,
-        ranked_recall_routing_diff_regression_blocked_count: 1,
-        ranked_recall_routing_diff_delta_min_basis_points: 400,
-        ranked_recall_min_positive_routing_diff_delta_basis_points: 640,
-        ranked_recall_routing_diff_latency_delta_max_ms: 20,
-        ranked_recall_max_positive_routing_diff_latency_delta_ms: 10,
-        ranked_recall_routing_diff_token_tradeoff_min_basis_points: 1_000,
-        ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points: 3_000,
-        ranked_recall_real_workload_trace_fixture_count: 4,
-        ranked_recall_real_workload_trace_shadow_only_count: 4,
-        ranked_recall_real_workload_trace_slo_pass_count: 3,
-        ranked_recall_real_workload_trace_win_count: 3,
-        ranked_recall_real_workload_trace_loss_count: 1,
-        ranked_recall_real_workload_trace_operator_review_required_count: 4,
-        ranked_recall_real_workload_trace_total_leak_count: 0,
-        ranked_recall_real_workload_trace_max_leak_rate_basis_points: 0,
-        ranked_recall_min_positive_real_workload_trace_coverage_basis_points: 8_000,
-        ranked_recall_min_positive_real_workload_trace_precision_basis_points: 8_000,
-        ranked_recall_total_positive_real_workload_trace_token_saved: 2_140,
-        ranked_recall_max_positive_real_workload_trace_latency_ms: 55,
-        ranked_recall_real_workload_trace_regression_loss_count: 1,
-        ranked_recall_canary_precondition_fixture_count: 4,
-        ranked_recall_canary_precondition_shadow_only_count: 4,
-        ranked_recall_canary_precondition_pass_count: 4,
-        ranked_recall_canary_feature_flag_registered_count: 4,
-        ranked_recall_canary_feature_flag_disabled_count: 4,
-        ranked_recall_canary_kill_switch_registered_count: 4,
-        ranked_recall_canary_kill_switch_enabled_count: 4,
-        ranked_recall_canary_rollback_rehearsal_covered_count: 4,
-        ranked_recall_canary_activation_denial_covered_count: 4,
-        ranked_recall_canary_precondition_operator_review_required_count: 4,
-        ranked_recall_canary_precondition_route_opened_count: 0,
-        ranked_recall_canary_precondition_rollback_write_count: 0,
-        required_approval_scopes: required_operator_approval_scopes(),
-        ..ContextPlaneOperatorApprovalPacket::default()
-    };
+    let status = context_plane_activation_status_fixture();
+    let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
+    let packet = ContextPlaneOperatorApprovalPacket::from_matrix(&matrix);
     assert!(packet.has_packet_integrity());
 
     for field in [

@@ -8,6 +8,7 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport;
 use hepta_core::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
@@ -395,6 +396,18 @@ impl StoreSnapshot {
     ) -> ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport {
         ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
             &self.recall_context_memory_temporal_graph_shadow_retrieval_canary_guard_report(request),
+        )
+    }
+
+    /// Builds a payload-light temporal graph retrieval promotion readiness
+    /// surface from real workload shadow trace counters without route changes.
+    pub fn recall_context_memory_temporal_graph_shadow_retrieval_promotion_readiness_report(
+        &self,
+        request: &ContextRecallRequest,
+    ) -> ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport {
+        ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport::from_rollback_kill_switch_and_traversal_quality(
+            &self.recall_context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(request),
+            &self.recall_context_memory_temporal_graph_shadow_traversal_quality_report(request),
         )
     }
 }

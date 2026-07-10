@@ -278,6 +278,59 @@ pub(super) fn context_plane_activation_status_fixture() -> ContextPlaneStatusRep
                     0;
                 entry
             },
+            {
+                let mut entry = ContextPlaneStatusEntry::shadow(
+                    ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalPromotionReadiness,
+                    5,
+                );
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count = 7;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_projected_count = 7;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_kill_switch_pass_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_required_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_shadow_only_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_slo_pass_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_win_count = 1;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_operator_review_required_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_coverage_basis_points = 10_000;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_precision_basis_points = 10_000;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_token_saved_estimate = 768;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_latency_ms = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_required_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_registered_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_kill_switch_pass_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_rehearsal_pass_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_route_denial_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_denial_count = 5;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_ready_shadow_only_count = 5;
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_digest_count = 7;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_freshness_pass_count = 7;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_replay_guard_pass_count = 7;
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stale_replay_rejected_count = 7;
+                entry
+            },
             ContextPlaneStatusEntry::ready(ContextPlaneStatusSection::EvalHarnessSeed, 2),
             ContextPlaneStatusEntry::shadow(
                 ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
@@ -396,9 +449,9 @@ fn context_plane_activation_blocker_matrix_explains_disabled_runtime_activation(
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 27);
+    assert_eq!(matrix.rows.len(), 28);
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 18);
+    assert_eq!(matrix.blocker_count, 19);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
@@ -1091,9 +1144,9 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 27);
+    assert_eq!(matrix.rows.len(), 28);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 19);
+    assert_eq!(matrix.blocker_count, 20);
     assert_eq!(
         matrix.threshold_satisfied(ContextPlaneActivationTarget::SourceRegistry),
         Some(false)
@@ -1200,7 +1253,7 @@ fn context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_acti
 
     assert!(report_side_effect_matrix.has_matrix_integrity());
     assert_eq!(report_side_effect_matrix.satisfied_count(), 0);
-    assert_eq!(report_side_effect_matrix.blocker_count, 27);
+    assert_eq!(report_side_effect_matrix.blocker_count, 28);
     assert_eq!(
         report_side_effect_matrix.blocker_reason(ContextPlaneActivationTarget::RecallQualityGate),
         Some(ContextPlaneActivationBlockerReason::SideEffectFlagEnabled)
@@ -1233,9 +1286,9 @@ fn context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_with
     let matrix = ContextPlaneActivationBlockerMatrix::from_status(&status);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 27);
+    assert_eq!(matrix.rows.len(), 28);
     assert_eq!(matrix.satisfied_count(), 8);
-    assert_eq!(matrix.blocker_count, 19);
+    assert_eq!(matrix.blocker_count, 20);
     let recall_quality_row = matrix
         .row_for_target(ContextPlaneActivationTarget::RecallQualityGate)
         .expect("recall quality activation row should exist");

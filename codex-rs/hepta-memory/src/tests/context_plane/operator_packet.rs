@@ -1,4 +1,5 @@
 use super::*;
+use hepta_core::ContextPlaneActivationBlockerMatrix;
 
 #[test]
 fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
@@ -38,10 +39,16 @@ fn store_snapshot_context_plane_operator_approval_packet_is_payload_light() {
     assert!(packet.dry_run_only);
     assert!(packet.approval_required);
     assert!(!packet.activation_command_present);
-    assert_eq!(packet.matrix_row_count, 27);
+    assert_eq!(
+        packet.matrix_row_count,
+        ContextPlaneActivationBlockerMatrix::required_target_count()
+    );
     assert_eq!(packet.threshold_satisfied_count, 9);
-    assert_eq!(packet.blocker_count, 18);
-    assert_eq!(packet.threshold_snapshot.required_ready_count, 26);
+    assert_eq!(packet.blocker_count, 19);
+    assert_eq!(
+        packet.threshold_snapshot.required_ready_count,
+        ContextPlaneActivationBlockerMatrix::required_target_count() - 1
+    );
     assert_eq!(packet.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(packet.required_scope_count(), 6);
     assert_eq!(
@@ -511,10 +518,16 @@ async fn store_context_plane_operator_approval_packet_matches_snapshot_helper() 
     assert!(from_store.dry_run_only);
     assert!(from_store.approval_required);
     assert!(!from_store.activation_command_present);
-    assert_eq!(from_store.matrix_row_count, 27);
+    assert_eq!(
+        from_store.matrix_row_count,
+        ContextPlaneActivationBlockerMatrix::required_target_count()
+    );
     assert_eq!(from_store.threshold_satisfied_count, 9);
-    assert_eq!(from_store.blocker_count, 18);
-    assert_eq!(from_store.threshold_snapshot.required_ready_count, 26);
+    assert_eq!(from_store.blocker_count, 19);
+    assert_eq!(
+        from_store.threshold_snapshot.required_ready_count,
+        ContextPlaneActivationBlockerMatrix::required_target_count() - 1
+    );
     assert_eq!(from_store.threshold_snapshot.required_shadow_count, 1);
     assert_eq!(from_store.required_scope_count(), 6);
     assert_eq!(

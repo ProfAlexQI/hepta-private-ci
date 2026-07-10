@@ -46,8 +46,6 @@ pub use context_plane::ContextPlaneStatusKind;
 pub use context_plane::ContextPlaneStatusReport;
 pub use context_plane::ContextPlaneStatusReportInput;
 pub use context_plane::ContextPlaneStatusSection;
-#[cfg(test)]
-use context_plane::required_operator_approval_scopes;
 pub use eval_harness::ContextMemoryAdaptiveAllocatorEvalArm;
 pub use eval_harness::ContextMemoryAdaptiveAllocatorEvalShadowComparisonVerdict;
 pub use eval_harness::ContextMemoryAdaptiveAllocatorEvalShadowReport;
@@ -193,6 +191,7 @@ pub use temporal::ContextMemoryTemporalFactReport;
 pub use temporal::ContextMemoryTemporalFactType;
 pub use temporal::ContextMemoryTemporalGraphShadowReplayReport;
 pub use temporal::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+pub use temporal::ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport;
 pub use temporal::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 pub use temporal::ContextMemoryTemporalGraphShadowStoreReport;
 pub use temporal::ContextMemoryTemporalGraphShadowTraversalDiffReport;
@@ -230,9 +229,11 @@ pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_SCHEMA_VERSION:
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_SCHEMA_VERSION: u32 = 1;
 pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_ROLLBACK_KILL_SWITCH_SCHEMA_VERSION: u32 =
     1;
-pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 20;
-pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 20;
-pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 19;
+pub const CONTEXT_MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_PROMOTION_READINESS_SCHEMA_VERSION: u32 =
+    1;
+pub const CONTEXT_PLANE_STATUS_SCHEMA_VERSION: u32 = 21;
+pub const CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION: u32 = 21;
+pub const CONTEXT_PLANE_OPERATOR_APPROVAL_PACKET_SCHEMA_VERSION: u32 = 20;
 
 /// Declares whether a memory record belongs to a single session or to a wider
 /// cross-session corpus.

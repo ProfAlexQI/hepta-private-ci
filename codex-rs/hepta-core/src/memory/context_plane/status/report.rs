@@ -21,6 +21,7 @@ use crate::memory::ContextMemoryTemporalFactReport;
 use crate::memory::ContextMemoryTemporalGraphShadowEvalReport;
 use crate::memory::ContextMemoryTemporalGraphShadowReplayReport;
 use crate::memory::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+use crate::memory::ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport;
 use crate::memory::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 use crate::memory::ContextMemoryTemporalGraphShadowStoreReport;
 use crate::memory::ContextMemoryTemporalGraphShadowTraversalDiffReport;
@@ -29,6 +30,36 @@ use crate::memory::ContextMemoryWriteChainReadinessReport;
 use crate::memory::ContextMemoryWriteChainReceiptFreshnessReport;
 use crate::memory::MemoryProviderReport;
 use crate::memory::MemoryProviderV2AuditReport;
+
+const REQUIRED_CONTEXT_PLANE_STATUS_SECTIONS: &[ContextPlaneStatusSection] = &[
+    ContextPlaneStatusSection::SourceRegistry,
+    ContextPlaneStatusSection::AdaptiveBudgetAllocation,
+    ContextPlaneStatusSection::MemoryTaxonomy,
+    ContextPlaneStatusSection::MemoryFormationReceipts,
+    ContextPlaneStatusSection::MemoryFormationQueue,
+    ContextPlaneStatusSection::MemoryNamespacePolicy,
+    ContextPlaneStatusSection::MemoryWriteChainReadiness,
+    ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness,
+    ContextPlaneStatusSection::MemoryTemporalFacts,
+    ContextPlaneStatusSection::MemoryTemporalFactGraph,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowEval,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowStore,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowReplay,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
+    ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalPromotionReadiness,
+    ContextPlaneStatusSection::EvalHarnessSeed,
+    ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
+    ContextPlaneStatusSection::RecallQualityGate,
+    ContextPlaneStatusSection::MemoryRankedRecallShadowEval,
+    ContextPlaneStatusSection::MemoryProviderBoundary,
+    ContextPlaneStatusSection::MemoryProviderV2Boundary,
+    ContextPlaneStatusSection::MemoryShadowCanaryReadiness,
+    ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness,
+    ContextPlaneStatusSection::SourceAwareFrontDoor,
+];
 
 /// Unified, payload-light status surface for context-plane readiness.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +99,8 @@ pub struct ContextPlaneStatusReportInput<'a> {
         &'a ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport,
     pub temporal_graph_shadow_retrieval_rollback_kill_switch:
         &'a ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport,
+    pub temporal_graph_shadow_retrieval_promotion_readiness:
+        &'a ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport,
     pub eval_seed: &'a ContextMemoryEvalHarnessReport,
     pub allocator_shadow: &'a ContextMemoryAdaptiveAllocatorEvalShadowReport,
     pub recall_quality_gate: &'a ContextMemoryRecallQualityGateReport,
@@ -155,6 +188,9 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusEntry::from_temporal_graph_shadow_retrieval_rollback_kill_switch(
                 input.temporal_graph_shadow_retrieval_rollback_kill_switch,
             ),
+            ContextPlaneStatusEntry::from_temporal_graph_shadow_retrieval_promotion_readiness(
+                input.temporal_graph_shadow_retrieval_promotion_readiness,
+            ),
             ContextPlaneStatusEntry::from_integrity(
                 ContextPlaneStatusSection::EvalHarnessSeed,
                 input.eval_seed.has_eval_integrity(),
@@ -201,16 +237,17 @@ impl ContextPlaneStatusReport {
             ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality => 14,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard => 15,
             ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch => 16,
-            ContextPlaneStatusSection::EvalHarnessSeed => 17,
-            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 18,
-            ContextPlaneStatusSection::RecallQualityGate => 19,
-            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 20,
-            ContextPlaneStatusSection::MemoryProviderBoundary => 21,
-            ContextPlaneStatusSection::MemoryProviderV2Boundary => 22,
-            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 23,
-            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 24,
-            ContextPlaneStatusSection::SourceAwareFrontDoor => 25,
-            ContextPlaneStatusSection::Unknown => 26,
+            ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalPromotionReadiness => 17,
+            ContextPlaneStatusSection::EvalHarnessSeed => 18,
+            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow => 19,
+            ContextPlaneStatusSection::RecallQualityGate => 20,
+            ContextPlaneStatusSection::MemoryRankedRecallShadowEval => 21,
+            ContextPlaneStatusSection::MemoryProviderBoundary => 22,
+            ContextPlaneStatusSection::MemoryProviderV2Boundary => 23,
+            ContextPlaneStatusSection::MemoryShadowCanaryReadiness => 24,
+            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness => 25,
+            ContextPlaneStatusSection::SourceAwareFrontDoor => 26,
+            ContextPlaneStatusSection::Unknown => 27,
         });
 
         let production_write = sections.iter().any(|entry| entry.production_write);
@@ -234,7 +271,7 @@ impl ContextPlaneStatusReport {
 
     pub fn has_status_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_STATUS_SCHEMA_VERSION
-            && self.sections.len() == 26
+            && self.sections.len() == Self::required_section_count()
             && self.has_required_sections()
             && self
                 .sections
@@ -249,37 +286,15 @@ impl ContextPlaneStatusReport {
             && !self.operator_activation_allowed
     }
 
+    pub const fn required_section_count() -> usize {
+        REQUIRED_CONTEXT_PLANE_STATUS_SECTIONS.len()
+    }
+
     fn has_required_sections(&self) -> bool {
-        [
-            ContextPlaneStatusSection::SourceRegistry,
-            ContextPlaneStatusSection::AdaptiveBudgetAllocation,
-            ContextPlaneStatusSection::MemoryTaxonomy,
-            ContextPlaneStatusSection::MemoryFormationReceipts,
-            ContextPlaneStatusSection::MemoryFormationQueue,
-            ContextPlaneStatusSection::MemoryNamespacePolicy,
-            ContextPlaneStatusSection::MemoryWriteChainReadiness,
-            ContextPlaneStatusSection::MemoryWriteChainReceiptFreshness,
-            ContextPlaneStatusSection::MemoryTemporalFacts,
-            ContextPlaneStatusSection::MemoryTemporalFactGraph,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowEval,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowStore,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowReplay,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalDiff,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowTraversalQuality,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalCanaryGuard,
-            ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
-            ContextPlaneStatusSection::EvalHarnessSeed,
-            ContextPlaneStatusSection::AdaptiveAllocatorEvalShadow,
-            ContextPlaneStatusSection::RecallQualityGate,
-            ContextPlaneStatusSection::MemoryRankedRecallShadowEval,
-            ContextPlaneStatusSection::MemoryProviderBoundary,
-            ContextPlaneStatusSection::MemoryProviderV2Boundary,
-            ContextPlaneStatusSection::MemoryShadowCanaryReadiness,
-            ContextPlaneStatusSection::MemoryShadowCanaryPromotionReadiness,
-            ContextPlaneStatusSection::SourceAwareFrontDoor,
-        ]
-        .into_iter()
-        .all(|section| self.section_status(section).is_some())
+        REQUIRED_CONTEXT_PLANE_STATUS_SECTIONS
+            .iter()
+            .copied()
+            .all(|section| self.section_status(section).is_some())
     }
 
     pub fn section_status(

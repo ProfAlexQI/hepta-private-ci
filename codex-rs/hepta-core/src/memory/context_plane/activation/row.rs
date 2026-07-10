@@ -20,6 +20,7 @@ const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_DIFF_STAGE_REQUIRED_COUNT: usize = 
 const MEMORY_TEMPORAL_GRAPH_SHADOW_TRAVERSAL_QUALITY_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT: usize = 5;
 const MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_ROLLBACK_KILL_SWITCH_STAGE_REQUIRED_COUNT: usize = 6;
+const MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_PROMOTION_READINESS_STAGE_REQUIRED_COUNT: usize = 7;
 const MEMORY_PROVIDER_V2_LIFECYCLE_REQUIRED_COUNT: usize = 6;
 const RANKED_RECALL_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 5;
 const RANKED_RECALL_POSITIVE_HYBRID_SIGNAL_REQUIRED_COUNT: usize = 15;
@@ -263,6 +264,60 @@ pub struct ContextPlaneActivationBlockerRow {
     pub memory_temporal_graph_shadow_retrieval_rollback_kill_switch_production_write_count: usize,
     pub memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count: usize,
     pub memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_projected_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_kill_switch_pass_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_required_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_shadow_only_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_slo_pass_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_win_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_loss_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_operator_review_required_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_leak_rate_basis_points:
+        u32,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_coverage_basis_points:
+        u32,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_precision_basis_points:
+        u32,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_token_saved_estimate:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_latency_ms:
+        u32,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_required_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_recorded_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_registered_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_enabled_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_kill_switch_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_rehearsal_pass_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_route_denial_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_denial_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_canary_route_opened_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_ready_shadow_only_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_digest_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_freshness_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_replay_guard_pass_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_stale_replay_rejected_count:
+        usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_llm_rerank_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_persistence_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_production_route_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_production_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_write_count: usize,
+    pub memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_count: usize,
     pub ranked_recall_hybrid_signal_required_count: usize,
     pub ranked_recall_hybrid_signal_pass_count: usize,
     pub ranked_recall_lexical_bm25_check_pass: bool,
@@ -403,6 +458,12 @@ impl ContextPlaneActivationBlockerRow {
                 ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalRollbackKillSwitchShadowOnly
             }
             (
+                ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalPromotionReadiness,
+                ContextPlaneStatusKind::Shadow,
+            ) => {
+                ContextPlaneActivationBlockerReason::TemporalGraphShadowRetrievalPromotionReadinessShadowOnly
+            }
+            (
                 ContextPlaneActivationTarget::MemoryRankedRecallShadowEval,
                 ContextPlaneStatusKind::Shadow,
             ) => ContextPlaneActivationBlockerReason::MemoryRankedRecallShadowEvalShadowOnly,
@@ -483,6 +544,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_memory_temporal_graph_shadow_traversal_quality_rollup(target, entry)
             .with_memory_temporal_graph_shadow_retrieval_canary_guard_rollup(target, entry)
             .with_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollup(target, entry)
+            .with_memory_temporal_graph_shadow_retrieval_promotion_readiness_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry);
         }
 
@@ -499,6 +561,7 @@ impl ContextPlaneActivationBlockerRow {
             .with_memory_temporal_graph_shadow_traversal_quality_rollup(target, entry)
             .with_memory_temporal_graph_shadow_retrieval_canary_guard_rollup(target, entry)
             .with_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollup(target, entry)
+            .with_memory_temporal_graph_shadow_retrieval_promotion_readiness_rollup(target, entry)
             .with_memory_provider_v2_rollup(target, entry)
     }
 
@@ -1149,6 +1212,119 @@ impl ContextPlaneActivationBlockerRow {
         self
     }
 
+    fn with_memory_temporal_graph_shadow_retrieval_promotion_readiness_rollup(
+        mut self,
+        target: ContextPlaneActivationTarget,
+        entry: Option<&ContextPlaneStatusEntry>,
+    ) -> Self {
+        if target
+            == ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalPromotionReadiness
+            && let Some(entry) = entry
+        {
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count =
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_projected_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_projected_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_kill_switch_pass_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_kill_switch_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_required_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_required_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_shadow_only_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_shadow_only_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_slo_pass_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_slo_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_win_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_win_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_loss_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_loss_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_operator_review_required_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_operator_review_required_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_leak_rate_basis_points =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_leak_rate_basis_points;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_coverage_basis_points =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_coverage_basis_points;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_precision_basis_points =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_precision_basis_points;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_token_saved_estimate =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_token_saved_estimate;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_latency_ms =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_latency_ms;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_required_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_required_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_recorded_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_recorded_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_registered_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_registered_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_enabled_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_enabled_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_kill_switch_pass_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_kill_switch_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_rehearsal_pass_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_rehearsal_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_route_denial_count =
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_route_denial_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_denial_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_denial_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_canary_route_opened_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_canary_route_opened_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_ready_shadow_only_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_ready_shadow_only_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_digest_count =
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_digest_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_freshness_pass_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_freshness_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_replay_guard_pass_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_replay_guard_pass_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_stale_replay_rejected_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stale_replay_rejected_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_llm_rerank_count =
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_llm_rerank_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_persistence_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_persistence_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_production_route_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_production_route_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_production_write_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_production_write_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_write_count =
+                entry.memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_write_count;
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_count =
+                entry
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_count;
+        }
+        self
+    }
+
     pub fn has_row_integrity(&self) -> bool {
         !self.target.is_unknown()
             && !self.observed_status.is_unknown()
@@ -1168,6 +1344,8 @@ impl ContextPlaneActivationBlockerRow {
             && self.has_memory_temporal_graph_shadow_retrieval_canary_guard_rollup_integrity()
             && self
                 .has_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollup_integrity()
+            && self
+                .has_memory_temporal_graph_shadow_retrieval_promotion_readiness_rollup_integrity()
             && self.has_memory_provider_v2_rollup_integrity()
             && !self.production_write
             && !self.graph_write
@@ -2054,6 +2232,164 @@ impl ContextPlaneActivationBlockerRow {
             && self.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_graph_write_count
                 == 0
             && self.memory_temporal_graph_shadow_retrieval_rollback_kill_switch_rollback_write_count
+                == 0
+            && (self.threshold_satisfied || self.blocker_reason.is_blocking())
+    }
+
+    fn has_memory_temporal_graph_shadow_retrieval_promotion_readiness_rollup_integrity(
+        &self,
+    ) -> bool {
+        let counts = [
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_projected_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_kill_switch_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_required_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_shadow_only_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_slo_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_win_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_loss_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_operator_review_required_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_token_saved_estimate,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_required_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_recorded_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_registered_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_enabled_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_kill_switch_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_rehearsal_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_route_denial_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_denial_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_canary_route_opened_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_ready_shadow_only_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_digest_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_freshness_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_replay_guard_pass_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_stale_replay_rejected_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_llm_rerank_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_persistence_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_production_route_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_production_write_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_write_count,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_count,
+        ];
+        let metric_counts = [
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_leak_rate_basis_points,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_coverage_basis_points,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_precision_basis_points,
+            self.memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_latency_ms,
+        ];
+
+        if self.target
+            != ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalPromotionReadiness
+        {
+            return counts.iter().all(|count| *count == 0)
+                && metric_counts.iter().all(|count| *count == 0);
+        }
+
+        self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            == MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_CANARY_GUARD_STAGE_REQUIRED_COUNT
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count
+                == MEMORY_TEMPORAL_GRAPH_SHADOW_RETRIEVAL_PROMOTION_READINESS_STAGE_REQUIRED_COUNT
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_projected_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_kill_switch_pass_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_required_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_shadow_only_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_slo_pass_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_win_count
+                == 1
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_loss_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_operator_review_required_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_leak_rate_basis_points
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_coverage_basis_points
+                >= 8_000
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_precision_basis_points
+                >= 8_000
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_token_saved_estimate
+                > 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_real_workload_trace_latency_ms
+                <= 20
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_required_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_operator_approval_recorded_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_registered_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_feature_flag_enabled_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_kill_switch_pass_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_rehearsal_pass_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_route_denial_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_denial_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_canary_route_opened_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_ready_shadow_only_count
+                == self.memory_temporal_graph_shadow_retrieval_promotion_readiness_fixture_count
+            && self.memory_temporal_graph_shadow_retrieval_promotion_readiness_digest_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_freshness_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_replay_guard_pass_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_stale_replay_rejected_count
+                == self
+                    .memory_temporal_graph_shadow_retrieval_promotion_readiness_stage_required_count
+            && self.memory_temporal_graph_shadow_retrieval_promotion_readiness_llm_rerank_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_persistence_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_production_route_count
+                == 0
+            && self
+                .memory_temporal_graph_shadow_retrieval_promotion_readiness_production_write_count
+                == 0
+            && self.memory_temporal_graph_shadow_retrieval_promotion_readiness_graph_write_count
+                == 0
+            && self.memory_temporal_graph_shadow_retrieval_promotion_readiness_rollback_write_count
                 == 0
             && (self.threshold_satisfied || self.blocker_reason.is_blocking())
     }

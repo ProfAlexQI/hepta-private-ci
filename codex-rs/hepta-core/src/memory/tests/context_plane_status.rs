@@ -93,6 +93,16 @@ fn context_plane_status_report_fixture(
         ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport::from_retrieval_canary_guard(
             &temporal_graph_shadow_retrieval_canary_guard,
         );
+    let temporal_graph_shadow_retrieval_promotion_readiness =
+        ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport::from_rollback_kill_switch_and_traversal_quality(
+            &temporal_graph_shadow_retrieval_rollback_kill_switch,
+            &temporal_graph_shadow_traversal_quality,
+        );
+    assert!(
+        temporal_graph_shadow_retrieval_promotion_readiness
+            .has_retrieval_promotion_readiness_integrity(),
+        "temporal graph retrieval promotion fixture drifted: {temporal_graph_shadow_retrieval_promotion_readiness:#?}"
+    );
     let eval_seed = ContextMemoryEvalHarnessReport::seeded();
     let provider_report = MemoryProviderReport::from_update(
         MemoryProviderDescriptor::builtin(),
@@ -156,6 +166,8 @@ fn context_plane_status_report_fixture(
         temporal_graph_shadow_retrieval_canary_guard: &temporal_graph_shadow_retrieval_canary_guard,
         temporal_graph_shadow_retrieval_rollback_kill_switch:
             &temporal_graph_shadow_retrieval_rollback_kill_switch,
+        temporal_graph_shadow_retrieval_promotion_readiness:
+            &temporal_graph_shadow_retrieval_promotion_readiness,
         eval_seed: &eval_seed,
         allocator_shadow,
         recall_quality_gate,
@@ -174,9 +186,9 @@ fn context_plane_status_report_unifies_readiness_without_payloads_or_activation(
     let report = context_plane_status_report_fixture(&allocator_shadow, &recall_quality_gate);
 
     assert!(report.has_status_integrity());
-    assert_eq!(report.sections.len(), 26);
+    assert_eq!(report.sections.len(), 27);
     assert_eq!(report.ready_section_count(), 8);
-    assert_eq!(report.shadow_section_count(), 17);
+    assert_eq!(report.shadow_section_count(), 18);
     assert_eq!(report.disabled_section_count(), 1);
     assert_eq!(report.blocker_count(), 0);
     assert_eq!(

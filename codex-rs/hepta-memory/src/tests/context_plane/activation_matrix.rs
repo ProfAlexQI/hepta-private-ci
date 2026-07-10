@@ -1,4 +1,5 @@
 use super::*;
+use hepta_core::ContextPlaneActivationBlockerMatrix;
 
 #[test]
 fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
@@ -35,9 +36,12 @@ fn store_snapshot_context_plane_activation_blocker_matrix_is_payload_light() {
     let matrix = snapshot.context_plane_activation_blocker_matrix(&request);
 
     assert!(matrix.has_matrix_integrity());
-    assert_eq!(matrix.rows.len(), 27);
+    assert_eq!(
+        matrix.rows.len(),
+        ContextPlaneActivationBlockerMatrix::required_target_count()
+    );
     assert_eq!(matrix.satisfied_count(), 9);
-    assert_eq!(matrix.blocker_count, 18);
+    assert_eq!(matrix.blocker_count, 19);
     assert!(!matrix.activation_allowed);
     assert_eq!(
         matrix.blocker_reason(ContextPlaneActivationTarget::AdaptiveBudgetAllocation),
@@ -599,9 +603,12 @@ async fn store_context_plane_activation_blocker_matrix_matches_snapshot_helper()
         snapshot.context_plane_activation_blocker_matrix(&request)
     );
     assert!(from_store.has_matrix_integrity());
-    assert_eq!(from_store.rows.len(), 27);
+    assert_eq!(
+        from_store.rows.len(),
+        ContextPlaneActivationBlockerMatrix::required_target_count()
+    );
     assert_eq!(from_store.satisfied_count(), 9);
-    assert_eq!(from_store.blocker_count, 18);
+    assert_eq!(from_store.blocker_count, 19);
     assert_eq!(
         from_store.threshold_satisfied(ContextPlaneActivationTarget::RecallQualityGate),
         Some(true)

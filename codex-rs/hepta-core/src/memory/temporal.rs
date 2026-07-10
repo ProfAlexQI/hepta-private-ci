@@ -1,6 +1,7 @@
 mod canary_guard;
 mod fact;
 mod graph;
+mod promotion_readiness;
 mod quality;
 mod replay;
 mod rollback_kill_switch;
@@ -15,6 +16,7 @@ pub use graph::ContextMemoryTemporalFactGraphEdge;
 pub use graph::ContextMemoryTemporalFactGraphEdgeKind;
 pub use graph::ContextMemoryTemporalFactGraphNode;
 pub use graph::ContextMemoryTemporalFactGraphReport;
+pub use promotion_readiness::ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport;
 pub use quality::ContextMemoryTemporalGraphShadowTraversalQualityReport;
 pub use replay::ContextMemoryTemporalGraphShadowReplayReport;
 pub use rollback_kill_switch::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;

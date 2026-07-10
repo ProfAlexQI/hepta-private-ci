@@ -12,6 +12,37 @@ use super::target::ContextPlaneActivationBlockerReason;
 use super::target::ContextPlaneActivationTarget;
 use super::target::activation_target_order;
 
+const REQUIRED_CONTEXT_PLANE_ACTIVATION_TARGETS: &[ContextPlaneActivationTarget] = &[
+    ContextPlaneActivationTarget::SourceRegistry,
+    ContextPlaneActivationTarget::AdaptiveBudgetAllocation,
+    ContextPlaneActivationTarget::MemoryTaxonomy,
+    ContextPlaneActivationTarget::MemoryFormationReceipts,
+    ContextPlaneActivationTarget::MemoryFormationQueue,
+    ContextPlaneActivationTarget::MemoryNamespacePolicy,
+    ContextPlaneActivationTarget::MemoryWriteChainReadiness,
+    ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness,
+    ContextPlaneActivationTarget::MemoryTemporalFacts,
+    ContextPlaneActivationTarget::MemoryTemporalFactGraph,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowReplay,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
+    ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalPromotionReadiness,
+    ContextPlaneActivationTarget::EvalHarnessSeed,
+    ContextPlaneActivationTarget::AdaptiveAllocatorEvalShadow,
+    ContextPlaneActivationTarget::RecallQualityGate,
+    ContextPlaneActivationTarget::MemoryRankedRecallShadowEval,
+    ContextPlaneActivationTarget::MemoryProviderBoundary,
+    ContextPlaneActivationTarget::MemoryProviderV2Boundary,
+    ContextPlaneActivationTarget::MemoryShadowCanaryReadiness,
+    ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness,
+    ContextPlaneActivationTarget::SourceAwareFrontDoor,
+    ContextPlaneActivationTarget::OperatorApproval,
+];
+
 /// Observational activation-blocker matrix for context-plane promotion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -172,6 +203,13 @@ impl ContextPlaneActivationBlockerMatrix {
                 report_side_effect_flag_enabled,
             ),
             row_from_section(
+                ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalPromotionReadiness,
+                status,
+                ContextPlaneStatusSection::MemoryTemporalGraphShadowRetrievalPromotionReadiness,
+                ContextPlaneStatusKind::Ready,
+                report_side_effect_flag_enabled,
+            ),
+            row_from_section(
                 ContextPlaneActivationTarget::EvalHarnessSeed,
                 status,
                 ContextPlaneStatusSection::EvalHarnessSeed,
@@ -256,7 +294,7 @@ impl ContextPlaneActivationBlockerMatrix {
 
     pub fn has_matrix_integrity(&self) -> bool {
         self.schema_version == CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION
-            && self.rows.len() == 27
+            && self.rows.len() == Self::required_target_count()
             && self.has_required_targets()
             && self.blocker_count
                 == self
@@ -278,38 +316,15 @@ impl ContextPlaneActivationBlockerMatrix {
             && !self.operator_activation_allowed
     }
 
+    pub const fn required_target_count() -> usize {
+        REQUIRED_CONTEXT_PLANE_ACTIVATION_TARGETS.len()
+    }
+
     fn has_required_targets(&self) -> bool {
-        [
-            ContextPlaneActivationTarget::SourceRegistry,
-            ContextPlaneActivationTarget::AdaptiveBudgetAllocation,
-            ContextPlaneActivationTarget::MemoryTaxonomy,
-            ContextPlaneActivationTarget::MemoryFormationReceipts,
-            ContextPlaneActivationTarget::MemoryFormationQueue,
-            ContextPlaneActivationTarget::MemoryNamespacePolicy,
-            ContextPlaneActivationTarget::MemoryWriteChainReadiness,
-            ContextPlaneActivationTarget::MemoryWriteChainReceiptFreshness,
-            ContextPlaneActivationTarget::MemoryTemporalFacts,
-            ContextPlaneActivationTarget::MemoryTemporalFactGraph,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowEval,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowStore,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowReplay,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalDiff,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowTraversalQuality,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalCanaryGuard,
-            ContextPlaneActivationTarget::MemoryTemporalGraphShadowRetrievalRollbackKillSwitch,
-            ContextPlaneActivationTarget::EvalHarnessSeed,
-            ContextPlaneActivationTarget::AdaptiveAllocatorEvalShadow,
-            ContextPlaneActivationTarget::RecallQualityGate,
-            ContextPlaneActivationTarget::MemoryRankedRecallShadowEval,
-            ContextPlaneActivationTarget::MemoryProviderBoundary,
-            ContextPlaneActivationTarget::MemoryProviderV2Boundary,
-            ContextPlaneActivationTarget::MemoryShadowCanaryReadiness,
-            ContextPlaneActivationTarget::MemoryShadowCanaryPromotionReadiness,
-            ContextPlaneActivationTarget::SourceAwareFrontDoor,
-            ContextPlaneActivationTarget::OperatorApproval,
-        ]
-        .into_iter()
-        .all(|target| self.row_for_target(target).is_some())
+        REQUIRED_CONTEXT_PLANE_ACTIVATION_TARGETS
+            .iter()
+            .copied()
+            .all(|target| self.row_for_target(target).is_some())
     }
 
     pub fn row_for_target(

@@ -7,6 +7,7 @@ use hepta_core::ContextMemoryTemporalFactGraphReport;
 use hepta_core::ContextMemoryTemporalFactReport;
 use hepta_core::ContextMemoryTemporalGraphShadowReplayReport;
 use hepta_core::ContextMemoryTemporalGraphShadowRetrievalCanaryGuardReport;
+use hepta_core::ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport;
 use hepta_core::ContextMemoryTemporalGraphShadowRetrievalRollbackKillSwitchReport;
 use hepta_core::ContextMemoryTemporalGraphShadowStoreReport;
 use hepta_core::ContextMemoryTemporalGraphShadowTraversalDiffReport;
@@ -225,6 +226,20 @@ impl InMemoryStore {
         Ok(self
             .snapshot()?
             .recall_context_memory_temporal_graph_shadow_retrieval_rollback_kill_switch_report(
+                &request,
+            ))
+    }
+
+    pub fn recall_context_memory_temporal_graph_shadow_retrieval_promotion_readiness_report(
+        &self,
+        request: ContextRecallRequest,
+    ) -> Result<
+        ContextMemoryTemporalGraphShadowRetrievalPromotionReadinessReport,
+        hepta_core::MemoryError,
+    > {
+        Ok(self
+            .snapshot()?
+            .recall_context_memory_temporal_graph_shadow_retrieval_promotion_readiness_report(
                 &request,
             ))
     }
