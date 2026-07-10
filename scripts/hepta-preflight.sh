@@ -1762,8 +1762,8 @@ CARGO_NET_OFFLINE=true scripts/hepta-control-ui-smoke.sh
 if [[ "$RUN_NATIVE" == "1" ]]; then
   echo "[hepta-preflight] native app metadata/check/tests"
   cargo metadata --offline --manifest-path "$NATIVE_MANIFEST" --no-deps --format-version 1 >/tmp/hepta-native-preflight-metadata.json
-  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo check --manifest-path "$NATIVE_MANIFEST"
-  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo test --manifest-path "$NATIVE_MANIFEST" hepta_ -- --nocapture
+  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo check --offline --locked --manifest-path "$NATIVE_MANIFEST"
+  CARGO_TARGET_DIR="$NATIVE_TARGET_DIR" cargo test --offline --locked --manifest-path "$NATIVE_MANIFEST" hepta_ -- --nocapture
 else
   echo "[hepta-preflight] native app gates skipped (HEPTA_PREFLIGHT_NATIVE=$RUN_NATIVE)"
 fi

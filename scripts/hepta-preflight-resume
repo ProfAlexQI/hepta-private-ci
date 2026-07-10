@@ -7,6 +7,21 @@ STATE_FILE="${HEPTA_PREFLIGHT_RESUME_STATE:-$(git -C "$ROOT" rev-parse --git-pat
 HEAD_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 HEAD_SHORT="$(git -C "$ROOT" rev-parse --short=10 HEAD)"
 LOG_FILE="${HEPTA_PREFLIGHT_RESUME_LOG:-/tmp/hepta-preflight-resume-$HEAD_SHORT.log}"
+LOCK_FILES=(
+  codex-rs/Cargo.lock
+  apps/hepta-native/Cargo.lock
+  MODULE.bazel.lock
+)
+
+assert_lockfiles_clean() {
+  local phase="$1"
+  if ! git -C "$ROOT" diff --quiet -- "${LOCK_FILES[@]}" \
+    || ! git -C "$ROOT" diff --cached --quiet -- "${LOCK_FILES[@]}"; then
+    echo "[hepta-preflight-resume] blocked $phase: dependency lockfile drift detected" >&2
+    git -C "$ROOT" status --short -- "${LOCK_FILES[@]}" >&2
+    exit 1
+  fi
+}
 
 usage() {
   printf '%s\n' \
@@ -106,6 +121,8 @@ if [[ "$show_only" == "1" ]]; then
   exit 0
 fi
 
+assert_lockfiles_clean "before preflight"
+
 generated="$(mktemp "${TMPDIR:-/tmp}/hepta-preflight-resume.XXXXXX")"
 checkpoint_tmp="$STATE_FILE.tmp.$$"
 trap 'rm -f "$generated" "$checkpoint_tmp"' EXIT
@@ -151,5 +168,6 @@ if [[ "$preflight_status" != "0" || "$tee_status" != "0" || "$checkpoint_status"
   exit "$exit_code"
 fi
 
+assert_lockfiles_clean "after preflight"
 rm -f "$STATE_FILE"
 echo "[hepta-preflight-resume] ready head=$HEAD_SHORT checkpoint_cleared=true log=$LOG_FILE"
