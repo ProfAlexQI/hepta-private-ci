@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PREFLIGHT="$ROOT/scripts/hepta-preflight.sh"
+STATE_FILE="${HEPTA_PREFLIGHT_RESUME_STATE:-$(git -C "$ROOT" rev-parse --git-path hepta-preflight-resume.state)}"
+HEAD_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+HEAD_SHORT="$(git -C "$ROOT" rev-parse --short=10 HEAD)"
+LOG_FILE="${HEPTA_PREFLIGHT_RESUME_LOG:-/tmp/hepta-preflight-resume-$HEAD_SHORT.log}"
+
+usage() {
+  printf '%s\n' \
+    'usage: scripts/hepta-preflight-resume [--reset] [--import-log PATH] [--show]' \
+    '' \
+    'Runs scripts/hepta-preflight.sh with a durable per-worktree checkpoint.' \
+    'A resumed run repeats the interrupted marker, then continues forward.'
+}
+
+reset=0
+show_only=0
+import_log=""
+while (( $# > 0 )); do
+  case "$1" in
+    --reset) reset=1 ;;
+    --import-log)
+      shift
+      [[ $# -gt 0 ]] || {
+        usage >&2
+        exit 2
+      }
+      import_log="$1"
+      ;;
+    --show) show_only=1 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ "$reset" == "1" ]]; then
+  rm -f "$STATE_FILE"
+fi
+
+if [[ -n "$import_log" ]]; then
+  [[ -f "$import_log" ]] || {
+    echo "missing Hepta preflight log: $import_log" >&2
+    exit 1
+  }
+  imported_marker="$(sed -n 's/^\[hepta-preflight\] //p' "$import_log" | tail -n 1)"
+  [[ -n "$imported_marker" ]] || {
+    echo "no Hepta preflight marker found in: $import_log" >&2
+    exit 1
+  }
+  state_tmp="$STATE_FILE.import.$$"
+  printf '%s\t%s\n' "$HEAD_COMMIT" "$imported_marker" >"$state_tmp"
+  mv "$state_tmp" "$STATE_FILE"
+fi
+
+resume_commit=""
+resume_marker=""
+if [[ -f "$STATE_FILE" ]]; then
+  IFS=$'\t' read -r resume_commit resume_marker <"$STATE_FILE" || true
+  if [[ -z "$resume_commit" || -z "$resume_marker" ]]; then
+    echo "invalid Hepta preflight resume state: $STATE_FILE" >&2
+    exit 1
+  fi
+  if [[ "$resume_commit" != "$HEAD_COMMIT" ]]; then
+    echo "Hepta preflight resume state belongs to $resume_commit, current HEAD is $HEAD_COMMIT; use --reset after reviewing the source change" >&2
+    exit 1
+  fi
+fi
+
+start_line=1
+if [[ -n "$resume_marker" ]]; then
+  start_line="$({
+    awk -v expected="echo \"[hepta-preflight] $resume_marker\"" \
+      '$0 == expected { print NR; exit }' "$PREFLIGHT"
+  })"
+  if [[ -z "$start_line" ]]; then
+    echo "checkpoint marker no longer exists in scripts/hepta-preflight.sh: $resume_marker" >&2
+    exit 1
+  fi
+
+  # The final native/release branches must be resumed from their opening `if`
+  # so that the generated suffix remains syntactically balanced.
+  if (( start_line >= 1762 )); then
+    start_line=1762
+  fi
+fi
+
+if [[ "$show_only" == "1" ]]; then
+  jq -n \
+    --arg status "ready" \
+    --arg head "$HEAD_COMMIT" \
+    --arg state_file "$STATE_FILE" \
+    --arg log_file "$LOG_FILE" \
+    --arg marker "$resume_marker" \
+    --argjson start_line "$start_line" \
+    '{status:$status, head:$head, state_file:$state_file, log_file:$log_file, resume_marker:($marker | if length > 0 then . else null end), start_line:$start_line}'
+  exit 0
+fi
+
+generated="$(mktemp "${TMPDIR:-/tmp}/hepta-preflight-resume.XXXXXX")"
+checkpoint_tmp="$STATE_FILE.tmp.$$"
+trap 'rm -f "$generated" "$checkpoint_tmp"' EXIT
+
+if [[ "$start_line" == "1" ]]; then
+  cp "$PREFLIGHT" "$generated"
+else
+  {
+    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail'
+    printf 'cd %q\n' "$ROOT"
+    sed -n '6,21p' "$PREFLIGHT"
+    sed -n "${start_line},\$p" "$PREFLIGHT"
+  } >"$generated"
+fi
+chmod +x "$generated"
+
+echo "[hepta-preflight-resume] head=$HEAD_SHORT start_line=$start_line marker=${resume_marker:-<start>} log=$LOG_FILE"
+
+set +e
+"$generated" 2>&1 \
+  | tee "$LOG_FILE" \
+  | while IFS= read -r line; do
+      printf '%s\n' "$line"
+      case "$line" in
+        '[hepta-preflight] '*)
+          marker="${line#'[hepta-preflight] '}"
+          printf '%s\t%s\n' "$HEAD_COMMIT" "$marker" >"$checkpoint_tmp"
+          mv "$checkpoint_tmp" "$STATE_FILE"
+          ;;
+      esac
+    done
+pipeline_status=("${PIPESTATUS[@]}")
+set -e
+
+preflight_status="${pipeline_status[0]}"
+tee_status="${pipeline_status[1]}"
+checkpoint_status="${pipeline_status[2]}"
+if [[ "$preflight_status" != "0" || "$tee_status" != "0" || "$checkpoint_status" != "0" ]]; then
+  echo "[hepta-preflight-resume] blocked preflight=$preflight_status tee=$tee_status checkpoint=$checkpoint_status state=$STATE_FILE log=$LOG_FILE" >&2
+  exit_code="$preflight_status"
+  [[ "$exit_code" != "0" ]] || exit_code="$tee_status"
+  [[ "$exit_code" != "0" ]] || exit_code="$checkpoint_status"
+  exit "$exit_code"
+fi
+
+rm -f "$STATE_FILE"
+echo "[hepta-preflight-resume] ready head=$HEAD_SHORT checkpoint_cleared=true log=$LOG_FILE"
