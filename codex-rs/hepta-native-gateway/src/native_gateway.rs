@@ -68921,8 +68921,14 @@ fn hepta_scoped_memory_canary_durable_receipt_boundary_report() -> serde_json::V
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
-                && item.get("writes_memory").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && item
+                    .get("writes_memory")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
                 && item.get("writes_kg").and_then(serde_json::Value::as_bool) == Some(false)
                 && item
                     .get("sends_externally")
@@ -68950,7 +68956,10 @@ fn hepta_scoped_memory_canary_durable_receipt_boundary_report() -> serde_json::V
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
                 && item
                     .get("sends_externally")
                     .and_then(serde_json::Value::as_bool)
@@ -71585,7 +71594,10 @@ fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundar
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
         })
         .unwrap_or(false);
     let approval_next_action_review = approval_preflight
@@ -71607,7 +71619,10 @@ fn hepta_first_model_invocation_explicit_approval_evidence_no_invocation_boundar
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
         })
         .unwrap_or(false);
 
@@ -91896,7 +91911,8 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             })
         })
         .unwrap_or(false);
-    let rollback_ok = before_snapshot.map(|snapshot| store.restore(snapshot).is_ok())
+    let rollback_ok = before_snapshot
+        .map(|snapshot| store.restore(snapshot).is_ok())
         .unwrap_or(false);
     let after_rollback_snapshot = store.snapshot().ok();
     let after_rollback_memory_count = after_rollback_snapshot
@@ -92237,10 +92253,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     insert_report_json!("approved_store", "in-memory-reference");
     insert_report_json!("approved_scope", "session");
     insert_report_json!("canary_record_id", canary_record.id);
-    insert_report_json!(
-        "canary_payload_digest_sha256",
-        canary_payload_digest_sha256
-    );
+    insert_report_json!("canary_payload_digest_sha256", canary_payload_digest_sha256);
     insert_report_json!("canary_payload_plaintext_recorded", false);
     insert_report_json!("pre_write_snapshot_memory_count", before_memory_count);
     insert_report_json!("post_write_snapshot_memory_count", after_write_memory_count);
@@ -93056,10 +93069,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
     insert_report_json!("approved_scope", approved_scope);
     insert_report_json!("wal_record_id", wal_record_id);
     insert_report_json!("receipt_id", receipt_id);
-    insert_report_json!(
-        "canary_payload_digest_sha256",
-        canary_payload_digest_sha256
-    );
+    insert_report_json!("canary_payload_digest_sha256", canary_payload_digest_sha256);
     insert_report_json!("canary_payload_plaintext_recorded", false);
     insert_report_json!(
         "wal_hash_chain_previous_sha256",
@@ -93075,10 +93085,7 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
         "receipt_artifact_readback_sha256",
         sha256_text_value(&receipt_readback)
     );
-    insert_report_json!(
-        "receipt_hash_chain_sha256",
-        receipt_hash_chain_sha256
-    );
+    insert_report_json!("receipt_hash_chain_sha256", receipt_hash_chain_sha256);
     insert_report_json!("receipt_hash_chain_verified", receipt_hash_chain_verified);
     insert_report_json!(
         "canary_artifact_directory",
@@ -99873,7 +99880,8 @@ fn hepta_memory_live_mutation_operator_write_execution_minimal_scoped_memory_rea
             })
         })
         .unwrap_or(false);
-    let rollback_ok = before_snapshot.map(|snapshot| store.restore(snapshot).is_ok())
+    let rollback_ok = before_snapshot
+        .map(|snapshot| store.restore(snapshot).is_ok())
         .unwrap_or(false);
     let after_rollback_snapshot = store.snapshot().ok();
     let after_rollback_memory_count = after_rollback_snapshot
@@ -115153,7 +115161,10 @@ fn hepta_first_model_invocation_separate_approval_slice_preflight_report() -> se
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
         })
         .unwrap_or(false);
     let source_provider_router_dry_run_ready =
@@ -115458,7 +115469,10 @@ fn hepta_first_model_invocation_operator_approval_packet_review_acceptance_denia
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
         })
         .unwrap_or(false);
     let source_approval_preflight_ready =
@@ -115820,7 +115834,10 @@ fn hepta_first_model_invocation_operator_approval_acceptance_artifact_preconditi
                     .get("invokes_provider")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-                && item.get("invokes_model").and_then(serde_json::Value::as_bool) == Some(false)
+                && item
+                    .get("invokes_model")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
         })
         .unwrap_or(false);
     let source_review_ready = source_bool(
@@ -124583,8 +124600,7 @@ struct ControlUiRouteParityReport {
     routes: &'static [ControlUiRouteSpec],
 }
 
-static CONTROL_UI_ROUTE_PARITY_REPORT_CACHE: OnceLock<ControlUiRouteParityReport> =
-    OnceLock::new();
+static CONTROL_UI_ROUTE_PARITY_REPORT_CACHE: OnceLock<ControlUiRouteParityReport> = OnceLock::new();
 
 #[derive(Debug, Serialize)]
 struct ControlUiRouteCompatibilityResponse {
@@ -140886,12 +140902,8 @@ mod tests {
         assert_eq!(value["fresh_durable_memory_write_command_present"], false);
         assert_eq!(value["fresh_durable_memory_write_command_accepted"], false);
         assert_eq!(value["accepted_scoped_memory_write_command"], false);
-        assert!(
-            value["source_memory_canary_idempotency_receipt_hash_sha256"].is_string()
-        );
-        assert!(
-            value["source_memory_canary_post_rollback_store_hash_sha256"].is_string()
-        );
+        assert!(value["source_memory_canary_idempotency_receipt_hash_sha256"].is_string());
+        assert!(value["source_memory_canary_post_rollback_store_hash_sha256"].is_string());
 
         let candidates = value["durable_receipt_candidates"]
             .as_array()

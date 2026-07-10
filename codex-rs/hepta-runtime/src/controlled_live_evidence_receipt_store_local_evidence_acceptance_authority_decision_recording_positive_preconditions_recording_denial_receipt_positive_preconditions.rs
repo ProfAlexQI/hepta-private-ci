@@ -548,8 +548,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn local_authority_decision_recording_denial_receipt_positive_preconditions_project_all_entries(
-    ) {
+    fn local_authority_decision_recording_denial_receipt_positive_preconditions_project_all_entries()
+     {
         let report =
             controlled_live_evidence_receipt_store_local_evidence_acceptance_authority_decision_recording_positive_preconditions_recording_denial_receipt_positive_preconditions_readback_without_persistence_report();
 
