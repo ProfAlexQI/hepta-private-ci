@@ -64,10 +64,10 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes bounded Intelligence handoff boundary"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   "HEPTA_BOUNDED_INTELLIGENCE_CONTEXT_HANDOFF_PROMPT_PREVIEW_BOUNDARY_ENDPOINT" \
   "bounded Intelligence handoff endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$ENDPOINT" \
   "bounded Intelligence handoff endpoint path"
 require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "bounded Intelligence handoff source command"

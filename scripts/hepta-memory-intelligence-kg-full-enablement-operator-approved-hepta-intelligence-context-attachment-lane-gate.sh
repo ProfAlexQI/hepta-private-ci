@@ -55,8 +55,9 @@ jq -e '
 ' >/dev/null <<<"$MEMORY_LANE_JSON"
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_HEPTA_INTELLIGENCE_CONTEXT_ATTACHMENT_LANE_ENDPOINT' \
   "native gateway operator-approved Hepta Intelligence context attachment lane endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

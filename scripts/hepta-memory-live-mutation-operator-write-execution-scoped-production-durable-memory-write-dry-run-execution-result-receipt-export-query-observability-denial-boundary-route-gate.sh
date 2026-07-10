@@ -34,10 +34,10 @@ FOCUSED_TEST="hepta_memory_write_execution_scoped_production_durable_memory_writ
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes scoped production durable Memory write dry-run result receipt export/query/observability denial boundary"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   "HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_EXPORT_QUERY_OBSERVABILITY_DENIAL_BOUNDARY_ENDPOINT" \
   "scoped production durable Memory write dry-run result receipt export/query/observability denial endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$ENDPOINT" \
   "scoped production durable Memory write dry-run result receipt export/query/observability denial endpoint path"
 require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "scoped production durable Memory write dry-run result receipt export/query/observability denial source command"

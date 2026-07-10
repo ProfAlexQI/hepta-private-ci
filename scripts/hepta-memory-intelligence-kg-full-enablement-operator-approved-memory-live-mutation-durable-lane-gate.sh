@@ -47,8 +47,9 @@ jq -e '
 ' >/dev/null <<<"$OPERATOR_LANE_SEPARATION_JSON"
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_MEMORY_LIVE_MUTATION_DURABLE_LANE_ENDPOINT' \
   "native gateway operator-approved memory live mutation durable lane endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

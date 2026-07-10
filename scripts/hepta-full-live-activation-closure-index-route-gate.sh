@@ -35,10 +35,10 @@ SOURCE_COMMAND="/hepta-full-live-activation-closure-index --json"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes full-live closure index"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   "HEPTA_FULL_LIVE_ACTIVATION_CLOSURE_INDEX_ENDPOINT" \
   "full-live closure index endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$ENDPOINT" \
   "full-live closure index endpoint path"
 require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "full-live closure index source command"

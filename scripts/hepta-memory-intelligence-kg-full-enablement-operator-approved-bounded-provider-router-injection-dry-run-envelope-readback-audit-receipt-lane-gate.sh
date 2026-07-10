@@ -84,6 +84,7 @@ jq -e '
 ' >/dev/null <<<"$DRY_RUN_ENVELOPE_LANE_JSON"
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -94,7 +95,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_BOUNDED_PROVIDER_ROUTER_INJECTION_DRY_RUN_ENVELOPE_READBACK_AUDIT_RECEIPT_LANE_ENDPOINT' \
   "native gateway operator-approved bounded provider-router injection dry-run envelope readback audit receipt lane endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

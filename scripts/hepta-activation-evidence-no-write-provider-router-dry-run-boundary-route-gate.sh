@@ -103,10 +103,10 @@ jq -e '
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
   "native gateway route/source command count includes activation evidence no-write boundary"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   "HEPTA_ACTIVATION_EVIDENCE_NO_WRITE_PROVIDER_ROUTER_DRY_RUN_BOUNDARY_ENDPOINT" \
   "activation evidence no-write endpoint constant"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$ENDPOINT" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" "$ENDPOINT" \
   "activation evidence no-write endpoint path"
 require_source_text "$ROUTE_REGISTRY_SOURCE" "$SOURCE_COMMAND" \
   "activation evidence no-write source command"

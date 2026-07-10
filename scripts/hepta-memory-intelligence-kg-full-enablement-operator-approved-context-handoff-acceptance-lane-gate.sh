@@ -65,6 +65,7 @@ jq -e '
 ' >/dev/null <<<"$KG_READBACK_AUDIT_RECEIPT_LANE_JSON"
 
 NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
@@ -75,7 +76,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '/api/hepta-systems-workflow-definition-registry' \
   "native gateway systems workflow definition registry route preserved"
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
+require_source_text "$ROUTE_REGISTRY_SOURCE" \
   'HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_CONTEXT_HANDOFF_ACCEPTANCE_LANE_ENDPOINT' \
   "native gateway operator-approved context handoff acceptance lane endpoint constant"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
