@@ -71,8 +71,8 @@ grep -q 'no matrix cache write, matrix cache persistence, compact cache persiste
   and (.blockers | index("event_log_write_disabled")) != null
   and (.blockers | index("sqlite_write_disabled")) != null
   and (.blockers | index("live_execution_disabled")) != null
-  and (.next_actions | index("close_controlled_live_evidence_before_status_canary_start")) != null
-  and .recommended_next_gate == "close_controlled_live_evidence_before_status_canary_start"
+  and (.next_actions | index("hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration")) != null
+  and .recommended_next_gate == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
   and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null

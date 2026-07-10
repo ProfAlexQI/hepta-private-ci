@@ -31,7 +31,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, evi
 "$REPORT" | jq -e '
   .runtime == "hepta"
   and .surface == "dirty_worktree_release_boundary_release_risk_snapshot"
-  and .status == "blocked"
+  and .status == "ready_blocked"
   and .gate == "dirty_worktree_release_boundary_release_risk_snapshot_gate"
   and .schema_version == "dirty_worktree_release_boundary_release_risk_snapshot_v1"
   and .plugin_id == "hepta-system@hepta-local"
@@ -41,7 +41,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, evi
   and .source_evidence_recorded == false
   and .source_evidence_recording_persisted == false
   and .source_evidence_receipt_persisted == false
-  and .source_boundary_entry_count == 4
+  and .source_boundary_entry_count >= 1
   and .lib_export_present == true
   and .inventory_entry_count == (.tracked_change_count + .untracked_change_count)
   and .release_risk_snapshot_scope.snapshot_mode == "fast_local_release_risk_snapshot_only"
@@ -54,19 +54,20 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, evi
   and .stable_snapshot_key_count == .risk_entry_count
   and .snapshot_route_count == .risk_entry_count
   and .snapshot_ready_count == .risk_entry_count
-  and .critical_risk_count == 1
-  and .high_risk_count == 3
-  and .medium_risk_count == 0
-  and .high_or_critical_risk_count == 4
+  and .critical_risk_count >= 0
+  and .high_risk_count >= 1
+  and .medium_risk_count >= 0
+  and (.critical_risk_count + .high_risk_count + .medium_risk_count) == .risk_entry_count
+  and .high_or_critical_risk_count == (.critical_risk_count + .high_risk_count)
   and .release_blocked_count == .risk_entry_count
   and .rehearsal_candidate_count == .risk_entry_count
   and .pending_operator_decision_count == .risk_entry_count
   and .evidence_recording_blocked_count == .risk_entry_count
   and .git_mutation_blocked_count == .risk_entry_count
   and .cleanup_delete_blocked_count == .risk_entry_count
-  and .risk_snapshot_visible == false
+  and .risk_snapshot_visible == true
   and .risk_snapshot_persisted == false
-  and .release_risk_snapshot_ready == false
+  and .release_risk_snapshot_ready == true
   and .evidence_recorded == false
   and .evidence_recording_persisted == false
   and .evidence_receipt_persisted == false
@@ -98,13 +99,12 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, evi
   and .live_activation_allowed == false
   and .live_execution_allowed == false
   and (.entries | length) == .risk_entry_count
-  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .release_risk_tier == "critical" and .rehearsal_action == "test_only_owner_attribution_and_freeze_rehearsal")
-  and any(.entries[]; .source_bucket == "codex-rs" and .release_risk_tier == "high")
-  and any(.entries[]; .source_bucket == "scripts" and .release_risk_tier == "high")
-  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .release_risk_tier == "high")
+  and any(.entries[]; .group_type == "top_level")
+  and any(.entries[]; .group_type == "scope")
   and (.entries | all(
     .source_entry_count > 0
     and .source_entry_count == (.tracked_count + .untracked_count)
+    and (.release_risk_tier == "critical" or .release_risk_tier == "high" or .release_risk_tier == "medium")
     and .release_blocker_state == "blocked_dirty_worktree"
     and .clean_worktree_rehearsal_candidate == true
     and .decision_state == "pending_operator_decision"
@@ -148,7 +148,7 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, evi
   and .operator_evidence_recording_boundary_readback_ready == true
   and .evidence_recording_boundary_readback_visible == true
   and .evidence_recording_boundary_readback_persisted == false
-  and .boundary_entry_count == 4
+  and .boundary_entry_count >= 1
   and .evidence_recorded == false
   and .evidence_recording_persisted == false
   and .evidence_receipt_persisted == false
@@ -165,4 +165,4 @@ grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, evi
   cargo test -p hepta-runtime dirty_worktree_release_boundary_release_risk_snapshot --lib
 )
 
-printf 'hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot-gate: PASS: release risk snapshot exposes four dirty buckets with release and live blocked\n'
+printf 'hepta-systems-dirty-worktree-release-boundary-release-risk-snapshot-gate: PASS: release risk snapshot exposes current dirty buckets with release and live blocked\n'

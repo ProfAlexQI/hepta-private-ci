@@ -21,6 +21,12 @@ pub struct WorkflowTemporalLiteDeterministicReplayValidatorLocalPersistenceReadb
     pub source_minimal_local_persistence_gate: &'static str,
     pub source_minimal_local_persistence_ready: bool,
     pub source_local_event_contract_count: usize,
+    pub source_append_only_event_store_interface_ready: bool,
+    pub source_event_store_interface_contract_count: usize,
+    pub source_sqlite_wal_backend_implements_interface: bool,
+    pub source_interface_append_count: usize,
+    pub source_interface_duplicate_denial_count: usize,
+    pub source_interface_replay_read_count: usize,
     pub replay_scope: &'static str,
     pub sqlite_readback_scope: &'static str,
     pub local_event_count: usize,
@@ -37,6 +43,7 @@ pub struct WorkflowTemporalLiteDeterministicReplayValidatorLocalPersistenceReadb
     pub local_tempdb_sqlite_read_covered_by_tests: bool,
     pub runtime_feature_gate_enabled: bool,
     pub replay_validator_materialized: bool,
+    pub replay_validator_derived_from_event_store_interface: bool,
     pub runtime_event_log_write_allowed: bool,
     pub runtime_sqlite_write_allowed: bool,
     pub runtime_store_persistence_allowed: bool,
@@ -158,7 +165,15 @@ pub fn workflow_temporal_lite_deterministic_replay_validator_local_persistence_r
         .iter()
         .filter(|entry| entry.rollback_anchor_replayed)
         .count();
+    let replay_validator_derived_from_event_store_interface = source
+        .append_only_event_store_interface_ready
+        && source.append_only_event_store_interface_contract_count == 3
+        && source.sqlite_wal_backend_implements_interface
+        && source.interface_append_count == 9
+        && source.interface_duplicate_denial_count == 9
+        && source.interface_replay_read_count == 9;
     let ready = source.minimal_local_persistence_ready
+        && replay_validator_derived_from_event_store_interface
         && source.local_event_contract_count == 9
         && source.local_tempdb_sqlite_write_covered_by_tests
         && !source.runtime_feature_gate_enabled
@@ -202,6 +217,15 @@ pub fn workflow_temporal_lite_deterministic_replay_validator_local_persistence_r
         source_minimal_local_persistence_gate: source.gate,
         source_minimal_local_persistence_ready: source.minimal_local_persistence_ready,
         source_local_event_contract_count: source.local_event_contract_count,
+        source_append_only_event_store_interface_ready: source
+            .append_only_event_store_interface_ready,
+        source_event_store_interface_contract_count: source
+            .append_only_event_store_interface_contract_count,
+        source_sqlite_wal_backend_implements_interface: source
+            .sqlite_wal_backend_implements_interface,
+        source_interface_append_count: source.interface_append_count,
+        source_interface_duplicate_denial_count: source.interface_duplicate_denial_count,
+        source_interface_replay_read_count: source.interface_replay_read_count,
         replay_scope: "local_persistence_readback_projection_no_replay_execution",
         sqlite_readback_scope: "local_tempdb_sqlite_wal_readback_test_covered_runtime_read_write_blocked",
         local_event_count: source.local_event_contract_count,
@@ -218,6 +242,7 @@ pub fn workflow_temporal_lite_deterministic_replay_validator_local_persistence_r
         local_tempdb_sqlite_read_covered_by_tests: true,
         runtime_feature_gate_enabled: false,
         replay_validator_materialized: ready,
+        replay_validator_derived_from_event_store_interface,
         runtime_event_log_write_allowed: false,
         runtime_sqlite_write_allowed: false,
         runtime_store_persistence_allowed: false,
@@ -480,6 +505,12 @@ mod tests {
         assert_eq!(report.status, "ready_blocked");
         assert!(report.source_minimal_local_persistence_ready);
         assert_eq!(report.source_local_event_contract_count, 9);
+        assert!(report.source_append_only_event_store_interface_ready);
+        assert_eq!(report.source_event_store_interface_contract_count, 3);
+        assert!(report.source_sqlite_wal_backend_implements_interface);
+        assert_eq!(report.source_interface_append_count, 9);
+        assert_eq!(report.source_interface_duplicate_denial_count, 9);
+        assert_eq!(report.source_interface_replay_read_count, 9);
         assert_eq!(report.local_event_count, 9);
         assert_eq!(report.replay_readback_projection_count, 9);
         assert_eq!(report.deterministic_order_count, 9);
@@ -492,6 +523,7 @@ mod tests {
         assert_eq!(report.rollback_anchor_readback_count, 9);
         assert!(report.local_tempdb_sqlite_read_covered_by_tests);
         assert!(report.replay_validator_materialized);
+        assert!(report.replay_validator_derived_from_event_store_interface);
         assert!(report.deterministic_replay_validator_local_persistence_readback_ready);
     }
 

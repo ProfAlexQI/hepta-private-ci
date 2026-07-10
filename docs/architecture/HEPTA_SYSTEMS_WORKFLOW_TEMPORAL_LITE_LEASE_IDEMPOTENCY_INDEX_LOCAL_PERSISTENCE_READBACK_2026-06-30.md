@@ -13,6 +13,13 @@ append-only `temporal_lite_events` history, project deterministic replay rows,
 project checkpoint/rollback anchors, and then project lease and idempotency
 index readback keys from those anchors.
 
+The lease and idempotency readback now carries the same single append-only event store interface provenance from the minimal local persistence source,
+through replay validation and checkpoint/rollback anchor readback. The source
+must report `source_append_only_event_store_interface_ready = true` and
+`checkpoint_anchors_derived_from_event_store_interface = true` before this
+slice can be ready. This is still readback-only; it does not acquire leases or
+write idempotency indexes.
+
 ## Source Boundary
 
 - Source report:
@@ -20,6 +27,10 @@ index readback keys from those anchors.
 - Source surface:
   `workflow_temporal_lite_checkpoint_and_rollback_anchor_local_persistence_readback`
 - Source entries: 9
+- Source interface:
+  `WorkflowTemporalLiteAppendOnlyEventStore`
+- Source interface provenance:
+  `source_append_only_event_store_interface_ready = true`
 - Source table:
   `temporal_lite_events`
 - Source scope:
@@ -57,6 +68,7 @@ Expected counts:
 - `idempotency_index_written_count = 0`
 - `idempotency_index_persisted_count = 0`
 - `lease_idempotency_mismatch_count = 0`
+- `lease_idempotency_derived_from_event_store_interface = true`
 
 ## Closed Boundary
 

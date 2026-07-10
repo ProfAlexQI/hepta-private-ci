@@ -75,7 +75,7 @@ jq -n \
     and $single_render_report.source_all_live_paths_blocked == true
     and $single_render_report.matrix_report_render_count == 1
     and $single_render_report.compact_cache_consumer_rewired == true
-    and $single_render_report.recommended_next_gate == "close_controlled_live_evidence_before_status_canary_start"
+    and $single_render_report.recommended_next_gate == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
     and $lib_export_present == true
     and $dashboard_gate_matrix_rerun_removed == true
     and $compact_projection_count == 4
@@ -123,9 +123,9 @@ jq -n \
       "live_execution_disabled"
     ],
     next_actions:[
-      "close_controlled_live_evidence_before_status_canary_start"
+      "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
     ],
-    recommended_next_gate:"close_controlled_live_evidence_before_status_canary_start",
+    recommended_next_gate:"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration",
     local_gate:$gate,
     architecture_note:$doc,
     side_effect_free:true,

@@ -72,10 +72,22 @@ grep -q 'does not open live execution' "$DOC" \
   and any(.capabilities[]; .id == "workflow_current_readback_receipt_tail" and .ready == true and .live_enabled == false)
   and any(.capabilities[]; .id == "workflow_temporal_lite_durable_store_adapter" and .ready == true and .live_enabled == false)
   and any(.capabilities[]; .id == "workflow_temporal_lite_append_only_event_store_minimal_local_persistence" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_positive_preconditions_readback_without_recording" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_readback_without_recording" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_readback_without_persistence" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_retention_replay_readback_without_persistence" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_positive_preconditions_readback_without_persistence" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_readback_without_persistence" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "close_controlled_live_evidence_before_status_canary_start_recording_denial_receipt_persistence_denial_terminal_no_persistence_readback" and .ready == true and .live_enabled == false)
+  and any(.capabilities[]; .id == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_preconditions_readback_without_registration" and .ready == true and .live_enabled == false)
+  and all(.capabilities[]; ((.id | startswith("hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial")) | not))
   and (.blockers | index("controlled_live_cutover_blocked_by_operator_approval_and_evidence")) != null
+  and (.blockers | index("read_only_status_tool_registration_denial_pending")) != null
   and (.blockers | index("live_and_public_ga_blocked_by_design")) != null
-  and (.next_actions | index("close_controlled_live_evidence_before_status_canary_start")) != null
-  and .next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+  and (.next_actions | index("hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration")) != null
+  and .next_migration_step == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
 ' >/dev/null
 
 printf 'hepta-systems-current-reality-capability-matrix-gate: PASS: current plugins/tools/workflow reality is self-consistent, blocked, and live paths stay closed\n'

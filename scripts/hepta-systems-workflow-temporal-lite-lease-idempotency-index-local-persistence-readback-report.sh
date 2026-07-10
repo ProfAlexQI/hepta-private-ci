@@ -103,6 +103,8 @@ jq -n \
   ($entries | map(select(.lease_idempotency_mismatch_detected == true)) | length) as $lease_idempotency_mismatch_count |
   ($source_report.checkpoint_and_rollback_anchor_local_persistence_readback_ready == true
     and $source_report.durable_anchor_pair_count == 9
+    and $source_report.source_append_only_event_store_interface_ready == true
+    and $source_report.checkpoint_anchors_derived_from_event_store_interface == true
     and $source_report.anchor_mismatch_count == 0
     and $source_report.local_tempdb_sqlite_read_covered_by_tests == true
     and $source_report.runtime_feature_gate_enabled == false
@@ -153,6 +155,8 @@ jq -n \
     source_checkpoint_rollback_gate:$source_report.gate,
     source_checkpoint_rollback_ready:$source_report.checkpoint_and_rollback_anchor_local_persistence_readback_ready,
     source_anchor_pair_count:$source_report.durable_anchor_pair_count,
+    source_append_only_event_store_interface_ready:$source_report.source_append_only_event_store_interface_ready,
+    source_checkpoint_anchors_derived_from_event_store_interface:$source_report.checkpoint_anchors_derived_from_event_store_interface,
     lib_export_present:$lib_export_present,
     reopened_sqlite_lease_test_present:$reopened_sqlite_lease_test_present,
     lease_scope:"local_persistence_lease_idempotency_readback_no_acquire_no_persistence",
@@ -172,6 +176,8 @@ jq -n \
     local_tempdb_sqlite_read_covered_by_tests:true,
     runtime_feature_gate_enabled:false,
     lease_idempotency_readback_materialized:$readback_ready,
+    lease_idempotency_derived_from_event_store_interface:($source_report.source_append_only_event_store_interface_ready == true
+      and $source_report.checkpoint_anchors_derived_from_event_store_interface == true),
     runtime_event_log_write_allowed:false,
     runtime_sqlite_write_allowed:false,
     runtime_store_persistence_allowed:false,

@@ -52,7 +52,7 @@ grep -q 'no approval request, approval acceptance, approval recording, evidence 
   and .source_matrix_capability_ready_count < .source_matrix_capability_count
   and .source_matrix_live_enabled_count == 0
   and .source_matrix_all_live_paths_blocked == true
-  and .source_matrix_next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+  and .source_matrix_next_migration_step == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
   and .source_kill_switch_boundary_readback_ready == true
   and .source_kill_switch_boundary_entry_count == 7
   and .source_kill_switch_boundary_ready_count == 7
@@ -147,7 +147,7 @@ grep -q 'no approval request, approval acceptance, approval recording, evidence 
   and .live_enabled_count == 0
   and .all_live_paths_blocked == true
   and .dashboard_ready == false
-  and .next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+  and .next_migration_step == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
   and .side_effect_free == true
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null

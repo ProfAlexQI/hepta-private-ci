@@ -87,6 +87,8 @@ jq -n \
   ($entries | map(select(.anchor_mismatch_detected == true)) | length) as $anchor_mismatch_count |
   ($source_report.deterministic_replay_validator_local_persistence_readback_ready == true
     and $source_report.replay_readback_projection_count == 9
+    and $source_report.source_append_only_event_store_interface_ready == true
+    and $source_report.replay_validator_derived_from_event_store_interface == true
     and $source_report.replay_mismatch_count == 0
     and $source_report.local_tempdb_sqlite_read_covered_by_tests == true
     and $source_report.runtime_feature_gate_enabled == false
@@ -129,6 +131,8 @@ jq -n \
     source_replay_validator_gate:$source_report.gate,
     source_replay_validator_ready:$source_report.deterministic_replay_validator_local_persistence_readback_ready,
     source_replay_projection_count:$source_report.replay_readback_projection_count,
+    source_append_only_event_store_interface_ready:$source_report.source_append_only_event_store_interface_ready,
+    source_replay_validator_derived_from_event_store_interface:$source_report.replay_validator_derived_from_event_store_interface,
     lib_export_present:$lib_export_present,
     reopened_sqlite_anchor_test_present:$reopened_sqlite_anchor_test_present,
     anchor_scope:"local_persistence_checkpoint_and_rollback_anchor_readback_no_writes",
@@ -144,6 +148,8 @@ jq -n \
     local_tempdb_sqlite_read_covered_by_tests:true,
     runtime_feature_gate_enabled:false,
     anchor_readback_materialized:$anchor_ready,
+    checkpoint_anchors_derived_from_event_store_interface:($source_report.source_append_only_event_store_interface_ready == true
+      and $source_report.replay_validator_derived_from_event_store_interface == true),
     runtime_event_log_write_allowed:false,
     runtime_sqlite_write_allowed:false,
     runtime_store_persistence_allowed:false,

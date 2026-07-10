@@ -21,6 +21,8 @@ pub struct WorkflowTemporalLiteEventLogSqliteAdapterLocalPersistenceReadbackRepo
     pub source_lease_idempotency_gate: &'static str,
     pub source_lease_idempotency_ready: bool,
     pub source_anchor_pair_count: usize,
+    pub source_append_only_event_store_interface_ready: bool,
+    pub source_lease_idempotency_derived_from_event_store_interface: bool,
     pub adapter_scope: &'static str,
     pub sqlite_readback_scope: &'static str,
     pub event_log_adapter_readback_count: usize,
@@ -38,6 +40,7 @@ pub struct WorkflowTemporalLiteEventLogSqliteAdapterLocalPersistenceReadbackRepo
     pub local_tempdb_sqlite_read_covered_by_tests: bool,
     pub runtime_feature_gate_enabled: bool,
     pub adapter_contract_readback_materialized: bool,
+    pub event_log_sqlite_adapter_derived_from_event_store_interface: bool,
     pub runtime_event_log_write_allowed: bool,
     pub runtime_sqlite_write_allowed: bool,
     pub runtime_store_persistence_allowed: bool,
@@ -177,7 +180,11 @@ pub fn workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readbac
         .iter()
         .filter(|entry| entry.adapter_mismatch_detected)
         .count();
+    let event_log_sqlite_adapter_derived_from_event_store_interface = source
+        .source_append_only_event_store_interface_ready
+        && source.lease_idempotency_derived_from_event_store_interface;
     let ready = source.lease_idempotency_index_local_persistence_readback_ready
+        && event_log_sqlite_adapter_derived_from_event_store_interface
         && source.source_anchor_pair_count == 9
         && source.lease_readback_count == 9
         && source.idempotency_index_readback_count == 9
@@ -234,6 +241,10 @@ pub fn workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readbac
         source_lease_idempotency_ready: source
             .lease_idempotency_index_local_persistence_readback_ready,
         source_anchor_pair_count: source.source_anchor_pair_count,
+        source_append_only_event_store_interface_ready: source
+            .source_append_only_event_store_interface_ready,
+        source_lease_idempotency_derived_from_event_store_interface: source
+            .lease_idempotency_derived_from_event_store_interface,
         adapter_scope: "local_persistence_event_log_sqlite_adapter_readback_no_runtime_writes",
         sqlite_readback_scope: source.sqlite_readback_scope,
         event_log_adapter_readback_count,
@@ -251,6 +262,7 @@ pub fn workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readbac
         local_tempdb_sqlite_read_covered_by_tests: true,
         runtime_feature_gate_enabled: false,
         adapter_contract_readback_materialized: ready,
+        event_log_sqlite_adapter_derived_from_event_store_interface,
         runtime_event_log_write_allowed: false,
         runtime_sqlite_write_allowed: false,
         runtime_store_persistence_allowed: false,
@@ -432,6 +444,8 @@ mod tests {
         assert_eq!(report.status, "ready_blocked");
         assert!(report.source_lease_idempotency_ready);
         assert_eq!(report.source_anchor_pair_count, 9);
+        assert!(report.source_append_only_event_store_interface_ready);
+        assert!(report.source_lease_idempotency_derived_from_event_store_interface);
         assert_eq!(report.event_log_adapter_readback_count, 9);
         assert_eq!(report.sqlite_adapter_readback_count, 9);
         assert_eq!(report.event_log_record_key_count, 9);
@@ -444,6 +458,7 @@ mod tests {
         assert_eq!(report.adapter_persisted_count, 0);
         assert_eq!(report.adapter_mismatch_count, 0);
         assert!(report.adapter_contract_readback_materialized);
+        assert!(report.event_log_sqlite_adapter_derived_from_event_store_interface);
         assert!(report.event_log_sqlite_adapter_local_persistence_readback_ready);
     }
 

@@ -99,6 +99,8 @@ jq -n \
   ($entries | map(select(.sqlite_row_written == true)) | length) as $sqlite_write_count |
   ($entries | map(select(.projection_mismatch_detected == true)) | length) as $projection_mismatch_count |
   ($source_report.event_log_sqlite_adapter_local_persistence_readback_ready == true
+    and $source_report.source_append_only_event_store_interface_ready == true
+    and $source_report.event_log_sqlite_adapter_derived_from_event_store_interface == true
     and $source_report.source_anchor_pair_count == 9
     and $source_report.event_log_adapter_readback_count == 9
     and $source_report.sqlite_adapter_readback_count == 9
@@ -148,6 +150,8 @@ jq -n \
     source_adapter_gate:$source_report.gate,
     source_adapter_ready:$source_report.event_log_sqlite_adapter_local_persistence_readback_ready,
     source_adapter_entry_count:$source_report.source_anchor_pair_count,
+    source_append_only_event_store_interface_ready:$source_report.source_append_only_event_store_interface_ready,
+    source_event_log_sqlite_adapter_derived_from_event_store_interface:$source_report.event_log_sqlite_adapter_derived_from_event_store_interface,
     lib_export_present:$lib_export_present,
     reopened_sqlite_projection_test_present:$reopened_sqlite_projection_test_present,
     projection_scope:"local_persistence_work_graph_projection_readback_no_persistence",
@@ -167,6 +171,8 @@ jq -n \
     local_tempdb_sqlite_read_covered_by_tests:true,
     runtime_feature_gate_enabled:false,
     projection_contract_readback_materialized:$readback_ready,
+    work_graph_projection_derived_from_event_store_interface:($source_report.source_append_only_event_store_interface_ready == true
+      and $source_report.event_log_sqlite_adapter_derived_from_event_store_interface == true),
     work_graph_projection_write_allowed:false,
     work_graph_projection_persistence_allowed:false,
     runtime_event_log_write_allowed:false,

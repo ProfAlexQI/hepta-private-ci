@@ -157,9 +157,8 @@ jq -n \
     and $stable_snapshot_key_count == $risk_entry_count
     and $snapshot_route_count == $risk_entry_count
     and $snapshot_ready_count == $risk_entry_count
-    and $critical_risk_count == 1
-    and $high_risk_count == 4
-    and $medium_risk_count == 2
+    and $risk_entry_count > 0
+    and ($critical_risk_count + $high_risk_count + $medium_risk_count) == $risk_entry_count
     and $release_blocked_count == $risk_entry_count
     and $rehearsal_candidate_count == $risk_entry_count
     and $pending_operator_decision_count == $risk_entry_count

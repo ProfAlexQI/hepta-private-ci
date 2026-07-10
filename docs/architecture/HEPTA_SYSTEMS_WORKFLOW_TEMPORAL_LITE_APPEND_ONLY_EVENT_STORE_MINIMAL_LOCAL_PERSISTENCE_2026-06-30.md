@@ -13,6 +13,15 @@ durable store fixture events, deny duplicate idempotency keys, reopen the
 database, and verify deterministic replay readback from the stored event
 history.
 
+This slice now also exposes a single append-only event store interface:
+`WorkflowTemporalLiteAppendOnlyEventStore`. The SQLite/WAL test backend
+implements that interface for append, replay readback, and journal-mode
+inspection, so later lease, idempotency, checkpoint, replay, and WorkGraph
+projection readbacks can depend on the interface instead of binding directly to
+one concrete store. The interface is still test/local only; it does not open
+runtime event-log writes, runtime SQLite writes, WAL writes, workflow execution,
+or live execution.
+
 ## Source Boundary
 
 - Source report:
@@ -58,6 +67,10 @@ sequence numbers.
 ## Expected Counts
 
 - `local_event_contract_count = 9`
+- `append_only_event_store_interface_contract_count = 3`
+- `interface_append_count = 9`
+- `interface_duplicate_denial_count = 9`
+- `interface_replay_read_count = 9`
 - `append_attempt_count = 18`
 - `accepted_append_count = 9`
 - `duplicate_append_denial_count = 9`

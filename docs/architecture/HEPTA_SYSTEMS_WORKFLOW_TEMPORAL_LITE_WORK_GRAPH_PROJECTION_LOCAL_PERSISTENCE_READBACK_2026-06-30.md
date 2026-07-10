@@ -6,6 +6,9 @@ It consumes the SQLite/WAL-backed event-log/SQLite adapter readback and projects
 WorkGraph node, event-edge, state-edge, projection key, and checksum readback
 rows while keeping WorkGraph projection persistence, runtime writes, canary, and
 live paths closed.
+It now requires the same single append-only event store interface provenance
+that starts at the minimal local persistence backend and flows through replay,
+checkpoint/rollback, lease/idempotency, and the event-log/SQLite adapter.
 
 This is a local persistence WorkGraph projection readback. The Rust tests write
 only to a temporary SQLite database, reopen that database, read the append-only
@@ -21,6 +24,10 @@ adapter rows.
 - Source surface:
   `workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readback`
 - Source entries: 9
+- Source interface provenance:
+  `source_append_only_event_store_interface_ready = true`
+- Source adapter derivation:
+  `source_event_log_sqlite_adapter_derived_from_event_store_interface = true`
 - Source table:
   `temporal_lite_events`
 - Source scope:
@@ -54,6 +61,7 @@ Expected counts:
 - `event_log_write_count = 0`
 - `sqlite_write_count = 0`
 - `projection_mismatch_count = 0`
+- `work_graph_projection_derived_from_event_store_interface = true`
 
 ## Closed Boundary
 

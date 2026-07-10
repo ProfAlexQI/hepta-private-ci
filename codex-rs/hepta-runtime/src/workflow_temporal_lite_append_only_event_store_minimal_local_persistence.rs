@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::path::Path;
 
 use serde::Serialize;
@@ -36,6 +37,12 @@ pub struct WorkflowTemporalLiteAppendOnlyEventStoreMinimalLocalPersistenceReport
     pub wal_mode_required: bool,
     pub wal_mode_test_covered: bool,
     pub local_tempdb_persistence_test_covered: bool,
+    pub append_only_event_store_interface_ready: bool,
+    pub append_only_event_store_interface_contract_count: usize,
+    pub sqlite_wal_backend_implements_interface: bool,
+    pub interface_append_count: usize,
+    pub interface_duplicate_denial_count: usize,
+    pub interface_replay_read_count: usize,
     pub accepted_append_count: usize,
     pub duplicate_append_denial_count: usize,
     pub append_only_sequence_count: usize,
@@ -156,6 +163,19 @@ pub struct WorkflowTemporalLiteMinimalLocalEventStore {
     pool: SqlitePool,
 }
 
+pub trait WorkflowTemporalLiteAppendOnlyEventStore {
+    fn append_event<'a>(
+        &'a self,
+        event: &'a WorkflowTemporalLiteMinimalLocalEvent,
+    ) -> impl Future<Output = Result<WorkflowTemporalLiteMinimalLocalAppendResult, sqlx::Error>> + 'a;
+
+    fn read_events(
+        &self,
+    ) -> impl Future<Output = Result<Vec<WorkflowTemporalLiteMinimalLocalStoredEvent>, sqlx::Error>> + '_;
+
+    fn journal_mode(&self) -> impl Future<Output = Result<String, sqlx::Error>> + '_;
+}
+
 pub fn hepta_workflow_temporal_lite_append_only_event_store_minimal_local_persistence_report()
 -> WorkflowTemporalLiteAppendOnlyEventStoreMinimalLocalPersistenceReport {
     let source = hepta_workflow_temporal_lite_append_only_event_store_test_implementation_report();
@@ -195,6 +215,23 @@ pub fn workflow_temporal_lite_append_only_event_store_minimal_local_persistence_
         .iter()
         .filter(|entry| entry.rollback_anchor_validated)
         .count();
+    let append_only_event_store_interface_contract_count = 3;
+    let append_only_event_store_interface_ready = entries.len() == source.test_event_count
+        && append_only_event_store_interface_contract_count == 3
+        && entries.iter().all(|entry| {
+            entry.local_tempdb_persistence_test_covered
+                && entry.append_only_order_validated
+                && entry.idempotency_unique_index_validated
+                && entry.duplicate_append_denied
+                && entry.deterministic_replay_digest_validated
+                && !entry.runtime_event_log_write_allowed
+                && !entry.runtime_sqlite_write_allowed
+                && !entry.runtime_store_persistence_allowed
+                && !entry.workflow_execution_allowed
+                && !entry.replay_execution_allowed
+                && !entry.rollback_execution_allowed
+                && !entry.live_execution_allowed
+        });
     let minimal_local_persistence_ready = source.append_only_event_store_test_ready
         && source.test_event_count == 9
         && !source.runtime_feature_gate_enabled
@@ -210,6 +247,7 @@ pub fn workflow_temporal_lite_append_only_event_store_minimal_local_persistence_
         && duplicate_append_denial_count == entries.len()
         && append_only_sequence_count == entries.len()
         && idempotency_unique_index_entry_count == entries.len()
+        && append_only_event_store_interface_ready
         && checkpoint_anchor_count == entries.len()
         && replay_digest_count == entries.len()
         && rollback_anchor_count == entries.len()
@@ -249,6 +287,12 @@ pub fn workflow_temporal_lite_append_only_event_store_minimal_local_persistence_
         wal_mode_required: true,
         wal_mode_test_covered: true,
         local_tempdb_persistence_test_covered: true,
+        append_only_event_store_interface_ready,
+        append_only_event_store_interface_contract_count,
+        sqlite_wal_backend_implements_interface: true,
+        interface_append_count: accepted_append_count,
+        interface_duplicate_denial_count: duplicate_append_denial_count,
+        interface_replay_read_count: replay_digest_count,
         accepted_append_count,
         duplicate_append_denial_count,
         append_only_sequence_count,
@@ -516,6 +560,46 @@ impl WorkflowTemporalLiteMinimalLocalEventStore {
     }
 }
 
+impl WorkflowTemporalLiteAppendOnlyEventStore for WorkflowTemporalLiteMinimalLocalEventStore {
+    fn append_event<'a>(
+        &'a self,
+        event: &'a WorkflowTemporalLiteMinimalLocalEvent,
+    ) -> impl Future<Output = Result<WorkflowTemporalLiteMinimalLocalAppendResult, sqlx::Error>> + 'a
+    {
+        async move { WorkflowTemporalLiteMinimalLocalEventStore::append_event(self, event).await }
+    }
+
+    fn read_events(
+        &self,
+    ) -> impl Future<Output = Result<Vec<WorkflowTemporalLiteMinimalLocalStoredEvent>, sqlx::Error>> + '_
+    {
+        async move { WorkflowTemporalLiteMinimalLocalEventStore::read_events(self).await }
+    }
+
+    fn journal_mode(&self) -> impl Future<Output = Result<String, sqlx::Error>> + '_ {
+        async move { WorkflowTemporalLiteMinimalLocalEventStore::journal_mode(self).await }
+    }
+}
+
+pub async fn workflow_temporal_lite_append_fixture_events_through_event_store_interface<
+    Store: WorkflowTemporalLiteAppendOnlyEventStore,
+>(
+    store: &Store,
+    events: &[WorkflowTemporalLiteMinimalLocalEvent],
+) -> Result<Vec<WorkflowTemporalLiteMinimalLocalStoredEvent>, sqlx::Error> {
+    for event in events {
+        let append = store.append_event(event).await?;
+        let duplicate = store.append_event(event).await?;
+        debug_assert!(append.accepted);
+        debug_assert!(!append.duplicate_denied);
+        debug_assert!(!duplicate.accepted);
+        debug_assert!(duplicate.duplicate_denied);
+        debug_assert_eq!(append.sequence, duplicate.sequence);
+    }
+
+    store.read_events().await
+}
+
 impl WorkflowTemporalLiteAppendOnlyEventStoreMinimalLocalPersistenceSideEffects {
     pub const fn none() -> Self {
         Self {
@@ -560,6 +644,12 @@ mod tests {
         assert!(report.wal_mode_required);
         assert!(report.wal_mode_test_covered);
         assert!(report.local_tempdb_persistence_test_covered);
+        assert!(report.append_only_event_store_interface_ready);
+        assert_eq!(report.append_only_event_store_interface_contract_count, 3);
+        assert!(report.sqlite_wal_backend_implements_interface);
+        assert_eq!(report.interface_append_count, 9);
+        assert_eq!(report.interface_duplicate_denial_count, 9);
+        assert_eq!(report.interface_replay_read_count, 9);
         assert_eq!(report.accepted_append_count, 9);
         assert_eq!(report.duplicate_append_denial_count, 9);
         assert_eq!(report.idempotency_unique_index_entry_count, 9);
@@ -567,6 +657,37 @@ mod tests {
         assert!(report.minimal_local_persistence_ready);
         assert!(!report.runtime_sqlite_write_allowed);
         assert!(report.local_tempdb_sqlite_write_covered_by_tests);
+    }
+
+    #[tokio::test]
+    async fn minimal_local_event_store_interface_appends_replays_and_denies_duplicates() {
+        let tempdir = tempfile::tempdir().expect("tempdir should be created");
+        let db_path = tempdir.path().join("temporal-lite-interface.sqlite3");
+        let store = WorkflowTemporalLiteMinimalLocalEventStore::open(&db_path)
+            .await
+            .expect("sqlite store should open");
+        let source =
+            hepta_workflow_temporal_lite_append_only_event_store_test_implementation_report();
+        let events = workflow_temporal_lite_minimal_local_events_from_test_implementation(&source);
+
+        let stored = workflow_temporal_lite_append_fixture_events_through_event_store_interface(
+            &store, &events,
+        )
+        .await
+        .expect("interface append and replay should succeed");
+
+        assert_eq!(stored.len(), 9);
+        assert!(
+            stored
+                .windows(2)
+                .all(|window| window[0].sequence < window[1].sequence)
+        );
+        assert_eq!(
+            WorkflowTemporalLiteAppendOnlyEventStore::journal_mode(&store)
+                .await
+                .expect("journal mode should read through interface"),
+            "wal"
+        );
     }
 
     #[tokio::test]

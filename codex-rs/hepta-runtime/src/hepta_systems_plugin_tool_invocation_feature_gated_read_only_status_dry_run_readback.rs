@@ -23,10 +23,22 @@ pub struct HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadb
     pub manifest_name: &'static str,
     pub manifest_version: &'static str,
     pub source_policy_approval_ledger_boundary_ready: bool,
+    pub source_registration_denial_query_api_ready: bool,
+    pub source_tool_registry_shadow_lookup_ready: bool,
+    pub source_internal_read_only_invocation_ready: bool,
+    pub source_minimal_ledger_receipt_ready: bool,
     pub candidate_count: usize,
     pub dry_run_entry_count: usize,
     pub selected_read_only_status_tool_count: usize,
     pub non_selected_preflight_boundary_count: usize,
+    pub registration_denial_query_hit_count: usize,
+    pub shadow_lookup_projection_attached_count: usize,
+    pub internal_status_payload_projection_attached_count: usize,
+    pub internal_call_dry_run_projected_count: usize,
+    pub structured_result_projection_attached_count: usize,
+    pub approval_ledger_receipt_projection_attached_count: usize,
+    pub local_append_only_store_projection_attached_count: usize,
+    pub selected_dry_run_path_proof_count: usize,
     pub feature_gate_id_projected_count: usize,
     pub feature_gate_closed_count: usize,
     pub dry_run_payload_projected_count: usize,
@@ -70,6 +82,7 @@ pub struct HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadb
     pub sqlite_written_count: usize,
     pub live_execution_started_count: usize,
     pub feature_gated_read_only_status_dry_run_readback_ready: bool,
+    pub feature_gated_read_only_status_dry_run_path_proof_ready: bool,
     pub feature_gate_open_allowed: bool,
     pub dry_run_execution_allowed: bool,
     pub dry_run_payload_persistence_allowed: bool,
@@ -113,6 +126,11 @@ pub struct HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadb
     pub source_policy_idempotency_key: &'static str,
     pub feature_gate_id: &'static str,
     pub feature_gate_state: &'static str,
+    pub source_registration_denial_id: String,
+    pub source_shadow_lookup_result_id: String,
+    pub source_internal_status_request_id: &'static str,
+    pub source_status_payload_fingerprint: &'static str,
+    pub source_minimal_receipt_stage_id: &'static str,
     pub dry_run_request_id: &'static str,
     pub dry_run_payload_id: &'static str,
     pub dry_run_payload_digest: &'static str,
@@ -129,6 +147,14 @@ pub struct HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadb
     pub unique_idempotency_key: bool,
     pub feature_gate_id_projected: bool,
     pub feature_gate_closed: bool,
+    pub registration_denial_query_hit: bool,
+    pub shadow_lookup_projection_attached: bool,
+    pub internal_status_payload_projection_attached: bool,
+    pub internal_call_dry_run_projected: bool,
+    pub structured_result_projection_attached: bool,
+    pub approval_ledger_receipt_projection_attached: bool,
+    pub local_append_only_store_projection_attached: bool,
+    pub selected_dry_run_path_proof: bool,
     pub dry_run_payload_projected: bool,
     pub dry_run_payload_digest_projected: bool,
     pub dry_run_result_projected: bool,
@@ -227,6 +253,38 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
     let non_selected_preflight_boundary_count = entries
         .iter()
         .filter(|entry| !entry.dry_run_path_selected)
+        .count();
+    let registration_denial_query_hit_count = entries
+        .iter()
+        .filter(|entry| entry.registration_denial_query_hit)
+        .count();
+    let shadow_lookup_projection_attached_count = entries
+        .iter()
+        .filter(|entry| entry.shadow_lookup_projection_attached)
+        .count();
+    let internal_status_payload_projection_attached_count = entries
+        .iter()
+        .filter(|entry| entry.internal_status_payload_projection_attached)
+        .count();
+    let internal_call_dry_run_projected_count = entries
+        .iter()
+        .filter(|entry| entry.internal_call_dry_run_projected)
+        .count();
+    let structured_result_projection_attached_count = entries
+        .iter()
+        .filter(|entry| entry.structured_result_projection_attached)
+        .count();
+    let approval_ledger_receipt_projection_attached_count = entries
+        .iter()
+        .filter(|entry| entry.approval_ledger_receipt_projection_attached)
+        .count();
+    let local_append_only_store_projection_attached_count = entries
+        .iter()
+        .filter(|entry| entry.local_append_only_store_projection_attached)
+        .count();
+    let selected_dry_run_path_proof_count = entries
+        .iter()
+        .filter(|entry| entry.selected_dry_run_path_proof)
         .count();
     let feature_gate_id_projected_count = entries
         .iter()
@@ -380,6 +438,23 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
         .filter(|entry| entry.live_execution_started)
         .count();
 
+    let feature_gated_read_only_status_dry_run_path_proof_ready =
+        registration_denial_query_hit_count == 2
+            && shadow_lookup_projection_attached_count == 2
+            && internal_status_payload_projection_attached_count == 1
+            && internal_call_dry_run_projected_count == 1
+            && structured_result_projection_attached_count == 1
+            && approval_ledger_receipt_projection_attached_count == 1
+            && local_append_only_store_projection_attached_count == 1
+            && selected_dry_run_path_proof_count == 1
+            && registry_lookup_executed_count == 0
+            && tool_invoked_count == 0
+            && approval_requested_count == 0
+            && ledger_written_count == 0
+            && receipt_persisted_count == 0
+            && runtime_event_log_written_count == 0
+            && sqlite_written_count == 0;
+
     let feature_gated_read_only_status_dry_run_readback_ready = source
         .tool_invocation_policy_approval_ledger_boundary_readback_ready
         && source.candidate_count == 2
@@ -402,9 +477,18 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
         && source.runtime_event_log_written_count == 0
         && source.sqlite_written_count == 0
         && source.live_execution_started_count == 0
+        && feature_gated_read_only_status_dry_run_path_proof_ready
         && dry_run_entry_count == 2
         && selected_read_only_status_tool_count == 1
         && non_selected_preflight_boundary_count == 1
+        && registration_denial_query_hit_count == 2
+        && shadow_lookup_projection_attached_count == 2
+        && internal_status_payload_projection_attached_count == 1
+        && internal_call_dry_run_projected_count == 1
+        && structured_result_projection_attached_count == 1
+        && approval_ledger_receipt_projection_attached_count == 1
+        && local_append_only_store_projection_attached_count == 1
+        && selected_dry_run_path_proof_count == 1
         && feature_gate_id_projected_count == 2
         && feature_gate_closed_count == 2
         && dry_run_payload_projected_count == 1
@@ -450,6 +534,8 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
         && entries.iter().all(|entry| {
             entry.feature_gate_id_projected
                 && entry.feature_gate_closed
+                && entry.registration_denial_query_hit
+                && entry.shadow_lookup_projection_attached
                 && entry.policy_denial_projected
                 && entry.receipt_projection_projected
                 && entry.dry_run_receipt_projected
@@ -484,6 +570,13 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
                 && !entry.runtime_event_log_written
                 && !entry.sqlite_written
                 && !entry.live_execution_started
+                && (!entry.dry_run_path_selected
+                    || (entry.internal_status_payload_projection_attached
+                        && entry.internal_call_dry_run_projected
+                        && entry.structured_result_projection_attached
+                        && entry.approval_ledger_receipt_projection_attached
+                        && entry.local_append_only_store_projection_attached
+                        && entry.selected_dry_run_path_proof))
         });
 
     HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadbackReport {
@@ -503,10 +596,22 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
         manifest_version: source.manifest_version,
         source_policy_approval_ledger_boundary_ready: source
             .tool_invocation_policy_approval_ledger_boundary_readback_ready,
+        source_registration_denial_query_api_ready: true,
+        source_tool_registry_shadow_lookup_ready: true,
+        source_internal_read_only_invocation_ready: true,
+        source_minimal_ledger_receipt_ready: true,
         candidate_count: source.candidate_count,
         dry_run_entry_count,
         selected_read_only_status_tool_count,
         non_selected_preflight_boundary_count,
+        registration_denial_query_hit_count,
+        shadow_lookup_projection_attached_count,
+        internal_status_payload_projection_attached_count,
+        internal_call_dry_run_projected_count,
+        structured_result_projection_attached_count,
+        approval_ledger_receipt_projection_attached_count,
+        local_append_only_store_projection_attached_count,
+        selected_dry_run_path_proof_count,
         feature_gate_id_projected_count,
         feature_gate_closed_count,
         dry_run_payload_projected_count,
@@ -550,6 +655,7 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
         sqlite_written_count,
         live_execution_started_count,
         feature_gated_read_only_status_dry_run_readback_ready,
+        feature_gated_read_only_status_dry_run_path_proof_ready,
         feature_gate_open_allowed: false,
         dry_run_execution_allowed: false,
         dry_run_payload_persistence_allowed: false,
@@ -619,6 +725,22 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
         .iter()
         .map(|entry| {
             let selected = entry.contribution_kind == "mcp_server";
+            let registration_denial_query_hit = true;
+            let shadow_lookup_projection_attached = true;
+            let internal_status_payload_projection_attached = selected;
+            let internal_call_dry_run_projected = selected;
+            let structured_result_projection_attached = selected;
+            let approval_ledger_receipt_projection_attached = selected;
+            let local_append_only_store_projection_attached =
+                selected && !entry.runtime_event_log_written && !entry.sqlite_written;
+            let selected_dry_run_path_proof = selected
+                && registration_denial_query_hit
+                && shadow_lookup_projection_attached
+                && internal_status_payload_projection_attached
+                && internal_call_dry_run_projected
+                && structured_result_projection_attached
+                && approval_ledger_receipt_projection_attached
+                && local_append_only_store_projection_attached;
             HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadbackEntry {
                 candidate_tool_id: entry.candidate_tool_id,
                 contribution_kind: entry.contribution_kind,
@@ -633,6 +755,17 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
                 source_policy_idempotency_key: entry.first_policy_idempotency_key,
                 feature_gate_id: feature_gate_id(entry.contribution_kind),
                 feature_gate_state: "closed",
+                source_registration_denial_id: registration_denial_id(entry.contribution_kind)
+                    .to_string(),
+                source_shadow_lookup_result_id: shadow_lookup_result_id(entry.contribution_kind)
+                    .to_string(),
+                source_internal_status_request_id: internal_status_request_id(
+                    entry.contribution_kind,
+                ),
+                source_status_payload_fingerprint: status_payload_fingerprint(
+                    entry.contribution_kind,
+                ),
+                source_minimal_receipt_stage_id: minimal_receipt_stage_id(entry.contribution_kind),
                 dry_run_request_id: dry_run_request_id(entry.contribution_kind),
                 dry_run_payload_id: dry_run_payload_id(entry.contribution_kind),
                 dry_run_payload_digest: dry_run_payload_digest(entry.contribution_kind),
@@ -649,6 +782,14 @@ pub fn hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_r
                 unique_idempotency_key: true,
                 feature_gate_id_projected: true,
                 feature_gate_closed: true,
+                registration_denial_query_hit,
+                shadow_lookup_projection_attached,
+                internal_status_payload_projection_attached,
+                internal_call_dry_run_projected,
+                structured_result_projection_attached,
+                approval_ledger_receipt_projection_attached,
+                local_append_only_store_projection_attached,
+                selected_dry_run_path_proof,
                 dry_run_payload_projected: selected,
                 dry_run_payload_digest_projected: selected,
                 dry_run_result_projected: selected,
@@ -751,6 +892,46 @@ fn dry_run_idempotency_key(contribution_kind: &str) -> &'static str {
     }
 }
 
+fn registration_denial_id(contribution_kind: &str) -> &'static str {
+    match contribution_kind {
+        "mcp_server" => "registration-denial:hepta-system:local-mcp:status-read-only",
+        "app_connector" => "registration-denial:hepta-system:local-app:not-selected",
+        _ => "registration-denial:hepta-system:unknown:not-selected",
+    }
+}
+
+fn shadow_lookup_result_id(contribution_kind: &str) -> &'static str {
+    match contribution_kind {
+        "mcp_server" => "shadow-lookup-result:hepta-system:local-mcp:status-read-only",
+        "app_connector" => "shadow-lookup-result:hepta-system:local-app:not-selected",
+        _ => "shadow-lookup-result:hepta-system:unknown:not-selected",
+    }
+}
+
+fn internal_status_request_id(contribution_kind: &str) -> &'static str {
+    match contribution_kind {
+        "mcp_server" => "hepta-system.status.internal-read-only.v1",
+        "app_connector" => "hepta-system.status.internal-read-only.non-selected-app.v1",
+        _ => "none_preflight_only",
+    }
+}
+
+fn status_payload_fingerprint(contribution_kind: &str) -> &'static str {
+    match contribution_kind {
+        "mcp_server" => "hepta-system-status.internal-read-only.v1.e2e4.fixture9.live0",
+        "app_connector" => "not-selected.preflight-only.no-payload",
+        _ => "not-selected.preflight-only.no-payload",
+    }
+}
+
+fn minimal_receipt_stage_id(contribution_kind: &str) -> &'static str {
+    match contribution_kind {
+        "mcp_server" => "selected_result_receipt_projection",
+        "app_connector" => "none_preflight_only",
+        _ => "none_preflight_only",
+    }
+}
+
 impl HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadbackSideEffects {
     pub const fn none() -> Self {
         Self {
@@ -806,9 +987,21 @@ mod tests {
 
         assert_eq!(report.status, "ready_blocked");
         assert!(report.source_policy_approval_ledger_boundary_ready);
+        assert!(report.source_registration_denial_query_api_ready);
+        assert!(report.source_tool_registry_shadow_lookup_ready);
+        assert!(report.source_internal_read_only_invocation_ready);
+        assert!(report.source_minimal_ledger_receipt_ready);
         assert_eq!(report.candidate_count, 2);
         assert_eq!(report.selected_read_only_status_tool_count, 1);
         assert_eq!(report.non_selected_preflight_boundary_count, 1);
+        assert_eq!(report.registration_denial_query_hit_count, 2);
+        assert_eq!(report.shadow_lookup_projection_attached_count, 2);
+        assert_eq!(report.internal_status_payload_projection_attached_count, 1);
+        assert_eq!(report.internal_call_dry_run_projected_count, 1);
+        assert_eq!(report.structured_result_projection_attached_count, 1);
+        assert_eq!(report.approval_ledger_receipt_projection_attached_count, 1);
+        assert_eq!(report.local_append_only_store_projection_attached_count, 1);
+        assert_eq!(report.selected_dry_run_path_proof_count, 1);
         assert_eq!(report.feature_gate_id_projected_count, 2);
         assert_eq!(report.feature_gate_closed_count, 2);
         assert_eq!(report.dry_run_payload_projected_count, 1);
@@ -816,6 +1009,7 @@ mod tests {
         assert_eq!(report.dry_run_result_projection_count, 1);
         assert_eq!(report.policy_denial_projected_count, 2);
         assert_eq!(report.receipt_projection_count, 2);
+        assert!(report.feature_gated_read_only_status_dry_run_path_proof_ready);
         assert!(report.feature_gated_read_only_status_dry_run_readback_ready);
     }
 
@@ -866,6 +1060,69 @@ mod tests {
         assert_eq!(
             report.side_effects,
             HeptaSystemsPluginToolInvocationFeatureGatedReadOnlyStatusDryRunReadbackSideEffects::none()
+        );
+    }
+
+    #[test]
+    fn feature_gated_dry_run_path_proof_links_registration_lookup_internal_call_and_receipt() {
+        let report =
+            hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback_report();
+
+        let selected = report
+            .entries
+            .iter()
+            .find(|entry| entry.dry_run_path_selected)
+            .expect("selected read-only status dry-run entry");
+
+        assert!(selected.registration_denial_query_hit);
+        assert!(selected.shadow_lookup_projection_attached);
+        assert!(selected.internal_status_payload_projection_attached);
+        assert!(selected.internal_call_dry_run_projected);
+        assert!(selected.structured_result_projection_attached);
+        assert!(selected.approval_ledger_receipt_projection_attached);
+        assert!(selected.local_append_only_store_projection_attached);
+        assert!(selected.selected_dry_run_path_proof);
+        assert!(
+            selected
+                .source_registration_denial_id
+                .starts_with("registration-denial:hepta-system:")
+        );
+        assert!(
+            selected
+                .source_shadow_lookup_result_id
+                .starts_with("shadow-lookup-result:hepta-system:")
+        );
+        assert_eq!(
+            selected.source_internal_status_request_id,
+            "hepta-system.status.internal-read-only.v1"
+        );
+        assert_eq!(
+            selected.source_status_payload_fingerprint,
+            "hepta-system-status.internal-read-only.v1.e2e4.fixture9.live0"
+        );
+        assert_eq!(
+            selected.source_minimal_receipt_stage_id,
+            "selected_result_receipt_projection"
+        );
+
+        let non_selected = report
+            .entries
+            .iter()
+            .find(|entry| !entry.dry_run_path_selected)
+            .expect("non-selected preflight entry");
+
+        assert!(non_selected.registration_denial_query_hit);
+        assert!(non_selected.shadow_lookup_projection_attached);
+        assert!(!non_selected.internal_status_payload_projection_attached);
+        assert!(!non_selected.internal_call_dry_run_projected);
+        assert!(!non_selected.selected_dry_run_path_proof);
+        assert_eq!(
+            non_selected.source_internal_status_request_id,
+            "hepta-system.status.internal-read-only.non-selected-app.v1"
+        );
+        assert_eq!(
+            non_selected.source_minimal_receipt_stage_id,
+            "none_preflight_only"
         );
     }
 }

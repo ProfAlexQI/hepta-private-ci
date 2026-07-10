@@ -21,6 +21,8 @@ pub struct WorkflowTemporalLiteLeaseIdempotencyIndexLocalPersistenceReadbackRepo
     pub source_checkpoint_rollback_gate: &'static str,
     pub source_checkpoint_rollback_ready: bool,
     pub source_anchor_pair_count: usize,
+    pub source_append_only_event_store_interface_ready: bool,
+    pub source_checkpoint_anchors_derived_from_event_store_interface: bool,
     pub lease_scope: &'static str,
     pub sqlite_readback_scope: &'static str,
     pub lease_readback_count: usize,
@@ -38,6 +40,7 @@ pub struct WorkflowTemporalLiteLeaseIdempotencyIndexLocalPersistenceReadbackRepo
     pub local_tempdb_sqlite_read_covered_by_tests: bool,
     pub runtime_feature_gate_enabled: bool,
     pub lease_idempotency_readback_materialized: bool,
+    pub lease_idempotency_derived_from_event_store_interface: bool,
     pub runtime_event_log_write_allowed: bool,
     pub runtime_sqlite_write_allowed: bool,
     pub runtime_store_persistence_allowed: bool,
@@ -175,7 +178,11 @@ pub fn workflow_temporal_lite_lease_idempotency_index_local_persistence_readback
         .iter()
         .filter(|entry| entry.lease_idempotency_mismatch_detected)
         .count();
+    let lease_idempotency_derived_from_event_store_interface = source
+        .source_append_only_event_store_interface_ready
+        && source.checkpoint_anchors_derived_from_event_store_interface;
     let ready = source.checkpoint_and_rollback_anchor_local_persistence_readback_ready
+        && lease_idempotency_derived_from_event_store_interface
         && source.durable_anchor_pair_count == 9
         && source.anchor_mismatch_count == 0
         && source.local_tempdb_sqlite_read_covered_by_tests
@@ -230,6 +237,10 @@ pub fn workflow_temporal_lite_lease_idempotency_index_local_persistence_readback
         source_checkpoint_rollback_ready: source
             .checkpoint_and_rollback_anchor_local_persistence_readback_ready,
         source_anchor_pair_count: source.durable_anchor_pair_count,
+        source_append_only_event_store_interface_ready: source
+            .source_append_only_event_store_interface_ready,
+        source_checkpoint_anchors_derived_from_event_store_interface: source
+            .checkpoint_anchors_derived_from_event_store_interface,
         lease_scope: "local_persistence_lease_idempotency_readback_no_acquire_no_persistence",
         sqlite_readback_scope: source.sqlite_readback_scope,
         lease_readback_count,
@@ -247,6 +258,7 @@ pub fn workflow_temporal_lite_lease_idempotency_index_local_persistence_readback
         local_tempdb_sqlite_read_covered_by_tests: true,
         runtime_feature_gate_enabled: false,
         lease_idempotency_readback_materialized: ready,
+        lease_idempotency_derived_from_event_store_interface,
         runtime_event_log_write_allowed: false,
         runtime_sqlite_write_allowed: false,
         runtime_store_persistence_allowed: false,
@@ -452,6 +464,8 @@ mod tests {
         assert_eq!(report.status, "ready_blocked");
         assert!(report.source_checkpoint_rollback_ready);
         assert_eq!(report.source_anchor_pair_count, 9);
+        assert!(report.source_append_only_event_store_interface_ready);
+        assert!(report.source_checkpoint_anchors_derived_from_event_store_interface);
         assert_eq!(report.lease_readback_count, 9);
         assert_eq!(report.idempotency_index_readback_count, 9);
         assert_eq!(report.duplicate_guard_readback_count, 9);
@@ -464,6 +478,7 @@ mod tests {
         assert_eq!(report.idempotency_index_persisted_count, 0);
         assert_eq!(report.lease_idempotency_mismatch_count, 0);
         assert!(report.lease_idempotency_readback_materialized);
+        assert!(report.lease_idempotency_derived_from_event_store_interface);
         assert!(report.lease_idempotency_index_local_persistence_readback_ready);
     }
 

@@ -92,7 +92,7 @@ jq -n \
     and $matrix_report.live_enabled_count == 0
     and $matrix_report.all_live_paths_blocked == true
     and ($matrix_report.capabilities | any(.id == "hepta_systems_matrix_report_single_render_cache_boundary_readback" and .ready == true and .live_enabled == false))
-    and $matrix_report.next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+    and $matrix_report.next_migration_step == "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
     and $lib_export_present == true
     and $compact_cache_consumer_rewired == true
     and $dashboard_consumer_rewired == true
@@ -155,9 +155,9 @@ jq -n \
       "live_execution_disabled"
     ],
     next_actions:[
-      "close_controlled_live_evidence_before_status_canary_start"
+      "hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration"
     ],
-    recommended_next_gate:"close_controlled_live_evidence_before_status_canary_start",
+    recommended_next_gate:"hepta_systems_plugin_tool_invocation_read_only_status_tool_registration_denial_readback_without_registration",
     local_gate:$gate,
     architecture_note:$doc,
     side_effect_free:true,

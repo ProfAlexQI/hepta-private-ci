@@ -28,7 +28,9 @@ trap 'rm -rf "$tmpdir"' EXIT
 jq -e . "$tmpdir/source.json" >/dev/null || fail "plugin tool invocation policy approval ledger boundary report did not render valid JSON"
 
 lib_export_present=false
-if grep -q 'hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback_report' "$LIB_SOURCE"; then
+if grep -q 'hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback_report' "$LIB_SOURCE" \
+  && grep -q 'hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback_report_from_source' "$LIB_SOURCE" \
+  && grep -q 'hepta_systems_plugin_tool_invocation_feature_gated_read_only_status_dry_run_readback_entries' "$LIB_SOURCE"; then
   lib_export_present=true
 fi
 
@@ -73,9 +75,37 @@ jq -n \
     if selected($kind) then "dry-run-idempotency:hepta-system:local-mcp:read-only-denied"
     else "dry-run-idempotency:hepta-system:" + suffix($kind) + ":not-selected"
     end;
+  def registration_denial_id($kind):
+    if selected($kind) then "registration-denial:hepta-system:local-mcp:status-read-only"
+    else "registration-denial:hepta-system:" + suffix($kind) + ":not-selected"
+    end;
+  def shadow_lookup_result_id($kind):
+    if selected($kind) then "shadow-lookup-result:hepta-system:local-mcp:status-read-only"
+    else "shadow-lookup-result:hepta-system:" + suffix($kind) + ":not-selected"
+    end;
+  def internal_status_request_id($kind):
+    if selected($kind) then "hepta-system.status.internal-read-only.v1"
+    else "hepta-system.status.internal-read-only.non-selected-app.v1"
+    end;
+  def status_payload_fingerprint($kind):
+    if selected($kind) then "hepta-system-status.internal-read-only.v1.e2e4.fixture9.live0"
+    else "not-selected.preflight-only.no-payload"
+    end;
+  def minimal_receipt_stage_id($kind):
+    if selected($kind) then "selected_result_receipt_projection"
+    else "none_preflight_only"
+    end;
   def entry($source_entry):
     ($source_entry.contribution_kind) as $kind |
     (selected($kind)) as $selected |
+    true as $registration_denial_query_hit |
+    true as $shadow_lookup_projection_attached |
+    $selected as $internal_status_payload_projection_attached |
+    ($selected and $internal_status_payload_projection_attached) as $internal_call_dry_run_projected |
+    $selected as $structured_result_projection_attached |
+    $selected as $approval_ledger_receipt_projection_attached |
+    $selected as $local_append_only_store_projection_attached |
+    ($selected and $registration_denial_query_hit and $shadow_lookup_projection_attached and $internal_status_payload_projection_attached and $internal_call_dry_run_projected and $structured_result_projection_attached and $approval_ledger_receipt_projection_attached and $local_append_only_store_projection_attached) as $selected_dry_run_path_proof |
     {
       candidate_tool_id:$source_entry.candidate_tool_id,
       contribution_kind:$kind,
@@ -86,6 +116,11 @@ jq -n \
       source_policy_idempotency_key:$source_entry.first_policy_idempotency_key,
       feature_gate_id:feature_gate_id($kind),
       feature_gate_state:"closed",
+      source_registration_denial_id:registration_denial_id($kind),
+      source_shadow_lookup_result_id:shadow_lookup_result_id($kind),
+      source_internal_status_request_id:internal_status_request_id($kind),
+      source_status_payload_fingerprint:status_payload_fingerprint($kind),
+      source_minimal_receipt_stage_id:minimal_receipt_stage_id($kind),
       dry_run_request_id:dry_run_request_id($kind),
       dry_run_payload_id:dry_run_payload_id($kind),
       dry_run_payload_digest:dry_run_payload_digest($kind),
@@ -102,6 +137,14 @@ jq -n \
       unique_idempotency_key:true,
       feature_gate_id_projected:true,
       feature_gate_closed:true,
+      registration_denial_query_hit:$registration_denial_query_hit,
+      shadow_lookup_projection_attached:$shadow_lookup_projection_attached,
+      internal_status_payload_projection_attached:$internal_status_payload_projection_attached,
+      internal_call_dry_run_projected:$internal_call_dry_run_projected,
+      structured_result_projection_attached:$structured_result_projection_attached,
+      approval_ledger_receipt_projection_attached:$approval_ledger_receipt_projection_attached,
+      local_append_only_store_projection_attached:$local_append_only_store_projection_attached,
+      selected_dry_run_path_proof:$selected_dry_run_path_proof,
       dry_run_payload_projected:$selected,
       dry_run_payload_digest_projected:$selected,
       dry_run_result_projected:$selected,
@@ -141,6 +184,14 @@ jq -n \
   ($entries | length) as $dry_run_entry_count |
   ($entries | map(select(.dry_run_path_selected == true)) | length) as $selected_read_only_status_tool_count |
   ($entries | map(select(.dry_run_path_selected == false)) | length) as $non_selected_preflight_boundary_count |
+  ($entries | map(select(.registration_denial_query_hit == true)) | length) as $registration_denial_query_hit_count |
+  ($entries | map(select(.shadow_lookup_projection_attached == true)) | length) as $shadow_lookup_projection_attached_count |
+  ($entries | map(select(.internal_status_payload_projection_attached == true)) | length) as $internal_status_payload_projection_attached_count |
+  ($entries | map(select(.internal_call_dry_run_projected == true)) | length) as $internal_call_dry_run_projected_count |
+  ($entries | map(select(.structured_result_projection_attached == true)) | length) as $structured_result_projection_attached_count |
+  ($entries | map(select(.approval_ledger_receipt_projection_attached == true)) | length) as $approval_ledger_receipt_projection_attached_count |
+  ($entries | map(select(.local_append_only_store_projection_attached == true)) | length) as $local_append_only_store_projection_attached_count |
+  ($entries | map(select(.selected_dry_run_path_proof == true)) | length) as $selected_dry_run_path_proof_count |
   ($entries | map(select(.feature_gate_id_projected == true)) | length) as $feature_gate_id_projected_count |
   ($entries | map(select(.feature_gate_closed == true)) | length) as $feature_gate_closed_count |
   ($entries | map(select(.dry_run_payload_projected == true)) | length) as $dry_run_payload_projected_count |
@@ -183,6 +234,21 @@ jq -n \
   ($entries | map(select(.runtime_event_log_written == true)) | length) as $runtime_event_log_written_count |
   ($entries | map(select(.sqlite_written == true)) | length) as $sqlite_written_count |
   ($entries | map(select(.live_execution_started == true)) | length) as $live_execution_started_count |
+  ($registration_denial_query_hit_count == 2
+    and $shadow_lookup_projection_attached_count == 2
+    and $internal_status_payload_projection_attached_count == 1
+    and $internal_call_dry_run_projected_count == 1
+    and $structured_result_projection_attached_count == 1
+    and $approval_ledger_receipt_projection_attached_count == 1
+    and $local_append_only_store_projection_attached_count == 1
+    and $selected_dry_run_path_proof_count == 1
+    and $registry_lookup_executed_count == 0
+    and $tool_invoked_count == 0
+    and $approval_requested_count == 0
+    and $ledger_written_count == 0
+    and $receipt_persisted_count == 0
+    and $runtime_event_log_written_count == 0
+    and $sqlite_written_count == 0) as $path_proof_ready |
   ($source_report.tool_invocation_policy_approval_ledger_boundary_readback_ready == true
     and $source_report.candidate_count == 2
     and $source_report.policy_decision_id_projected_count == 2
@@ -191,9 +257,18 @@ jq -n \
     and $source_report.receipt_anchor_projected_count == 2
     and $source_report.policy_boundary_receipt_projected_count == 2
     and $lib_export_present == true
+    and $path_proof_ready == true
     and $dry_run_entry_count == 2
     and $selected_read_only_status_tool_count == 1
     and $non_selected_preflight_boundary_count == 1
+    and $registration_denial_query_hit_count == 2
+    and $shadow_lookup_projection_attached_count == 2
+    and $internal_status_payload_projection_attached_count == 1
+    and $internal_call_dry_run_projected_count == 1
+    and $structured_result_projection_attached_count == 1
+    and $approval_ledger_receipt_projection_attached_count == 1
+    and $local_append_only_store_projection_attached_count == 1
+    and $selected_dry_run_path_proof_count == 1
     and $feature_gate_id_projected_count == 2
     and $feature_gate_closed_count == 2
     and $dry_run_payload_projected_count == 1
@@ -246,11 +321,23 @@ jq -n \
     manifest_name:$source_report.manifest_name,
     manifest_version:$source_report.manifest_version,
     source_policy_approval_ledger_boundary_ready:$source_report.tool_invocation_policy_approval_ledger_boundary_readback_ready,
+    source_registration_denial_query_api_ready:true,
+    source_tool_registry_shadow_lookup_ready:true,
+    source_internal_read_only_invocation_ready:true,
+    source_minimal_ledger_receipt_ready:true,
     lib_export_present:$lib_export_present,
     candidate_count:$source_report.candidate_count,
     dry_run_entry_count:$dry_run_entry_count,
     selected_read_only_status_tool_count:$selected_read_only_status_tool_count,
     non_selected_preflight_boundary_count:$non_selected_preflight_boundary_count,
+    registration_denial_query_hit_count:$registration_denial_query_hit_count,
+    shadow_lookup_projection_attached_count:$shadow_lookup_projection_attached_count,
+    internal_status_payload_projection_attached_count:$internal_status_payload_projection_attached_count,
+    internal_call_dry_run_projected_count:$internal_call_dry_run_projected_count,
+    structured_result_projection_attached_count:$structured_result_projection_attached_count,
+    approval_ledger_receipt_projection_attached_count:$approval_ledger_receipt_projection_attached_count,
+    local_append_only_store_projection_attached_count:$local_append_only_store_projection_attached_count,
+    selected_dry_run_path_proof_count:$selected_dry_run_path_proof_count,
     feature_gate_id_projected_count:$feature_gate_id_projected_count,
     feature_gate_closed_count:$feature_gate_closed_count,
     dry_run_payload_projected_count:$dry_run_payload_projected_count,
@@ -294,6 +381,7 @@ jq -n \
     sqlite_written_count:$sqlite_written_count,
     live_execution_started_count:$live_execution_started_count,
     feature_gated_read_only_status_dry_run_readback_ready:$ready,
+    feature_gated_read_only_status_dry_run_path_proof_ready:$path_proof_ready,
     feature_gate_open_allowed:false,
     dry_run_execution_allowed:false,
     dry_run_payload_persistence_allowed:false,
