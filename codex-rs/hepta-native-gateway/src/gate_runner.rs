@@ -119,6 +119,17 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
     }))
 }
 
+pub(crate) fn migrated_pair_registry_summary() -> Result<(&'static str, usize)> {
+    let manifest: ShellPairManifest = serde_json::from_str(SHELL_GATE_PAIR_SPECS_JSON)
+        .context("failed to parse Hepta migrated gate pair specs")?;
+    let schema_version = match manifest.schema_version.as_str() {
+        "hepta_gate_pair_specs_v1" => "hepta_gate_pair_specs_v1",
+        unsupported => anyhow::bail!("unsupported Hepta migrated gate pair schema: {unsupported}"),
+    };
+    let pair_count = migrated_pair_specs()?.len();
+    Ok((schema_version, pair_count))
+}
+
 fn execute_compatibility_script(id: &str, kind: GateScriptKind) -> Result<String> {
     let repo_root = execution_repo_root()?;
     let script = resolve_compatibility_script(&repo_root, id, kind)?;
