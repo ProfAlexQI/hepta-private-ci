@@ -37,6 +37,7 @@ readback_surface="$(jq -r '.readback_surface' <<<"$spec")"
 acknowledgement_prefix="$(jq -r '.acknowledgement_prefix' <<<"$spec")"
 summary_prefix="$(jq -r '.summary_prefix' <<<"$spec")"
 observability_prefix="$(jq -r '.observability_prefix // empty' <<<"$spec")"
+final_ack_denial_side_effect_key="$(jq -r '.final_ack_denial_side_effect_key // empty' <<<"$spec")"
 blocker_count="$(jq -r '.blocker_count' <<<"$spec")"
 next_migration_step="$(jq -r '.next_migration_step' <<<"$spec")"
 missing_source_message="$(jq -r '.missing_source_message' <<<"$spec")"
@@ -55,12 +56,16 @@ pass_message="$(jq -r '.pass_message' <<<"$spec")"
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
-[[ "$template" == "signing_final_ack_readback" || "$template" == "signing_summary_readback" ]] || {
+[[ "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_summary_readback" ]] || {
   echo "unexpected Hepta migrated pair template for: $id" >&2
   exit 1
 }
 [[ "$template" != "signing_summary_readback" || -n "$observability_prefix" ]] || {
   echo "missing Hepta migrated summary observability prefix for: $id" >&2
+  exit 1
+}
+[[ "$template" != "signing_final_ack_final_index" || -n "$final_ack_denial_side_effect_key" ]] || {
+  echo "missing Hepta migrated final-index denial side-effect key for: $id" >&2
   exit 1
 }
 
@@ -148,6 +153,101 @@ render_report() {
       next_migration_step: $next_migration_step,
       side_effect_free: true,
       side_effects: ($source.side_effects)
+    }'
+}
+
+render_final_index_report() {
+  local source_report="$ROOT/$source_report_rel"
+  [[ -x "$source_report" ]] || {
+    echo "$missing_source_message: $source_report" >&2
+    exit 1
+  }
+
+  local source_json
+  source_json="$("$source_report")"
+  jq -e \
+    --arg source_surface "$attachment_surface" \
+    --arg source_ready_key "${attachment_surface}_ready" \
+    --arg source_blocked_key "${attachment_surface}_blocked" \
+    --argjson blocker_count "$blocker_count" \
+    '
+      .surface == $source_surface
+      and .[$source_ready_key] == true
+      and .[$source_blocked_key] == true
+      and .readback_blocker_count == $blocker_count
+      and .signing_receipt_final_acknowledgement_recorded == false
+      and .signing_receipt_operator_received_recorded == false
+      and .telegram_signing_receipt_acknowledgement_sent == false
+      and .activation_authority_from_signing_receipt_acknowledgement_derived == false
+    ' <<<"$source_json" >/dev/null
+
+  jq -n \
+    --argjson source "$source_json" \
+    --arg source_surface "$attachment_surface" \
+    --arg final_index_surface "$readback_surface" \
+    --arg acknowledgement_prefix "$acknowledgement_prefix" \
+    --arg summary_prefix "$summary_prefix" \
+    --arg final_ack_denial_side_effect_key "$final_ack_denial_side_effect_key" \
+    --argjson blocker_count "$blocker_count" \
+    --arg next_migration_step "$next_migration_step" \
+    '{
+      runtime: "hepta",
+      surface: $final_index_surface,
+      plugin_id: "hepta-system@hepta-local",
+      status: "ready_blocked",
+      ("source_" + $source_surface + "_surface"): $source.surface,
+      ("source_" + $source_surface + "_ready"): $source[($source_surface + "_ready")],
+      ("source_" + $source_surface + "_blocked"): $source[($source_surface + "_blocked")],
+      ($final_index_surface + "_ready"): true,
+      ($final_index_surface + "_blocked"): true,
+      ($source_surface + "_attached"): true,
+      ($acknowledgement_prefix + "_denial_gate_present"): $source[($acknowledgement_prefix + "_denial_gate_present")],
+      ($acknowledgement_prefix + "_denial_doc_present"): $source[($acknowledgement_prefix + "_denial_doc_present")],
+      ($acknowledgement_prefix + "_denial_gate_invoked"): false,
+      ($summary_prefix + "_summary_briefing_denial_gate_invoked"): false,
+      signing_receipt_final_acknowledgement_recorded: false,
+      signing_receipt_operator_received_recorded: false,
+      signing_receipt_operator_confirmed_recorded: false,
+      signing_receipt_operator_read_recorded: false,
+      signing_receipt_operator_seen_recorded: false,
+      signing_receipt_final_response_recorded: false,
+      signing_receipt_completion_acknowledgement_recorded: false,
+      signing_receipt_status_acknowledgement_recorded: false,
+      signing_receipt_summary_acknowledgement_recorded: false,
+      signing_receipt_briefing_acknowledgement_recorded: false,
+      signing_receipt_readback_digest_acknowledgement_recorded: false,
+      signing_receipt_dashboard_acknowledgement_recorded: false,
+      signing_receipt_notification_acknowledgement_recorded: false,
+      external_signing_receipt_acknowledgement_sent: false,
+      telegram_signing_receipt_acknowledgement_sent: false,
+      signing_receipt_acknowledgement_acceptance_recorded: false,
+      operator_acceptance_from_signing_receipt_acknowledgement_recorded: false,
+      operator_approval_from_signing_receipt_acknowledgement_derived: false,
+      release_publication_authority_from_signing_receipt_acknowledgement_derived: false,
+      activation_authority_from_signing_receipt_acknowledgement_derived: false,
+      install_from_signing_receipt_acknowledgement_executed: false,
+      service_restart_from_signing_receipt_acknowledgement_performed: false,
+      active_binary_from_signing_receipt_acknowledgement_mutated: false,
+      result_receipt_from_signing_receipt_acknowledgement_recorded: false,
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      secret_file_read: false,
+      final_blocker_count: $blocker_count,
+      manual_operator_live_cutover_approval_required: true,
+      terminal_live_url_required: false,
+      long_soak_required: false,
+      public_ga_claim_allowed: false,
+      public_ga_claimed: false,
+      public_release_published: false,
+      rollback_execution_allowed: false,
+      next_migration_step: $next_migration_step,
+      side_effect_free: true,
+      side_effects: ($source.side_effects + {
+        final_index_report_written: false,
+        signing_receipt_final_acknowledgement_final_index_recorded: false,
+        ($final_ack_denial_side_effect_key): false
+      })
     }'
 }
 
@@ -288,6 +388,51 @@ verify_gate() {
   printf '%s\n' "$pass_message"
 }
 
+verify_final_index_gate() {
+  local report="$ROOT/$report_rel"
+  [[ -x "$report" ]] || {
+    echo "$missing_report_message: $report" >&2
+    exit 1
+  }
+
+  local json
+  json="$("$report")"
+  jq -e \
+    --arg source_surface "$attachment_surface" \
+    --arg final_index_surface "$readback_surface" \
+    --arg acknowledgement_prefix "$acknowledgement_prefix" \
+    --arg summary_prefix "$summary_prefix" \
+    --argjson blocker_count "$blocker_count" \
+    --arg next_migration_step "$next_migration_step" \
+    '
+      .runtime == "hepta"
+      and .surface == $final_index_surface
+      and .[($final_index_surface + "_ready")] == true
+      and .[($final_index_surface + "_blocked")] == true
+      and .[("source_" + $source_surface + "_ready")] == true
+      and .[($acknowledgement_prefix + "_denial_gate_invoked")] == false
+      and .[($summary_prefix + "_summary_briefing_denial_gate_invoked")] == false
+      and .signing_receipt_final_acknowledgement_recorded == false
+      and .signing_receipt_operator_received_recorded == false
+      and .signing_receipt_operator_read_recorded == false
+      and .telegram_signing_receipt_acknowledgement_sent == false
+      and .release_publication_authority_from_signing_receipt_acknowledgement_derived == false
+      and .activation_authority_from_signing_receipt_acknowledgement_derived == false
+      and .install_from_signing_receipt_acknowledgement_executed == false
+      and .active_binary_from_signing_receipt_acknowledgement_mutated == false
+      and .provider_invoked == false
+      and .credential_read == false
+      and .final_blocker_count == $blocker_count
+      and .public_ga_claim_allowed == false
+      and .public_ga_claimed == false
+      and .public_release_published == false
+      and .next_migration_step == $next_migration_step
+      and (.side_effects | to_entries | all(.value == false))
+    ' <<<"$json" >/dev/null
+
+  printf '%s\n' "$pass_message"
+}
+
 verify_summary_gate() {
   local report="$ROOT/$report_rel"
   [[ -x "$report" ]] || {
@@ -335,6 +480,8 @@ verify_summary_gate() {
 case "$kind:$template" in
   report:signing_final_ack_readback) render_report ;;
   gate:signing_final_ack_readback) verify_gate ;;
+  report:signing_final_ack_final_index) render_final_index_report ;;
+  gate:signing_final_ack_final_index) verify_final_index_gate ;;
   report:signing_summary_readback) render_summary_report ;;
   gate:signing_summary_readback) verify_summary_gate ;;
 esac
