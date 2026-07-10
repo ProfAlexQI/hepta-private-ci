@@ -48,6 +48,16 @@ struct ShellPairMigrationSpec {
     observability_prefix: Option<String>,
     final_ack_denial_side_effect_key: Option<String>,
     blocker_count: u64,
+    attachment_blocker_count: Option<u64>,
+    source_gate: Option<String>,
+    architecture_note: Option<String>,
+    architecture_title: Option<String>,
+    terminal_status_gate: Option<String>,
+    terminal_status_doc: Option<String>,
+    missing_source_gate_message: Option<String>,
+    missing_architecture_note_message: Option<String>,
+    missing_terminal_status_gate_message: Option<String>,
+    missing_terminal_status_doc_message: Option<String>,
     next_migration_step: String,
     missing_source_message: String,
     missing_report_message: String,
@@ -158,6 +168,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             spec.template.as_str(),
             "signing_final_ack_readback"
                 | "signing_final_ack_final_index"
+                | "signing_terminal_status_attachment"
                 | "signing_summary_readback"
         ) {
             anyhow::bail!(
@@ -242,6 +253,29 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 "Hepta migrated final-index pair {} has no final-ack denial side-effect key",
                 spec.id
             );
+        }
+        if spec.template == "signing_terminal_status_attachment" {
+            let required_template_fields = [
+                spec.source_gate.as_deref(),
+                spec.architecture_note.as_deref(),
+                spec.architecture_title.as_deref(),
+                spec.terminal_status_gate.as_deref(),
+                spec.terminal_status_doc.as_deref(),
+                spec.missing_source_gate_message.as_deref(),
+                spec.missing_architecture_note_message.as_deref(),
+                spec.missing_terminal_status_gate_message.as_deref(),
+                spec.missing_terminal_status_doc_message.as_deref(),
+            ];
+            if spec.attachment_blocker_count.is_none_or(|count| count == 0)
+                || required_template_fields
+                    .iter()
+                    .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+            {
+                anyhow::bail!(
+                    "Hepta migrated terminal-status pair {} has empty template fields",
+                    spec.id
+                );
+            }
         }
         let id = spec.id.clone();
         if specs.insert(id.clone(), spec).is_some() {
