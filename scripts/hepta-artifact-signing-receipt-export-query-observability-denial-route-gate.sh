@@ -45,7 +45,8 @@ if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
 fi
 
 SOURCE_OBSERVABILITY_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-observability-denial-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 SOURCE_GATE_JSON="$(

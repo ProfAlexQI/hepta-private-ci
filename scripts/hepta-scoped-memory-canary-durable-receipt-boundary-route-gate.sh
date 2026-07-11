@@ -27,7 +27,8 @@ require_source_text() {
 
 SOURCE_POSITIVE_GATE="scripts/hepta-first-model-positive-approval-packet-boundary-route-gate.sh"
 SOURCE_MEMORY_GATE="scripts/hepta-minimal-memory-canary-scoped-operator-packet-write-readback-rollback-idempotency-receipt-route-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-scoped-memory-canary-durable-receipt-boundary"
 SOURCE_COMMAND="/hepta-scoped-memory-canary-durable-receipt-boundary --json"

@@ -166,7 +166,8 @@ jq -e '
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$EXPORT_QUERY_OBSERVABILITY_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
@@ -303,7 +304,7 @@ jq -n \
     source_route_wired: true,
     source_route_count_expected:153,
     source_route_tested_by_native_gateway_unit_test: true,
-    native_gateway_source: "codex-rs/hepta-native-gateway/src/native_gateway.rs",
+    native_gateway_source: "hepta-native-gateway-source-set-v1",
     native_gateway_sha256: $native_gateway_sha256,
     native_gateway_unit_test_log: $test_log,
     live_endpoint_required: ($require_live == "1"),

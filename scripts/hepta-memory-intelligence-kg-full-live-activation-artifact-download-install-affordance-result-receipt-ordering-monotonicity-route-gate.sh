@@ -26,7 +26,8 @@ require_source_text() {
 }
 
 SOURCE_ORDERING_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial-gate.sh"
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 require_source_text "$SOURCE_ORDERING_GATE" \

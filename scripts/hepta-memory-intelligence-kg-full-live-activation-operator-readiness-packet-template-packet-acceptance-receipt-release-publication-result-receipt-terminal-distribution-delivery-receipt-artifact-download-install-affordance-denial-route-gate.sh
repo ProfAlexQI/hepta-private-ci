@@ -143,7 +143,8 @@ jq -e '
   and (.side_effects | to_entries | all(.value == false))
 ' >/dev/null <<<"$ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \

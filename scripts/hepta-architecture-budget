@@ -26,6 +26,11 @@ verify_total_max() {
 }
 
 verify() {
+  local source_set_consumer
+  local stale_native_source_consumer
+
+  source scripts/lib/hepta-source-set.sh
+
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 6000
   for file in codex-rs/hepta-native-gateway/src/native_gateway/*.rs; do
     verify_file_max "$file" 60000
@@ -54,6 +59,65 @@ verify() {
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES:-2048' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152' scripts/lib/hepta-json-report-capture.sh
+  hepta_source_path_contains \
+    "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
+    'hepta_full_live_activation_closure_index_report'
+  hepta_source_path_contains \
+    "$HEPTA_RUNTIME_PUBLIC_API_SOURCE_SET_V1" \
+    'ModelProviderMemoryContextActivationExecutionInput'
+  hepta_source_path_contains \
+    "$HEPTA_RUNTIME_QUERY_SOURCE_SET_V1" \
+    'context_recall_turn_handoff'
+  [[ "$(hepta_source_path_sha256 "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1")" =~ ^[0-9a-f]{64}$ ]]
+  [[ "$(hepta_source_path_sha256 "$HEPTA_RUNTIME_PUBLIC_API_SOURCE_SET_V1")" =~ ^[0-9a-f]{64}$ ]]
+  [[ "$(hepta_source_path_sha256 "$HEPTA_RUNTIME_QUERY_SOURCE_SET_V1")" =~ ^[0-9a-f]{64}$ ]]
+
+  while IFS= read -r source_set_consumer; do
+    rg -Fq 'source-set.sh' "$source_set_consumer" \
+      || {
+        echo "source-set gate does not load canonical helper: $source_set_consumer" >&2
+        return 1
+      }
+  done < <(
+    rg -l --glob 'hepta-*gate.sh' \
+      'hepta-(native-gateway|runtime-public-api|runtime-query)-source-set-v1' \
+      scripts
+  )
+
+  stale_native_source_consumer="$(
+    rg -l --glob 'hepta-*gate.sh' \
+      '\$repo_root/codex-rs/hepta-native-gateway/src/native_gateway\.rs' \
+      scripts \
+      || true
+  )"
+  [[ -z "$stale_native_source_consumer" ]] \
+    || {
+      echo "gate still scans the pre-split Native Gateway monolith: $stale_native_source_consumer" >&2
+      return 1
+    }
+  stale_native_source_consumer="$(
+    rg -l --glob 'hepta-*gate.sh' \
+      'NATIVE_GATEWAY_SOURCE="(\$REPO_ROOT/)?codex-rs/hepta-native-gateway/src/native_gateway\.rs"' \
+      scripts \
+      || true
+  )"
+  [[ "$stale_native_source_consumer" == "scripts/hepta-route-gate-dynamic-count-regression-gate.sh" ]] \
+    || {
+      echo "unexpected direct Native Gateway monolith assignment: $stale_native_source_consumer" >&2
+      return 1
+    }
+  if rg -q --glob 'hepta-*gate.sh' \
+    'RUNTIME_LIB_SOURCE="(\$REPO_ROOT/)?codex-rs/hepta-runtime/src/lib\.rs"' \
+    scripts; then
+    echo "gate still scans Runtime public exports through lib.rs alone" >&2
+    return 1
+  fi
+  if rg -q --glob 'hepta-*gate.sh' \
+    'native_gateway_source[[:space:]]*:[[:space:]]*"codex-rs/hepta-native-gateway/src/native_gateway\.rs"' \
+    scripts; then
+    echo "gate still reports the pre-split Native Gateway monolith as its source" >&2
+    return 1
+  fi
 
   echo '{"schema":"hepta_architecture_budget_v1","status":"ready","native_gateway_main_max_lines":6000,"native_gateway_domain_max_lines":60000,"native_gateway_total_max_lines":181000,"runtime_lib_max_lines":1500,"runtime_domain_max_lines":6000,"runtime_total_max_lines":33000,"runtime_query_main_max_lines":6000,"runtime_query_domain_max_lines":4000,"runtime_query_total_max_lines":12500,"report_dag_max_entries":2048,"report_dag_max_bytes":134217728,"report_max_bytes":2097152}'
 }

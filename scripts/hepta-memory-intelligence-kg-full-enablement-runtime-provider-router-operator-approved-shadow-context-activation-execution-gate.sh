@@ -41,8 +41,10 @@ jq -e '
   and .side_effects.live_kg_write_performed == false
 ' >/dev/null <<<"$RUNTIME_READINESS_JSON"
 
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+
 RUNTIME_MODEL_PROVIDER_ROUTER_SOURCE="codex-rs/hepta-runtime/src/model_provider_router.rs"
-RUNTIME_LIB_SOURCE="codex-rs/hepta-runtime/src/lib.rs"
+RUNTIME_LIB_SOURCE="hepta-runtime-public-api-source-set-v1"
 GATED_E2E_SOURCE="codex-rs/hepta-runtime/tests/gated_adapter_e2e.rs"
 
 require_source_text "$RUNTIME_MODEL_PROVIDER_ROUTER_SOURCE" \

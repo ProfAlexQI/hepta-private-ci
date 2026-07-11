@@ -46,7 +46,8 @@ jq -e '
   and .side_effects.active_binary_mutated == false
 ' >/dev/null <<<"$OPERATOR_LANE_SEPARATION_JSON"
 
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 require_source_text "$ROUTE_REGISTRY_SOURCE" \

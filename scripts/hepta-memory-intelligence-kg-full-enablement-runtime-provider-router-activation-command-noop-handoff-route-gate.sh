@@ -5,12 +5,13 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 EXPECTED_ROUTE_COUNT="$(bash "$REPO_ROOT/scripts/lib/hepta-native-route-count.sh")"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
-NATIVE_GATEWAY_SOURCE="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 
 cd "$REPO_ROOT"
 
 source scripts/lib/hepta-json-report-capture.sh
+source scripts/lib/hepta-source-set.sh
 
 SOURCE_JSON="$(
   HEPTA_LIVE_URL="$BASE_URL" \
@@ -135,7 +136,7 @@ assert_source_contains() {
   local source_file="$1"
   local needle="$2"
   local description="$3"
-  if ! grep -Fq -- "$needle" "$source_file"; then
+  if ! hepta_source_path_contains "$source_file" "$needle"; then
     echo "$source_file missing ${description}: ${needle}" >&2
     exit 1
   fi
