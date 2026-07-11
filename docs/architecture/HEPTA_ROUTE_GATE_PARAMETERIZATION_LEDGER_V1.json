@@ -1,0 +1,65 @@
+{
+  "schema_version": "hepta_route_gate_parameterization_ledger_v1",
+  "batch_id": "first_model_invocation_result_receipt_transition_v1",
+  "migration_parent_commit": "88eb52a6e3fa54fcd30f003c3c2cd0929c117dd4",
+  "family_spec": "scripts/hepta-route-gate-specs-v1.json",
+  "executor": "scripts/hepta-route-gate-runner",
+  "migrated_gate_count": 3,
+  "long_gate_count_before": 698,
+  "long_gate_count_after": 695,
+  "legacy_body_line_count_before": 673,
+  "thin_wrapper_line_count_after": 15,
+  "shared_executor_line_count": 219,
+  "family_fixture_line_count": 413,
+  "family_total_line_count_after": 647,
+  "legacy_body_byte_count_before": 39644,
+  "family_total_byte_count_after": 38227,
+  "legacy_implementation_reference_count_after": 0,
+  "canonical_gate_spec_parity_count": 3,
+  "normalized_output_hash_parity_count": 3,
+  "focused_gate_pass_count": 3,
+  "live_representative_gate_pass_count": 1,
+  "live_representative_route_count": 283,
+  "production_side_effects_observed": false,
+  "executor_sha256": "60338568e653015351dff7c5c9b79bfabcee2bcb0b4c1f362b93db804ec1ef85",
+  "fixture_sha256": "473e107c9093ccfe707a4764c6cfff8eac158eb2825f076bc6b3e3df14f902ee",
+  "entries": [
+    {
+      "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial",
+      "legacy_body_lines": 244,
+      "legacy_body_sha256": "79c7a284fd32737e1247786b46e41aac1bf07448f71b21cc992cb4e13f5c0cb6",
+      "thin_wrapper_lines": 5,
+      "thin_wrapper_sha256": "5efc02ebee2e504219493e06316468f69be97f8c2bd15d2f2b06e5d8de718f82",
+      "normalized_output_sha256": "931ad847f405005cc1e3af75364aa038957847f8378adc9e6f1d1e334ec03a6d",
+      "canonical_gate_spec_parity": true,
+      "focused_gate_passed": true,
+      "live_read_only_representative_passed": true
+    },
+    {
+      "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial",
+      "legacy_body_lines": 220,
+      "legacy_body_sha256": "7d419e6b6cc2a189033fd834c002fb9df61f8849f5d253609f013e2026a9ee4d",
+      "thin_wrapper_lines": 5,
+      "thin_wrapper_sha256": "afbf289ef688fa03ee6634c96af6355d043336604c5727a835519cf0522e36c7",
+      "normalized_output_sha256": "18535f535d5f7be597c34973453daaf6c8409d5cbd054fd2d4314118e84dafcb",
+      "canonical_gate_spec_parity": true,
+      "focused_gate_passed": true,
+      "live_read_only_representative_passed": false
+    },
+    {
+      "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial",
+      "legacy_body_lines": 209,
+      "legacy_body_sha256": "dbeed0552258e5e15adeeb6e3bcf9844684f1317812a5115000a26fc255daa75",
+      "thin_wrapper_lines": 5,
+      "thin_wrapper_sha256": "608d4f0d45ff95312e37927cee17c7d2b1b77bc411f65d357edd36ceca053bc1",
+      "normalized_output_sha256": "6a34d57a5b8378a649589cdaed4dc055cb23e2863e314f0e6a6cc449ba571968",
+      "canonical_gate_spec_parity": true,
+      "focused_gate_passed": true,
+      "live_read_only_representative_passed": false
+    }
+  ],
+  "full_three_profile_preflight": {
+    "required_on_new_commit": true,
+    "status": "pending"
+  }
+}

@@ -1,0 +1,413 @@
+{
+  "schema_version": "hepta_route_gate_specs_v1",
+  "executor": "scripts/hepta-route-gate-runner",
+  "receipt_state_machine": [
+    "precondition",
+    "denial",
+    "receipt",
+    "persistence",
+    "retention",
+    "terminal"
+  ],
+  "families": [
+    {
+      "id": "first_model_invocation_result_receipt_transition_v1",
+      "side_effect_boundary": "static source verification plus focused offline tests; optional live GET validation; never invokes a provider or model and never writes Memory, KG, channels, service state, or release state",
+      "common_report_fields": {
+        "provider_invocation_authorized": false,
+        "model_invocation_authorized": false,
+        "provider_invoked": false,
+        "model_invoked": false,
+        "credential_read": false,
+        "live_kg_write_performed": false,
+        "memory_store_write_performed": false,
+        "channel_send_performed": false,
+        "external_send_performed": false
+      },
+      "common_live_false_fields": [
+        "operator_approval_recorded",
+        "operator_consent_recorded",
+        "provider_invocation_authorized",
+        "model_invocation_authorized",
+        "provider_invoked",
+        "model_invoked",
+        "credential_value_read",
+        "credential_read",
+        "secret_file_read",
+        "provider_router_live_envelope_executed",
+        "provider_prompt_injection_performed",
+        "context_injection_performed",
+        "kg_adapter_read_performed",
+        "live_kg_write_performed",
+        "memory_store_write_performed",
+        "channel_send_performed",
+        "telegram_send_performed",
+        "external_send_performed"
+      ],
+      "common_live_zero_fields": [
+        "provider_invocation_budget",
+        "model_invocation_budget"
+      ],
+      "common_live_array_lengths": {
+        "audit_steps": 6
+      },
+      "specs": [
+        {
+          "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial",
+          "gate_spec": {
+            "method": "GET",
+            "pattern": "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial",
+            "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial --json",
+            "capability": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial",
+            "side_effect_boundary": "read-only first model invocation final authorization dry-run result receipt replay/idempotency denial gate; derives deterministic replay, duplicate, retry, cross-scope, status-upgrade, and idempotency-cache denial evidence from the no-persistence result receipt while denying receipt acceptance, replay execution, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
+            "receipt_state": "persistence"
+          },
+          "route_constant": "HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT",
+          "report_function": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_report",
+          "execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_no_provider_model_invocation",
+          "focused_test": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_endpoint_blocks_replay_and_invocation_side_effects",
+          "test_log_stem": "hepta-first-model-invocation-final-authorization-dry-run-result-receipt-replay-idempotency-route-tests",
+          "next_action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial",
+          "report_fields": {
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_ready": true,
+            "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_no_provider_model_invocation",
+            "result_receipt_replay_idempotency_state": "final_authorization_dry_run_result_receipt_replay_duplicate_retry_idempotency_denied",
+            "replay_idempotency_fixture_count": 8,
+            "blocked_replay_idempotency_fixture_count": 8,
+            "allowed_replay_idempotency_fixture_count": 0,
+            "accepted_replay_idempotency_fixture_count": 0,
+            "replay_idempotency_performed_count": 0,
+            "duplicate_result_receipt_accepted_count": 0,
+            "retry_result_receipt_accepted_count": 0,
+            "idempotency_state_recorded_count": 0,
+            "idempotency_state_persisted_count": 0,
+            "final_authorization_dry_run_result_receipt_replay_allowed": false,
+            "final_authorization_dry_run_result_receipt_duplicate_accepted": false,
+            "final_authorization_dry_run_result_receipt_retry_accepted": false,
+            "final_authorization_dry_run_result_receipt_idempotency_key_registered": false,
+            "final_authorization_dry_run_result_receipt_idempotency_cache_written": false,
+            "final_authorization_from_replay_allowed": false,
+            "operator_approval_from_replay_accepted": false,
+            "activation_from_replay_allowed": false,
+            "next_slice": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial"
+          },
+          "live_validation": {
+            "true_fields": [
+              "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_no_persistence_ready",
+              "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_ready",
+              "final_authorization_dry_run_result_receipt_replay_idempotency_readback_hash_matched",
+              "final_authorization_denied"
+            ],
+            "false_fields": [
+              "activation_from_replay_allowed",
+              "final_authorization_dry_run_result_receipt_replay_allowed",
+              "final_authorization_dry_run_result_receipt_replayed",
+              "final_authorization_dry_run_result_receipt_replay_recorded",
+              "final_authorization_dry_run_result_receipt_replay_persisted",
+              "final_authorization_dry_run_result_receipt_replay_performed",
+              "final_authorization_dry_run_result_receipt_duplicate_accepted",
+              "final_authorization_dry_run_result_receipt_retry_accepted",
+              "final_authorization_dry_run_result_receipt_idempotency_key_accepted",
+              "final_authorization_dry_run_result_receipt_idempotency_key_registered",
+              "final_authorization_dry_run_result_receipt_idempotency_key_recorded",
+              "final_authorization_dry_run_result_receipt_idempotency_key_persisted",
+              "final_authorization_dry_run_result_receipt_idempotency_state_recorded",
+              "final_authorization_dry_run_result_receipt_idempotency_state_persisted",
+              "final_authorization_dry_run_result_receipt_idempotency_cache_written",
+              "final_authorization_dry_run_result_receipt_idempotency_cache_hit_promoted",
+              "final_authorization_dry_run_result_receipt_replay_nonce_accepted",
+              "final_authorization_dry_run_result_receipt_cross_scope_reuse_accepted",
+              "final_authorization_dry_run_result_receipt_status_upgrade_accepted",
+              "final_authorization_dry_run_result_receipt_completed_status_accepted",
+              "completion_ack_replay_accepted",
+              "final_authorization_dry_run_result_receipt_ledger_replay_accepted",
+              "final_authorization_dry_run_result_receipt_index_replay_accepted",
+              "final_authorization_dry_run_result_receipt_delivery_replay_accepted",
+              "final_authorization_dry_run_result_receipt_export_replay_accepted",
+              "final_authorization_dry_run_result_receipt_query_replay_accepted",
+              "final_authorization_dry_run_result_receipt_observability_replay_accepted",
+              "final_authorization_from_replay_allowed",
+              "operator_approval_from_replay_accepted",
+              "final_authorization_from_result_receipt_allowed",
+              "operator_approval_from_result_receipt_accepted",
+              "activation_from_result_receipt_allowed",
+              "final_authorization_dry_run_result_receipt_recorded",
+              "final_authorization_dry_run_result_receipt_persisted",
+              "final_authorization_dry_run_result_receipt_accepted",
+              "completion_ack_recorded",
+              "completion_ack_persisted",
+              "completion_ack_accepted",
+              "fresh_live_accepted_operator_approval_artifact_present",
+              "single_use_approval_nonce_verified",
+              "single_use_approval_nonce_consumed",
+              "operator_identity_session_binding_verified",
+              "operator_identity_session_bound",
+              "explicit_invocation_command_accepted",
+              "final_authorization_preconditions_satisfied",
+              "final_authorization_accepted",
+              "approval_packet_accepted",
+              "provider_invocation_authorized_from_replay",
+              "model_invocation_authorized_from_replay"
+            ],
+            "zero_fields": [
+              "allowed_replay_idempotency_fixture_count",
+              "accepted_replay_idempotency_fixture_count",
+              "replay_idempotency_performed_count",
+              "duplicate_result_receipt_accepted_count",
+              "retry_result_receipt_accepted_count",
+              "idempotency_state_recorded_count",
+              "idempotency_state_persisted_count"
+            ],
+            "eight_fields": [
+              "replay_idempotency_fixture_count",
+              "blocked_replay_idempotency_fixture_count",
+              "noop_replay_idempotency_fixture_count"
+            ],
+            "string_fields": {
+              "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_no_provider_model_invocation",
+              "result_receipt_replay_idempotency_state": "final_authorization_dry_run_result_receipt_replay_duplicate_retry_idempotency_denied"
+            },
+            "array_lengths": {
+              "replay_idempotency_fixtures": 8
+            },
+            "fixture": {
+              "collection": "replay_idempotency_fixtures",
+              "length": 8,
+              "status_field": "replay_idempotency_status",
+              "status_prefix": "blocked_",
+              "true_fields": ["receipt_noop_confirmed"],
+              "false_fields": ["activation_from_replay_allowed"]
+            },
+            "next_action_fields": {
+              "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial",
+              "registers_idempotency_key": false,
+              "writes_idempotency_cache": false,
+              "invokes_provider": false,
+              "invokes_model": false
+            }
+          },
+          "baseline_normalized_output_sha256": "931ad847f405005cc1e3af75364aa038957847f8378adc9e6f1d1e334ec03a6d",
+          "pass_message": "Hepta first model invocation operator approval final authorization dry-run result receipt replay/idempotency denial route gate passed"
+        },
+        {
+          "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial",
+          "gate_spec": {
+            "method": "GET",
+            "pattern": "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial",
+            "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial --json",
+            "capability": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-ordering-monotonicity-denial",
+            "side_effect_boundary": "read-only first model invocation final authorization dry-run result receipt ordering/monotonicity denial gate; derives deterministic sequence cursor, stale/late/future, timestamp rollback, epoch rollback, same-sequence override, and latest-wins denial evidence from the replay/idempotency denial surface while denying receipt acceptance, ordering state persistence, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
+            "receipt_state": "persistence"
+          },
+          "route_constant": "HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT",
+          "report_function": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_report",
+          "execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_no_provider_model_invocation",
+          "focused_test": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_endpoint_blocks_ordering_and_invocation_side_effects",
+          "test_log_stem": "hepta-first-model-invocation-final-authorization-dry-run-result-receipt-ordering-monotonicity-route-tests",
+          "next_action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial",
+          "report_fields": {
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_ready": true,
+            "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_no_provider_model_invocation",
+            "result_receipt_ordering_monotonicity_state": "final_authorization_dry_run_result_receipt_sequence_cursor_monotonicity_denied",
+            "ordering_monotonicity_fixture_count": 8,
+            "blocked_ordering_monotonicity_fixture_count": 8,
+            "allowed_ordering_monotonicity_fixture_count": 0,
+            "accepted_ordering_monotonicity_fixture_count": 0,
+            "ordering_monotonicity_performed_count": 0,
+            "sequence_cursor_recorded_count": 0,
+            "monotonicity_state_persisted_count": 0,
+            "final_authorization_dry_run_result_receipt_ordering_allowed": false,
+            "final_authorization_dry_run_result_receipt_sequence_cursor_recorded": false,
+            "final_authorization_dry_run_result_receipt_latest_wins_promoted": false,
+            "final_authorization_from_ordering_allowed": false,
+            "operator_approval_from_ordering_accepted": false,
+            "activation_from_ordering_allowed": false,
+            "next_slice": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial"
+          },
+          "live_validation": {
+            "true_fields": [
+              "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_ready",
+              "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_ready",
+              "final_authorization_dry_run_result_receipt_ordering_monotonicity_readback_hash_matched",
+              "final_authorization_denied"
+            ],
+            "false_fields": [
+              "activation_from_ordering_allowed",
+              "final_authorization_dry_run_result_receipt_ordering_allowed",
+              "final_authorization_dry_run_result_receipt_ordered",
+              "final_authorization_dry_run_result_receipt_ordering_recorded",
+              "final_authorization_dry_run_result_receipt_ordering_persisted",
+              "final_authorization_dry_run_result_receipt_ordering_performed",
+              "final_authorization_dry_run_result_receipt_sequence_cursor_accepted",
+              "final_authorization_dry_run_result_receipt_sequence_cursor_recorded",
+              "final_authorization_dry_run_result_receipt_sequence_cursor_persisted",
+              "final_authorization_dry_run_result_receipt_monotonicity_state_recorded",
+              "final_authorization_dry_run_result_receipt_monotonicity_state_persisted",
+              "final_authorization_dry_run_result_receipt_monotonic_sequence_accepted",
+              "final_authorization_dry_run_result_receipt_duplicate_sequence_accepted",
+              "final_authorization_dry_run_result_receipt_stale_sequence_accepted",
+              "final_authorization_dry_run_result_receipt_late_sequence_accepted",
+              "final_authorization_dry_run_result_receipt_future_sequence_accepted",
+              "final_authorization_dry_run_result_receipt_gap_fill_accepted",
+              "final_authorization_dry_run_result_receipt_timestamp_rollback_accepted",
+              "final_authorization_dry_run_result_receipt_epoch_rollback_accepted",
+              "final_authorization_dry_run_result_receipt_same_sequence_override_accepted",
+              "final_authorization_dry_run_result_receipt_latest_wins_promoted",
+              "completion_ack_ordering_accepted",
+              "final_authorization_from_ordering_allowed",
+              "operator_approval_from_ordering_accepted",
+              "final_authorization_preconditions_satisfied",
+              "final_authorization_accepted",
+              "approval_packet_accepted",
+              "provider_invocation_authorized_from_ordering",
+              "model_invocation_authorized_from_ordering"
+            ],
+            "zero_fields": [
+              "allowed_ordering_monotonicity_fixture_count",
+              "accepted_ordering_monotonicity_fixture_count",
+              "ordering_monotonicity_performed_count",
+              "sequence_cursor_recorded_count",
+              "sequence_cursor_persisted_count",
+              "monotonicity_state_recorded_count",
+              "monotonicity_state_persisted_count"
+            ],
+            "eight_fields": [
+              "ordering_monotonicity_fixture_count",
+              "blocked_ordering_monotonicity_fixture_count",
+              "noop_ordering_monotonicity_fixture_count"
+            ],
+            "string_fields": {
+              "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_no_provider_model_invocation",
+              "result_receipt_ordering_monotonicity_state": "final_authorization_dry_run_result_receipt_sequence_cursor_monotonicity_denied"
+            },
+            "array_lengths": {
+              "ordering_monotonicity_fixtures": 8
+            },
+            "fixture": {
+              "collection": "ordering_monotonicity_fixtures",
+              "length": 8,
+              "status_field": "ordering_monotonicity_status",
+              "status_prefix": "blocked_",
+              "true_fields": ["receipt_noop_confirmed"],
+              "false_fields": ["activation_from_ordering_allowed"]
+            },
+            "next_action_fields": {
+              "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial",
+              "records_sequence_cursor": false,
+              "persists_monotonicity_state": false,
+              "invokes_provider": false,
+              "invokes_model": false
+            }
+          },
+          "baseline_normalized_output_sha256": "18535f535d5f7be597c34973453daaf6c8409d5cbd054fd2d4314118e84dafcb",
+          "pass_message": "Hepta first model invocation operator approval final authorization dry-run result receipt ordering/monotonicity denial route gate passed"
+        },
+        {
+          "id": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial",
+          "gate_spec": {
+            "method": "GET",
+            "pattern": "/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial",
+            "source_command": "/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial --json",
+            "capability": "hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-cancellation-supersession-denial",
+            "side_effect_boundary": "read-only first model invocation final authorization dry-run result receipt cancellation/supersession denial gate; derives deterministic cancellation, withdrawal, supersession, replacement, tombstone, delete-marker, latest-replacement, and ack-replacement denial evidence from the ordering/monotonicity denial surface while denying receipt acceptance, lifecycle mutation, provider/model invocation, credential reads, KG/Memory writes, channel sends, restart, active-binary mutation, or public claims",
+            "receipt_state": "receipt"
+          },
+          "route_constant": "HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT",
+          "report_function": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_report",
+          "execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_no_provider_model_invocation",
+          "focused_test": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_endpoint_blocks_cancellation_and_invocation_side_effects",
+          "test_log_stem": "hepta-first-model-invocation-final-authorization-dry-run-result-receipt-cancellation-supersession-route-tests",
+          "next_action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial",
+          "report_fields": {
+            "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_ready": true,
+            "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_no_provider_model_invocation",
+            "result_receipt_cancellation_supersession_state": "final_authorization_dry_run_result_receipt_cancellation_supersession_replacement_denied",
+            "cancellation_supersession_fixture_count": 8,
+            "blocked_cancellation_supersession_fixture_count": 8,
+            "allowed_cancellation_supersession_fixture_count": 0,
+            "accepted_cancellation_supersession_fixture_count": 0,
+            "cancellation_supersession_performed_count": 0,
+            "cancellation_recorded_count": 0,
+            "supersession_recorded_count": 0,
+            "final_authorization_dry_run_result_receipt_cancellation_allowed": false,
+            "final_authorization_dry_run_result_receipt_cancellation_recorded": false,
+            "final_authorization_dry_run_result_receipt_latest_replacement_promoted": false,
+            "final_authorization_from_cancellation_supersession_allowed": false,
+            "operator_approval_from_cancellation_supersession_accepted": false,
+            "activation_from_cancellation_supersession_allowed": false,
+            "next_slice": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial"
+          },
+          "live_validation": {
+            "true_fields": [
+              "source_first_model_invocation_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_ready",
+              "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_ready",
+              "final_authorization_dry_run_result_receipt_cancellation_supersession_readback_hash_matched"
+            ],
+            "false_fields": [
+              "final_authorization_dry_run_result_receipt_cancellation_allowed",
+              "final_authorization_dry_run_result_receipt_cancellation_accepted",
+              "final_authorization_dry_run_result_receipt_cancellation_recorded",
+              "final_authorization_dry_run_result_receipt_cancellation_persisted",
+              "final_authorization_dry_run_result_receipt_supersession_accepted",
+              "final_authorization_dry_run_result_receipt_supersession_recorded",
+              "final_authorization_dry_run_result_receipt_replacement_accepted",
+              "final_authorization_dry_run_result_receipt_replacement_recorded",
+              "final_authorization_dry_run_result_receipt_tombstone_recorded",
+              "final_authorization_dry_run_result_receipt_delete_marker_recorded",
+              "final_authorization_dry_run_result_receipt_latest_replacement_promoted",
+              "completion_ack_cancellation_accepted",
+              "completion_ack_replacement_accepted",
+              "result_receipt_cancelled_query_registered",
+              "result_receipt_superseded_export_recorded",
+              "result_receipt_replacement_observability_recorded",
+              "final_authorization_from_cancellation_supersession_allowed",
+              "operator_approval_from_cancellation_supersession_accepted",
+              "activation_from_cancellation_supersession_allowed",
+              "provider_invocation_authorized_from_cancellation_supersession",
+              "model_invocation_authorized_from_cancellation_supersession"
+            ],
+            "zero_fields": [
+              "allowed_cancellation_supersession_fixture_count",
+              "accepted_cancellation_supersession_fixture_count",
+              "cancellation_supersession_performed_count",
+              "cancellation_recorded_count",
+              "supersession_recorded_count",
+              "replacement_receipt_recorded_count",
+              "tombstone_recorded_count",
+              "delete_marker_recorded_count"
+            ],
+            "eight_fields": [
+              "cancellation_supersession_fixture_count",
+              "blocked_cancellation_supersession_fixture_count",
+              "noop_cancellation_supersession_fixture_count"
+            ],
+            "string_fields": {
+              "canary_execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_no_provider_model_invocation",
+              "result_receipt_cancellation_supersession_state": "final_authorization_dry_run_result_receipt_cancellation_supersession_replacement_denied"
+            },
+            "array_lengths": {
+              "cancellation_supersession_fixtures": 8
+            },
+            "fixture": {
+              "collection": "cancellation_supersession_fixtures",
+              "length": 8,
+              "status_field": "cancellation_supersession_status",
+              "status_prefix": "blocked_",
+              "true_fields": ["receipt_noop_confirmed"],
+              "false_fields": []
+            },
+            "next_action_fields": {
+              "action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial",
+              "records_cancellation": false,
+              "records_supersession": false,
+              "invokes_provider": false,
+              "invokes_model": false
+            }
+          },
+          "baseline_normalized_output_sha256": "6a34d57a5b8378a649589cdaed4dc055cb23e2863e314f0e6a6cc449ba571968",
+          "pass_message": "Hepta first model invocation operator approval final authorization dry-run result receipt cancellation/supersession denial route gate passed"
+        }
+      ]
+    }
+  ]
+}
