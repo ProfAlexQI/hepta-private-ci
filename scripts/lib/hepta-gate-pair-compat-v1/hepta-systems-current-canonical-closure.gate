@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-closure.report"
+WRAPPER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+VALIDATION_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-gate-thin-wrapper-validation.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_CLOSURE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-closure-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current canonical closure report: $REPORT"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -x "$VALIDATION_GATE" ]] || fail "missing executable historical canonical gate thin wrapper validation gate: $VALIDATION_GATE"
+[[ -f "$DOC" ]] || fail "missing current canonical closure architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the current canonical closure report"
+fi
+
+grep -q 'Current Canonical Closure' "$DOC" \
+  || fail "architecture note must document Current Canonical Closure"
+grep -q 'thin wrapper validation' "$DOC" \
+  || fail "architecture note must document thin wrapper validation"
+grep -q 'without invoking' "$DOC" \
+  || fail "architecture note must document without invoking the historical gate"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_canonical_closure"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_current_canonical_wrapper_surface == "current_canonical_wrapper"
+  and .source_current_canonical_wrapper_ready == true
+  and .source_thin_wrapper_validation_surface == "historical_canonical_gate_thin_wrapper_validation"
+  and .source_thin_wrapper_validation_ready == true
+  and .current_canonical_closure_ready == true
+  and .closure_input_count == 2
+  and (.closure_inputs | all(.required == true and .source_ready == true and .invoked_by_report == false))
+  and .historical_canonical_gate_name_claimed == true
+  and .historical_canonical_gate_created == true
+  and .historical_canonical_gate_executable == true
+  and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .historical_canonical_gate_wrapper_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_wrapper_target == "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+  and .historical_canonical_gate_wrapper_target_count == 1
+  and .historical_canonical_gate_wrapper_exec_count == 1
+  and .historical_canonical_gate_bash_syntax_valid == true
+  and .historical_canonical_gate_thin_wrapper_validation_attached == true
+  and .historical_canonical_gate_thin_wrapper_validation_pending == false
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "add_historical_canonical_gate_alias_readback_to_current_canonical_closure_without_invocation"
+  and .closure_blocker_count == 8
+  and (.closure_blockers | index("manual_operator_live_cutover_approval_required")) != null
+  and (.closure_blockers | index("canonical_gate_not_invoked_by_closure_report")) != null
+  and (.closure_blockers | index("wrapper_target_not_invoked_by_closure_report")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$WRAPPER_GATE" >/dev/null
+"$VALIDATION_GATE" >/dev/null
+
+printf 'hepta-systems-current-canonical-closure-gate: PASS: current canonical closure attaches thin wrapper validation without invoking the historical gate\n'

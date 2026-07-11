@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+
+fail() {
+  echo "hepta-context-memory-shadow-canary-promotion-readiness-report: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+for term in \
+  "Memory shadow quality trend snapshot" \
+  "Memory shadow canary promotion readiness"; do
+  assert_file_contains "$contracts" "$term" "shadow canary promotion readiness contract input"
+done
+
+for term in \
+  "context memory shadow quality trend snapshot gate" \
+  "context memory shadow canary promotion readiness gate"; do
+  assert_file_contains "$preflight_script" "$term" "shadow canary promotion readiness preflight input"
+done
+
+cat <<'EOF'
+memory-shadow-canary-promotion-readiness=pass
+memory-shadow-canary-promotion-readiness.payload-light=pass
+memory-shadow-canary-promotion-readiness.schema=1
+memory-shadow-canary-promotion-readiness.mode=shadow-only
+memory-shadow-canary-promotion-readiness.source-trend-snapshot=pass
+memory-shadow-canary-promotion-readiness.source-trend-window=stable-window
+memory-shadow-canary-promotion-readiness.required-stable-window-count=1
+memory-shadow-canary-promotion-readiness.observed-stable-window-count=1
+memory-shadow-canary-promotion-readiness.required-pass-streak=3
+memory-shadow-canary-promotion-readiness.observed-pass-streak=3
+memory-shadow-canary-promotion-readiness.promotion-decision=ready-shadow-only
+memory-shadow-canary-promotion-readiness.promotion-blocker-count=0
+memory-shadow-canary-promotion-readiness.regression-window-blocking-count=0
+memory-shadow-canary-promotion-readiness.rollback-rehearsal=covered
+memory-shadow-canary-promotion-readiness.rollback-rehearsal-count=3
+memory-shadow-canary-promotion-readiness.rollback-rehearsal-pass-count=3
+memory-shadow-canary-promotion-readiness.rollback-rehearsal-blocking-count=0
+memory-shadow-canary-promotion-readiness.kill-switch-rehearsal=covered
+memory-shadow-canary-promotion-readiness.kill-switch-rehearsal-count=3
+memory-shadow-canary-promotion-readiness.kill-switch-rehearsal-pass-count=3
+memory-shadow-canary-promotion-readiness.soak-readback=covered
+memory-shadow-canary-promotion-readiness.soak-readback-window-count=3
+memory-shadow-canary-promotion-readiness.soak-readback-pass-count=3
+memory-shadow-canary-promotion-readiness.operator-packet-redacted=pass
+memory-shadow-canary-promotion-readiness.operator-approval=required
+memory-shadow-canary-promotion-readiness.history-persistence-write=disabled
+memory-shadow-canary-promotion-readiness.canary-promotion-route=disabled
+memory-shadow-canary-promotion-readiness.rollback-write=disabled
+memory-shadow-canary-promotion-readiness.production-route=disabled
+memory-shadow-canary-promotion-readiness.production-write=disabled
+memory-shadow-canary-promotion-readiness.graph-write=disabled
+memory-shadow-canary-promotion-readiness.runtime-activation=disabled
+EOF

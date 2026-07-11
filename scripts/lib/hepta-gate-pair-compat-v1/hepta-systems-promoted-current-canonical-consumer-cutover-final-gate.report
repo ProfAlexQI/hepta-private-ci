@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+ACCEPTANCE_PREFLIGHT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PROMOTED_CURRENT_CANONICAL_CONSUMER_CUTOVER_FINAL_GATE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-promoted-current-canonical-consumer-cutover-final-gate-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$ACCEPTANCE_PREFLIGHT_REPORT" ]] || fail "missing executable promoted current canonical consumer cutover packet acceptance preflight report: $ACCEPTANCE_PREFLIGHT_REPORT"
+[[ -f "$DOC" ]] || fail "missing promoted current canonical consumer cutover final gate architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the promoted current canonical consumer cutover final gate report"
+fi
+
+jq -n \
+  --slurpfile source <("$ACCEPTANCE_PREFLIGHT_REPORT") \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-promoted-current-canonical-consumer-cutover-final-gate.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_PROMOTED_CURRENT_CANONICAL_CONSUMER_CUTOVER_FINAL_GATE_2026-06-21.md" \
+  '
+  ($source[0]) as $source |
+  [
+    "operator_live_cutover_approval_missing",
+    "cutover_packet_not_recorded",
+    "cutover_packet_not_accepted",
+    "cutover_packet_acceptance_disallowed",
+    "successor_consumer_cutover_disallowed",
+    "direct_current_consumer_replacement_disallowed",
+    "current_canonical_consumer_rollback_anchor_retained",
+    "canonical_gate_not_invoked",
+    "wrapper_target_not_invoked",
+    "terminal_live_gate_not_invoked",
+    "live_url_not_contacted",
+    "long_soak_not_started",
+    "execution_disabled",
+    "public_ga_disabled"
+  ] as $final_blockers |
+  ($source.acceptance_preflight_ready == true
+    and $source.cutover_packet_acceptance_allowed == false
+    and $source.successor_consumer_cutover_allowed == false
+    and $source.acceptance_requirement_count == 5
+    and $source.acceptance_satisfied_requirement_count == 1
+    and $source.acceptance_missing_requirement_count == 4
+    and $source.cutover_packet_recorded == false
+    and $source.cutover_packet_accepted == false
+    and $source.operator_live_cutover_approval_recorded == false
+    and $source.current_canonical_consumer_replaced_in_place == false
+    and $source.current_canonical_consumer_mutated == false
+    and $source.promoted_current_canonical_consumer_mutated == false
+    and $source.rollback_anchor == "current_canonical_consumer"
+    and $source.canonical_gate_wrapper_invoked == false
+    and $source.wrapper_target_invoked == false
+    and $source.terminal_live_gate_invoked == false
+    and $source.live_url_required == false
+    and $source.long_soak_required == false
+    and $source.execution_enabled_count == 0
+    and $source.public_ga_enabled_count == 0
+    and $source.manual_operator_live_cutover_approval_required == true
+    and $source.tool_execution_live_cutover_allowed == false
+    and $source.tool_execution_public_ga_allowed == false
+    and ($source.side_effects | to_entries | all(.value == false))) as $final_ready |
+  {
+    runtime:"hepta",
+    surface:"promoted_current_canonical_consumer_cutover_final_gate",
+    plugin_id:$source.plugin_id,
+    status:(if $final_ready then "ready_blocked" else "blocked" end),
+    source_acceptance_preflight_surface:$source.surface,
+    source_acceptance_preflight_ready:$source.acceptance_preflight_ready,
+    terminal_successor_canonical_consumer_cutover_final_gate_ready:$final_ready,
+    terminal_successor_canonical_consumer_cutover_final_gate_blocked:true,
+    final_gate_policy_present:true,
+    final_cutover_ticket_present:true,
+    final_operator_readback_required:true,
+    manual_operator_live_cutover_approval_required:true,
+    explicit_live_cutover_approval_present:false,
+    operator_live_cutover_approval_recorded:false,
+    cutover_packet_recorded:false,
+    cutover_packet_accepted:false,
+    cutover_packet_acceptance_allowed:false,
+    successor_consumer_cutover_allowed:false,
+    current_canonical_consumer_replaced_in_place:false,
+    current_canonical_consumer_mutated:false,
+    promoted_current_canonical_consumer_mutated:false,
+    rollback_anchor:$source.rollback_anchor,
+    acceptance_requirement_count:$source.acceptance_requirement_count,
+    acceptance_satisfied_requirement_count:$source.acceptance_satisfied_requirement_count,
+    acceptance_missing_requirement_count:$source.acceptance_missing_requirement_count,
+    final_blocker_count:($final_blockers | length),
+    final_blockers:$final_blockers,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    capability_matrix_gate_invoked:false,
+    terminal_live_gate_invoked:false,
+    live_url_required:false,
+    long_soak_required:false,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"attach_terminal_successor_canonical_consumer_cutover_final_gate_to_current_canonical_governance_without_live_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      cutover_packet_acceptance_preflight_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-promoted-current-canonical-consumer-cutover-packet-acceptance-preflight.report"
+    },
+    side_effect_free:true,
+    side_effects:$source.side_effects
+  }'

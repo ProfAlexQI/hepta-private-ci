@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-persistence-acceptance-record-intake-preview.report"
+
+report="$(capture_json_report "hepta-work-graph-persistence-acceptance-record-intake-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_persistence_acceptance_record_intake_preview_gate"
+  and .schema_version == "work_graph_persistence_acceptance_record_intake_preview_v1"
+  and .preview_mode == "read_only_persistence_acceptance_record_intake_preview_no_recording"
+  and .record_template_count == 6
+  and (.record_templates | length) == .record_template_count
+  and (.record_templates | map(.id) == [
+    "trusted_operator_acceptance_record",
+    "approval_decision_record",
+    "live_persistence_enablement_record",
+    "rollback_quarantine_owner_attestation",
+    "release_publication_owner_attestation",
+    "external_delivery_consent_record"
+  ])
+  and (.record_templates | all(
+    .redaction_state == "hash_only_redacted"
+    and .present_in_preview == false
+    and .accepted_in_preview == false
+    and .recording_enabled == false
+    and (.required_fields | length) >= 15
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .validation_denial_count == 9
+  and (.validation_denials | length) == .validation_denial_count
+  and (.validation_denials | map(.id) == [
+    "durable_identity_evidence_missing",
+    "missing_trusted_operator_identity_hash",
+    "missing_explicit_authority_grant",
+    "capability_scope_mismatch",
+    "approval_ledger_write_attempted",
+    "live_persistence_enablement_attempted",
+    "release_publication_attempted",
+    "external_delivery_attempted",
+    "expired_or_revoked_acceptance_scope"
+  ])
+  and (.validation_denials | all(.blocks_record_acceptance == true and (.applies_to_record_ids | length) == 6))
+  and .intake_guard_count == 6
+  and (.intake_guards | length) == .intake_guard_count
+  and (.intake_guards | map(.id) == [
+    "acceptance_record_persistence_guard",
+    "approval_recording_guard",
+    "live_execution_guard",
+    "rollout_guard",
+    "release_publication_guard",
+    "external_delivery_guard"
+  ])
+  and (.intake_guards | all(
+    .enforced_in_preview == true
+    and (.required_evidence_fields | length) >= 10
+    and (.required_evidence_fields | index("workflow_id") != null)
+    and (.required_evidence_fields | index("receipt_hash") != null)
+  ))
+  and .redaction_digest_count == 6
+  and (.redaction_digests | length) == .redaction_digest_count
+  and (.redaction_digests | map(.id) == [
+    "durable_identity_digest",
+    "operator_identity_digest",
+    "authority_scope_digest",
+    "approval_decision_digest",
+    "rollback_quarantine_digest",
+    "publication_delivery_digest"
+  ])
+  and (.redaction_digests[] | select(.id == "durable_identity_digest") | .hashed_fields == durable_fields)
+  and (.redaction_digests | all(.hash_only == true and .required == true and (.hashed_fields | length) >= 2))
+  and .local_view_count == 4
+  and (.local_views | length) == .local_view_count
+  and (.local_views | map(.id) == [
+    "operator_acceptance_record_missing_fields_view",
+    "auditor_acceptance_record_digest_view",
+    "release_owner_acceptance_record_denial_view",
+    "runtime_acceptance_record_zero_effect_view"
+  ])
+  and (.local_views | all(
+    .external_delivery_enabled == false
+    and (.required_fields | length) >= 11
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .durable_identity_evidence.schema_version == "work_graph_durable_identity_preview_v1"
+  and .durable_identity_evidence.required_prior_gate == "hepta_work_graph_durable_identity_preview_gate"
+  and .durable_identity_evidence.required_field_ids == durable_fields
+  and .durable_identity_evidence.required_for_record_ids == [
+    "trusted_operator_acceptance_record",
+    "approval_decision_record",
+    "live_persistence_enablement_record",
+    "rollback_quarantine_owner_attestation",
+    "release_publication_owner_attestation",
+    "external_delivery_consent_record"
+  ]
+  and .durable_identity_evidence.durable_field_count == 7
+  and .durable_identity_evidence.preview_binding_count >= 5
+  and .durable_identity_evidence.invariant_count >= 7
+  and .durable_identity_evidence.currently_satisfied == false
+  and .invariant_count == 7
+  and (.invariants | length) == .invariant_count
+  and (.invariants | map(.id) == [
+    "acceptance_record_intake_requires_durable_identity_evidence",
+    "acceptance_records_are_templates_only",
+    "acceptance_record_validation_denies_all_live_effects",
+    "acceptance_record_digests_are_hash_only",
+    "acceptance_record_intake_views_are_local_only",
+    "acceptance_record_intake_requires_prior_authority_blocker",
+    "acceptance_record_intake_preview_has_no_side_effects"
+  ])
+  and (.invariants | all(.required == true))
+  and (.required_prior_gates == [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_promotion_precondition_preview_gate",
+    "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+    "hepta_work_graph_shadow_adapter_readback_preview_gate",
+    "hepta_work_graph_persistence_feature_flag_preview_gate",
+    "hepta_work_graph_persistence_canary_dry_run_preview_gate",
+    "hepta_work_graph_persistence_canary_readback_receipt_preview_gate",
+    "hepta_work_graph_persistence_promotion_blocker_preview_gate",
+    "hepta_work_graph_persistence_shadow_live_readback_comparison_preview_gate",
+    "hepta_work_graph_persistence_enforcement_rollout_blocker_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_packet_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_preview_gate",
+    "hepta_work_graph_persistence_operator_readiness_receipt_acknowledgement_preview_gate",
+    "hepta_work_graph_persistence_acceptance_authority_blocker_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_persistence_acceptance_record_receipt_preview_gate"
+  and .ready_for_acceptance_record_receipt_preview == true
+  and .ready_for_operator_acceptance == false
+  and .ready_for_live_persistence == false
+  and .source_probes.persistence_acceptance_record_intake.rust_module_present == true
+  and .source_probes.persistence_acceptance_record_intake.report_script_present == true
+  and .source_probes.persistence_acceptance_record_intake.gate_script_present == true
+  and .source_probes.persistence_acceptance_authority_blocker.rust_module_present == true
+  and .source_probes.persistence_acceptance_authority_blocker.gate_script_present == true
+  and .source_probes.durable_identity.rust_module_present == true
+  and .source_probes.durable_identity.report_script_present == true
+  and .source_probes.durable_identity.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_persistence_acceptance_record_intake_preview --lib
+
+echo "Hepta WorkGraph persistence acceptance record intake preview gate passed"

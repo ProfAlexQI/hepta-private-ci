@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+manifest="$repo_root/codex-rs/Cargo.toml"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+release_manifest="$repo_root/codex-rs/CONTEXT_LANE_RELEASE_MANIFEST.tsv"
+report_script="$repo_root/scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.report"
+gate_script="$repo_root/scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.gate"
+provider_plane="$repo_root/codex-rs/hepta-core/src/memory/provider_plane.rs"
+hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
+hepta_core_store_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/store.rs"
+hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
+hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/context_memory.rs"
+lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
+target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
+target_leaf="$lane"
+if [[ "$target_leaf" != hepta-* ]]; then
+  target_leaf="hepta-$target_leaf"
+fi
+export CARGO_TARGET_DIR="${HEPTA_CARGO_TARGET_DIR:-$target_root/$target_leaf}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+report_output="$(mktemp -t hepta-context-memory-provider-boundary-report.XXXXXX)"
+
+cleanup() {
+  rm -f "$report_output"
+}
+trap cleanup EXIT
+
+fail() {
+  echo "hepta-context-memory-provider-boundary-gate: $*" >&2
+  if [ -s "$report_output" ]; then
+    echo "memory provider boundary report output:" >&2
+    cat "$report_output" >&2
+  fi
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+assert_report_line() {
+  local expected="$1"
+  if ! grep -F -x "$expected" "$report_output" >/dev/null; then
+    fail "memory provider boundary report must contain line: $expected"
+  fi
+}
+
+line_number_of() {
+  local file_path="$1"
+  local needle="$2"
+  local line
+
+  line="$(grep -n -F "$needle" "$file_path" | head -n 1 | cut -d: -f1 || true)"
+  if [ -z "$line" ]; then
+    fail "$file_path is missing required text: $needle"
+  fi
+  printf '%s\n' "$line"
+}
+
+assert_line_before() {
+  local file_path="$1"
+  local before_needle="$2"
+  local after_needle="$3"
+  local label="$4"
+  local before_line
+  local after_line
+
+  before_line="$(line_number_of "$file_path" "$before_needle")"
+  after_line="$(line_number_of "$file_path" "$after_needle")"
+  if [ "$before_line" -ge "$after_line" ]; then
+    fail "$label expected '$before_needle' before '$after_needle'"
+  fi
+}
+
+bash "$report_script" >"$report_output"
+
+assert_report_line "memory-provider-boundary=pass"
+assert_report_line "memory-provider-boundary.payload-light=pass"
+assert_report_line "memory-provider-boundary.mode=shadow-only"
+assert_report_line "memory-provider-boundary.query=recall-bundle"
+assert_report_line "memory-provider-boundary.update-context=guarded-envelope"
+assert_report_line "memory-provider-boundary.report=descriptor-plus-envelope"
+assert_report_line "memory-provider-boundary.clear=dry-run-or-blocked"
+assert_report_line "memory-provider-boundary.operator-approval=required"
+assert_report_line "memory-provider-boundary.production-route=disabled"
+assert_report_line "memory-provider-boundary.write=disabled"
+assert_report_line "memory-provider-boundary.runtime-activation=disabled"
+
+for term in \
+  "MemoryProvider boundary" \
+  "MemoryProviderContextUpdateEnvelope" \
+  "MemoryProviderReport" \
+  "MemoryProviderClearReport" \
+  "providers must own query" \
+  "payload_light=true" \
+  "operator_approval_required=true" \
+  "prompt_payload_exported=false" \
+  "query_payload_exported=false" \
+  "ranked_payload_exported=false" \
+  "write_performed=false" \
+  "runtime_activation=false" \
+  "dry-run clear" \
+  "blocked clear"; do
+  assert_file_contains "$contracts" "$term" "memory provider boundary contract"
+done
+
+for term in \
+  "pub trait MemoryProvider" \
+  "MemoryProviderContextUpdateEnvelope" \
+  "MemoryProviderContextUpdateMode::ShadowOnly" \
+  "MemoryProviderReport" \
+  "MemoryProviderClearRequest" \
+  "MemoryProviderClearReport" \
+  "pub fn has_payload_light_boundary" \
+  "pub fn has_provider_boundary_integrity" \
+  "pub fn has_no_side_effects"; do
+  assert_file_contains "$provider_plane" "$term" "memory provider rust boundary"
+done
+
+for term in \
+  "pub use provider_plane::MemoryProvider" \
+  "pub use provider_plane::MemoryProviderContextUpdateEnvelope" \
+  "pub use provider_plane::MemoryProviderReport" \
+  "pub use provider_plane::MemoryProviderClearReport"; do
+  assert_file_contains "$hepta_core_memory" "$term" "memory provider public re-export"
+done
+
+assert_file_contains "$hepta_core_store_tests" \
+  "memory_provider_trait_supports_query_update_report_and_clear_boundaries" \
+  "memory provider hepta-core test"
+assert_file_contains "$hepta_memory" \
+  "shadow-only provider" \
+  "memory provider hepta-memory docs"
+assert_file_contains "$hepta_memory" \
+  "impl hepta_core::MemoryProvider for InMemoryStore" \
+  "memory provider hepta-memory implementation"
+assert_file_contains "$hepta_memory_tests" \
+  "store_memory_provider_update_context_is_payload_light_without_activation" \
+  "memory provider hepta-memory update test"
+assert_file_contains "$hepta_memory_tests" \
+  "store_memory_provider_clear_is_dry_run_or_blocked_without_store_mutation" \
+  "memory provider hepta-memory clear test"
+
+assert_file_contains "$debug_gate" "hepta-context-memory-provider-boundary-gate.sh" \
+  "memory provider debug gate"
+assert_file_contains "$preflight_script" "context memory provider boundary gate" \
+  "memory provider preflight stage"
+assert_file_contains "$release_manifest" "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.report" \
+  "memory provider report release manifest"
+assert_file_contains "$release_manifest" "scripts/lib/hepta-gate-pair-compat-v1/hepta-context-memory-provider-boundary.gate" \
+  "memory provider gate release manifest"
+
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-memory-ranked-recall-shadow-eval-gate.sh" \
+  "hepta-context-memory-provider-boundary-gate.sh" \
+  "memory provider debug order"
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-memory-provider-boundary-gate.sh" \
+  "hepta-context-plane-status-report-gate.sh" \
+  "memory provider context-plane debug order"
+assert_line_before \
+  "$preflight_script" \
+  "context memory ranked recall shadow eval gate" \
+  "context memory provider boundary gate" \
+  "memory provider preflight order"
+assert_line_before \
+  "$preflight_script" \
+  "context memory provider boundary gate" \
+  "context plane status/export report gate" \
+  "memory provider context-plane preflight order"
+
+leak_pattern='(prompt_text|transcript_text|memory_text|answer_text|session_id|memory_id|source_id|trace_id|query_text|query_payload|tool_args|tool_outputs|raw_payload|ranked_payload=|runtime-activation=enabled|production-route=enabled|operator-activation=enabled|write=enabled)'
+if grep -E "$leak_pattern" "$report_output" >/dev/null; then
+  fail "memory provider boundary report leaked payload or activation state"
+fi
+
+bash -n "$report_script"
+bash -n "$gate_script"
+
+cargo test --manifest-path "$manifest" -p hepta-core \
+  memory_provider \
+  --lib --message-format=short
+
+cargo test --manifest-path "$manifest" -p hepta-memory \
+  memory_provider \
+  --lib --message-format=short
+
+echo "memory-provider-boundary=pass"
+echo "memory-provider-boundary.payload-light=pass"
+echo "memory-provider-boundary.update-context=guarded-envelope"
+echo "memory-provider-boundary.clear=dry-run-or-blocked"
+echo "memory-provider-boundary.runtime-activation=disabled"

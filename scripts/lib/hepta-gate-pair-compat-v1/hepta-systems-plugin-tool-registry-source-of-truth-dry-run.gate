@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-registry-source-of-truth-dry-run.report"
+PREVIEW_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-contribution-inventory-preview.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_REGISTRY_SOURCE_OF_TRUTH_DRY_RUN_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-registry-source-of-truth-dry-run-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable plugin tool registry source-of-truth dry-run report: $REPORT"
+[[ -x "$PREVIEW_GATE" ]] || fail "missing executable plugin tool contribution preview gate: $PREVIEW_GATE"
+[[ -f "$DOC" ]] || fail "missing plugin tool registry source-of-truth dry-run architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the plugin tool registry source-of-truth dry-run report"
+fi
+
+grep -q 'Plugin ToolRegistry Source-of-Truth Dry-Run' "$DOC" \
+  || fail "architecture note must document Plugin ToolRegistry Source-of-Truth Dry-Run"
+grep -q 'duplicate ids' "$DOC" \
+  || fail "architecture note must document duplicate ids"
+grep -q 'unbound candidates' "$DOC" \
+  || fail "architecture note must document unbound candidates"
+grep -q 'live mutation disabled' "$DOC" \
+  || fail "architecture note must document live mutation disabled boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "plugin_tool_registry_source_of_truth_dry_run"
+  and .status == "ready"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_preview_surface == "plugin_tool_contribution_inventory_preview"
+  and .source_preview_ready == true
+  and .planned_source_of_truth_surface == "tool_registry_inventory"
+  and .hepta_system_manifest_present == true
+  and .lib_export_present == true
+  and .preview_candidate_count == 2
+  and .planned_registry_entry_count == 2
+  and .planned_mcp_entry_count == 1
+  and .planned_connector_entry_count == 1
+  and .duplicate_candidate_ids == []
+  and .duplicate_registry_ids == []
+  and .unbound_candidate_ids == []
+  and .all_candidate_ids_unique == true
+  and .all_preview_candidates_bound_to_registry == true
+  and .all_candidates_have_schema == true
+  and .all_candidates_have_risk_metadata == true
+  and .all_candidates_require_ledger == true
+  and .mutating_candidates_require_approval == true
+  and .all_candidates_have_guard_route == true
+  and .registry_invocation_guard_ready == true
+  and .registry_source_of_truth_dry_run_ready == true
+  and .registry_source_of_truth_enabled == false
+  and .tool_registry_registration_enabled == false
+  and .tool_invocation_enabled == false
+  and .ledger_written == false
+  and .approval_requested == false
+  and .mcp_server_started == false
+  and .app_connector_started == false
+  and .live_mutation_ready == false
+  and .side_effect_free == true
+  and .next_migration_step == "restore_tool_registry_invocation_source_of_truth_without_execution"
+  and (.entries | length) == 2
+  and any(.entries[]; .contribution_kind == "mcp_server" and .planned_registry_source == "mcp" and .guard_route == "require_approval_ledger" and .approval_required == true and .ledger_required == true and .registry_entry_found == true and .duplicate_id == false and .dry_run_ready == true and .tool_invocation_enabled == false)
+  and any(.entries[]; .contribution_kind == "app_connector" and .planned_registry_source == "connector" and .guard_route == "require_approval_ledger" and .approval_required == true and .ledger_required == true and .registry_entry_found == true and .duplicate_id == false and .dry_run_ready == true and .tool_invocation_enabled == false)
+  and (.blockers | index("plugin_tool_invocation_router_preflight_binding_not_restored")) != null
+  and (.blockers | index("registry_source_of_truth_enablement_disabled")) != null
+  and (.blockers | index("tool_registry_registration_disabled")) != null
+  and (.blockers | index("tool_invocation_disabled")) != null
+  and (.next_actions | index("restore_tool_registry_invocation_source_of_truth_without_execution")) != null
+  and (.next_actions | index("keep_parser_output_read_only_until_preflight_adapter_is_restored")) != null
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$PREVIEW_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p codex-tools plugin_tool_registry_source_of_truth_dry_run --quiet
+  cargo test -p codex-tools plugin_tool_contribution_inventory_preview --quiet
+  cargo test -p codex-tools tool_registry_inventory --quiet
+)
+
+printf 'hepta-systems-plugin-tool-registry-source-of-truth-dry-run-gate: PASS: plugin tool preview is bound to ToolRegistry source-of-truth dry-run and execution remains disabled\n'

@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-blocking-dry-run-entrypoint-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_CAPTURE_CACHE_DIR"' EXIT
+fi
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+source_has() {
+  local pattern="$1"
+  local path="$2"
+  rg -q "$pattern" "$path"
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+entrypoint_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint.rs
+)"
+final_closeout_gate_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-terminal-no-request-final-closeout.gate
+)"
+final_closeout_points_here="$(
+  bool_for source_has \
+    "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate" \
+    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout.rs
+)"
+scheduler_dry_run_present="$(
+  bool_for source_has "WORK_GRAPH_SCHEDULER_ADMISSION_DRY_RUN_ENFORCEMENT_GATE" \
+    codex-rs/hepta-runtime/src/work_graph_scheduler_admission_dry_run_enforcement.rs
+)"
+trace_guardrail_present="$(
+  bool_for source_has "WORK_GRAPH_TRACE_GUARDRAIL_SPAN_REPORT_ONLY_GATE" \
+    codex-rs/hepta-runtime/src/work_graph_trace_guardrail_span_report_only.rs
+)"
+entrypoint_emission_present="$(
+  bool_for source_has "WORK_GRAPH_AGENT_JOBS_TASK_BOARD_REPORT_ONLY_ENTRYPOINT_EMISSION_GATE" \
+    codex-rs/hepta-runtime/src/work_graph_agent_jobs_task_board_report_only_entrypoint_emission.rs
+)"
+
+scheduler_report="$(
+  capture_json_report \
+    "hepta-work-graph-scheduler-admission-dry-run-enforcement-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement.report"
+)"
+trace_guardrail_report="$(
+  capture_json_report \
+    "hepta-work-graph-trace-guardrail-span-report-only-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-trace-guardrail-span-report-only.report"
+)"
+entrypoint_emission_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-report-only-entrypoint-emission-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-agent-jobs-task-board-report-only-entrypoint-emission.report"
+)"
+final_closeout_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-terminal-no-request-final-closeout-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-agent-jobs-task-board-feature-flag-operator-review-request-precondition-terminal-no-request-final-closeout.report"
+)"
+
+jq -n \
+  --argjson entrypoint_module_present "$entrypoint_module_present" \
+  --argjson final_closeout_gate_present "$final_closeout_gate_present" \
+  --argjson final_closeout_points_here "$final_closeout_points_here" \
+  --argjson scheduler_dry_run_present "$scheduler_dry_run_present" \
+  --argjson trace_guardrail_present "$trace_guardrail_present" \
+  --argjson entrypoint_emission_present "$entrypoint_emission_present" \
+  --argjson scheduler_report "$scheduler_report" \
+  --argjson trace_guardrail_report "$trace_guardrail_report" \
+  --argjson entrypoint_emission_report "$entrypoint_emission_report" \
+  --argjson final_closeout_report "$final_closeout_report" \
+  '
+  def binding($id; $surface; $entrypoint; $position): {
+    id: $id,
+    source_surface_id: $surface,
+    entrypoint_id: $entrypoint,
+    hook_position: $position,
+    dry_run_decision: "deny_live_allow_report_only",
+    applied_check_ids: [
+      "dependencies_terminal_ready",
+      "lane_lease_available_and_owned",
+      "approval_authority_present_when_required",
+      "idempotency_replay_window_clear",
+      "budget_and_timeout_available",
+      "task_result_contract_preview_present",
+      "side_effect_boundary_locked",
+      "trace_guardrail_span_present"
+    ],
+    required_trace_fields: [
+      "traceId",
+      "spanId",
+      "parentSpanId",
+      "guardrailId",
+      "evidenceRef",
+      "payloadHash"
+    ],
+    would_block_if_live: true,
+    dry_run_allows_current_runtime_to_continue: true,
+    live_blocking_enabled: false
+  };
+  def check($id; $source): {
+    id: $id,
+    source: $source,
+    blocks_live_execution: true,
+    dry_run_explanation_required: true
+  };
+  def decision($entrypoint; $reason; $trace): {
+    entrypoint_id: $entrypoint,
+    outcome: "deny_live_allow_report_only",
+    reason: $reason,
+    trace_id: $trace,
+    allow_current_runtime_to_continue: true,
+    block_live_execution: true
+  };
+  [
+    binding("spawn_agent_blocking_guardrail_dry_run"; "multi_agent_v2_thread_spawn"; "spawn_agent"; "before agent_control.spawn_agent_with_metadata"),
+    binding("spawn_agents_on_csv_blocking_guardrail_dry_run"; "agent_jobs_batch_workers"; "spawn_agents_on_csv"; "before CSV fanout creates or runs agent job items"),
+    binding("task_board_claim_blocking_guardrail_dry_run"; "hepta_runtime_task_board"; "task_board_claim"; "before task board claim acquires or refreshes a lease"),
+    binding("worker_task_run_blocking_guardrail_dry_run"; "hepta_runtime_worker_tasks"; "worker_task_run"; "before worker task starts command, tool, or agent work")
+  ] as $entrypoint_bindings
+  | [
+    check("dependencies_terminal_ready"; "scheduler_admission"),
+    check("lane_lease_available_and_owned"; "scheduler_admission"),
+    check("approval_authority_present_when_required"; "scheduler_admission"),
+    check("idempotency_replay_window_clear"; "scheduler_admission"),
+    check("budget_and_timeout_available"; "scheduler_admission"),
+    check("task_result_contract_preview_present"; "task_result_envelope"),
+    check("side_effect_boundary_locked"; "scheduler_admission"),
+    check("trace_guardrail_span_present"; "trace_guardrail")
+  ] as $guardrail_checks
+  | [
+    decision("spawn_agent"; "spawn_agent would require blocking guardrail approval before live spawn"; "trace-blocking-dry-run-spawn-agent-001"),
+    decision("spawn_agents_on_csv"; "CSV fanout would require lease, budget, idempotency, and TaskResult evidence before live execution"; "trace-blocking-dry-run-agent-jobs-001"),
+    decision("task_board_claim"; "task board claim would require owned lease and dependency readback before live claim"; "trace-blocking-dry-run-task-board-001"),
+    decision("worker_task_run"; "worker task run would require side-effect boundary and guardrail span before live work"; "trace-blocking-dry-run-worker-task-001")
+  ] as $dry_run_decisions
+  | [
+    "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout_gate",
+    "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate",
+    "hepta_work_graph_trace_guardrail_span_report_only_gate",
+    "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+  ] as $required_prior_gates
+  | ($scheduler_report.live_blocking_enforcement_enabled == false
+      and $scheduler_report.ready_for_live_execution == false
+      and ($scheduler_report.side_effects | to_entries | all(.value == false))) as $source_scheduler_admission_no_live_blocking_confirmed
+  | ($scheduler_report.gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+      and $scheduler_report.entrypoint_count == 4
+      and $scheduler_report.check_count == 7
+      and $scheduler_report.dry_run_enforcement_enabled == true
+      and $scheduler_report.ready_for_append_only_event_store_shadow_path == true
+      and $source_scheduler_admission_no_live_blocking_confirmed) as $source_scheduler_admission_dry_run_ready
+  | ($trace_guardrail_report.live_guardrail_enforcement_enabled == false
+      and $trace_guardrail_report.ready_for_live_execution == false
+      and ($trace_guardrail_report.side_effects | to_entries | all(.value == false))) as $source_trace_guardrail_no_live_blocking_confirmed
+  | ($trace_guardrail_report.gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"
+      and $trace_guardrail_report.trace_guardrail_prior_readbacks_complete == true
+      and $trace_guardrail_report.ready_for_agent_jobs_task_board_report_only_emission == true
+      and $trace_guardrail_report.span_count == 9
+      and $trace_guardrail_report.blocking_guardrail_count == 6
+      and $source_trace_guardrail_no_live_blocking_confirmed) as $source_trace_guardrail_readiness_complete
+  | ($entrypoint_emission_report.ready_for_live_execution == false
+      and ($entrypoint_emission_report.side_effects | to_entries | all(.value == false))) as $source_entrypoint_emission_no_live_confirmed
+  | ($entrypoint_emission_report.gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"
+      and $entrypoint_emission_report.entrypoint_emission_prior_readbacks_complete == true
+      and $entrypoint_emission_report.entrypoint_emission_readiness_complete == true
+      and $entrypoint_emission_report.entrypoint_count == 2
+      and $entrypoint_emission_report.emission_count == 2
+      and $source_entrypoint_emission_no_live_confirmed) as $source_entrypoint_emission_readiness_complete
+  | ($final_closeout_report.ready_for_live_cutover == false
+      and $final_closeout_report.ready_for_operator_review_request == false
+      and $final_closeout_report.operator_review_requested == false
+      and $final_closeout_report.operator_packet_send_allowed == false
+      and $final_closeout_report.operator_packet_acceptance_allowed == false
+      and $final_closeout_report.approval_recording_allowed == false
+      and $final_closeout_report.scheduler_enforcement_allowed == false
+      and $final_closeout_report.guardrail_enforcement_allowed == false
+      and $final_closeout_report.work_graph_persistence_allowed == false
+      and ($final_closeout_report.side_effects | to_entries | all(.value == false))) as $source_final_closeout_no_live_confirmed
+  | ($final_closeout_report.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout_gate"
+      and $final_closeout_report.terminal_no_request_final_closeout_preconditions_complete == true
+      and $final_closeout_report.terminal_no_request_branch_closed == true
+      and $final_closeout_report.ready_for_scheduler_guardrail_blocking_dry_run_entrypoint == true
+      and $final_closeout_report.final_closeout_entry_count == 8
+      and $source_final_closeout_no_live_confirmed) as $source_final_closeout_ready
+  | ($source_scheduler_admission_dry_run_ready
+      and $source_trace_guardrail_readiness_complete
+      and $source_entrypoint_emission_readiness_complete
+      and $source_final_closeout_ready) as $prior_readbacks_complete
+  | (($entrypoint_bindings | length) == 4
+      and ($entrypoint_bindings | all(
+        .dry_run_decision == "deny_live_allow_report_only"
+        and .would_block_if_live == true
+        and .dry_run_allows_current_runtime_to_continue == true
+        and .live_blocking_enabled == false
+        and (.applied_check_ids | length == 8)
+        and (.required_trace_fields | length == 6)
+      ))) as $entrypoint_bindings_complete
+  | (($guardrail_checks | length) == 8
+      and ($guardrail_checks | all(
+        .blocks_live_execution == true
+        and .dry_run_explanation_required == true
+      ))) as $guardrail_checks_complete
+  | (($dry_run_decisions | length) == 4
+      and ($dry_run_decisions | all(
+        .outcome == "deny_live_allow_report_only"
+        and .allow_current_runtime_to_continue == true
+        and .block_live_execution == true
+        and (.trace_id | length > 0)
+      ))) as $dry_run_decisions_complete
+  | ($prior_readbacks_complete
+      and $entrypoint_bindings_complete
+      and $guardrail_checks_complete
+      and $dry_run_decisions_complete) as $pre_entrypoint_hook_contract_ready
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_gate",
+      schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_v1",
+      preview_mode: "blocking_guardrail_dry_run_before_entrypoint_no_live_enforcement",
+      source_scheduler_gate: $scheduler_report.gate,
+      source_scheduler_entrypoint_count: $scheduler_report.entrypoint_count,
+      source_scheduler_check_count: $scheduler_report.check_count,
+      source_scheduler_admission_dry_run_ready: $source_scheduler_admission_dry_run_ready,
+      source_scheduler_admission_no_live_blocking_confirmed: $source_scheduler_admission_no_live_blocking_confirmed,
+      source_trace_guardrail_gate: $trace_guardrail_report.gate,
+      source_trace_span_count: $trace_guardrail_report.span_count,
+      source_blocking_guardrail_count: $trace_guardrail_report.blocking_guardrail_count,
+      source_trace_guardrail_readiness_complete: $source_trace_guardrail_readiness_complete,
+      source_trace_guardrail_no_live_blocking_confirmed: $source_trace_guardrail_no_live_blocking_confirmed,
+      source_entrypoint_emission_gate: $entrypoint_emission_report.gate,
+      source_emission_count: $entrypoint_emission_report.emission_count,
+      source_entrypoint_emission_readiness_complete: $source_entrypoint_emission_readiness_complete,
+      source_entrypoint_emission_no_live_confirmed: $source_entrypoint_emission_no_live_confirmed,
+      source_final_closeout_gate: $final_closeout_report.gate,
+      source_final_closeout_entry_count: $final_closeout_report.final_closeout_entry_count,
+      source_final_closeout_preconditions_complete: $final_closeout_report.terminal_no_request_final_closeout_preconditions_complete,
+      source_final_closeout_no_live_confirmed: $source_final_closeout_no_live_confirmed,
+      source_final_closeout_ready: $source_final_closeout_ready,
+      entrypoint_binding_count: ($entrypoint_bindings | length),
+      guardrail_check_count: ($guardrail_checks | length),
+      dry_run_decision_count: ($dry_run_decisions | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      entrypoint_bindings: $entrypoint_bindings,
+      guardrail_checks: $guardrail_checks,
+      dry_run_decisions: $dry_run_decisions,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_work_graph_shadow_event_store_readback_gate",
+      prior_readbacks_complete: $prior_readbacks_complete,
+      entrypoint_bindings_complete: $entrypoint_bindings_complete,
+      guardrail_checks_complete: $guardrail_checks_complete,
+      dry_run_decisions_complete: $dry_run_decisions_complete,
+      scheduler_admission_dry_run_present: $source_scheduler_admission_dry_run_ready,
+      blocking_guardrail_dry_run_attached: $pre_entrypoint_hook_contract_ready,
+      pre_entrypoint_hook_contract_ready: $pre_entrypoint_hook_contract_ready,
+      live_blocking_enforcement_enabled: false,
+      runtime_interception_enabled: false,
+      work_graph_event_persistence_enabled: false,
+      ready_for_work_graph_shadow_event_store_readback: $pre_entrypoint_hook_contract_ready,
+      ready_for_live_execution: false,
+      source_probes: {
+        entrypoint_module_present: $entrypoint_module_present,
+        final_closeout_gate_present: $final_closeout_gate_present,
+        final_closeout_points_here: $final_closeout_points_here,
+        scheduler_dry_run_present: $scheduler_dry_run_present,
+        trace_guardrail_present: $trace_guardrail_present,
+        entrypoint_emission_present: $entrypoint_emission_present,
+        scheduler_report_gate: ($scheduler_report.gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"),
+        scheduler_dry_run_ready: $source_scheduler_admission_dry_run_ready,
+        scheduler_side_effects_all_false: ($scheduler_report.side_effects | to_entries | all(.value == false)),
+        trace_guardrail_report_gate: ($trace_guardrail_report.gate == "hepta_work_graph_trace_guardrail_span_report_only_gate"),
+        trace_guardrail_readiness_complete: $source_trace_guardrail_readiness_complete,
+        trace_guardrail_side_effects_all_false: ($trace_guardrail_report.side_effects | to_entries | all(.value == false)),
+        entrypoint_emission_report_gate: ($entrypoint_emission_report.gate == "hepta_work_graph_agent_jobs_task_board_report_only_entrypoint_emission_gate"),
+        entrypoint_emission_readiness_complete: $source_entrypoint_emission_readiness_complete,
+        entrypoint_emission_side_effects_all_false: ($entrypoint_emission_report.side_effects | to_entries | all(.value == false)),
+        final_closeout_report_gate: ($final_closeout_report.gate == "hepta_work_graph_agent_jobs_task_board_feature_flag_operator_review_request_precondition_terminal_no_request_final_closeout_gate"),
+        final_closeout_preconditions_complete: $final_closeout_report.terminal_no_request_final_closeout_preconditions_complete,
+        final_closeout_ready_for_scheduler: $final_closeout_report.ready_for_scheduler_guardrail_blocking_dry_run_entrypoint,
+        final_closeout_side_effects_all_false: ($final_closeout_report.side_effects | to_entries | all(.value == false))
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_event_persisted: false,
+        scheduler_admission_enforced: false,
+        guardrail_enforcement_enabled: false,
+        live_blocking_hook_installed: false,
+        lease_acquired: false,
+        work_started: false,
+        config_written: false,
+        feature_flag_mutated: false,
+        canary_traffic_routed: false,
+        operator_review_requested: false,
+        approval_recorded: false,
+        replay_executed: false,
+        rollback_executed: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }
+  '

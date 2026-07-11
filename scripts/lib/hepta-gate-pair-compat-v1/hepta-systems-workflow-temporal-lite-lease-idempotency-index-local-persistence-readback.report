@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-temporal-lite-checkpoint-and-rollback-anchor-local-persistence-readback.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/workflow_temporal_lite_lease_idempotency_index_local_persistence_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_WORKFLOW_TEMPORAL_LITE_LEASE_IDEMPOTENCY_INDEX_LOCAL_PERSISTENCE_READBACK_2026-06-30.md"
+
+fail() {
+  printf 'hepta-systems-workflow-temporal-lite-lease-idempotency-index-local-persistence-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable Temporal-lite local checkpoint/rollback anchor report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Temporal-lite local lease/idempotency Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Temporal-lite local lease/idempotency architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Temporal-lite local lease/idempotency report"
+fi
+
+lib_export_present=false
+if grep -q 'hepta_workflow_temporal_lite_lease_idempotency_index_local_persistence_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+reopened_sqlite_lease_test_present=false
+if grep -q 'local_lease_idempotency_readback_uses_reopened_sqlite_anchor_history' "$RUST_SOURCE"; then
+  reopened_sqlite_lease_test_present=true
+fi
+
+jq -n \
+  --slurpfile source <("$SOURCE_REPORT") \
+  --argjson lib_export_present "$lib_export_present" \
+  --argjson reopened_sqlite_lease_test_present "$reopened_sqlite_lease_test_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-temporal-lite-lease-idempotency-index-local-persistence-readback.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_WORKFLOW_TEMPORAL_LITE_LEASE_IDEMPOTENCY_INDEX_LOCAL_PERSISTENCE_READBACK_2026-06-30.md" \
+  '
+  def pad3($n):
+    (($n | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end);
+  def keyed_readback($prefix; $entry):
+    $prefix + "." + pad3($entry.replay_order) + "." + $entry.event_contract_id;
+  def lease_digest($kind; $entry):
+    "temporal-lite.local-" + $kind + "-digest.v1." + pad3($entry.replay_order) + "." + $entry.event_contract_id + "." + (($entry.checkpoint_readback_digest | length) | tostring) + "." + (($entry.rollback_readback_digest | length) | tostring);
+  def lease_entry($entry): {
+    event_contract_id:$entry.event_contract_id,
+    replay_order:$entry.replay_order,
+    local_sequence:$entry.local_sequence,
+    source_event_id:$entry.source_event_id,
+    replay_projection_key:$entry.replay_projection_key,
+    checkpoint_anchor_key:$entry.checkpoint_anchor_key,
+    rollback_anchor_key:$entry.rollback_anchor_key,
+    lease_readback_key:keyed_readback("temporal-lite.local-lease-readback"; $entry),
+    lease_scope_key:keyed_readback("temporal-lite.local-lease-scope"; $entry),
+    lease_owner:"hepta-temporal-lite-local-test-worker",
+    lease_ttl_ms:30000,
+    lease_digest:lease_digest("lease"; $entry),
+    lease_state:"projected_from_local_persistence_not_acquired",
+    idempotency_index_readback_key:keyed_readback("temporal-lite.local-idempotency-index-readback"; $entry),
+    idempotency_key:("idempotency-key.local.v1." + pad3($entry.replay_order) + "." + $entry.event_contract_id + "." + (($entry.source_event_id | length) | tostring) + "." + (($entry.replay_projection_key | length) | tostring)),
+    idempotency_digest:lease_digest("idempotency"; $entry),
+    duplicate_guard_key:keyed_readback("temporal-lite.local-duplicate-guard-readback"; $entry),
+    duplicate_guard_state:"projected_duplicate_denial_boundary",
+    readback_state:"projected_from_sqlite_wal_local_persistence_readback_without_runtime_writes",
+    lease_readback_projected:$entry.durable_anchor_pair_projected,
+    lease_digest_validated:($entry.checkpoint_digest_validated == true and $entry.rollback_digest_validated == true),
+    idempotency_index_projected:$entry.durable_anchor_pair_projected,
+    idempotency_digest_validated:($entry.checkpoint_digest_validated == true and $entry.rollback_digest_validated == true),
+    duplicate_guard_projected:$entry.durable_anchor_pair_projected,
+    lease_idempotency_pair_projected:$entry.durable_anchor_pair_projected,
+    lease_idempotency_mismatch_detected:$entry.anchor_mismatch_detected,
+    sqlite_readback_validated:$entry.sqlite_readback_validated,
+    wal_mode_required:$entry.wal_mode_required,
+    feature_gate_required:$entry.feature_gate_required,
+    runtime_feature_gate_enabled:$entry.runtime_feature_gate_enabled,
+    runtime_event_log_write_allowed:$entry.runtime_event_log_write_allowed,
+    runtime_sqlite_write_allowed:$entry.runtime_sqlite_write_allowed,
+    runtime_store_persistence_allowed:$entry.runtime_store_persistence_allowed,
+    lease_acquired:false,
+    lease_persisted:false,
+    idempotency_index_written:false,
+    idempotency_index_persisted:false,
+    workflow_execution_allowed:$entry.workflow_execution_allowed,
+    replay_execution_allowed:$entry.replay_execution_allowed,
+    rollback_execution_allowed:$entry.rollback_execution_allowed,
+    live_execution_allowed:$entry.live_execution_allowed
+  };
+  ($source[0]) as $source_report |
+  ($source_report.entries | map(lease_entry(.))) as $entries |
+  ($entries | length) as $entry_count |
+  ($entries | map(select(.lease_readback_projected == true)) | length) as $lease_readback_count |
+  ($entries | map(select(.idempotency_index_projected == true)) | length) as $idempotency_index_readback_count |
+  ($entries | map(select(.duplicate_guard_projected == true)) | length) as $duplicate_guard_readback_count |
+  ($entries | map(select(.lease_digest_validated == true)) | length) as $lease_digest_count |
+  ($entries | map(select(.idempotency_digest_validated == true)) | length) as $idempotency_digest_count |
+  ($entries | map(select(.lease_idempotency_pair_projected == true)) | length) as $lease_idempotency_pair_count |
+  ($entries | map(select(.lease_acquired == true)) | length) as $lease_acquired_count |
+  ($entries | map(select(.lease_persisted == true)) | length) as $lease_persisted_count |
+  ($entries | map(select(.idempotency_index_written == true)) | length) as $idempotency_index_written_count |
+  ($entries | map(select(.idempotency_index_persisted == true)) | length) as $idempotency_index_persisted_count |
+  ($entries | map(select(.lease_idempotency_mismatch_detected == true)) | length) as $lease_idempotency_mismatch_count |
+  ($source_report.checkpoint_and_rollback_anchor_local_persistence_readback_ready == true
+    and $source_report.durable_anchor_pair_count == 9
+    and $source_report.anchor_mismatch_count == 0
+    and $source_report.local_tempdb_sqlite_read_covered_by_tests == true
+    and $source_report.runtime_feature_gate_enabled == false
+    and $source_report.runtime_event_log_write_allowed == false
+    and $source_report.runtime_sqlite_write_allowed == false
+    and $source_report.runtime_store_persistence_allowed == false
+    and $source_report.checkpoint_write_allowed == false
+    and $source_report.rollback_anchor_write_allowed == false
+    and $source_report.anchor_persistence_allowed == false
+    and $source_report.workflow_execution_allowed == false
+    and $source_report.replay_execution_allowed == false
+    and $source_report.rollback_execution_allowed == false
+    and $source_report.live_execution_allowed == false
+    and $lib_export_present == true
+    and $reopened_sqlite_lease_test_present == true
+    and $entry_count == 9
+    and $lease_readback_count == 9
+    and $idempotency_index_readback_count == 9
+    and $duplicate_guard_readback_count == 9
+    and $lease_digest_count == 9
+    and $idempotency_digest_count == 9
+    and $lease_idempotency_pair_count == 9
+    and $lease_acquired_count == 0
+    and $lease_persisted_count == 0
+    and $idempotency_index_written_count == 0
+    and $idempotency_index_persisted_count == 0
+    and $lease_idempotency_mismatch_count == 0
+    and ($entries | all(.sqlite_readback_validated == true
+      and .wal_mode_required == true
+      and .runtime_feature_gate_enabled == false
+      and .runtime_event_log_write_allowed == false
+      and .runtime_sqlite_write_allowed == false
+      and .runtime_store_persistence_allowed == false
+      and .lease_acquired == false
+      and .lease_persisted == false
+      and .idempotency_index_written == false
+      and .idempotency_index_persisted == false
+      and .workflow_execution_allowed == false
+      and .replay_execution_allowed == false
+      and .rollback_execution_allowed == false
+      and .live_execution_allowed == false))) as $readback_ready |
+  {
+    runtime:"hepta",
+    surface:"workflow_temporal_lite_lease_idempotency_index_local_persistence_readback",
+    status:(if $readback_ready then "ready_blocked" else "blocked" end),
+    gate:"workflow_temporal_lite_lease_idempotency_index_local_persistence_readback_gate",
+    schema_version:"workflow_temporal_lite_lease_idempotency_index_local_persistence_readback_v1",
+    source_checkpoint_rollback_gate:$source_report.gate,
+    source_checkpoint_rollback_ready:$source_report.checkpoint_and_rollback_anchor_local_persistence_readback_ready,
+    source_anchor_pair_count:$source_report.durable_anchor_pair_count,
+    lib_export_present:$lib_export_present,
+    reopened_sqlite_lease_test_present:$reopened_sqlite_lease_test_present,
+    lease_scope:"local_persistence_lease_idempotency_readback_no_acquire_no_persistence",
+    sqlite_readback_scope:$source_report.sqlite_readback_scope,
+    lease_readback_count:$lease_readback_count,
+    idempotency_index_readback_count:$idempotency_index_readback_count,
+    duplicate_guard_readback_count:$duplicate_guard_readback_count,
+    lease_digest_count:$lease_digest_count,
+    idempotency_digest_count:$idempotency_digest_count,
+    lease_idempotency_pair_count:$lease_idempotency_pair_count,
+    lease_acquired_count:$lease_acquired_count,
+    lease_persisted_count:$lease_persisted_count,
+    idempotency_index_written_count:$idempotency_index_written_count,
+    idempotency_index_persisted_count:$idempotency_index_persisted_count,
+    lease_idempotency_mismatch_count:$lease_idempotency_mismatch_count,
+    wal_mode_required:true,
+    local_tempdb_sqlite_read_covered_by_tests:true,
+    runtime_feature_gate_enabled:false,
+    lease_idempotency_readback_materialized:$readback_ready,
+    runtime_event_log_write_allowed:false,
+    runtime_sqlite_write_allowed:false,
+    runtime_store_persistence_allowed:false,
+    lease_acquire_allowed:false,
+    lease_persistence_allowed:false,
+    idempotency_index_write_allowed:false,
+    idempotency_index_persistence_allowed:false,
+    workflow_execution_allowed:false,
+    replay_execution_allowed:false,
+    rollback_execution_allowed:false,
+    live_execution_allowed:false,
+    lease_idempotency_index_local_persistence_readback_ready:$readback_ready,
+    entries:$entries,
+    blockers:[
+      "runtime_feature_gate_closed",
+      "runtime_event_log_write_disabled",
+      "runtime_sqlite_write_disabled",
+      "runtime_store_persistence_disabled",
+      "lease_acquire_disabled",
+      "lease_persistence_disabled",
+      "idempotency_index_write_disabled",
+      "idempotency_index_persistence_disabled",
+      "workflow_execution_disabled",
+      "replay_execution_disabled",
+      "rollback_execution_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readback"
+    ],
+    recommended_next_gate:"workflow_temporal_lite_event_log_sqlite_adapter_local_persistence_readback",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      runtime_filesystem_written:false,
+      runtime_event_log_written:false,
+      runtime_sqlite_written:false,
+      runtime_store_persisted:false,
+      lease_acquired:false,
+      lease_persisted:false,
+      idempotency_index_written:false,
+      idempotency_index_persisted:false,
+      workflow_execution_started:false,
+      replay_executed:false,
+      rollback_executed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      channel_send_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

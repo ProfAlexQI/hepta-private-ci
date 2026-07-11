@@ -1,0 +1,263 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-enforcement-readiness-append-only-store-rerun.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-unified-projection-enforcement-readiness-terminal-task-result-rerun-preview-report" \
+  "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-terminal-task-result-rerun-preview.report" \
+  >"$tmpdir/terminal_task_result_rerun.json"
+capture_json_report \
+  "hepta-work-graph-append-only-store-enablement-precondition-application-preview-report" \
+  "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview.report" \
+  >"$tmpdir/append_only_store_application.json"
+
+append_only_rerun_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_enforcement_readiness_append_only_store_rerun_preview.rs
+)"
+append_only_rerun_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview.report
+)"
+append_only_rerun_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-append-only-store-rerun-preview.gate
+)"
+append_only_application_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_store_enablement_precondition_application_preview.rs
+)"
+append_only_application_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-store-enablement-precondition-application-preview.gate
+)"
+
+jq -n \
+  --slurpfile terminal "$tmpdir/terminal_task_result_rerun.json" \
+  --slurpfile application "$tmpdir/append_only_store_application.json" \
+  --argjson append_only_rerun_rust_module_present "$append_only_rerun_rust_module_present" \
+  --argjson append_only_rerun_report_script_present "$append_only_rerun_report_script_present" \
+  --argjson append_only_rerun_gate_script_present "$append_only_rerun_gate_script_present" \
+  --argjson append_only_application_rust_module_present "$append_only_application_rust_module_present" \
+  --argjson append_only_application_gate_script_present "$append_only_application_gate_script_present" \
+  '
+  $terminal[0] as $terminal
+  | $application[0] as $application
+  | def unique_order: reduce .[] as $item ([]; if index($item) then . else . + [$item] end);
+  def has_suffix($values; $suffix): any($values[]?; endswith($suffix));
+  def has_contains($values; $needle): any($values[]?; contains($needle));
+  def push_unique($values; $value): if ($values | index($value)) then $values else ($values + [$value]) end;
+  def application_source_ids($plans): [$plans[] | .affected_source_surface_ids[]] | unique_order;
+  def application_source_ids_for($plans; $precondition_id): [$plans[] | select(.readback_precondition_id == $precondition_id) | .affected_source_surface_ids[]] | unique_order;
+  def append_only_decision_for($store; $timeline; $task_result; $route; $guard; $terminal_ready; $precondition_ready; $readback; $route_blockers; $source_blockers):
+      if ($store | not) then "deny_missing_unified_store_projection"
+      elif ($timeline | not) then "deny_missing_timeline_projection"
+      elif ($task_result | not) then "deny_missing_task_result_projection"
+      elif ($route | not) then "deny_missing_append_only_route"
+      elif ($guard | not) then "deny_missing_store_idempotency_guard"
+      elif ($terminal_ready | not) then "deny_terminal_task_result_contract_missing"
+      elif ($precondition_ready | not) then "deny_append_only_store_precondition_missing"
+      elif ($readback | not) then "deny_missing_readback_probe"
+      elif has_suffix($source_blockers; "_admission_not_enforced") then "deny_scheduler_admission_not_enforced"
+      elif has_contains($source_blockers; "role_manifest_not_enforced") then "deny_role_manifest_not_enforced"
+      elif ($source_blockers | index("append_only_store_runtime_enablement_disabled")) then "deny_runtime_append_only_store_enablement_disabled"
+      elif ($route_blockers | index("append_only_store_disabled_by_design")) then "deny_append_only_store_disabled"
+      else "allow_preview_only"
+      end;
+  def next_gate_for($decision):
+      if $decision == "deny_scheduler_admission_not_enforced" then "hepta_work_graph_scheduler_admission_controller_preview_gate"
+      elif $decision == "deny_role_manifest_not_enforced" then "hepta_work_graph_role_manifest_contract_preview_gate"
+      elif $decision == "deny_runtime_append_only_store_enablement_disabled" then "hepta_work_graph_scheduler_admission_controller_preview_gate"
+      elif $decision == "allow_preview_only" then "hepta_work_graph_projection_enforcement_dry_run_preview_gate"
+      else "hepta_work_graph_scheduler_admission_controller_preview_gate"
+      end;
+  def append_only_decision($decision):
+      (any($application.application_plans[]?; (.affected_source_surface_ids | index($decision.source_surface_id)) and .readback_verified_by_preview == true and .applies_to_runtime == false)) as $covered
+      | ($covered and all($application.precondition_outcomes[]?; .precondition_contract_ready_preview == true)) as $precondition_ready
+      | (($decision.terminal_task_result_rerun_enforcement_decision == "deny_append_only_store_disabled") and $precondition_ready) as $primary_gap_closed
+      | ($decision.residual_route_blocker_ids | map(select(. != "append_only_store_disabled_by_design"))) as $route_without_design_blocker
+      | (if $precondition_ready then $route_without_design_blocker else push_unique($route_without_design_blocker; "append_only_store_precondition_contract_missing") end) as $route_blockers
+      | (push_unique(push_unique(push_unique($decision.residual_source_blocker_ids; "append_only_store_runtime_enablement_disabled"); "wal_write_boundary_not_enabled"); "rollback_readback_not_executed")) as $source_blockers
+      | (append_only_decision_for($decision.unified_store_projection_ready; $decision.timeline_projection_ready; $decision.task_result_projection_ready; $decision.append_only_route_ready; $decision.store_idempotency_guard_ready; $decision.terminal_task_result_contract_ready; $precondition_ready; $decision.readback_probe_contract_ready; $route_blockers; $source_blockers)) as $rerun_decision
+      | {
+          source_surface_id: $decision.source_surface_id,
+          source_category: $decision.source_category,
+          previous_projection_coverage_state: $decision.previous_projection_coverage_state,
+          previous_store_guard_rerun_state: $decision.previous_store_guard_rerun_state,
+          previous_terminal_task_result_rerun_state: $decision.terminal_task_result_rerun_state,
+          append_only_store_rerun_state: (if $precondition_ready then "append_only_store_precondition_contract_ready_preview_after_application" else "append_only_store_precondition_missing" end),
+          covered_by_append_only_store_precondition_application_preview: $covered,
+          previous_enforcement_decision: $decision.terminal_task_result_rerun_enforcement_decision,
+          append_only_store_rerun_enforcement_decision: $rerun_decision,
+          append_only_store_primary_gap_closed_by_precondition_application_preview: $primary_gap_closed,
+          projection_contract_ready: $decision.projection_contract_ready,
+          unified_store_projection_ready: $decision.unified_store_projection_ready,
+          timeline_projection_ready: $decision.timeline_projection_ready,
+          task_result_projection_ready: $decision.task_result_projection_ready,
+          store_idempotency_guard_ready: $decision.store_idempotency_guard_ready,
+          terminal_task_result_contract_ready: $decision.terminal_task_result_contract_ready,
+          append_only_route_ready: $decision.append_only_route_ready,
+          append_only_store_precondition_ready: $precondition_ready,
+          readback_probe_contract_ready: $decision.readback_probe_contract_ready,
+          scheduler_admission_enforcement_ready: false,
+          role_manifest_enforcement_ready: false,
+          runtime_append_only_store_enabled: false,
+          residual_source_blocker_ids: $source_blockers,
+          residual_route_blocker_ids: $route_blockers,
+          next_required_gate: next_gate_for($rerun_decision)
+        };
+  def residual_blocker($id; $severity; $affected; $fix): {
+      id: $id,
+      severity: $severity,
+      affected_source_surface_ids: $affected,
+      required_before_projection_enforcement: true,
+      recommended_fix: $fix
+    };
+  def stage($id; $observed; $before; $after; $blockers; $next): {
+      id: $id,
+      observed_contract_count: $observed,
+      ready_contract_count_before: $before,
+      ready_contract_count_after: $after,
+      hard_blocker_ids: $blockers,
+      enforcement_enabled: false,
+      next_gate: $next
+    };
+  ($terminal.decision_deltas | map(append_only_decision(.))) as $decisions
+  | ($terminal.decision_deltas | map(select(.terminal_task_result_rerun_enforcement_decision == "deny_append_only_store_disabled") | .source_surface_id)) as $before_append_only_gap_sources
+  | ($decisions | map(select(.append_only_store_rerun_enforcement_decision == "deny_append_only_store_disabled") | .source_surface_id)) as $after_append_only_gap_sources
+  | ($decisions | map(select(.previous_projection_coverage_state == "contract_ready_preview_after_application") | .source_surface_id)) as $projection_application_sources
+  | ($decisions | map(select(.previous_store_guard_rerun_state == "store_guard_contract_ready_preview_after_application") | .source_surface_id)) as $store_application_sources
+  | ($decisions | map(select(.previous_terminal_task_result_rerun_state == "terminal_task_result_contract_ready_preview_after_application") | .source_surface_id)) as $terminal_application_sources
+  | (application_source_ids($application.application_plans)) as $precondition_application_sources
+  | (application_source_ids_for($application.application_plans; "operator_review_and_side_effect_lock")) as $operator_review_sources
+  | ($decisions | map(select(has_suffix(.residual_source_blocker_ids; "_admission_not_enforced")) | .source_surface_id)) as $scheduler_sources
+  | ($decisions | map(select(has_contains(.residual_source_blocker_ids; "role_manifest_not_enforced")) | .source_surface_id)) as $role_sources
+  | [
+      {
+        id: "append_only_store_enablement_preconditions_missing_for_enforcement",
+        cleared_source_surface_ids: $before_append_only_gap_sources,
+        source_count_before: ($before_append_only_gap_sources | length),
+        source_count_after: ($after_append_only_gap_sources | length),
+        closure_gate_id: "hepta_work_graph_append_only_store_enablement_precondition_application_preview_gate"
+      }
+    ] as $cleared_blockers
+  | [
+      residual_blocker("projection_adapter_runtime_closure_application_disabled"; "high"; $projection_application_sources; "keep projection adapter closures preview-only until store guards, terminal TaskResult, and operator-review gates are promoted"),
+      residual_blocker("store_guard_runtime_application_disabled"; "high"; $store_application_sources; "attach store idempotency guards to runtime adapters only after persistence and operator-review gates are promoted"),
+      residual_blocker("idempotency_index_mutation_disabled"; "critical"; $precondition_application_sources; "keep idempotency indexes immutable until mutation policy and replay evidence are enforced"),
+      residual_blocker("state_store_guard_persistence_disabled"; "high"; $store_application_sources; "do not persist candidate guard rows until append-only store intake is promoted"),
+      residual_blocker("terminal_task_result_runtime_application_disabled"; "high"; $terminal_application_sources; "attach terminal TaskResult wrappers to runtime only after persistence, replay, and operator-review gates are promoted"),
+      residual_blocker("task_result_persistence_disabled"; "high"; $terminal_application_sources; "keep TaskResult rows preview-only until append-only store intake is promoted"),
+      residual_blocker("append_only_store_runtime_enablement_disabled"; "critical"; $precondition_application_sources; "keep durable store enablement disabled until WAL, readback, rollback, and operator readiness gates are promoted"),
+      residual_blocker("wal_write_boundary_not_enabled"; "critical"; $precondition_application_sources; "preserve no-WAL boundary until append-only event intake and replay receipts are promoted"),
+      residual_blocker("rollback_readback_not_executed"; "critical"; $precondition_application_sources; "execute rollback and readback gates before any append-only store enablement"),
+      residual_blocker("operator_review_required"; "high"; $operator_review_sources; "operator review must accept store enablement, WAL boundary, rollback, and side-effect lock evidence before promotion"),
+      residual_blocker("scheduler_admission_not_enforced"; "high"; $scheduler_sources; "make dependency, lease, budget, approval, role, and idempotency checks authoritative before work start"),
+      residual_blocker("role_manifest_not_enforced"; "medium"; $role_sources; "bind multi-agent, batch, worker, and handoff sources to role manifests with budgets and tool permissions"),
+      residual_blocker("runtime_application_residuals_not_promoted"; "high"; $projection_application_sources; "promote projection adapter and store guard runtime applications only after readback and operator-review gates are satisfied")
+    ] as $residual_blockers
+  | [
+      stage("unified_projection_contracts"; ($decisions | length); ($decisions | map(select(.projection_contract_ready)) | length); ($decisions | map(select(.projection_contract_ready)) | length); ["projection_adapter_runtime_closure_application_disabled"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("projection_adapter_runtime_application"; ($projection_application_sources | length); 0; 0; ["projection_adapter_runtime_closure_application_disabled","runtime_application_residuals_not_promoted"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("store_idempotency_guard_contracts"; ($decisions | length); ($decisions | map(select(.store_idempotency_guard_ready)) | length); ($decisions | map(select(.store_idempotency_guard_ready)) | length); ["store_guard_runtime_application_disabled"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("store_guard_runtime_application"; ($store_application_sources | length); 0; 0; ["store_guard_runtime_application_disabled","idempotency_index_mutation_disabled","state_store_guard_persistence_disabled"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("terminal_task_result_contracts"; ($terminal_application_sources | length); ($terminal_application_sources | length); ($terminal_application_sources | length); ["terminal_task_result_runtime_application_disabled","task_result_persistence_disabled"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("terminal_task_result_runtime_application"; ($terminal_application_sources | length); 0; 0; ["terminal_task_result_runtime_application_disabled","operator_review_required"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("append_only_store_preconditions"; ($application.precondition_outcomes | length); 0; ($application.precondition_outcomes | map(select(.precondition_contract_ready_preview == true)) | length); ["append_only_store_runtime_enablement_disabled","wal_write_boundary_not_enabled","rollback_readback_not_executed"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("append_only_store_runtime_enablement"; ($precondition_application_sources | length); 0; 0; ["append_only_store_runtime_enablement_disabled","wal_write_boundary_not_enabled","idempotency_index_mutation_disabled","rollback_readback_not_executed","operator_review_required"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("scheduler_admission_contracts"; ($scheduler_sources | length); 0; 0; ["scheduler_admission_not_enforced"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("role_manifest_contracts"; ($role_sources | length); 0; 0; ["role_manifest_not_enforced"]; "hepta_work_graph_role_manifest_contract_preview_gate")
+    ] as $stages
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "blocked",
+      gate: "hepta_work_graph_unified_projection_enforcement_readiness_append_only_store_rerun_preview_gate",
+      schema_version: "work_graph_unified_projection_enforcement_readiness_append_only_store_rerun_preview_v1",
+      preview_mode: "read_only_projection_enforcement_readiness_append_only_store_rerun_no_enforcement",
+      source_surface_count: ($decisions | length),
+      append_only_precondition_application_outcome_count: ($application.precondition_outcomes | length),
+      previous_contract_ready_surface_count: ($terminal.decision_deltas | map(select(.projection_contract_ready)) | length),
+      append_only_store_rerun_contract_ready_surface_count: ($decisions | map(select(.projection_contract_ready)) | length),
+      previous_append_only_store_primary_blocked_surface_count: ($before_append_only_gap_sources | length),
+      append_only_store_primary_blocked_surface_count_after: ($after_append_only_gap_sources | length),
+      append_only_store_precondition_application_source_count: ($precondition_application_sources | length),
+      append_only_store_precondition_ready_surface_count: ($decisions | map(select(.append_only_store_precondition_ready == true)) | length),
+      append_only_store_runtime_residual_source_count: ($decisions | map(select(.residual_source_blocker_ids | index("append_only_store_runtime_enablement_disabled"))) | length),
+      rerun_ready_surface_count: ($decisions | map(select(.append_only_store_rerun_enforcement_decision == "allow_preview_only")) | length),
+      rerun_blocked_surface_count: ($decisions | map(select(.append_only_store_rerun_enforcement_decision != "allow_preview_only")) | length),
+      decision_delta_count: ($decisions | length),
+      cleared_blocker_count: ($cleared_blockers | length),
+      residual_blocker_count: ($residual_blockers | length),
+      enforcement_stage_count: ($stages | length),
+      required_prior_gate_count: (($application.required_prior_gates + [$application.gate]) | length),
+      decision_deltas: $decisions,
+      cleared_blockers: $cleared_blockers,
+      residual_blockers: $residual_blockers,
+      enforcement_stages: $stages,
+      required_prior_gates: ($application.required_prior_gates + [$application.gate]),
+      recommended_next_gate: "hepta_work_graph_scheduler_admission_controller_preview_gate",
+      ready_for_scheduler_admission_gap_closure_preview: true,
+      ready_for_projection_enforcement: false,
+      ready_for_append_only_store_enablement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_role_manifest_enforcement: false,
+      ready_for_terminal_task_result_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_store_readiness_rerun: {
+          rust_module_present: $append_only_rerun_rust_module_present,
+          report_script_present: $append_only_rerun_report_script_present,
+          gate_script_present: $append_only_rerun_gate_script_present
+        },
+        append_only_store_precondition_application: {
+          rust_module_present: $append_only_application_rust_module_present,
+          gate_script_present: $append_only_application_gate_script_present,
+          upstream_gate: ($application.gate == "hepta_work_graph_append_only_store_enablement_precondition_application_preview_gate")
+        },
+        terminal_task_result_readiness_rerun: {
+          upstream_gate: ($terminal.gate == "hepta_work_graph_unified_projection_enforcement_readiness_terminal_task_result_rerun_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        idempotency_index_mutated: false,
+        store_guard_attached: false,
+        precondition_state_persisted: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        task_result_persisted: false,
+        wrapper_executed: false,
+        runtime_wrapper_attached: false,
+        role_manifest_enforcement_enabled: false,
+        timeline_persisted: false,
+        readback_executed: false,
+        rollback_executed: false,
+        closure_applied_to_runtime: false,
+        approval_recorded: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

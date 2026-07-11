@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-store-operator-review-side-effect-lock-readback-preview.report"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-store-operator-review-side-effect-lock-readback-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_append_only_store_operator_review_side_effect_lock_readback_preview_gate"
+  and .schema_version == "work_graph_append_only_store_operator_review_side_effect_lock_readback_preview_v1"
+  and .preview_mode == "read_only_append_only_store_operator_review_side_effect_lock_readback_no_execution"
+  and .operator_review_packet_count == 7
+  and .side_effect_lock_plan_count == 7
+  and .approval_evidence_boundary_count == 7
+  and .readback_boundary_count == 7
+  and .readback_plan_count == 7
+  and .packet_assertion_count == 7
+  and .side_effect_lock_assertion_count == 7
+  and .approval_boundary_assertion_count == 7
+  and .readback_boundary_assertion_count == 7
+  and .evidence_field_assertion_count == 7
+  and .guard_assertion_count == 11
+  and .blocker_mapping_assertion_count == 9
+  and .evidence_field_ref_count == 56
+  and .lock_scope_ref_count == 35
+  and .group_source_ref_count == 7
+  and .drift_detector_count == 7
+  and .blocker_count == 9
+  and .required_prior_gate_count == 49
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.readback_plans | map(.source_surface_id) == [
+    "multi_agent_v2_thread_spawn",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.readback_plans | all(
+    .readback_state == "asserted_from_operator_review_preview_no_execution"
+    and .required_before_application == true
+    and .performs_readback == false
+    and .records_operator_review == false
+    and .records_approval == false
+    and .establishes_side_effect_lock == false
+    and .mutates_store == false
+    and .writes_wal == false
+    and (.required_evidence_fields | length) == 8
+    and (.lock_scope_ids | length) == 5
+  ))
+  and (.readback_plans | map(select(.source_surface_id == "multi_agent_v2_thread_spawn" and .source_category == "multi_agent")) | length) == 1
+  and (.readback_plans | map(select(.source_surface_id == "hepta_runtime_scheduler_store" and .source_category == "runtime_scheduler")) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.packet_assertions | all(.expected_packet_state == "readback_verified_no_mutation" and .records_operator_review == false and .records_approval == false and .applies_to_runtime == false and (.required_section_ids | length) == 5 and (.required_evidence_field_ids | length) == 8))
+  and (.side_effect_lock_assertions | all(.expected_lock_state == "readback_verified_not_established" and .prevents_runtime_mutation == true and .side_effects_allowed == false and .lock_established == false and (.lock_scope_ids | length) == 5))
+  and (.approval_boundary_assertions | all(.expected_boundary_state == "readback_verified_not_recorded" and .records_operator_review == false and .records_approval == false and .persists_receipt == false and (.required_evidence_field_ids | length) == 8))
+  and (.readback_boundary_assertions | all(.expected_readback_state == "readback_contract_declared_not_executed" and .performs_readback == false and .rollback_executed == false and .writes_checkpoint == false))
+  and (.evidence_field_assertions | all(.expected_evidence_state == "evidence_fields_declared_not_persisted" and .required_field_count == 8 and .performs_readback == false and .persists_evidence == false))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.group_assertions | map({category: .source_category, count: (.affected_source_surface_ids | length), packets: .expected_review_packet_count}) == [
+    {"category": "multi_agent", "count": 2, "packets": 2},
+    {"category": "batch_agent_jobs", "count": 1, "packets": 1},
+    {"category": "runtime_scheduler", "count": 3, "packets": 3},
+    {"category": "external_handoff", "count": 1, "packets": 1}
+  ])
+  and (.group_assertions | all(.expected_group_state == "readback_verified_no_mutation"))
+  and (.guard_assertions | map(.guard_id) == [
+    "operator_review_side_effect_lock_preview_only",
+    "operator_review_recording_disabled",
+    "approval_recording_disabled",
+    "side_effect_lock_not_established",
+    "external_delivery_disabled",
+    "runtime_mutation_disabled",
+    "wal_write_boundary_disabled",
+    "durable_store_runtime_switch_disabled",
+    "idempotency_mutation_disabled",
+    "readback_rollback_execution_disabled",
+    "model_invocation_disabled"
+  ])
+  and (.guard_assertions | all(.expected_guard_state == "guard_declared_and_runtime_mutation_prevented" and .prevents_runtime_mutation == true and .mutates_runtime == false))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.blockers | map({id, count: (.affected_source_surface_ids | length)}) == [
+    {"id": "readback_execution_disabled", "count": 12},
+    {"id": "durable_store_runtime_switch_disabled", "count": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12},
+    {"id": "rollback_readback_not_executed", "count": 12},
+    {"id": "operator_review_required", "count": 7},
+    {"id": "side_effect_lock_not_established", "count": 7},
+    {"id": "operator_review_side_effect_lock_readback_missing", "count": 7},
+    {"id": "operator_review_side_effect_lock_application_missing", "count": 7}
+  ])
+  and (.blocker_mapping_assertions | all(.expected_blocker_state == "blocker_mapping_readback_verified_no_mutation" and .performs_readback == false and .mutates_runtime == false))
+  and (.drift_detectors | map(.id) == [
+    "operator_review_packet_alignment",
+    "side_effect_lock_scope_alignment",
+    "approval_evidence_boundary_alignment",
+    "readback_boundary_alignment",
+    "guard_no_mutation_alignment",
+    "blocker_mapping_alignment",
+    "side_effect_boundary_alignment"
+  ])
+  and (.drift_detectors | all(.blocks_application_preview == true and .performs_readback == false))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_append_only_store_operator_review_side_effect_lock_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_store_operator_review_side_effect_lock_application_preview_gate"
+  and .ready_for_operator_review_side_effect_lock_application_preview == true
+  and .ready_for_readback_execution == false
+  and .ready_for_operator_review_recording == false
+  and .ready_for_side_effect_lock_establishment == false
+  and .ready_for_runtime_write_boundary_preview == false
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.operator_review_side_effect_lock_readback.rust_module_present == true
+  and .source_probes.operator_review_side_effect_lock_readback.report_script_present == true
+  and .source_probes.operator_review_side_effect_lock_readback.gate_script_present == true
+  and .source_probes.operator_review_side_effect_lock_preview.upstream_gate == true
+  and .source_probes.operator_review_side_effect_lock_preview.gate_script_present == true
+  and .source_probes.operator_review_side_effect_lock_preview.recommended_next_matches == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_store_operator_review_side_effect_lock_readback_preview --lib
+
+echo "Hepta WorkGraph append-only store operator review side-effect lock readback preview gate passed"

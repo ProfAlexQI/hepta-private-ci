@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-dtd8-td3-rbtd5-rt10-td-preview.report"
+report="$(capture_json_report "hepta-systems-work-graph-dtd8-td3-rbtd-rbtd-rbtd-rt-rba-td-rt-rba-td-rt-rba-td-rt-rba-td-rt-rba-td-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and (.gate | endswith("_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_preview_gate"))
+  and .terminal_decision_surface_count == 6
+  and (.terminal_decision_surfaces | all(.blocks_terminal_decision_recording == true and .blocks_persistence_promotion == true and .blocks_external_delivery == true))
+  and .non_promotion_denial_count == 8
+  and (.non_promotion_denials | all(.blocks_persistence_promotion == true and .blocks_authority_grant == true and .blocks_rollout == true and .blocks_release_publication == true and .blocks_public_claim == true and .blocks_external_delivery == true))
+  and .authority_guard_count == 6
+  and .release_delivery_guard_count == 6
+  and (.authority_guards + .release_delivery_guards | all(.blocks_authority_grant == true and .blocks_external_delivery == true))
+  and .local_view_count == 4
+  and .invariant_count == 6
+  and (.required_prior_gates[-1] | endswith("_receipt_retention_expiry_readback_acknowledgement_replay_idempotency_preview_gate"))
+  and (.recommended_next_gate | endswith("_receipt_retention_expiry_readback_acknowledgement_terminal_decision_non_promotion_receipt_preview_gate"))
+  and .ready_for_terminal_decision_receipt_preview == true
+  and .ready_for_operator_acceptance == false
+  and .ready_for_live_persistence == false
+  and .source_probes.deep_td8_td3_rcptret_rbackack_td_rcptret_rbackack_td_rcptret_rbackack_td_rcptret_rbackack_td_rcptret_rbackack_td_rcptret_rbackack_terminal_decision.rust_module_present == true
+  and .source_probes.prior_deep_td8_td3_rbackack_td24_receipt_retention_readback_ack_replay.report_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  wg_dtd8_td3_rbtd_rbtd_rbtd_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_rt_td_preview --lib
+
+echo "Hepta WorkGraph deep td8 td3 receipt-retention readback-ack terminal decision preview gate passed"

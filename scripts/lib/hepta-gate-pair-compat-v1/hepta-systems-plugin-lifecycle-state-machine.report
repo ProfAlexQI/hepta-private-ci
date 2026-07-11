@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+ABI_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-contribution-point-abi.report"
+LOADER_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-contribution-point-loader-binding.report"
+TOOL_INVENTORY_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-contribution-inventory-preview.report"
+RUST_STATE_MACHINE="$ROOT/codex-rs/core-plugins/src/lifecycle_state_machine.rs"
+RUST_PHASE_SUMMARY="$ROOT/codex-rs/core-plugins/src/lifecycle_phase_summary.rs"
+LIB_SOURCE="$ROOT/codex-rs/core-plugins/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_LIFECYCLE_STATE_MACHINE_2026-06-27.md"
+HEPTA_SYSTEM_MANIFEST="$ROOT/plugins/hepta-system/.codex-plugin/plugin.json"
+
+fail() {
+  printf 'hepta-systems-plugin-lifecycle-state-machine-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$ABI_REPORT" ]] || fail "missing executable contribution-point ABI report: $ABI_REPORT"
+[[ -x "$LOADER_REPORT" ]] || fail "missing executable contribution-point loader binding report: $LOADER_REPORT"
+[[ -x "$TOOL_INVENTORY_REPORT" ]] || fail "missing executable plugin tool inventory report: $TOOL_INVENTORY_REPORT"
+[[ -f "$RUST_STATE_MACHINE" ]] || fail "missing lifecycle state machine source: $RUST_STATE_MACHINE"
+[[ -f "$RUST_PHASE_SUMMARY" ]] || fail "missing lifecycle phase summary source: $RUST_PHASE_SUMMARY"
+[[ -f "$LIB_SOURCE" ]] || fail "missing core-plugins lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing plugin lifecycle state machine architecture note: $DOC"
+[[ -f "$HEPTA_SYSTEM_MANIFEST" ]] || fail "missing hepta-system manifest fixture: $HEPTA_SYSTEM_MANIFEST"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the plugin lifecycle state-machine report"
+fi
+
+state_machine_export_present=false
+if grep -q '^pub mod lifecycle_state_machine;' "$LIB_SOURCE"; then
+  state_machine_export_present=true
+fi
+
+phase_summary_export_present=false
+if grep -q '^pub mod lifecycle_phase_summary;' "$LIB_SOURCE"; then
+  phase_summary_export_present=true
+fi
+
+MANIFEST_DIR="$(dirname "$HEPTA_SYSTEM_MANIFEST")"
+PLUGIN_ROOT="$(cd "$MANIFEST_DIR/.." && pwd -P)"
+skills_path="$(jq -r 'if (.skills | type) == "string" then .skills else "" end' "$HEPTA_SYSTEM_MANIFEST")"
+mcp_servers_path="$(jq -r 'if (.mcpServers | type) == "string" then .mcpServers else "" end' "$HEPTA_SYSTEM_MANIFEST")"
+apps_path="$(jq -r 'if (.apps | type) == "string" then .apps else "" end' "$HEPTA_SYSTEM_MANIFEST")"
+
+skill_path_present=false
+mcp_servers_path_present=false
+apps_path_present=false
+skill_count=0
+mcp_server_count=0
+app_count=0
+
+if [[ -n "$skills_path" && -d "$PLUGIN_ROOT/$skills_path" ]]; then
+  skill_path_present=true
+  skill_count="$(find "$PLUGIN_ROOT/$skills_path" -name SKILL.md -type f | wc -l | tr -d ' ')"
+fi
+
+if [[ -n "$mcp_servers_path" && -f "$PLUGIN_ROOT/$mcp_servers_path" ]]; then
+  mcp_servers_path_present=true
+  mcp_server_count="$(jq '(.mcpServers // {}) | length' "$PLUGIN_ROOT/$mcp_servers_path")"
+fi
+
+if [[ -n "$apps_path" && -f "$PLUGIN_ROOT/$apps_path" ]]; then
+  apps_path_present=true
+  app_count="$(jq '(.apps // {}) | length' "$PLUGIN_ROOT/$apps_path")"
+fi
+
+plugin_manifest_summary="$(
+  jq -n -c \
+    --slurpfile manifest "$HEPTA_SYSTEM_MANIFEST" \
+    --argjson skill_path_present "$skill_path_present" \
+    --argjson mcp_servers_path_present "$mcp_servers_path_present" \
+    --argjson apps_path_present "$apps_path_present" \
+    --argjson skill_count "$skill_count" \
+    --argjson mcp_server_count "$mcp_server_count" \
+    --argjson app_count "$app_count" \
+    '($manifest[0]) as $manifest | {
+    name:($manifest.name // null),
+    version:($manifest.version // null),
+    skill_path_present:$skill_path_present,
+    mcp_servers_path_present:$mcp_servers_path_present,
+    apps_path_present:$apps_path_present,
+    skill_count:$skill_count,
+    mcp_server_count:$mcp_server_count,
+    app_count:$app_count,
+    hook_count:(($manifest.hooks // {}) | length),
+    tool_schema_count:(($manifest.toolSchemas // {}) | length),
+    permission_count:(($manifest.permissions // {}) | length),
+    activation_event_count:(($manifest.activationEvents // {}) | length),
+    tool_policy_count:(($manifest.toolPolicies // {}) | length)
+  }'
+)"
+
+jq -n \
+  --slurpfile abi <("$ABI_REPORT") \
+  --slurpfile loader <("$LOADER_REPORT") \
+  --slurpfile tool_inventory <("$TOOL_INVENTORY_REPORT") \
+  --argjson state_machine_export_present "$state_machine_export_present" \
+  --argjson phase_summary_export_present "$phase_summary_export_present" \
+  --argjson plugin_manifest_summary "$plugin_manifest_summary" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-lifecycle-state-machine.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_PLUGIN_LIFECYCLE_STATE_MACHINE_2026-06-27.md" \
+  '
+    ($abi[0]) as $abi
+    | ($loader[0]) as $loader
+    | ($tool_inventory[0]) as $tool_inventory
+    | ($plugin_manifest_summary.skill_path_present == true
+        and $plugin_manifest_summary.mcp_servers_path_present == true
+        and $plugin_manifest_summary.apps_path_present == true
+        and $plugin_manifest_summary.skill_count == 1
+        and $plugin_manifest_summary.mcp_server_count == 1
+        and $plugin_manifest_summary.app_count == 1
+        and $plugin_manifest_summary.tool_schema_count == 2
+        and $plugin_manifest_summary.permission_count == 2
+        and $plugin_manifest_summary.activation_event_count == 2
+        and $plugin_manifest_summary.tool_policy_count == 2) as $fixture_shape_ready
+    | ($plugin_manifest_summary.permission_count == 2
+        and $plugin_manifest_summary.activation_event_count == 2
+        and $plugin_manifest_summary.tool_policy_count == 2
+        and $abi.policy.permission_policy_required == true
+        and $abi.policy.activation_policy_required == true
+        and $abi.policy.ledger_required_count == 4) as $fixture_policy_metadata_ready
+    | ($tool_inventory.preview_ready == true
+        and $tool_inventory.candidate_count == 2
+        and $tool_inventory.inventory_registration_enabled == false
+        and $tool_inventory.tool_invocation_enabled == false) as $tool_preview_contract_ready
+    | [
+        {
+          phase:"manifest_fixture_discovered",
+          source_surface:"plugins/hepta-system/.codex-plugin/plugin.json",
+          ready:$fixture_shape_ready,
+          live_mutation_enabled:false,
+          blocker:(if $fixture_shape_ready then null else "hepta_system_fixture_shape_not_ready" end)
+        },
+        {
+          phase:"contribution_point_abi_audited",
+          source_surface:$abi.surface,
+          ready:($abi.abi_ready == true and $abi.all_live_paths_blocked == true),
+          live_mutation_enabled:false,
+          blocker:(if ($abi.abi_ready == true and $abi.all_live_paths_blocked == true) then null else "contribution_point_abi_not_ready" end)
+        },
+        {
+          phase:"loader_binding_audited",
+          source_surface:$loader.surface,
+          ready:($loader.binding_ready == true and $loader.all_live_paths_blocked == true),
+          live_mutation_enabled:false,
+          blocker:(if ($loader.binding_ready == true and $loader.all_live_paths_blocked == true) then null else "loader_binding_not_ready" end)
+        },
+        {
+          phase:"fixture_policy_metadata_audited",
+          source_surface:"plugins/hepta-system/.codex-plugin/plugin.json",
+          ready:$fixture_policy_metadata_ready,
+          live_mutation_enabled:false,
+          blocker:(if $fixture_policy_metadata_ready then null else "fixture_policy_metadata_not_ready" end)
+        },
+        {
+          phase:"tool_preview_contract_audited",
+          source_surface:$tool_inventory.surface,
+          ready:$tool_preview_contract_ready,
+          live_mutation_enabled:false,
+          blocker:(if $tool_preview_contract_ready then null else "tool_preview_contract_not_ready" end)
+        },
+        {
+          phase:"live_mutation_blocked",
+          source_surface:"plugin_lifecycle_state_machine",
+          ready:($abi.all_live_paths_blocked == true
+            and $loader.all_live_paths_blocked == true
+            and $tool_inventory.live_mutation_ready == false
+            and $tool_inventory.inventory_registration_enabled == false
+            and $tool_inventory.tool_invocation_enabled == false
+            and $tool_inventory.ledger_written == false
+            and $tool_inventory.approval_requested == false),
+          live_mutation_enabled:false,
+          blocker:(if ($abi.all_live_paths_blocked == true
+            and $loader.all_live_paths_blocked == true
+            and $tool_inventory.live_mutation_ready == false
+            and $tool_inventory.inventory_registration_enabled == false
+            and $tool_inventory.tool_invocation_enabled == false
+            and $tool_inventory.ledger_written == false
+            and $tool_inventory.approval_requested == false) then null else "live_mutation_path_open" end)
+        }
+      ] as $phases
+    | ($phases | map(select(.ready == true)) | length) as $ready_phase_count
+    | ($phases | map(select(.ready != true)) | length) as $blocked_phase_count
+    | ($state_machine_export_present
+        and $phase_summary_export_present
+        and $fixture_shape_ready
+        and $fixture_policy_metadata_ready
+        and $abi.abi_ready == true
+        and $loader.binding_ready == true
+        and $tool_preview_contract_ready
+        and $ready_phase_count == 6
+        and $blocked_phase_count == 0) as $lifecycle_ready
+    | {
+        runtime:"hepta",
+        surface:"plugin_lifecycle_state_machine",
+        status:(if $lifecycle_ready then "ready" else "blocked" end),
+        plugin_id:"hepta-system@hepta-local",
+        source_abi_surface:$abi.surface,
+        source_abi_ready:$abi.abi_ready,
+        source_loader_binding_surface:$loader.surface,
+        source_loader_binding_ready:$loader.binding_ready,
+        source_tool_preview_surface:$tool_inventory.surface,
+        source_tool_preview_ready:$tool_preview_contract_ready,
+        source_tool_preview_candidate_count:$tool_inventory.candidate_count,
+        state_machine_export_present:$state_machine_export_present,
+        phase_summary_export_present:$phase_summary_export_present,
+        restored_memory_state_machine:$state_machine_export_present,
+        restored_memory_phase_summary:$phase_summary_export_present,
+        plugin_manifest_summary:$plugin_manifest_summary,
+        fixture_shape_ready:$fixture_shape_ready,
+        fixture_policy_metadata_ready:$fixture_policy_metadata_ready,
+        lifecycle_phase_count:($phases | length),
+        lifecycle_ready_phase_count:$ready_phase_count,
+        lifecycle_blocked_phase_count:$blocked_phase_count,
+        lifecycle_state_machine_ready:$lifecycle_ready,
+        lifecycle_phase_summary_ready:($ready_phase_count == 6 and $blocked_phase_count == 0),
+        source_of_truth_ready:$lifecycle_ready,
+        tool_registry_registration_enabled:false,
+        tool_invocation_enabled:false,
+        ledger_written:false,
+        approval_requested:false,
+        plugin_cache_mutated:false,
+        local_storage_created:false,
+        all_live_paths_blocked:true,
+        live_mutation_ready:false,
+        phases:$phases,
+        blockers:[
+          "tool_registry_dispatch_preflight_not_promoted",
+          "tool_registry_registration_disabled",
+          "plugin_cache_mutation_disabled",
+          "live_mutation_blocked_by_design"
+        ],
+        next_actions:[
+          "phase2_promote_tool_registry_to_read_only_dispatch_preflight_without_invocation",
+          "keep_plugin_lifecycle_as_source_of_truth_for_manifest_permission_activation_tool_policy_audit",
+          "keep_plugin_install_cache_registration_invocation_ledger_and_approval_writes_disabled"
+        ],
+        next_migration_step:"phase2_promote_tool_registry_to_read_only_dispatch_preflight_without_invocation",
+        local_gate:$gate,
+        architecture_note:$doc,
+        source_files:{
+          lifecycle_state_machine:"codex-rs/core-plugins/src/lifecycle_state_machine.rs",
+          lifecycle_phase_summary:"codex-rs/core-plugins/src/lifecycle_phase_summary.rs",
+          lib_export:"codex-rs/core-plugins/src/lib.rs",
+          abi_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-contribution-point-abi.report",
+          loader_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-contribution-point-loader-binding.report",
+          tool_inventory_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-contribution-inventory-preview.report"
+        },
+        side_effect_free:true,
+        side_effects:{
+          report_written:false,
+          git_index_mutated:false,
+          plugin_cache_mutated:false,
+          plugin_installed:false,
+          package_lock_written:false,
+          remote_sync_started:false,
+          manifest_rewritten:false,
+          loader_invoked:false,
+          tool_registered:false,
+          tool_invoked:false,
+          tool_ledger_written:false,
+          approval_requested:false,
+          local_storage_created:false,
+          workflow_event_log_mutated:false,
+          credential_read:false,
+          provider_invoked:false,
+          model_invoked:false,
+          channel_send_performed:false,
+          gateway_or_auth_mutated:false,
+          native_post_mutation_performed:false,
+          package_or_release_written:false,
+          public_ga_promoted:false
+        }
+      }'

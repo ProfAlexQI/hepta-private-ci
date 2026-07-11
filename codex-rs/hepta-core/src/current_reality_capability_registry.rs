@@ -1,5 +1,6 @@
-const CURRENT_REALITY_MATRIX_REPORT_SOURCE: &str =
-    include_str!("../../../scripts/hepta-systems-current-reality-capability-matrix-report.sh");
+const CURRENT_REALITY_MATRIX_REPORT_SOURCE: &str = include_str!(
+    "../../../scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"
+);
 
 /// Count the capability rows in the current-reality matrix's canonical registry.
 ///

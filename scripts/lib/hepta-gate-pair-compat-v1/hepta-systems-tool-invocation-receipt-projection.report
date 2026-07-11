@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-invocation-ledger-approval-preflight.report"
+RUST_SOURCE="$ROOT/codex-rs/tools/src/tool_invocation_receipt_projection.rs"
+LEDGER_SOURCE="$ROOT/codex-rs/hepta-runtime/src/tool_invocation.rs"
+GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-invocation-receipt-projection.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_INVOCATION_RECEIPT_PROJECTION_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-invocation-receipt-projection-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable ledger approval preflight report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing receipt projection Rust source: $RUST_SOURCE"
+[[ -f "$LEDGER_SOURCE" ]] || fail "missing ToolInvocationLedger source: $LEDGER_SOURCE"
+[[ -f "$DOC" ]] || fail "missing receipt projection architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the receipt projection report"
+fi
+
+jq -n \
+  --slurpfile source <("$SOURCE_REPORT") \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-invocation-receipt-projection.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_INVOCATION_RECEIPT_PROJECTION_2026-06-21.md" \
+  '
+  def projection_entry($entry):
+    ($entry.preflight_route == "approval_ledger_preflight_required" and $entry.ledger_preflight_ready == true) as $preflight_ready |
+    ($entry.registry_guard_route == "require_approval_ledger") as $approval_guard |
+    {
+      plugin_id:$entry.plugin_id,
+      candidate_tool_id:$entry.candidate_tool_id,
+      contribution_kind:$entry.contribution_kind,
+      source_preflight_route:$entry.preflight_route,
+      registry_guard_route:$entry.registry_guard_route,
+      receipt_projection_route:(if ($preflight_ready and $approval_guard) then "result_receipt_projection_required" elif $preflight_ready then "blocked_by_registry_guard" else "blocked_by_ledger_approval_preflight" end),
+      receipt_projection_ready:($preflight_ready and $approval_guard),
+      result_receipt_required:($preflight_ready and $approval_guard),
+      readback_evidence_required:($preflight_ready and $approval_guard),
+      receipt_projection_binding_present:true,
+      readback_evidence_binding_present:true,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registry_source_of_truth_enabled:false,
+      tool_registration_enabled:false,
+      tool_invocation_enabled:false,
+      ledger_write_enabled:false,
+      approval_request_enabled:false,
+      result_receipt_write_enabled:false,
+      side_effect_free:true
+    };
+
+  ($source[0]) as $source |
+  ($source.entries | map(projection_entry(.))) as $entries |
+  ($entries | map(select(.receipt_projection_ready == true)) | length) as $ready_count |
+  ($entries | map(select(.receipt_projection_route == "result_receipt_projection_required")) | length) as $required_count |
+  ($entries | map(select(.readback_evidence_required == true)) | length) as $readback_count |
+  ($source.tool_invocation_ledger_approval_preflight_ready
+    and $source.tool_invocation_enabled == false
+    and $source.ledger_written == false
+    and $source.approval_requested == false
+    and $ready_count == ($entries | length)
+    and $required_count == ($entries | length)
+    and $readback_count == ($entries | length)
+    and ($entries | all(.receipt_projection_binding_present == true and .readback_evidence_binding_present == true))
+    and ($entries | all(if .receipt_projection_route == "result_receipt_projection_required" then (.registry_guard_route == "require_approval_ledger" and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end))) as $projection_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_invocation_receipt_projection",
+    plugin_id:$source.plugin_id,
+    status:(if $projection_ready then "ready" else "blocked" end),
+    source_ledger_approval_preflight_surface:$source.surface,
+    source_ledger_approval_preflight_ready:$source.tool_invocation_ledger_approval_preflight_ready,
+    receipt_projection_binding_present:true,
+    readback_evidence_binding_present:true,
+    tool_invocation_execution_switch_enabled:false,
+    result_receipt_write_switch_enabled:false,
+    candidate_count:($entries | length),
+    receipt_projection_ready_count:$ready_count,
+    receipt_projection_blocked_count:(($entries | length) - $ready_count),
+    result_receipt_projection_required_count:$required_count,
+    readback_evidence_required_count:$readback_count,
+    all_ledger_approval_entries_bound_to_receipt_projection:($ready_count == ($entries | length) and $required_count == ($entries | length) and $readback_count == ($entries | length) and ($entries | all(.receipt_projection_binding_present == true and .readback_evidence_binding_present == true))),
+    all_receipt_projection_entries_keep_approval_guard:($entries | all(if .receipt_projection_route == "result_receipt_projection_required" then (.registry_guard_route == "require_approval_ledger" and .router_registration_lookup_enabled == false and .registry_lookup_executed == false and .registry_source_of_truth_enabled == false and .tool_registration_enabled == false and .tool_invocation_enabled == false and .ledger_write_enabled == false and .approval_request_enabled == false and .result_receipt_write_enabled == false) else true end)),
+    tool_invocation_receipt_projection_ready:$projection_ready,
+    result_receipt_projection_allowed:$projection_ready,
+    router_registration_lookup_enabled:false,
+    registry_lookup_executed:false,
+    registry_source_of_truth_enabled:false,
+    tool_registration_enabled:false,
+    tool_invocation_enabled:false,
+    ledger_written:false,
+    approval_requested:false,
+    result_receipt_written:false,
+    live_mutation_ready:false,
+    next_migration_step:"restore_tool_execution_dispatch_shadow_without_invocation",
+    entries:$entries,
+    blockers:[
+      "router_registration_lookup_disabled",
+      "registry_lookup_execution_disabled",
+      "registry_source_of_truth_enablement_disabled",
+      "tool_registration_disabled",
+      "tool_invocation_disabled",
+      "tool_invocation_ledger_write_disabled",
+      "approval_broker_request_disabled",
+      "result_receipt_write_disabled"
+    ],
+    next_actions:[
+      "restore_tool_execution_dispatch_shadow_without_invocation",
+      "keep_receipt_projection_read_only_until_dispatch_shadow_is_restored",
+      "keep_registration_invocation_ledger_approval_receipts_and_live_mutation_disabled_until_explicit_cutover"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      rust_contract:"codex-rs/tools/src/tool_invocation_receipt_projection.rs",
+      ledger_approval_preflight_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-invocation-ledger-approval-preflight.report",
+      tool_invocation_ledger_runtime:"codex-rs/hepta-runtime/src/tool_invocation.rs"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      plugin_cache_mutated:false,
+      plugin_installed:false,
+      manifest_rewritten:false,
+      manifest_schema_written:false,
+      registry_source_of_truth_enabled:false,
+      router_registration_lookup_enabled:false,
+      registry_lookup_executed:false,
+      registration_cutover_executed:false,
+      tool_registered:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      result_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      local_storage_created:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

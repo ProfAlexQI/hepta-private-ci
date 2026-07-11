@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-work-graph-events-replay-readback-preview.report"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-work-graph-events-replay-readback-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_append_only_work_graph_events_replay_readback_preview_gate"
+  and .schema_version == "work_graph_append_only_work_graph_events_replay_readback_preview_v1"
+  and .preview_mode == "read_only_append_only_work_graph_events_replay_readback_preview_no_execution"
+  and .upstream_shadow_write_rerun_gate == "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview_gate"
+  and .source_surface_count == 12
+  and .replay_readback_plan_count == 12
+  and .replay_readback_stage_count == 8
+  and .replay_readback_stage_source_ref_count == 96
+  and .replay_readback_stage_contract_ref_count == 40
+  and .replay_readback_plan_stage_ref_count == 96
+  and .replay_readback_plan_evidence_field_ref_count == 120
+  and .replay_cursor_contract_ready_preview_count == 12
+  and .readback_probe_contract_ready_preview_count == 12
+  and .duplicate_suppression_contract_ready_preview_count == 12
+  and .timeline_ordering_contract_ready_preview_count == 12
+  and .rollback_anchor_contract_ready_preview_count == 12
+  and .event_integrity_digest_contract_ready_preview_count == 12
+  and .append_only_work_graph_events_primary_blocked_source_count == 12
+  and .replay_readback_blocked_source_count == 12
+  and .partial_or_gap_blocked_source_count == 7
+  and .guard_count == 11
+  and .blocker_count == 5
+  and .required_prior_gate_count == 17
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.replay_readback_plans | all(
+    .replay_readback_state == "work_graph_events_replay_readback_contract_ready_preview"
+    and (.required_replay_readback_stage_ids | length == 8)
+    and (.expected_evidence_field_ids | length == 10)
+    and .replay_cursor_contract_ready_preview == true
+    and .readback_probe_contract_ready_preview == true
+    and .duplicate_suppression_contract_ready_preview == true
+    and .timeline_ordering_contract_ready_preview == true
+    and .rollback_anchor_contract_ready_preview == true
+    and .event_integrity_digest_contract_ready_preview == true
+    and .applies_to_runtime == false
+    and .persists_work_graph_events == false
+    and .writes_wal == false
+    and .writes_checkpoint == false
+    and .mutates_idempotency_index == false
+    and .executes_replay == false
+    and .executes_readback == false
+    and .executes_rollback == false
+    and .enforces_adapter_projection == false
+    and .mutates_runtime == false
+  ))
+  and (.replay_readback_stage_plans | all(
+    .contract_ready_preview == true
+    and .expected_runtime_state == "preview_only_no_replay_readback_execution"
+    and .persists_work_graph_events_after_preview == false
+    and .writes_wal_after_preview == false
+    and .writes_checkpoint_after_preview == false
+    and .mutates_idempotency_index_after_preview == false
+    and .executes_replay_after_preview == false
+    and .executes_readback_after_preview == false
+    and .executes_rollback_after_preview == false
+    and .mutates_runtime_after_preview == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.replay_readback_stage_plans | map(.id) == [
+    "work_graph_events_replay_cursor_contract",
+    "work_graph_events_readback_probe_contract",
+    "work_graph_events_duplicate_suppression_contract",
+    "work_graph_events_timeline_ordering_contract",
+    "work_graph_events_rollback_anchor_contract",
+    "work_graph_events_integrity_digest_contract",
+    "work_graph_events_no_execution_guard",
+    "work_graph_events_replay_readback_blocker_mapping"
+  ])
+  and (.guards | length == 11)
+  and (.guards | all(
+    .required_before_replay_readback_execution == true
+    and .satisfied_by_preview == false
+  ))
+  and (.blockers | map(.id) == [
+    "append_only_work_graph_events_disabled",
+    "replay_readback_execution_disabled",
+    "runtime_canonical_adapter_enforcement_disabled",
+    "canonical_adapter_projection_partial_or_gap",
+    "append_only_work_graph_events_replay_readback_readback_missing"
+  ])
+  and (.blockers | map(select(.id == "canonical_adapter_projection_partial_or_gap"))[0].affected_source_surface_ids | length) == 7
+  and (.blockers | all(.required_before_replay_readback_execution == true))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_work_graph_events_shadow_write_rerun_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_work_graph_events_replay_readback_readback_preview_gate"
+  and .ready_for_replay_readback_readback_preview == true
+  and .ready_for_replay_readback_application_preview == false
+  and .ready_for_append_only_work_graph_events == false
+  and .ready_for_replay_readback_execution == false
+  and .ready_for_runtime_adapter_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_task_result_enforcement == false
+  and .ready_for_role_manifest_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.append_only_work_graph_events_replay_readback_preview.rust_module_present == true
+  and .source_probes.append_only_work_graph_events_replay_readback_preview.report_script_present == true
+  and .source_probes.append_only_work_graph_events_replay_readback_preview.gate_script_present == true
+  and .source_probes.work_graph_events_shadow_write_rerun.rust_module_present == true
+  and .source_probes.work_graph_events_shadow_write_rerun.gate_script_present == true
+  and .source_probes.work_graph_events_shadow_write_rerun.upstream_gate == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_work_graph_events_replay_readback --lib
+
+echo "Hepta WorkGraph append-only WorkGraph events replay/readback preview gate passed"

@@ -1,46 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-approval_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-report.sh"
-negative_export_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-negative-export-report.sh"
-canonical_digest_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
-tamper_matrix_gate="$repo_root/scripts/hepta-context-plane-operator-approval-packet-digest-tamper-matrix-gate.sh"
-freshness_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-freshness-report.sh"
-
-line_count() {
-  printf '%s\n' "$1" | wc -l | tr -d ' '
-}
-
-sha256_digest() {
-  shasum -a 256 | awk '{print $1}'
-}
-
-approval_status="$(bash "$approval_report")"
-negative_export_status="$(bash "$negative_export_report")"
-canonical_digest_status="$(bash "$canonical_digest_report")"
-tamper_matrix_status="$(bash "$tamper_matrix_gate")"
-freshness_status="$(bash "$freshness_report")"
-
-cat <<STATUS
-context-plane-operator-approval-packet-freshness-dependency-chain=pass
-context-plane-operator-approval-packet-freshness-dependency-chain.schema=1
-context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-lines=$(line_count "$approval_status")
-context-plane-operator-approval-packet-freshness-dependency-chain.approval-report-sha256=$(printf '%s\n' "$approval_status" | sha256_digest)
-context-plane-operator-approval-packet-freshness-dependency-chain.negative-export-report-lines=$(line_count "$negative_export_status")
-context-plane-operator-approval-packet-freshness-dependency-chain.negative-export-report-sha256=$(printf '%s\n' "$negative_export_status" | sha256_digest)
-context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-lines=$(line_count "$canonical_digest_status")
-context-plane-operator-approval-packet-freshness-dependency-chain.canonical-digest-report-sha256=$(printf '%s\n' "$canonical_digest_status" | sha256_digest)
-context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-lines=$(line_count "$tamper_matrix_status")
-context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-report-sha256=$(printf '%s\n' "$tamper_matrix_status" | sha256_digest)
-context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-lines=$(line_count "$freshness_status")
-context-plane-operator-approval-packet-freshness-dependency-chain.freshness-report-sha256=$(printf '%s\n' "$freshness_status" | sha256_digest)
-context-plane-operator-approval-packet-freshness-dependency-chain.readiness-chain-generation=274
-context-plane-operator-approval-packet-freshness-dependency-chain.freshness-source-sequence=273
-context-plane-operator-approval-packet-freshness-dependency-chain.stale-source=reject
-context-plane-operator-approval-packet-freshness-dependency-chain.mixed-generation=reject
-context-plane-operator-approval-packet-freshness-dependency-chain.source-digest-mismatch=reject
-context-plane-operator-approval-packet-freshness-dependency-chain.tamper-matrix-replay=reject
-context-plane-operator-approval-packet-freshness-dependency-chain.runtime-activation=disabled
-context-plane-operator-approval-packet-freshness-dependency-chain.operator-activation=disabled
-STATUS
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+exec "$ROOT/scripts/hepta-gate-pair-runner" report "hepta-context-plane-operator-approval-packet-freshness-dependency-chain"

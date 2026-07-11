@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-preview.report"
+
+report="$(capture_json_report "hepta-work-graph-unified-projection-enforcement-readiness-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_unified_projection_enforcement_readiness_preview_gate"
+  and .schema_version == "work_graph_unified_projection_enforcement_readiness_preview_v1"
+  and .preview_mode == "read_only_projection_enforcement_readiness_no_enforcement"
+  and .source_surface_count == 12
+  and .decision_count == .source_surface_count
+  and (.source_decisions | length) == .source_surface_count
+  and .contract_ready_surface_count == 5
+  and .ready_surface_count == 0
+  and .blocked_surface_count == 12
+  and (.source_decisions | all(.enforcement_decision != "allow_preview_only"))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.source_decisions | map(.source_surface_id) == [
+    "update_plan_tool",
+    "plan_mode_proposed_plan_blocks",
+    "app_server_turn_plan_notification",
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_approval_broker",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.source_decisions | map(select(.projection_contract_ready == true)) | length) == 5
+  and (.source_decisions | map(select(.store_idempotency_guard_ready == false)) | length) == 5
+  and (.source_decisions | map(select(.store_idempotency_guard_ready == false and .idempotency_readback_adapter_present == true)) | length) == 5
+  and (.source_decisions | map(select(.enforcement_decision == "deny_missing_unified_store_projection")) | length) == 6
+  and (.source_decisions | map(select(.enforcement_decision == "deny_terminal_task_result_enforcement_disabled")) | length) == 5
+  and (.source_decisions | map(select(.source_surface_id == "hepta_runtime_task_board" and .next_required_gate == "hepta_work_graph_projection_adapter_gap_closure_preview_gate")) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  .blocker_count == 6
+  and (.blockers | map(.id) == [
+    "projection_adapters_missing_for_enforcement",
+    "store_idempotency_guards_missing_for_enforcement",
+    "terminal_task_result_enforcement_disabled",
+    "scheduler_admission_not_enforced",
+    "role_manifest_not_enforced",
+    "append_only_store_enablement_disabled"
+  ])
+  and (.blockers | map(select(.severity == "high")) | length) == 4
+  and (.blockers | all(.required_before_projection_enforcement == true))
+  and (.blockers | map(select(.id == "projection_adapters_missing_for_enforcement" and (.affected_source_surface_ids | index("hepta_runtime_task_board")))) | length) == 1
+  and (.blockers | map(select(.id == "terminal_task_result_enforcement_disabled" and (.affected_source_surface_ids | index("multi_agent_v2_thread_spawn")))) | length) == 1
+  and (.blockers | map(select(.id == "append_only_store_enablement_disabled" and (.affected_source_surface_ids | length == 12))) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  .enforcement_stage_count == 8
+  and (.enforcement_stages | map(.id) == [
+    "unified_projection_contracts",
+    "timeline_observability_contracts",
+    "append_only_event_intake_contracts",
+    "idempotency_readback_gap_closures",
+    "terminal_task_result_contracts",
+    "scheduler_admission_contracts",
+    "role_manifest_contracts",
+    "append_only_store_enablement"
+  ])
+  and (.enforcement_stages | all(.enforcement_enabled == false))
+  and (.enforcement_stages | map(select(.id == "unified_projection_contracts" and .observed_contract_count == 12 and .ready_contract_count == 5)) | length) == 1
+  and (.enforcement_stages | map(select(.id == "terminal_task_result_contracts" and .observed_contract_count == 6 and .ready_contract_count == 0)) | length) == 1
+  and (.enforcement_stages | map(select(.id == "append_only_store_enablement" and .observed_contract_count == 9 and .ready_contract_count == 0)) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  .required_prior_gate_count == 12
+  and (.required_prior_gates == [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_projection_adapter_gap_closure_preview_gate"
+  and .ready_for_projection_gap_closure_preview == true
+  and .ready_for_projection_enforcement == false
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_task_result_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.enforcement_readiness.rust_module_present == true
+  and .source_probes.enforcement_readiness.report_script_present == true
+  and .source_probes.enforcement_readiness.gate_script_present == true
+  and (.source_probes.upstream_reports | to_entries | all(.value == true))
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_unified_projection_enforcement_readiness --lib
+
+echo "Hepta WorkGraph unified projection enforcement readiness preview gate passed"

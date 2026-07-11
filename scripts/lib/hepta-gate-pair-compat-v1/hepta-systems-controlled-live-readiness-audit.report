@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+PLUGIN_LIFECYCLE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-lifecycle-state-machine.report"
+TOOL_DISPATCH_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-registry-read-only-dispatch-preflight.report"
+WORKFLOW_ADAPTER_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-durable-store-adapter.report"
+HEPTA_SYSTEM_STATUS_E2E_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-hepta-system-status-read-only-e2e.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_readiness_audit.rs"
+LIVE_READINESS_SOURCE="$ROOT/codex-rs/hepta-runtime/src/live_readiness.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_READINESS_AUDIT_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-readiness-audit-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PLUGIN_LIFECYCLE_REPORT" ]] || fail "missing executable plugin lifecycle report: $PLUGIN_LIFECYCLE_REPORT"
+[[ -x "$TOOL_DISPATCH_REPORT" ]] || fail "missing executable tool dispatch report: $TOOL_DISPATCH_REPORT"
+[[ -x "$WORKFLOW_ADAPTER_REPORT" ]] || fail "missing executable workflow adapter report: $WORKFLOW_ADAPTER_REPORT"
+[[ -x "$HEPTA_SYSTEM_STATUS_E2E_REPORT" ]] || fail "missing executable hepta-system read-only E2E report: $HEPTA_SYSTEM_STATUS_E2E_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5 Rust source: $RUST_SOURCE"
+[[ -f "$LIVE_READINESS_SOURCE" ]] || fail "missing runtime live readiness source: $LIVE_READINESS_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 5 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 5 controlled-live readiness audit report"
+fi
+
+git_status_entry_count="$(git -C "$ROOT" status --porcelain | wc -l | tr -d ' ')"
+git_untracked_count="$(git -C "$ROOT" status --porcelain | awk 'substr($0,1,2) == "??" {count++} END {print count + 0}')"
+git_tracked_change_count="$(git -C "$ROOT" status --porcelain | awk 'substr($0,1,2) != "??" {count++} END {print count + 0}')"
+lib_export_present=false
+if grep -q 'controlled_live_readiness_audit_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile plugin <("$PLUGIN_LIFECYCLE_REPORT") \
+  --slurpfile tool <("$TOOL_DISPATCH_REPORT") \
+  --slurpfile workflow <("$WORKFLOW_ADAPTER_REPORT") \
+  --slurpfile e2e <("$HEPTA_SYSTEM_STATUS_E2E_REPORT") \
+  --argjson git_status_entry_count "$git_status_entry_count" \
+  --argjson git_untracked_count "$git_untracked_count" \
+  --argjson git_tracked_change_count "$git_tracked_change_count" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_READINESS_AUDIT_2026-06-27.md" \
+  '
+  def condition($id; $layer; $evidence; $satisfied): {
+    id:$id,
+    layer:$layer,
+    evidence:$evidence,
+    satisfied:$satisfied,
+    required_for_live:true,
+    blocks_cutover:($satisfied | not)
+  };
+  def blocker($id; $reason): {
+    id:$id,
+    reason:$reason,
+    operator_recoverable:true
+  };
+  ($plugin[0]) as $plugin |
+  ($tool[0]) as $tool |
+  ($workflow[0]) as $workflow |
+  ($e2e[0]) as $e2e |
+  ($plugin.lifecycle_state_machine_ready == true
+    and $plugin.source_of_truth_ready == true
+    and $plugin.live_mutation_ready == false) as $plugin_source_ready |
+  ($tool.read_only_dispatch_preflight_ready == true
+    and $tool.tool_invocation_enabled == false
+    and $tool.ledger_written == false
+    and $tool.approval_requested == false
+    and $tool.live_mutation_ready == false) as $tool_source_ready |
+  ($workflow.temporal_lite_adapter_ready == true
+    and $workflow.feature_gate_enabled == false
+    and $workflow.ready_for_event_log_write == false
+    and $workflow.ready_for_sqlite_write == false
+    and $workflow.ready_for_workflow_execution == false
+    and $workflow.ready_for_replay_execution == false
+    and $workflow.ready_for_rollback_execution == false
+    and $workflow.ready_for_live_execution == false) as $workflow_source_ready |
+  ($e2e.read_only_e2e_ready == true
+    and $e2e.ready_for_invocation == false
+    and $e2e.ready_for_ledger_write == false
+    and $e2e.ready_for_approval_request == false
+    and $e2e.ready_for_receipt_persistence == false
+    and $e2e.ready_for_native_post_mutation == false
+    and $e2e.ready_for_channel_send == false
+    and $e2e.ready_for_live_execution == false) as $e2e_source_ready |
+  ($plugin_source_ready and $tool_source_ready and $workflow_source_ready and $e2e_source_ready) as $single_source_of_truth_ready |
+  ($workflow.replay_validation_count == 9 and $workflow.ready_for_replay_execution == false) as $replay_validation_metadata_present |
+  ($workflow.rollback_metadata_count == 9 and $workflow.ready_for_rollback_execution == false) as $rollback_metadata_present |
+  ($git_status_entry_count == 0) as $clean_worktree_required |
+  [
+    condition("single_source_of_truth_ready"; "systems"; "plugin lifecycle, ToolRegistry preflight, workflow adapter, and read-only E2E agree"; $single_source_of_truth_ready),
+    condition("read_only_e2e_chain_ready"; "e2e"; "hepta-system status read-only E2E has four ready links"; $e2e_source_ready),
+    condition("temporal_lite_adapter_feature_gate_closed"; "workflow"; "workflow durable-store adapter is ready while event-log writes remain feature-gated off"; $workflow_source_ready),
+    condition("replay_validation_metadata_present"; "workflow"; "Temporal-lite adapter carries 9 replay validation metadata entries and replay execution remains disabled"; $replay_validation_metadata_present),
+    condition("rollback_metadata_present"; "workflow"; "Temporal-lite adapter carries 9 rollback metadata entries and rollback execution remains disabled"; $rollback_metadata_present),
+    condition("clean_worktree_required"; "release"; "controlled live requires a clean scoped worktree boundary before mutation"; $clean_worktree_required),
+    condition("explicit_operator_live_approval_recorded"; "operator"; "explicit operator live approval packet has not been recorded"; false),
+    condition("fresh_soak_readback_evidence_recorded"; "observability"; "fresh soak and readback evidence has not been recorded for this cutover"; false),
+    condition("credential_boundary_attestation_recorded"; "security"; "credential boundary attestation has not been recorded"; false),
+    condition("gateway_native_telegram_post_boundary_approval_recorded"; "transport"; "Gateway, Native POST, and Telegram live mutation boundary approval is absent"; false),
+    condition("rollback_rehearsal_evidence_recorded"; "rollback"; "rollback rehearsal evidence has not been recorded"; false),
+    condition("kill_switch_rehearsal_evidence_recorded"; "rollback"; "kill-switch rehearsal evidence has not been recorded"; false)
+  ] as $conditions |
+  [
+    (if $clean_worktree_required then empty else blocker("dirty_worktree_boundary"; "controlled live requires a clean scoped worktree boundary") end),
+    blocker("operator_live_approval_missing"; "explicit operator live approval packet is missing"),
+    blocker("fresh_soak_readback_missing"; "fresh soak and readback evidence is missing"),
+    blocker("credential_boundary_attestation_missing"; "credential boundary attestation is missing"),
+    blocker("gateway_native_telegram_post_boundary_approval_missing"; "Gateway, Native POST, and Telegram live mutation approval is missing"),
+    blocker("rollback_rehearsal_missing"; "rollback rehearsal evidence is missing"),
+    blocker("kill_switch_rehearsal_missing"; "kill-switch rehearsal evidence is missing")
+  ] as $blockers |
+  ($conditions | map(select(.satisfied == true)) | length) as $satisfied_count |
+  ($conditions | map(select(.blocks_cutover == true)) | length) as $blocking_count |
+  ($blockers | length) as $blocker_count |
+  ($lib_export_present
+    and ($conditions | length) == 12
+    and $satisfied_count == 5
+    and $blocking_count == 7
+    and $blocker_count == 7
+    and $single_source_of_truth_ready
+    and $replay_validation_metadata_present
+    and $rollback_metadata_present
+    and ($conditions | all(.required_for_live == true))
+    and ($blockers | all(.operator_recoverable == true))) as $audit_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_readiness_audit",
+    status:(if $audit_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_readiness_audit_gate",
+    schema_version:"controlled_live_readiness_audit_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_plugin_lifecycle_ready:$plugin_source_ready,
+    source_tool_dispatch_ready:$tool_source_ready,
+    source_workflow_adapter_ready:$workflow_source_ready,
+    source_read_only_e2e_ready:$e2e_source_ready,
+    source_single_source_of_truth_ready:$single_source_of_truth_ready,
+    replay_validation_metadata_present:$replay_validation_metadata_present,
+    rollback_metadata_present:$rollback_metadata_present,
+    live_readiness_runtime_source_present:true,
+    lib_export_present:$lib_export_present,
+    git_status_entry_count:$git_status_entry_count,
+    git_untracked_count:$git_untracked_count,
+    git_tracked_change_count:$git_tracked_change_count,
+    dirty_worktree_boundary_tracked:($git_status_entry_count > 0),
+    runtime_readiness_stage:"M2-local-adapter",
+    audit_precondition_count:($conditions | length),
+    satisfied_precondition_count:$satisfied_count,
+    blocking_precondition_count:$blocking_count,
+    blocker_count:$blocker_count,
+    dry_run_adapter_count:4,
+    dry_run_only_adapter_count:4,
+    manual_operator_live_cutover_approval_required:true,
+    operator_live_approval_recorded:false,
+    fresh_soak_readback_evidence_recorded:false,
+    credential_boundary_attestation_recorded:false,
+    gateway_native_telegram_post_boundary_approval_recorded:false,
+    rollback_rehearsal_evidence_recorded:false,
+    kill_switch_rehearsal_evidence_recorded:false,
+    controlled_live_audit_ready:$audit_ready,
+    controlled_live_cutover_ready:false,
+    live_execution_allowed:false,
+    activation_allowed:false,
+    preconditions:$conditions,
+    blockers:$blockers,
+    next_actions:[
+      "phase5a_controlled_live_readiness_denial_readback_index_without_cutover",
+      "keep_controlled_live_disabled_until_explicit_operator_live_approval"
+    ],
+    next_migration_step:"phase5a_controlled_live_readiness_denial_readback_index_without_cutover",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      plugin_installed:false,
+      plugin_cache_mutated:false,
+      tool_registered:false,
+      tool_invoked:false,
+      ledger_written:false,
+      approval_requested:false,
+      approval_recorded:false,
+      receipt_persisted:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      lease_acquired:false,
+      idempotency_index_mutated:false,
+      checkpoint_written:false,
+      workflow_execution_started:false,
+      replay_executed:false,
+      rollback_executed:false,
+      rollback_rehearsal_recorded:false,
+      kill_switch_mutated:false,
+      credential_read:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

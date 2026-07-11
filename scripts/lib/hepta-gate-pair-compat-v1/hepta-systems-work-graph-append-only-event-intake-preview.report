@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+append_only_event_intake_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_event_intake_preview.rs
+)"
+append_only_event_intake_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-event-intake-preview.report
+)"
+append_only_event_intake_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-event-intake-preview.gate
+)"
+unified_projection_audit_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_audit_preview.rs
+)"
+state_store_persistence_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_state_store_persistence_preview.rs
+)"
+state_store_persistence_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-state-store-persistence-preview.report
+)"
+state_store_persistence_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-state-store-persistence-preview.gate
+)"
+
+jq -n \
+  --argjson append_only_event_intake_rust_module_present "$append_only_event_intake_rust_module_present" \
+  --argjson append_only_event_intake_report_script_present "$append_only_event_intake_report_script_present" \
+  --argjson append_only_event_intake_gate_script_present "$append_only_event_intake_gate_script_present" \
+  --argjson unified_projection_audit_rust_module_present "$unified_projection_audit_rust_module_present" \
+  --argjson state_store_persistence_rust_module_present "$state_store_persistence_rust_module_present" \
+  --argjson state_store_persistence_report_script_present "$state_store_persistence_report_script_present" \
+  --argjson state_store_persistence_gate_script_present "$state_store_persistence_gate_script_present" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate"
+  ];
+  def event_contract($id; $kind; $sources; $collections; $fields; $keys; $redaction; $order; $task_result): {
+    id: $id,
+    record_kind: $kind,
+    source_surface_ids: $sources,
+    target_collection_ids: $collections,
+    required_fields: $fields,
+    idempotency_key_fields: $keys,
+    redaction_policy: $redaction,
+    append_order: $order,
+    requires_task_result_contract: $task_result,
+    mutates_store: false
+  };
+  def route($source; $category; $events; $collections; $wal; $guard; $readbacks; $state; $blockers): {
+    source_surface_id: $source,
+    source_category: $category,
+    emitted_event_kind_ids: $events,
+    target_collection_ids: $collections,
+    wal_operation_id: $wal,
+    idempotency_guard_id: $guard,
+    readback_probe_ids: $readbacks,
+    intake_state: $state,
+    blocker_ids: $blockers
+  };
+  def blocker($id; $severity; $events; $sources; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_event_kind_ids: $events,
+    affected_source_surface_ids: $sources,
+    required_before_store_enablement: true,
+    recommended_fix: $fix
+  };
+  [
+    event_contract("plan_step_event_intake"; "plan_step_event"; ["update_plan_tool", "plan_mode_proposed_plan_blocks", "app_server_turn_plan_notification"]; ["nodes", "edges", "timelineEvents"]; ["traceId", "eventId", "planStepId", "sourceSurfaceId", "status", "redactionState"]; ["traceId", "turnId", "stepIndex", "proposalHash"]; "hash_raw_plan_text_and_store_redacted_refs_only"; "append_after_plan_surface_parse_before_scheduler_visibility"; false),
+    event_contract("agent_spawn_event_intake"; "agent_spawn_event"; ["multi_agent_v2_thread_spawn"]; ["nodes", "edges", "timelineEvents"]; ["traceId", "eventId", "parentThreadId", "childThreadId", "agentPath", "roleId", "status"]; ["parentThreadId", "childThreadId", "roleId"]; "store_agent_paths_and_role_refs_without_prompt_payload"; "append_after_role_manifest_preview_before_child_visibility"; true),
+    event_contract("mailbox_delivery_event_intake"; "mailbox_delivery_event"; ["multi_agent_v2_mailbox_wait"]; ["edges", "timelineEvents"]; ["traceId", "eventId", "mailboxSeq", "agentPath", "deliveryState", "triggerTurn"]; ["traceId", "agentPath", "mailboxSeq"]; "hash_inter_agent_message_content_and_store_delivery_refs"; "append_after_mailbox_seq_observed_before_wait_completion"; false),
+    event_contract("agent_job_item_event_intake"; "agent_job_item_event"; ["agent_jobs_batch_workers"]; ["nodes", "taskResults", "timelineEvents"]; ["traceId", "eventId", "jobId", "itemId", "attempt", "status"]; ["jobId", "itemId", "attempt"]; "store_worker_result_hash_and_schema_ref_not_raw_csv_payload"; "append_after_job_item_status_read_before_csv_export_visibility"; true),
+    event_contract("worker_task_event_intake"; "worker_task_event"; ["hepta_runtime_task_board", "hepta_runtime_worker_tasks"]; ["nodes", "taskResults", "artifacts", "timelineEvents"]; ["traceId", "eventId", "workerTaskId", "attempt", "status", "lane", "leaseState"]; ["workerTaskId", "attempt", "artifactHash"]; "store_lease_and_artifact_hashes_without_command_payload"; "append_after_lease_or_worker_state_observed_before_terminal_promotion"; true),
+    event_contract("scheduler_run_event_intake"; "scheduler_run_event"; ["hepta_runtime_scheduler_store"]; ["nodes", "edges", "taskResults", "timelineEvents"]; ["traceId", "eventId", "schedulerRunId", "leaseId", "admissionDecision", "status"]; ["schedulerRunId", "leaseId", "admissionDecision"]; "store_decision_hash_and_readback_ref_not_live_scheduler_state"; "append_after_admission_preview_before_any_cutover"; true),
+    event_contract("artifact_event_intake"; "artifact_event"; ["hepta_runtime_worker_tasks", "hepta_runtime_agent_harness"]; ["artifacts", "timelineEvents"]; ["traceId", "eventId", "artifactId", "producerNodeId", "artifactHash", "redactionState"]; ["artifactId", "producerNodeId", "artifactHash"]; "store_artifact_hash_path_hint_and_redaction_state_only"; "append_after_artifact_redaction_before_handoff_or_verifier_visibility"; false),
+    event_contract("approval_event_intake"; "approval_event"; ["hepta_runtime_approval_broker"]; ["approvals", "timelineEvents"]; ["traceId", "eventId", "approvalId", "operatorScope", "status", "expiresAtUnixMs"]; ["approvalId", "operatorScope", "requestHash"]; "store_request_hash_and_scope_without_recording_live_decision"; "append_after_approval_request_projection_before_scheduler_unblock"; false),
+    event_contract("task_result_event_intake"; "task_result_event"; ["multi_agent_v2_thread_spawn", "hepta_runtime_multi_agent_reducer", "agent_jobs_batch_workers", "hepta_runtime_worker_tasks", "hepta_runtime_scheduler_store", "hepta_runtime_agent_harness"]; ["taskResults", "timelineEvents"]; ["traceId", "eventId", "taskId", "status", "summaryHash", "evidenceRefs", "verifierRef"]; ["traceId", "taskId", "status", "evidenceHash"]; "store_task_result_contract_fields_and_evidence_refs_only"; "append_after_task_result_contract_validation_before_terminal_promotion"; true)
+  ] as $event_contracts
+  | [
+    route("update_plan_tool"; "planning"; ["plan_step_event_intake"]; ["edges", "nodes", "timelineEvents"]; "preview_append_node_record"; "update_plan_projection_idempotency"; ["preview_readback_edges_by_trace", "preview_readback_nodes_by_trace", "preview_readback_timeline_by_trace"]; "preview_intake_with_projection_gap"; ["append_only_store_disabled_by_design", "source_projection_not_contract_ready"]),
+    route("plan_mode_proposed_plan_blocks"; "planning"; ["plan_step_event_intake"]; ["edges", "nodes", "timelineEvents"]; "preview_append_node_record"; null; ["preview_readback_edges_by_trace", "preview_readback_nodes_by_trace", "preview_readback_timeline_by_trace"]; "blocked_until_idempotency_guard"; ["append_only_store_disabled_by_design", "event_intake_idempotency_guard_missing", "source_projection_not_contract_ready"]),
+    route("app_server_turn_plan_notification"; "planning"; ["plan_step_event_intake"]; ["edges", "nodes", "timelineEvents"]; "preview_append_node_record"; null; ["preview_readback_edges_by_trace", "preview_readback_nodes_by_trace", "preview_readback_timeline_by_trace"]; "blocked_until_idempotency_guard"; ["append_only_store_disabled_by_design", "event_intake_idempotency_guard_missing", "source_projection_not_contract_ready"]),
+    route("multi_agent_v2_thread_spawn"; "multi_agent"; ["agent_spawn_event_intake", "task_result_event_intake"]; ["edges", "nodes", "taskResults", "timelineEvents"]; "preview_append_node_record"; "multi_agent_spawn_projection_idempotency"; ["preview_readback_edges_by_trace", "preview_readback_nodes_by_trace", "preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "preview_intake_contract_ready"; ["append_only_store_disabled_by_design", "terminal_task_result_enforcement_disabled"]),
+    route("multi_agent_v2_mailbox_wait"; "multi_agent"; ["mailbox_delivery_event_intake"]; ["edges", "timelineEvents"]; "preview_append_timeline_event_record"; null; ["preview_readback_edges_by_trace", "preview_readback_timeline_by_trace"]; "blocked_until_idempotency_guard"; ["append_only_store_disabled_by_design", "event_intake_idempotency_guard_missing", "source_projection_not_contract_ready"]),
+    route("hepta_runtime_multi_agent_reducer"; "multi_agent"; ["task_result_event_intake"]; ["taskResults", "timelineEvents"]; "preview_append_task_result_record"; null; ["preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "blocked_until_idempotency_guard"; ["append_only_store_disabled_by_design", "event_intake_idempotency_guard_missing", "source_projection_not_contract_ready", "terminal_task_result_enforcement_disabled"]),
+    route("agent_jobs_batch_workers"; "batch_agent_jobs"; ["agent_job_item_event_intake", "task_result_event_intake"]; ["nodes", "taskResults", "timelineEvents"]; "preview_append_node_record"; "agent_job_result_projection_idempotency"; ["preview_readback_nodes_by_trace", "preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "preview_intake_contract_ready"; ["append_only_store_disabled_by_design", "terminal_task_result_enforcement_disabled"]),
+    route("hepta_runtime_task_board"; "runtime_scheduler"; ["worker_task_event_intake"]; ["artifacts", "nodes", "taskResults", "timelineEvents"]; "preview_append_node_record"; null; ["preview_readback_artifacts_by_producer", "preview_readback_nodes_by_trace", "preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "blocked_until_idempotency_guard"; ["append_only_store_disabled_by_design", "event_intake_idempotency_guard_missing", "source_projection_not_contract_ready"]),
+    route("hepta_runtime_worker_tasks"; "runtime_scheduler"; ["worker_task_event_intake", "artifact_event_intake", "task_result_event_intake"]; ["artifacts", "nodes", "taskResults", "timelineEvents"]; "preview_append_node_record"; "worker_task_projection_idempotency"; ["preview_readback_artifacts_by_producer", "preview_readback_nodes_by_trace", "preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "preview_intake_contract_ready"; ["append_only_store_disabled_by_design", "terminal_task_result_enforcement_disabled"]),
+    route("hepta_runtime_scheduler_store"; "runtime_scheduler"; ["scheduler_run_event_intake", "task_result_event_intake"]; ["edges", "nodes", "taskResults", "timelineEvents"]; "preview_append_node_record"; "scheduler_run_projection_idempotency"; ["preview_readback_edges_by_trace", "preview_readback_nodes_by_trace", "preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "preview_intake_contract_ready"; ["append_only_store_disabled_by_design", "terminal_task_result_enforcement_disabled"]),
+    route("hepta_runtime_approval_broker"; "operator_control"; ["approval_event_intake"]; ["approvals", "nodes", "timelineEvents"]; "preview_append_approval_record"; "approval_projection_idempotency"; ["preview_readback_approvals_by_scope", "preview_readback_nodes_by_trace", "preview_readback_timeline_by_trace"]; "preview_intake_with_projection_gap"; ["append_only_store_disabled_by_design", "source_projection_not_contract_ready"]),
+    route("hepta_runtime_agent_harness"; "external_handoff"; ["artifact_event_intake", "task_result_event_intake"]; ["artifacts", "nodes", "taskResults", "timelineEvents"]; "preview_append_node_record"; "agent_harness_handoff_projection_idempotency"; ["preview_readback_artifacts_by_producer", "preview_readback_nodes_by_trace", "preview_readback_task_results_by_status", "preview_readback_timeline_by_trace"]; "preview_intake_contract_ready"; ["append_only_store_disabled_by_design", "terminal_task_result_enforcement_disabled"])
+  ] as $source_routes
+  | [
+    blocker("source_projection_adapters_missing_for_new_surfaces"; "high"; ["plan_step_event_intake", "mailbox_delivery_event_intake", "worker_task_event_intake"]; ["plan_mode_proposed_plan_blocks", "app_server_turn_plan_notification", "multi_agent_v2_mailbox_wait", "hepta_runtime_task_board"]; "add unified store and timeline projections before these events can be appended"),
+    blocker("idempotency_guards_missing_for_expanded_intake"; "high"; ["plan_step_event_intake", "mailbox_delivery_event_intake", "worker_task_event_intake", "task_result_event_intake"]; ["plan_mode_proposed_plan_blocks", "app_server_turn_plan_notification", "multi_agent_v2_mailbox_wait", "hepta_runtime_multi_agent_reducer", "hepta_runtime_task_board"]; "define stable replay keys for every newly covered source surface"),
+    blocker("terminal_task_result_wrappers_not_enforced"; "high"; ["agent_spawn_event_intake", "agent_job_item_event_intake", "worker_task_event_intake", "scheduler_run_event_intake", "task_result_event_intake"]; ["multi_agent_v2_thread_spawn", "hepta_runtime_multi_agent_reducer", "agent_jobs_batch_workers", "hepta_runtime_worker_tasks", "hepta_runtime_scheduler_store", "hepta_runtime_agent_harness"]; "wrap all terminal completions in TaskResult before append-only promotion"),
+    blocker("readback_is_contract_only"; "medium"; ($event_contracts | map(.id)); ["all_projected_source_surfaces"]; "prove deterministic readback from appended events before enabling store writes"),
+    blocker("append_only_store_disabled_by_design"; "medium"; ($event_contracts | map(.id)); ["all_projected_source_surfaces"]; "keep this gate as preview-only until replay, retention, and operator readiness pass")
+  ] as $blockers
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_append_only_event_intake_preview_gate",
+      schema_version: "work_graph_append_only_event_intake_preview_v1",
+      preview_mode: "read_only_append_only_event_intake_preview_no_writes",
+      event_contract_count: ($event_contracts | length),
+      source_route_count: ($source_routes | length),
+      target_collection_count: ($event_contracts | map(.target_collection_ids[]) | unique | length),
+      required_prior_gate_count: (prior_gates | length),
+      blocker_count: ($blockers | length),
+      event_contracts: $event_contracts,
+      source_routes: $source_routes,
+      blockers: $blockers,
+      required_prior_gates: prior_gates,
+      recommended_next_gate: "hepta_work_graph_replay_readback_preview_gate",
+      ready_for_replay_readback_preview: true,
+      ready_for_append_only_store_enablement: false,
+      ready_for_store_persistence: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_event_intake: {
+          rust_module_present: $append_only_event_intake_rust_module_present,
+          report_script_present: $append_only_event_intake_report_script_present,
+          gate_script_present: $append_only_event_intake_gate_script_present
+        },
+        unified_projection_audit: {
+          rust_module_present: $unified_projection_audit_rust_module_present
+        },
+        state_store_persistence: {
+          rust_module_present: $state_store_persistence_rust_module_present,
+          report_script_present: $state_store_persistence_report_script_present,
+          gate_script_present: $state_store_persistence_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        event_record_persisted: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        idempotency_index_mutated: false,
+        readback_performed: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        role_manifest_enforcement_enabled: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.report"
+READBACK_INDEX_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_OPERATOR_PACKET_PREVIEW_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-operator-packet-preview-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 5b report: $REPORT"
+[[ -x "$READBACK_INDEX_GATE" ]] || fail "missing executable Phase 5a readback index gate: $READBACK_INDEX_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 5b architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 5b operator packet preview report"
+fi
+
+grep -q 'Controlled Live Operator Packet Preview' "$DOC" \
+  || fail "architecture note must document Controlled Live Operator Packet Preview"
+grep -q 'without sending an approval request' "$DOC" \
+  || fail "architecture note must document no approval request"
+grep -q 'no approval request, approval recording, packet persistence, readback persistence, blocker waiver, denial acceptance, live execution, Native POST mutation, Telegram transport mutation, gateway/auth mutation, replay, rollback, package, release, or Public GA promotion' "$DOC" \
+  || fail "architecture note must document the closed operator packet boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_operator_packet_preview"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_operator_packet_preview_gate"
+  and .schema_version == "controlled_live_operator_packet_preview_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_readback_index_ready == true
+  and .source_cutover_blocked == true
+  and .source_blocker_count == 7
+  and .source_index_entry_count == 7
+  and .lib_export_present == true
+  and .packet_id == "controlled-live-operator-packet-preview"
+  and .scope_id == "hepta-system-controlled-live-read-only-chain"
+  and .payload_hash == "sha256:controlled-live-operator-packet-preview-no-live-payload"
+  and .rollback_owner == "operator-explicit-before-live"
+  and .packet_section_count == 6
+  and .blocker_readback_count == 7
+  and .required_evidence_count == 7
+  and .operator_packet_preview_ready == true
+  and .approval_request_ready == false
+  and .approval_request_sent == false
+  and .approval_recorded == false
+  and .packet_persisted == false
+  and .controlled_live_cutover_ready == false
+  and .live_execution_allowed == false
+  and (.sections | length) == 6
+  and (.sections | all(.preview_ready == true and .mutation_enabled == false))
+  and any(.sections[]; .id == "scope")
+  and any(.sections[]; .id == "payload_hash")
+  and any(.sections[]; .id == "rollback_owner")
+  and any(.sections[]; .id == "blocker_readbacks")
+  and any(.sections[]; .id == "required_evidence")
+  and any(.sections[]; .id == "closed_boundary")
+  and (.blocker_readbacks | length) == 7
+  and (.blocker_readbacks | all(.included_in_packet == true and .acceptance_allowed == false and .waiver_allowed == false and .live_mutation_allowed == false))
+  and any(.blocker_readbacks[]; .source_blocker_id == "operator_live_approval_missing")
+  and any(.blocker_readbacks[]; .source_blocker_id == "fresh_soak_readback_missing")
+  and any(.blocker_readbacks[]; .source_blocker_id == "credential_boundary_attestation_missing")
+  and any(.blocker_readbacks[]; .source_blocker_id == "gateway_native_telegram_post_boundary_approval_missing")
+  and any(.blocker_readbacks[]; .source_blocker_id == "rollback_rehearsal_missing")
+  and any(.blocker_readbacks[]; .source_blocker_id == "kill_switch_rehearsal_missing")
+  and (.next_actions | index("phase5c_controlled_live_operator_packet_non_send_readback_without_approval_request")) != null
+  and .next_migration_step == "phase5c_controlled_live_operator_packet_non_send_readback_without_approval_request"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$READBACK_INDEX_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime controlled_live_operator_packet_preview --lib
+)
+
+printf 'hepta-systems-controlled-live-operator-packet-preview-gate: PASS: controlled-live operator packet is previewed without approval request, persistence, transport mutation, or live execution\n'

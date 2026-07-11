@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+current="$(
+  capture_json_report \
+    "hepta-work-graph-current-state-inventory-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-current-state-inventory.report"
+)"
+inventory="$(
+  capture_json_report \
+    "hepta-work-graph-canonical-adapter-inventory-preview-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-canonical-adapter-inventory-preview.report"
+)"
+contract="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-contract-preview-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-task-result-contract-preview.report"
+)"
+envelope="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-envelope-report-only-validator-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-task-result-envelope-report-only-validator.report"
+)"
+
+rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_adapter_task_result_index.rs
+)"
+report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-adapter-task-result-index.report
+)"
+gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-adapter-task-result-index.gate
+)"
+scheduler_dry_run_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-scheduler-admission-dry-run-enforcement.gate
+)"
+
+jq -n \
+  --argjson current "$current" \
+  --argjson inventory "$inventory" \
+  --argjson contract "$contract" \
+  --argjson envelope "$envelope" \
+  --argjson rust_module_present "$rust_module_present" \
+  --argjson report_script_present "$report_script_present" \
+  --argjson gate_script_present "$gate_script_present" \
+  --argjson scheduler_dry_run_gate_script_present "$scheduler_dry_run_gate_script_present" \
+  '
+  def sorted_diff($left; $right):
+    [$left[] | select(. as $id | ($right | index($id) | not))] | sort;
+  def missing_fields($required; $covered):
+    [$required[] | select(. as $field | ($covered | index($field) | not))];
+  def required_missing($required_source; $required; $covered):
+    if $required_source then missing_fields($required; $covered) else [] end;
+  def envelope_state($required; $present):
+    if $present then "present_report_only"
+    elif $required then "missing"
+    else "not_required"
+    end;
+  def contract_adapter($id):
+    [$contract.adapter_previews[]? | select(.source_surface_id == $id)][0];
+  def envelope_adapter($id):
+    [$envelope.source_adapters[]? | select(.source_surface_id == $id)][0];
+  def envelope_preview_present($id):
+    any($envelope.source_envelopes[]?; .source_surface_id == $id);
+  def decision($scheduler; $terminal; $envelope_adapter_present; $envelope_preview_present; $envelope_wire_complete):
+    if $scheduler and $envelope_adapter_present and $envelope_preview_present then
+      "allow_scheduler_dry_run_report_only"
+    elif $terminal and ($envelope_adapter_present | not) then
+      "block_live_terminal_promotion_missing_envelope"
+    elif $terminal and ($envelope_wire_complete | not) then
+      "block_live_terminal_promotion_partial_envelope"
+    elif $envelope_adapter_present then
+      "auxiliary_envelope_preview"
+    else
+      "no_terminal_result_required"
+    end;
+  def next_step($scheduler; $terminal; $envelope_adapter_present; $contract_fields_complete; $fallback):
+    if $scheduler and $envelope_adapter_present then
+      "use_scheduler_admission_dry_run_explanation"
+    elif $terminal and ($envelope_adapter_present | not) then
+      "add_task_result_envelope_adapter_preview"
+    elif $terminal and ($contract_fields_complete | not) then
+      "fill_task_result_contract_wire_field_projection"
+    elif $envelope_adapter_present then
+      "keep_report_only_until_append_only_event_store_shadow_path"
+    else
+      $fallback
+    end;
+  def blocker($id; $severity; $sources; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_source_surface_ids: $sources,
+    blocks_live_execution: true,
+    recommended_fix: $fix
+  };
+  ["multi_agent_v2_thread_spawn", "agent_jobs_batch_workers", "hepta_runtime_task_board", "hepta_runtime_worker_tasks"] as $scheduler_sources
+  | ($contract.required_fields | map(select(.required == true) | .wire_name)) as $required_fields
+  | ($contract.required_fields | map(select(.terminal_required == true) | .wire_name)) as $terminal_fields
+  | ($current.source_surfaces | map(.id)) as $current_ids
+  | ($inventory.adapters | map(.source_surface_id)) as $canonical_ids
+  | sorted_diff($current_ids; $canonical_ids) as $current_only
+  | sorted_diff($canonical_ids; $current_ids) as $canonical_only
+  | (
+      $inventory.adapters
+      | map(
+          . as $adapter
+          | (contract_adapter($adapter.source_surface_id) // null) as $contract_adapter
+          | (envelope_adapter($adapter.source_surface_id) // null) as $envelope_adapter
+          | ($contract_adapter.covered_wire_fields // []) as $contract_fields
+          | ($envelope_adapter.covered_wire_fields // []) as $envelope_fields
+          | ($adapter.terminal_task_result_required == true) as $terminal
+          | ($scheduler_sources | index($adapter.source_surface_id) != null) as $scheduler
+          | (envelope_preview_present($adapter.source_surface_id)) as $envelope_preview
+          | required_missing($terminal; $required_fields; $contract_fields) as $missing_contract_required
+          | required_missing($terminal; $terminal_fields; $contract_fields) as $missing_contract_terminal
+          | required_missing($terminal; $required_fields; $envelope_fields) as $missing_envelope
+          | {
+              source_surface_id: $adapter.source_surface_id,
+              source_category: $adapter.source_category,
+              canonical_node_kind: $adapter.canonical_node_kind,
+              scheduler_entrypoint_source: $scheduler,
+              terminal_task_result_required: $terminal,
+              canonical_inventory_state: $adapter.canonical_inventory_state,
+              task_result_contract_adapter_state: $adapter.task_result_adapter_state,
+              task_result_envelope_adapter_state: envelope_state($terminal; ($envelope_adapter != null)),
+              task_result_envelope_preview_state: envelope_state($terminal; $envelope_preview),
+              covered_contract_wire_fields: $contract_fields,
+              covered_envelope_wire_fields: $envelope_fields,
+              missing_contract_required_wire_fields: $missing_contract_required,
+              missing_contract_terminal_wire_fields: $missing_contract_terminal,
+              missing_envelope_wire_fields: $missing_envelope,
+              inherited_blocker_ids: $adapter.inventory_blocker_ids,
+              report_only_index_decision: decision($scheduler; $terminal; ($envelope_adapter != null); $envelope_preview; (($missing_envelope | length) == 0)),
+              live_enforcement_enabled: false,
+              next_index_step: next_step($scheduler; $terminal; ($envelope_adapter != null); (($missing_contract_required | length) == 0); $adapter.next_inventory_step)
+            }
+        )
+    ) as $source_index
+  | ($source_index | map(select(.scheduler_entrypoint_source == true and .task_result_envelope_adapter_state == "present_report_only" and .task_result_envelope_preview_state == "present_report_only")) | length) as $scheduler_ready_count
+  | ($source_index | map(select(.terminal_task_result_required == true and .task_result_envelope_adapter_state == "present_report_only" and (.missing_envelope_wire_fields | length) == 0)) | length) as $terminal_full_envelope_count
+  | ($source_index | map(select(.terminal_task_result_required == true and .task_result_envelope_adapter_state == "missing") | .source_surface_id)) as $missing_terminal_envelope_sources
+  | ($source_index | map(select(.terminal_task_result_required == true and .task_result_envelope_preview_state == "missing") | .source_surface_id)) as $missing_terminal_preview_sources
+  | ($source_index | map(select(.terminal_task_result_required == true and (.missing_contract_required_wire_fields | length) > 0) | .source_surface_id)) as $contract_field_gap_sources
+  | (
+      ($current.active_p0_gaps | map(blocker(.id; .severity; .source_surface_ids; .recommended_next_action)))
+      + (if (($current_only + $canonical_only) | length) > 0 then
+          [blocker("source_surface_id_alignment_drift"; "medium"; ($current_only + $canonical_only); "normalize current-state and canonical adapter source ids before using the index as an enforced fact source")]
+        else [] end)
+      + (if ($missing_terminal_envelope_sources | length) > 0 then
+          [blocker("canonical_terminal_envelope_sources_missing"; "high"; $missing_terminal_envelope_sources; "add report-only TaskResultEnvelope adapters for every canonical terminal source before live promotion")]
+        else [] end)
+      + (if ($contract_field_gap_sources | length) > 0 then
+          [blocker("task_result_contract_required_fields_partial"; "medium"; $contract_field_gap_sources; "fill missing TaskResult contract field projections before enabling validator enforcement")]
+        else [] end)
+      + [blocker("task_result_envelope_live_enforcement_disabled"; "high"; ($source_index | map(select(.task_result_envelope_adapter_state == "present_report_only") | .source_surface_id)); "keep envelope validation report-only until scheduler dry-run, shadow event store, replay, and operator review pass")]
+    ) as $blockers
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_adapter_task_result_index_gate",
+      schema_version: "work_graph_adapter_task_result_index_v1",
+      preview_mode: "read_only_adapter_task_result_index_no_live_enforcement",
+      current_state_source_surface_count: $current.source_surface_count,
+      current_state_p0_gap_count: $current.active_p0_gap_count,
+      canonical_adapter_source_surface_count: $inventory.source_surface_count,
+      canonical_adapter_count: $inventory.canonical_adapter_count,
+      task_result_contract_required_field_count: ($required_fields | length),
+      task_result_envelope_source_adapter_count: $envelope.source_adapter_count,
+      task_result_envelope_source_count: $envelope.source_envelope_count,
+      indexed_source_count: ($source_index | length),
+      scheduler_entrypoint_source_count: ($scheduler_sources | length),
+      scheduler_entrypoint_ready_count: $scheduler_ready_count,
+      terminal_task_result_required_count: $inventory.terminal_task_result_required_count,
+      terminal_task_result_full_envelope_source_count: $terminal_full_envelope_count,
+      missing_envelope_adapter_count: ($missing_terminal_envelope_sources | length),
+      missing_envelope_preview_count: ($missing_terminal_preview_sources | length),
+      contract_required_field_gap_count: ($source_index | map(.missing_contract_required_wire_fields | length) | add),
+      contract_terminal_field_gap_count: ($source_index | map(.missing_contract_terminal_wire_fields | length) | add),
+      current_state_only_source_ids: $current_only,
+      canonical_adapter_only_source_ids: $canonical_only,
+      source_index: $source_index,
+      blockers: $blockers,
+      required_prior_gates: [
+        "hepta_work_graph_current_state_inventory_gate",
+        "hepta_work_graph_canonical_adapter_inventory_preview_gate",
+        "hepta_work_graph_task_result_contract_preview_gate",
+        "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+      ],
+      recommended_next_gate: "hepta_work_graph_terminal_envelope_readback_gate",
+      report_only_index_attached: true,
+      live_enforcement_enabled: false,
+      ready_for_scheduler_admission_dry_run_enforcement: ($scheduler_ready_count == ($scheduler_sources | length)),
+      ready_for_live_execution: false,
+      source_probes: {
+        adapter_task_result_index: {
+          rust_module_present: $rust_module_present,
+          report_script_present: $report_script_present,
+          gate_script_present: $gate_script_present
+        },
+        scheduler_admission_dry_run_enforcement: {
+          gate_script_present: $scheduler_dry_run_gate_script_present
+        },
+        priors: {
+          current_state_gate: $current.gate,
+          canonical_adapter_inventory_gate: $inventory.gate,
+          task_result_contract_gate: $contract.gate,
+          task_result_envelope_gate: $envelope.gate
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_event_persisted: false,
+        adapter_projection_enforced: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        live_admission_enforcement_enabled: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

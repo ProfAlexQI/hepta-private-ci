@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-enforcement-readiness-rerun.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-unified-projection-enforcement-readiness-preview-report" \
+  "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-preview.report" \
+  >"$tmpdir/enforcement_readiness.json"
+capture_json_report \
+  "hepta-work-graph-projection-adapter-gap-closure-application-preview-report" \
+  "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-projection-adapter-gap-closure-application-preview.report" \
+  >"$tmpdir/gap_closure_application.json"
+
+rerun_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_enforcement_readiness_rerun_preview.rs
+)"
+rerun_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-rerun-preview.report
+)"
+rerun_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-rerun-preview.gate
+)"
+application_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_projection_adapter_gap_closure_application_preview.rs
+)"
+application_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-projection-adapter-gap-closure-application-preview.gate
+)"
+
+jq -n \
+  --slurpfile readiness "$tmpdir/enforcement_readiness.json" \
+  --slurpfile application "$tmpdir/gap_closure_application.json" \
+  --argjson rerun_rust_module_present "$rerun_rust_module_present" \
+  --argjson rerun_report_script_present "$rerun_report_script_present" \
+  --argjson rerun_gate_script_present "$rerun_gate_script_present" \
+  --argjson application_rust_module_present "$application_rust_module_present" \
+  --argjson application_gate_script_present "$application_gate_script_present" \
+  '
+  $readiness[0] as $readiness
+  | $application[0] as $application
+  | def outcome_for($id): [$application.source_outcomes[] | select(.source_surface_id == $id)][0] // null;
+  def has_suffix($values; $suffix): any($values[]?; endswith($suffix));
+  def has_contains($values; $needle): any($values[]?; contains($needle));
+  def projection_gap_blocker:
+      contains("projection_missing")
+      or contains("projection_not_enforced")
+      or contains("timeline_adapter_not_enforced")
+      or contains("timeline_projection_missing")
+      or contains("store_projection_missing")
+      or contains("unified_store_projection_missing")
+      or contains("missing_verifier_and_reducer_projection")
+      or contains("missing_task_result_projection");
+  def residual_source_blockers($blockers):
+      $blockers | map(select((projection_gap_blocker | not)));
+  def projection_gap_open($decision):
+      (($decision.unified_store_projection_ready | not)
+       or ($decision.timeline_projection_ready | not)
+       or ($decision.task_result_projection_ready | not));
+  def rerun_decision_for($store; $timeline; $task_result; $route; $guard; $readback; $route_blockers; $source_blockers):
+      if ($store | not) then "deny_missing_unified_store_projection"
+      elif ($timeline | not) then "deny_missing_timeline_projection"
+      elif ($task_result | not) then "deny_missing_task_result_projection"
+      elif ($route | not) then "deny_missing_append_only_route"
+      elif ($guard | not) then "deny_missing_store_idempotency_guard"
+      elif ($readback | not) then "deny_missing_readback_probe"
+      elif ($route_blockers | index("terminal_task_result_enforcement_disabled")) then "deny_terminal_task_result_enforcement_disabled"
+      elif has_suffix($source_blockers; "_admission_not_enforced") then "deny_scheduler_admission_not_enforced"
+      elif has_contains($source_blockers; "role_manifest_not_enforced") then "deny_role_manifest_not_enforced"
+      elif ($route_blockers | index("append_only_store_disabled_by_design")) then "deny_append_only_store_disabled"
+      else "allow_preview_only"
+      end;
+  def next_gate_for($decision):
+      if $decision == "deny_missing_unified_store_projection" then "hepta_work_graph_projection_adapter_gap_closure_preview_gate"
+      elif $decision == "deny_missing_timeline_projection" then "hepta_work_graph_observability_timeline_preview_gate"
+      elif $decision == "deny_missing_task_result_projection" then "hepta_work_graph_task_result_contract_preview_gate"
+      elif $decision == "deny_missing_append_only_route" then "hepta_work_graph_append_only_event_intake_preview_gate"
+      elif $decision == "deny_missing_store_idempotency_guard" then "hepta_work_graph_store_idempotency_guard_gap_closure_preview_gate"
+      elif $decision == "deny_missing_readback_probe" then "hepta_work_graph_replay_readback_preview_gate"
+      elif $decision == "deny_terminal_task_result_enforcement_disabled" then "hepta_work_graph_terminal_task_result_wrapper_preview_gate"
+      elif $decision == "deny_scheduler_admission_not_enforced" then "hepta_work_graph_scheduler_admission_controller_preview_gate"
+      elif $decision == "deny_role_manifest_not_enforced" then "hepta_work_graph_role_manifest_contract_preview_gate"
+      elif $decision == "deny_append_only_store_disabled" then "hepta_work_graph_append_only_store_enablement_precondition_preview_gate"
+      elif $decision == "allow_preview_only" then "hepta_work_graph_projection_enforcement_dry_run_preview_gate"
+      else "hepta_work_graph_store_idempotency_guard_gap_closure_preview_gate"
+      end;
+  def rerun_decision($decision):
+      (outcome_for($decision.source_surface_id)) as $outcome
+      | ($outcome != null) as $covered
+      | (($decision.projection_contract_ready or $covered)) as $contract_ready
+      | (($decision.unified_store_projection_ready or (($outcome.store_projection_application_required // false)))) as $store_ready
+      | (($decision.timeline_projection_ready or (($outcome.timeline_projection_application_required // false)))) as $timeline_ready
+      | ($decision.task_result_projection_ready) as $task_result_ready
+      | (if $covered then residual_source_blockers($decision.source_blocker_ids) else $decision.source_blocker_ids end) as $source_blockers
+      | (if $covered then ($decision.route_blocker_ids | map(select(. != "source_projection_not_contract_ready"))) else $decision.route_blocker_ids end) as $route_blockers
+      | (rerun_decision_for($store_ready; $timeline_ready; $task_result_ready; $decision.append_only_route_ready; $decision.store_idempotency_guard_ready; $decision.readback_probe_contract_ready; $route_blockers; $source_blockers)) as $rerun_decision
+      | {
+          source_surface_id: $decision.source_surface_id,
+          source_category: $decision.source_category,
+          original_coverage_state: $decision.coverage_state,
+          rerun_coverage_state: (if $covered then "contract_ready_preview_after_application" else $decision.coverage_state end),
+          covered_by_application_preview: $covered,
+          original_enforcement_decision: $decision.enforcement_decision,
+          rerun_enforcement_decision: $rerun_decision,
+          projection_gap_closed_by_application_preview: ($covered and projection_gap_open($decision)),
+          projection_contract_ready: $contract_ready,
+          unified_store_projection_ready: $store_ready,
+          timeline_projection_ready: $timeline_ready,
+          task_result_projection_ready: $task_result_ready,
+          store_idempotency_guard_ready: $decision.store_idempotency_guard_ready,
+          append_only_route_ready: $decision.append_only_route_ready,
+          readback_probe_contract_ready: $decision.readback_probe_contract_ready,
+          residual_source_blocker_ids: $source_blockers,
+          residual_route_blocker_ids: $route_blockers,
+          next_required_gate: next_gate_for($rerun_decision)
+        };
+  def residual_blocker($id; $severity; $affected; $fix): {
+      id: $id,
+      severity: $severity,
+      affected_source_surface_ids: $affected,
+      required_before_projection_enforcement: true,
+      recommended_fix: $fix
+    };
+  def stage($id; $observed; $before; $after; $blockers; $next): {
+      id: $id,
+      observed_contract_count: $observed,
+      ready_contract_count_before: $before,
+      ready_contract_count_after: $after,
+      hard_blocker_ids: $blockers,
+      enforcement_enabled: false,
+      next_gate: $next
+    };
+  ($readiness.source_decisions | map(rerun_decision(.))) as $decisions
+  | ($readiness.source_decisions | map(select(projection_gap_open(.)) | .source_surface_id)) as $before_projection_gap_sources
+  | ($decisions | map(select((.unified_store_projection_ready | not) or (.timeline_projection_ready | not) or (.task_result_projection_ready | not)) | .source_surface_id)) as $after_projection_gap_sources
+  | [
+      {
+        id: "projection_adapters_missing_for_enforcement",
+        cleared_source_surface_ids: $before_projection_gap_sources,
+        source_count_before: ($before_projection_gap_sources | length),
+        source_count_after: ($after_projection_gap_sources | length),
+        closure_gate_id: "hepta_work_graph_projection_adapter_gap_closure_application_preview_gate"
+      }
+    ] as $cleared_blockers
+  | [
+      residual_blocker("runtime_closure_application_disabled"; "high"; ($decisions | map(select(.covered_by_application_preview) | .source_surface_id)); "attach projection adapter closures to runtime only after operator review, store guards, and persistence gates are promoted"),
+      residual_blocker("store_idempotency_guards_missing_for_enforcement"; "high"; ($decisions | map(select(.store_idempotency_guard_ready | not) | .source_surface_id)); "promote idempotency readback adapters into state-store guards before any append-only intake writes"),
+      residual_blocker("terminal_task_result_enforcement_disabled"; "high"; ($decisions | map(select(.residual_route_blocker_ids | index("terminal_task_result_enforcement_disabled")) | .source_surface_id)); "make every terminal worker, agent, scheduler, and handoff path emit the canonical TaskResult contract"),
+      residual_blocker("scheduler_admission_not_enforced"; "high"; ($decisions | map(select(has_suffix(.residual_source_blocker_ids; "_admission_not_enforced")) | .source_surface_id)); "make dependency, lease, budget, approval, role, and idempotency checks authoritative before work start"),
+      residual_blocker("role_manifest_not_enforced"; "medium"; ($decisions | map(select(has_contains(.residual_source_blocker_ids; "role_manifest_not_enforced")) | .source_surface_id)); "bind multi-agent, batch, worker, and handoff sources to role manifests with budgets and tool permissions"),
+      residual_blocker("append_only_store_enablement_disabled"; "medium"; ($decisions | map(.source_surface_id)); "keep projection enforcement disabled until WAL, readback, replay, and operator readiness gates are promoted")
+    ] as $residual_blockers
+  | [
+      stage("unified_projection_contracts"; ($decisions | length); $readiness.contract_ready_surface_count; ($decisions | map(select(.projection_contract_ready)) | length); ["runtime_closure_application_disabled"]; "hepta_work_graph_store_idempotency_guard_gap_closure_preview_gate"),
+      stage("projection_adapter_gap_closure_application"; 7; 0; 7; ["runtime_closure_application_disabled"]; "hepta_work_graph_store_idempotency_guard_gap_closure_preview_gate"),
+      stage("store_idempotency_guards"; ($decisions | length); ($readiness.source_decisions | map(select(.store_idempotency_guard_ready)) | length); ($decisions | map(select(.store_idempotency_guard_ready)) | length); ["store_idempotency_guards_missing_for_enforcement"]; "hepta_work_graph_store_idempotency_guard_gap_closure_preview_gate"),
+      stage("terminal_task_result_contracts"; ($decisions | map(select(.residual_route_blocker_ids | index("terminal_task_result_enforcement_disabled"))) | length); 0; 0; ["terminal_task_result_enforcement_disabled"]; "hepta_work_graph_terminal_task_result_wrapper_preview_gate"),
+      stage("scheduler_admission_contracts"; ($decisions | map(select(has_suffix(.residual_source_blocker_ids; "_admission_not_enforced"))) | length); 0; 0; ["scheduler_admission_not_enforced"]; "hepta_work_graph_scheduler_admission_controller_preview_gate"),
+      stage("role_manifest_contracts"; ($decisions | map(select(has_contains(.residual_source_blocker_ids; "role_manifest_not_enforced"))) | length); 0; 0; ["role_manifest_not_enforced"]; "hepta_work_graph_role_manifest_contract_preview_gate"),
+      stage("append_only_store_enablement"; ($decisions | length); 0; 0; ["append_only_store_enablement_disabled"]; "hepta_work_graph_append_only_store_enablement_precondition_preview_gate")
+    ] as $stages
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "blocked",
+      gate: "hepta_work_graph_unified_projection_enforcement_readiness_rerun_preview_gate",
+      schema_version: "work_graph_unified_projection_enforcement_readiness_rerun_preview_v1",
+      preview_mode: "read_only_projection_enforcement_readiness_rerun_no_enforcement",
+      source_surface_count: ($decisions | length),
+      application_outcome_count: ($application.source_outcomes | length),
+      original_contract_ready_surface_count: $readiness.contract_ready_surface_count,
+      rerun_contract_ready_surface_count: ($decisions | map(select(.projection_contract_ready)) | length),
+      rerun_ready_surface_count: ($decisions | map(select(.rerun_enforcement_decision == "allow_preview_only")) | length),
+      rerun_blocked_surface_count: ($decisions | map(select(.rerun_enforcement_decision != "allow_preview_only")) | length),
+      projection_gap_source_count_before: ($before_projection_gap_sources | length),
+      projection_gap_source_count_after: ($after_projection_gap_sources | length),
+      decision_delta_count: ($decisions | length),
+      cleared_blocker_count: ($cleared_blockers | length),
+      residual_blocker_count: ($residual_blockers | length),
+      enforcement_stage_count: ($stages | length),
+      required_prior_gate_count: (($application.required_prior_gates + [$application.gate]) | length),
+      decision_deltas: $decisions,
+      cleared_blockers: $cleared_blockers,
+      residual_blockers: $residual_blockers,
+      enforcement_stages: $stages,
+      required_prior_gates: ($application.required_prior_gates + [$application.gate]),
+      recommended_next_gate: "hepta_work_graph_store_idempotency_guard_gap_closure_preview_gate",
+      ready_for_store_idempotency_guard_gap_closure_preview: true,
+      ready_for_projection_enforcement: false,
+      ready_for_append_only_store_enablement: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        readiness_rerun: {
+          rust_module_present: $rerun_rust_module_present,
+          report_script_present: $rerun_report_script_present,
+          gate_script_present: $rerun_gate_script_present
+        },
+        gap_closure_application: {
+          rust_module_present: $application_rust_module_present,
+          gate_script_present: $application_gate_script_present,
+          upstream_gate: ($application.gate == "hepta_work_graph_projection_adapter_gap_closure_application_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        task_result_enforcement_enabled: false,
+        role_manifest_enforcement_enabled: false,
+        timeline_persisted: false,
+        closure_applied_to_runtime: false,
+        approval_recorded: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

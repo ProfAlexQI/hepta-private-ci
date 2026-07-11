@@ -59,7 +59,7 @@ report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <
   echo "invalid Hepta migrated report path for: $id" >&2
   exit 1
 }
-[[ "$receipt_state" == "terminal" ]] || {
+[[ "$receipt_state" == "precondition" || "$receipt_state" == "denial" || "$receipt_state" == "receipt" || "$receipt_state" == "persistence" || "$receipt_state" == "retention" || "$receipt_state" == "terminal" ]] || {
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
@@ -108,6 +108,7 @@ execute_captured_shell_compat() {
   # Evaluate inside this stable top-level runner so legacy BASH_SOURCE-based
   # repo-root discovery still resolves to scripts/ while the old pair bodies
   # live in a content-addressed compatibility store.
+  export HEPTA_REPO_ROOT="$ROOT"
   eval "$(<"$implementation")"
 }
 render_report() {

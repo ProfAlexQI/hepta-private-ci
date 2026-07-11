@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-canonical-adapter-inventory-readback-preview.report"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-canonical-adapter-inventory-readback-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_canonical_adapter_inventory_readback_preview_gate"
+  and .schema_version == "work_graph_canonical_adapter_inventory_readback_preview_v1"
+  and .preview_mode == "read_only_canonical_adapter_inventory_readback_preview_no_execution"
+  and .source_surface_count == 12
+  and .readback_plan_count == 12
+  and (.readback_plans | length) == .readback_plan_count
+  and .identity_assertion_count == 12
+  and .edge_kind_assertion_count == 12
+  and .collection_binding_assertion_count == 12
+  and .timeline_event_assertion_count == 12
+  and .blocker_mapping_assertion_count == 8
+  and .drift_detector_count == 7
+  and .blocker_count == 3
+  and .required_prior_gate_count == 10
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.readback_plans | map(.source_surface_id) == [
+    "update_plan_tool",
+    "plan_mode_proposed_plan_blocks",
+    "app_server_turn_plan_notification",
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_approval_broker",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.readback_plans | all(.readback_status == "readback_plan_ready" and .readback_execution_enabled == false))
+  and (.identity_assertions | all(.deterministic_identity_required == true))
+  and (.collection_binding_assertions | all(.store_projection_persisted == false))
+  and (.timeline_event_assertions | all(.timeline_persisted == false))
+  and (.blocker_mapping_assertions | all(.blocks_append_only_fact_source == true))
+  and (.drift_detectors | all(.drift_budget == 0))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.blockers | map(.id) == [
+    "canonical_adapter_inventory_readback_not_executed",
+    "canonical_adapter_inventory_application_missing",
+    "append_only_work_graph_events_disabled"
+  ])
+  and (.blockers | all((.affected_source_surface_ids | length) == 12))
+  and (.required_prior_gates[-1] == "hepta_work_graph_canonical_adapter_inventory_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_canonical_adapter_inventory_application_preview_gate"
+  and .ready_for_canonical_adapter_inventory_application_preview == true
+  and .ready_for_append_only_work_graph_events == false
+  and .ready_for_runtime_adapter_enforcement == false
+  and .ready_for_live_execution == false
+' >/dev/null <<<"$report"
+
+jq -e '
+  .source_probes.canonical_adapter_inventory_readback.rust_module_present == true
+  and .source_probes.canonical_adapter_inventory_readback.report_script_present == true
+  and .source_probes.canonical_adapter_inventory_readback.gate_script_present == true
+  and .source_probes.canonical_adapter_inventory_preview.rust_module_present == true
+  and .source_probes.canonical_adapter_inventory_preview.gate_script_present == true
+  and .source_probes.canonical_adapter_inventory_preview.upstream_gate == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_canonical_adapter_inventory_readback --lib
+
+echo "Hepta WorkGraph canonical adapter inventory readback preview gate passed"

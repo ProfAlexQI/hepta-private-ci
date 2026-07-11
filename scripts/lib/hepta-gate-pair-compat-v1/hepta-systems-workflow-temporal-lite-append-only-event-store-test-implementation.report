@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+FIXTURE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-durable-store-test-only-append-fixture.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/workflow_temporal_lite_append_only_event_store_test_implementation.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_WORKFLOW_TEMPORAL_LITE_APPEND_ONLY_EVENT_STORE_TEST_IMPLEMENTATION_2026-06-29.md"
+
+fail() {
+  printf 'hepta-systems-workflow-temporal-lite-append-only-event-store-test-implementation-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$FIXTURE_REPORT" ]] || fail "missing executable workflow durable store test-only append fixture report: $FIXTURE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Temporal-lite append-only event store Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Temporal-lite append-only event store architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Temporal-lite append-only event store test implementation report"
+fi
+
+lib_export_present=false
+if grep -q 'hepta_workflow_temporal_lite_append_only_event_store_test_implementation_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile fixture <("$FIXTURE_REPORT") \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-temporal-lite-append-only-event-store-test-implementation.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_WORKFLOW_TEMPORAL_LITE_APPEND_ONLY_EVENT_STORE_TEST_IMPLEMENTATION_2026-06-29.md" \
+  '
+  def test_event($entry): {
+    event_contract_id:$entry.event_contract_id,
+    record_kind:$entry.record_kind,
+    sequence:$entry.fixture_sequence,
+    event_id:("temporal-lite.test-event." + (($entry.fixture_sequence | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end) + "." + $entry.event_contract_id),
+    aggregate_id:("workflow://hepta/test-only/" + $entry.event_contract_id),
+    idempotency_key:$entry.fixture_idempotency_key,
+    checkpoint_key:$entry.fixture_checkpoint_key,
+    replay_digest:("replay-digest.v1." + (($entry.fixture_sequence | tostring) | if length == 1 then "00" + . elif length == 2 then "0" + . else . end) + "." + $entry.event_contract_id + "." + (($entry.fixture_replay_validation_key | length) | tostring)),
+    rollback_anchor:$entry.fixture_rollback_anchor,
+    append_state:"accepted_in_memory",
+    duplicate_append_state:"duplicate_denied",
+    appended_to_in_memory_store:true,
+    append_only_order_validated:true,
+    idempotency_index_validated:true,
+    duplicate_append_denied:true,
+    checkpoint_anchor_projected:(($entry.fixture_checkpoint_key | length) > 0),
+    replay_digest_projected:true,
+    rollback_anchor_projected:(($entry.fixture_rollback_anchor | length) > 0),
+    feature_gate_required:$entry.feature_gate_required,
+    runtime_feature_gate_enabled:$entry.runtime_feature_gate_enabled,
+    runtime_event_log_write_allowed:$entry.runtime_event_log_write_allowed,
+    runtime_sqlite_write_allowed:$entry.runtime_sqlite_write_allowed,
+    store_persistence_allowed:false,
+    workflow_execution_allowed:$entry.workflow_execution_allowed,
+    replay_execution_allowed:$entry.replay_execution_allowed,
+    rollback_execution_allowed:$entry.rollback_execution_allowed,
+    live_execution_allowed:$entry.live_execution_allowed
+  };
+  ($fixture[0]) as $fixture_report |
+  ($fixture_report.entries | map(test_event(.))) as $entries |
+  ($entries | length) as $test_event_count |
+  ($entries | map(select(.append_state == "accepted_in_memory")) | length) as $accepted_append_count |
+  ($entries | map(select(.duplicate_append_denied == true)) | length) as $duplicate_append_denial_count |
+  ($entries | map(select(.append_only_order_validated == true)) | length) as $append_only_sequence_count |
+  ($entries | map(.idempotency_key) | unique | length) as $idempotency_index_entry_count |
+  ($entries | map(select(.checkpoint_anchor_projected == true)) | length) as $checkpoint_anchor_count |
+  ($entries | map(select(.replay_digest_projected == true)) | length) as $replay_digest_count |
+  ($entries | map(select(.rollback_anchor_projected == true)) | length) as $rollback_anchor_count |
+  ($fixture_report.test_only_append_fixture_ready == true
+    and $fixture_report.fixture_entry_count == 9
+    and $fixture_report.runtime_feature_gate_enabled == false
+    and $fixture_report.runtime_event_log_write_allowed == false
+    and $fixture_report.runtime_sqlite_write_allowed == false
+    and $fixture_report.fixture_persistence_allowed == false
+    and $fixture_report.workflow_execution_allowed == false
+    and $fixture_report.replay_execution_allowed == false
+    and $fixture_report.rollback_execution_allowed == false
+    and $fixture_report.live_execution_allowed == false
+    and $lib_export_present == true
+    and $test_event_count == 9
+    and $accepted_append_count == 9
+    and $duplicate_append_denial_count == 9
+    and $append_only_sequence_count == 9
+    and $idempotency_index_entry_count == 9
+    and $checkpoint_anchor_count == 9
+    and $replay_digest_count == 9
+    and $rollback_anchor_count == 9
+    and ($entries | all(.feature_gate_required == true
+      and .runtime_feature_gate_enabled == false
+      and .runtime_event_log_write_allowed == false
+      and .runtime_sqlite_write_allowed == false
+      and .store_persistence_allowed == false
+      and .workflow_execution_allowed == false
+      and .replay_execution_allowed == false
+      and .rollback_execution_allowed == false
+      and .live_execution_allowed == false))) as $test_ready |
+  {
+    runtime:"hepta",
+    surface:"workflow_temporal_lite_append_only_event_store_test_implementation",
+    status:(if $test_ready then "ready_blocked" else "blocked" end),
+    gate:"workflow_temporal_lite_append_only_event_store_test_implementation_gate",
+    schema_version:"workflow_temporal_lite_append_only_event_store_test_implementation_v1",
+    source_fixture_gate:$fixture_report.gate,
+    source_fixture_ready:$fixture_report.test_only_append_fixture_ready,
+    source_fixture_entry_count:$fixture_report.fixture_entry_count,
+    lib_export_present:$lib_export_present,
+    test_store_scope:"test_only_in_memory_append_only_store_no_runtime_persistence",
+    event_contract_count:$fixture_report.event_contract_count,
+    test_event_count:$test_event_count,
+    append_attempt_count:($test_event_count * 2),
+    accepted_append_count:$accepted_append_count,
+    duplicate_append_denial_count:$duplicate_append_denial_count,
+    append_only_sequence_count:$append_only_sequence_count,
+    idempotency_index_entry_count:$idempotency_index_entry_count,
+    checkpoint_anchor_count:$checkpoint_anchor_count,
+    replay_digest_count:$replay_digest_count,
+    rollback_anchor_count:$rollback_anchor_count,
+    feature_gate_required:true,
+    runtime_feature_gate_enabled:false,
+    in_memory_store_materialized:$test_ready,
+    runtime_event_log_write_allowed:false,
+    runtime_sqlite_write_allowed:false,
+    store_persistence_allowed:false,
+    workflow_execution_allowed:false,
+    replay_execution_allowed:false,
+    rollback_execution_allowed:false,
+    live_execution_allowed:false,
+    append_only_event_store_test_ready:$test_ready,
+    entries:$entries,
+    blockers:[
+      "runtime_feature_gate_closed",
+      "runtime_event_log_write_disabled",
+      "runtime_sqlite_write_disabled",
+      "store_persistence_disabled",
+      "workflow_execution_disabled",
+      "replay_execution_disabled",
+      "rollback_execution_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "temporal_lite_deterministic_replay_validator_feature_gated_readback"
+    ],
+    recommended_next_gate:"temporal_lite_deterministic_replay_validator_feature_gated_readback",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      filesystem_written:false,
+      event_log_written:false,
+      sqlite_written:false,
+      store_persisted:false,
+      lease_acquired:false,
+      idempotency_index_persisted:false,
+      checkpoint_written:false,
+      workflow_execution_started:false,
+      replay_executed:false,
+      rollback_executed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      channel_send_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

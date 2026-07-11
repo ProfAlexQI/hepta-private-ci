@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-final-index.report"
+FINAL_ACK_GATE="$ROOT/scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-final-ack-denial-gate.sh"
+FINAL_ACK_DOC="$ROOT/docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_FINAL_ACK_DENIAL_GATE.md"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable terminal public claim delivery receipt artifact signing receipt signing receipt summary/briefing final index report: $SOURCE_REPORT" >&2
+  exit 1
+}
+[[ -f "$FINAL_ACK_GATE" ]] || {
+  echo "missing terminal public claim delivery receipt artifact signing receipt signing receipt final acknowledgement denial gate: $FINAL_ACK_GATE" >&2
+  exit 1
+}
+[[ -f "$FINAL_ACK_DOC" ]] || {
+  echo "missing terminal public claim delivery receipt artifact signing receipt signing receipt final acknowledgement denial doc: $FINAL_ACK_DOC" >&2
+  exit 1
+}
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_blocked == true
+  and .final_blocker_count == 162
+  and .signing_receipt_operator_summary_recorded == false
+  and .signing_receipt_operator_briefing_recorded == false
+  and .telegram_signing_receipt_briefing_sent == false
+  and .release_publication_authority_from_signing_receipt_summary_briefing_derived == false
+  and .activation_authority_from_signing_receipt_summary_briefing_derived == false
+  and .public_ga_claimed == false
+' <<<"$source_json" >/dev/null
+
+final_ack_static_mention_count="$(
+  grep -Eci 'acknowledgement|acknowledge|received|confirmed|read|seen|response|completion|status|summary|briefing|readback|dashboard|notification|telegram|external|authority|install|restart|active-binary|approval|provider|credential' "$FINAL_ACK_GATE" || true
+)"
+
+jq -n \
+  --argjson source "$source_json" \
+  --argjson final_ack_static_mention_count "$final_ack_static_mention_count" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_attachment",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_ready: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_blocked,
+    source_final_blocker_count: $source.final_blocker_count,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_final_index_attached: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_attachment_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_attachment_blocked: true,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_denial_gate_present: true,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_denial_doc_present: true,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_static_mention_count: $final_ack_static_mention_count,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_denial_gate_invoked: false,
+    artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_summary_briefing_denial_gate_invoked: false,
+    long_soak_started: false,
+    signing_receipt_final_acknowledgement_accepted: false,
+    signing_receipt_final_acknowledgement_recorded: false,
+    signing_receipt_final_acknowledgement_persisted: false,
+    signing_receipt_final_acknowledgement_materialized: false,
+    signing_receipt_final_acknowledgement_filesystem_written: false,
+    signing_receipt_final_acknowledgement_delivered: false,
+    signing_receipt_operator_received_recorded: false,
+    signing_receipt_operator_confirmed_recorded: false,
+    signing_receipt_operator_read_recorded: false,
+    signing_receipt_operator_seen_recorded: false,
+    signing_receipt_final_response_recorded: false,
+    signing_receipt_completion_acknowledgement_recorded: false,
+    signing_receipt_status_acknowledgement_recorded: false,
+    signing_receipt_summary_acknowledgement_recorded: false,
+    signing_receipt_briefing_acknowledgement_recorded: false,
+    signing_receipt_readback_digest_acknowledgement_recorded: false,
+    signing_receipt_dashboard_acknowledgement_recorded: false,
+    signing_receipt_notification_acknowledgement_recorded: false,
+    signing_receipt_channel_acknowledgement_delivered: false,
+    external_signing_receipt_acknowledgement_sent: false,
+    telegram_signing_receipt_acknowledgement_sent: false,
+    signing_receipt_acknowledgement_acceptance_recorded: false,
+    operator_acceptance_from_signing_receipt_acknowledgement_recorded: false,
+    operator_approval_from_signing_receipt_acknowledgement_derived: false,
+    release_publication_authority_from_signing_receipt_acknowledgement_derived: false,
+    activation_authority_from_signing_receipt_acknowledgement_derived: false,
+    activation_command_from_signing_receipt_acknowledgement_derived: false,
+    live_execution_from_signing_receipt_acknowledgement_allowed: false,
+    install_from_signing_receipt_acknowledgement_executed: false,
+    service_restart_from_signing_receipt_acknowledgement_performed: false,
+    active_binary_from_signing_receipt_acknowledgement_mutated: false,
+    result_receipt_from_signing_receipt_acknowledgement_recorded: false,
+    provider_invoked: false,
+    model_invoked: false,
+    credential_read: false,
+    secret_file_read: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    attachment_blocker_count: 164,
+    manual_operator_live_cutover_approval_required: true,
+    public_ga_claim_allowed: false,
+    public_ga_claimed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_final_acknowledgement_readback_without_summary",
+    side_effect_free: true,
+    side_effects: {
+      report_written: false,
+      git_index_mutated: false,
+      final_acknowledgement_denial_gate_invoked: false,
+      summary_briefing_denial_gate_invoked: false,
+      final_acknowledgement_recorded: false,
+      operator_received_recorded: false,
+      operator_confirmed_recorded: false,
+      operator_read_recorded: false,
+      operator_seen_recorded: false,
+      final_response_recorded: false,
+      completion_acknowledgement_recorded: false,
+      status_acknowledgement_recorded: false,
+      external_acknowledgement_sent: false,
+      telegram_acknowledgement_sent: false,
+      release_publication_authority_from_signing_receipt_acknowledgement_derived: false,
+      activation_authority_from_signing_receipt_acknowledgement_derived: false,
+      install_from_signing_receipt_acknowledgement_executed: false,
+      active_binary_from_signing_receipt_acknowledgement_mutated: false,
+      provider_invoked: false,
+      model_invoked: false,
+      credential_read: false,
+      secret_file_read: false,
+      external_send_performed: false,
+      telegram_send_performed: false,
+      long_soak_started: false,
+      terminal_live_gate_invoked: false,
+      public_ga_claim_recorded: false,
+      public_ga_promoted: false,
+      public_release_published: false,
+      rollback_executed: false,
+      external_network_read: false,
+      filesystem_written: false
+    }
+  }'

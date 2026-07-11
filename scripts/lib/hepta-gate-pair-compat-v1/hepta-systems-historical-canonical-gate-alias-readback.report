@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+CLOSURE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-closure.report"
+CLOSURE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-closure.gate"
+CANONICAL_GATE="$ROOT/scripts/hepta-systems-canonical-gate.sh"
+WRAPPER_TARGET="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_ALIAS_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-gate-alias-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$CLOSURE_REPORT" ]] || fail "missing executable current canonical closure report: $CLOSURE_REPORT"
+[[ -x "$CLOSURE_GATE" ]] || fail "missing executable current canonical closure gate: $CLOSURE_GATE"
+[[ -x "$CANONICAL_GATE" ]] || fail "missing executable historical canonical gate alias: $CANONICAL_GATE"
+[[ -x "$WRAPPER_TARGET" ]] || fail "missing executable current canonical wrapper target: $WRAPPER_TARGET"
+[[ -f "$DOC" ]] || fail "missing historical canonical gate alias readback architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the historical canonical gate alias readback report"
+fi
+
+alias_shebang_count="$(grep -c '^#!/usr/bin/env bash$' "$CANONICAL_GATE" || true)"
+alias_strict_mode_count="$(grep -c '^set -euo pipefail$' "$CANONICAL_GATE" || true)"
+alias_root_count="$(grep -c '^ROOT=' "$CANONICAL_GATE" || true)"
+alias_target_count="$(grep -c 'TARGET="\$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"' "$CANONICAL_GATE" || true)"
+alias_exec_count=0
+if grep -Eq '^[[:space:]]*exec[[:space:]]+"\$TARGET"[[:space:]]+"\$@"[[:space:]]*$' "$CANONICAL_GATE"; then
+  alias_exec_count=1
+fi
+alias_fail_prefix_count="$(grep -c "hepta-systems-canonical-gate: FAIL: missing executable current canonical wrapper gate" "$CANONICAL_GATE" || true)"
+
+alias_bash_syntax_valid=false
+if bash -n "$CANONICAL_GATE"; then
+  alias_bash_syntax_valid=true
+fi
+
+jq -n \
+  --slurpfile closure <("$CLOSURE_REPORT") \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-gate-alias-readback.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_GATE_ALIAS_READBACK_2026-06-21.md" \
+  --argjson alias_shebang_count "$alias_shebang_count" \
+  --argjson alias_strict_mode_count "$alias_strict_mode_count" \
+  --argjson alias_root_count "$alias_root_count" \
+  --argjson alias_target_count "$alias_target_count" \
+  --argjson alias_exec_count "$alias_exec_count" \
+  --argjson alias_fail_prefix_count "$alias_fail_prefix_count" \
+  --argjson alias_bash_syntax_valid "$alias_bash_syntax_valid" \
+  '
+  ($closure[0]) as $closure |
+  [
+    {
+      id:"alias_file_exists",
+      evidence:"scripts/hepta-systems-canonical-gate.sh",
+      passed:true
+    },
+    {
+      id:"alias_target_static_readback",
+      evidence:"TARGET=\"$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate\"",
+      passed:($alias_target_count == 1)
+    },
+    {
+      id:"alias_single_exec_handoff",
+      evidence:"exec \"$TARGET\" \"$@\"",
+      passed:($alias_exec_count == 1)
+    },
+    {
+      id:"alias_bash_syntax_readback",
+      evidence:"bash -n scripts/hepta-systems-canonical-gate.sh",
+      passed:$alias_bash_syntax_valid
+    }
+  ] as $readback_checks |
+  [
+    "manual_operator_live_cutover_approval_required",
+    "tool_execution_live_cutover_allowed_false",
+    "tool_execution_public_ga_allowed_false",
+    "canonical_gate_not_invoked_by_alias_readback",
+    "wrapper_target_not_invoked_by_alias_readback",
+    "terminal_live_gates_not_invoked",
+    "live_url_not_contacted",
+    "long_soak_not_started"
+  ] as $alias_blockers |
+  ($closure.current_canonical_closure_ready == true
+    and $closure.historical_canonical_gate_thin_wrapper_validation_attached == true
+    and $closure.historical_canonical_gate_wrapper_path == "scripts/hepta-systems-canonical-gate.sh"
+    and $closure.historical_canonical_gate_wrapper_target == "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+    and $closure.historical_canonical_gate_wrapper_exec_count == 1
+    and $closure.canonical_gate_wrapper_invoked == false
+    and $closure.wrapper_target_invoked == false
+    and $alias_shebang_count == 1
+    and $alias_strict_mode_count == 1
+    and $alias_root_count == 1
+    and $alias_target_count == 1
+    and $alias_exec_count == 1
+    and $alias_fail_prefix_count == 1
+    and $alias_bash_syntax_valid == true
+    and ($readback_checks | all(.passed == true))
+    and $closure.execution_enabled_count == 0
+    and $closure.public_ga_enabled_count == 0
+    and $closure.tool_execution_live_cutover_allowed == false
+    and $closure.tool_execution_public_ga_allowed == false
+    and ($closure.side_effects | to_entries | all(.value == false))) as $alias_readback_ready |
+  {
+    runtime:"hepta",
+    surface:"historical_canonical_gate_alias_readback",
+    plugin_id:$closure.plugin_id,
+    status:(if $alias_readback_ready then "ready" else "blocked" end),
+    source_current_canonical_closure_surface:$closure.surface,
+    source_current_canonical_closure_ready:$closure.current_canonical_closure_ready,
+    source_thin_wrapper_validation_attached:$closure.historical_canonical_gate_thin_wrapper_validation_attached,
+    historical_canonical_gate_alias_path:"scripts/hepta-systems-canonical-gate.sh",
+    historical_canonical_gate_alias_target:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate",
+    historical_canonical_gate_alias_readback_mode:"static_shell_readback_only",
+    historical_canonical_gate_alias_shebang_count:$alias_shebang_count,
+    historical_canonical_gate_alias_strict_mode_count:$alias_strict_mode_count,
+    historical_canonical_gate_alias_root_count:$alias_root_count,
+    historical_canonical_gate_alias_target_count:$alias_target_count,
+    historical_canonical_gate_alias_exec_count:$alias_exec_count,
+    historical_canonical_gate_alias_fail_prefix_count:$alias_fail_prefix_count,
+    historical_canonical_gate_alias_bash_syntax_checked:true,
+    historical_canonical_gate_alias_bash_syntax_valid:$alias_bash_syntax_valid,
+    historical_canonical_gate_alias_readback_ready:$alias_readback_ready,
+    readback_check_count:($readback_checks | length),
+    readback_checks:$readback_checks,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    capability_matrix_gate_invoked:false,
+    terminal_live_gate_invoked:false,
+    live_url_required:false,
+    long_soak_required:false,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"attach_historical_canonical_gate_alias_readback_to_current_canonical_closure_without_live_invocation",
+    alias_blocker_count:($alias_blockers | length),
+    alias_blockers:$alias_blockers,
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      current_canonical_closure_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-closure.report",
+      current_canonical_closure_gate:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-closure.gate",
+      historical_canonical_gate_alias:"scripts/hepta-systems-canonical-gate.sh",
+      wrapper_target:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      historical_canonical_gate_mutated:false,
+      strict_missing_consumer_mutated:false,
+      historical_snapshot_evidence_written:false,
+      wrapper_body_emitted_by_report:false,
+      canonical_gate_invoked:false,
+      wrapper_target_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

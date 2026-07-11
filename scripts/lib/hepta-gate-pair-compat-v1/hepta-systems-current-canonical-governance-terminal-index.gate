@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-governance-terminal-index.report"
+READBACK_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-governance-readback.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_GOVERNANCE_TERMINAL_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-governance-terminal-index-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current canonical governance terminal index report: $REPORT"
+[[ -x "$READBACK_GATE" ]] || fail "missing executable current canonical governance readback gate: $READBACK_GATE"
+[[ -f "$DOC" ]] || fail "missing current canonical governance terminal index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the current canonical governance terminal index report"
+fi
+
+grep -q 'Current Canonical Governance Terminal Index' "$DOC" \
+  || fail "architecture note must document Current Canonical Governance Terminal Index"
+grep -q 'terminal blocker index' "$DOC" \
+  || fail "architecture note must document the terminal blocker index"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that the terminal index does not invoke the alias"
+grep -q 'tool execution closure backfeed' "$DOC" \
+  || fail "architecture note must document tool execution closure backfeed"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_canonical_governance_terminal_index"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_governance_readback_surface == "current_canonical_governance_readback"
+  and .source_governance_readback_ready == true
+  and .source_governance_readback_blocked == true
+  and .source_tool_execution_closure_surface == "tool_execution_live_cutover_closure_index"
+  and .source_tool_execution_closure_ready == true
+  and .tool_execution_closure_backfeed_ready == true
+  and .tool_execution_closure_backfeed_blocker_count == 17
+  and .tool_execution_closure_backfeed_category_count == 4
+  and .tool_execution_closure_backfeed_category_ready_count == 4
+  and .tool_execution_closure_backfeed_category_blocker_count == 17
+  and .tool_execution_closure_backfeed_categorization_ready == true
+  and (.tool_execution_closure_backfeed_categories | length) == 4
+  and any(.tool_execution_closure_backfeed_categories[]; .id == "runner_selector" and .blocker_count == 2)
+  and any(.tool_execution_closure_backfeed_categories[]; .id == "dirty_worktree_owner_freeze" and .blocker_count == 2)
+  and .current_canonical_governance_terminal_index_ready == true
+  and .current_canonical_governance_terminal_index_blocked == true
+  and .terminal_input_count == 3
+  and (.terminal_inputs | any(.id == "current_canonical_governance_readback" and .source_ready == true and .terminal_role == "canonical_governance_blocker_source"))
+  and (.terminal_inputs | any(.id == "active_current_canonical_consumer" and .source_ready == true and .terminal_role == "rollback_anchor"))
+  and (.terminal_inputs | any(.id == "successor_cutover_final_gate" and .source_ready == true and .terminal_role == "manual_cutover_blocker"))
+  and .active_current_canonical_consumer_surface == "current_canonical_consumer"
+  and .active_current_canonical_consumer_replaced_in_place == false
+  and .successor_canonical_consumer_surface == "promoted_current_canonical_consumer"
+  and .successor_cutover_final_gate_attached == true
+  and .successor_cutover_final_gate_status == "ready_blocked"
+  and .successor_consumer_cutover_allowed == false
+  and .rollback_anchor == "current_canonical_consumer"
+  and .manual_operator_live_cutover_approval_required == true
+  and .explicit_live_cutover_approval_present == false
+  and .operator_live_cutover_approval_recorded == false
+  and .cutover_packet_recorded == false
+  and .cutover_packet_accepted == false
+  and .final_blocker_count == 14
+  and .terminal_blocker_count == 13
+  and (.terminal_blockers | index("manual_operator_live_cutover_approval_required")) != null
+  and (.terminal_blockers | index("successor_consumer_cutover_disallowed")) != null
+  and (.terminal_blockers | index("current_canonical_consumer_rollback_anchor_retained")) != null
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "attach_current_canonical_governance_terminal_index_to_tool_execution_terminal_governance_bridge_without_live_gate_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$READBACK_GATE" >/dev/null
+
+printf 'hepta-systems-current-canonical-governance-terminal-index-gate: PASS: current canonical governance terminal blocker index is ready without live invocation\n'

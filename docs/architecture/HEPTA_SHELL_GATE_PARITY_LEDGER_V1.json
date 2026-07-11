@@ -340,6 +340,42 @@
         "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-public-status-final-index",
         "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-public-status-final-index"
       ]
+    },
+    {
+      "batch_id": "complete_captured_shell_compat_v1",
+      "migration_parent_commit": "dba27799b36d708d1a41bbc6b37f47700f529834",
+      "newly_migrated_pair_count": 1255,
+      "migrated_pair_count": 1282,
+      "remaining_legacy_pair_count": 0,
+      "post_migration_catalog_sha256": "01c13de1b359234e66e9b7c07c5bf8d6deb4da60758a9971c3967d27d262e880",
+      "post_migration_exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+      "gate_count": 1982,
+      "report_count": 1283,
+      "exact_pair_count": 1282,
+      "template_pair_count": 27,
+      "captured_compatibility_pair_count": 1255,
+      "legacy_pair_source_line_count_before": 365745,
+      "thin_wrapper_line_count_after": 12820,
+      "captured_payload_line_count_after": 365745,
+      "migration_input_sha256": "a24b66f4f5608332a61cad4efbc6bcb0a3af31deb8db6effae17296ab252e746",
+      "existing_template_output_byte_parity_count": 54,
+      "pre_migration_content_snapshot_ready": true,
+      "compatibility_payload_all_hash_verified": true,
+      "all_exact_pairs_thin_wrappers": true,
+      "report_execution_sample_ready": true,
+      "gate_execution_sample_ready": true,
+      "receipt_state_machine_derived": true,
+      "script_execution_side_effects_observed": false,
+      "provider_invoked": false,
+      "model_invoked": false,
+      "credentials_read": false,
+      "production_state_mutated": false,
+      "service_restarted": false,
+      "captured_payload_source_hash_binding_count": 2510,
+      "compatibility_transforms": [
+        "exact_pair_path_redirection",
+        "HEPTA_REPO_ROOT_binding"
+      ]
     }
   ]
 }

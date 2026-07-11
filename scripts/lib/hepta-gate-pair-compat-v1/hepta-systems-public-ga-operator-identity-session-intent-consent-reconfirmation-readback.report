@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-terminal-decision-status-final-index-intent-consent-reconfirmation.report"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable Public GA operator identity/session intent consent attachment report: $SOURCE_REPORT" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the Public GA operator identity/session intent consent readback report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment"
+  and .public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_blocked == true
+  and .operator_intent_recorded == false
+  and .operator_consent_recorded == false
+  and .consent_reconfirmation_recorded == false
+  and .operator_approval_from_intent_consent_derived == false
+  and .source_canonical_governance_tool_execution_closure_backfeed_ready == true
+  and .source_canonical_governance_tool_execution_closure_backfeed_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_ready_count == 4
+  and .source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count == 17
+  and .source_canonical_governance_tool_execution_closure_backfeed_categorization_ready == true
+' <<<"$source_json" >/dev/null
+
+jq -n \
+  --argjson source "$source_json" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_reconfirmation_readback",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_ready: $source.public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_blocked,
+    public_ga_operator_identity_session_operator_intent_consent_reconfirmation_readback_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_reconfirmation_readback_blocked: true,
+    public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_attached: true,
+    public_ga_operator_identity_session_terminal_decision_status_promotion_final_index_attached: $source.public_ga_operator_identity_session_terminal_decision_status_promotion_final_index_attached,
+    source_canonical_governance_tool_execution_closure_backfeed_ready: $source.source_canonical_governance_tool_execution_closure_backfeed_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_blocker_count: $source.source_canonical_governance_tool_execution_closure_backfeed_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_ready_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_ready_count,
+    source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count: $source.source_canonical_governance_tool_execution_closure_backfeed_category_blocker_count,
+    source_canonical_governance_tool_execution_closure_backfeed_categorization_ready: $source.source_canonical_governance_tool_execution_closure_backfeed_categorization_ready,
+    source_canonical_governance_tool_execution_closure_backfeed_categories: $source.source_canonical_governance_tool_execution_closure_backfeed_categories,
+    readback_mode: "static_operator_identity_session_intent_consent_reconfirmation_snapshot_only",
+    readback_check_count: 54,
+    operator_identity_session_operator_intent_consent_reconfirmation_denial_gate_present: $source.operator_identity_session_operator_intent_consent_reconfirmation_denial_gate_present,
+    operator_identity_session_operator_intent_consent_reconfirmation_denial_doc_present: $source.operator_identity_session_operator_intent_consent_reconfirmation_denial_doc_present,
+    operator_identity_session_operator_intent_consent_reconfirmation_denial_gate_invoked: false,
+    operator_identity_session_terminal_decision_status_promotion_denial_gate_invoked: false,
+    long_soak_required_by_source_intent_consent_gate: $source.long_soak_required_by_source_intent_consent_gate,
+    long_soak_started: false,
+    operator_intent_reconfirmed: false,
+    operator_consent_reconfirmed: false,
+    operator_intent_recorded: false,
+    operator_intent_persisted: false,
+    operator_consent_recorded: false,
+    operator_consent_persisted: false,
+    consent_reconfirmation_recorded: false,
+    consent_reconfirmation_persisted: false,
+    identity_signature_recorded: false,
+    session_consent_token_recorded: false,
+    device_session_consent_nonce_recorded: false,
+    logout_replay_consent_refresh_recorded: false,
+    operator_approval_from_intent_consent_derived: false,
+    acceptance_from_intent_consent_recorded: false,
+    terminal_decision_from_intent_consent_recorded: false,
+    terminal_status_from_intent_consent_recorded: false,
+    release_publication_authority_from_intent_consent_derived: false,
+    activation_authority_from_intent_consent_derived: false,
+    install_from_intent_consent_executed: false,
+    service_restart_from_intent_consent_performed: false,
+    active_binary_from_intent_consent_mutated: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    readback_blocker_count: 48,
+    public_ga_claim_allowed: false,
+    public_ga_claimed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_operator_intent_consent_reconfirmation_final_index_without_status_promotion",
+    local_gate: "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-reconfirmation-readback.gate",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_INTENT_CONSENT_RECONFIRMATION_READBACK_2026-06-21.md",
+    source_files: {
+      public_ga_operator_identity_session_operator_intent_consent_reconfirmation_attachment_report: "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-terminal-decision-status-final-index-intent-consent-reconfirmation.report"
+    },
+    side_effect_free: true,
+    side_effects: ($source.side_effects)
+  }'

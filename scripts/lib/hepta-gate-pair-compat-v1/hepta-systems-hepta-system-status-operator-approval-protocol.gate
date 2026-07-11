@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-hepta-system-status-operator-approval-protocol.report"
+SOURCE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-hepta-system-status-internal-read-only-invocation.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HEPTA_SYSTEM_STATUS_OPERATOR_APPROVAL_PROTOCOL_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-hepta-system-status-operator-approval-protocol-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 9 report: $REPORT"
+[[ -x "$SOURCE_GATE" ]] || fail "missing executable Phase 8 internal invocation gate: $SOURCE_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 9 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 9 operator approval protocol report"
+fi
+
+grep -q 'Operator Approval Protocol' "$DOC" \
+  || fail "architecture note must document Operator Approval Protocol"
+grep -q 'nonce/session binding' "$DOC" \
+  || fail "architecture note must document nonce/session binding"
+grep -q 'no approval request, approval acceptance, approval recording, approval broker write, evidence recording, credential read, external network access, ledger write, transport mutation, receipt persistence, workflow event-log write, SQLite write, Native POST mutation, channel send, or live execution' "$DOC" \
+  || fail "architecture note must document the closed approval boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_system_status_operator_approval_protocol"
+  and .status == "ready_blocked"
+  and .gate == "hepta_system_status_operator_approval_protocol_gate"
+  and .schema_version == "hepta_system_status_operator_approval_protocol_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_invocation_ready == true
+  and .source_status_payload_materialized == true
+  and .source_receipt_projected_in_memory == true
+  and .source_receipt_persisted == false
+  and .selected_candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp"
+  and .approval_subject == "approval-subject:hepta-system/status/internal-read-only"
+  and .approval_packet_count == 1
+  and .protocol_step_count == 3
+  and .nonce_binding_present == true
+  and .session_binding_present == true
+  and .approval_packet_preview_ready == true
+  and .explicit_accept_required == true
+  and .non_acceptance_receipt_projected == true
+  and .approval_protocol_ready == true
+  and .approval_request_sent == false
+  and .approval_request_allowed == false
+  and .approval_accepted == false
+  and .approval_acceptance_allowed == false
+  and .approval_recorded == false
+  and .approval_recording_allowed == false
+  and .auto_approval_enabled == false
+  and .evidence_recording_allowed == false
+  and .approval_broker_write_allowed == false
+  and .approval_broker_persisted == false
+  and .receipt_persisted == false
+  and .credential_read_allowed == false
+  and .external_network_allowed == false
+  and .external_tool_invoked == false
+  and .tool_invocation_switch_enabled == false
+  and .ledger_write_allowed == false
+  and .workflow_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .transport_mutation_allowed == false
+  and .native_post_mutation_allowed == false
+  and .channel_send_allowed == false
+  and .live_execution_allowed == false
+  and .packet.packet_id == "approval-packet.hepta-system-status.internal-read-only.v1"
+  and .packet.nonce == "approval-nonce.hepta-system-status.internal-read-only.v1"
+  and .packet.operator_session_binding_key == "operator-session-binding.hepta-local.explicit-accept-required.v1"
+  and .packet.approval_mode == "explicit_operator_accept_required_no_auto_accept"
+  and .packet.packet_preview_materialized == true
+  and .packet.explicit_accept_required == true
+  and .packet.auto_accept_allowed == false
+  and .packet.approval_request_sent == false
+  and .packet.approval_accepted == false
+  and .packet.approval_recorded == false
+  and .packet.approval_broker_write_allowed == false
+  and .packet.packet_persisted == false
+  and .packet.live_execution_allowed == false
+  and (.steps | length) == 3
+  and (.steps | all(.ready == true
+    and .required == true
+    and .source_payload_bound == true
+    and .nonce_bound == true
+    and .operator_session_bound == true
+    and .explicit_accept_required == true
+    and .approval_request_allowed == false
+    and .approval_acceptance_allowed == false
+    and .approval_recording_allowed == false
+    and .approval_broker_write_allowed == false
+    and .evidence_recording_allowed == false
+    and .credential_read_allowed == false
+    and .transport_mutation_allowed == false
+    and .persistence_allowed == false
+    and .live_execution_allowed == false))
+  and any(.steps[]; .route == "nonce_session_binding_preflight")
+  and any(.steps[]; .route == "approval_packet_preview")
+  and any(.steps[]; .route == "non_acceptance_receipt_projection")
+  and (.blockers | index("approval_acceptance_requires_explicit_operator_action")) != null
+  and (.blockers | index("approval_broker_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.next_actions | index("phase10_controlled_canary_readiness_plan_without_gateway_native_telegram_or_live_activation")) != null
+  and .next_migration_step == "phase10_controlled_canary_readiness_plan_without_gateway_native_telegram_or_live_activation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime hepta_system_status_operator_approval_protocol --lib
+)
+
+printf 'hepta-systems-hepta-system-status-operator-approval-protocol-gate: PASS: operator approval protocol binds nonce/session and packet while approval acceptance, broker writes, persistence, and live execution stay closed\n'

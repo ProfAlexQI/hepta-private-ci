@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-readback-final-index-artifact-signing-terminal-public-claim-delivery-receipt-target-availability.report"
+SOURCE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-readback-final-index.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_READBACK_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_TARGET_AVAILABILITY_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-readback-final-index-artifact-signing-terminal-public-claim-delivery-receipt-target-availability-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable artifact signing terminal public claim delivery receipt target availability report: $REPORT"
+[[ -x "$SOURCE_GATE" ]] || fail "missing executable artifact signing terminal public claim delivery/readback final index gate: $SOURCE_GATE"
+[[ -f "$DOC" ]] || fail "missing artifact signing terminal public claim delivery receipt target availability architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the artifact signing terminal public claim delivery receipt target availability report"
+fi
+
+grep -q 'Public GA Operator Identity/Session Intent/Consent Evidence Artifact Signing Terminal Public Claim Delivery Receipt Target Availability' "$DOC" \
+  || fail "architecture note must document Public GA Operator Identity/Session Intent/Consent Evidence Artifact Signing Terminal Public Claim Delivery Receipt Target Availability"
+grep -q 'ready-but-blocked' "$DOC" \
+  || fail "architecture note must document ready-but-blocked status"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that target availability does not invoke delivery receipt denial gates"
+grep -q 'target gate and note are now present' "$DOC" \
+  || fail "architecture note must document that the target gate and note are now present in the current checkout"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_target_availability"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_readback_final_index_surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_readback_final_index"
+  and .source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_readback_final_index_ready == true
+  and .source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_readback_final_index_blocked == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_target_availability_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_target_availability_blocked == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_readback_final_index_attached == true
+  and .target_artifact_signing_terminal_public_claim_delivery_receipt_non_persistence_denial_gate_present == true
+  and .target_artifact_signing_terminal_public_claim_delivery_receipt_non_persistence_denial_doc_present == true
+  and .target_artifact_signing_terminal_public_claim_delivery_receipt_non_persistence_denial_gate_invoked == false
+  and .target_artifact_signing_terminal_public_claim_delivery_receipt_non_persistence_creation_required == false
+  and .artifact_signing_terminal_public_claim_delivery_receipt_attachment_allowed == true
+  and .artifact_signing_terminal_public_claim_delivery_receipt_target_created_after_preflight == true
+  and .artifact_signing_terminal_public_claim_delivery_receipt_attachment_performed == false
+  and .terminal_public_claim_delivery_readback_gate_invoked == false
+  and .public_claim_delivery_recorded == false
+  and .status_readback_recorded == false
+  and .delivery_receipt_recorded == false
+  and .delivery_receipt_persisted == false
+  and .delivery_receipt_materialized == false
+  and .delivery_receipt_filesystem_written == false
+  and .delivery_receipt_ledger_written == false
+  and .delivery_receipt_index_written == false
+  and .delivery_receipt_query_registered == false
+  and .delivery_receipt_exported == false
+  and .delivery_receipt_observability_recorded == false
+  and .delivery_receipt_status_exposed == false
+  and .delivery_receipt_acknowledgement_accepted == false
+  and .operator_approval_from_delivery_receipt_derived == false
+  and .release_publication_authority_from_delivery_receipt_derived == false
+  and .activation_authority_from_delivery_receipt_derived == false
+  and .install_from_delivery_receipt_executed == false
+  and .service_restart_from_delivery_receipt_performed == false
+  and .active_binary_from_delivery_receipt_mutated == false
+  and .final_blocker_count == 91
+  and .public_ga_claim_allowed == false
+  and .public_ga_claimed == false
+  and .public_release_published == false
+  and .rollback_execution_allowed == false
+  and .next_migration_step == "attach_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_readback_final_index_to_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_non_persistence_without_delivery"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$SOURCE_GATE" >/dev/null
+
+printf 'hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-readback-final-index-artifact-signing-terminal-public-claim-delivery-receipt-target-availability-gate: PASS: artifact signing terminal public claim delivery receipt target availability is ready but blocked\n'

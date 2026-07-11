@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+index="$(
+  capture_json_report \
+    "hepta-work-graph-adapter-task-result-index-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-adapter-task-result-index.report"
+)"
+envelope="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-envelope-report-only-validator-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-task-result-envelope-report-only-validator.report"
+)"
+
+rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_envelope_readback.rs
+)"
+report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-terminal-envelope-readback.report
+)"
+gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-terminal-envelope-readback.gate
+)"
+
+jq -n \
+  --argjson index "$index" \
+  --argjson envelope "$envelope" \
+  --argjson rust_module_present "$rust_module_present" \
+  --argjson report_script_present "$report_script_present" \
+  --argjson gate_script_present "$gate_script_present" \
+  '
+  def blocker($id; $severity; $sources; $fix): {
+    id: $id,
+    severity: $severity,
+    affected_source_surface_ids: $sources,
+    blocks_live_execution: true,
+    recommended_fix: $fix
+  };
+  (
+    $index.source_index
+    | map(select(.terminal_task_result_required == true) | {
+        source_surface_id,
+        canonical_node_kind,
+        task_result_envelope_adapter_state,
+        task_result_envelope_preview_state,
+        missing_envelope_wire_fields,
+        missing_contract_required_wire_fields,
+        missing_contract_terminal_wire_fields,
+        readback_decision: (
+          if .task_result_envelope_adapter_state == "present_report_only"
+            and .task_result_envelope_preview_state == "present_report_only"
+            and (.missing_envelope_wire_fields | length) == 0
+          then "terminal_envelope_readback_consistent_report_only"
+          else "terminal_envelope_readback_missing_report_only"
+          end
+        ),
+        live_enforcement_enabled: false,
+        next_readback_step: (
+          if .task_result_envelope_adapter_state == "present_report_only"
+            and .task_result_envelope_preview_state == "present_report_only"
+            and (.missing_envelope_wire_fields | length) == 0
+          then "source_id_alignment_readback"
+          else "add_terminal_task_result_envelope_preview"
+          end
+        )
+      })
+  ) as $terminal_sources
+  | ($terminal_sources | map(select(.task_result_envelope_adapter_state == "present_report_only")) | length) as $adapter_count
+  | ($terminal_sources | map(select(.task_result_envelope_preview_state == "present_report_only")) | length) as $preview_count
+  | ($terminal_sources | map(select(.readback_decision == "terminal_envelope_readback_consistent_report_only")) | length) as $consistent_count
+  | ($terminal_sources | map(select(.task_result_envelope_adapter_state != "present_report_only") | .source_surface_id)) as $missing_adapter_sources
+  | ($terminal_sources | map(select(.task_result_envelope_preview_state != "present_report_only") | .source_surface_id)) as $missing_preview_sources
+  | ($terminal_sources | map(select((.missing_envelope_wire_fields | length) > 0) | .source_surface_id)) as $missing_wire_sources
+  | ($terminal_sources | map(.missing_envelope_wire_fields | length) | add) as $missing_wire_count
+  | ($terminal_sources | map(.missing_contract_required_wire_fields | length) | add) as $contract_required_gap_count
+  | ($terminal_sources | map(.missing_contract_terminal_wire_fields | length) | add) as $contract_terminal_gap_count
+  | (
+      (if (($missing_adapter_sources + $missing_preview_sources + $missing_wire_sources) | unique | length) > 0 then
+        [blocker("terminal_task_result_envelope_readback_missing"; "high"; (($missing_adapter_sources + $missing_preview_sources + $missing_wire_sources) | unique); "add report-only terminal envelope adapters and preview envelopes for every terminal source")]
+      else [] end)
+      + (if $contract_required_gap_count > 0 then
+        [blocker("task_result_contract_required_fields_partial"; "medium"; ($terminal_sources | map(select((.missing_contract_required_wire_fields | length) > 0) | .source_surface_id)); "fill missing TaskResult contract field projections before enabling validator enforcement")]
+      else [] end)
+      + [blocker("terminal_envelope_live_enforcement_disabled"; "high"; ($terminal_sources | map(.source_surface_id)); "keep terminal envelope validation report-only until source alignment, contract field, event-store, replay, and operator review gates pass")]
+    ) as $blockers
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_terminal_envelope_readback_gate",
+      schema_version: "work_graph_terminal_envelope_readback_v1",
+      preview_mode: "read_only_terminal_envelope_readback_no_live_enforcement",
+      terminal_source_count: ($terminal_sources | length),
+      terminal_envelope_adapter_count: $adapter_count,
+      terminal_envelope_preview_count: $preview_count,
+      readback_consistent_source_count: $consistent_count,
+      missing_terminal_envelope_adapter_count: (($terminal_sources | length) - $adapter_count),
+      missing_terminal_envelope_preview_count: (($terminal_sources | length) - $preview_count),
+      missing_terminal_envelope_wire_field_count: $missing_wire_count,
+      task_result_contract_required_field_gap_count: $contract_required_gap_count,
+      task_result_contract_terminal_field_gap_count: $contract_terminal_gap_count,
+      terminal_sources: $terminal_sources,
+      blockers: $blockers,
+      required_prior_gates: [
+        "hepta_work_graph_task_result_envelope_report_only_validator_gate",
+        "hepta_work_graph_adapter_task_result_index_gate"
+      ],
+      recommended_next_gate: "hepta_work_graph_source_id_alignment_readback_gate",
+      ready_for_source_id_alignment_readback: ($consistent_count == ($terminal_sources | length)),
+      ready_for_task_result_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        terminal_envelope_readback: {
+          rust_module_present: $rust_module_present,
+          report_script_present: $report_script_present,
+          gate_script_present: $gate_script_present
+        },
+        priors: {
+          task_result_envelope_gate: $envelope.gate,
+          adapter_task_result_index_gate: $index.gate
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_event_persisted: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        live_admission_enforcement_enabled: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

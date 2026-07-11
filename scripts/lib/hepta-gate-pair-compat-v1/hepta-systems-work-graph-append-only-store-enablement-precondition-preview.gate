@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-store-enablement-precondition-preview.report"
+
+report="$(capture_json_report "hepta-work-graph-append-only-store-enablement-precondition-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_append_only_store_enablement_precondition_preview_gate"
+  and .schema_version == "work_graph_append_only_store_enablement_precondition_preview_v1"
+  and .preview_mode == "read_only_append_only_store_enablement_precondition_preview_no_store_enablement"
+  and .source_surface_count == 12
+  and .append_only_disabled_source_count == 12
+  and .source_precondition_decision_count == 12
+  and .append_only_store_precondition_ready_source_count == 0
+  and .append_only_store_precondition_blocked_source_count == 12
+  and .append_only_event_contract_count == 9
+  and .append_only_event_route_count == 12
+  and .wal_operation_count == 6
+  and .checkpoint_contract_count == 4
+  and .existing_idempotency_guard_count == 7
+  and .candidate_idempotency_guard_count == 5
+  and .combined_idempotency_guard_source_count == 12
+  and .readback_probe_count == 6
+  and .terminal_task_result_contract_ready_source_count == 6
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.source_precondition_decisions | length) == .source_precondition_decision_count
+  and (.source_precondition_decisions | all(
+    .projection_contract_ready == true
+    and .store_idempotency_guard_ready == true
+    and .terminal_task_result_contract_ready == true
+    and .append_only_route_ready == true
+    and .readback_probe_contract_ready == true
+    and .ready_for_append_only_store_enablement == false
+  ))
+  and (.source_precondition_decisions | map(select(.append_only_precondition_decision == "deny_append_only_store_enablement_preconditions_missing")) | length) == 6
+  and (.source_precondition_decisions | map(select(.append_only_precondition_decision == "deny_scheduler_admission_not_enforced")) | length) == 5
+  and (.source_precondition_decisions | map(select(.append_only_precondition_decision == "deny_role_manifest_not_enforced")) | length) == 1
+  and (.source_precondition_decisions | map(select(.source_surface_id == "update_plan_tool" and (.blocker_ids | index("append_only_store_enablement_disabled")))) | length) == 1
+  and (.source_precondition_decisions | map(select(.source_surface_id == "multi_agent_v2_thread_spawn" and .append_only_precondition_decision == "deny_scheduler_admission_not_enforced")) | length) == 1
+  and (.source_precondition_decisions | map(select(.source_surface_id == "hepta_runtime_agent_harness" and .append_only_precondition_decision == "deny_role_manifest_not_enforced")) | length) == 1
+' >/dev/null <<<"$report"
+
+jq -e '
+  .precondition_count == 7
+  and (.preconditions | map({id, count: (.affected_source_surface_ids | length), preview: .satisfied_by_preview_contracts, enablement: .satisfied_for_enablement}) == [
+    {"id": "durable_store_enablement_switch", "count": 12, "preview": true, "enablement": false},
+    {"id": "wal_append_boundary_contract", "count": 12, "preview": true, "enablement": false},
+    {"id": "idempotency_mutation_policy", "count": 12, "preview": true, "enablement": false},
+    {"id": "rollback_readback_gate", "count": 12, "preview": true, "enablement": false},
+    {"id": "operator_review_and_side_effect_lock", "count": 6, "preview": false, "enablement": false},
+    {"id": "scheduler_admission_enforcement_precondition", "count": 5, "preview": false, "enablement": false},
+    {"id": "role_manifest_enforcement_precondition", "count": 4, "preview": false, "enablement": false}
+  ])
+  and (.preconditions | map(select(.id == "wal_append_boundary_contract").required_contract_refs | length)[0]) == 6
+  and (.preconditions | map(select(.id == "idempotency_mutation_policy").required_contract_refs | length)[0]) == 12
+  and (.preconditions | map(select(.id == "rollback_readback_gate").required_contract_refs | length)[0]) == 10
+' >/dev/null <<<"$report"
+
+jq -e '
+  .blocker_count == 8
+  and (.blockers | map({id, count: (.affected_source_surface_ids | length)}) == [
+    {"id": "durable_store_enablement_disabled", "count": 12},
+    {"id": "wal_write_boundary_not_enabled", "count": 12},
+    {"id": "idempotency_index_mutation_disabled", "count": 12},
+    {"id": "rollback_readback_not_executed", "count": 12},
+    {"id": "operator_review_required", "count": 6},
+    {"id": "scheduler_admission_not_enforced", "count": 5},
+    {"id": "role_manifest_not_enforced", "count": 4},
+    {"id": "runtime_application_residuals_not_promoted", "count": 7}
+  ])
+  and (.blockers | all(.required_before_append_only_store_enablement == true))
+' >/dev/null <<<"$report"
+
+jq -e '
+  .enablement_stage_count == 5
+  and (.enablement_stages | map(.id) == [
+    "contract_readiness_snapshot",
+    "append_only_event_intake_contracts",
+    "wal_and_idempotency_boundary",
+    "rollback_readback_boundary",
+    "admission_role_operator_policy"
+  ])
+  and (.enablement_stages | all(.enablement_enabled == false))
+  and .required_prior_gate_count == 28
+  and (.required_prior_gates[-1] == "hepta_work_graph_unified_projection_enforcement_readiness_terminal_task_result_rerun_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_store_enablement_precondition_readback_preview_gate"
+  and .ready_for_precondition_readback_preview == true
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_projection_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_role_manifest_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.append_only_store_enablement_precondition.rust_module_present == true
+  and .source_probes.append_only_store_enablement_precondition.report_script_present == true
+  and .source_probes.append_only_store_enablement_precondition.gate_script_present == true
+  and .source_probes.upstream_readiness_terminal_task_result_rerun.upstream_gate == true
+  and .source_probes.append_only_event_intake.upstream_gate == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_store_enablement_precondition --lib
+
+echo "Hepta WorkGraph append-only store enablement precondition preview gate passed"

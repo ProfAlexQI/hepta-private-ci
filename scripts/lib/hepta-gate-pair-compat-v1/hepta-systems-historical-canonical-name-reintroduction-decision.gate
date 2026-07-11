@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-name-reintroduction-decision.report"
+WRAPPER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_NAME_REINTRODUCTION_DECISION_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-name-reintroduction-decision-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable historical canonical name decision report: $REPORT"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -f "$DOC" ]] || fail "missing historical canonical name decision architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the historical canonical name decision report"
+fi
+
+grep -q 'Historical Canonical Name Reintroduction Decision' "$DOC" \
+  || fail "architecture note must document Historical Canonical Name Reintroduction Decision"
+grep -q 'claimed thin wrapper' "$DOC" \
+  || fail "architecture note must document claimed thin wrapper decision"
+grep -q 'phase-aware' "$DOC" \
+  || fail "architecture note must document phase-aware prerequisite"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "historical_canonical_name_reintroduction_decision"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_current_canonical_wrapper_surface == "current_canonical_wrapper"
+  and .source_current_canonical_wrapper_ready == true
+  and .source_historical_canonical_gate_name_claimed == true
+  and .source_historical_canonical_gate_created == true
+  and .source_historical_canonical_gate_executable == true
+  and .source_historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .source_historical_canonical_gate_wrapper_target == "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+  and .source_historical_canonical_gate_wrapper_exec_count == 1
+  and .source_historical_canonical_gate_mutated == true
+  and .source_historical_canonical_gate_mutated_by_report == false
+  and .source_canonical_gate_wrapper_invoked == false
+  and .source_execution_enabled_count == 0
+  and .source_public_ga_enabled_count == 0
+  and .proposed_historical_canonical_gate_path == "scripts/hepta-systems-canonical-gate.sh"
+  and .historical_canonical_gate_name_reintroduction_decision == "claimed_thin_wrapper"
+  and .historical_canonical_gate_name_reintroduction_allowed == true
+  and .historical_canonical_gate_name_claimed == true
+  and .historical_canonical_gate_created == true
+  and .historical_canonical_gate_executable == true
+  and .historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+  and .historical_canonical_gate_wrapper_target == "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+  and .historical_canonical_gate_wrapper_exec_count == 1
+  and .historical_canonical_gate_mutated == true
+  and .historical_canonical_gate_mutated_by_report == false
+  and .canonical_gate_wrapper_invoked == false
+  and .phase_split_required_before_name_claim == false
+  and .phase_split_completed_before_name_claim == true
+  and .decision_check_count == 3
+  and any(.decision_checks[]; .id == "attachment_index_snapshot_evidence_preserved" and .would_be_invalidated_by_name_claim == false and .required_before_claim == "complete")
+  and any(.decision_checks[]; .id == "restore_preflight_snapshot_evidence_preserved" and .would_be_invalidated_by_name_claim == false and .required_before_claim == "complete")
+  and any(.decision_checks[]; .id == "current_wrapper_thin_wrapper_claim" and .would_be_invalidated_by_name_claim == false and .required_before_claim == "complete")
+  and .current_wrapper_stable == true
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "validate_historical_canonical_gate_thin_wrapper_without_live_invocation"
+  and (.decision_blockers | index("historical_canonical_gate_thin_wrapper_validation_pending")) != null
+  and (.decision_blockers | index("manual_operator_live_cutover_approval_required")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$WRAPPER_GATE" >/dev/null
+
+printf 'hepta-systems-historical-canonical-name-reintroduction-decision-gate: PASS: historical canonical name is claimed as a thin wrapper without live invocation\n'

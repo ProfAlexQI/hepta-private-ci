@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-invocation-read-only-status-dry-run-execution-open-preconditions-readback.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_READ_ONLY_STATUS_DRY_RUN_EXECUTION_OPEN_PRECONDITIONS_READBACK_2026-06-30.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-execution-open-preconditions-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable execution open preconditions report: $REPORT"
+[[ -f "$DOC" ]] || fail "missing execution open preconditions architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the execution open preconditions report"
+fi
+
+rg -q 'Hepta Systems Plugin Tool Invocation Read Only Status Dry Run Execution Open Preconditions Readback' "$DOC" \
+  || fail "architecture note must document the execution open preconditions readback"
+rg -q 'operator evidence, operator acceptance recording, ledger persistence, receipt persistence, ToolRegistry registration, registry lookup, tool invocation, connector start, runtime write, and live execution preconditions' "$DOC" \
+  || fail "architecture note must document the required precondition set"
+rg -q 'no feature gate open, dry-run execution, operator evidence recording, operator acceptance recording, ledger persistence, receipt persistence, ToolRegistry registration, ToolRegistry mutation, registry lookup execution, tool invocation, connector start, runtime event-log write, SQLite write, credential read, external network, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, package/release, canary activation, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed execution open boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_execution_open_preconditions_readback"
+  and .status == "ready_blocked"
+  and .gate == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_execution_open_preconditions_readback_gate"
+  and .schema_version == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_execution_open_preconditions_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .manifest_name == "hepta-system"
+  and .manifest_version == "0.0.0-fixture"
+  and .source_acceptance_recording_boundary_ready == true
+  and .lib_export_present == true
+  and .candidate_count == 2
+  and .precondition_entry_count == 2
+  and .selected_read_only_status_tool_count == 1
+  and .non_selected_preflight_boundary_count == 1
+  and .execution_open_precondition_set_projected_count == 2
+  and .operator_evidence_precondition_projected_count == 2
+  and .operator_acceptance_recording_precondition_projected_count == 2
+  and .ledger_persistence_precondition_projected_count == 2
+  and .receipt_persistence_precondition_projected_count == 2
+  and .tool_registry_registration_precondition_projected_count == 2
+  and .registry_lookup_precondition_projected_count == 2
+  and .tool_invocation_precondition_projected_count == 2
+  and .connector_start_precondition_projected_count == 2
+  and .runtime_write_precondition_projected_count == 2
+  and .live_execution_precondition_projected_count == 2
+  and .execution_open_precondition_item_count == 20
+  and .execution_open_denial_receipt_projected_count == 2
+  and .execution_open_idempotency_key_projected_count == 2
+  and .stable_execution_open_precondition_set_count == 2
+  and .unique_execution_open_precondition_set_count == 2
+  and .stable_execution_open_denial_receipt_count == 2
+  and .unique_execution_open_denial_receipt_count == 2
+  and .stable_execution_open_idempotency_key_count == 2
+  and .unique_execution_open_idempotency_key_count == 2
+  and .execution_open_precondition_mismatch_count == 0
+  and .duplicate_execution_open_precondition_count == 0
+  and .execution_open_denial_receipt_mismatch_count == 0
+  and .duplicate_execution_open_denial_receipt_count == 0
+  and .execution_open_idempotency_mismatch_count == 0
+  and .duplicate_execution_open_idempotency_key_count == 0
+  and .feature_gate_opened_count == 0
+  and .dry_run_executed_count == 0
+  and .acceptance_record_persisted_count == 0
+  and .operator_acceptance_recorded_count == 0
+  and .ledger_written_count == 0
+  and .approval_requested_count == 0
+  and .receipt_persisted_count == 0
+  and .tool_registered_count == 0
+  and .registry_lookup_executed_count == 0
+  and .tool_invoked_count == 0
+  and .mcp_server_started_count == 0
+  and .app_connector_started_count == 0
+  and .runtime_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_execution_started_count == 0
+  and .execution_open_preconditions_readback_ready == true
+  and .feature_gate_open_allowed == false
+  and .dry_run_execution_allowed == false
+  and .operator_evidence_recording_allowed == false
+  and .operator_acceptance_recording_allowed == false
+  and .ledger_persistence_allowed == false
+  and .receipt_persistence_allowed == false
+  and .tool_registry_registration_allowed == false
+  and .registry_lookup_execution_allowed == false
+  and .tool_invocation_allowed == false
+  and .connector_start_allowed == false
+  and .runtime_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .live_execution_allowed == false
+  and (.entries | length) == 2
+  and any(.entries[]; .candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp" and .contribution_kind == "mcp_server" and .dry_run_path_selected == true and .execution_open_precondition_set_id == "execution-open-preconditions:hepta-system:local-mcp:read-only-status-dry-run" and .execution_open_denial_receipt_id == "execution-open-denial:hepta-system:local-mcp:read-only-status-dry-run:missing-operator-evidence-acceptance-ledger-receipt-registration" and .execution_open_idempotency_key == "execution-open-idempotency:hepta-system:local-mcp:read-only-status-dry-run" and (.execution_open_precondition_items | length) == 10)
+  and any(.entries[]; .candidate_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app" and .contribution_kind == "app_connector" and .dry_run_path_selected == false and .execution_open_precondition_set_id == "execution-open-preconditions:hepta-system:local-app:not-selected" and .execution_open_denial_receipt_id == "execution-open-denial:hepta-system:local-app:not-selected:missing-operator-evidence-acceptance-ledger-receipt-registration" and .execution_open_idempotency_key == "execution-open-idempotency:hepta-system:local-app:not-selected" and (.execution_open_precondition_items | length) == 10)
+  and (.entries | all(.execution_open_precondition_set_projected == true and .operator_evidence_precondition_projected == true and .operator_acceptance_recording_precondition_projected == true and .ledger_persistence_precondition_projected == true and .receipt_persistence_precondition_projected == true and .tool_registry_registration_precondition_projected == true and .registry_lookup_precondition_projected == true and .tool_invocation_precondition_projected == true and .connector_start_precondition_projected == true and .runtime_write_precondition_projected == true and .live_execution_precondition_projected == true and .execution_open_denial_receipt_projected == true and .execution_open_idempotency_key_projected == true and .feature_gate_opened == false and .dry_run_executed == false and .acceptance_record_persisted == false and .operator_acceptance_recorded == false and .ledger_written == false and .approval_requested == false and .receipt_persisted == false and .tool_registered == false and .registry_lookup_executed == false and .tool_invoked == false and .mcp_server_started == false and .app_connector_started == false and .runtime_event_log_written == false and .sqlite_written == false and .live_execution_started == false))
+  and (.blockers | index("operator_evidence_missing")) != null
+  and (.blockers | index("operator_acceptance_recording_disabled")) != null
+  and (.blockers | index("ledger_persistence_disabled")) != null
+  and (.blockers | index("receipt_persistence_disabled")) != null
+  and (.blockers | index("tool_registry_registration_disabled")) != null
+  and (.blockers | index("registry_lookup_execution_disabled")) != null
+  and (.blockers | index("tool_invocation_disabled")) != null
+  and (.blockers | index("connector_start_disabled")) != null
+  and (.blockers | index("runtime_event_log_write_disabled")) != null
+  and (.blockers | index("sqlite_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.next_actions | index("hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback")) != null
+  and .recommended_next_gate == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime hepta_systems_plugin_tool_invocation_read_only_status_dry_run_execution_open_preconditions_readback --lib
+)
+
+printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-execution-open-preconditions-readback-gate: PASS: read-only status dry-run execution open preconditions are queryable without feature gate open, dry-run execution, tool invocation, persistence, runtime writes, or live mutation\n'

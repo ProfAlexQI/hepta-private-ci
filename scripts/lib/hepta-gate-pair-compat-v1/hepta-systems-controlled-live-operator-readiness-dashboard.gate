@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-readiness-dashboard.report"
+KILL_SWITCH_BOUNDARY_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback.report"
+CLOSURE_INDEX_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-live-cutover-closure-index.gate"
+EVIDENCE_PLAN_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_OPERATOR_READINESS_DASHBOARD_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-operator-readiness-dashboard-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 6 dashboard report: $REPORT"
+[[ -x "$KILL_SWITCH_BOUNDARY_REPORT" ]] || fail "missing executable Phase 5n kill-switch rehearsal boundary report: $KILL_SWITCH_BOUNDARY_REPORT"
+[[ -x "$CLOSURE_INDEX_GATE" ]] || fail "missing executable live cutover closure index gate: $CLOSURE_INDEX_GATE"
+[[ -x "$EVIDENCE_PLAN_GATE" ]] || fail "missing executable required evidence collection plan gate: $EVIDENCE_PLAN_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 6 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the controlled-live operator readiness dashboard report"
+fi
+
+grep -q 'Controlled Live Operator Readiness Dashboard' "$DOC" \
+  || fail "architecture note must document Controlled Live Operator Readiness Dashboard"
+grep -q 'consumer dashboard without suffix expansion' "$DOC" \
+  || fail "architecture note must document consumer dashboard without suffix expansion"
+grep -q 'not a new current-reality matrix capability row' "$DOC" \
+  || fail "architecture note must document that Phase 6 is not a matrix capability row"
+grep -q 'Status Canary Evidence Acceptance Packet' "$DOC" \
+  || fail "architecture note must document Status Canary Evidence Acceptance Packet"
+grep -q 'Status Canary Runner Dry-Run Selector' "$DOC" \
+  || fail "architecture note must document Status Canary Runner Dry-Run Selector"
+grep -q '17-blocker release classification' "$DOC" \
+  || fail "architecture note must document closure-index 17-blocker release classification"
+grep -q 'no approval request, approval acceptance, approval recording, evidence recording, evidence persistence, blocker waiver, credential read, transport mutation, packet persistence, attachment persistence, readback persistence, ledger write, event-log write, SQLite write, provider invocation, model invocation, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed dashboard boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_operator_readiness_dashboard"
+  and .status == "blocked"
+  and .gate == "controlled_live_operator_readiness_dashboard_gate"
+  and .schema_version == "controlled_live_operator_readiness_dashboard_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_single_render_cache_boundary_ready == true
+  and .source_matrix_ready == false
+  and .source_matrix_capability_count > 0
+  and .source_matrix_capability_ready_count > 0
+  and .source_matrix_capability_ready_count < .source_matrix_capability_count
+  and .source_matrix_live_enabled_count == 0
+  and .source_matrix_all_live_paths_blocked == true
+  and .source_matrix_next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+  and .source_kill_switch_boundary_readback_ready == true
+  and .source_kill_switch_boundary_entry_count == 7
+  and .source_kill_switch_boundary_ready_count == 7
+  and .source_live_cutover_closure_index_surface == "tool_execution_live_cutover_closure_index"
+  and .source_live_cutover_closure_index_ready == false
+  and .source_live_cutover_final_gate_ready_count == 2
+  and .source_live_cutover_closure_blocker_count == 17
+  and .source_live_cutover_closure_blocker_category_count == 4
+  and .source_live_cutover_closure_blocker_category_ready_count == 4
+  and .source_live_cutover_closure_blocker_category_blocker_count == 17
+  and .source_live_cutover_closure_blocker_categorization_ready == true
+  and (.source_live_cutover_closure_blocker_categories | length) == 4
+  and any(.source_live_cutover_closure_blocker_categories[]; .id == "approval_control" and .blocker_count == 4)
+  and any(.source_live_cutover_closure_blocker_categories[]; .id == "execution_and_receipts" and .blocker_count == 9)
+  and any(.source_live_cutover_closure_blocker_categories[]; .id == "runner_selector" and .blocker_count == 2)
+  and any(.source_live_cutover_closure_blocker_categories[]; .id == "dirty_worktree_owner_freeze" and .blocker_count == 2)
+  and .source_required_evidence_collection_plan_ready == true
+  and .status_canary_final_guard_present == true
+  and .status_canary_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp"
+  and .preflight_only_connector_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app"
+  and .status_canary_candidate_count == 2
+  and .selected_status_canary_count == 1
+  and .preflight_only_non_selected_count == 1
+  and .status_canary_final_gate_ready_count == 2
+  and .status_canary_final_guard_live_blocked_count == 1
+  and .status_canary_final_guard_approval_missing_count == 1
+  and .status_canary_final_guard_live_enabled == false
+  and .status_canary_final_guard_tool_invocation_enabled == false
+  and .status_canary_final_guard_ledger_write_enabled == false
+  and .status_canary_evidence_packet_ready == true
+  and .status_canary_evidence_packet_item_count == 7
+  and .status_canary_evidence_packet_missing_count == 7
+  and .status_canary_evidence_packet_recorded_count == 0
+  and .status_canary_evidence_packet_waived_count == 0
+  and .status_canary_evidence_packet_complete == false
+  and .status_canary_start_blocked_by_evidence_packet == true
+  and .status_canary_start_allowed_by_evidence_packet == false
+  and .status_canary_evidence_packet_guard_route == "status_canary_evidence_packet_blocked_missing_evidence"
+  and .status_canary_evidence_acceptance_packet_ready == true
+  and .status_canary_evidence_acceptance_request_count == 0
+  and .status_canary_evidence_acceptance_accepted_decision_count == 0
+  and .status_canary_evidence_acceptance_rejected_decision_count == 0
+  and .status_canary_evidence_source_adapter_ready == true
+  and .status_canary_evidence_source_adapter_count == 7
+  and .status_canary_evidence_source_adapter_input_count == 0
+  and .status_canary_evidence_source_adapter_missing_input_count == 7
+  and .status_canary_evidence_source_adapter_metadata_contract_ready_count == 7
+  and .status_canary_evidence_source_reason_packet_ready == true
+  and .status_canary_evidence_source_decision_reason_count == 28
+  and .status_canary_evidence_source_decision_reason_ready_count == 28
+  and .status_canary_evidence_source_readback_ready == true
+  and .status_canary_evidence_source_readback_fixture_count == 0
+  and .status_canary_evidence_source_readback_missing_observation_count == 7
+  and .status_canary_evidence_source_validator_ready == true
+  and .status_canary_start_guard_ready == true
+  and .status_canary_start_guard_route == "status_canary_start_blocked_missing_evidence_packet"
+  and .status_canary_start_guard_allowed == false
+  and .status_canary_start_guard_blocked == true
+  and .status_canary_start_guard_switch_enabled == false
+  and .status_canary_start_guard_evidence_packet_reason_audit_ready == true
+  and .status_canary_start_guard_evidence_packet_reason_audit_count == 0
+  and .status_canary_start_guard_evidence_packet_reason_audit_ready_count == 0
+  and .status_canary_start_guard_evidence_packet_reason_audit_rejected_count == 0
+  and .status_canary_start_request_gate_ready == true
+  and .status_canary_start_request_gate_route == "status_canary_start_request_blocked_no_request"
+  and .status_canary_start_request_present == false
+  and .status_canary_start_request_allowed == false
+  and .status_canary_start_request_blocked == true
+  and .status_canary_runner_dry_run_selector_ready == true
+  and .status_canary_runner_dry_run_selector_request_present == false
+  and .status_canary_runner_dry_run_selector_route == "status_canary_runner_dry_run_selector_blocked_no_selector_request"
+  and .status_canary_runner_dry_run_selector_blocked == true
+  and .status_canary_runner_dry_run_selector_allowed == false
+  and .status_canary_runner_dry_run_selector_source_binding_guard_bound == true
+  and .status_canary_runner_dry_run_selector_source_binding_guard_allowed == false
+  and .status_canary_runner_dry_run_selector_source_start_guard_reason_audit_ready == true
+  and .status_canary_runner_binding_guard_ready == true
+  and .status_canary_runner_binding_guard_allowed == false
+  and .status_canary_runner_binding_guard_blocked == true
+  and .status_canary_runner_binding_guard_route == "status_canary_runner_binding_guard_blocked_no_binding_request"
+  and .status_canary_runner_adapter_ready == true
+  and .status_canary_runner_adapter_allowed == false
+  and .status_canary_runner_adapter_blocked == true
+  and .status_canary_runner_adapter_route == "status_canary_runner_adapter_blocked_no_runner_request"
+  and .capability_row_count == .source_matrix_capability_count
+  and .capability_ready_count == .source_matrix_capability_ready_count
+  and .blocker_entry_count == 7
+  and .missing_evidence_blocker_count == 7
+  and .evidence_recorded_count == 0
+  and .accepted_blocker_count == 0
+  and .waived_blocker_count == 0
+  and .live_enabled_count == 0
+  and .all_live_paths_blocked == true
+  and .dashboard_ready == false
+  and .next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$CLOSURE_INDEX_GATE" >/dev/null
+
+printf 'hepta-systems-controlled-live-operator-readiness-dashboard-gate: PASS: controlled-live dashboard exposes blocked evidence and closure state with live paths closed\n'

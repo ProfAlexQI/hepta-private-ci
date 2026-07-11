@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+ATTACHMENT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-canonical-summary-attachment-index.report"
+ATTACHMENT_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-canonical-summary-attachment-index.gate"
+WRAPPER_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.report"
+WRAPPER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+DECISION_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-name-reintroduction-decision.report"
+DECISION_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-name-reintroduction-decision.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CANONICAL_SUMMARY_ATTACHMENT_PHASE_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-canonical-summary-attachment-phase-index-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$ATTACHMENT_REPORT" ]] || fail "missing executable canonical attachment index report: $ATTACHMENT_REPORT"
+[[ -x "$ATTACHMENT_GATE" ]] || fail "missing executable canonical attachment index gate: $ATTACHMENT_GATE"
+[[ -x "$WRAPPER_REPORT" ]] || fail "missing executable current canonical wrapper report: $WRAPPER_REPORT"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -x "$DECISION_REPORT" ]] || fail "missing executable historical canonical name decision report: $DECISION_REPORT"
+[[ -x "$DECISION_GATE" ]] || fail "missing executable historical canonical name decision gate: $DECISION_GATE"
+[[ -f "$DOC" ]] || fail "missing canonical summary attachment phase index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the canonical summary attachment phase index report"
+fi
+
+jq -n \
+  --slurpfile attachment <("$ATTACHMENT_REPORT") \
+  --slurpfile wrapper <("$WRAPPER_REPORT") \
+  --slurpfile decision <("$DECISION_REPORT") \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-canonical-summary-attachment-phase-index.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CANONICAL_SUMMARY_ATTACHMENT_PHASE_INDEX_2026-06-21.md" \
+  '
+  ($attachment[0]) as $attachment |
+  ($wrapper[0]) as $wrapper |
+  ($decision[0]) as $decision |
+  {
+    id:"historical_missing_canonical_summary_phase",
+    phase_kind:"historical_evidence",
+    source_surface:$attachment.surface,
+    source_ready:$attachment.tool_execution_canonical_summary_attachment_index_ready,
+    canonical_summary_present_count:$attachment.canonical_summary_present_count,
+    current_checkout_missing_canonical_summary:$attachment.current_checkout_missing_canonical_summary,
+    historical_snapshot_missing_canonical_summary:$attachment.historical_snapshot_missing_canonical_summary,
+    canonical_summary_probe_basis:$attachment.canonical_summary_probe_basis,
+    canonical_summary_current_filesystem_probe_used:$attachment.canonical_summary_current_filesystem_probe_used,
+    source_snapshot_surface:$attachment.source_snapshot_surface,
+    source_snapshot_ready:$attachment.source_snapshot_ready,
+    historical_snapshot_evidence_consumable_after_wrapper_creation:$attachment.historical_snapshot_evidence_consumable_after_wrapper_creation,
+    selected_patch_call_id:$attachment.selected_reconstruction_candidate.call_id,
+    selected_patch_replay_risk:$attachment.selected_reconstruction_candidate.replay_risk,
+    selected_patch_replay_applied:$attachment.selected_reconstruction_candidate.replay_applied,
+    selected_patch_body_emitted:$attachment.selected_reconstruction_candidate.patch_body_emitted,
+    historical_missing_path_evidence_preserved:true,
+    active_summary_source:false
+  } as $historical_phase |
+  {
+    id:"current_canonical_wrapper_phase",
+    phase_kind:"current_summary",
+    source_surface:$wrapper.surface,
+    source_ready:$wrapper.current_canonical_wrapper_ready,
+    local_surface_count:$wrapper.source_local_surface_count,
+    local_surface_ready_count:$wrapper.source_local_surface_ready_count,
+    execution_enabled_count:$wrapper.execution_enabled_count,
+    public_ga_enabled_count:$wrapper.public_ga_enabled_count,
+    historical_canonical_gate_name_claimed:$wrapper.historical_canonical_gate_name_claimed,
+    historical_canonical_gate_created:$wrapper.historical_canonical_gate_created,
+    historical_canonical_gate_executable:$wrapper.historical_canonical_gate_executable,
+    historical_canonical_gate_wrapper_kind:$wrapper.historical_canonical_gate_wrapper_kind,
+    historical_canonical_gate_wrapper_target:$wrapper.historical_canonical_gate_wrapper_target,
+    historical_canonical_gate_wrapper_exec_count:$wrapper.historical_canonical_gate_wrapper_exec_count,
+    historical_canonical_gate_mutated:$wrapper.historical_canonical_gate_mutated,
+    historical_canonical_gate_mutated_by_report:$wrapper.historical_canonical_gate_mutated_by_report,
+    canonical_gate_wrapper_invoked:$wrapper.canonical_gate_wrapper_invoked,
+    current_wrapper_available:true,
+    active_summary_source:true
+  } as $current_phase |
+  [
+    $historical_phase,
+    $current_phase
+  ] as $phases |
+  ($attachment.tool_execution_canonical_summary_attachment_index_ready
+    and $attachment.current_checkout_missing_canonical_summary == true
+    and $attachment.historical_snapshot_missing_canonical_summary == true
+    and $attachment.canonical_summary_probe_basis == "historical_snapshot_evidence"
+    and $attachment.canonical_summary_current_filesystem_probe_used == false
+    and $attachment.source_snapshot_ready == true
+    and $attachment.historical_snapshot_evidence_consumable_after_wrapper_creation == true
+    and $attachment.canonical_summary_present_count == 0
+    and $attachment.selected_reconstruction_candidate.replay_applied == false
+    and $attachment.selected_reconstruction_candidate.patch_body_emitted == false
+    and $wrapper.current_canonical_wrapper_ready
+    and $wrapper.historical_canonical_gate_name_claimed == true
+    and $wrapper.historical_canonical_gate_created == true
+    and $wrapper.historical_canonical_gate_executable == true
+    and $wrapper.historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+    and $wrapper.historical_canonical_gate_wrapper_target == "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+    and $wrapper.historical_canonical_gate_wrapper_exec_count == 1
+    and $wrapper.historical_canonical_gate_mutated == true
+    and $wrapper.historical_canonical_gate_mutated_by_report == false
+    and $wrapper.canonical_gate_wrapper_invoked == false
+    and $wrapper.execution_enabled_count == 0
+    and $wrapper.public_ga_enabled_count == 0
+    and $decision.historical_canonical_gate_name_reintroduction_decision == "claimed_thin_wrapper"
+    and $decision.historical_canonical_gate_name_reintroduction_allowed == true
+    and $decision.phase_split_required_before_name_claim == false
+    and $decision.phase_split_completed_before_name_claim == true
+    and ($attachment.side_effects | to_entries | all(.value == false))
+    and ($wrapper.side_effects | to_entries | all(.value == false))
+    and ($decision.side_effects | to_entries | all(.value == false))) as $phase_index_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_execution_canonical_summary_attachment_phase_index",
+    plugin_id:$attachment.plugin_id,
+    status:(if $phase_index_ready then "ready" else "blocked" end),
+    source_attachment_surface:$attachment.surface,
+    source_attachment_ready:$attachment.tool_execution_canonical_summary_attachment_index_ready,
+    source_attachment_snapshot_ready:$attachment.source_snapshot_ready,
+    source_attachment_probe_basis:$attachment.canonical_summary_probe_basis,
+    source_attachment_current_filesystem_probe_used:$attachment.canonical_summary_current_filesystem_probe_used,
+    source_attachment_historical_snapshot_missing_canonical_summary:$attachment.historical_snapshot_missing_canonical_summary,
+    source_attachment_snapshot_evidence_consumable_after_wrapper_creation:$attachment.historical_snapshot_evidence_consumable_after_wrapper_creation,
+    source_current_wrapper_surface:$wrapper.surface,
+    source_current_wrapper_ready:$wrapper.current_canonical_wrapper_ready,
+    source_historical_name_decision_surface:$decision.surface,
+    source_historical_name_decision_ready:($decision.status == "ready"),
+    phase_aware_attachment_index_ready:$phase_index_ready,
+    phase_count:($phases | length),
+    phase_index:$phases,
+    historical_missing_path_evidence_preserved:true,
+    current_wrapper_phase_available:true,
+    current_wrapper_active_summary_source:true,
+    historical_canonical_gate_name_claimed:true,
+    historical_canonical_gate_created:true,
+    historical_canonical_gate_executable:true,
+    historical_canonical_gate_wrapper_kind:"thin_local_exec_wrapper",
+    historical_canonical_gate_wrapper_target:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate",
+    historical_canonical_gate_wrapper_exec_count:1,
+    historical_canonical_gate_mutated:true,
+    historical_canonical_gate_mutated_by_report:false,
+    canonical_gate_wrapper_invoked:false,
+    historical_canonical_gate_name_reintroduction_allowed:true,
+    phase_split_present:true,
+    phase_split_required_before_name_claim:false,
+    phase_split_completed_before_name_claim:true,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"validate_historical_canonical_gate_thin_wrapper_without_live_invocation",
+    phase_blockers:[
+      "manual_operator_live_cutover_approval_required",
+      "tool_execution_live_cutover_allowed_false",
+      "tool_execution_public_ga_allowed_false",
+      "historical_canonical_gate_thin_wrapper_validation_pending"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      canonical_summary_attachment_index_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-canonical-summary-attachment-index.report",
+      current_canonical_wrapper_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.report",
+      historical_canonical_name_decision_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-name-reintroduction-decision.report"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      historical_canonical_gate_mutated:false,
+      historical_canonical_gate_name_claimed:false,
+      canonical_gate_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

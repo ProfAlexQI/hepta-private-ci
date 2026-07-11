@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-packet-readback.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_READ_ONLY_STATUS_DRY_RUN_OPERATOR_EVIDENCE_PACKET_READBACK_2026-06-30.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-packet-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable operator evidence packet report: $REPORT"
+[[ -f "$DOC" ]] || fail "missing operator evidence packet architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the operator evidence packet report"
+fi
+
+rg -q 'Hepta Systems Plugin Tool Invocation Read Only Status Dry Run Operator Evidence Packet Readback' "$DOC" \
+  || fail "architecture note must document the operator evidence packet readback"
+rg -q 'status payload snapshot, tool schema digest, policy denial anchor, approval denial anchor, ledger persistence prerequisite, receipt persistence prerequisite, ToolRegistry registration prerequisite, registry lookup and invocation prerequisite, connector/runtime boundary, and operator identity acceptance recording prerequisite' "$DOC" \
+  || fail "architecture note must document the evidence packet item set"
+rg -q 'no feature gate open, dry-run execution, operator evidence packet send, operator evidence packet persistence, operator evidence recording, operator acceptance recording, ledger persistence, receipt persistence, ToolRegistry registration, ToolRegistry mutation, registry lookup execution, tool invocation, connector start, runtime event-log write, SQLite write, credential read, external network, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, package/release, canary activation, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed operator evidence boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback"
+  and .status == "ready_blocked"
+  and .gate == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback_gate"
+  and .schema_version == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .manifest_name == "hepta-system"
+  and .manifest_version == "0.0.0-fixture"
+  and .source_execution_open_preconditions_ready == true
+  and .lib_export_present == true
+  and .candidate_count == 2
+  and .evidence_packet_entry_count == 2
+  and .selected_read_only_status_tool_count == 1
+  and .non_selected_preflight_boundary_count == 1
+  and .operator_evidence_packet_id_projected_count == 2
+  and .operator_evidence_artifact_ref_projected_count == 2
+  and .operator_evidence_item_count == 20
+  and .acceptance_recording_prerequisite_link_projected_count == 2
+  and .ledger_persistence_prerequisite_link_projected_count == 2
+  and .receipt_persistence_prerequisite_link_projected_count == 2
+  and .tool_registry_registration_prerequisite_link_projected_count == 2
+  and .registry_lookup_prerequisite_link_projected_count == 2
+  and .tool_invocation_prerequisite_link_projected_count == 2
+  and .connector_start_prerequisite_link_projected_count == 2
+  and .runtime_write_prerequisite_link_projected_count == 2
+  and .live_execution_prerequisite_link_projected_count == 2
+  and .evidence_packet_denial_receipt_projected_count == 2
+  and .evidence_packet_idempotency_key_projected_count == 2
+  and .stable_operator_evidence_packet_count == 2
+  and .unique_operator_evidence_packet_count == 2
+  and .stable_evidence_packet_denial_receipt_count == 2
+  and .unique_evidence_packet_denial_receipt_count == 2
+  and .stable_evidence_packet_idempotency_key_count == 2
+  and .unique_evidence_packet_idempotency_key_count == 2
+  and .operator_evidence_packet_mismatch_count == 0
+  and .duplicate_operator_evidence_packet_count == 0
+  and .evidence_packet_denial_receipt_mismatch_count == 0
+  and .duplicate_evidence_packet_denial_receipt_count == 0
+  and .evidence_packet_idempotency_mismatch_count == 0
+  and .duplicate_evidence_packet_idempotency_key_count == 0
+  and .feature_gate_opened_count == 0
+  and .dry_run_executed_count == 0
+  and .operator_evidence_packet_sent_count == 0
+  and .operator_evidence_packet_persisted_count == 0
+  and .operator_evidence_recorded_count == 0
+  and .operator_acceptance_recorded_count == 0
+  and .ledger_written_count == 0
+  and .receipt_persisted_count == 0
+  and .tool_registered_count == 0
+  and .registry_lookup_executed_count == 0
+  and .tool_invoked_count == 0
+  and .mcp_server_started_count == 0
+  and .app_connector_started_count == 0
+  and .runtime_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_execution_started_count == 0
+  and .operator_evidence_packet_readback_ready == true
+  and .feature_gate_open_allowed == false
+  and .dry_run_execution_allowed == false
+  and .operator_evidence_packet_send_allowed == false
+  and .operator_evidence_packet_persistence_allowed == false
+  and .operator_evidence_recording_allowed == false
+  and .operator_acceptance_recording_allowed == false
+  and .ledger_persistence_allowed == false
+  and .receipt_persistence_allowed == false
+  and .tool_registry_registration_allowed == false
+  and .registry_lookup_execution_allowed == false
+  and .tool_invocation_allowed == false
+  and .connector_start_allowed == false
+  and .runtime_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .live_execution_allowed == false
+  and (.entries | length) == 2
+  and any(.entries[]; .candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp" and .contribution_kind == "mcp_server" and .dry_run_path_selected == true and .operator_evidence_packet_id == "operator-evidence-packet:hepta-system:local-mcp:read-only-status-dry-run" and .operator_evidence_artifact_ref_id == "operator-evidence-artifact-ref:hepta-system:local-mcp:read-only-status-dry-run:missing" and .evidence_packet_denial_receipt_id == "operator-evidence-packet-denial:hepta-system:local-mcp:read-only-status-dry-run:not-sent-not-recorded" and .evidence_packet_idempotency_key == "operator-evidence-packet-idempotency:hepta-system:local-mcp:read-only-status-dry-run" and (.operator_evidence_items | length) == 10)
+  and any(.entries[]; .candidate_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app" and .contribution_kind == "app_connector" and .dry_run_path_selected == false and .operator_evidence_packet_id == "operator-evidence-packet:hepta-system:local-app:not-selected" and .operator_evidence_artifact_ref_id == "operator-evidence-artifact-ref:hepta-system:local-app:not-selected:missing" and .evidence_packet_denial_receipt_id == "operator-evidence-packet-denial:hepta-system:local-app:not-selected:not-sent-not-recorded" and .evidence_packet_idempotency_key == "operator-evidence-packet-idempotency:hepta-system:local-app:not-selected" and (.operator_evidence_items | length) == 10)
+  and (.entries | all(.operator_evidence_packet_id_projected == true and .operator_evidence_artifact_ref_projected == true and .acceptance_recording_prerequisite_link_projected == true and .ledger_persistence_prerequisite_link_projected == true and .receipt_persistence_prerequisite_link_projected == true and .tool_registry_registration_prerequisite_link_projected == true and .registry_lookup_prerequisite_link_projected == true and .tool_invocation_prerequisite_link_projected == true and .connector_start_prerequisite_link_projected == true and .runtime_write_prerequisite_link_projected == true and .live_execution_prerequisite_link_projected == true and .evidence_packet_denial_receipt_projected == true and .evidence_packet_idempotency_key_projected == true and .feature_gate_opened == false and .dry_run_executed == false and .operator_evidence_packet_sent == false and .operator_evidence_packet_persisted == false and .operator_evidence_recorded == false and .operator_acceptance_recorded == false and .ledger_written == false and .receipt_persisted == false and .tool_registered == false and .registry_lookup_executed == false and .tool_invoked == false and .mcp_server_started == false and .app_connector_started == false and .runtime_event_log_written == false and .sqlite_written == false and .live_execution_started == false))
+  and (.blockers | index("operator_evidence_packet_send_disabled")) != null
+  and (.blockers | index("operator_evidence_packet_persistence_disabled")) != null
+  and (.blockers | index("operator_evidence_recording_disabled")) != null
+  and (.blockers | index("operator_acceptance_recording_disabled")) != null
+  and (.blockers | index("ledger_persistence_disabled")) != null
+  and (.blockers | index("receipt_persistence_disabled")) != null
+  and (.blockers | index("tool_registry_registration_disabled")) != null
+  and (.blockers | index("registry_lookup_execution_disabled")) != null
+  and (.blockers | index("tool_invocation_disabled")) != null
+  and (.blockers | index("connector_start_disabled")) != null
+  and (.blockers | index("runtime_event_log_write_disabled")) != null
+  and (.blockers | index("sqlite_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.next_actions | index("hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_boundary_readback")) != null
+  and .recommended_next_gate == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_boundary_readback"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_packet_readback --lib
+)
+
+printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-packet-readback-gate: PASS: read-only status dry-run operator evidence packet is queryable without evidence recording, acceptance recording, persistence, tool invocation, runtime writes, or live mutation\n'

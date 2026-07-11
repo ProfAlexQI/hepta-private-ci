@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-adapter-task-result-index.report"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-adapter-task-result-index-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_adapter_task_result_index_gate"
+  and .schema_version == "work_graph_adapter_task_result_index_v1"
+  and .preview_mode == "read_only_adapter_task_result_index_no_live_enforcement"
+  and .current_state_source_surface_count == 12
+  and .current_state_p0_gap_count == 5
+  and .canonical_adapter_source_surface_count == 12
+  and .canonical_adapter_count == 12
+  and .task_result_contract_required_field_count == 11
+  and .task_result_envelope_source_adapter_count == 7
+  and .task_result_envelope_source_count == 7
+  and .indexed_source_count == 12
+  and (.source_index | length) == .indexed_source_count
+  and .terminal_task_result_required_count == 6
+  and .terminal_task_result_full_envelope_source_count == 6
+  and .missing_envelope_adapter_count == 0
+  and .missing_envelope_preview_count == 0
+  and .contract_required_field_gap_count == 0
+  and .contract_terminal_field_gap_count == 0
+' >/dev/null <<<"$report"
+
+jq -e '
+  .scheduler_entrypoint_source_count == 4
+  and .scheduler_entrypoint_ready_count == 4
+  and .ready_for_scheduler_admission_dry_run_enforcement == true
+  and (.source_index | map(select(.scheduler_entrypoint_source == true) | .source_surface_id) == [
+    "multi_agent_v2_thread_spawn",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks"
+  ])
+  and (.source_index | map(select(.scheduler_entrypoint_source == true)) | all(
+    .task_result_envelope_adapter_state == "present_report_only"
+    and .task_result_envelope_preview_state == "present_report_only"
+    and .report_only_index_decision == "allow_scheduler_dry_run_report_only"
+    and .live_enforcement_enabled == false
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.current_state_only_source_ids == [
+    "codex_agent_graph_store",
+    "plan_mode_proposed_plan"
+  ])
+  and (.canonical_adapter_only_source_ids == [
+    "hepta_runtime_approval_broker",
+    "plan_mode_proposed_plan_blocks"
+  ])
+  and (.source_index | map(select(.terminal_task_result_required == true and .task_result_envelope_adapter_state == "missing") | .source_surface_id) == [])
+  and (.source_index[] | select(.source_surface_id == "multi_agent_v2_thread_spawn") | .next_index_step == "use_scheduler_admission_dry_run_explanation")
+  and (.source_index[] | select(.source_surface_id == "hepta_runtime_scheduler_store") | .next_index_step == "keep_report_only_until_append_only_event_store_shadow_path")
+  and (.source_index[] | select(.source_surface_id == "hepta_runtime_agent_harness") | .next_index_step == "keep_report_only_until_append_only_event_store_shadow_path")
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.blockers | map(.id) | index("unified_work_graph_state_store_not_enforced"))
+  and (.blockers | map(.id) | index("task_result_contract_not_enforced"))
+  and (.blockers | map(.id) | index("scheduler_admission_controller_not_enforced"))
+  and (.blockers | map(.id) | index("work_graph_observability_timeline_not_enforced"))
+  and (.blockers | map(.id) | index("role_manifest_contract_not_enforced"))
+  and (.blockers | map(.id) | index("source_surface_id_alignment_drift"))
+  and ((.blockers | map(.id) | index("canonical_terminal_envelope_sources_missing")) | not)
+  and ((.blockers | map(.id) | index("task_result_contract_required_fields_partial")) | not)
+  and (.blockers | map(.id) | index("task_result_envelope_live_enforcement_disabled"))
+  and (.blockers | all(.blocks_live_execution == true))
+  and (.required_prior_gates == [
+    "hepta_work_graph_current_state_inventory_gate",
+    "hepta_work_graph_canonical_adapter_inventory_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_terminal_envelope_readback_gate"
+  and .report_only_index_attached == true
+  and .live_enforcement_enabled == false
+  and .ready_for_live_execution == false
+' >/dev/null <<<"$report"
+
+jq -e '
+  .source_probes.adapter_task_result_index.rust_module_present == true
+  and .source_probes.adapter_task_result_index.report_script_present == true
+  and .source_probes.adapter_task_result_index.gate_script_present == true
+  and .source_probes.scheduler_admission_dry_run_enforcement.gate_script_present == true
+  and .source_probes.priors.current_state_gate == "hepta_work_graph_current_state_inventory_gate"
+  and .source_probes.priors.canonical_adapter_inventory_gate == "hepta_work_graph_canonical_adapter_inventory_preview_gate"
+  and .source_probes.priors.task_result_contract_gate == "hepta_work_graph_task_result_contract_preview_gate"
+  and .source_probes.priors.task_result_envelope_gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_adapter_task_result_index --lib
+
+echo "Hepta WorkGraph adapter TaskResult index gate passed"

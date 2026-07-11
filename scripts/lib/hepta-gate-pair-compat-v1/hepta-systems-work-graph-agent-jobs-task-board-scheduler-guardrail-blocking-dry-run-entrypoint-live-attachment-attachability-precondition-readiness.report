@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
+  HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_READINESS_CAPTURE_CACHE_DIR="$(
+    mktemp -d "${TMPDIR:-/tmp}/hepta-scheduler-guardrail-live-attachment-attachability-readiness-report-cache.XXXXXX"
+  )"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_READINESS_CAPTURE_CACHE_DIR"
+  trap 'rm -rf "$HEPTA_SCHEDULER_GUARDRAIL_BLOCKING_DRY_RUN_ENTRYPOINT_LIVE_ATTACHMENT_ATTACHABILITY_READINESS_CAPTURE_CACHE_DIR"' EXIT
+fi
+
+terminal_final_closeout_report="$(
+  capture_json_report \
+    "hepta-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-terminal-no-attachment-final-closeout-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-agent-jobs-task-board-scheduler-guardrail-blocking-dry-run-entrypoint-live-attachment-precondition-matrix-denial-readback-terminal-no-attachment-final-closeout.report"
+)"
+
+jq -n \
+  --argjson terminal_final_closeout_report "$terminal_final_closeout_report" \
+  '
+  def entrypoint($id; $surface): {
+    id: $id,
+    surface: $surface,
+    attachability_status: "candidate_but_blocked",
+    required_contracts: [
+      "deterministic_decision_key",
+      "trace_evidence_ref",
+      "report_only_task_result_preview",
+      "shadow_event_join_preview",
+      "non_persistence_readback"
+    ],
+    live_attachment_candidate: true,
+    live_attachment_allowed: false,
+    report_only: true,
+    runtime_interception_allowed: false
+  };
+  def check($id; $category; $satisfied; $blocking; $explanation): {
+    id: $id,
+    category: $category,
+    required: true,
+    satisfied: $satisfied,
+    blocking: $blocking,
+    explanation: $explanation
+  };
+  def blocker($id; $action): {
+    id: $id,
+    blocked_action: $action,
+    blocked: true,
+    reason: "scheduler/guardrail live attachment attachability readiness cannot authorize this action"
+  };
+  [
+    entrypoint("spawn_agent"; "multi_agents_v2.spawn_agent"),
+    entrypoint("spawn_agents_on_csv"; "agent_jobs.spawn_agents_on_csv"),
+    entrypoint("task_board_claim"; "task_board.claim"),
+    entrypoint("worker_task_run"; "worker_tasks.run_worker_task")
+  ] as $attachability_entrypoints
+  | [
+    check("terminal_no_attachment_final_closeout_ready"; "source_evidence"; true; false; "terminal no-attachment branch is closed as report-only evidence"),
+    check("entrypoint_inventory_stable"; "entrypoint_scope"; true; false; "four entrypoint surfaces are stable enough to evaluate for attachment"),
+    check("hardening_contracts_visible"; "hardening_contract"; true; false; "hardened dry-run contracts are visible for all attachment candidates"),
+    check("denial_readback_chain_visible"; "readback_chain"; true; false; "denial readback, audit index, and non-persistence proof are present"),
+    check("deterministic_decision_keys_visible"; "decision_key"; true; false; "candidate decisions can be keyed deterministically before any live hook exists"),
+    check("trace_evidence_fields_visible"; "trace_evidence"; true; false; "trace and evidence references are present but not persisted"),
+    check("shadow_replay_no_execution_closeout_visible"; "replay_diff_boundary"; true; false; "shadow replay/diff no-execution closeout is already in the prior chain"),
+    check("live_hook_authorization_missing"; "live_hook_boundary"; false; true; "live blocking hooks cannot be installed without explicit authorization"),
+    check("runtime_interception_authorization_missing"; "runtime_boundary"; false; true; "runtime interception remains disabled for every candidate entrypoint"),
+    check("scheduler_guardrail_enforcement_authorization_missing"; "scheduler_guardrail_boundary"; false; true; "scheduler admission and guardrail blocking remain dry-run only"),
+    check("work_graph_persistence_authorization_missing"; "work_graph_persistence_boundary"; false; true; "WorkGraph event store and projection persistence remain disabled"),
+    check("task_result_live_acceptance_missing"; "task_result_boundary"; false; true; "TaskResultEnvelope emission remains report-only and cannot become live output"),
+    check("lease_work_start_authorization_missing"; "lease_work_start_boundary"; false; true; "candidate attachment cannot acquire leases or start entrypoint work"),
+    check("config_flag_traffic_authorization_missing"; "config_flag_traffic_boundary"; false; true; "config writes, feature flag mutation, and canary traffic remain disallowed"),
+    check("operator_approval_cutover_authorization_missing"; "operator_live_boundary"; false; true; "operator review, approval recording, and live cutover remain absent"),
+    check("replay_rollback_rehearsal_execution_missing"; "replay_rollback_boundary"; false; true; "replay, replay diff recording, rollback, and idempotency mutation remain disabled")
+  ] as $attachability_precondition_checks
+  | (
+    [
+      blocker("attachability_readiness_record_blocked"; "record_live_attachment_attachability_precondition_readiness"),
+      blocker("attachability_readiness_persistence_blocked"; "persist_live_attachment_attachability_precondition_readiness"),
+      blocker("attachability_readiness_acceptance_blocked"; "accept_live_attachment_attachability_precondition_readiness"),
+      blocker("attach_live_blocking_hook_to_entrypoints_blocked"; "attach_live_blocking_hook_to_entrypoints"),
+      blocker("promote_attachability_readiness_to_live_blocked"; "promote_attachability_readiness_to_live")
+    ]
+    + ($terminal_final_closeout_report.final_closeout_blockers | map(blocker(.id; .blocked_action)))
+  ) as $attachability_blockers
+  | ([$terminal_final_closeout_report.gate] + $terminal_final_closeout_report.required_prior_gates) as $required_prior_gates
+  | ($terminal_final_closeout_report.source_non_persistence_readback_no_persistence_confirmed == true
+      and $terminal_final_closeout_report.terminal_no_attachment_final_closeout_preconditions_complete == true
+      and $terminal_final_closeout_report.final_closeout_recorded == false
+      and $terminal_final_closeout_report.final_closeout_persisted == false
+      and $terminal_final_closeout_report.final_closeout_authoritative == false
+      and $terminal_final_closeout_report.final_closeout_accepted == false
+      and $terminal_final_closeout_report.source_audit_index_persisted == false
+      and $terminal_final_closeout_report.source_readback_persisted == false
+      and $terminal_final_closeout_report.denial_readback_persisted == false
+      and $terminal_final_closeout_report.work_graph_event_persistence_allowed == false
+      and $terminal_final_closeout_report.projection_persistence_allowed == false
+      and ($terminal_final_closeout_report.side_effects | to_entries | all(.value == false))) as $source_terminal_no_attachment_no_persistence_confirmed
+  | ($terminal_final_closeout_report.ready_for_live_attachment_attachability_precondition_readiness == true
+      and $terminal_final_closeout_report.live_attachment_allowed == false
+      and $terminal_final_closeout_report.live_blocking_hook_install_allowed == false
+      and $terminal_final_closeout_report.runtime_interception_allowed == false
+      and $terminal_final_closeout_report.scheduler_admission_enforcement_allowed == false
+      and $terminal_final_closeout_report.guardrail_enforcement_allowed == false
+      and $terminal_final_closeout_report.lease_acquisition_allowed == false
+      and $terminal_final_closeout_report.work_start_allowed == false
+      and $terminal_final_closeout_report.agent_spawn_allowed == false
+      and $terminal_final_closeout_report.model_invocation_allowed == false
+      and $terminal_final_closeout_report.external_send_allowed == false
+      and $terminal_final_closeout_report.live_task_result_emission_allowed == false
+      and $terminal_final_closeout_report.hardening_decision_recording_allowed == false
+      and $terminal_final_closeout_report.hardening_decision_persistence_allowed == false
+      and $terminal_final_closeout_report.readback_execution_allowed == false
+      and $terminal_final_closeout_report.replay_execution_allowed == false
+      and $terminal_final_closeout_report.replay_diff_recording_allowed == false
+      and $terminal_final_closeout_report.replay_diff_persistence_allowed == false
+      and $terminal_final_closeout_report.rollback_execution_allowed == false
+      and $terminal_final_closeout_report.idempotency_mutation_allowed == false
+      and $terminal_final_closeout_report.config_write_allowed == false
+      and $terminal_final_closeout_report.feature_flag_mutation_allowed == false
+      and $terminal_final_closeout_report.canary_traffic_allowed == false
+      and $terminal_final_closeout_report.operator_review_request_allowed == false
+      and $terminal_final_closeout_report.approval_recording_allowed == false
+      and $terminal_final_closeout_report.live_cutover_allowed == false
+      and $terminal_final_closeout_report.ready_for_live_attachment == false
+      and $terminal_final_closeout_report.ready_for_live_execution == false
+      and $source_terminal_no_attachment_no_persistence_confirmed) as $source_terminal_no_attachment_no_live_confirmed
+  | ($terminal_final_closeout_report.gate == "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_precondition_matrix_denial_readback_terminal_no_attachment_final_closeout_gate"
+      and $terminal_final_closeout_report.source_non_persistence_readback_ready == true
+      and $terminal_final_closeout_report.source_non_persistence_readback_no_persistence_confirmed == true
+      and $terminal_final_closeout_report.source_non_persistence_readback_no_live_confirmed == true
+      and $terminal_final_closeout_report.source_non_persistence_readback_ready_for_terminal_closeout == true
+      and $terminal_final_closeout_report.final_closeout_scope_visible_only_complete == true
+      and $terminal_final_closeout_report.final_closeout_entries_complete == true
+      and $terminal_final_closeout_report.final_closeout_blockers_complete == true
+      and $terminal_final_closeout_report.terminal_no_attachment_final_closeout_preconditions_complete == true
+      and $terminal_final_closeout_report.terminal_no_attachment_branch_closed == true
+      and $terminal_final_closeout_report.final_closeout_entry_count == 9
+      and $terminal_final_closeout_report.final_closeout_blocker_count == 45
+      and $terminal_final_closeout_report.required_prior_gate_count == 20
+      and $source_terminal_no_attachment_no_live_confirmed) as $source_terminal_no_attachment_ready
+  | ($source_terminal_no_attachment_ready
+      and $terminal_final_closeout_report.ready_for_live_attachment_attachability_precondition_readiness == true) as $source_terminal_no_attachment_ready_for_attachability_readiness
+  | (($attachability_entrypoints | length) == 4
+      and ($attachability_entrypoints | all(
+        .live_attachment_candidate == true
+        and .report_only == true
+        and .attachability_status == "candidate_but_blocked"
+        and .live_attachment_allowed == false
+        and .runtime_interception_allowed == false
+        and (.required_contracts | length) == 5
+      ))) as $attachability_entrypoints_complete
+  | (($attachability_precondition_checks | length) == 16
+      and ($attachability_precondition_checks | map(select(.satisfied == true)) | length) == 7
+      and ($attachability_precondition_checks | map(select(.blocking == true)) | length) == 9
+      and ($attachability_precondition_checks | all(.required == true and (.satisfied == true or .blocking == true)))) as $attachability_precondition_checks_complete
+  | (($attachability_blockers | length) == 50
+      and ($attachability_blockers | all(.blocked == true))) as $attachability_blockers_complete
+  | ($source_terminal_no_attachment_ready_for_attachability_readiness
+      and $attachability_entrypoints_complete
+      and $attachability_precondition_checks_complete
+      and $attachability_blockers_complete) as $attachability_readiness_preconditions_complete
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_gate",
+      schema_version: "work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_v1",
+      preview_mode: "scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_report_only",
+      source_terminal_no_attachment_final_closeout_gate: $terminal_final_closeout_report.gate,
+      source_final_closeout_entry_count: $terminal_final_closeout_report.final_closeout_entry_count,
+      source_final_closeout_blocker_count: $terminal_final_closeout_report.final_closeout_blocker_count,
+      source_required_prior_gate_count: $terminal_final_closeout_report.required_prior_gate_count,
+      source_terminal_no_attachment_ready: $source_terminal_no_attachment_ready,
+      source_terminal_no_attachment_no_persistence_confirmed: $source_terminal_no_attachment_no_persistence_confirmed,
+      source_terminal_no_attachment_no_live_confirmed: $source_terminal_no_attachment_no_live_confirmed,
+      source_terminal_no_attachment_ready_for_attachability_readiness: $source_terminal_no_attachment_ready_for_attachability_readiness,
+      attachability_entrypoint_count: ($attachability_entrypoints | length),
+      attachability_precondition_check_count: ($attachability_precondition_checks | length),
+      attachability_precondition_satisfied_count: ($attachability_precondition_checks | map(select(.satisfied == true)) | length),
+      attachability_precondition_unsatisfied_count: ($attachability_precondition_checks | map(select(.satisfied == false)) | length),
+      blocking_precondition_count: ($attachability_precondition_checks | map(select(.blocking == true)) | length),
+      attachability_blocker_count: ($attachability_blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      attachability_entrypoints: $attachability_entrypoints,
+      attachability_precondition_checks: $attachability_precondition_checks,
+      attachability_blockers: $attachability_blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_agent_jobs_task_board_scheduler_guardrail_blocking_dry_run_entrypoint_live_attachment_attachability_precondition_readiness_readback_gate",
+      readiness_mode: "identify_live_attachment_candidates_but_keep_attachment_blocked_until_all_priors_authorized",
+      readiness_visible: true,
+      readiness_recorded: false,
+      readiness_persisted: false,
+      readiness_authoritative: false,
+      readiness_accepted: false,
+      terminal_no_attachment_branch_closed: $terminal_final_closeout_report.terminal_no_attachment_branch_closed,
+      attachability_candidates_identified: $attachability_entrypoints_complete,
+      attachability_preconditions_satisfied: false,
+      source_final_closeout_visible: $terminal_final_closeout_report.final_closeout_visible,
+      source_final_closeout_persisted: $terminal_final_closeout_report.final_closeout_persisted,
+      attachability_entrypoints_complete: $attachability_entrypoints_complete,
+      attachability_precondition_checks_complete: $attachability_precondition_checks_complete,
+      attachability_blockers_complete: $attachability_blockers_complete,
+      attachability_readiness_preconditions_complete: $attachability_readiness_preconditions_complete,
+      live_attachment_allowed: false,
+      live_blocking_hook_install_allowed: false,
+      runtime_interception_allowed: false,
+      scheduler_admission_enforcement_allowed: false,
+      guardrail_enforcement_allowed: false,
+      work_graph_event_persistence_allowed: false,
+      projection_persistence_allowed: false,
+      lease_acquisition_allowed: false,
+      work_start_allowed: false,
+      agent_spawn_allowed: false,
+      model_invocation_allowed: false,
+      external_send_allowed: false,
+      live_task_result_emission_allowed: false,
+      hardening_decision_recording_allowed: false,
+      hardening_decision_persistence_allowed: false,
+      readback_execution_allowed: false,
+      replay_execution_allowed: false,
+      replay_diff_recording_allowed: false,
+      replay_diff_persistence_allowed: false,
+      rollback_execution_allowed: false,
+      idempotency_mutation_allowed: false,
+      config_write_allowed: false,
+      feature_flag_mutation_allowed: false,
+      canary_traffic_allowed: false,
+      operator_review_request_allowed: false,
+      approval_recording_allowed: false,
+      live_cutover_allowed: false,
+      ready_for_attachability_precondition_readiness_readback: $attachability_readiness_preconditions_complete,
+      ready_for_live_attachment: false,
+      ready_for_live_execution: false,
+      source_readbacks: {
+        terminal_final_closeout_report_gate: $terminal_final_closeout_report.gate,
+        terminal_final_closeout_preconditions_complete: $terminal_final_closeout_report.terminal_no_attachment_final_closeout_preconditions_complete,
+        terminal_final_closeout_ready_for_attachability_readiness: $terminal_final_closeout_report.ready_for_live_attachment_attachability_precondition_readiness,
+        terminal_final_closeout_no_persistence_confirmed: $source_terminal_no_attachment_no_persistence_confirmed,
+        terminal_final_closeout_no_live_confirmed: $source_terminal_no_attachment_no_live_confirmed,
+        terminal_final_closeout_side_effects_all_false: ($terminal_final_closeout_report.side_effects | to_entries | all(.value == false))
+      },
+      side_effects: {
+        filesystem_written: false,
+        readiness_recorded: false,
+        readiness_persisted: false,
+        readiness_accepted: false,
+        final_closeout_recorded: false,
+        final_closeout_persisted: false,
+        final_closeout_accepted: false,
+        live_attachment_enabled: false,
+        live_blocking_hook_installed: false,
+        runtime_interception_enabled: false,
+        scheduler_admission_enforced: false,
+        guardrail_enforcement_enabled: false,
+        work_graph_event_persisted: false,
+        projection_index_persisted: false,
+        lease_acquired: false,
+        work_started: false,
+        hardening_decision_recorded: false,
+        hardening_decision_persisted: false,
+        live_task_result_emitted: false,
+        readback_executed: false,
+        replay_executed: false,
+        replay_diff_recorded: false,
+        replay_diff_persisted: false,
+        rollback_executed: false,
+        idempotency_index_mutated: false,
+        config_written: false,
+        feature_flag_mutated: false,
+        canary_traffic_routed: false,
+        operator_review_requested: false,
+        approval_recorded: false,
+        live_cutover_performed: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }
+  '

@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-receipt-store-write-attempt-recording-denial-receipt-persistence-denial-retention-replay-readback-without-persistence.report"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-receipt-store-write-attempt-recording-denial-receipt-persistence-denial-readback-without-persistence.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_ACCEPTANCE_AUTHORITY_PACKET_RECEIPT_STORE_WRITE_ATTEMPT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_RETENTION_REPLAY_READBACK_WITHOUT_PERSISTENCE_2026-07-07.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-receipt-store-write-attempt-recording-denial-receipt-persistence-denial-retention-replay-readback-without-persistence-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable write-attempt recording denial receipt persistence denial retention/replay report: $REPORT"
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable write-attempt recording denial receipt persistence denial source report: $SOURCE_REPORT"
+[[ -f "$DOC" ]] || fail "missing architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the write-attempt recording denial receipt persistence denial retention/replay report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+source_json="$tmpdir/write-attempt-recording-denial-receipt-persistence-denial.json"
+target_json="$tmpdir/write-attempt-recording-denial-receipt-persistence-denial-retention-replay.json"
+
+"$SOURCE_REPORT" >"$source_json" || fail "failed to render write-attempt recording denial receipt persistence denial source report"
+jq -e . "$source_json" >/dev/null || fail "write-attempt recording denial receipt persistence denial source report did not render valid JSON"
+HEPTA_CONTROLLED_LIVE_EVIDENCE_RECEIPT_STORE_WRITE_ATTEMPT_RECORDING_DENIAL_RECEIPT_PERSISTENCE_DENIAL_JSON="$source_json" \
+  "$REPORT" >"$target_json" || fail "failed to render write-attempt recording denial receipt persistence denial retention/replay report from cached source"
+jq -e . "$target_json" >/dev/null || fail "write-attempt recording denial receipt persistence denial retention/replay report did not render valid JSON"
+
+rg -q 'Controlled Live Evidence Receipt Store Acceptance Authority Packet Receipt Store Write Attempt Recording Denial Receipt Persistence Denial Retention Replay Readback Without Persistence' "$DOC" \
+  || fail "architecture note must document Controlled Live Evidence Receipt Store Acceptance Authority Packet Receipt Store Write Attempt Recording Denial Receipt Persistence Denial Retention Replay Readback Without Persistence"
+rg -q 'controlled live evidence receipt store acceptance authority packet receipt-store write attempt recording denial receipt persistence denial retention/replay readback without persistence' "$DOC" \
+  || fail "architecture note must document write attempt recording denial receipt persistence denial retention/replay readback without persistence"
+rg -q 'no retention policy persistence, replay index write, expiry enforcement, garbage collection, denial receipt persistence attempt recording, denial receipt persistence, write-attempt record, write-attempt persistence, receipt store write, receipt persistence, ledger write, event-log write, SQLite write, credential read, Native POST mutation, Telegram transport mutation, gateway/auth mutation, channel send, provider call, model call, replay execution, rollback, kill-switch rehearsal execution, kill-switch mutation, package, release, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed persistence-denial retention/replay boundary"
+
+jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence_gate"
+  and .schema_version == "controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_persistence_denial_readback_ready == true
+  and .source_persistence_denial_entry_count == 7
+  and .source_persistence_denial_projected_count == 7
+  and .source_denial_receipt_persistence_denied_count == 7
+  and .source_denial_receipt_persistence_allowed_count == 0
+  and .source_denial_receipt_persistence_attempt_recorded_count == 0
+  and .source_denial_receipt_persisted_count == 0
+  and .source_write_attempt_recorded_count == 0
+  and .source_write_attempt_persisted_count == 0
+  and .source_receipt_store_written_count == 0
+  and .source_receipt_persisted_count == 0
+  and .source_live_execution_allowed == false
+  and .source_cache_mode == "provided_source_json"
+  and .source_cache_input_present == true
+  and .source_report_render_count == 0
+  and .target_source_reuse_count == 1
+  and .lib_export_present == true
+  and .retention_replay_collection_id == "controlled-live-evidence-receipt-store-write-attempt-recording-denial-receipt-persistence-denial-retention-replay"
+  and .retention_replay_collection_route == "readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-denial-receipts/persistence-denial/retention-replay"
+  and .retention_replay_entry_count == 7
+  and .retention_policy_projected_count == 7
+  and .expiry_guard_projected_count == 7
+  and .replay_key_projected_count == 7
+  and .replay_idempotency_key_projected_count == 7
+  and .replay_idempotency_key_unique_count == 7
+  and .retention_readback_route_projected_count == 7
+  and .replay_readback_route_projected_count == 7
+  and .garbage_collection_denial_projected_count == 7
+  and .supersession_guard_projected_count == 7
+  and .zero_effect_digest_projected_count == 7
+  and .source_persistence_denial_attached_count == 7
+  and .source_denial_receipt_binding_attached_count == 7
+  and .retention_policy_persisted_count == 0
+  and .replay_index_written_count == 0
+  and .expiry_enforced_count == 0
+  and .garbage_collection_performed_count == 0
+  and .denial_receipt_persistence_attempt_recorded_count == 0
+  and .denial_receipt_persisted_count == 0
+  and .write_attempt_recorded_count == 0
+  and .write_attempt_persisted_count == 0
+  and .receipt_store_written_count == 0
+  and .receipt_persisted_count == 0
+  and .ledger_written_count == 0
+  and .workflow_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_mutation_allowed_count == 0
+  and .retention_replay_readback_ready == true
+  and .retention_policy_persistence_allowed == false
+  and .replay_index_write_allowed == false
+  and .expiry_enforcement_allowed == false
+  and .garbage_collection_allowed == false
+  and .denial_receipt_persistence_allowed == false
+  and .write_attempt_recording_allowed == false
+  and .receipt_store_write_allowed == false
+  and .receipt_persistence_allowed == false
+  and .ledger_write_allowed == false
+  and .workflow_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .credential_read_allowed == false
+  and .live_execution_allowed == false
+  and (.blockers | index("retention_policy_persistence_disabled")) != null
+  and (.blockers | index("replay_index_write_disabled")) != null
+  and (.blockers | index("expiry_enforcement_disabled")) != null
+  and (.blockers | index("garbage_collection_disabled")) != null
+  and (.blockers | index("denial_receipt_persistence_disabled")) != null
+  and (.blockers | index("write_attempt_recording_disabled")) != null
+  and (.blockers | index("receipt_store_write_disabled")) != null
+  and (.blockers | index("receipt_persistence_disabled")) != null
+  and (.blockers | index("ledger_write_disabled")) != null
+  and (.blockers | index("workflow_event_log_write_disabled")) != null
+  and (.blockers | index("sqlite_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.entries | length) == 7
+  and (.entries | all(
+    (.id | startswith("evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_retention_replay_without_persistence_"))
+    and (.source_persistence_denial_entry_id | startswith("evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_without_persistence_"))
+    and (.source_persistence_denial_id | startswith("write-attempt-recording-denial-receipt-persistence-denial:controlled-live-evidence-receipt-store:"))
+    and (.source_persistence_denial_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-denial-receipts/persistence-denial/"))
+    and .source_persistence_denial_reason == "write_attempt_recording_denial_receipt_persistence_disabled_positive_preconditions_missing"
+    and (.source_denial_receipt_id | startswith("write-attempt-recording-denial-receipt:controlled-live-evidence-receipt-store:"))
+    and (.source_denial_receipt_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-boundary/denial-receipts/"))
+    and (.source_denial_receipt_digest | startswith("sha256:receipt-store-write-attempt-recording-denial:"))
+    and (.source_positive_precondition_set_id | startswith("write-attempt-recording-denial-receipt-positive-preconditions:controlled-live-evidence-receipt-store:"))
+    and (.retention_policy_id | startswith("write-attempt-recording-denial-persistence-denial-retention-policy:controlled-live-evidence-receipt-store:"))
+    and (.retention_policy_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-denial-receipts/persistence-denial/retention-replay/retention/"))
+    and (.expiry_guard_id | startswith("write-attempt-recording-denial-persistence-denial-expiry-guard:controlled-live-evidence-receipt-store:"))
+    and (.replay_key | startswith("write-attempt-recording-denial-persistence-denial-replay-key:controlled-live-evidence-receipt-store:"))
+    and (.replay_idempotency_key | startswith("write-attempt-recording-denial-persistence-denial-replay-idempotency:controlled-live-evidence-receipt-store:"))
+    and (.replay_readback_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-denial-receipts/persistence-denial/retention-replay/replay/"))
+    and (.retention_readback_route | startswith("readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-denial-receipts/persistence-denial/retention-replay/readback/"))
+    and (.garbage_collection_denial_id | startswith("write-attempt-recording-denial-persistence-denial-gc-denial:controlled-live-evidence-receipt-store:"))
+    and (.supersession_guard_id | startswith("write-attempt-recording-denial-persistence-denial-supersession-guard:controlled-live-evidence-receipt-store:"))
+    and (.zero_effect_digest | startswith("sha256:write-attempt-recording-denial-persistence-denial-retention-replay-zero-effect:"))
+    and .retention_state == "projected_not_persisted"
+    and .replay_state == "projected_not_written"
+    and .operator_status == "blocked_missing_evidence"
+    and .observed_state == "write_attempt_recording_denial_receipt_persistence_denial_retention_replay_projected_without_persistence"
+    and .previous_state == "missing"
+    and .current_state == "missing"
+    and .state_delta == "unchanged_missing"
+    and .source_packet_unsent == true
+    and .source_persistence_denial_attached == true
+    and .source_denial_receipt_binding_attached == true
+    and .source_persistence_denial_projected == true
+    and .source_denial_receipt_persistence_denied == true
+    and .retention_policy_projected == true
+    and .expiry_guard_projected == true
+    and .replay_key_projected == true
+    and .replay_idempotency_key_projected == true
+    and .retention_readback_route_projected == true
+    and .replay_readback_route_projected == true
+    and .garbage_collection_denial_projected == true
+    and .supersession_guard_projected == true
+    and .zero_effect_digest_projected == true
+    and .retention_policy_persistence_allowed == false
+    and .retention_policy_persisted == false
+    and .replay_index_write_allowed == false
+    and .replay_index_written == false
+    and .expiry_enforcement_allowed == false
+    and .expiry_enforced == false
+    and .garbage_collection_allowed == false
+    and .garbage_collection_performed == false
+    and .denial_receipt_persistence_allowed == false
+    and .denial_receipt_persistence_attempt_recorded == false
+    and .denial_receipt_persisted == false
+    and .write_attempt_recording_allowed == false
+    and .write_attempt_recorded == false
+    and .write_attempt_persisted == false
+    and .receipt_store_write_allowed == false
+    and .receipt_store_written == false
+    and .receipt_persistence_allowed == false
+    and .receipt_persisted == false
+    and .ledger_write_allowed == false
+    and .ledger_written == false
+    and .workflow_event_log_write_allowed == false
+    and .workflow_event_log_written == false
+    and .sqlite_write_allowed == false
+    and .sqlite_written == false
+    and .credential_read_allowed == false
+    and .live_mutation_allowed == false))
+  and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .retention_policy_route == "readback://controlled-live/evidence-receipt-store/acceptance-authority-packet/receipt-store-write-attempt-recording-denial-receipts/persistence-denial/retention-replay/retention/dirty-worktree-boundary")
+  and any(.entries[]; .source_blocker_id == "operator_live_approval_missing" and .replay_idempotency_key == "write-attempt-recording-denial-persistence-denial-replay-idempotency:controlled-live-evidence-receipt-store:operator_live_approval_missing")
+  and any(.entries[]; .source_blocker_id == "fresh_soak_readback_missing" and .zero_effect_digest == "sha256:write-attempt-recording-denial-persistence-denial-retention-replay-zero-effect:fresh_soak_readback_missing")
+  and .recommended_next_gate == "controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_terminal_no_persistence_readback"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' "$target_json" >/dev/null
+
+jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_readback_without_persistence"
+  and .status == "ready_blocked"
+  and .persistence_denial_readback_ready == true
+  and .persistence_denial_entry_count == 7
+  and .persistence_denial_projected_count == 7
+  and .denial_receipt_persistence_denied_count == 7
+  and .denial_receipt_persistence_attempt_recorded_count == 0
+  and .denial_receipt_persisted_count == 0
+  and .write_attempt_recorded_count == 0
+  and .write_attempt_persisted_count == 0
+  and .receipt_store_written_count == 0
+  and .receipt_persisted_count == 0
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' "$source_json" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime \
+    controlled_live_evidence_receipt_store_acceptance_authority_packet_receipt_store_write_attempt_recording_denial_receipt_persistence_denial_retention_replay_readback_without_persistence --lib
+)
+
+printf 'hepta-systems-controlled-live-evidence-receipt-store-acceptance-authority-packet-receipt-store-write-attempt-recording-denial-receipt-persistence-denial-retention-replay-readback-without-persistence-gate: PASS: write-attempt recording denial receipt persistence-denial retention/replay is read back without persistence or live execution\n'

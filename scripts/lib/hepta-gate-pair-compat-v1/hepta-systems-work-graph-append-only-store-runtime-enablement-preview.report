@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-append-only-store-runtime-enablement.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json_report \
+  "hepta-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview-report" \
+  "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview.report" \
+  >"$tmpdir/role_manifest_rerun.json"
+
+runtime_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_store_runtime_enablement_preview.rs
+)"
+runtime_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-store-runtime-enablement-preview.report
+)"
+runtime_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-store-runtime-enablement-preview.gate
+)"
+role_rerun_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-role-manifest-rerun-preview.gate
+)"
+
+jq -n \
+  --slurpfile role "$tmpdir/role_manifest_rerun.json" \
+  --argjson runtime_rust_module_present "$runtime_rust_module_present" \
+  --argjson runtime_report_script_present "$runtime_report_script_present" \
+  --argjson runtime_gate_script_present "$runtime_gate_script_present" \
+  --argjson role_rerun_gate_script_present "$role_rerun_gate_script_present" \
+  '
+  $role[0] as $role
+  | def unique_order: reduce .[] as $item ([]; if index($item) then . else . + [$item] end);
+  def stage_ids: [
+      "durable_store_runtime_switch",
+      "wal_write_boundary",
+      "idempotency_mutation_policy",
+      "rollback_readback_execution_gate",
+      "operator_review_side_effect_lock",
+      "runtime_application_promotion"
+    ];
+  def evidence_fields: [
+      "runtime_store_switch_contract_ref",
+      "wal_write_boundary_ref",
+      "idempotency_mutation_policy_ref",
+      "rollback_readback_gate_ref",
+      "operator_review_side_effect_lock_ref",
+      "runtime_application_promotion_ref",
+      "previous_role_manifest_rerun_decision_ref",
+      "no_mutation_guard_ref"
+    ];
+  def source_ids_with_blocker($blocker):
+      [$role.decision_deltas[] | select(.residual_source_blocker_ids | index($blocker)) | .source_surface_id];
+  def upstream_sources($blocker):
+      (($role.residual_blockers[] | select(.id == $blocker) | .affected_source_surface_ids) // []);
+  def plan_id($source):
+      "append_only_store_runtime_enablement_" + $source + "_preview";
+  def plan($decision): {
+      source_surface_id: $decision.source_surface_id,
+      source_category: $decision.source_category,
+      runtime_enablement_plan_id: plan_id($decision.source_surface_id),
+      previous_enforcement_decision: $decision.role_manifest_rerun_enforcement_decision,
+      runtime_enablement_state: "runtime_enablement_blocked_preview_only",
+      required_runtime_stage_ids: stage_ids,
+      residual_source_blocker_ids: $decision.residual_source_blocker_ids,
+      expected_evidence_field_ids: evidence_fields,
+      runtime_enablement_contract_ready_preview: true,
+      applies_to_runtime: false,
+      enables_append_only_store: false,
+      writes_wal: false,
+      writes_checkpoint: false,
+      mutates_idempotency_index: false,
+      executes_readback: false,
+      executes_rollback: false,
+      records_approval: false
+    };
+  def stage($id; $priority; $category; $sources; $contracts; $writes_wal; $mutates_idempotency; $executes_readback; $requires_operator_review): {
+      id: $id,
+      priority: $priority,
+      category: $category,
+      affected_source_surface_ids: $sources,
+      required_contract_ref_ids: $contracts,
+      expected_runtime_state: "contract_ready_preview_runtime_disabled",
+      prerequisite_gate_ids: ($role.required_prior_gates + [$role.gate]),
+      contract_ready_preview: true,
+      runtime_enabled_after_preview: false,
+      writes_wal: $writes_wal,
+      mutates_idempotency_index: $mutates_idempotency,
+      executes_readback: $executes_readback,
+      requires_operator_review: $requires_operator_review
+    };
+  def guard($id; $severity; $scope): {
+      id: $id,
+      severity: $severity,
+      guard_scope: $scope,
+      required_before_runtime_enablement: true,
+      satisfied_by_preview: false
+    };
+  def blocker($id; $severity; $category; $sources; $stages; $fix): {
+      id: $id,
+      severity: $severity,
+      category: $category,
+      affected_source_surface_ids: $sources,
+      affected_runtime_stage_ids: $stages,
+      affected_runtime_enablement_plan_ids: ($sources | map(plan_id(.))),
+      required_before_runtime_enablement: true,
+      recommended_fix: $fix
+    };
+  (source_ids_with_blocker("append_only_store_runtime_enablement_disabled")) as $runtime_sources
+  | ($role.decision_deltas | map(select(.residual_source_blocker_ids | index("append_only_store_runtime_enablement_disabled")) | plan(.))) as $runtime_plans
+  | [
+      stage("durable_store_runtime_switch"; "p0"; "durable_store_switch"; $runtime_sources; [
+        "durable_store_enablement_switch_contract_ready",
+        "state_store_persistence_contract_ready",
+        "append_only_event_intake_contract_ready",
+        "redacted_payload_contract_ready",
+        "operator_disable_switch_contract_ready"
+      ]; false; false; false; false),
+      stage("wal_write_boundary"; "p0"; "wal_boundary"; $runtime_sources; [
+        "wal_append_record_contract_ready",
+        "wal_ordering_contract_ready",
+        "wal_redaction_contract_ready",
+        "checkpoint_boundary_contract_ready",
+        "replay_cursor_contract_ready",
+        "durable_store_no_rewrite_contract_ready"
+      ]; true; false; false; false),
+      stage("idempotency_mutation_policy"; "p0"; "idempotency_policy"; $runtime_sources; [
+        "idempotency_key_formula_contract_ready",
+        "idempotency_collision_policy_contract_ready",
+        "idempotency_mutation_policy_contract_ready",
+        "idempotency_replay_evidence_contract_ready",
+        "idempotency_readback_probe_contract_ready"
+      ]; false; true; false; false),
+      stage("rollback_readback_execution_gate"; "p0"; "rollback_readback"; $runtime_sources; [
+        "rollback_execution_gate_contract_ready",
+        "readback_probe_execution_contract_ready",
+        "replay_receipt_contract_ready",
+        "checkpoint_readback_contract_ready",
+        "rollback_non_promotion_contract_ready"
+      ]; false; false; true; false),
+      stage("operator_review_side_effect_lock"; "p0"; "operator_review"; upstream_sources("operator_review_required"); [
+        "operator_review_receipt_contract_ready",
+        "side_effect_lock_contract_ready",
+        "approval_recording_boundary_contract_ready"
+      ]; false; false; false; true),
+      stage("runtime_application_promotion"; "p0"; "runtime_application"; upstream_sources("runtime_application_residuals_not_promoted"); [
+        "projection_runtime_application_contract_ready",
+        "store_guard_runtime_application_contract_ready",
+        "terminal_task_result_runtime_application_contract_ready",
+        "scheduler_admission_runtime_application_contract_ready",
+        "role_manifest_runtime_application_contract_ready"
+      ]; false; false; false; false)
+    ] as $runtime_stages
+  | [
+      guard("runtime_enablement_preview_only"; "medium"; "preview_boundary"),
+      guard("durable_store_switch_not_enabled"; "critical"; "durable_store_switch"),
+      guard("wal_write_boundary_not_enabled"; "critical"; "wal_boundary"),
+      guard("idempotency_index_mutation_disabled"; "critical"; "idempotency_index"),
+      guard("rollback_readback_execution_disabled"; "critical"; "rollback_readback"),
+      guard("operator_review_required"; "high"; "operator_review"),
+      guard("runtime_application_promotion_disabled"; "high"; "runtime_application"),
+      guard("scheduler_role_runtime_application_disabled"; "high"; "scheduler_role"),
+      guard("append_only_store_readback_required"; "high"; "readback_preview"),
+      guard("side_effect_lock_not_established"; "critical"; "side_effect_lock")
+    ] as $guards
+  | [
+      blocker("durable_store_runtime_switch_disabled"; "critical"; "durable_store_switch"; $runtime_sources; ["durable_store_runtime_switch"]; "keep the durable store runtime switch disabled until WAL, replay, operator-review, and rollback gates are promoted"),
+      blocker("append_only_store_runtime_enablement_disabled"; "critical"; "durable_store_switch"; upstream_sources("append_only_store_runtime_enablement_disabled"); ["durable_store_runtime_switch"]; "promote the runtime switch only after all append-only runtime enablement readback assertions pass"),
+      blocker("wal_write_boundary_not_enabled"; "critical"; "wal_boundary"; upstream_sources("wal_write_boundary_not_enabled"); ["wal_write_boundary"]; "keep WAL writes disabled until write-boundary, ordering, redaction, checkpoint, and replay contracts are promoted"),
+      blocker("idempotency_index_mutation_disabled"; "critical"; "idempotency_policy"; upstream_sources("idempotency_index_mutation_disabled"); ["idempotency_mutation_policy"]; "keep idempotency indexes immutable until mutation policy, collision handling, and replay evidence are enforced"),
+      blocker("rollback_readback_not_executed"; "critical"; "rollback_readback"; upstream_sources("rollback_readback_not_executed"); ["rollback_readback_execution_gate"]; "execute rollback and readback gates before any append-only store runtime enablement"),
+      blocker("operator_review_required"; "high"; "operator_review"; upstream_sources("operator_review_required"); ["operator_review_side_effect_lock"]; "require operator review and a side-effect lock before promotion from preview to runtime"),
+      blocker("projection_adapter_runtime_closure_application_disabled"; "high"; "runtime_application"; upstream_sources("projection_adapter_runtime_closure_application_disabled"); ["runtime_application_promotion"]; "promote projection adapter runtime application only after readback and operator-review gates are satisfied"),
+      blocker("store_guard_runtime_application_disabled"; "high"; "runtime_application"; upstream_sources("store_guard_runtime_application_disabled"); ["runtime_application_promotion"]; "attach store idempotency guards only after durable-store intake and replay evidence are promoted"),
+      blocker("terminal_task_result_runtime_application_disabled"; "high"; "runtime_application"; upstream_sources("terminal_task_result_runtime_application_disabled"); ["runtime_application_promotion"]; "attach terminal TaskResult wrappers only after persistence and runtime application gates are promoted"),
+      blocker("scheduler_admission_runtime_application_disabled"; "high"; "runtime_application"; upstream_sources("scheduler_admission_runtime_application_disabled"); ["runtime_application_promotion"]; "apply scheduler admission runtime wiring only after leases, budgets, approvals, and store writes are promoted"),
+      blocker("role_manifest_runtime_application_disabled"; "high"; "runtime_application"; upstream_sources("role_manifest_runtime_application_disabled"); ["runtime_application_promotion"]; "apply role manifests to runtime only after tool permissions, budgets, lanes, and terminal schema bindings are promoted"),
+      blocker("runtime_application_residuals_not_promoted"; "high"; "runtime_application"; upstream_sources("runtime_application_residuals_not_promoted"); ["runtime_application_promotion"]; "promote projection, store-guard, TaskResult, scheduler, and role runtime applications before enabling the append-only store"),
+      blocker("append_only_store_runtime_enablement_readback_missing"; "high"; "readback_preview"; $runtime_sources; stage_ids; "read back runtime enablement plans before any append-only store runtime switch can be promoted")
+    ] as $blockers
+  | ($role.required_prior_gates + [$role.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "blocked",
+      gate: "hepta_work_graph_append_only_store_runtime_enablement_preview_gate",
+      schema_version: "work_graph_append_only_store_runtime_enablement_preview_v1",
+      preview_mode: "read_only_append_only_store_runtime_enablement_preview_no_store_or_runtime_mutation",
+      source_surface_count: $role.source_surface_count,
+      runtime_enablement_source_count: ($runtime_sources | length),
+      runtime_enablement_plan_count: ($runtime_plans | length),
+      runtime_stage_plan_count: ($runtime_stages | length),
+      runtime_stage_source_ref_count: ($runtime_stages | map(.affected_source_surface_ids | length) | add),
+      runtime_stage_contract_ref_count: ($runtime_stages | map(.required_contract_ref_ids | length) | add),
+      runtime_plan_stage_ref_count: ($runtime_plans | map(.required_runtime_stage_ids | length) | add),
+      runtime_plan_evidence_field_ref_count: ($runtime_plans | map(.expected_evidence_field_ids | length) | add),
+      runtime_application_residual_source_count: (upstream_sources("runtime_application_residuals_not_promoted") | length),
+      operator_review_residual_source_count: (upstream_sources("operator_review_required") | length),
+      guard_count: ($guards | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      runtime_enablement_plans: $runtime_plans,
+      runtime_stage_plans: $runtime_stages,
+      guards: $guards,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_append_only_store_runtime_enablement_readback_preview_gate",
+      ready_for_append_only_store_runtime_enablement_readback_preview: true,
+      ready_for_append_only_store_enablement: false,
+      ready_for_projection_enforcement: false,
+      ready_for_scheduler_admission_enforcement: false,
+      ready_for_role_manifest_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_store_runtime_enablement_preview: {
+          rust_module_present: $runtime_rust_module_present,
+          report_script_present: $runtime_report_script_present,
+          gate_script_present: $runtime_gate_script_present
+        },
+        role_manifest_readiness_rerun: {
+          upstream_gate: ($role.gate == "hepta_work_graph_unified_projection_enforcement_readiness_role_manifest_rerun_preview_gate"),
+          gate_script_present: $role_rerun_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        idempotency_index_mutated: false,
+        append_only_store_enabled: false,
+        projection_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        role_manifest_enforcement_enabled: false,
+        task_result_enforcement_enabled: false,
+        task_result_persisted: false,
+        readback_executed: false,
+        rollback_executed: false,
+        runtime_application_promoted: false,
+        approval_recorded: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

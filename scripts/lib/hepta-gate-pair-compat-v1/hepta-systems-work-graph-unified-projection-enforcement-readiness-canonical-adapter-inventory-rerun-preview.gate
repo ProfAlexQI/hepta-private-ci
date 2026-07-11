@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-canonical-adapter-inventory-rerun-preview.report"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-unified-projection-enforcement-readiness-canonical-adapter-inventory-rerun-preview-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "blocked"
+  and .gate == "hepta_work_graph_unified_projection_enforcement_readiness_canonical_adapter_inventory_rerun_preview_gate"
+  and .schema_version == "work_graph_unified_projection_enforcement_readiness_canonical_adapter_inventory_rerun_preview_v1"
+  and .preview_mode == "read_only_projection_enforcement_readiness_canonical_adapter_inventory_rerun_no_enforcement"
+  and .source_surface_count == 12
+  and .canonical_adapter_inventory_outcome_count == 12
+  and .canonical_adapter_inventory_application_covered_source_count == 12
+  and .previous_ready_surface_count == 12
+  and .canonical_adapter_inventory_contract_ready_source_count == 12
+  and .previous_canonical_inventory_primary_blocked_surface_count == 12
+  and .canonical_inventory_primary_blocked_surface_count_after == 0
+  and .append_only_work_graph_events_primary_blocked_surface_count == 12
+  and .partial_or_gap_blocked_surface_count == 7
+  and .append_only_work_graph_events_enabled_source_count == 0
+  and .runtime_canonical_adapter_enforcement_enabled_source_count == 0
+  and .rerun_ready_surface_count == 0
+  and .rerun_blocked_surface_count == 12
+  and .decision_delta_count == 12
+  and .cleared_blocker_count == 1
+  and .residual_blocker_count == 3
+  and .enforcement_stage_count == 5
+  and .required_prior_gate_count == 12
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.decision_deltas | all(
+    .covered_by_canonical_adapter_inventory_application_preview == true
+    and .canonical_adapter_inventory_contract_ready == true
+    and .canonical_adapter_inventory_applied == false
+    and .append_only_work_graph_events_enabled == false
+    and .runtime_canonical_adapter_enforcement_enabled == false
+    and .scheduler_admission_enforcement_ready == false
+    and .task_result_enforcement_ready == false
+    and .role_manifest_enforcement_ready == false
+    and .canonical_adapter_inventory_rerun_enforcement_decision == "deny_append_only_work_graph_events_disabled"
+    and (.residual_source_blocker_ids | index("append_only_work_graph_events_disabled"))
+    and (.residual_source_blocker_ids | index("canonical_adapter_inventory_readiness_rerun_missing") | not)
+    and .next_required_gate == "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate"
+  ))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.cleared_blockers[0].id == "canonical_adapter_inventory_application_required_for_enforcement")
+  and (.cleared_blockers[0].source_count_before == 12)
+  and (.cleared_blockers[0].source_count_after == 0)
+  and (.cleared_blockers[0].closure_gate_id == "hepta_work_graph_canonical_adapter_inventory_application_preview_gate")
+  and (.residual_blockers | map(.id) == [
+    "append_only_work_graph_events_disabled",
+    "runtime_canonical_adapter_enforcement_disabled",
+    "canonical_adapter_projection_partial_or_gap"
+  ])
+  and (.residual_blockers | map(select(.id == "canonical_adapter_projection_partial_or_gap"))[0].affected_source_surface_ids | length) == 7
+  and (.residual_blockers | all(.required_before_projection_enforcement == true))
+  and (.enforcement_stages | map(.id) == [
+    "canonical_adapter_inventory_contracts",
+    "append_only_work_graph_events_shadow_write",
+    "canonical_adapter_partial_gap_closure",
+    "runtime_canonical_adapter_enforcement_dry_run",
+    "projection_enforcement_dry_run"
+  ])
+  and (.enforcement_stages | all(.enforcement_enabled == false and .next_gate == "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate"))
+' >/dev/null <<<"$report"
+
+jq -e '
+  (.required_prior_gates | length == (unique | length))
+  and (.required_prior_gates[-1] == "hepta_work_graph_canonical_adapter_inventory_application_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate"
+  and .ready_for_append_only_work_graph_events_preview == true
+  and .ready_for_append_only_work_graph_events == false
+  and .ready_for_runtime_adapter_enforcement == false
+  and .ready_for_scheduler_admission_enforcement == false
+  and .ready_for_task_result_enforcement == false
+  and .ready_for_role_manifest_enforcement == false
+  and .ready_for_live_execution == false
+  and .source_probes.canonical_adapter_inventory_readiness_rerun.rust_module_present == true
+  and .source_probes.canonical_adapter_inventory_readiness_rerun.report_script_present == true
+  and .source_probes.canonical_adapter_inventory_readiness_rerun.gate_script_present == true
+  and .source_probes.canonical_adapter_inventory_application.rust_module_present == true
+  and .source_probes.canonical_adapter_inventory_application.gate_script_present == true
+  and .source_probes.canonical_adapter_inventory_application.upstream_gate == true
+  and .source_probes.runtime_wal_write_boundary_execution_readiness_rerun.upstream_gate == true
+  and .source_probes.runtime_wal_write_boundary_execution_readiness_rerun.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_unified_projection_enforcement_readiness_canonical_adapter_inventory_rerun --lib
+
+echo "Hepta WorkGraph unified projection enforcement readiness canonical adapter inventory rerun preview gate passed"

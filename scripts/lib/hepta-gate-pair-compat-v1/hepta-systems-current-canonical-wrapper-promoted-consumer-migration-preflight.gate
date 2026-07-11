@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight.report"
+CONSUMER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-consumer.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_WRAPPER_PROMOTED_CONSUMER_MIGRATION_PREFLIGHT_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current canonical wrapper promoted consumer migration preflight report: $REPORT"
+[[ -x "$CONSUMER_GATE" ]] || fail "missing executable current canonical consumer gate: $CONSUMER_GATE"
+[[ -f "$DOC" ]] || fail "missing promoted consumer migration preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the promoted consumer migration preflight report"
+fi
+
+grep -q 'Promoted Consumer Migration Preflight' "$DOC" \
+  || fail "architecture note must document Promoted Consumer Migration Preflight"
+grep -q 'dependency cycle' "$DOC" \
+  || fail "architecture note must document the dependency cycle"
+grep -q 'successor wrapper' "$DOC" \
+  || fail "architecture note must document successor wrapper path"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_canonical_wrapper_promoted_consumer_migration_preflight"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_current_canonical_wrapper_surface == "current_canonical_wrapper"
+  and .source_current_canonical_wrapper_ready == true
+  and .source_current_canonical_consumer_surface == "current_canonical_consumer"
+  and .source_current_canonical_consumer_ready == true
+  and .source_promoted_consumer_surface == "post_canonical_closure_compact_capability_summary"
+  and .migration_preflight_ready == true
+  and .direct_current_wrapper_source_replacement_allowed == false
+  and .direct_current_wrapper_source_replacement_blocked == true
+  and .dependency_cycle_detected == true
+  and (.dependency_cycle_path | index("current_canonical_wrapper")) != null
+  and (.dependency_cycle_path | index("current_canonical_consumer")) != null
+  and .successor_wrapper_surface_required == true
+  and .successor_wrapper_surface_allowed == true
+  and .successor_wrapper_surface == "promoted_current_canonical_wrapper"
+  and .current_canonical_wrapper_mutated == false
+  and .canonical_summary_mutated == false
+  and .historical_canonical_gate_mutated == false
+  and .migration_option_count == 2
+  and (.migration_options | any(.id == "replace_current_wrapper_source_with_current_consumer" and .would_create_dependency_cycle == true and .allowed == false))
+  and (.migration_options | any(.id == "create_successor_wrapper_consumer_surface" and .would_create_dependency_cycle == false and .allowed == true))
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .migration_blocker_count == 10
+  and (.migration_blockers | index("current_wrapper_direct_mutation_blocked_by_dependency_cycle")) != null
+  and (.migration_blockers | index("successor_wrapper_required_before_wrapper_source_replacement")) != null
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .manual_operator_live_cutover_approval_required == true
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "create_non_circular_promoted_current_canonical_wrapper_without_alias_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$CONSUMER_GATE" >/dev/null
+
+printf 'hepta-systems-current-canonical-wrapper-promoted-consumer-migration-preflight-gate: PASS: direct wrapper source replacement is blocked and successor wrapper path is ready without live invocation\n'

@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-registry-shadow-registration-lookup-readback.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_REGISTRY_SHADOW_REGISTRATION_LOOKUP_READBACK_2026-07-01.md"
+
+fail() {
+  printf 'hepta-systems-tool-registry-shadow-registration-lookup-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable ToolRegistry shadow registration lookup report: $REPORT"
+[[ -f "$DOC" ]] || fail "missing ToolRegistry shadow registration lookup architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the ToolRegistry shadow registration lookup report"
+fi
+
+rg -q 'Hepta Systems ToolRegistry Shadow Registration Lookup Readback' "$DOC" \
+  || fail "architecture note must document ToolRegistry Shadow Registration Lookup Readback"
+rg -q 'shadow registry registration plan, shadow registry entry key, shadow registration payload digest, shadow lookup query, shadow lookup result, shadow duplicate check, shadow idempotency replay anchor, and shadow approval ledger replay anchor' "$DOC" \
+  || fail "architecture note must document the shadow registration lookup projection"
+rg -q 'no feature gate open, shadow write execution, shadow write materialization, shadow store write, test tmp write, shadow registry materialization, shadow lookup execution, ToolRegistry registration, ToolRegistry mutation, registry lookup execution, tool invocation, approval request, ledger persistence, receipt persistence, connector start, runtime event-log write, SQLite write, credential read, external network, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, package/release, canary activation, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed ToolRegistry shadow boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_systems_tool_registry_shadow_registration_lookup_readback"
+  and .status == "ready_blocked"
+  and .gate == "hepta_systems_tool_registry_shadow_registration_lookup_readback_gate"
+  and .schema_version == "hepta_systems_tool_registry_shadow_registration_lookup_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .manifest_name == "hepta-system"
+  and .manifest_version == "0.0.0-fixture"
+  and .source_persistence_shadow_write_rehearsal_readback_ready == true
+  and .lib_export_present == true
+  and .candidate_count == 2
+  and .registry_shadow_entry_count == 2
+  and .selected_read_only_status_tool_count == 1
+  and .non_selected_preflight_boundary_count == 1
+  and .source_shadow_acceptance_record_envelope_linked_count == 2
+  and .source_shadow_write_intent_linked_count == 2
+  and .source_shadow_payload_digest_linked_count == 2
+  and .source_shadow_idempotency_replay_key_linked_count == 2
+  and .source_shadow_receipt_preview_linked_count == 2
+  and .source_shadow_store_target_linked_count == 2
+  and .source_shadow_replay_result_linked_count == 2
+  and .shadow_registry_registration_plan_projected_count == 2
+  and .shadow_registry_entry_key_projected_count == 2
+  and .shadow_registration_payload_digest_projected_count == 2
+  and .shadow_lookup_query_projected_count == 2
+  and .shadow_lookup_result_projected_count == 2
+  and .shadow_duplicate_check_projected_count == 2
+  and .shadow_idempotency_replay_anchor_projected_count == 2
+  and .shadow_approval_ledger_replay_anchor_projected_count == 2
+  and .tool_registry_shadow_item_count == 16
+  and .stable_shadow_registry_entry_key_count == 2
+  and .unique_shadow_registry_entry_key_count == 2
+  and .stable_shadow_registration_payload_digest_count == 2
+  and .unique_shadow_registration_payload_digest_count == 2
+  and .stable_shadow_lookup_query_count == 2
+  and .unique_shadow_lookup_query_count == 2
+  and .stable_shadow_idempotency_replay_anchor_count == 2
+  and .unique_shadow_idempotency_replay_anchor_count == 2
+  and .shadow_registry_entry_key_mismatch_count == 0
+  and .duplicate_shadow_registry_entry_key_count == 0
+  and .shadow_registration_payload_digest_mismatch_count == 0
+  and .duplicate_shadow_registration_payload_digest_count == 0
+  and .shadow_lookup_query_mismatch_count == 0
+  and .duplicate_shadow_lookup_query_count == 0
+  and .shadow_idempotency_replay_anchor_mismatch_count == 0
+  and .duplicate_shadow_idempotency_replay_anchor_count == 0
+  and .feature_gate_opened_count == 0
+  and .shadow_write_executed_count == 0
+  and .shadow_write_materialized_count == 0
+  and .shadow_store_written_count == 0
+  and .test_tmp_written_count == 0
+  and .shadow_registry_materialized_count == 0
+  and .shadow_lookup_executed_count == 0
+  and .tool_registered_count == 0
+  and .tool_registry_mutated_count == 0
+  and .registry_lookup_executed_count == 0
+  and .tool_invoked_count == 0
+  and .approval_requested_count == 0
+  and .ledger_written_count == 0
+  and .receipt_persisted_count == 0
+  and .mcp_server_started_count == 0
+  and .app_connector_started_count == 0
+  and .runtime_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_execution_started_count == 0
+  and .tool_registry_shadow_registration_lookup_readback_ready == true
+  and .feature_gate_open_allowed == false
+  and .shadow_write_execution_allowed == false
+  and .shadow_store_write_allowed == false
+  and .test_tmp_write_allowed == false
+  and .shadow_registry_materialization_allowed == false
+  and .shadow_lookup_execution_allowed == false
+  and .tool_registry_registration_allowed == false
+  and .tool_registry_mutation_allowed == false
+  and .registry_lookup_execution_allowed == false
+  and .tool_invocation_allowed == false
+  and .approval_request_allowed == false
+  and .ledger_persistence_allowed == false
+  and .receipt_persistence_allowed == false
+  and .connector_start_allowed == false
+  and .runtime_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .live_execution_allowed == false
+  and (.entries | length) == 2
+  and any(.entries[]; .candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp" and .contribution_kind == "mcp_server" and .dry_run_path_selected == true and .shadow_registry_entry_key == "tool-registry-shadow-entry:hepta-system:local-mcp:read-only-status-dry-run" and .shadow_lookup_query_id == "tool-registry-shadow-lookup-query:hepta-system:local-mcp:read-only-status-dry-run")
+  and any(.entries[]; .candidate_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app" and .contribution_kind == "app_connector" and .dry_run_path_selected == false and .shadow_registry_entry_key == "tool-registry-shadow-entry:hepta-system:local-app:not-selected" and .shadow_lookup_query_id == "tool-registry-shadow-lookup-query:hepta-system:local-app:not-selected")
+  and (.entries | all(.shadow_registry_registration_plan_projected == true and .shadow_registry_entry_key_projected == true and .shadow_registration_payload_digest_projected == true and .shadow_lookup_query_projected == true and .shadow_lookup_result_projected == true and .shadow_duplicate_check_projected == true and .shadow_idempotency_replay_anchor_projected == true and .shadow_approval_ledger_replay_anchor_projected == true and .stable_shadow_registry_entry_key == true and .unique_shadow_registry_entry_key == true and .stable_shadow_registration_payload_digest == true and .unique_shadow_registration_payload_digest == true and .stable_shadow_lookup_query == true and .unique_shadow_lookup_query == true and .stable_shadow_idempotency_replay_anchor == true and .unique_shadow_idempotency_replay_anchor == true and .feature_gate_opened == false and .shadow_write_executed == false and .shadow_write_materialized == false and .shadow_store_written == false and .test_tmp_written == false and .shadow_registry_materialized == false and .shadow_lookup_executed == false and .tool_registered == false and .tool_registry_mutated == false and .registry_lookup_executed == false and .tool_invoked == false and .approval_requested == false and .ledger_written == false and .receipt_persisted == false and .mcp_server_started == false and .app_connector_started == false and .runtime_event_log_written == false and .sqlite_written == false and .live_execution_started == false))
+  and (.blockers | index("shadow_registry_materialization_disabled")) != null
+  and (.blockers | index("shadow_lookup_execution_disabled")) != null
+  and (.blockers | index("tool_registry_registration_disabled")) != null
+  and (.blockers | index("tool_registry_mutation_disabled")) != null
+  and (.blockers | index("registry_lookup_execution_disabled")) != null
+  and (.blockers | index("tool_invocation_disabled")) != null
+  and (.blockers | index("ledger_persistence_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.next_actions | index("close_controlled_live_evidence_before_status_canary_start")) != null
+  and .recommended_next_gate == "close_controlled_live_evidence_before_status_canary_start"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime hepta_systems_tool_registry_shadow_registration_lookup_readback --lib
+)
+
+printf 'hepta-systems-tool-registry-shadow-registration-lookup-readback-gate: PASS: ToolRegistry shadow registration and lookup are queryable without real registry mutation, lookup execution, tool invocation, ledger persistence, runtime writes, or live mutation\n'

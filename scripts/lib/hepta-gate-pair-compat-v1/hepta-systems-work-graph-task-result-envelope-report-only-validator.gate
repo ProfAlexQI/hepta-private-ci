@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-task-result-envelope-report-only-validator.report"
+
+report="$(
+  capture_json_report \
+    "hepta-work-graph-task-result-envelope-report-only-validator-report" \
+    "$REPORT_SCRIPT"
+)"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_task_result_envelope_report_only_validator_gate"
+  and .schema_version == "work_graph_task_result_envelope_report_only_validator_v1"
+  and .preview_mode == "report_only_task_result_envelope_validator_no_live_enforcement"
+  and .canonical_wire_field_count == 11
+  and (.canonical_wire_fields == [
+    "taskId",
+    "status",
+    "summary",
+    "artifacts",
+    "evidence",
+    "risks",
+    "nextActions",
+    "verifier",
+    "reducer",
+    "usage",
+    "traceId"
+  ])
+  and .validation_rule_count == 8
+  and (.validation_rules | map(.id) == [
+    "required_wire_fields_present",
+    "status_is_normalized",
+    "summary_is_redacted_and_non_empty",
+    "artifact_refs_are_ids_hashes_or_paths",
+    "evidence_refs_are_readback_bound",
+    "risks_and_next_actions_are_actionable",
+    "verifier_reducer_usage_are_structured",
+    "trace_id_joins_plan_spawn_mailbox_tool_result"
+  ])
+  and (.validation_rules | all(.required == true and .report_only_blocks_promotion == false))
+  and .source_adapter_count == 7
+  and (.source_adapters | map(.source_surface_id) == [
+    "agent_jobs_batch_workers",
+    "multi_agent_v2_thread_spawn",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_multi_agent_reducer",
+    "hepta_runtime_task_board",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.source_adapters | all(.report_only_attached == true and .live_enforcement_enabled == false))
+  and (.source_adapters | all((.covered_wire_fields | length) == 11 and (.validation_rule_ids | length) == 8))
+  and .source_envelope_count == 7
+  and .report_only_valid_source_count == 7
+  and (.source_envelopes | map(.source_surface_id) == [
+    "agent_jobs_batch_workers",
+    "multi_agent_v2_thread_spawn",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_multi_agent_reducer",
+    "hepta_runtime_task_board",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.source_envelopes | all(.validation_decision == "allow_report_only" and .live_promotion_allowed == false and (.trace_id | length) > 0))
+  and (.required_prior_gates == [
+    "hepta_work_graph_canonical_projection_readiness_gate",
+    "hepta_work_graph_task_result_contract_preview_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_scheduler_admission_dry_run_enforcement_gate"
+  and .report_only_validator_attached == true
+  and .live_enforcement_enabled == false
+  and .ready_for_scheduler_admission_dry_run_enforcement == true
+  and .ready_for_live_execution == false
+  and .source_probes.task_result_envelope_report_only_validator.rust_module_present == true
+  and .source_probes.task_result_envelope_report_only_validator.report_script_present == true
+  and .source_probes.task_result_envelope_report_only_validator.gate_script_present == true
+  and .source_probes.canonical_projection_readiness.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_task_result_envelope_report_only_validator --lib
+
+echo "Hepta WorkGraph TaskResultEnvelope report-only validator gate passed"

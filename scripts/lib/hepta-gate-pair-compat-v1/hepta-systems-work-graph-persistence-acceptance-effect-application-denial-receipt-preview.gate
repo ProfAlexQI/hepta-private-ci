@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-persistence-acceptance-effect-application-denial-receipt-preview.report"
+
+report="$(capture_json_report "hepta-work-graph-persistence-acceptance-effect-application-denial-receipt-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  def durable_fields: [
+    "workflow_id",
+    "run_id",
+    "step_id",
+    "checkpoint",
+    "replay_key",
+    "rollback_anchor",
+    "receipt_hash"
+  ];
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_preview_gate"
+  and .schema_version == "work_graph_persistence_acceptance_effect_application_denial_receipt_preview_v1"
+  and .preview_mode == "read_only_persistence_acceptance_effect_application_denial_receipt_preview_no_receipt_write"
+  and .denial_receipt_count == 8
+  and (.denial_receipts | length) == .denial_receipt_count
+  and (.denial_receipts | map(.id) == [
+    "operator_acceptance_recording_denial_receipt",
+    "approval_ledger_write_denial_receipt",
+    "authority_grant_denial_receipt",
+    "graph_state_persistence_denial_receipt",
+    "wal_checkpoint_write_denial_receipt",
+    "enforcement_rollout_denial_receipt",
+    "release_publication_denial_receipt",
+    "external_delivery_denial_receipt"
+  ])
+  and (.denial_receipts | all(
+    .redaction_state == "hash_only_redacted"
+    and .persistence_enabled == false
+    and .effect_applied == false
+    and .external_delivery_enabled == false
+    and (.required_fields | length) >= 15
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .digest_check_count == 7
+  and (.digest_checks | length) == .digest_check_count
+  and (.digest_checks | map(.id) == [
+    "check_durable_identity_digest",
+    "check_effect_surface_digest",
+    "check_blocker_digest",
+    "check_apply_guard_digest",
+    "check_rollback_quarantine_digest",
+    "check_zero_side_effect_digest",
+    "check_prior_gate_digest"
+  ])
+  and (.digest_checks[] | select(.id == "check_durable_identity_digest") | .compared_fields == durable_fields)
+  and (.digest_checks | all(.blocks_receipt_acceptance == true and (.compared_fields | length) >= 3))
+  and .mismatch_denial_count == 9
+  and (.mismatch_denials | length) == .mismatch_denial_count
+  and (.mismatch_denials | map(.id) == [
+    "durable_identity_evidence_missing",
+    "missing_effect_surface_digest",
+    "missing_effect_blocker_digest",
+    "missing_apply_guard_digest",
+    "side_effect_digest_nonzero",
+    "rollback_quarantine_digest_missing",
+    "denial_receipt_persistence_attempted",
+    "release_publication_attempted",
+    "external_delivery_attempted"
+  ])
+  and (.mismatch_denials | all(.blocks_receipt_acceptance == true and (.applies_to_receipt_ids | length) == 8))
+  and .local_view_count == 4
+  and (.local_views | length) == .local_view_count
+  and (.local_views | map(.id) == [
+    "operator_effect_denial_receipt_view",
+    "auditor_effect_denial_receipt_digest_view",
+    "release_owner_effect_denial_receipt_view",
+    "runtime_effect_denial_receipt_zero_effect_view"
+  ])
+  and (.local_views | all(.external_delivery_enabled == false and (.required_fields | length) >= 4))
+  and (.local_views | all(
+    .external_delivery_enabled == false
+    and (.required_fields | length) >= 11
+    and (.required_fields | index("workflow_id") != null)
+    and (.required_fields | index("receipt_hash") != null)
+  ))
+  and .durable_identity_evidence.schema_version == "work_graph_durable_identity_preview_v1"
+  and .durable_identity_evidence.required_prior_gate == "hepta_work_graph_durable_identity_preview_gate"
+  and .durable_identity_evidence.required_field_ids == durable_fields
+  and .durable_identity_evidence.required_for_receipt_ids == [
+    "operator_acceptance_recording_denial_receipt",
+    "approval_ledger_write_denial_receipt",
+    "authority_grant_denial_receipt",
+    "graph_state_persistence_denial_receipt",
+    "wal_checkpoint_write_denial_receipt",
+    "enforcement_rollout_denial_receipt",
+    "release_publication_denial_receipt",
+    "external_delivery_denial_receipt"
+  ]
+  and .durable_identity_evidence.durable_field_count == 7
+  and .durable_identity_evidence.preview_binding_count >= 5
+  and .durable_identity_evidence.invariant_count >= 7
+  and .durable_identity_evidence.currently_satisfied == false
+  and .invariant_count == 7
+  and (.invariants | length) == .invariant_count
+  and (.invariants | map(.id) == [
+    "acceptance_effect_application_denial_receipts_require_durable_identity_evidence",
+    "effect_denial_receipts_are_hash_only",
+    "effect_denial_receipts_are_non_persistent",
+    "effect_denial_receipts_prove_zero_side_effects",
+    "effect_denial_receipt_views_are_local_only",
+    "effect_denial_receipt_requires_application_blocker_gate",
+    "effect_denial_receipt_preview_has_no_side_effects"
+  ])
+  and (.invariants | all(.required == true))
+  and (.required_prior_gates[-2] == "hepta_work_graph_persistence_acceptance_effect_application_blocker_preview_gate")
+  and (.required_prior_gates[-1] == "hepta_work_graph_durable_identity_preview_gate")
+  and .recommended_next_gate == "hepta_work_graph_persistence_acceptance_effect_application_denial_receipt_acknowledgement_preview_gate"
+  and .ready_for_acceptance_effect_application_denial_receipt_acknowledgement_preview == true
+  and .ready_for_operator_acceptance == false
+  and .ready_for_live_persistence == false
+  and .source_probes.persistence_acceptance_effect_application_denial_receipt.rust_module_present == true
+  and .source_probes.persistence_acceptance_effect_application_denial_receipt.report_script_present == true
+  and .source_probes.persistence_acceptance_effect_application_denial_receipt.gate_script_present == true
+  and .source_probes.persistence_acceptance_effect_application_blocker.rust_module_present == true
+  and .source_probes.persistence_acceptance_effect_application_blocker.gate_script_present == true
+  and .source_probes.durable_identity.rust_module_present == true
+  and .source_probes.durable_identity.report_script_present == true
+  and .source_probes.durable_identity.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_persistence_acceptance_effect_application_denial_receipt_preview --lib
+
+echo "Hepta WorkGraph persistence acceptance effect application denial receipt preview gate passed"

@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-distribution-artifact-manifest-status-final-index-artifact-signing-notarization-surface.report"
+
+[[ -x "$SOURCE_REPORT" ]] || {
+  echo "missing executable Public GA operator identity/session intent consent evidence artifact signing/notarization attachment report: $SOURCE_REPORT" >&2
+  exit 1
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq is required to build the Public GA operator identity/session intent consent evidence artifact signing/notarization readback report" >&2
+  exit 1
+fi
+
+source_json="$("$SOURCE_REPORT")"
+
+jq -e '
+  .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_blocked == true
+  and .artifact_distribution_signing_notarization_surface_recorded == false
+  and .artifact_signed == false
+  and .notarization_submitted == false
+  and .telegram_status_sent == false
+' <<<"$source_json" >/dev/null
+
+jq -n \
+  --argjson source "$source_json" \
+  '{
+    runtime: "hepta",
+    surface: "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_readback",
+    plugin_id: "hepta-system@hepta-local",
+    status: "ready_blocked",
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_surface: $source.surface,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_ready: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_ready,
+    source_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_blocked: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_blocked,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_readback_ready: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_readback_blocked: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_attachment_attached: true,
+    public_ga_operator_identity_session_operator_intent_consent_evidence_distribution_artifact_manifest_status_final_index_attached: $source.public_ga_operator_identity_session_operator_intent_consent_evidence_distribution_artifact_manifest_status_final_index_attached,
+    readback_mode: "static_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_snapshot_only",
+    readback_check_count: 66,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_denial_gate_present: $source.operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_denial_gate_present,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_denial_doc_present: $source.operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_denial_doc_present,
+    operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_denial_gate_invoked: false,
+    operator_identity_session_operator_intent_consent_evidence_distribution_artifact_manifest_status_denial_gate_invoked: false,
+    long_soak_required_by_source_evidence_artifact_signing_notarization_surface_gate: $source.long_soak_required_by_source_evidence_artifact_signing_notarization_surface_gate,
+    long_soak_started: false,
+    public_status_claimed: false,
+    public_release_claimed: false,
+    public_ga_claimed: false,
+    artifact_distribution_signing_notarization_surface_accepted: false,
+    artifact_distribution_signing_notarization_surface_recorded: false,
+    artifact_distribution_signing_notarization_surface_persisted: false,
+    artifact_distribution_signing_notarization_surface_materialized: false,
+    artifact_distribution_signing_notarization_surface_filesystem_written: false,
+    artifact_distribution_signing_notarization_surface_delivered: false,
+    artifact_distribution_signing_notarization_surface_exposed: false,
+    artifact_distribution_signing_notarization_surface_executed: false,
+    artifact_signed: false,
+    package_signed: false,
+    signature_manifest_written: false,
+    checksum_binding_recorded: false,
+    notarization_submitted: false,
+    notarization_ticket_recorded: false,
+    stapling_executed: false,
+    installer_signed: false,
+    provenance_attestation_published: false,
+    sbom_manifest_published: false,
+    release_asset_packaged: false,
+    artifact_bundle_packaged: false,
+    cdn_artifact_written: false,
+    update_feed_artifact_written: false,
+    package_registry_artifact_published: false,
+    dashboard_status_exposed: false,
+    public_endpoint_status_exposed: false,
+    query_status_exposed: false,
+    export_status_exposed: false,
+    observability_status_exposed: false,
+    external_status_sent: false,
+    telegram_status_sent: false,
+    operator_approval_from_signing_status_derived: false,
+    release_publication_authority_from_signing_status_derived: false,
+    activation_authority_from_signing_status_derived: false,
+    download_link_from_signing_status_rendered: false,
+    install_command_from_signing_status_rendered: false,
+    install_from_signing_status_executed: false,
+    service_restart_from_signing_status_performed: false,
+    active_binary_from_signing_status_mutated: false,
+    memory_store_write_performed: false,
+    live_kg_write_performed: false,
+    provider_invoked: false,
+    model_invoked: false,
+    credential_read: false,
+    secret_file_read: false,
+    telegram_send_performed: false,
+    external_send_performed: false,
+    public_ga_readiness_script_invoked: false,
+    public_claim_non_promotion_denial_gate_invoked: false,
+    terminal_live_gates_invoked: false,
+    readback_blocker_count: 66,
+    public_ga_claim_allowed: false,
+    public_release_published: false,
+    rollback_execution_allowed: false,
+    next_migration_step: "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_notarization_surface_final_index_without_manifest_status",
+    local_gate: "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-notarization-surface-readback.gate",
+    architecture_note: "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_NOTARIZATION_SURFACE_READBACK_2026-06-21.md",
+    source_files: {
+      public_ga_operator_identity_session_intent_consent_evidence_artifact_signing_notarization_attachment_report: "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-distribution-artifact-manifest-status-final-index-artifact-signing-notarization-surface.report"
+    },
+    side_effect_free: true,
+    side_effects: ($source.side_effects)
+  }'

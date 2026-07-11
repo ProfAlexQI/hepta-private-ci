@@ -1,34 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-audit_digest_report="$repo_root/scripts/hepta-context-memory-shadow-canary-promotion-audit-digest-report.sh"
-
-line_count() {
-  printf '%s\n' "$1" | wc -l | tr -d ' '
-}
-
-sha256_digest() {
-  shasum -a 256 | awk '{print $1}'
-}
-
-audit_digest_status="$(bash "$audit_digest_report")"
-
-cat <<STATUS
-memory-shadow-canary-promotion-audit-freshness=pass
-memory-shadow-canary-promotion-audit-freshness.schema=1
-memory-shadow-canary-promotion-audit-freshness.payload-light=pass
-memory-shadow-canary-promotion-audit-freshness.source-audit-digest-report-lines=$(line_count "$audit_digest_status")
-memory-shadow-canary-promotion-audit-freshness.source-audit-digest-report-sha256=$(printf '%s\n' "$audit_digest_status" | sha256_digest)
-memory-shadow-canary-promotion-audit-freshness.audit-readiness-sequence=309
-memory-shadow-canary-promotion-audit-freshness.current-readiness-sequence=309
-memory-shadow-canary-promotion-audit-freshness.expires-after-sequence=310
-memory-shadow-canary-promotion-audit-freshness.max-replay-age-sequences=0
-memory-shadow-canary-promotion-audit-freshness.stale-sequence=reject
-memory-shadow-canary-promotion-audit-freshness.expired-sequence=reject
-memory-shadow-canary-promotion-audit-freshness.future-sequence=reject
-memory-shadow-canary-promotion-audit-freshness.digest-replay=reject
-memory-shadow-canary-promotion-audit-freshness.mixed-source-digest=reject
-memory-shadow-canary-promotion-audit-freshness.runtime-activation=disabled
-memory-shadow-canary-promotion-audit-freshness.operator-activation=disabled
-STATUS
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+exec "$ROOT/scripts/hepta-gate-pair-runner" report "hepta-context-memory-shadow-canary-promotion-audit-freshness"

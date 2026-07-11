@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+promotion_precondition_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_promotion_precondition_preview.rs
+)"
+promotion_precondition_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-promotion-precondition-preview.report
+)"
+promotion_precondition_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-promotion-precondition-preview.gate
+)"
+replay_readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_replay_readback_preview.rs
+)"
+replay_readback_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-replay-readback-preview.report
+)"
+replay_readback_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-replay-readback-preview.gate
+)"
+durable_identity_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_durable_identity_preview.rs
+)"
+durable_identity_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-durable-identity-preview.report
+)"
+durable_identity_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-durable-identity-preview.gate
+)"
+
+durable_identity_report="$(
+  capture_json_report \
+    "hepta-work-graph-durable-identity-preview-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-durable-identity-preview.report"
+)"
+
+jq -n \
+  --argjson promotion_precondition_rust_module_present "$promotion_precondition_rust_module_present" \
+  --argjson promotion_precondition_report_script_present "$promotion_precondition_report_script_present" \
+  --argjson promotion_precondition_gate_script_present "$promotion_precondition_gate_script_present" \
+  --argjson replay_readback_rust_module_present "$replay_readback_rust_module_present" \
+  --argjson replay_readback_report_script_present "$replay_readback_report_script_present" \
+  --argjson replay_readback_gate_script_present "$replay_readback_gate_script_present" \
+  --argjson durable_identity_rust_module_present "$durable_identity_rust_module_present" \
+  --argjson durable_identity_report_script_present "$durable_identity_report_script_present" \
+  --argjson durable_identity_gate_script_present "$durable_identity_gate_script_present" \
+  --argjson durable_identity_report "$durable_identity_report" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_durable_identity_preview_gate"
+  ];
+  def target_ids: [
+    "terminal_task_result_promotion",
+    "scheduler_unblock_promotion",
+    "artifact_handoff_promotion",
+    "external_handoff_promotion",
+    "approval_resolution_promotion",
+    "timeline_operator_summary_promotion"
+  ];
+  def target($id; $kind; $status; $checks): {
+    id: $id,
+    node_kind: $kind,
+    target_status: $status,
+    required_check_ids: $checks,
+    blocked_without_readback: true,
+    promotes_state: false
+  };
+  def check($id; $targets; $fields; $denial): {
+    id: $id,
+    applies_to_target_ids: $targets,
+    required_evidence_fields: $fields,
+    failure_denial_id: $denial,
+    required_before_promotion: true
+  };
+  def denial($id; $severity; $targets; $message): {
+    id: $id,
+    severity: $severity,
+    blocks_target_ids: $targets,
+    operator_message: $message
+  };
+  def receipt($id; $target): {
+    id: $id,
+    target_id: $target,
+    required_fields: [
+      "workflow_id",
+      "run_id",
+      "step_id",
+      "checkpoint",
+      "replay_key",
+      "rollback_anchor",
+      "receipt_hash",
+      "traceId",
+      "nodeId",
+      "targetStatus",
+      "requiredCheckIds",
+      "denialIds",
+      "redactedEvidenceRefs",
+      "receiptHash"
+    ],
+    persistence_enabled: false,
+    external_delivery_enabled: false
+  };
+  def invariant($id; $reason): {
+    id: $id,
+    required: true,
+    reason: $reason
+  };
+  [
+    target(
+      "terminal_task_result_promotion";
+      "worker_task";
+      "terminal_result_visible";
+      ["durable_identity_evidence_ready", "task_result_schema_valid", "task_result_readback_clean", "no_replay_drift_detected", "artifact_redaction_verified", "operator_audit_receipt_ready"]
+    ),
+    target(
+      "scheduler_unblock_promotion";
+      "scheduler_run";
+      "runnable";
+      ["durable_identity_evidence_ready", "dependency_closure_satisfied", "approval_readback_clean", "lease_and_budget_current", "no_replay_drift_detected", "operator_audit_receipt_ready"]
+    ),
+    target(
+      "artifact_handoff_promotion";
+      "artifact";
+      "handoff_ready";
+      ["durable_identity_evidence_ready", "artifact_readback_clean", "artifact_redaction_verified", "handoff_scope_authorized", "no_external_delivery_enabled", "operator_audit_receipt_ready"]
+    ),
+    target(
+      "external_handoff_promotion";
+      "external_handoff";
+      "blocked_pending_operator";
+      ["durable_identity_evidence_ready", "handoff_scope_authorized", "approval_readback_clean", "no_external_delivery_enabled", "operator_audit_receipt_ready"]
+    ),
+    target(
+      "approval_resolution_promotion";
+      "human_approval";
+      "approval_visible_not_recorded";
+      ["durable_identity_evidence_ready", "approval_readback_clean", "operator_authority_scope_valid", "approval_expiry_current", "operator_audit_receipt_ready"]
+    ),
+    target(
+      "timeline_operator_summary_promotion";
+      "timeline_event";
+      "operator_summary_ready";
+      ["durable_identity_evidence_ready", "timeline_readback_clean", "artifact_redaction_verified", "operator_audit_receipt_ready"]
+    )
+  ] as $promotion_targets
+  | [
+    check(
+      "durable_identity_evidence_ready";
+      target_ids;
+      ["workflow_id", "run_id", "step_id", "checkpoint", "replay_key", "rollback_anchor", "receipt_hash"];
+      "deny_durable_identity_evidence_missing"
+    ),
+    check("task_result_schema_valid"; ["terminal_task_result_promotion"]; ["taskId", "status", "summaryHash", "evidenceRefs", "traceId"]; "deny_task_result_schema_missing"),
+    check("task_result_readback_clean"; ["terminal_task_result_promotion"]; ["taskResultHash", "terminalStatusObserved", "validatedWalHeadHash"]; "deny_task_result_readback_missing"),
+    check("artifact_readback_clean"; ["artifact_handoff_promotion"]; ["artifactHash", "producerNodeId", "redactionState"]; "deny_artifact_readback_missing"),
+    check("approval_readback_clean"; ["scheduler_unblock_promotion", "external_handoff_promotion", "approval_resolution_promotion"]; ["approvalId", "operatorScopeHash", "expiresAtUnixMs"]; "deny_approval_readback_missing"),
+    check("timeline_readback_clean"; ["timeline_operator_summary_promotion"]; ["timelineHash", "eventCount", "redactionState"]; "deny_timeline_readback_missing"),
+    check("dependency_closure_satisfied"; ["scheduler_unblock_promotion"]; ["dependencyNodeIds", "blockingEdgeIds", "terminalStatusObserved"]; "deny_dependency_closure_unsatisfied"),
+    check("lease_and_budget_current"; ["scheduler_unblock_promotion"]; ["leaseId", "budgetState", "checkedAtUnixMs"]; "deny_lease_or_budget_stale"),
+    check("operator_authority_scope_valid"; ["approval_resolution_promotion"]; ["operatorScope", "authorityHash", "expiresAtUnixMs"]; "deny_operator_authority_invalid"),
+    check("approval_expiry_current"; ["approval_resolution_promotion"]; ["approvalId", "expiresAtUnixMs", "checkedAtUnixMs"]; "deny_approval_expired"),
+    check("handoff_scope_authorized"; ["artifact_handoff_promotion", "external_handoff_promotion"]; ["handoffId", "target", "operatorScopeHash"]; "deny_handoff_scope_unauthorized"),
+    check("no_external_delivery_enabled"; ["artifact_handoff_promotion", "external_handoff_promotion"]; ["deliveryEnabled", "externalSendEnabled", "previewMode"]; "deny_external_delivery_enabled"),
+    check("artifact_redaction_verified"; ["terminal_task_result_promotion", "artifact_handoff_promotion", "timeline_operator_summary_promotion"]; ["redactionState", "payloadHash", "evidenceRefs"]; "deny_redaction_unverified"),
+    check("no_replay_drift_detected"; ["terminal_task_result_promotion", "scheduler_unblock_promotion"]; ["driftDetectorIds", "driftStatus", "validatedWalHeadHash"]; "deny_replay_drift_detected"),
+    check("operator_audit_receipt_ready"; ($promotion_targets | map(.id)); ["traceId", "nodeId", "redactedEvidenceRefs", "receiptHash", "receipt_hash"]; "deny_audit_receipt_missing")
+  ] as $required_checks
+  | [
+    denial(
+      "deny_durable_identity_evidence_missing";
+      "critical";
+      target_ids;
+      "promotion requires workflow, run, step, checkpoint, replay, rollback, and receipt hash evidence"
+    ),
+    denial("deny_task_result_schema_missing"; "critical"; ["terminal_task_result_promotion"]; "TaskResult cannot be promoted without canonical schema evidence"),
+    denial("deny_task_result_readback_missing"; "critical"; ["terminal_task_result_promotion"]; "terminal TaskResult readback must match replay evidence first"),
+    denial("deny_artifact_readback_missing"; "critical"; ["artifact_handoff_promotion"]; "artifact handoff cannot proceed without artifact readback"),
+    denial("deny_approval_readback_missing"; "critical"; ["scheduler_unblock_promotion", "external_handoff_promotion", "approval_resolution_promotion"]; "approval-dependent promotion requires visible approval readback"),
+    denial("deny_timeline_readback_missing"; "high"; ["timeline_operator_summary_promotion"]; "operator summary requires replayable timeline readback"),
+    denial("deny_dependency_closure_unsatisfied"; "critical"; ["scheduler_unblock_promotion"]; "scheduler unblock requires every dependency edge to be satisfied"),
+    denial("deny_lease_or_budget_stale"; "critical"; ["scheduler_unblock_promotion"]; "scheduler unblock requires current lease and budget evidence"),
+    denial("deny_operator_authority_invalid"; "critical"; ["approval_resolution_promotion"]; "approval resolution requires valid operator authority scope"),
+    denial("deny_approval_expired"; "critical"; ["approval_resolution_promotion"]; "expired approval cannot unblock or promote work"),
+    denial("deny_handoff_scope_unauthorized"; "critical"; ["artifact_handoff_promotion", "external_handoff_promotion"]; "handoff target is outside authorized scope"),
+    denial("deny_external_delivery_enabled"; "critical"; ["artifact_handoff_promotion", "external_handoff_promotion"]; "preview promotion cannot enable external delivery"),
+    denial("deny_redaction_unverified"; "critical"; ["terminal_task_result_promotion", "artifact_handoff_promotion", "timeline_operator_summary_promotion"]; "promotion evidence must be redacted before it can be surfaced"),
+    denial("deny_replay_drift_detected"; "critical"; ["terminal_task_result_promotion", "scheduler_unblock_promotion"]; "replay/readback drift blocks promotion"),
+    denial("deny_audit_receipt_missing"; "critical"; ($promotion_targets | map(.id)); "promotion needs a redacted audit receipt before any future execution")
+  ] as $denial_reasons
+  | [
+    receipt("terminal_task_result_receipt"; "terminal_task_result_promotion"),
+    receipt("scheduler_unblock_receipt"; "scheduler_unblock_promotion"),
+    receipt("artifact_handoff_receipt"; "artifact_handoff_promotion"),
+    receipt("external_handoff_receipt"; "external_handoff_promotion"),
+    receipt("approval_resolution_receipt"; "approval_resolution_promotion"),
+    receipt("timeline_operator_summary_receipt"; "timeline_operator_summary_promotion")
+  ] as $audit_receipts
+  | [
+    invariant("promotion_requires_durable_identity"; "promotion preconditions must consume workflow_id, run_id, step_id, checkpoint, replay_key, rollback_anchor, and receipt_hash"),
+    invariant("promotion_requires_readback"; "every promotable target must have readback evidence from replay/readback preview"),
+    invariant("scheduler_unblock_requires_dependency_closure"; "scheduler work cannot become runnable until dependencies, lease, budget, and approvals are current"),
+    invariant("handoff_promotion_cannot_deliver"; "handoff readiness cannot perform external delivery in preview mode"),
+    invariant("approval_resolution_is_visible_not_recorded"; "approval visibility can be previewed without recording an operator decision"),
+    invariant("audit_receipts_are_redacted_and_non_persistent"; "preview audit receipts contain hashes and refs and cannot be persisted"),
+    invariant("promotion_precondition_preview_has_no_side_effects"; "this gate cannot promote state, unblock schedulers, record approvals, or send externally")
+  ] as $invariants
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_promotion_precondition_preview_gate",
+      schema_version: "work_graph_promotion_precondition_preview_v1",
+      preview_mode: "read_only_promotion_precondition_preview_no_promotion",
+      promotion_target_count: ($promotion_targets | length),
+      required_check_count: ($required_checks | length),
+      denial_reason_count: ($denial_reasons | length),
+      audit_receipt_count: ($audit_receipts | length),
+      invariant_count: ($invariants | length),
+      required_prior_gates: prior_gates,
+      promotion_targets: $promotion_targets,
+      required_checks: $required_checks,
+      denial_reasons: $denial_reasons,
+      audit_receipts: $audit_receipts,
+      invariants: $invariants,
+      durable_identity_evidence: {
+        schema_version: $durable_identity_report.schema_version,
+        durable_field_count: $durable_identity_report.durable_field_count,
+        preview_binding_count: $durable_identity_report.preview_binding_count,
+        invariant_count: $durable_identity_report.invariant_count
+      },
+      recommended_next_gate: "hepta_work_graph_activation_enforcement_blocker_preview_gate",
+      ready_for_activation_enforcement_blocker_preview: true,
+      ready_for_promotion_execution: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        promotion_precondition: {
+          rust_module_present: $promotion_precondition_rust_module_present,
+          report_script_present: $promotion_precondition_report_script_present,
+          gate_script_present: $promotion_precondition_gate_script_present
+        },
+        replay_readback: {
+          rust_module_present: $replay_readback_rust_module_present,
+          report_script_present: $replay_readback_report_script_present,
+          gate_script_present: $replay_readback_gate_script_present
+        },
+        durable_identity: {
+          rust_module_present: $durable_identity_rust_module_present,
+          report_script_present: $durable_identity_report_script_present,
+          gate_script_present: $durable_identity_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        promotion_performed: false,
+        scheduler_unblock_performed: false,
+        handoff_promotion_performed: false,
+        approval_recorded: false,
+        audit_receipt_persisted: false,
+        runtime_mutation_performed: false,
+        scheduler_cutover_performed: false,
+        adapter_projection_enforced: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

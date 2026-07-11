@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-hepta-system-status-internal-read-only-invocation.report"
+E2E_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-hepta-system-status-read-only-e2e.gate"
+FIXTURE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workflow-durable-store-test-only-append-fixture.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HEPTA_SYSTEM_STATUS_INTERNAL_READ_ONLY_INVOCATION_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-hepta-system-status-internal-read-only-invocation-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 8 report: $REPORT"
+[[ -x "$E2E_GATE" ]] || fail "missing executable Phase 4 read-only E2E gate: $E2E_GATE"
+[[ -x "$FIXTURE_GATE" ]] || fail "missing executable Phase 7 append fixture gate: $FIXTURE_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 8 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 8 internal read-only invocation report"
+fi
+
+grep -q 'Internal Read-Only Invocation' "$DOC" \
+  || fail "architecture note must document Internal Read-Only Invocation"
+grep -q 'internal status payload' "$DOC" \
+  || fail "architecture note must document the internal status payload"
+grep -q 'no credential read, external network access, external tool invocation, ToolRegistry live switch, ledger write, approval request, approval acceptance, receipt persistence, workflow event-log write, SQLite write, Native POST mutation, channel send, or live execution' "$DOC" \
+  || fail "architecture note must document the closed external/mutation boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_system_status_internal_read_only_invocation"
+  and .status == "ready"
+  and .gate == "hepta_system_status_internal_read_only_invocation_gate"
+  and .schema_version == "hepta_system_status_internal_read_only_invocation_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .invocation_scope == "internal_read_only_status_payload_no_external_network_or_mutation"
+  and .source_e2e_ready == true
+  and .source_e2e_chain_link_count == 4
+  and .source_e2e_ready_for_invocation == false
+  and .source_tool_dispatch_ready == true
+  and .source_tool_dispatch_candidate_count == 2
+  and .source_selected_candidate_preflight_ready == true
+  and .source_non_selected_candidate_preflight_ready == true
+  and .source_fixture_ready == true
+  and .source_fixture_entry_count == 9
+  and .source_fixture_runtime_event_log_write_allowed == false
+  and .lib_export_present == true
+  and .candidate_count == 2
+  and .selected_candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp"
+  and .selected_contribution_kind == "mcp_server"
+  and .non_selected_candidate_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app"
+  and .non_selected_candidate_kept_preflight_only == true
+  and .invocation_entry_count == 1
+  and .internal_read_only_invocation_materialized == true
+  and .status_payload_materialized == true
+  and .status_payload_fingerprint == "hepta-system-status.internal-read-only.v1.e2e4.fixture9.live0"
+  and .output_schema_validated == true
+  and .receipt_projected_in_memory == true
+  and .receipt_persisted == false
+  and .external_network_allowed == false
+  and .credential_read_allowed == false
+  and .external_tool_invoked == false
+  and .tool_invocation_switch_enabled == false
+  and .ledger_write_allowed == false
+  and .approval_request_allowed == false
+  and .approval_acceptance_allowed == false
+  and .workflow_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .native_post_mutation_allowed == false
+  and .channel_send_allowed == false
+  and .live_execution_allowed == false
+  and .internal_read_only_invocation_ready == true
+  and .payload.status == "ready_blocked"
+  and .payload.status_route == "internal://hepta-system/status/read-only"
+  and .payload.controlled_live_cutover_ready == false
+  and .payload.live_enabled_count == 0
+  and (.entries | length) == 2
+  and any(.entries[]; .candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp" and .invocation_route == "internal_status_payload_projected" and .selected_for_internal_invocation == true and .internal_read_model_evaluated == true)
+  and any(.entries[]; .candidate_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app" and .invocation_route == "preflight_only_not_invoked" and .selected_for_internal_invocation == false and .internal_read_model_evaluated == false)
+  and (.entries | all(.preflight_bound == true
+    and .external_network_allowed == false
+    and .credential_read_allowed == false
+    and .external_tool_invoked == false
+    and .tool_invocation_switch_enabled == false
+    and .ledger_write_allowed == false
+    and .approval_request_allowed == false
+    and .approval_acceptance_allowed == false
+    and .receipt_persisted == false
+    and .workflow_event_log_write_allowed == false
+    and .sqlite_write_allowed == false
+    and .native_post_mutation_allowed == false
+    and .channel_send_allowed == false
+    and .live_execution_allowed == false))
+  and (.blockers | index("external_network_disabled")) != null
+  and (.blockers | index("credential_read_disabled")) != null
+  and (.blockers | index("approval_acceptance_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.next_actions | index("phase9_operator_approval_protocol_nonce_session_binding_without_auto_acceptance")) != null
+  and .next_migration_step == "phase9_operator_approval_protocol_nonce_session_binding_without_auto_acceptance"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$E2E_GATE" >/dev/null
+"$FIXTURE_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime hepta_system_status_internal_read_only_invocation --lib
+)
+
+printf 'hepta-systems-hepta-system-status-internal-read-only-invocation-gate: PASS: internal hepta-system status read-only invocation materializes payload while external network, credentials, mutation, persistence, and live execution stay closed\n'

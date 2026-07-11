@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-rehearsal.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_OWNER_FREEZE_CLASSIFICATION_OUTCOME_READBACK_2026-06-29.md"
+
+fail() {
+  printf 'hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_REPORT" ]] || fail "missing executable owner/freeze/classification rehearsal report: $SOURCE_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing owner/freeze/classification outcome Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing owner/freeze/classification outcome architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the owner/freeze/classification outcome readback report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$SOURCE_REPORT" >"$tmpdir/source.json" \
+  || fail "failed to render owner/freeze/classification rehearsal report"
+jq -e . "$tmpdir/source.json" >/dev/null \
+  || fail "invalid JSON rendered by owner/freeze/classification rehearsal report"
+
+lib_export_present=false
+if grep -q 'dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+jq -n \
+  --slurpfile source "$tmpdir/source.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-dirty-worktree-release-boundary-owner-freeze-classification-outcome-readback.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_OWNER_FREEZE_CLASSIFICATION_OUTCOME_READBACK_2026-06-29.md" \
+  '
+  def key_safe($value): ($value | gsub("[^A-Za-z0-9._-]"; "_") | gsub("-"; "_"));
+  def route_prefix($group_type):
+    if $group_type == "top_level" then "top-level"
+    elif $group_type == "scope" then "scope"
+    else $group_type
+    end;
+  def route_safe($value): ($value | gsub("_"; "-") | gsub("[^A-Za-z0-9.-]"; "-"));
+  def outcome_category($bucket):
+    if $bucket == "cross_lane_or_unowned" then "owner_attribution_outcome_required"
+    elif $bucket == "hepta_systems_owned" then "owned_lane_freeze_outcome_required"
+    elif $bucket == "artifacts" then "artifact_classification_outcome_required"
+    elif ($bucket == "codex-rs" or $bucket == "plugins" or $bucket == "scripts" or $bucket == "docs") then "targeted_gate_outcome_required"
+    else "bucket_review_outcome_required"
+    end;
+  def outcome_action($bucket):
+    if $bucket == "cross_lane_or_unowned" then "readback_owner_attribution_gap_without_persistence"
+    elif $bucket == "codex-rs" then "readback_targeted_rust_gate_required_without_execution"
+    elif $bucket == "plugins" then "readback_plugin_surface_gate_required_without_execution"
+    elif $bucket == "scripts" then "readback_script_syntax_gate_required_without_execution"
+    elif $bucket == "hepta_systems_owned" then "readback_owned_lane_freeze_candidate_without_applying_freeze"
+    elif $bucket == "artifacts" then "readback_artifact_classification_required_without_delete_or_relocation"
+    elif $bucket == "docs" then "readback_doc_evidence_consistency_required_without_evidence_persistence"
+    else "readback_bucket_review_required_without_git_mutation"
+    end;
+  def release_disposition($source_disposition):
+    if $source_disposition == "blocked_until_owner_attribution" then "release_blocked_until_owner_attribution_outcome"
+    elif $source_disposition == "blocked_until_artifact_classification" then "release_blocked_until_artifact_classification_outcome"
+    elif $source_disposition == "blocked_until_owned_lane_freeze" then "release_blocked_until_owned_lane_freeze_outcome"
+    elif $source_disposition == "blocked_until_targeted_gate" then "release_blocked_until_targeted_gate_outcome"
+    else "release_blocked_until_bucket_review_outcome"
+    end;
+  def outcome_entry:
+    . as $entry
+    | {
+      source_classification_key:$entry.classification_key,
+      source_classification_route:$entry.classification_route,
+      outcome_key:("dirty_worktree.owner_freeze_classification_outcome." + key_safe($entry.group_type) + "." + key_safe($entry.source_bucket)),
+      outcome_route:("readback://release-boundary/dirty-worktree/owner-freeze-classification-outcome/" + route_prefix($entry.group_type) + "/" + route_safe($entry.source_bucket)),
+      source_bucket:$entry.source_bucket,
+      group_type:$entry.group_type,
+      source_entry_count:$entry.source_entry_count,
+      tracked_count:$entry.tracked_count,
+      untracked_count:$entry.untracked_count,
+      owner_route:$entry.owner_route,
+      owner_state:$entry.owner_state,
+      freeze_state:$entry.freeze_state,
+      classification_state:$entry.classification_state,
+      outcome_category:outcome_category($entry.source_bucket),
+      outcome_action:outcome_action($entry.source_bucket),
+      release_disposition:release_disposition($entry.release_disposition),
+      required_local_gate:$entry.local_gate,
+      operator_packet_candidate:true,
+      source_rehearsal_attached:(($entry.classification_key | length) > 0 and ($entry.classification_route | length) > 0),
+      outcome_readback_visible:true,
+      outcome_readback_persisted:false,
+      queryable:$entry.queryable,
+      diffable:$entry.diffable,
+      test_probe_executed:false,
+      mutation_free:true,
+      owner_assignment_persisted:false,
+      freeze_applied:false,
+      classification_persisted:false,
+      evidence_recording_allowed:false,
+      approval_acceptance_allowed:false,
+      decision_recording_allowed:false,
+      git_mutation_blocked:($entry.git_add_blocked == true and $entry.git_index_mutation_blocked == true and $entry.git_commit_blocked == true and $entry.git_push_blocked == true and $entry.git_reset_blocked == true and $entry.git_checkout_blocked == true and $entry.git_revert_blocked == true),
+      cleanup_delete_blocked:($entry.cleanup_blocked == true and $entry.delete_blocked == true),
+      release_cutover_allowed:false,
+      canary_activation_allowed:false,
+      live_execution_allowed:false
+    };
+  ($source[0]) as $source_report |
+  ($source_report.entries | map(outcome_entry)) as $entries |
+  ($entries | length) as $outcome_entry_count |
+  ($entries | map(.outcome_key) | unique | length) as $stable_outcome_key_count |
+  ($entries | map(.outcome_route) | unique | length) as $outcome_route_count |
+  ($entries | map(select(.source_rehearsal_attached == true and .outcome_readback_visible == true and .outcome_readback_persisted == false and .queryable == true and .diffable == true and .test_probe_executed == false and .mutation_free == true and .owner_assignment_persisted == false and .freeze_applied == false and .classification_persisted == false and .evidence_recording_allowed == false and .approval_acceptance_allowed == false and .decision_recording_allowed == false and .git_mutation_blocked == true and .cleanup_delete_blocked == true and .release_cutover_allowed == false and .canary_activation_allowed == false and .live_execution_allowed == false and (.outcome_category | length) > 0 and (.outcome_action | length) > 0 and (.required_local_gate | length) > 0)) | length) as $outcome_ready_count |
+  ($entries | map(select(.outcome_category == "owner_attribution_outcome_required")) | length) as $owner_attribution_outcome_required_count |
+  ($entries | map(select(.outcome_category == "targeted_gate_outcome_required")) | length) as $targeted_gate_outcome_required_count |
+  ($entries | map(select(.outcome_category == "owned_lane_freeze_outcome_required")) | length) as $owned_lane_freeze_outcome_required_count |
+  ($entries | map(select(.outcome_category == "artifact_classification_outcome_required")) | length) as $artifact_classification_outcome_required_count |
+  ($entries | map(select(.owner_route == "owner://release-boundary/hepta-systems")) | length) as $hepta_systems_owner_route_count |
+  ($entries | map(select(.owner_route == "owner://release-boundary/cross-lane-review")) | length) as $cross_lane_owner_route_count |
+  ($entries | map(select(.release_disposition != "release_cutover_ready")) | length) as $release_blocked_count |
+  ($entries | map(select(.test_probe_executed == false)) | length) as $test_probe_execution_blocked_count |
+  ($entries | map(select(.git_mutation_blocked == true)) | length) as $git_mutation_blocked_count |
+  ($entries | map(select(.cleanup_delete_blocked == true)) | length) as $cleanup_delete_blocked_count |
+  ($entries | map(select(.evidence_recording_allowed == false)) | length) as $evidence_recording_blocked_count |
+  ($entries | map(select(.approval_acceptance_allowed == false)) | length) as $approval_acceptance_blocked_count |
+  ($entries | map(select(.decision_recording_allowed == false)) | length) as $decision_recording_blocked_count |
+  ($source_report.owner_freeze_classification_rehearsal_ready == true
+    and $source_report.owner_freeze_classification_readback_visible == true
+    and $source_report.owner_freeze_classification_readback_persisted == false
+    and $source_report.owner_assignment_persisted == false
+    and $source_report.freeze_applied == false
+    and $source_report.classification_persisted == false
+    and $source_report.test_probe_executed == false
+    and $source_report.evidence_recorded == false
+    and $source_report.approval_accepted == false
+    and $source_report.decision_recorded == false
+    and $lib_export_present == true
+    and $outcome_entry_count == $source_report.classification_entry_count
+    and $stable_outcome_key_count == $outcome_entry_count
+    and $outcome_route_count == $outcome_entry_count
+    and $outcome_ready_count == $outcome_entry_count
+    and $owner_attribution_outcome_required_count == 1
+    and $targeted_gate_outcome_required_count == 4
+    and $owned_lane_freeze_outcome_required_count == 1
+    and $artifact_classification_outcome_required_count == 1
+    and $hepta_systems_owner_route_count == 4
+    and $cross_lane_owner_route_count == 3
+    and $release_blocked_count == $outcome_entry_count
+    and $test_probe_execution_blocked_count == $outcome_entry_count
+    and $git_mutation_blocked_count == $outcome_entry_count
+    and $cleanup_delete_blocked_count == $outcome_entry_count
+    and $evidence_recording_blocked_count == $outcome_entry_count
+    and $approval_acceptance_blocked_count == $outcome_entry_count
+    and $decision_recording_blocked_count == $outcome_entry_count) as $ready |
+  {
+    runtime:"hepta",
+    surface:"dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback_without_git_mutation",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback_without_git_mutation_gate",
+    schema_version:"dirty_worktree_release_boundary_owner_freeze_classification_outcome_readback_v1",
+    plugin_id:$source_report.plugin_id,
+    source_rehearsal_gate:$source_report.gate,
+    source_rehearsal_ready:$source_report.owner_freeze_classification_rehearsal_ready,
+    source_rehearsal_visible:$source_report.owner_freeze_classification_readback_visible,
+    source_rehearsal_persisted:$source_report.owner_freeze_classification_readback_persisted,
+    source_classification_entry_count:$source_report.classification_entry_count,
+    source_tracked_change_count:$source_report.source_tracked_change_count,
+    source_untracked_change_count:$source_report.source_untracked_change_count,
+    lib_export_present:$lib_export_present,
+    outcome_entry_count:$outcome_entry_count,
+    stable_outcome_key_count:$stable_outcome_key_count,
+    outcome_route_count:$outcome_route_count,
+    outcome_ready_count:$outcome_ready_count,
+    owner_attribution_outcome_required_count:$owner_attribution_outcome_required_count,
+    targeted_gate_outcome_required_count:$targeted_gate_outcome_required_count,
+    owned_lane_freeze_outcome_required_count:$owned_lane_freeze_outcome_required_count,
+    artifact_classification_outcome_required_count:$artifact_classification_outcome_required_count,
+    hepta_systems_owner_route_count:$hepta_systems_owner_route_count,
+    cross_lane_owner_route_count:$cross_lane_owner_route_count,
+    release_blocked_count:$release_blocked_count,
+    test_probe_execution_blocked_count:$test_probe_execution_blocked_count,
+    git_mutation_blocked_count:$git_mutation_blocked_count,
+    cleanup_delete_blocked_count:$cleanup_delete_blocked_count,
+    evidence_recording_blocked_count:$evidence_recording_blocked_count,
+    approval_acceptance_blocked_count:$approval_acceptance_blocked_count,
+    decision_recording_blocked_count:$decision_recording_blocked_count,
+    outcome_readback_visible:$ready,
+    outcome_readback_persisted:false,
+    owner_assignment_persisted:false,
+    freeze_applied:false,
+    classification_persisted:false,
+    test_probe_executed:false,
+    evidence_recorded:false,
+    approval_accepted:false,
+    decision_recorded:false,
+    operator_packet_sent:false,
+    operator_packet_persisted:false,
+    strategy_applied:false,
+    git_index_mutated:false,
+    cleanup_allowed:false,
+    delete_allowed:false,
+    release_cutover_allowed:false,
+    package_or_release_allowed:false,
+    canary_activation_allowed:false,
+    live_activation_allowed:false,
+    live_execution_allowed:false,
+    owner_freeze_classification_outcome_readback_ready:$ready,
+    entries:$entries,
+    blockers:[
+      "owner_freeze_classification_outcome_readback_visible_only",
+      "owner_assignment_persistence_blocked",
+      "freeze_application_blocked",
+      "classification_persistence_blocked",
+      "test_probe_execution_still_blocked",
+      "git_mutation_blocked",
+      "cleanup_and_delete_blocked",
+      "evidence_recording_blocked",
+      "approval_acceptance_blocked",
+      "decision_recording_blocked",
+      "operator_packet_send_blocked",
+      "release_cutover_blocked",
+      "canary_activation_blocked",
+      "live_activation_blocked"
+    ],
+    next_actions:[
+      "dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send"
+    ],
+    recommended_next_gate:"dirty_worktree_release_boundary_owner_freeze_classification_operator_packet_without_send",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      owner_assignment_persisted:false,
+      freeze_applied:false,
+      classification_persisted:false,
+      test_probe_executed:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      evidence_receipt_persisted:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      approval_receipt_persisted:false,
+      decision_recorded:false,
+      decision_recording_persisted:false,
+      decision_receipt_persisted:false,
+      operator_packet_sent:false,
+      operator_packet_persisted:false,
+      readback_persisted:false,
+      git_add_performed:false,
+      git_index_mutated:false,
+      git_commit_created:false,
+      git_push_performed:false,
+      git_reset_performed:false,
+      git_checkout_performed:false,
+      git_revert_performed:false,
+      cleanup_performed:false,
+      unrelated_file_deleted:false,
+      strategy_applied:false,
+      blocker_waived:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      canary_activation_started:false,
+      live_activation_started:false,
+      live_execution_started:false
+    }
+  }'

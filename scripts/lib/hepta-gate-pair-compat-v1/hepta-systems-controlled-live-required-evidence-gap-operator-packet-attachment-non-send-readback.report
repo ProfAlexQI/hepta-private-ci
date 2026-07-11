@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+OPERATOR_PACKET_ATTACHMENT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_NON_SEND_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-non-send-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$OPERATOR_PACKET_ATTACHMENT_REPORT" ]] || fail "missing executable Phase 5i operator packet attachment report: $OPERATOR_PACKET_ATTACHMENT_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5j Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing Phase 5j architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the Phase 5j operator packet attachment non-send readback report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if grep -q 'controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+attachment_json="${HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_JSON:-}"
+if [[ -n "$attachment_json" ]]; then
+  [[ -f "$attachment_json" ]] || fail "missing cached Phase 5i operator packet attachment report: $attachment_json"
+else
+  attachment_json="$tmpdir/attachment.json"
+  "$OPERATOR_PACKET_ATTACHMENT_REPORT" >"$attachment_json" || fail "failed to render Phase 5i operator packet attachment report"
+fi
+
+jq -n \
+  --slurpfile attachment "$attachment_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-non-send-readback.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_GAP_OPERATOR_PACKET_ATTACHMENT_NON_SEND_READBACK_2026-06-27.md" \
+  '
+  def non_send_key($id):
+    "controlled_live.required_evidence.gap.operator_packet_attachment.non_send." + $id;
+  def non_send_route($id):
+    "readback://controlled-live/operator-packet/attachment/non-send/" + ($id | gsub("_"; "-"));
+  ($attachment[0]) as $attachment |
+  ($attachment.entries | map({
+    id,
+    source_blocker_id,
+    packet_id,
+    packet_payload_hash,
+    attachment_key,
+    attachment_route,
+    non_send_readback_key:non_send_key(.source_blocker_id),
+    non_send_readback_route:non_send_route(.source_blocker_id),
+    operator_readback_key,
+    operator_readback_route,
+    operator_display_order,
+    operator_status,
+    observed_state:"attachment_visible_unsent_unpersisted",
+    previous_state,
+    current_state,
+    state_delta,
+    owner,
+    risk_bucket,
+    operator_label,
+    required_evidence,
+    operator_visible:true,
+    attachment_visible:true,
+    non_send_confirmed:true,
+    packet_send_blocked:true,
+    attachment_send_blocked:true,
+    approval_request_blocked:true,
+    persistence_blocked:true,
+    evidence_recorded:false,
+    approval_request_allowed:false,
+    approval_acceptance_allowed:false,
+    blocker_waiver_allowed:false,
+    credential_read_allowed:false,
+    evidence_recording_allowed:false,
+    packet_persistence_allowed:false,
+    attachment_persistence_allowed:false,
+    readback_persistence_allowed:false,
+    live_mutation_allowed:false
+  })) as $entries |
+  ($entries | map(select(.operator_visible == true and .attachment_visible == true and .non_send_confirmed == true and .packet_send_blocked == true and .attachment_send_blocked == true and .approval_request_blocked == true and .persistence_blocked == true and .live_mutation_allowed == false)) | length) as $readback_ready_count |
+  ($entries | map(select(.previous_state == "missing" and .current_state == "missing" and .state_delta == "unchanged_missing")) | length) as $unchanged_missing_readback_count |
+  ($entries | map(select(.evidence_recorded == true)) | length) as $evidence_recorded_count |
+  ($entries | map(select(.blocker_waiver_allowed == true)) | length) as $blocker_waived_count |
+  ($attachment.operator_packet_attachment_ready == true
+    and $attachment.attachment_entry_count == 7
+    and $attachment.unchanged_missing_attachment_count == 7
+    and $attachment.approval_request_sent == false
+    and $attachment.approval_accepted == false
+    and $attachment.packet_persisted == false
+    and $attachment.attachment_persisted == false
+    and $attachment.readback_persisted == false
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and $readback_ready_count == 7
+    and $unchanged_missing_readback_count == 7
+    and $evidence_recorded_count == 0
+    and $blocker_waived_count == 0
+    and ($entries | all(.packet_id == $attachment.attached_packet_id
+      and .packet_payload_hash == $attachment.attached_payload_hash
+      and .operator_status == "blocked_missing_evidence"
+      and .observed_state == "attachment_visible_unsent_unpersisted"
+      and .approval_request_allowed == false
+      and .approval_acceptance_allowed == false
+      and .evidence_recording_allowed == false
+      and .credential_read_allowed == false
+      and .packet_persistence_allowed == false
+      and .attachment_persistence_allowed == false
+      and .readback_persistence_allowed == false
+      and .live_mutation_allowed == false))) as $non_send_readback_ready |
+  {
+    runtime:"hepta",
+    surface:"controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback",
+    status:(if $non_send_readback_ready then "ready_blocked" else "blocked" end),
+    gate:"controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback_gate",
+    schema_version:"controlled_live_required_evidence_gap_operator_packet_attachment_non_send_readback_v1",
+    plugin_id:"hepta-system@hepta-local",
+    source_operator_packet_attachment_ready:$attachment.operator_packet_attachment_ready,
+    source_attachment_id:$attachment.attachment_id,
+    source_attachment_key:$attachment.attachment_key,
+    source_attached_packet_id:$attachment.attached_packet_id,
+    source_attached_payload_hash:$attachment.attached_payload_hash,
+    source_attachment_entry_count:$attachment.attachment_entry_count,
+    source_unchanged_missing_attachment_count:$attachment.unchanged_missing_attachment_count,
+    lib_export_present:$lib_export_present,
+    readback_entry_count:($entries | length),
+    readback_ready_count:$readback_ready_count,
+    unchanged_missing_readback_count:$unchanged_missing_readback_count,
+    attachment_visible_to_operator:$non_send_readback_ready,
+    attachment_send_attempted:false,
+    packet_send_attempted:false,
+    approval_request_ready:false,
+    approval_request_sent:false,
+    approval_acceptance_ready:false,
+    approval_accepted:false,
+    approval_recorded:false,
+    packet_persisted:false,
+    attachment_persisted:false,
+    readback_persisted:false,
+    evidence_recorded_count:$evidence_recorded_count,
+    blocker_waived_count:$blocker_waived_count,
+    credential_read_allowed:false,
+    evidence_recording_allowed:false,
+    evidence_persisted:false,
+    controlled_live_cutover_ready:false,
+    live_execution_allowed:false,
+    non_send_readback_ready:$non_send_readback_ready,
+    entries:$entries,
+    next_actions:[
+      "phase5k_controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback_without_acceptance",
+      "keep_operator_packet_attachment_visible_unsent_unpersisted_and_not_an_approval_request"
+    ],
+    next_migration_step:"phase5k_controlled_live_required_evidence_gap_operator_packet_attachment_transport_boundary_readback_without_acceptance",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      approval_requested:false,
+      approval_accepted:false,
+      approval_recorded:false,
+      evidence_recorded:false,
+      evidence_persisted:false,
+      blocker_waived:false,
+      credential_read:false,
+      packet_sent:false,
+      attachment_sent:false,
+      packet_persisted:false,
+      attachment_persisted:false,
+      readback_persisted:false,
+      ledger_written:false,
+      workflow_event_log_written:false,
+      sqlite_written:false,
+      native_post_mutation_performed:false,
+      gateway_or_auth_mutated:false,
+      telegram_transport_mutated:false,
+      channel_send_performed:false,
+      provider_invoked:false,
+      model_invoked:false,
+      replay_executed:false,
+      rollback_executed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

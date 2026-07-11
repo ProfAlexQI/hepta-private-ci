@@ -1,34 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-digest_report="$repo_root/scripts/hepta-context-plane-operator-approval-packet-canonical-export-digest-report.sh"
-
-line_count() {
-  printf '%s\n' "$1" | wc -l | tr -d ' '
-}
-
-sha256_digest() {
-  shasum -a 256 | awk '{print $1}'
-}
-
-digest_status="$(bash "$digest_report")"
-digest_status_lines="$(line_count "$digest_status")"
-digest_status_sha256="$(printf '%s\n' "$digest_status" | sha256_digest)"
-
-cat <<STATUS
-context-plane-operator-approval-packet-freshness=pass
-context-plane-operator-approval-packet-freshness.schema=1
-context-plane-operator-approval-packet-freshness.source-canonical-digest-report-lines=$digest_status_lines
-context-plane-operator-approval-packet-freshness.source-canonical-digest-report-sha256=$digest_status_sha256
-context-plane-operator-approval-packet-freshness.approval-readiness-sequence=273
-context-plane-operator-approval-packet-freshness.current-readiness-sequence=273
-context-plane-operator-approval-packet-freshness.expires-after-sequence=274
-context-plane-operator-approval-packet-freshness.max-replay-age-sequences=0
-context-plane-operator-approval-packet-freshness.stale-sequence=reject
-context-plane-operator-approval-packet-freshness.expired-sequence=reject
-context-plane-operator-approval-packet-freshness.future-sequence=reject
-context-plane-operator-approval-packet-freshness.digest-replay=reject
-context-plane-operator-approval-packet-freshness.runtime-activation=disabled
-context-plane-operator-approval-packet-freshness.operator-activation=disabled
-STATUS
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+exec "$ROOT/scripts/hepta-gate-pair-runner" report "hepta-context-plane-operator-approval-packet-freshness"

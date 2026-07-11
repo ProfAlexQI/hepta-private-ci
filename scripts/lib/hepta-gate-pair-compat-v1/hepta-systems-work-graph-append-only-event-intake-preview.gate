@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+REPORT_SCRIPT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-event-intake-preview.report"
+
+report="$(capture_json_report "hepta-work-graph-append-only-event-intake-preview-report" "$REPORT_SCRIPT")"
+printf '%s\n' "$report"
+
+jq -e '
+  .product == "Hepta"
+  and .runtime == "hepta"
+  and .status == "ready"
+  and .gate == "hepta_work_graph_append_only_event_intake_preview_gate"
+  and .schema_version == "work_graph_append_only_event_intake_preview_v1"
+  and .preview_mode == "read_only_append_only_event_intake_preview_no_writes"
+  and .event_contract_count == 9
+  and (.event_contracts | length) == .event_contract_count
+  and (.event_contracts | map(.id) == [
+    "plan_step_event_intake",
+    "agent_spawn_event_intake",
+    "mailbox_delivery_event_intake",
+    "agent_job_item_event_intake",
+    "worker_task_event_intake",
+    "scheduler_run_event_intake",
+    "artifact_event_intake",
+    "approval_event_intake",
+    "task_result_event_intake"
+  ])
+  and (.event_contracts | all(.mutates_store == false))
+  and (.event_contracts | all((.required_fields | index("traceId")) and (.idempotency_key_fields | length) >= 3))
+  and (.event_contracts | map(select(.requires_task_result_contract == true)) | length) == 5
+  and .target_collection_count == 6
+' >/dev/null <<<"$report"
+
+jq -e '
+  .source_route_count == 12
+  and (.source_routes | length) == .source_route_count
+  and (.source_routes | map(.source_surface_id) == [
+    "update_plan_tool",
+    "plan_mode_proposed_plan_blocks",
+    "app_server_turn_plan_notification",
+    "multi_agent_v2_thread_spawn",
+    "multi_agent_v2_mailbox_wait",
+    "hepta_runtime_multi_agent_reducer",
+    "agent_jobs_batch_workers",
+    "hepta_runtime_task_board",
+    "hepta_runtime_worker_tasks",
+    "hepta_runtime_scheduler_store",
+    "hepta_runtime_approval_broker",
+    "hepta_runtime_agent_harness"
+  ])
+  and (.source_routes | all((.target_collection_ids | index("timelineEvents")) and (.readback_probe_ids | length) >= 2))
+  and (.source_routes | map(select(.source_surface_id == "multi_agent_v2_mailbox_wait" and .intake_state == "blocked_until_idempotency_guard" and (.emitted_event_kind_ids == ["mailbox_delivery_event_intake"]))) | length) == 1
+  and (.source_routes | map(select(.source_surface_id == "hepta_runtime_task_board" and (.blocker_ids | index("source_projection_not_contract_ready")) and (.blocker_ids | index("event_intake_idempotency_guard_missing")))) | length) == 1
+  and (.source_routes | map(select(.source_surface_id == "hepta_runtime_worker_tasks" and (.emitted_event_kind_ids | index("task_result_event_intake")) and (.target_collection_ids | index("artifacts")))) | length) == 1
+  and (.source_routes | map(select(.idempotency_guard_id == null)) | length) == 5
+  and (.source_routes | all(.blocker_ids | index("append_only_store_disabled_by_design")))
+' >/dev/null <<<"$report"
+
+jq -e '
+  .blocker_count == 5
+  and (.blockers | length) == .blocker_count
+  and (.blockers | map(.id) == [
+    "source_projection_adapters_missing_for_new_surfaces",
+    "idempotency_guards_missing_for_expanded_intake",
+    "terminal_task_result_wrappers_not_enforced",
+    "readback_is_contract_only",
+    "append_only_store_disabled_by_design"
+  ])
+  and (.blockers | map(select(.severity == "high")) | length) == 3
+  and (.blockers | all(.required_before_store_enablement == true))
+  and .required_prior_gate_count == 9
+  and (.required_prior_gates == [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate"
+  ])
+  and .recommended_next_gate == "hepta_work_graph_replay_readback_preview_gate"
+  and .ready_for_replay_readback_preview == true
+  and .ready_for_append_only_store_enablement == false
+  and .ready_for_store_persistence == false
+  and .ready_for_live_execution == false
+  and .source_probes.append_only_event_intake.rust_module_present == true
+  and .source_probes.append_only_event_intake.report_script_present == true
+  and .source_probes.append_only_event_intake.gate_script_present == true
+  and .source_probes.unified_projection_audit.rust_module_present == true
+  and .source_probes.state_store_persistence.rust_module_present == true
+  and .source_probes.state_store_persistence.report_script_present == true
+  and .source_probes.state_store_persistence.gate_script_present == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+  work_graph_append_only_event_intake --lib
+
+echo "Hepta WorkGraph append-only event intake preview gate passed"

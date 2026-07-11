@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+WRAPPER_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.report"
+WRAPPER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_NAME_REINTRODUCTION_DECISION_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-historical-canonical-name-reintroduction-decision-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$WRAPPER_REPORT" ]] || fail "missing executable current canonical wrapper report: $WRAPPER_REPORT"
+[[ -x "$WRAPPER_GATE" ]] || fail "missing executable current canonical wrapper gate: $WRAPPER_GATE"
+[[ -f "$DOC" ]] || fail "missing historical canonical name reintroduction decision architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the historical canonical name reintroduction decision report"
+fi
+
+jq -n \
+  --slurpfile wrapper <("$WRAPPER_REPORT") \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-name-reintroduction-decision.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_HISTORICAL_CANONICAL_NAME_REINTRODUCTION_DECISION_2026-06-21.md" \
+  '
+  ($wrapper[0]) as $wrapper |
+  [
+    {
+      id:"attachment_index_snapshot_evidence_preserved",
+      current_dependency:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-canonical-summary-attachment-index.gate",
+      would_be_invalidated_by_name_claim:false,
+      required_before_claim:"complete"
+    },
+    {
+      id:"restore_preflight_snapshot_evidence_preserved",
+      current_dependency:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-compact-capability-matrix-restore-preflight.gate",
+      would_be_invalidated_by_name_claim:false,
+      required_before_claim:"complete"
+    },
+    {
+      id:"current_wrapper_thin_wrapper_claim",
+      current_dependency:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate",
+      would_be_invalidated_by_name_claim:false,
+      required_before_claim:"complete"
+    }
+  ] as $decision_checks |
+  ($wrapper.current_canonical_wrapper_ready
+    and $wrapper.historical_canonical_gate_name_claimed == true
+    and $wrapper.historical_canonical_gate_created == true
+    and $wrapper.historical_canonical_gate_executable == true
+    and $wrapper.historical_canonical_gate_wrapper_kind == "thin_local_exec_wrapper"
+    and $wrapper.historical_canonical_gate_wrapper_target == "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+    and $wrapper.historical_canonical_gate_wrapper_exec_count == 1
+    and $wrapper.historical_canonical_gate_mutated == true
+    and $wrapper.historical_canonical_gate_mutated_by_report == false
+    and $wrapper.canonical_gate_wrapper_invoked == false
+    and $wrapper.execution_enabled_count == 0
+    and $wrapper.public_ga_enabled_count == 0
+    and $wrapper.tool_execution_live_cutover_allowed == false
+    and $wrapper.tool_execution_public_ga_allowed == false
+    and ($decision_checks | all(.required_before_claim != null))
+    and ($wrapper.side_effects | to_entries | all(.value == false))) as $decision_ready |
+  {
+    runtime:"hepta",
+    surface:"historical_canonical_name_reintroduction_decision",
+    plugin_id:$wrapper.plugin_id,
+    status:(if $decision_ready then "ready" else "blocked" end),
+    source_current_canonical_wrapper_surface:$wrapper.surface,
+    source_current_canonical_wrapper_ready:$wrapper.current_canonical_wrapper_ready,
+    source_historical_canonical_gate_name_claimed:$wrapper.historical_canonical_gate_name_claimed,
+    source_historical_canonical_gate_created:$wrapper.historical_canonical_gate_created,
+    source_historical_canonical_gate_executable:$wrapper.historical_canonical_gate_executable,
+    source_historical_canonical_gate_wrapper_kind:$wrapper.historical_canonical_gate_wrapper_kind,
+    source_historical_canonical_gate_wrapper_target:$wrapper.historical_canonical_gate_wrapper_target,
+    source_historical_canonical_gate_wrapper_exec_count:$wrapper.historical_canonical_gate_wrapper_exec_count,
+    source_historical_canonical_gate_mutated:$wrapper.historical_canonical_gate_mutated,
+    source_historical_canonical_gate_mutated_by_report:$wrapper.historical_canonical_gate_mutated_by_report,
+    source_canonical_gate_wrapper_invoked:$wrapper.canonical_gate_wrapper_invoked,
+    source_execution_enabled_count:$wrapper.execution_enabled_count,
+    source_public_ga_enabled_count:$wrapper.public_ga_enabled_count,
+    proposed_historical_canonical_gate_path:"scripts/hepta-systems-canonical-gate.sh",
+    historical_canonical_gate_name_reintroduction_decision:"claimed_thin_wrapper",
+    historical_canonical_gate_name_reintroduction_allowed:true,
+    historical_canonical_gate_name_claimed:$wrapper.historical_canonical_gate_name_claimed,
+    historical_canonical_gate_created:$wrapper.historical_canonical_gate_created,
+    historical_canonical_gate_executable:$wrapper.historical_canonical_gate_executable,
+    historical_canonical_gate_wrapper_kind:$wrapper.historical_canonical_gate_wrapper_kind,
+    historical_canonical_gate_wrapper_target:$wrapper.historical_canonical_gate_wrapper_target,
+    historical_canonical_gate_wrapper_exec_count:$wrapper.historical_canonical_gate_wrapper_exec_count,
+    historical_canonical_gate_mutated:$wrapper.historical_canonical_gate_mutated,
+    historical_canonical_gate_mutated_by_report:false,
+    canonical_gate_wrapper_invoked:false,
+    phase_split_required_before_name_claim:false,
+    phase_split_completed_before_name_claim:true,
+    decision_check_count:($decision_checks | length),
+    decision_checks:$decision_checks,
+    current_wrapper_stable:true,
+    execution_enabled_count:0,
+    public_ga_enabled_count:0,
+    manual_operator_live_cutover_approval_required:true,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"validate_historical_canonical_gate_thin_wrapper_without_live_invocation",
+    decision_blockers:[
+      "historical_canonical_gate_thin_wrapper_validation_pending",
+      "manual_operator_live_cutover_approval_required",
+      "tool_execution_live_cutover_allowed_false",
+      "tool_execution_public_ga_allowed_false"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      current_canonical_wrapper_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.report",
+      current_canonical_wrapper_gate:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-wrapper.gate"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      plugin_fixture_fabricated:false,
+      canonical_summary_mutated:false,
+      historical_canonical_gate_mutated:false,
+      historical_canonical_gate_name_claimed:false,
+      canonical_gate_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

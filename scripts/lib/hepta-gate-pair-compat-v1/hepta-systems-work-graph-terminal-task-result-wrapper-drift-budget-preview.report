@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+drift_budget_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_terminal_task_result_wrapper_drift_budget_preview.rs
+)"
+drift_budget_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-terminal-task-result-wrapper-drift-budget-preview.report
+)"
+drift_budget_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-terminal-task-result-wrapper-drift-budget-preview.gate
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-terminal-task-result-wrapper-readback-preview.gate
+)"
+
+jq -n \
+  --argjson drift_budget_rust_module_present "$drift_budget_rust_module_present" \
+  --argjson drift_budget_report_script_present "$drift_budget_report_script_present" \
+  --argjson drift_budget_gate_script_present "$drift_budget_gate_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  '
+  def prior_gates: [
+    "hepta_work_graph_contract_preview_gate",
+    "hepta_work_graph_task_result_contract_preview_gate",
+    "hepta_work_graph_scheduler_admission_controller_preview_gate",
+    "hepta_work_graph_observability_timeline_preview_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate",
+    "hepta_work_graph_unified_state_store_preview_gate",
+    "hepta_work_graph_adapter_projection_fixture_gate",
+    "hepta_work_graph_unified_projection_audit_preview_gate",
+    "hepta_work_graph_state_store_persistence_preview_gate",
+    "hepta_work_graph_append_only_event_intake_preview_gate",
+    "hepta_work_graph_replay_readback_preview_gate",
+    "hepta_work_graph_idempotency_readback_adapter_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_fixture_preview_gate",
+    "hepta_work_graph_terminal_task_result_wrapper_readback_preview_gate"
+  ];
+  def budget($id; $detector; $fields; $summary; $preconditions): {
+    id: $id,
+    drift_detector_id: $detector,
+    compared_fields: $fields,
+    max_allowed_mismatches: 0,
+    max_allowed_unreviewed_findings: 0,
+    max_replay_lag_ms: 0,
+    severity: "critical",
+    block_level: "block_wrapper_execution_task_result_enforcement_and_promotion",
+    human_summary_id: $summary,
+    promotion_precondition_ids: $preconditions,
+    allows_readback_execution: false,
+    allows_wrapper_execution: false,
+    allows_task_result_enforcement: false,
+    allows_store_promotion: false
+  };
+  def summary($id; $detector; $title): {
+    id: $id,
+    drift_detector_id: $detector,
+    title: $title,
+    required_fields: [
+      "detectorId",
+      "budgetId",
+      "summaryHash",
+      "reviewerIdHash",
+      "reviewedAtUnixMs"
+    ],
+    redaction_policy: "summarize ids, hashes, and states without raw terminal payload",
+    review_state: "preview_summary_defined_review_not_performed",
+    persists_summary: false,
+    external_delivery_allowed: false
+  };
+  def precondition($id; $budget_ids; $summary_ids; $fields): {
+    id: $id,
+    required_budget_ids: $budget_ids,
+    required_summary_ids: $summary_ids,
+    required_evidence_fields: $fields,
+    blocks_promotion: true,
+    currently_satisfied: false
+  };
+  def blocker($id; $severity; $reason): {
+    id: $id,
+    severity: $severity,
+    reason: $reason,
+    required_before_readback_execution: true,
+    required_before_promotion: true
+  };
+  [
+    budget("identity_drift_zero_tolerance_budget"; "detect_fixture_identity_drift"; ["taskId", "traceId", "wrapperId"]; "identity_drift_operator_summary"; ["all_critical_drift_budgets_zero_tolerance", "operator_summaries_reviewed"]),
+    budget("status_drift_zero_tolerance_budget"; "detect_fixture_status_drift"; ["status", "terminalStatusObserved"]; "status_drift_operator_summary"; ["all_critical_drift_budgets_zero_tolerance", "operator_summaries_reviewed"]),
+    budget("evidence_drift_zero_tolerance_budget"; "detect_fixture_evidence_drift"; ["evidenceHash", "evidenceRefs"]; "evidence_drift_operator_summary"; ["all_critical_drift_budgets_zero_tolerance", "operator_summaries_reviewed"]),
+    budget("verifier_drift_zero_tolerance_budget"; "detect_fixture_verifier_drift"; ["verifierRef", "gateReportHash"]; "verifier_drift_operator_summary"; ["all_critical_drift_budgets_zero_tolerance", "operator_summaries_reviewed"]),
+    budget("redaction_drift_zero_tolerance_budget"; "detect_fixture_redaction_drift"; ["summaryHash", "redactionState"]; "redaction_drift_operator_summary"; ["all_critical_drift_budgets_zero_tolerance", "operator_summaries_reviewed", "redaction_drift_zero_leak_required"])
+  ] as $drift_budgets
+  | [
+    summary("identity_drift_operator_summary"; "detect_fixture_identity_drift"; "Task identity drift must be reviewed before wrapper execution"),
+    summary("status_drift_operator_summary"; "detect_fixture_status_drift"; "Terminal status drift must be reviewed before TaskResult enforcement"),
+    summary("evidence_drift_operator_summary"; "detect_fixture_evidence_drift"; "Evidence reference drift must be reviewed before readback execution"),
+    summary("verifier_drift_operator_summary"; "detect_fixture_verifier_drift"; "Verifier reference drift must be reviewed before promotion checks"),
+    summary("redaction_drift_operator_summary"; "detect_fixture_redaction_drift"; "Redaction drift must remain zero before any live surface")
+  ] as $operator_summaries
+  | ($drift_budgets | map(.id)) as $budget_ids
+  | ($operator_summaries | map(.id)) as $summary_ids
+  | [
+    precondition("all_critical_drift_budgets_zero_tolerance"; $budget_ids; $summary_ids; ["maxAllowedMismatches", "maxAllowedUnreviewedFindings"]),
+    precondition("operator_summaries_reviewed"; $budget_ids; $summary_ids; ["reviewerIdHash", "reviewedAtUnixMs", "summaryHash"]),
+    precondition("redaction_drift_zero_leak_required"; ["redaction_drift_zero_tolerance_budget"]; ["redaction_drift_operator_summary"]; ["redactionState", "summaryHash", "externalDeliveryAllowed"]),
+    precondition("execution_remains_disabled_until_budget_review"; $budget_ids; []; ["readyForReadbackExecution", "readyForWrapperExecution", "readyForStoreEnablement"])
+  ] as $promotion_preconditions
+  | [
+    blocker("critical_drift_budget_not_executed"; "high"; "critical drift detectors have a zero-tolerance budget but no readback execution has run"),
+    blocker("operator_review_not_performed"; "high"; "operator summaries are preview-only and have not been reviewed or persisted"),
+    blocker("promotion_preconditions_not_attached"; "medium"; "promotion precondition wiring is defined but not attached to runtime promotion logic"),
+    blocker("drift_persistence_disabled"; "medium"; "drift state cannot be persisted until readback execution is explicitly enabled later")
+  ] as $blockers
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_terminal_task_result_wrapper_drift_budget_preview_gate",
+      schema_version: "work_graph_terminal_task_result_wrapper_drift_budget_preview_v1",
+      preview_mode: "read_only_terminal_task_result_wrapper_drift_budget_preview_no_execution",
+      drift_budget_count: ($drift_budgets | length),
+      operator_summary_count: ($operator_summaries | length),
+      promotion_precondition_count: ($promotion_preconditions | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: (prior_gates | length),
+      drift_budgets: $drift_budgets,
+      operator_summaries: $operator_summaries,
+      promotion_preconditions: $promotion_preconditions,
+      blockers: $blockers,
+      required_prior_gates: prior_gates,
+      recommended_next_gate: "hepta_work_graph_terminal_task_result_wrapper_promotion_precondition_preview_gate",
+      ready_for_promotion_precondition_preview: true,
+      ready_for_readback_execution: false,
+      ready_for_wrapper_execution: false,
+      ready_for_task_result_enforcement: false,
+      ready_for_store_enablement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        terminal_task_result_wrapper_drift_budget: {
+          rust_module_present: $drift_budget_rust_module_present,
+          report_script_present: $drift_budget_report_script_present,
+          gate_script_present: $drift_budget_gate_script_present
+        },
+        terminal_task_result_wrapper_readback: {
+          gate_script_present: $readback_gate_script_present
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        drift_budget_persisted: false,
+        operator_summary_persisted: false,
+        promotion_state_mutated: false,
+        readback_performed: false,
+        wrapper_executed: false,
+        event_record_persisted: false,
+        task_result_persisted: false,
+        graph_state_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        task_result_enforcement_enabled: false,
+        scheduler_admission_enforced: false,
+        replay_executed: false,
+        approval_recorded: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

@@ -1,0 +1,627 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+manifest="$repo_root/codex-rs/Cargo.toml"
+hepta_core_memory="$repo_root/codex-rs/hepta-core/src/memory.rs"
+hepta_core_memory_context_plane="$repo_root/codex-rs/hepta-core/src/memory/context_plane.rs"
+hepta_core_memory_context_plane_activation="$repo_root/codex-rs/hepta-core/src/memory/context_plane/activation.rs"
+hepta_core_memory_context_plane_activation_matrix="$repo_root/codex-rs/hepta-core/src/memory/context_plane/activation/matrix.rs"
+hepta_core_memory_context_plane_activation_row="$repo_root/codex-rs/hepta-core/src/memory/context_plane/activation/row.rs"
+hepta_core_memory_context_plane_activation_target="$repo_root/codex-rs/hepta-core/src/memory/context_plane/activation/target.rs"
+hepta_core_memory_tests="$repo_root/codex-rs/hepta-core/src/memory/tests/context_plane_activation.rs"
+hepta_memory="$repo_root/codex-rs/hepta-memory/src/lib.rs"
+hepta_memory_tests="$repo_root/codex-rs/hepta-memory/src/tests/context_plane/activation_matrix.rs"
+hepta_memory_context_plane_helpers="$repo_root/codex-rs/hepta-memory/src/context_plane_helpers.rs"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+debug_gate="$repo_root/scripts/hepta-context-debug-gate.sh"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+front_door_gate="$repo_root/scripts/lib/hepta-gate-pair-compat-v1/hepta-context-source-aware-compression-front-door.gate"
+blocker_report="$repo_root/scripts/lib/hepta-gate-pair-compat-v1/hepta-context-plane-activation-blocker-matrix.report"
+lane="${HEPTA_CARGO_LANE:-${HEPTA_LANE:-hepta-context}}"
+target_root="${HEPTA_CARGO_TARGET_ROOT:-$HOME/.openclaw/tmp/cargo-targets}"
+target_leaf="$lane"
+if [[ "$target_leaf" != hepta-* ]]; then
+  target_leaf="hepta-$target_leaf"
+fi
+export CARGO_TARGET_DIR="${HEPTA_CARGO_TARGET_DIR:-$target_root/$target_leaf}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+
+fail() {
+  echo "hepta-context-plane-activation-blocker-matrix-gate: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+line_number_of() {
+  local file_path="$1"
+  local needle="$2"
+  local line
+
+  line="$(grep -n -F "$needle" "$file_path" | head -n 1 | cut -d: -f1 || true)"
+  if [ -z "$line" ]; then
+    fail "$file_path is missing required text: $needle"
+  fi
+  printf '%s\n' "$line"
+}
+
+assert_line_before() {
+  local file_path="$1"
+  local before_needle="$2"
+  local after_needle="$3"
+  local label="$4"
+  local before_line
+  local after_line
+
+  before_line="$(line_number_of "$file_path" "$before_needle")"
+  after_line="$(line_number_of "$file_path" "$after_needle")"
+  if [ "$before_line" -ge "$after_line" ]; then
+    fail "$label expected '$before_needle' before '$after_needle'"
+  fi
+}
+
+for term in \
+  "Context Plane activation blocker matrix" \
+  "context-plane-activation-blockers=pass" \
+  "source_registry" \
+  "adaptive_budget_allocation" \
+  "memory_taxonomy" \
+  "memory_formation_receipts" \
+  "memory_formation_queue" \
+  "memory_namespace_policy" \
+  "memory_namespace_policy_shadow_only" \
+  "memory_namespace_policy_namespace_count" \
+  "memory_namespace_policy_shadow_wal_required_count" \
+  "memory_write_chain_readiness" \
+  "memory_write_chain_readiness_shadow_only" \
+  "memory_write_chain_stage_pass_count" \
+  "memory_write_chain_readback_ready_count" \
+  "memory_write_chain_canary_ready_count" \
+  "memory_write_chain_receipt_freshness" \
+  "memory_write_chain_receipt_freshness_shadow_only" \
+  "memory_write_chain_receipt_projected_count" \
+  "memory_write_chain_receipt_digest_count" \
+  "memory_write_chain_receipt_freshness_pass_count" \
+  "memory_temporal_facts" \
+  "memory_temporal_fact_graph" \
+  "memory_temporal_graph_shadow_eval" \
+  "memory_temporal_graph_shadow_store" \
+  "temporal_graph_shadow_store_shadow_only" \
+  "memory_temporal_graph_shadow_store_stage_projected_count" \
+  "memory_temporal_graph_shadow_store_digest_count" \
+  "memory_temporal_graph_shadow_store_stale_replay_rejected_count" \
+  "eval_harness_seed" \
+  "adaptive_allocator_eval_shadow" \
+  "recall_quality_gate" \
+  "memory_ranked_recall_shadow_eval" \
+  "memory_ranked_recall_shadow_eval_shadow_only" \
+  "ranked_recall_hybrid_signal_pass_count" \
+  "ranked_recall_lexical_bm25_check_pass" \
+  "ranked_recall_temporal_validity_check_pass" \
+  "ranked_recall_positive_hybrid_signal_pass_count" \
+  "ranked_recall_hybrid_regression_blocked_count" \
+  "ranked_recall_routing_diff_shadow_only_count" \
+  "ranked_recall_min_positive_routing_diff_delta_basis_points" \
+  "ranked_recall_min_positive_routing_diff_token_tradeoff_basis_points" \
+  "ranked_recall_real_workload_trace_slo_pass_count" \
+  "ranked_recall_real_workload_trace_total_leak_count" \
+  "ranked_recall_min_positive_real_workload_trace_coverage_basis_points" \
+  "ranked_recall_real_workload_trace_operator_review_required_count" \
+  "memory_provider_boundary" \
+  "memory_provider_v2_boundary" \
+  "memory_provider_v2_lifecycle_pass_count" \
+  "memory_provider_v2_propose_write_check_pass" \
+  "memory_provider_v2_close_check_pass" \
+  "memory_namespace_policy_operator_approval_required_count" \
+  "memory_shadow_canary_readiness" \
+  "memory_shadow_canary_promotion_readiness" \
+  "canary_promotion_checklist_pass_count" \
+  "canary_promotion_negative_rehearsal_check_pass" \
+  "canary_promotion_audit_digest_check_pass" \
+  "canary_promotion_audit_freshness_check_pass" \
+  "canary_promotion_rollback_rehearsal_pass_count" \
+  "canary_promotion_kill_switch_rehearsal_pass_count" \
+  "canary_promotion_soak_readback_pass_count" \
+  "recall_quality_blocking_reason_count" \
+  "recall_quality_blocking_reasons" \
+  "context-plane-activation-blockers.recall-quality-blocking-reason-count=0" \
+  "context-plane-activation-blockers.recall-quality-blocking-reasons=none" \
+  "context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5" \
+  "context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15" \
+  "context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1" \
+  "context-plane-activation-blockers.ranked-recall.routing-diff-shadow-only-count=4" \
+  "context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-delta-basis-points=640" \
+  "context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000" \
+  "context-plane-activation-blockers.ranked-recall.real-workload-trace-slo-pass-count=3" \
+  "context-plane-activation-blockers.ranked-recall.real-workload-trace-total-leak-count=0" \
+  "context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000" \
+  "context-plane-activation-blockers.ranked-recall.canary-precondition-pass-count=4" \
+  "context-plane-activation-blockers.ranked-recall.canary-feature-flag-disabled-count=4" \
+  "context-plane-activation-blockers.ranked-recall.canary-precondition-route-opened-count=0" \
+  "context-plane-activation-blockers.memory-namespace-policy=blocked:memory_namespace_policy_shadow_only" \
+  "context-plane-activation-blockers.memory-namespace-policy.namespace-count=6" \
+  "context-plane-activation-blockers.memory-namespace-policy.shadow-wal-required-count=6" \
+  "context-plane-activation-blockers.memory-namespace-policy.production-write-count=0" \
+  "context-plane-activation-blockers.memory-write-chain-readiness=blocked:memory_write_chain_readiness_shadow_only" \
+  "context-plane-activation-blockers.memory-write-chain-readiness.stage-pass-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-readiness.readback-ready-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness=blocked:memory_write_chain_receipt_freshness_shadow_only" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-projected-count=18" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-digest-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.freshness-pass-count=6" \
+  "context-plane-activation-blockers.memory-write-chain-receipt-freshness.recorded-receipt-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-store=blocked:temporal_graph_shadow_store_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-store.stage-projected-count=6" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-store.recorded-receipt-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-store.graph-write-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-replay=blocked:temporal_graph_shadow_replay_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stage-projected-count=6" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-replay.recorded-receipt-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-replay.graph-write-count=0" \
+  "memory_temporal_graph_shadow_traversal_diff" \
+  "memory_temporal_graph_shadow_traversal_diff_stage_projected_count" \
+  "memory_temporal_graph_shadow_traversal_diff_graph_traversal_candidate_count" \
+  "memory_temporal_graph_shadow_traversal_diff_llm_rerank_count" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff=blocked:temporal_graph_shadow_traversal_diff_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality=blocked:temporal_graph_shadow_traversal_quality_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard=blocked:temporal_graph_shadow_retrieval_canary_guard_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch=blocked:temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0" \
+  "context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0" \
+  "source_aware_front_door" \
+  "operator_approval" \
+  "adaptive_budget_allocation_shadow_only" \
+  "temporal_graph_shadow_eval_shadow_only" \
+  "temporal_graph_shadow_store_shadow_only" \
+  "temporal_graph_shadow_replay_shadow_only" \
+  "temporal_graph_shadow_traversal_diff_shadow_only" \
+  "temporal_graph_shadow_traversal_quality_shadow_only" \
+  "temporal_graph_shadow_retrieval_canary_guard_shadow_only" \
+  "temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only" \
+  "memory_ranked_recall_shadow_eval_shadow_only" \
+  "memory_provider_boundary_shadow_only" \
+  "memory_provider_v2_boundary_shadow_only" \
+  "memory_namespace_policy_shadow_only" \
+  "memory_write_chain_readiness_shadow_only" \
+  "memory_write_chain_receipt_freshness_shadow_only" \
+  "memory_shadow_canary_readiness_shadow_only" \
+  "memory_shadow_canary_promotion_readiness_shadow_only" \
+  "source_aware_front_door_disabled" \
+  "operator_approval_missing" \
+  "side_effect_flag_enabled" \
+  "must not contain prompt text" \
+  "must not contain transcript text" \
+  "must not contain memory text" \
+  "must not contain answer text" \
+  "no production memory writes" \
+  "no graph writes" \
+  "no runtime activation" \
+  "no adaptive allocator runtime activation" \
+  "no source-aware runtime activation" \
+  "no prompt assembly changes" \
+  "no operator activation allowance" \
+  "hepta-context-plane-activation-blocker-matrix-report.sh" \
+  "hepta-context-plane-activation-blocker-matrix-gate.sh" \
+  "runtime-activation=disabled"; do
+  assert_file_contains "$contracts" "$term" "context plane activation blocker matrix contract"
+done
+
+assert_file_contains "$hepta_core_memory" \
+  "CONTEXT_PLANE_ACTIVATION_BLOCKER_SCHEMA_VERSION" \
+  "context plane activation blocker schema version"
+assert_file_contains "$hepta_core_memory_context_plane" \
+  "mod activation" \
+  "context plane activation module"
+assert_file_contains "$hepta_core_memory_context_plane" \
+  "pub use activation::" \
+  "context plane activation re-export"
+assert_file_contains "$hepta_core_memory_context_plane_activation" \
+  "mod target" \
+  "context plane activation target module"
+assert_file_contains "$hepta_core_memory_context_plane_activation" \
+  "mod row" \
+  "context plane activation row module"
+assert_file_contains "$hepta_core_memory_context_plane_activation" \
+  "mod matrix" \
+  "context plane activation matrix module"
+assert_file_contains "$hepta_core_memory_context_plane_activation_target" \
+  "ContextPlaneActivationTarget" \
+  "context plane activation target enum"
+assert_file_contains "$hepta_core_memory_context_plane_activation_target" \
+  "ContextPlaneActivationBlockerReason" \
+  "context plane activation blocker reason enum"
+assert_file_contains "$hepta_core_memory_context_plane_activation_matrix" \
+  "ContextPlaneActivationBlockerMatrix" \
+  "context plane activation blocker matrix"
+assert_file_contains "$hepta_core_memory_context_plane_activation_matrix" \
+  "pub fn from_status(status: &ContextPlaneStatusReport) -> Self" \
+  "context plane activation blocker constructor"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_activation_blocker_matrix_explains_disabled_runtime_activation" \
+  "context plane activation blocker hepta-core test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_activation_blocker_matrix_blocks_side_effect_flags_without_activation" \
+  "context plane activation blocker side-effect negative hepta-core test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_activation_blocker_matrix_rolls_up_recall_quality_blockers_without_payloads" \
+  "context plane activation blocker recall-quality no-payload rollup hepta-core test"
+assert_file_contains "$hepta_core_memory_tests" \
+  "context_plane_activation_blocker_matrix_rejects_canary_promotion_checklist_false_green" \
+  "context plane activation blocker canary promotion checklist false-green test"
+assert_file_contains "$hepta_core_memory_context_plane_activation_row" \
+  "ContextPlaneActivationBlockerReason::SideEffectFlagEnabled" \
+  "context plane activation blocker side-effect reason"
+
+assert_file_contains "$hepta_memory" \
+  "mod context_plane_helpers" \
+  "context plane activation blocker hepta-memory helper module"
+assert_file_contains "$hepta_memory_context_plane_helpers" \
+  "context_plane_activation_blocker_matrix" \
+  "context plane activation blocker hepta-memory helper"
+assert_file_contains "$hepta_memory_tests" \
+  "store_snapshot_context_plane_activation_blocker_matrix_is_payload_light" \
+  "context plane activation blocker hepta-memory snapshot test"
+assert_file_contains "$hepta_memory_tests" \
+  "store_context_plane_activation_blocker_matrix_matches_snapshot_helper" \
+  "context plane activation blocker hepta-memory store test"
+
+assert_file_contains "$debug_gate" \
+  "hepta-context-plane-activation-blocker-matrix-gate.sh" \
+  "context plane activation blocker debug gate"
+assert_file_contains "$preflight_script" \
+  "context plane activation blocker matrix gate" \
+  "context plane activation blocker preflight stage"
+assert_file_contains "$front_door_gate" \
+  "context_plane_activation_blocker_matrix_gate_script" \
+  "context plane activation blocker front-door static check"
+
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-plane-status-report-gate.sh" \
+  "hepta-context-plane-activation-blocker-matrix-gate.sh" \
+  "context plane activation blocker debug gate order"
+assert_line_before \
+  "$debug_gate" \
+  "hepta-context-plane-activation-blocker-matrix-gate.sh" \
+  "hepta-context-source-aware-compression-front-door-report.sh" \
+  "context plane activation blocker debug front-door order"
+assert_line_before \
+  "$preflight_script" \
+  "context plane status/export report gate" \
+  "context plane activation blocker matrix gate" \
+  "context plane activation blocker preflight order"
+assert_line_before \
+  "$preflight_script" \
+  "context plane activation blocker matrix gate" \
+  "source-aware compression front-door machine-readable report" \
+  "context plane activation blocker front-door preflight order"
+
+expected_status="$(cat <<'STATUS'
+context-plane-activation-blockers=pass
+context-plane-activation-blockers.schema=20
+context-plane-activation-blockers.rows=27
+context-plane-activation-blockers.satisfied=9
+context-plane-activation-blockers.blockers=18
+context-plane-activation-blockers.source-registry=ready
+context-plane-activation-blockers.adaptive-budget-allocation=blocked:adaptive_budget_allocation_shadow_only
+context-plane-activation-blockers.memory-taxonomy=ready
+context-plane-activation-blockers.memory-formation-receipts=ready
+context-plane-activation-blockers.memory-formation-queue=ready
+context-plane-activation-blockers.memory-namespace-policy=blocked:memory_namespace_policy_shadow_only
+context-plane-activation-blockers.memory-namespace-policy.namespace-count=6
+context-plane-activation-blockers.memory-namespace-policy.operator-approval-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.shadow-wal-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.readback-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.canary-required-count=6
+context-plane-activation-blockers.memory-namespace-policy.rollback-supported-count=6
+context-plane-activation-blockers.memory-namespace-policy.production-write-count=0
+context-plane-activation-blockers.memory-namespace-policy.graph-write-count=0
+context-plane-activation-blockers.memory-write-chain-readiness=blocked:memory_write_chain_readiness_shadow_only
+context-plane-activation-blockers.memory-write-chain-readiness.namespace-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.stage-required-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.stage-pass-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.propose-write-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.policy-approval-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.operator-approval-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.shadow-wal-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.readback-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.canary-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.rollback-ready-count=6
+context-plane-activation-blockers.memory-write-chain-readiness.production-write-count=0
+context-plane-activation-blockers.memory-write-chain-readiness.graph-write-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness=blocked:memory_write_chain_receipt_freshness_shadow_only
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.namespace-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-required-count=18
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-projected-count=18
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.receipt-digest-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.freshness-pass-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.replay-guard-pass-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.stale-replay-rejected-count=6
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.recorded-receipt-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.persisted-receipt-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.production-write-count=0
+context-plane-activation-blockers.memory-write-chain-receipt-freshness.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-facts=ready
+context-plane-activation-blockers.memory-temporal-fact-graph=ready
+context-plane-activation-blockers.memory-temporal-graph-shadow-eval=blocked:temporal_graph_shadow_eval_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-store=blocked:temporal_graph_shadow_store_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.node-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.edge-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.provenance-edge-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.validity-window-edge-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.supersede-edge-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.invalidated-node-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.stage-required-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.stage-projected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.digest-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.freshness-pass-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.replay-guard-pass-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.stale-replay-rejected-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.operator-approval-required-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.recorded-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.persisted-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-store.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay=blocked:temporal_graph_shadow_replay_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.node-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.edge-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.provenance-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.bitemporal-validity-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.fact-invalidation-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.supersede-tombstone-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stage-required-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stage-projected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.digest-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.freshness-pass-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.replay-guard-pass-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.stale-replay-rejected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.operator-approval-required-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.recorded-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.persisted-receipt-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-replay.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff=blocked:temporal_graph_shadow_traversal_diff_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-selection-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.lexical-bm25-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.semantic-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-traversal-candidate-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.hybrid-candidate-count=10
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.overlap-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-expansion-candidate-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.win-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.loss-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.cost-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stage-projected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.digest-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.freshness-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.replay-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.stale-replay-rejected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-diff.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality=blocked:temporal_graph_shadow_traversal_quality_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.fixture-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.slo-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.coverage-basis-points=10000
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.precision-basis-points=10000
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.leak-rate-basis-points=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.latency-budget-ms=20
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.projected-latency-ms=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.token-saved-estimate=768
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.operator-review-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.win-count=1
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.loss-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.cost-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.stage-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.stage-projected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.digest-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.freshness-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.replay-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.stale-replay-rejected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-traversal-quality.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard=blocked:temporal_graph_shadow_retrieval_canary_guard_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.fixture-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.stage-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.stage-projected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.quality-slo-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-registered-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.feature-flag-enabled-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-registered-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.kill-switch-ready-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-rehearsal-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.activation-denial-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.canary-route-opened-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.digest-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.freshness-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.replay-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.stale-replay-rejected-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-canary-guard.rollback-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch=blocked:temporal_graph_shadow_retrieval_rollback_kill_switch_shadow_only
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.fixture-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stage-required-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stage-projected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-guard-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.operator-approval-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.operator-approval-recorded-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.feature-flag-registered-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.feature-flag-enabled-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-registered-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-readback-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.kill-switch-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-required-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-readback-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-rehearsal-pass-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.route-denial-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-denial-count=5
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.canary-route-opened-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.digest-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.freshness-pass-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.replay-guard-pass-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.stale-replay-rejected-count=6
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.llm-rerank-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.graph-persistence-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.production-route-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.production-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.graph-write-count=0
+context-plane-activation-blockers.memory-temporal-graph-shadow-retrieval-rollback-kill-switch.rollback-write-count=0
+context-plane-activation-blockers.eval-harness-seed=ready
+context-plane-activation-blockers.adaptive-allocator-eval-shadow=shadow-threshold-pass
+context-plane-activation-blockers.recall-quality-gate=ready
+context-plane-activation-blockers.recall-quality-blocking-reason-count=0
+context-plane-activation-blockers.recall-quality-blocking-reasons=none
+context-plane-activation-blockers.memory-ranked-recall-shadow-eval=blocked:memory_ranked_recall_shadow_eval_shadow_only
+context-plane-activation-blockers.ranked-recall.hybrid-signal-required-count=5
+context-plane-activation-blockers.ranked-recall.hybrid-signal-pass-count=5
+context-plane-activation-blockers.ranked-recall.lexical-bm25-check=pass
+context-plane-activation-blockers.ranked-recall.recency-check=pass
+context-plane-activation-blockers.ranked-recall.source-authority-check=pass
+context-plane-activation-blockers.ranked-recall.temporal-validity-check=pass
+context-plane-activation-blockers.ranked-recall.feedback-check=pass
+context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-required-count=15
+context-plane-activation-blockers.ranked-recall.positive-hybrid-signal-pass-count=15
+context-plane-activation-blockers.ranked-recall.hybrid-regression-blocked-count=1
+context-plane-activation-blockers.ranked-recall.hybrid-signal-min-basis-points=6000
+context-plane-activation-blockers.ranked-recall.min-positive-hybrid-score-basis-points=7800
+context-plane-activation-blockers.ranked-recall.routing-diff-fixture-count=4
+context-plane-activation-blockers.ranked-recall.routing-diff-shadow-only-count=4
+context-plane-activation-blockers.ranked-recall.routing-diff-win-count=3
+context-plane-activation-blockers.ranked-recall.routing-diff-loss-count=1
+context-plane-activation-blockers.ranked-recall.routing-diff-regression-blocked-count=1
+context-plane-activation-blockers.ranked-recall.routing-diff-delta-min-basis-points=400
+context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-delta-basis-points=640
+context-plane-activation-blockers.ranked-recall.routing-diff-latency-delta-max-ms=20
+context-plane-activation-blockers.ranked-recall.max-positive-routing-diff-latency-delta-ms=10
+context-plane-activation-blockers.ranked-recall.routing-diff-token-tradeoff-min-basis-points=1000
+context-plane-activation-blockers.ranked-recall.min-positive-routing-diff-token-tradeoff-basis-points=3000
+context-plane-activation-blockers.ranked-recall.real-workload-trace-fixture-count=4
+context-plane-activation-blockers.ranked-recall.real-workload-trace-shadow-only-count=4
+context-plane-activation-blockers.ranked-recall.real-workload-trace-slo-pass-count=3
+context-plane-activation-blockers.ranked-recall.real-workload-trace-win-count=3
+context-plane-activation-blockers.ranked-recall.real-workload-trace-loss-count=1
+context-plane-activation-blockers.ranked-recall.real-workload-trace-operator-review-required-count=4
+context-plane-activation-blockers.ranked-recall.real-workload-trace-total-leak-count=0
+context-plane-activation-blockers.ranked-recall.real-workload-trace-max-leak-rate-basis-points=0
+context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace-coverage-basis-points=8000
+context-plane-activation-blockers.ranked-recall.min-positive-real-workload-trace-precision-basis-points=8000
+context-plane-activation-blockers.ranked-recall.total-positive-real-workload-trace-token-saved=2140
+context-plane-activation-blockers.ranked-recall.max-positive-real-workload-trace-latency-ms=55
+context-plane-activation-blockers.ranked-recall.real-workload-trace-regression-loss-count=1
+context-plane-activation-blockers.ranked-recall.canary-precondition-fixture-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-shadow-only-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-pass-count=4
+context-plane-activation-blockers.ranked-recall.canary-feature-flag-registered-count=4
+context-plane-activation-blockers.ranked-recall.canary-feature-flag-disabled-count=4
+context-plane-activation-blockers.ranked-recall.canary-kill-switch-registered-count=4
+context-plane-activation-blockers.ranked-recall.canary-kill-switch-enabled-count=4
+context-plane-activation-blockers.ranked-recall.canary-rollback-rehearsal-covered-count=4
+context-plane-activation-blockers.ranked-recall.canary-activation-denial-covered-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-operator-review-required-count=4
+context-plane-activation-blockers.ranked-recall.canary-precondition-route-opened-count=0
+context-plane-activation-blockers.ranked-recall.canary-precondition-rollback-write-count=0
+context-plane-activation-blockers.memory-provider-boundary=blocked:memory_provider_boundary_shadow_only
+context-plane-activation-blockers.memory-provider-v2-boundary=blocked:memory_provider_v2_boundary_shadow_only
+context-plane-activation-blockers.memory-provider-v2.lifecycle-required-count=6
+context-plane-activation-blockers.memory-provider-v2.lifecycle-pass-count=6
+context-plane-activation-blockers.memory-provider-v2.query-check=pass
+context-plane-activation-blockers.memory-provider-v2.update-context-check=pass
+context-plane-activation-blockers.memory-provider-v2.propose-write-check=pass
+context-plane-activation-blockers.memory-provider-v2.add-check=pass
+context-plane-activation-blockers.memory-provider-v2.clear-check=pass
+context-plane-activation-blockers.memory-provider-v2.close-check=pass
+context-plane-activation-blockers.memory-provider-v2.candidate-count=1
+context-plane-activation-blockers.memory-provider-v2.operator-review-required-count=1
+context-plane-activation-blockers.memory-shadow-canary-readiness=blocked:memory_shadow_canary_readiness_shadow_only
+context-plane-activation-blockers.memory-shadow-canary-promotion-readiness=blocked:memory_shadow_canary_promotion_readiness_shadow_only
+context-plane-activation-blockers.canary-promotion.required-stable-window-count=1
+context-plane-activation-blockers.canary-promotion.observed-stable-window-count=1
+context-plane-activation-blockers.canary-promotion.required-pass-streak=3
+context-plane-activation-blockers.canary-promotion.observed-pass-streak=3
+context-plane-activation-blockers.canary-promotion.promotion-blocker-count=0
+context-plane-activation-blockers.canary-promotion.checklist-required-count=4
+context-plane-activation-blockers.canary-promotion.checklist-pass-count=4
+context-plane-activation-blockers.canary-promotion.readiness-check=pass
+context-plane-activation-blockers.canary-promotion.negative-rehearsal-check=pass
+context-plane-activation-blockers.canary-promotion.audit-digest-check=pass
+context-plane-activation-blockers.canary-promotion.audit-freshness-check=pass
+context-plane-activation-blockers.canary-promotion.rollback-rehearsal-pass-count=3
+context-plane-activation-blockers.canary-promotion.kill-switch-rehearsal-pass-count=3
+context-plane-activation-blockers.canary-promotion.soak-readback-pass-count=3
+context-plane-activation-blockers.source-aware-front-door=blocked:source_aware_front_door_disabled
+context-plane-activation-blockers.operator-approval=blocked:operator_approval_missing
+context-plane-activation-blockers.activation-allowed=disabled
+context-plane-activation-blockers.runtime-activation=disabled
+context-plane-activation-blockers.adaptive-allocator-runtime-activation=disabled
+context-plane-activation-blockers.source-aware-runtime-activation=disabled
+context-plane-activation-blockers.production-write=disabled
+context-plane-activation-blockers.graph-write=disabled
+context-plane-activation-blockers.prompt-assembly-change=disabled
+context-plane-activation-blockers.operator-activation=disabled
+STATUS
+)"
+actual_status="$(bash "$blocker_report")"
+if [ "$actual_status" != "$expected_status" ]; then
+  fail "context plane activation blocker report output changed"
+fi
+
+if printf '%s\n' "$actual_status" | grep -E 'prompt_text|transcript_text|memory_text|answer_text|source_id|session_id|memory_id|trace_id|query_text|tool_args|entity_hash|supersedes|idempotency|activation-allowed=enabled|runtime-activation=enabled|production-write=enabled|graph-write=enabled' >/dev/null; then
+  fail "context plane activation blocker report leaked payload or enabled activation"
+fi
+
+cargo test --manifest-path "$manifest" -p hepta-core \
+  context_plane_activation \
+  --lib --message-format=short
+
+cargo test --manifest-path "$manifest" -p hepta-memory \
+  context_plane_activation \
+  --lib --message-format=short
+
+echo "context-plane-activation-blocker-matrix=pass"
+echo "context-plane-activation-blocker-matrix.payload-light=pass"
+echo "context-plane-activation-blocker-matrix.runtime-activation=disabled"
+echo "Hepta context plane activation blocker matrix gate passed"

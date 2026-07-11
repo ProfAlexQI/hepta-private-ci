@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+contracts="$repo_root/codex-rs/CONTEXT_DEBUG_CONTRACTS.md"
+preflight_script="$repo_root/scripts/hepta-context-preflight.sh"
+canary_gate="$repo_root/scripts/lib/hepta-gate-pair-compat-v1/hepta-context-selected-recall-summary-canary.gate"
+
+fail() {
+  echo "hepta-context-selected-recall-summary-canary-eval-report: $*" >&2
+  exit 1
+}
+
+assert_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if ! grep -F "$needle" "$file_path" >/dev/null; then
+    fail "$label must contain: $needle"
+  fi
+}
+
+bash "$canary_gate" >/dev/null
+
+for term in \
+  "Context memory eval harness seed" \
+  "Adaptive allocator eval shadow" \
+  "Context memory recall quality gate" \
+  "Selected-Recall Summary Canary Readiness Gate"; do
+  assert_file_contains "$contracts" "$term" "selected-recall canary eval contract input"
+done
+
+for term in \
+  "context memory eval harness seed gate" \
+  "context memory adaptive allocator eval shadow gate" \
+  "context memory recall quality gate" \
+  "selected recall summary canary readiness gate"; do
+  assert_file_contains "$preflight_script" "$term" "selected-recall canary eval preflight input"
+done
+
+cat <<'EOF'
+selected-recall-summary-canary-eval=pass
+selected-recall-summary-canary-eval.schema=1
+selected-recall-summary-canary-eval.mode=golden-replay-shadow
+selected-recall-summary-canary-eval.fixture-count=4
+selected-recall-summary-canary-eval.fixture-pass-count=4
+selected-recall-summary-canary-eval.fixture-blocked-count=0
+selected-recall-summary-canary-eval.positive-fixture-count=3
+selected-recall-summary-canary-eval.negative-fixture-count=1
+selected-recall-summary-canary-eval.shadow-vs-live-pair-count=3
+selected-recall-summary-canary-eval.rollback-readback-fixture-count=1
+selected-recall-summary-canary-eval.prompt-input-proof=covered
+selected-recall-summary-canary-eval.response-debug-proof=covered
+selected-recall-summary-canary-eval.token-saved-min-basis-points=1000
+selected-recall-summary-canary-eval.latency-delta-max-ms=250
+selected-recall-summary-canary-eval.quality-delta-min-basis-points=0
+selected-recall-summary-canary-eval.regression-fixture=blocked
+selected-recall-summary-canary-eval.operator-approval=required
+selected-recall-summary-canary-eval.production-route=disabled
+selected-recall-summary-canary-eval.runtime-activation=disabled
+EOF

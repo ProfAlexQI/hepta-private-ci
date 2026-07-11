@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_agent_role_agent_card_manifest_report_only.rs
+)"
+report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-agent-role-agent-card-manifest-report-only.report
+)"
+gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-agent-role-agent-card-manifest-report-only.gate
+)"
+mailbox_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-persistent-mailbox-handoff-event-mapping.gate
+)"
+role_contract_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-role-manifest-contract-preview.gate
+)"
+
+mailbox="$(
+  capture_json_report \
+    "hepta-work-graph-persistent-mailbox-handoff-event-mapping-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-persistent-mailbox-handoff-event-mapping.report"
+)"
+role_contract="$(
+  capture_json_report \
+    "hepta-work-graph-role-manifest-contract-preview-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-role-manifest-contract-preview.report"
+)"
+
+jq -n \
+  --argjson rust_module_present "$rust_module_present" \
+  --argjson report_script_present "$report_script_present" \
+  --argjson gate_script_present "$gate_script_present" \
+  --argjson mailbox_gate_script_present "$mailbox_gate_script_present" \
+  --argjson role_contract_gate_script_present "$role_contract_gate_script_present" \
+  --argjson mailbox "$mailbox" \
+  --argjson role_contract "$role_contract" \
+  '
+  def card($role; $card; $caps; $tools; $budget; $effect; $handoff; $verifier; $reducer): {
+    role_id: $role,
+    agent_card_id: $card,
+    capability_ids: $caps,
+    allowed_tools: $tools,
+    budget_policy_id: $budget,
+    side_effect_class: $effect,
+    handoff_description: $handoff,
+    output_contract: "TaskResultEnvelope",
+    verifier_id: $verifier,
+    reducer_id: $reducer,
+    lane: "hepta-backend",
+    manifest_report_only: true,
+    role_enforcement_enabled: false
+  };
+  def binding($source; $entrypoint; $roles): {
+    source_surface_id: $source,
+    entrypoint_id: $entrypoint,
+    required_role_ids: $roles,
+    default_lane: "hepta-backend",
+    output_contract: "TaskResultEnvelope",
+    verifier_required: true,
+    manifest_attached_report_only: true,
+    enforcement_enabled: false
+  };
+  [
+    "roleId",
+    "agentCardId",
+    "capabilities",
+    "allowedTools",
+    "budget",
+    "sideEffectClass",
+    "handoffDescription",
+    "outputContract",
+    "verifier",
+    "reducer",
+    "lane"
+  ] as $fields
+  | [
+    card("planner_role"; "agent_card_planner_report_only"; ["planning", "research"]; ["update_plan", "read_repo", "web_research_preview"]; "budget_planner_small"; "read_only"; "may create plan nodes and hand off named tasks without spawning work directly"; "planner_output_verifier"; "plan_step_reducer"),
+    card("builder_role"; "agent_card_builder_report_only"; ["code_editing", "verification"]; ["apply_patch", "cargo_test", "bash_gate"]; "budget_builder_medium"; "local_write_preview"; "may produce scoped patches and return artifacts with evidence refs"; "builder_patch_verifier"; "artifact_reducer"),
+    card("reviewer_role"; "agent_card_reviewer_report_only"; ["verification", "research"]; ["read_repo", "cargo_test", "diff_review"]; "budget_reviewer_small"; "read_only"; "may review outputs and attach risks, evidence, and next actions"; "reviewer_gate_verifier"; "review_summary_reducer"),
+    card("scheduler_role"; "agent_card_scheduler_report_only"; ["scheduler_control", "verification"]; ["admission_dry_run", "lease_readback", "budget_readback"]; "budget_scheduler_small"; "scheduler_dry_run"; "may produce allow or deny explanations without acquiring a live lease"; "scheduler_admission_verifier"; "scheduler_decision_reducer"),
+    card("handoff_role"; "agent_card_handoff_report_only"; ["external_handoff_proposal", "verification"]; ["artifact_link", "approval_readback", "handoff_preview"]; "budget_handoff_small"; "external_handoff_preview"; "may prepare handoff previews with artifact refs and approval requirements only"; "handoff_scope_verifier"; "handoff_barrier_reducer")
+  ] as $cards
+  | [
+    binding("multi_agent_v2_thread_spawn"; "spawn_agent"; ["planner_role", "builder_role", "reviewer_role"]),
+    binding("agent_jobs_batch_workers"; "spawn_agents_on_csv"; ["builder_role", "reviewer_role"]),
+    binding("hepta_runtime_worker_tasks"; "worker_task_run"; ["builder_role", "scheduler_role"]),
+    binding("hepta_runtime_agent_harness"; "handoff_event"; ["handoff_role", "reviewer_role"]),
+    binding("hepta_runtime_task_board"; "task_board_claim"; ["scheduler_role", "reviewer_role"])
+  ] as $bindings
+  | [
+    "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate",
+    "hepta_work_graph_role_manifest_contract_preview_gate"
+  ] as $required_prior_gates
+  | ($mailbox.persistent_mailbox_store_enabled == false
+      and $mailbox.live_wait_agent_behavior_changed == false
+      and $mailbox.ready_for_live_execution == false
+      and ($mailbox.side_effects | to_entries | all(.value == false))) as $source_persistent_mailbox_handoff_no_persistence_confirmed
+  | ($mailbox.gate == "hepta_work_graph_persistent_mailbox_handoff_event_mapping_gate"
+      and $mailbox.persistent_mailbox_handoff_mapping_readiness_complete == true
+      and $mailbox.ready_for_agent_role_agent_card_manifest == true
+      and $source_persistent_mailbox_handoff_no_persistence_confirmed) as $source_persistent_mailbox_handoff_readiness_complete
+  | ($role_contract.ready_for_role_enforcement == false
+      and $role_contract.ready_for_live_execution == false
+      and ($role_contract.side_effects | to_entries | all(.value == false))) as $source_role_manifest_no_enforcement_confirmed
+  | ($role_contract.gate == "hepta_work_graph_role_manifest_contract_preview_gate"
+      and $role_contract.required_field_count == 12
+      and $role_contract.capability_count == 7
+      and $role_contract.permission_mode_count == 5
+      and $role_contract.invariant_count == 6
+      and $role_contract.adapter_preview_count == 4
+      and $role_contract.ready_for_unified_state_store_preview == true
+      and $source_role_manifest_no_enforcement_confirmed) as $source_role_manifest_contract_ready
+  | ($source_persistent_mailbox_handoff_readiness_complete
+      and $source_role_manifest_contract_ready
+      and ($fields | length) > 0
+      and ($cards | length) > 0
+      and ($bindings | length) > 0) as $agent_role_agent_card_manifest_readiness_complete
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_agent_role_agent_card_manifest_report_only_gate",
+      schema_version: "work_graph_agent_role_agent_card_manifest_report_only_v1",
+      preview_mode: "report_only_agent_role_agent_card_manifest_no_enforcement",
+      required_wire_field_count: ($fields | length),
+      agent_card_count: ($cards | length),
+      source_binding_count: ($bindings | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      source_persistent_mailbox_handoff_required_prior_gate_count: $mailbox.required_prior_gate_count,
+      source_role_manifest_required_field_count: $role_contract.required_field_count,
+      source_role_manifest_capability_count: $role_contract.capability_count,
+      source_role_manifest_permission_mode_count: $role_contract.permission_mode_count,
+      source_role_manifest_invariant_count: $role_contract.invariant_count,
+      source_role_manifest_adapter_preview_count: $role_contract.adapter_preview_count,
+      required_wire_fields: $fields,
+      agent_cards: $cards,
+      source_bindings: $bindings,
+      required_prior_gates: $required_prior_gates,
+      source_persistent_mailbox_handoff_gate: $mailbox.gate,
+      source_role_manifest_contract_gate: $role_contract.gate,
+      recommended_next_gate: "hepta_work_graph_trace_guardrail_span_report_only_gate",
+      source_persistent_mailbox_handoff_readiness_complete: $source_persistent_mailbox_handoff_readiness_complete,
+      source_persistent_mailbox_handoff_no_persistence_confirmed: $source_persistent_mailbox_handoff_no_persistence_confirmed,
+      source_role_manifest_contract_ready: $source_role_manifest_contract_ready,
+      source_role_manifest_no_enforcement_confirmed: $source_role_manifest_no_enforcement_confirmed,
+      agent_role_agent_card_manifest_readiness_complete: $agent_role_agent_card_manifest_readiness_complete,
+      capability_tool_budget_lane_ready: true,
+      side_effect_class_ready: true,
+      handoff_output_verifier_ready: true,
+      report_only_manifest_attached: $agent_role_agent_card_manifest_readiness_complete,
+      role_enforcement_enabled: false,
+      ready_for_trace_guardrail_span: $agent_role_agent_card_manifest_readiness_complete,
+      ready_for_live_execution: false,
+      source_probes: {
+        agent_role_agent_card_manifest_report_only: {
+          rust_module_present: $rust_module_present,
+          report_script_present: $report_script_present,
+          gate_script_present: $gate_script_present
+        },
+        persistent_mailbox_handoff_event_mapping: {
+          gate_script_present: $mailbox_gate_script_present,
+          report_gate: $mailbox.gate,
+          persistent_mailbox_handoff_mapping_readiness_complete: $mailbox.persistent_mailbox_handoff_mapping_readiness_complete,
+          ready_for_agent_role_agent_card_manifest: $mailbox.ready_for_agent_role_agent_card_manifest,
+          persistent_mailbox_store_enabled: $mailbox.persistent_mailbox_store_enabled,
+          live_wait_agent_behavior_changed: $mailbox.live_wait_agent_behavior_changed,
+          ready_for_live_execution: $mailbox.ready_for_live_execution,
+          side_effects_all_false: ($mailbox.side_effects | to_entries | all(.value == false))
+        },
+        role_manifest_contract: {
+          gate_script_present: $role_contract_gate_script_present,
+          report_gate: $role_contract.gate,
+          required_field_count: $role_contract.required_field_count,
+          capability_count: $role_contract.capability_count,
+          permission_mode_count: $role_contract.permission_mode_count,
+          invariant_count: $role_contract.invariant_count,
+          adapter_preview_count: $role_contract.adapter_preview_count,
+          ready_for_role_enforcement: $role_contract.ready_for_role_enforcement,
+          ready_for_live_execution: $role_contract.ready_for_live_execution,
+          side_effects_all_false: ($role_contract.side_effects | to_entries | all(.value == false))
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_event_persisted: false,
+        role_manifest_persisted: false,
+        role_enforcement_enabled: false,
+        tool_permission_changed: false,
+        budget_debited: false,
+        scheduler_admission_enforced: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }'

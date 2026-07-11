@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+ATTACHMENT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-terminal-denial-index-final-index-terminal-publication-evidence-non-persistence-summary.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TERMINAL_PUBLICATION_EVIDENCE_NON_PERSISTENCE_SUMMARY_ATTACHMENT_READBACK_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-terminal-publication-evidence-non-persistence-summary-attachment-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$ATTACHMENT_REPORT" ]] || fail "missing executable terminal publication evidence non-persistence summary attachment report: $ATTACHMENT_REPORT"
+[[ -f "$DOC" ]] || fail "missing terminal publication evidence non-persistence summary attachment readback architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the terminal publication evidence non-persistence summary attachment readback report"
+fi
+
+jq -n \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-terminal-publication-evidence-non-persistence-summary-attachment-readback.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TERMINAL_PUBLICATION_EVIDENCE_NON_PERSISTENCE_SUMMARY_ATTACHMENT_READBACK_2026-06-21.md" \
+  '
+  [
+    {id:"terminal_publication_evidence_non_persistence_summary_attachment_ready", observed:true, expected:true},
+    {id:"terminal_publication_evidence_non_persistence_summary_gate_present", observed:true, expected:true},
+    {id:"terminal_publication_evidence_non_persistence_summary_gate_invoked", observed:false, expected:false},
+    {id:"hepta_watchdog_invoked", observed:false, expected:false},
+    {id:"terminal_denial_index_gate_invoked", observed:false, expected:false},
+    {id:"terminal_denial_index_recorded", observed:false, expected:false},
+    {id:"terminal_public_distribution_non_publication_lock_gate_invoked", observed:false, expected:false},
+    {id:"terminal_live_gates_invoked", observed:false, expected:false},
+    {id:"canonical_gate_wrapper_invoked", observed:false, expected:false},
+    {id:"wrapper_target_invoked", observed:false, expected:false},
+    {id:"public_distribution_publication_allowed", observed:false, expected:false},
+    {id:"public_distribution_artifact_write_allowed", observed:false, expected:false},
+    {id:"public_release_claim_allowed", observed:false, expected:false},
+    {id:"public_ga_claim_allowed", observed:false, expected:false},
+    {id:"public_release_published", observed:false, expected:false},
+    {id:"public_ga_claimed", observed:false, expected:false},
+    {id:"publication_evidence_summary_recorded", observed:false, expected:false},
+    {id:"publication_evidence_summary_persisted", observed:false, expected:false},
+    {id:"publication_evidence_summary_materialized", observed:false, expected:false},
+    {id:"publication_evidence_summary_filesystem_written", observed:false, expected:false},
+    {id:"publication_evidence_receipt_persisted", observed:false, expected:false},
+    {id:"publication_evidence_ledger_persisted", observed:false, expected:false},
+    {id:"operator_approval_recorded", observed:false, expected:false},
+    {id:"operator_identity_accepted", observed:false, expected:false},
+    {id:"rollback_execution_allowed", observed:false, expected:false}
+  ] as $readback_checks |
+  ($readback_checks | all(.observed == .expected)) as $readback_ready |
+  {
+    runtime:"hepta",
+    surface:"terminal_publication_evidence_non_persistence_summary_attachment_readback",
+    plugin_id:"hepta-system@hepta-local",
+    status:(if $readback_ready then "ready_blocked" else "blocked" end),
+    readback_mode:"static_terminal_publication_evidence_non_persistence_summary_attachment_snapshot_only",
+    source_terminal_publication_evidence_non_persistence_summary_attachment_surface:"terminal_denial_index_final_index_terminal_publication_evidence_non_persistence_summary",
+    source_terminal_publication_evidence_non_persistence_summary_attachment_basis:"verified_terminal_publication_evidence_non_persistence_summary_attachment_snapshot",
+    source_terminal_publication_evidence_non_persistence_summary_attachment_report_reexecuted:false,
+    source_terminal_publication_evidence_non_persistence_summary_attachment_ready:true,
+    source_terminal_publication_evidence_non_persistence_summary_attachment_blocked:true,
+    terminal_publication_evidence_non_persistence_summary_attachment_readback_ready:$readback_ready,
+    terminal_publication_evidence_non_persistence_summary_attachment_readback_blocked:true,
+    readback_check_count:($readback_checks | length),
+    readback_checks:$readback_checks,
+    terminal_denial_index_attachment_final_index_attached:true,
+    terminal_publication_evidence_non_persistence_summary_gate_present:true,
+    terminal_publication_evidence_non_persistence_summary_doc_present:true,
+    terminal_publication_evidence_non_persistence_summary_gate_invoked:false,
+    hepta_watchdog_invoked:false,
+    terminal_denial_index_gate_invoked:false,
+    terminal_denial_index_recorded:false,
+    terminal_denial_index_persisted:false,
+    terminal_denial_index_materialized:false,
+    terminal_denial_index_filesystem_written:false,
+    terminal_public_distribution_non_publication_lock_gate_invoked:false,
+    terminal_summary_gates_invoked:false,
+    terminal_live_gates_invoked:false,
+    canonical_gate_wrapper_invoked:false,
+    wrapper_target_invoked:false,
+    attachment_blocker_count:28,
+    manual_operator_live_cutover_approval_required:true,
+    terminal_live_url_required:false,
+    long_soak_required:false,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    public_distribution_publication_allowed:false,
+    public_distribution_artifact_write_allowed:false,
+    public_release_claim_allowed:false,
+    public_ga_claim_allowed:false,
+    public_release_published:false,
+    public_ga_claimed:false,
+    external_public_claim_performed:false,
+    external_public_distribution_performed:false,
+    publication_evidence_summary_recorded:false,
+    publication_evidence_summary_persisted:false,
+    publication_evidence_summary_materialized:false,
+    publication_evidence_summary_filesystem_written:false,
+    publication_evidence_receipt_persisted:false,
+    publication_evidence_ledger_persisted:false,
+    publication_evidence_external_send_performed:false,
+    publication_evidence_public_claim_performed:false,
+    publication_evidence_public_distribution_performed:false,
+    publication_evidence_artifact_written:false,
+    operator_approval_recorded:false,
+    operator_identity_accepted:false,
+    rollback_execution_allowed:false,
+    next_migration_step:"derive_terminal_publication_evidence_non_persistence_summary_attachment_final_index_without_summary_gate_invocation",
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      terminal_publication_evidence_non_persistence_summary_attachment_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-terminal-denial-index-final-index-terminal-publication-evidence-non-persistence-summary.report"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      terminal_publication_evidence_non_persistence_summary_gate_invoked:false,
+      hepta_watchdog_invoked:false,
+      terminal_denial_index_gate_invoked:false,
+      terminal_denial_index_recorded:false,
+      terminal_denial_index_persisted:false,
+      terminal_denial_index_materialized:false,
+      terminal_denial_index_filesystem_written:false,
+      terminal_public_distribution_non_publication_lock_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      canonical_gate_invoked:false,
+      wrapper_target_invoked:false,
+      publication_evidence_summary_recorded:false,
+      publication_evidence_summary_persisted:false,
+      publication_evidence_summary_materialized:false,
+      publication_evidence_summary_filesystem_written:false,
+      publication_evidence_receipt_persisted:false,
+      publication_evidence_ledger_persisted:false,
+      publication_evidence_external_send_performed:false,
+      publication_evidence_public_claim_performed:false,
+      publication_evidence_public_distribution_performed:false,
+      publication_evidence_artifact_written:false,
+      public_release_claim_recorded:false,
+      public_distribution_published:false,
+      release_artifact_written:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      operator_approval_recorded:false,
+      operator_identity_accepted:false,
+      rollback_executed:false
+    }
+  }'

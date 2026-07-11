@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$ROOT"
+
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
+
+path_exists() {
+  local path="$1"
+  [[ -e "$path" ]]
+}
+
+bool_for() {
+  if "$@"; then
+    printf 'true\n'
+  else
+    printf 'false\n'
+  fi
+}
+
+preview_report="$(
+  capture_json_report \
+    "hepta-work-graph-append-only-work-graph-events-shadow-write-preview-report" \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-work-graph-events-shadow-write-preview.report"
+)"
+
+readback_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_shadow_write_readback_preview.rs
+)"
+readback_report_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-work-graph-events-shadow-write-readback-preview.report
+)"
+readback_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-work-graph-events-shadow-write-readback-preview.gate
+)"
+preview_rust_module_present="$(
+  bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_shadow_write_preview.rs
+)"
+preview_gate_script_present="$(
+  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-append-only-work-graph-events-shadow-write-preview.gate
+)"
+
+jq -n \
+  --argjson preview "$preview_report" \
+  --argjson readback_rust_module_present "$readback_rust_module_present" \
+  --argjson readback_report_script_present "$readback_report_script_present" \
+  --argjson readback_gate_script_present "$readback_gate_script_present" \
+  --argjson preview_rust_module_present "$preview_rust_module_present" \
+  --argjson preview_gate_script_present "$preview_gate_script_present" \
+  '
+  def readback_plan($plan): {
+      source_surface_id: $plan.source_surface_id,
+      source_category: $plan.source_category,
+      shadow_write_plan_id: $plan.shadow_write_plan_id,
+      expected_event_schema_count: ($plan.event_schema_ids | length),
+      expected_stage_count: ($plan.required_shadow_write_stage_ids | length),
+      expected_idempotency_key_field_count: ($plan.idempotency_key_field_ids | length),
+      expected_residual_blocker_count: ($plan.residual_source_blocker_ids | length),
+      readback_status: "readback_plan_ready",
+      readback_execution_enabled: false,
+      persists_work_graph_events: false,
+      next_required_gate: "hepta_work_graph_append_only_work_graph_events_shadow_write_application_preview_gate"
+    };
+  def schema_assertion($schema): {
+      event_schema_id: $schema.id,
+      category: $schema.category,
+      required_field_ids: $schema.required_field_ids,
+      shadow_write_only: $schema.shadow_write_only,
+      persists_event_after_readback: false
+    };
+  def stage_assertion($stage): {
+      stage_id: $stage.id,
+      affected_source_surface_ids: $stage.affected_source_surface_ids,
+      required_contract_ref_ids: $stage.required_contract_ref_ids,
+      contract_ready_preview: $stage.contract_ready_preview,
+      persistence_enabled_after_readback: false
+    };
+  def source_mapping_assertion($plan): {
+      source_surface_id: $plan.source_surface_id,
+      canonical_node_kind: $plan.canonical_node_kind,
+      canonical_collection_ids: $plan.canonical_collection_ids,
+      timeline_event_type_ids: $plan.timeline_event_type_ids,
+      source_mapping_ready_preview: true,
+      persists_mapping_after_readback: false
+    };
+  def event_binding_assertion($plan; $event_schema_id): {
+      source_surface_id: $plan.source_surface_id,
+      event_schema_id: $event_schema_id,
+      binding_ready_preview: true,
+      persists_event_after_readback: false
+    };
+  def idempotency_assertion($plan): {
+      source_surface_id: $plan.source_surface_id,
+      idempotency_key_field_ids: $plan.idempotency_key_field_ids,
+      idempotency_key_ready_preview: true,
+      mutates_idempotency_index_after_readback: false
+    };
+  def guard_assertion($guard): {
+      guard_id: $guard.id,
+      severity: $guard.severity,
+      guard_scope: $guard.guard_scope,
+      required_before_shadow_write: $guard.required_before_shadow_write,
+      satisfied_by_preview: $guard.satisfied_by_preview
+    };
+  def blocker_mapping_assertion($blocker): {
+      blocker_id: $blocker.id,
+      affected_source_surface_ids: $blocker.affected_source_surface_ids,
+      affected_shadow_write_stage_ids: $blocker.affected_shadow_write_stage_ids,
+      blocks_shadow_write_persistence: true
+    };
+  def drift_detector($id; $fields): {
+      id: $id,
+      source_fields: $fields,
+      drift_budget: 0
+    };
+  def readback_blocker($id; $severity; $sources; $fix): {
+      id: $id,
+      severity: $severity,
+      affected_source_surface_ids: $sources,
+      recommended_fix: $fix
+    };
+  ($preview.shadow_write_plans | map(readback_plan(.))) as $readback_plans
+  | ($preview.event_schemas | map(schema_assertion(.))) as $schema_assertions
+  | ($preview.stage_plans | map(stage_assertion(.))) as $stage_assertions
+  | ($preview.shadow_write_plans | map(source_mapping_assertion(.))) as $source_mapping_assertions
+  | ($preview.shadow_write_plans | map(. as $plan | $plan.event_schema_ids[] | event_binding_assertion($plan; .))) as $event_binding_assertions
+  | ($preview.shadow_write_plans | map(idempotency_assertion(.))) as $idempotency_key_assertions
+  | ($preview.guards | map(guard_assertion(.))) as $guard_assertions
+  | ($preview.blockers | map(blocker_mapping_assertion(.))) as $blocker_mapping_assertions
+  | [
+      drift_detector("event_schema_order_drift"; ["event_schema_id"]),
+      drift_detector("source_event_binding_drift"; ["source_surface_id", "event_schema_ids"]),
+      drift_detector("idempotency_key_field_drift"; ["source_surface_id", "idempotency_key_field_ids"]),
+      drift_detector("source_surface_mapping_drift"; ["source_surface_id", "canonical_node_kind"]),
+      drift_detector("replay_readback_guard_drift"; ["stage_id", "required_contract_ref_ids"]),
+      drift_detector("no_persistence_guard_drift"; ["guard_id", "satisfied_by_preview"]),
+      drift_detector("shadow_write_blocker_mapping_drift"; ["blocker_id", "affected_source_surface_ids"])
+    ] as $drift_detectors
+  | ($preview.shadow_write_plans | map(.source_surface_id)) as $all_sources
+  | (($preview.blockers[] | select(.id == "canonical_adapter_projection_partial_or_gap") | .affected_source_surface_ids) // []) as $partial_gap_sources
+  | [
+      readback_blocker("append_only_work_graph_events_shadow_write_readback_not_executed"; "high"; $all_sources; "keep shadow-write readback as a preview until replay/readback execution is explicitly enabled"),
+      readback_blocker("append_only_work_graph_events_shadow_write_application_missing"; "high"; $all_sources; "apply readback-verified shadow-write contracts into no-mutation application outcomes"),
+      readback_blocker("append_only_work_graph_events_disabled"; "high"; $all_sources; "keep WorkGraph event persistence disabled until shadow write application and replay/readback readiness are verified"),
+      readback_blocker("runtime_canonical_adapter_enforcement_disabled"; "high"; $all_sources; "keep runtime canonical adapter enforcement disabled until append-only WorkGraph events are promoted"),
+      readback_blocker("canonical_adapter_projection_partial_or_gap"; "high"; $partial_gap_sources; "close partial/gap adapter source mappings before authoritative event projection")
+    ] as $blockers
+  | ($preview.required_prior_gates + [$preview.gate]) as $required_prior_gates
+  | {
+      product: "Hepta",
+      runtime: "hepta",
+      status: "ready",
+      gate: "hepta_work_graph_append_only_work_graph_events_shadow_write_readback_preview_gate",
+      schema_version: "work_graph_append_only_work_graph_events_shadow_write_readback_preview_v1",
+      preview_mode: "read_only_append_only_work_graph_events_shadow_write_readback_preview_no_execution",
+      upstream_shadow_write_preview_gate: "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate",
+      source_surface_count: $preview.source_surface_count,
+      preview_plan_count: $preview.shadow_write_plan_count,
+      readback_plan_count: ($readback_plans | length),
+      event_schema_assertion_count: ($schema_assertions | length),
+      stage_assertion_count: ($stage_assertions | length),
+      source_mapping_assertion_count: ($source_mapping_assertions | length),
+      event_binding_assertion_count: ($event_binding_assertions | length),
+      idempotency_key_assertion_count: ($idempotency_key_assertions | length),
+      guard_assertion_count: ($guard_assertions | length),
+      blocker_mapping_assertion_count: ($blocker_mapping_assertions | length),
+      drift_detector_count: ($drift_detectors | length),
+      blocker_count: ($blockers | length),
+      required_prior_gate_count: ($required_prior_gates | length),
+      readback_plans: $readback_plans,
+      event_schema_assertions: $schema_assertions,
+      stage_assertions: $stage_assertions,
+      source_mapping_assertions: $source_mapping_assertions,
+      event_binding_assertions: $event_binding_assertions,
+      idempotency_key_assertions: $idempotency_key_assertions,
+      guard_assertions: $guard_assertions,
+      blocker_mapping_assertions: $blocker_mapping_assertions,
+      drift_detectors: $drift_detectors,
+      blockers: $blockers,
+      required_prior_gates: $required_prior_gates,
+      recommended_next_gate: "hepta_work_graph_append_only_work_graph_events_shadow_write_application_preview_gate",
+      ready_for_shadow_write_application_preview: true,
+      ready_for_append_only_work_graph_events: false,
+      ready_for_replay_readback: false,
+      ready_for_runtime_adapter_enforcement: false,
+      ready_for_live_execution: false,
+      source_probes: {
+        append_only_work_graph_events_shadow_write_readback: {
+          rust_module_present: $readback_rust_module_present,
+          report_script_present: $readback_report_script_present,
+          gate_script_present: $readback_gate_script_present
+        },
+        append_only_work_graph_events_shadow_write_preview: {
+          rust_module_present: $preview_rust_module_present,
+          gate_script_present: $preview_gate_script_present,
+          upstream_gate: ($preview.gate == "hepta_work_graph_append_only_work_graph_events_shadow_write_preview_gate")
+        }
+      },
+      side_effects: {
+        filesystem_written: false,
+        graph_state_persisted: false,
+        work_graph_events_persisted: false,
+        wal_written: false,
+        checkpoint_written: false,
+        replay_executed: false,
+        readback_executed: false,
+        adapter_projection_enforced: false,
+        runtime_mutation_performed: false,
+        agent_spawn_performed: false,
+        external_send_performed: false,
+        model_invoked: false
+      }
+    }
+  '

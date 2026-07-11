@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet-non-send-readback.report"
+OPERATOR_PACKET_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_CLEAN_WORKTREE_STRATEGY_OPERATOR_PACKET_NON_SEND_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet-non-send-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 16 non-send readback report: $REPORT"
+[[ -x "$OPERATOR_PACKET_REPORT" ]] || fail "missing executable Phase 15 operator packet report: $OPERATOR_PACKET_REPORT"
+[[ -f "$DOC" ]] || fail "missing Phase 16 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 16 clean-worktree strategy operator packet non-send readback report"
+fi
+
+grep -q 'Dirty Worktree Release Boundary Clean Worktree Strategy Operator Packet Non-Send Readback' "$DOC" \
+  || fail "architecture note must document Dirty Worktree Release Boundary Clean Worktree Strategy Operator Packet Non-Send Readback"
+grep -q 'operator_packet_non_send_readback_only' "$DOC" \
+  || fail "architecture note must document operator_packet_non_send_readback_only"
+grep -q 'visible, unsent, and unpersisted' "$DOC" \
+  || fail "architecture note must document visible, unsent, and unpersisted packet readback"
+grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, strategy application, packet send, packet persistence, readback persistence, evidence recording, evidence persistence, approval request, approval acceptance, blocker waiver, package, release, Public GA, canary activation, live activation, or live execution' "$DOC" \
+  || fail "architecture note must document the closed Phase 16 boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_non_send_readback"
+  and .status == "ready_blocked"
+  and .gate == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_non_send_readback_gate"
+  and .schema_version == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_non_send_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_operator_packet_gate == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_gate"
+  and .source_operator_packet_ready == true
+  and .source_operator_packet_sent == false
+  and .source_operator_packet_persisted == false
+  and .source_strategy_applied == false
+  and .source_packet_entry_count > 0
+  and .source_packet_section_count == 6
+  and .lib_export_present == true
+  and .inventory_entry_count == (.tracked_change_count + .untracked_change_count)
+  and .readback_scope.readback_id == "dirty-worktree.release-boundary.clean-worktree-strategy.operator-packet.non-send-readback.v1"
+  and .readback_scope.readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/v1"
+  and .readback_scope.source_packet_route == "operator-packet://release-boundary/dirty-worktree/clean-worktree-strategy/v1"
+  and .readback_scope.readback_mode == "operator_packet_non_send_readback_only"
+  and .readback_scope.send_boundary == "blocked"
+  and .readback_scope.persistence_boundary == "blocked"
+  and .readback_scope.git_mutation_boundary == "closed"
+  and .readback_entry_count == .source_packet_entry_count
+  and .stable_readback_key_count == .readback_entry_count
+  and .readback_route_count == .readback_entry_count
+  and .readback_ready_count == .readback_entry_count
+  and .visible_unsent_unpersisted_count == .readback_entry_count
+  and .attached_packet_count == .readback_entry_count
+  and .operator_decision_required_count == .readback_entry_count
+  and .no_git_mutation_readback_count == .readback_entry_count
+  and .evidence_recorded_count == 0
+  and .operator_packet_visible == true
+  and .operator_packet_sent == false
+  and .operator_packet_persisted == false
+  and .readback_persisted == false
+  and .strategy_applied == false
+  and .release_cutover_allowed == false
+  and .git_add_allowed == false
+  and .git_index_mutated == false
+  and .git_commit_allowed == false
+  and .git_push_allowed == false
+  and .git_reset_allowed == false
+  and .git_checkout_allowed == false
+  and .git_revert_allowed == false
+  and .cleanup_allowed == false
+  and .delete_allowed == false
+  and .evidence_recording_allowed == false
+  and .evidence_persistence_allowed == false
+  and .approval_request_sent == false
+  and .approval_acceptance_allowed == false
+  and .blocker_waiver_allowed == false
+  and .package_or_release_allowed == false
+  and .public_ga_allowed == false
+  and .canary_activation_allowed == false
+  and .live_activation_allowed == false
+  and .live_execution_allowed == false
+  and .non_send_readback_ready == true
+  and (.entries | length) == .readback_entry_count
+  and any(.entries[]; .group_type == "top_level")
+  and any(.entries[]; .group_type == "scope")
+  and any(.entries[]; .review_lane == "hepta-systems")
+  and any(.entries[]; .review_lane == "cross-lane-review" or .review_lane == "external-or-cross-lane")
+  and any(.entries[]; .review_lane == "mixed" or .review_lane == "mixed-hepta-and-cross-lane")
+  and (.entries | all(
+    (.source_packet_key | startswith("dirty_worktree.packet."))
+    and (.source_packet_route | startswith("operator-packet://release-boundary/dirty-worktree/clean-worktree-strategy/"))
+    and (.non_send_readback_key | startswith("dirty_worktree.packet.non_send."))
+    and (.non_send_readback_route | startswith("readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/"))
+    and .source_entry_count > 0
+    and .source_entry_count == (.tracked_count + .untracked_count)
+    and .source_entry_count == (.hepta_systems_owned_count + .cross_lane_or_unowned_count)
+    and .decision_state == "pending_operator_decision"
+    and .observed_state == "operator_packet_visible_unsent_unpersisted"
+    and .previous_send_state == "unsent"
+    and .current_send_state == "unsent"
+    and .send_state_delta == "unchanged_unsent"
+    and .previous_persistence_state == "unpersisted"
+    and .current_persistence_state == "unpersisted"
+    and .persistence_state_delta == "unchanged_unpersisted"
+    and .packet_visible == true
+    and .non_send_confirmed == true
+    and .non_persistence_confirmed == true
+    and .operator_visible == true
+    and .queryable == true
+    and .diffable == true
+    and .operator_decision_required == true
+    and .packet_send_blocked == true
+    and .packet_persistence_blocked == true
+    and .approval_request_blocked == true
+    and .strategy_application_blocked == true
+    and .git_mutation_allowed == false
+    and .cleanup_allowed == false
+    and .delete_allowed == false
+    and .evidence_recording_allowed == false
+    and .release_cutover_allowed == false
+    and .live_execution_allowed == false))
+  and any(.entries[]; .source_bucket == "artifacts" and .non_send_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/top-level/artifacts")
+  and any(.entries[]; .source_bucket == "scripts" and .non_send_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/top-level/scripts")
+  and any(.entries[]; .source_bucket == "codex-rs" and .non_send_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/top-level/codex-rs")
+  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .non_send_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/scope/hepta-systems-owned")
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .non_send_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-packet/non-send/scope/cross-lane-or-unowned")
+  and (.blockers | index("operator_packet_send_blocked")) != null
+  and (.blockers | index("operator_packet_persistence_blocked")) != null
+  and (.blockers | index("operator_packet_readback_persistence_blocked")) != null
+  and (.blockers | index("strategy_application_blocked")) != null
+  and (.blockers | index("git_mutation_blocked")) != null
+  and (.blockers | index("cleanup_and_delete_blocked")) != null
+  and (.blockers | index("evidence_recording_blocked")) != null
+  and (.blockers | index("release_cutover_blocked")) != null
+  and (.blockers | index("canary_activation_blocked")) != null
+  and (.blockers | index("live_activation_blocked")) != null
+  and (.next_actions | index("phase17_dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_git_mutation_boundary_readback_without_git_mutation")) != null
+  and .next_migration_step == "phase17_dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_git_mutation_boundary_readback_without_git_mutation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$OPERATOR_PACKET_REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet"
+  and .status == "ready_blocked"
+  and .operator_packet_ready == true
+  and .packet_entry_count > 0
+  and .operator_packet_sent == false
+  and .operator_packet_persisted == false
+  and .strategy_applied == false
+  and .git_index_mutated == false
+  and .cleanup_allowed == false
+  and .delete_allowed == false
+  and .release_cutover_allowed == false
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime dirty_worktree_release_boundary_clean_worktree_strategy_operator_packet_non_send_readback --lib
+)
+
+printf 'hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-packet-non-send-readback-gate: PASS: clean-worktree strategy operator packet is visible, unsent, unpersisted, and git-mutation blocked\n'

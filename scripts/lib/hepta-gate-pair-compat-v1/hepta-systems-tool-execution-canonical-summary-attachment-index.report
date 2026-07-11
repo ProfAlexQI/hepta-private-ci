@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+BRIDGE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-terminal-governance-bridge.report"
+BRIDGE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-terminal-governance-bridge.gate"
+PATCH_QUEUE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-session-patch-queue.report"
+PATCH_QUEUE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-session-patch-queue.gate"
+SNAPSHOT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-missing-path-snapshot-evidence.report"
+SNAPSHOT_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-missing-path-snapshot-evidence.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CANONICAL_SUMMARY_ATTACHMENT_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-tool-execution-canonical-summary-attachment-index-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$BRIDGE_REPORT" ]] || fail "missing executable terminal governance bridge report: $BRIDGE_REPORT"
+[[ -x "$BRIDGE_GATE" ]] || fail "missing executable terminal governance bridge gate: $BRIDGE_GATE"
+[[ -x "$PATCH_QUEUE_REPORT" ]] || fail "missing executable session patch queue report: $PATCH_QUEUE_REPORT"
+[[ -x "$PATCH_QUEUE_GATE" ]] || fail "missing executable session patch queue gate: $PATCH_QUEUE_GATE"
+[[ -x "$SNAPSHOT_REPORT" ]] || fail "missing executable historical canonical missing path snapshot evidence report: $SNAPSHOT_REPORT"
+[[ -x "$SNAPSHOT_GATE" ]] || fail "missing executable historical canonical missing path snapshot evidence gate: $SNAPSHOT_GATE"
+[[ -f "$DOC" ]] || fail "missing canonical summary attachment index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the canonical summary attachment index report"
+fi
+
+jq -n \
+  --slurpfile bridge <("$BRIDGE_REPORT") \
+  --slurpfile queue <(HEPTA_SESSION_PATCH_QUEUE_ANCHOR_FILTER=compact_capability_matrix "$PATCH_QUEUE_REPORT") \
+  --slurpfile snapshot <("$SNAPSHOT_REPORT") \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-canonical-summary-attachment-index.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_TOOL_EXECUTION_CANONICAL_SUMMARY_ATTACHMENT_INDEX_2026-06-21.md" \
+  '
+  ($bridge[0]) as $bridge |
+  ($queue[0]) as $queue |
+  ($snapshot[0]) as $snapshot |
+  (($queue.phase0_anchor_summary // [])
+    | map(select(.id == "compact_capability_matrix"))
+    | .[0] // {}) as $compact_anchor |
+  (($queue.phase0_anchor_patch_queue // [])
+    | map(select(.anchor_ids | index("compact_capability_matrix")))
+    | sort_by(.timestamp, .session, .call_id)
+    | .[0] // {}) as $selected_patch |
+  ($snapshot.canonical_source_snapshot_probes
+    | map({
+      id,
+      kind,
+      path,
+      present:.present_at_snapshot,
+      executable:.executable_at_snapshot,
+      probe_basis:"historical_snapshot_evidence"
+    })) as $canonical_probes |
+  ($canonical_probes | map(select(.present == true)) | length) as $present_count |
+  ($canonical_probes | map(select(.present == false) | .id)) as $missing_ids |
+  ($bridge.tool_execution_terminal_governance_bridge_ready
+    and $bridge.source_manual_operator_live_cutover_approval_required == true
+    and $bridge.tool_execution_live_cutover_allowed == false
+    and $bridge.tool_execution_public_ga_allowed == false
+    and $bridge.terminal_live_gates_invoked == false
+    and $bridge.long_soak_required == false
+    and $queue.status == "ready"
+    and $queue.replay_applied == false
+    and $queue.patch_replay_enabled == false
+    and $queue.patch_body_emitted == false
+    and (($compact_anchor.patch_call_count // 0) >= 1)
+    and (($selected_patch.call_id // "") != "")
+    and $snapshot.historical_missing_path_snapshot_evidence_ready == true
+    and $snapshot.snapshot_current_filesystem_probe_used == false
+    and $snapshot.snapshot_decouples_from_current_filesystem_state == true
+    and ($present_count == 0)
+    and ($bridge.side_effects | to_entries | all(.value == false))) as $index_ready |
+  {
+    runtime:"hepta",
+    surface:"tool_execution_canonical_summary_attachment_index",
+    plugin_id:$bridge.plugin_id,
+    status:(if $index_ready then "ready" else "blocked" end),
+    source_terminal_governance_bridge_surface:$bridge.surface,
+    source_terminal_governance_bridge_ready:$bridge.tool_execution_terminal_governance_bridge_ready,
+    source_manual_operator_live_cutover_approval_required:$bridge.source_manual_operator_live_cutover_approval_required,
+    source_live_cutover_allowed:$bridge.tool_execution_live_cutover_allowed,
+    source_public_ga_allowed:$bridge.tool_execution_public_ga_allowed,
+    source_terminal_live_gates_invoked:$bridge.terminal_live_gates_invoked,
+    source_long_soak_required:$bridge.long_soak_required,
+    source_patch_queue_surface:$queue.surface,
+    source_patch_queue_ready:($queue.status == "ready"),
+    source_patch_queue_anchor_filter:$queue.anchor_filter,
+    source_patch_replay_applied:$queue.replay_applied,
+    source_patch_replay_enabled:$queue.patch_replay_enabled,
+    source_patch_body_emitted:$queue.patch_body_emitted,
+    source_snapshot_surface:$snapshot.surface,
+    source_snapshot_ready:$snapshot.historical_missing_path_snapshot_evidence_ready,
+    source_snapshot_id:$snapshot.snapshot_id,
+    source_snapshot_decouples_from_current_filesystem_state:$snapshot.snapshot_decouples_from_current_filesystem_state,
+    canonical_summary_probe_basis:"historical_snapshot_evidence",
+    canonical_summary_current_filesystem_probe_used:false,
+    canonical_summary_probe_count:($canonical_probes | length),
+    canonical_summary_present_count:$present_count,
+    current_checkout_missing_canonical_summary:($present_count == 0),
+    historical_snapshot_missing_canonical_summary:($present_count == 0),
+    historical_snapshot_evidence_consumable_after_wrapper_creation:$snapshot.historical_snapshot_evidence_consumable_after_wrapper_creation,
+    canonical_summary_available:($present_count > 0),
+    canonical_source_probes:$canonical_probes,
+    missing_canonical_source_ids:$missing_ids,
+    historical_compact_capability_matrix_patch_call_count:($compact_anchor.patch_call_count // 0),
+    historical_compact_capability_matrix_missing_path_count:($compact_anchor.missing_path_count // 0),
+    historical_compact_capability_matrix_first_timestamp:($compact_anchor.first_timestamp // null),
+    historical_compact_capability_matrix_last_timestamp:($compact_anchor.last_timestamp // null),
+    selected_reconstruction_candidate:{
+      call_id:($selected_patch.call_id // null),
+      timestamp:($selected_patch.timestamp // null),
+      session:($selected_patch.session // null),
+      patch_line_count:($selected_patch.patch_line_count // 0),
+      touched_paths:($selected_patch.touched_paths // []),
+      current_status_counts:($selected_patch.current_status_counts // {}),
+      replay_risk:($selected_patch.replay_risk // "unknown"),
+      patch_body_emitted:false,
+      replay_applied:false
+    },
+    attach_to_existing_canonical_summary_allowed:false,
+    canonical_summary_mutation_allowed:false,
+    tool_execution_canonical_summary_attachment_index_ready:$index_ready,
+    tool_execution_live_cutover_allowed:false,
+    tool_execution_public_ga_allowed:false,
+    next_migration_step:"migrate_compact_restore_preflight_to_snapshot_evidence_source_before_wrapper_creation",
+    attachment_blockers:[
+      "historical_snapshot_canonical_summary_entrypoint_missing",
+      "capability_matrix_entrypoint_missing",
+      "canonical_matrix_doc_missing",
+      "compact_capability_matrix_requires_manual_apply_check",
+      "manual_operator_live_cutover_approval_required",
+      "tool_execution_live_cutover_allowed_false",
+      "tool_execution_public_ga_allowed_false",
+      "approval_request_not_sent",
+      "tool_invocation_disabled",
+      "ledger_write_disabled",
+      "approval_broker_request_disabled"
+    ],
+    local_gate:$gate,
+    architecture_note:$doc,
+    source_files:{
+      terminal_governance_bridge_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-terminal-governance-bridge.report",
+      terminal_governance_bridge_gate:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-tool-execution-terminal-governance-bridge.gate",
+      session_patch_queue_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-session-patch-queue.report",
+      session_patch_queue_anchor_filter:"compact_capability_matrix",
+      session_patch_queue_gate:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-session-patch-queue.gate",
+      historical_canonical_missing_path_snapshot_evidence_report:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-missing-path-snapshot-evidence.report",
+      historical_canonical_missing_path_snapshot_evidence_gate:"scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-historical-canonical-missing-path-snapshot-evidence.gate"
+    },
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      git_index_mutated:false,
+      historical_patch_replayed:false,
+      patch_body_emitted:false,
+      canonical_summary_mutated:false,
+      canonical_gate_invoked:false,
+      capability_matrix_gate_invoked:false,
+      terminal_live_gate_invoked:false,
+      terminal_live_url_contacted:false,
+      long_soak_started:false,
+      plugin_cache_mutated:false,
+      tool_registered:false,
+      execution_adapter_dispatched:false,
+      tool_invoked:false,
+      tool_invocation_ledger_written:false,
+      approval_broker_mutated:false,
+      approval_requested:false,
+      operator_cutover_acceptance_recorded:false,
+      live_cutover_started:false,
+      result_receipt_written:false,
+      rollback_executed:false,
+      rollback_receipt_written:false,
+      mcp_server_started:false,
+      app_connector_started:false,
+      workflow_event_log_mutated:false,
+      credential_read:false,
+      provider_invoked:false,
+      model_invoked:false,
+      channel_send_performed:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false
+    }
+  }'

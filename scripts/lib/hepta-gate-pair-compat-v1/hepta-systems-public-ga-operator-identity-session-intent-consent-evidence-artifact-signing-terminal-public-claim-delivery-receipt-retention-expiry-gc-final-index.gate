@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-retention-expiry-gc-final-index.report"
+READBACK_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-retention-expiry-gc-readback.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_IDENTITY_SESSION_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_RETENTION_EXPIRY_GC_FINAL_INDEX_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-retention-expiry-gc-final-index-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable terminal public claim delivery receipt retention/expiry/GC final index report: $REPORT"
+[[ -x "$READBACK_GATE" ]] || fail "missing executable terminal public claim delivery receipt retention/expiry/GC readback gate: $READBACK_GATE"
+[[ -f "$DOC" ]] || fail "missing terminal public claim delivery receipt retention/expiry/GC final index architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the terminal public claim delivery receipt retention/expiry/GC final index report"
+fi
+
+grep -q 'Terminal Public Claim Delivery Receipt Retention/Expiry/GC Final Index' "$DOC" \
+  || fail "architecture note must document Terminal Public Claim Delivery Receipt Retention/Expiry/GC Final Index"
+grep -q 'ready-but-blocked' "$DOC" \
+  || fail "architecture note must document ready-but-blocked status"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that final index does not invoke retention/expiry/GC gates"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_retention_expiry_gc_final_index"
+  and .status == "ready_blocked"
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_retention_expiry_gc_final_index_ready == true
+  and .public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_retention_expiry_gc_final_index_blocked == true
+  and .artifact_signing_terminal_public_claim_delivery_receipt_retention_expiry_gc_denial_gate_invoked == false
+  and .retention_policy_recorded == false
+  and .ttl_lease_recorded == false
+  and .expiry_timer_started == false
+  and .garbage_collection_executed == false
+  and .archive_recorded == false
+  and .compaction_performed == false
+  and .release_publication_authority_from_delivery_receipt_retention_derived == false
+  and .activation_authority_from_delivery_receipt_retention_derived == false
+  and .install_from_delivery_receipt_retention_executed == false
+  and .active_binary_from_delivery_receipt_retention_mutated == false
+  and .provider_invoked == false
+  and .credential_read == false
+  and .final_blocker_count == 102
+  and .terminal_live_url_required == false
+  and .long_soak_required == false
+  and .public_ga_claim_allowed == false
+  and .public_release_published == false
+  and .next_migration_step == "attach_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_retention_expiry_gc_final_index_to_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_export_query_observability_without_retention"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$READBACK_GATE" >/dev/null
+
+printf 'hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-retention-expiry-gc-final-index-gate: PASS: terminal public claim delivery receipt retention/expiry/GC final index is ready but blocked\n'

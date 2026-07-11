@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+MATRIX_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"
+COMPACT_CACHE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-matrix-compact-cache-boundary-readback.report"
+DASHBOARD_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-readiness-dashboard.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/hepta_systems_matrix_report_single_render_cache_boundary_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_2026-06-29.md"
+
+fail() {
+  printf 'hepta-systems-matrix-report-single-render-cache-boundary-readback-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$MATRIX_REPORT" ]] || fail "missing executable current reality matrix report: $MATRIX_REPORT"
+[[ -x "$COMPACT_CACHE_REPORT" ]] || fail "missing executable compact cache report: $COMPACT_CACHE_REPORT"
+[[ -x "$DASHBOARD_REPORT" ]] || fail "missing executable controlled-live dashboard report: $DASHBOARD_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing single-render cache boundary Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -f "$DOC" ]] || fail "missing single-render cache boundary architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to render the single-render cache boundary report"
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+"$MATRIX_REPORT" >"$tmpdir/matrix.json" || fail "failed to render current reality matrix once"
+jq -e . "$tmpdir/matrix.json" >/dev/null || fail "current reality matrix did not render valid JSON"
+
+lib_export_present=false
+if grep -q 'hepta_systems_matrix_report_single_render_cache_boundary_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+compact_cache_consumer_rewired=false
+if grep -q 'SINGLE_RENDER_REPORT=' "$COMPACT_CACHE_REPORT" \
+  && ! grep -q 'MATRIX_REPORT=' "$COMPACT_CACHE_REPORT"; then
+  compact_cache_consumer_rewired=true
+fi
+
+dashboard_consumer_rewired=false
+if grep -q 'SINGLE_RENDER_REPORT=' "$DASHBOARD_REPORT" \
+  && ! grep -q 'MATRIX_REPORT=' "$DASHBOARD_REPORT"; then
+  dashboard_consumer_rewired=true
+fi
+
+jq -n \
+  --slurpfile matrix "$tmpdir/matrix.json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --argjson compact_cache_consumer_rewired "$compact_cache_consumer_rewired" \
+  --argjson dashboard_consumer_rewired "$dashboard_consumer_rewired" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-matrix-report-single-render-cache-boundary-readback.gate" \
+  --arg doc "docs/architecture/HEPTA_SYSTEMS_MATRIX_REPORT_SINGLE_RENDER_CACHE_BOUNDARY_READBACK_2026-06-29.md" \
+  '
+  def entry($id; $source; $consumer): {
+    entry_id:$id,
+    source_route:$source,
+    consumer_route:$consumer,
+    projected_in_memory:true,
+    matrix_report_render_consumed:true,
+    downstream_direct_matrix_render_required:false,
+    matrix_cache_written:false,
+    matrix_cache_persisted:false,
+    compact_cache_persisted:false,
+    source_report_semantics_changed:false,
+    workflow_execution_started:false,
+    replay_executed:false,
+    event_log_written:false,
+    sqlite_written:false,
+    live_execution_started:false
+  };
+  ($matrix[0]) as $matrix_report |
+  [
+    entry("matrix_capability_summary_projection"; "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"; "readback://current-reality-matrix/single-render/capability-summary"),
+    entry("matrix_live_blocker_summary_projection"; "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"; "readback://current-reality-matrix/single-render/live-blockers"),
+    entry("compact_cache_boundary_single_render_consumer"; "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"; "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-matrix-compact-cache-boundary-readback.report"),
+    entry("controlled_live_dashboard_single_render_consumer"; "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"; "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-readiness-dashboard.report")
+  ] as $entries |
+  ($entries | map(select(.projected_in_memory == true)) | length) as $single_render_projection_count |
+  ($entries | map(select(.consumer_route | startswith("scripts/hepta-systems-"))) | length) as $downstream_consumer_count |
+  ($matrix_report.status == "blocked"
+    and $matrix_report.current_reality_capability_matrix_ready == false
+    and $matrix_report.local_capability_count == ($matrix_report.capabilities | length)
+    and $matrix_report.local_capability_ready_count > 0
+    and $matrix_report.local_capability_ready_count < $matrix_report.local_capability_count
+    and $matrix_report.local_capability_blocked_count > 0
+    and ($matrix_report.local_capability_ready_count + $matrix_report.local_capability_blocked_count) == $matrix_report.local_capability_count
+    and $matrix_report.live_enabled_count == 0
+    and $matrix_report.all_live_paths_blocked == true
+    and ($matrix_report.capabilities | any(.id == "hepta_systems_matrix_report_single_render_cache_boundary_readback" and .ready == true and .live_enabled == false))
+    and $matrix_report.next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+    and $lib_export_present == true
+    and $compact_cache_consumer_rewired == true
+    and $dashboard_consumer_rewired == true
+    and $single_render_projection_count == 4
+    and $downstream_consumer_count == 2
+    and ($entries | all(.matrix_report_render_consumed == true
+      and .downstream_direct_matrix_render_required == false
+      and .matrix_cache_written == false
+      and .matrix_cache_persisted == false
+      and .compact_cache_persisted == false
+      and .source_report_semantics_changed == false
+      and .workflow_execution_started == false
+      and .replay_executed == false
+      and .event_log_written == false
+      and .sqlite_written == false
+      and .live_execution_started == false))) as $ready |
+  {
+    runtime:"hepta",
+    surface:"hepta_systems_matrix_report_single_render_cache_boundary_readback",
+    status:(if $ready then "ready_blocked" else "blocked" end),
+    gate:"hepta_systems_matrix_report_single_render_cache_boundary_readback_gate",
+    schema_version:"hepta_systems_matrix_report_single_render_cache_boundary_readback_v1",
+    source_matrix_ready:$matrix_report.current_reality_capability_matrix_ready,
+    source_matrix_capability_count:$matrix_report.local_capability_count,
+    source_matrix_ready_count:$matrix_report.local_capability_ready_count,
+    source_live_enabled_count:$matrix_report.live_enabled_count,
+    source_all_live_paths_blocked:$matrix_report.all_live_paths_blocked,
+    source_dirty_worktree_entry_count:$matrix_report.git_status_entry_count,
+    source_dirty_worktree_untracked_count:$matrix_report.git_untracked_count,
+    source_dirty_worktree_tracked_change_count:$matrix_report.git_tracked_change_count,
+    controlled_live_blocker_count:7,
+    matrix_report_render_count:1,
+    single_render_projection_count:$single_render_projection_count,
+    downstream_consumer_count:$downstream_consumer_count,
+    lib_export_present:$lib_export_present,
+    compact_cache_consumer_rewired:$compact_cache_consumer_rewired,
+    dashboard_consumer_rewired:$dashboard_consumer_rewired,
+    matrix_cache_write_allowed:false,
+    matrix_cache_persisted:false,
+    compact_cache_persisted:false,
+    source_report_semantics_change_allowed:false,
+    downstream_direct_matrix_render_allowed:false,
+    workflow_execution_allowed:false,
+    replay_execution_allowed:false,
+    event_log_write_allowed:false,
+    sqlite_write_allowed:false,
+    live_execution_allowed:false,
+    single_render_cache_boundary_readback_ready:$ready,
+    entries:$entries,
+    blockers:[
+      "matrix_cache_write_disabled",
+      "matrix_cache_persistence_disabled",
+      "compact_cache_persistence_disabled",
+      "source_report_semantics_change_disabled",
+      "downstream_direct_matrix_render_disabled",
+      "workflow_execution_disabled",
+      "replay_execution_disabled",
+      "event_log_write_disabled",
+      "sqlite_write_disabled",
+      "live_execution_disabled"
+    ],
+    next_actions:[
+      "close_controlled_live_evidence_before_status_canary_start"
+    ],
+    recommended_next_gate:"close_controlled_live_evidence_before_status_canary_start",
+    local_gate:$gate,
+    architecture_note:$doc,
+    side_effect_free:true,
+    side_effects:{
+      report_written:false,
+      filesystem_written:false,
+      matrix_cache_written:false,
+      matrix_cache_persisted:false,
+      compact_cache_persisted:false,
+      source_report_semantics_changed:false,
+      downstream_direct_matrix_render_performed:false,
+      workflow_execution_started:false,
+      replay_executed:false,
+      event_log_written:false,
+      sqlite_written:false,
+      provider_invoked:false,
+      model_invoked:false,
+      gateway_or_auth_mutated:false,
+      native_post_mutation_performed:false,
+      channel_send_performed:false,
+      package_or_release_written:false,
+      public_ga_promoted:false,
+      live_execution_started:false
+    }
+  }'

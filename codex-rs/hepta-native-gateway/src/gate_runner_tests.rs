@@ -212,26 +212,70 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
         snapshot["legacy_pair_count"],
         latest["remaining_legacy_pair_count"]
     );
+    assert_eq!(latest["remaining_legacy_pair_count"], 0);
+    assert_eq!(latest["all_exact_pairs_thin_wrappers"], true);
+    assert_eq!(latest["pre_migration_content_snapshot_ready"], true);
+    assert_eq!(latest["compatibility_payload_all_hash_verified"], true);
+    assert_eq!(latest["receipt_state_machine_derived"], true);
     assert_eq!(
-        latest["successful_output_byte_parity_count"].as_u64(),
-        latest["migrated_pair_count"]
+        latest["captured_payload_source_hash_binding_count"].as_u64(),
+        latest["captured_compatibility_pair_count"]
             .as_u64()
             .map(|count| count * 2)
     );
-    assert_eq!(latest["report_output_byte_parity_ready"], true);
-    assert_eq!(latest["gate_output_byte_parity_ready"], true);
+    assert_eq!(
+        latest["existing_template_output_byte_parity_count"].as_u64(),
+        latest["template_pair_count"]
+            .as_u64()
+            .map(|count| count * 2)
+    );
 
-    let mut ledger_ids = latest["migrated_ids"]
+    let migration_input_path =
+        repo_root().join("docs/architecture/HEPTA_SHELL_GATE_MIGRATION_INPUT_V1.json");
+    let migration_input: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&migration_input_path)
+            .with_context(|| format!("failed to read {}", migration_input_path.display()))
+            .expect("migration input snapshot"),
+    )
+    .expect("migration input value");
+    let input_entries = migration_input["entries"]
         .as_array()
-        .expect("migrated ids")
+        .expect("migration input entries")
         .iter()
-        .map(|id| id.as_str().expect("migrated id").to_string())
+        .filter(|entry| entry["exact_pair"] == true)
+        .map(|entry| {
+            (
+                entry["id"]
+                    .as_str()
+                    .expect("migration input id")
+                    .to_string(),
+                entry,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let specs = migrated_pair_specs().expect("migrated pair specs");
+    assert_eq!(input_entries.len(), 1282);
+    assert_eq!(specs.len(), input_entries.len());
+    assert!(specs.keys().all(|id| input_entries.contains_key(id)));
+
+    let captured_specs = specs
+        .values()
+        .filter(|spec| spec.template == "captured_shell_compat_v1")
         .collect::<Vec<_>>();
-    let mut spec_ids = migrated_pair_specs()
-        .expect("migrated pair specs")
-        .into_keys()
-        .collect::<Vec<_>>();
-    ledger_ids.sort();
-    spec_ids.sort();
-    assert_eq!(ledger_ids, spec_ids);
+    assert_eq!(captured_specs.len(), 1255);
+    for spec in captured_specs {
+        let input = input_entries.get(&spec.id).expect("captured pair input");
+        assert_eq!(
+            spec.gate_source_sha256.as_deref(),
+            input["gate_sha256"].as_str(),
+            "captured gate source parity for {}",
+            spec.id
+        );
+        assert_eq!(
+            spec.report_source_sha256.as_deref(),
+            input["report_sha256"].as_str(),
+            "captured report source parity for {}",
+            spec.id
+        );
+    }
 }

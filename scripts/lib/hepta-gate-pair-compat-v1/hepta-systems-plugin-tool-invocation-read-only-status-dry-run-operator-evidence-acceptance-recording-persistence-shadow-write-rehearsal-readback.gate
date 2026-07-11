@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-acceptance-recording-persistence-shadow-write-rehearsal-readback.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_INVOCATION_READ_ONLY_STATUS_DRY_RUN_OPERATOR_EVIDENCE_ACCEPTANCE_RECORDING_PERSISTENCE_SHADOW_WRITE_REHEARSAL_READBACK_2026-07-01.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-acceptance-recording-persistence-shadow-write-rehearsal-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable persistence shadow write rehearsal report: $REPORT"
+[[ -f "$DOC" ]] || fail "missing persistence shadow write rehearsal architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the persistence shadow write rehearsal report"
+fi
+
+rg -q 'Hepta Systems Plugin Tool Invocation Read Only Status Dry Run Operator Evidence Acceptance Recording Persistence Shadow Write Rehearsal Readback' "$DOC" \
+  || fail "architecture note must document the persistence shadow write rehearsal readback"
+rg -q 'shadow acceptance record envelope, shadow write intent, shadow payload digest, shadow idempotency replay key, shadow receipt preview, shadow store target, and shadow replay result' "$DOC" \
+  || fail "architecture note must document the shadow write rehearsal projection"
+rg -q 'no feature gate open, dry-run execution, operator evidence packet send, operator evidence packet persistence, operator evidence recording, operator acceptance recording, acceptance record persistence, shadow write execution, shadow write materialization, shadow store write, test tmp write, persistence open denial receipt persistence, persistence denial receipt persistence, non-recording denial receipt persistence, idempotency index write, ledger persistence, receipt persistence, ToolRegistry registration, ToolRegistry mutation, registry lookup execution, tool invocation, connector start, runtime event-log write, SQLite write, credential read, external network, Gateway/Auth mutation, Native POST mutation, Telegram transport mutation, package/release, canary activation, Public GA promotion, or live execution' "$DOC" \
+  || fail "architecture note must document the closed shadow write boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback"
+  and .status == "ready_blocked"
+  and .gate == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback_gate"
+  and .schema_version == "hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .manifest_name == "hepta-system"
+  and .manifest_version == "0.0.0-fixture"
+  and .source_persistence_open_preconditions_readback_ready == true
+  and .lib_export_present == true
+  and .candidate_count == 2
+  and .shadow_write_entry_count == 2
+  and .selected_read_only_status_tool_count == 1
+  and .non_selected_preflight_boundary_count == 1
+  and .source_persistence_open_precondition_set_linked_count == 2
+  and .source_persistence_open_denial_receipt_linked_count == 2
+  and .source_persistence_open_idempotency_key_linked_count == 2
+  and .source_acceptance_record_store_binding_precondition_linked_count == 2
+  and .source_acceptance_record_idempotency_index_precondition_linked_count == 2
+  and .source_ledger_store_binding_precondition_linked_count == 2
+  and .source_receipt_store_binding_precondition_linked_count == 2
+  and .source_runtime_event_log_store_binding_precondition_linked_count == 2
+  and .source_rollback_anchor_precondition_linked_count == 2
+  and .source_kill_switch_precondition_linked_count == 2
+  and .shadow_acceptance_record_envelope_projected_count == 2
+  and .shadow_write_intent_projected_count == 2
+  and .shadow_write_payload_digest_projected_count == 2
+  and .shadow_idempotency_replay_key_projected_count == 2
+  and .shadow_receipt_preview_projected_count == 2
+  and .shadow_store_target_projected_count == 2
+  and .shadow_replay_result_projected_count == 2
+  and .shadow_write_rehearsal_item_count == 14
+  and .stable_shadow_acceptance_record_envelope_count == 2
+  and .unique_shadow_acceptance_record_envelope_count == 2
+  and .stable_shadow_write_payload_digest_count == 2
+  and .unique_shadow_write_payload_digest_count == 2
+  and .stable_shadow_idempotency_replay_key_count == 2
+  and .unique_shadow_idempotency_replay_key_count == 2
+  and .shadow_acceptance_record_envelope_mismatch_count == 0
+  and .duplicate_shadow_acceptance_record_envelope_count == 0
+  and .shadow_write_payload_digest_mismatch_count == 0
+  and .duplicate_shadow_write_payload_digest_count == 0
+  and .shadow_idempotency_replay_mismatch_count == 0
+  and .duplicate_shadow_idempotency_replay_key_count == 0
+  and .feature_gate_opened_count == 0
+  and .dry_run_executed_count == 0
+  and .operator_evidence_packet_sent_count == 0
+  and .operator_evidence_packet_persisted_count == 0
+  and .operator_evidence_recorded_count == 0
+  and .operator_acceptance_recorded_count == 0
+  and .acceptance_record_persisted_count == 0
+  and .shadow_write_executed_count == 0
+  and .shadow_write_materialized_count == 0
+  and .shadow_store_written_count == 0
+  and .test_tmp_written_count == 0
+  and .persistence_open_denial_receipt_persisted_count == 0
+  and .persistence_denial_receipt_persisted_count == 0
+  and .non_recording_denial_receipt_persisted_count == 0
+  and .idempotency_index_written_count == 0
+  and .ledger_written_count == 0
+  and .receipt_persisted_count == 0
+  and .tool_registered_count == 0
+  and .registry_lookup_executed_count == 0
+  and .tool_invoked_count == 0
+  and .mcp_server_started_count == 0
+  and .app_connector_started_count == 0
+  and .runtime_event_log_written_count == 0
+  and .sqlite_written_count == 0
+  and .live_execution_started_count == 0
+  and .persistence_shadow_write_rehearsal_readback_ready == true
+  and .feature_gate_open_allowed == false
+  and .dry_run_execution_allowed == false
+  and .operator_evidence_packet_send_allowed == false
+  and .operator_evidence_packet_persistence_allowed == false
+  and .operator_evidence_recording_allowed == false
+  and .operator_acceptance_recording_allowed == false
+  and .acceptance_record_persistence_allowed == false
+  and .shadow_write_execution_allowed == false
+  and .shadow_store_write_allowed == false
+  and .test_tmp_write_allowed == false
+  and .persistence_open_denial_receipt_persistence_allowed == false
+  and .idempotency_index_write_allowed == false
+  and .ledger_persistence_allowed == false
+  and .receipt_persistence_allowed == false
+  and .tool_registry_registration_allowed == false
+  and .registry_lookup_execution_allowed == false
+  and .tool_invocation_allowed == false
+  and .connector_start_allowed == false
+  and .runtime_event_log_write_allowed == false
+  and .sqlite_write_allowed == false
+  and .live_execution_allowed == false
+  and (.entries | length) == 2
+  and any(.entries[]; .candidate_tool_id == "preview:mcp:hepta-system@hepta-local:hepta_system_local_mcp" and .contribution_kind == "mcp_server" and .dry_run_path_selected == true and .shadow_acceptance_record_envelope_id == "operator-evidence-acceptance-recording-persistence-shadow-envelope:hepta-system:local-mcp:read-only-status-dry-run" and .shadow_idempotency_replay_key == "operator-evidence-acceptance-recording-persistence-shadow-idempotency-replay:hepta-system:local-mcp:read-only-status-dry-run")
+  and any(.entries[]; .candidate_tool_id == "preview:connector:hepta-system@hepta-local:hepta_system_local_app" and .contribution_kind == "app_connector" and .dry_run_path_selected == false and .shadow_acceptance_record_envelope_id == "operator-evidence-acceptance-recording-persistence-shadow-envelope:hepta-system:local-app:not-selected" and .shadow_idempotency_replay_key == "operator-evidence-acceptance-recording-persistence-shadow-idempotency-replay:hepta-system:local-app:not-selected")
+  and (.entries | all(.shadow_acceptance_record_envelope_projected == true and .shadow_write_intent_projected == true and .shadow_write_payload_digest_projected == true and .shadow_idempotency_replay_key_projected == true and .shadow_receipt_preview_projected == true and .shadow_store_target_projected == true and .shadow_replay_result_projected == true and .stable_shadow_acceptance_record_envelope == true and .unique_shadow_acceptance_record_envelope == true and .stable_shadow_write_payload_digest == true and .unique_shadow_write_payload_digest == true and .stable_shadow_idempotency_replay_key == true and .unique_shadow_idempotency_replay_key == true and .feature_gate_opened == false and .dry_run_executed == false and .operator_evidence_packet_sent == false and .operator_evidence_packet_persisted == false and .operator_evidence_recorded == false and .operator_acceptance_recorded == false and .acceptance_record_persisted == false and .shadow_write_executed == false and .shadow_write_materialized == false and .shadow_store_written == false and .test_tmp_written == false and .persistence_open_denial_receipt_persisted == false and .persistence_denial_receipt_persisted == false and .non_recording_denial_receipt_persisted == false and .idempotency_index_written == false and .ledger_written == false and .receipt_persisted == false and .tool_registered == false and .registry_lookup_executed == false and .tool_invoked == false and .mcp_server_started == false and .app_connector_started == false and .runtime_event_log_written == false and .sqlite_written == false and .live_execution_started == false))
+  and (.blockers | index("shadow_write_execution_disabled")) != null
+  and (.blockers | index("shadow_store_write_disabled")) != null
+  and (.blockers | index("test_tmp_write_disabled")) != null
+  and (.blockers | index("tool_registry_registration_disabled")) != null
+  and (.blockers | index("registry_lookup_execution_disabled")) != null
+  and (.blockers | index("runtime_event_log_write_disabled")) != null
+  and (.blockers | index("live_execution_disabled")) != null
+  and (.next_actions | index("hepta_systems_tool_registry_shadow_registration_lookup_readback")) != null
+  and .recommended_next_gate == "hepta_systems_tool_registry_shadow_registration_lookup_readback"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime hepta_systems_plugin_tool_invocation_read_only_status_dry_run_operator_evidence_acceptance_recording_persistence_shadow_write_rehearsal_readback --lib
+)
+
+printf 'hepta-systems-plugin-tool-invocation-read-only-status-dry-run-operator-evidence-acceptance-recording-persistence-shadow-write-rehearsal-readback-gate: PASS: shadow write rehearsal is queryable without shadow execution, store writes, registry lookup, tool invocation, runtime writes, or live mutation\n'

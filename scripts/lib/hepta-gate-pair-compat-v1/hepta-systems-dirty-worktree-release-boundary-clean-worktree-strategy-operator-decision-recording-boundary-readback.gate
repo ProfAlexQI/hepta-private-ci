@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-recording-boundary-readback.report"
+PACKET_READBACK_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-checklist-packet-readback.report"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_DIRTY_WORKTREE_RELEASE_BOUNDARY_CLEAN_WORKTREE_STRATEGY_OPERATOR_DECISION_RECORDING_BOUNDARY_READBACK_2026-06-28.md"
+
+fail() {
+  printf 'hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-recording-boundary-readback-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 20 decision recording boundary readback report: $REPORT"
+[[ -x "$PACKET_READBACK_REPORT" ]] || fail "missing executable Phase 19 packet readback report: $PACKET_READBACK_REPORT"
+[[ -f "$DOC" ]] || fail "missing Phase 20 architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the Phase 20 decision recording boundary readback report"
+fi
+
+grep -q 'Dirty Worktree Release Boundary Clean Worktree Strategy Operator Decision Recording Boundary Readback' "$DOC" \
+  || fail "architecture note must document Dirty Worktree Release Boundary Clean Worktree Strategy Operator Decision Recording Boundary Readback"
+grep -q 'operator_decision_recording_boundary_readback_only' "$DOC" \
+  || fail "architecture note must document operator_decision_recording_boundary_readback_only"
+grep -q 'decision recording, decision persistence, decision receipt persistence, approval acceptance, evidence recording, packet send, packet persistence, readback persistence, git mutation, cleanup, delete, strategy application, release, canary activation, and live execution remain blocked' "$DOC" \
+  || fail "architecture note must document blocked decision-recording boundaries"
+grep -q 'no git add, commit, push, reset, checkout, revert, cleanup, delete, strategy application, decision recording, decision persistence, decision receipt persistence, approval request, approval acceptance, evidence recording, evidence persistence, packet send, packet persistence, readback persistence, package, release, Public GA, canary activation, live activation, or live execution' "$DOC" \
+  || fail "architecture note must document the closed Phase 20 boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_recording_boundary_readback"
+  and .status == "ready_blocked"
+  and .gate == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_recording_boundary_readback_gate"
+  and .schema_version == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_recording_boundary_readback_v1"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_packet_readback_gate == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist_packet_readback_gate"
+  and .source_packet_readback_ready == true
+  and .source_packet_readback_visible == true
+  and .source_packet_readback_persisted == false
+  and .source_decision_checklist_persisted == false
+  and .source_decision_recorded == false
+  and .source_operator_packet_sent == false
+  and .source_operator_packet_persisted == false
+  and .source_readback_persisted == false
+  and .source_strategy_applied == false
+  and .source_packet_readback_entry_count > 0
+  and .lib_export_present == true
+  and .inventory_entry_count == (.tracked_change_count + .untracked_change_count)
+  and .decision_recording_boundary_scope.boundary_readback_id == "dirty-worktree.release-boundary.clean-worktree-strategy.operator-decision-recording-boundary-readback.v1"
+  and .decision_recording_boundary_scope.boundary_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-recording-boundary/v1"
+  and .decision_recording_boundary_scope.source_packet_readback_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-checklist-packet/v1"
+  and .decision_recording_boundary_scope.readback_mode == "operator_decision_recording_boundary_readback_only"
+  and .decision_recording_boundary_scope.decision_recording_boundary == "blocked"
+  and .decision_recording_boundary_scope.decision_persistence_boundary == "blocked"
+  and .decision_recording_boundary_scope.decision_receipt_boundary == "blocked"
+  and .decision_recording_boundary_scope.approval_acceptance_boundary == "blocked"
+  and .boundary_entry_count == .source_packet_readback_entry_count
+  and .stable_boundary_key_count == .boundary_entry_count
+  and .boundary_route_count == .boundary_entry_count
+  and .boundary_ready_count == .boundary_entry_count
+  and .source_packet_attached_count == .boundary_entry_count
+  and .pending_operator_decision_count == .boundary_entry_count
+  and .decision_recording_blocked_count == .boundary_entry_count
+  and .decision_recording_persistence_blocked_count == .boundary_entry_count
+  and .decision_receipt_blocked_count == .boundary_entry_count
+  and .approval_acceptance_blocked_count == .boundary_entry_count
+  and .evidence_recorded_count == 0
+  and .packet_visible_unsent_unpersisted_count == .boundary_entry_count
+  and .readback_unpersisted_count == .boundary_entry_count
+  and .git_mutation_blocked_count == .boundary_entry_count
+  and .cleanup_delete_blocked_count == .boundary_entry_count
+  and .strategy_application_blocked_count == .boundary_entry_count
+  and .decision_recording_boundary_readback_visible == true
+  and .decision_recording_boundary_readback_persisted == false
+  and .decision_recorded == false
+  and .decision_recording_persisted == false
+  and .decision_receipt_persisted == false
+  and .decision_checklist_persisted == false
+  and .operator_packet_sent == false
+  and .operator_packet_persisted == false
+  and .readback_persisted == false
+  and .strategy_applied == false
+  and .release_cutover_allowed == false
+  and .git_add_allowed == false
+  and .git_index_mutated == false
+  and .git_commit_allowed == false
+  and .git_push_allowed == false
+  and .git_reset_allowed == false
+  and .git_checkout_allowed == false
+  and .git_revert_allowed == false
+  and .cleanup_allowed == false
+  and .delete_allowed == false
+  and .evidence_recording_allowed == false
+  and .evidence_persistence_allowed == false
+  and .approval_request_sent == false
+  and .approval_acceptance_allowed == false
+  and .blocker_waiver_allowed == false
+  and .package_or_release_allowed == false
+  and .public_ga_allowed == false
+  and .canary_activation_allowed == false
+  and .live_activation_allowed == false
+  and .live_execution_allowed == false
+  and .operator_decision_recording_boundary_readback_ready == true
+  and (.entries | length) == .boundary_entry_count
+  and any(.entries[]; .group_type == "top_level")
+  and any(.entries[]; .group_type == "scope")
+  and (.entries | all(
+    (.source_packet_key | startswith("dirty_worktree.decision_checklist_packet."))
+    and (.source_packet_route | startswith("operator-packet://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-checklist/"))
+    and (.source_packet_readback_key | startswith("dirty_worktree.decision_checklist_packet_readback."))
+    and (.source_packet_readback_route | startswith("readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-checklist-packet/"))
+    and (.boundary_key | startswith("dirty_worktree.decision_recording_boundary."))
+    and (.boundary_route | startswith("readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-recording-boundary/"))
+    and (.decision_checkpoint | startswith("operator_decision_checkpoint."))
+    and .source_entry_count > 0
+    and .source_entry_count == (.tracked_count + .untracked_count)
+    and .decision_state == "pending_operator_decision"
+    and .recording_state == "decision_recording_blocked"
+    and .persistence_state == "decision_persistence_blocked"
+    and .receipt_state == "decision_receipt_blocked"
+    and .source_packet_state == "operator_decision_checklist_packet_visible_unsent_unpersisted"
+    and .source_readback_state == "operator_decision_checklist_packet_readback_visible_unpersisted"
+    and .packet_visible == true
+    and .packet_unsent == true
+    and .packet_unpersisted == true
+    and .readback_visible == true
+    and .readback_unpersisted == true
+    and .operator_visible == true
+    and .queryable == true
+    and .diffable == true
+    and .operator_decision_required == true
+    and .decision_recording_allowed == false
+    and .decision_persistence_allowed == false
+    and .decision_receipt_persistence_allowed == false
+    and .approval_acceptance_allowed == false
+    and .evidence_recording_allowed == false
+    and .git_add_blocked == true
+    and .git_index_mutation_blocked == true
+    and .git_commit_blocked == true
+    and .git_push_blocked == true
+    and .git_reset_blocked == true
+    and .git_checkout_blocked == true
+    and .git_revert_blocked == true
+    and .cleanup_blocked == true
+    and .delete_blocked == true
+    and .strategy_application_blocked == true
+    and .release_cutover_allowed == false
+    and .canary_activation_allowed == false
+    and .live_execution_allowed == false))
+  and any(.entries[]; .source_bucket == "artifacts" and .boundary_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-recording-boundary/top-level/artifacts")
+  and any(.entries[]; .source_bucket == "scripts" and .boundary_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-recording-boundary/top-level/scripts")
+  and any(.entries[]; .source_bucket == "codex-rs" and .boundary_key == "dirty_worktree.decision_recording_boundary.top_level.codex_rs")
+  and any(.entries[]; .source_bucket == "hepta_systems_owned" and .boundary_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-recording-boundary/scope/hepta-systems-owned")
+  and any(.entries[]; .source_bucket == "cross_lane_or_unowned" and .boundary_route == "readback://release-boundary/dirty-worktree/clean-worktree-strategy/operator-decision-recording-boundary/scope/cross-lane-or-unowned")
+  and (.blockers | index("operator_decision_recording_blocked")) != null
+  and (.blockers | index("operator_decision_recording_persistence_blocked")) != null
+  and (.blockers | index("operator_decision_receipt_persistence_blocked")) != null
+  and (.blockers | index("approval_acceptance_blocked")) != null
+  and (.blockers | index("evidence_recording_blocked")) != null
+  and (.blockers | index("operator_decision_checklist_packet_send_blocked")) != null
+  and (.blockers | index("operator_decision_checklist_packet_persistence_blocked")) != null
+  and (.blockers | index("operator_decision_recording_boundary_readback_persistence_blocked")) != null
+  and (.blockers | index("git_add_blocked")) != null
+  and (.blockers | index("git_index_mutation_blocked")) != null
+  and (.blockers | index("cleanup_and_delete_blocked")) != null
+  and (.blockers | index("strategy_application_blocked")) != null
+  and (.blockers | index("release_cutover_blocked")) != null
+  and (.blockers | index("canary_activation_blocked")) != null
+  and (.blockers | index("live_activation_blocked")) != null
+  and (.next_actions | index("phase21_dirty_worktree_release_boundary_clean_worktree_strategy_operator_approval_acceptance_boundary_readback_without_acceptance")) != null
+  and .next_migration_step == "phase21_dirty_worktree_release_boundary_clean_worktree_strategy_operator_approval_acceptance_boundary_readback_without_acceptance"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$PACKET_READBACK_REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_checklist_packet_readback"
+  and .status == "ready_blocked"
+  and .operator_decision_checklist_packet_readback_ready == true
+  and .packet_readback_visible == true
+  and .packet_readback_persisted == false
+  and .decision_recorded == false
+  and .operator_packet_sent == false
+  and .operator_packet_persisted == false
+  and .readback_persisted == false
+  and .strategy_applied == false
+  and .packet_readback_entry_count > 0
+  and .evidence_recorded_count == 0
+  and .git_index_mutated == false
+  and .cleanup_allowed == false
+  and .delete_allowed == false
+  and .live_execution_allowed == false
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p hepta-runtime dirty_worktree_release_boundary_clean_worktree_strategy_operator_decision_recording_boundary_readback --lib
+)
+
+printf 'hepta-systems-dirty-worktree-release-boundary-clean-worktree-strategy-operator-decision-recording-boundary-readback-gate: PASS: decision recording boundary is visible-only with recording, persistence, approval, evidence, git mutation, cleanup, release, canary, and live blocked\n'

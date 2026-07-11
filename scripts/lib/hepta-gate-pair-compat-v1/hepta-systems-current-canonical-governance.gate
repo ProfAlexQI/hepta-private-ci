@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-governance.report"
+CURRENT_CONSUMER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-canonical-consumer.gate"
+SUCCESSOR_FINAL_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-promoted-current-canonical-consumer-cutover-final-gate.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_CANONICAL_GOVERNANCE_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-current-canonical-governance-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current canonical governance report: $REPORT"
+[[ -x "$CURRENT_CONSUMER_GATE" ]] || fail "missing executable current canonical consumer gate: $CURRENT_CONSUMER_GATE"
+[[ -x "$SUCCESSOR_FINAL_GATE" ]] || fail "missing executable promoted current canonical consumer cutover final gate: $SUCCESSOR_FINAL_GATE"
+[[ -f "$DOC" ]] || fail "missing current canonical governance architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the current canonical governance report"
+fi
+
+grep -q 'Current Canonical Governance' "$DOC" \
+  || fail "architecture note must document Current Canonical Governance"
+grep -q 'successor cutover final gate' "$DOC" \
+  || fail "architecture note must document successor cutover final gate attachment"
+grep -q 'does not invoke' "$DOC" \
+  || fail "architecture note must document that governance does not invoke the alias"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_canonical_governance"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready_blocked"
+  and .source_current_canonical_consumer_surface == "current_canonical_consumer"
+  and .source_current_canonical_consumer_ready == true
+  and .source_successor_cutover_final_gate_surface == "promoted_current_canonical_consumer_cutover_final_gate"
+  and .source_successor_cutover_final_gate_ready == true
+  and .source_successor_cutover_final_gate_blocked == true
+  and .current_canonical_governance_ready == true
+  and .current_canonical_governance_blocked == true
+  and .governance_input_count == 2
+  and (.governance_inputs | any(.id == "active_current_canonical_consumer" and .source_ready == true and .governance_role == "active_rollback_anchor"))
+  and (.governance_inputs | any(.id == "terminal_successor_cutover_final_gate" and .source_ready == true and .governance_role == "successor_cutover_blocker"))
+  and .active_current_canonical_consumer_surface == "current_canonical_consumer"
+  and .active_current_canonical_consumer_replaced_in_place == false
+  and .successor_canonical_consumer_surface == "promoted_current_canonical_consumer"
+  and .successor_cutover_final_gate_attached == true
+  and .successor_cutover_final_gate_status == "ready_blocked"
+  and .successor_consumer_cutover_allowed == false
+  and .rollback_anchor == "current_canonical_consumer"
+  and .manual_operator_live_cutover_approval_required == true
+  and .explicit_live_cutover_approval_present == false
+  and .operator_live_cutover_approval_recorded == false
+  and .cutover_packet_recorded == false
+  and .cutover_packet_accepted == false
+  and .final_blocker_count == 14
+  and .governance_blocker_count == 13
+  and (.governance_blockers | index("manual_operator_live_cutover_approval_required")) != null
+  and (.governance_blockers | index("successor_consumer_cutover_disallowed")) != null
+  and (.governance_blockers | index("current_canonical_consumer_rollback_anchor_retained")) != null
+  and .execution_enabled_count == 0
+  and .public_ga_enabled_count == 0
+  and .canonical_gate_wrapper_invoked == false
+  and .wrapper_target_invoked == false
+  and .capability_matrix_gate_invoked == false
+  and .terminal_live_gate_invoked == false
+  and .live_url_required == false
+  and .long_soak_required == false
+  and .tool_execution_live_cutover_allowed == false
+  and .tool_execution_public_ga_allowed == false
+  and .next_migration_step == "derive_current_canonical_governance_readback_without_live_invocation"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$CURRENT_CONSUMER_GATE" >/dev/null
+"$SUCCESSOR_FINAL_GATE" >/dev/null
+
+printf 'hepta-systems-current-canonical-governance-gate: PASS: current canonical governance attaches successor cutover final gate without live invocation\n'

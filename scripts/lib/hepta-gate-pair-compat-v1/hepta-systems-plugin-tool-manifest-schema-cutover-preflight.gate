@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-manifest-schema-cutover-preflight.report"
+BRIDGE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-manifest-preflight-adapter-bridge.gate"
+DECLARATIONS_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-plugin-tool-manifest-fixture-declarations.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_PLUGIN_TOOL_MANIFEST_SCHEMA_CUTOVER_PREFLIGHT_2026-06-21.md"
+
+fail() {
+  printf 'hepta-systems-plugin-tool-manifest-schema-cutover-preflight-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable manifest schema cutover preflight report: $REPORT"
+[[ -x "$BRIDGE_GATE" ]] || fail "missing executable manifest preflight adapter bridge gate: $BRIDGE_GATE"
+[[ -x "$DECLARATIONS_GATE" ]] || fail "missing executable manifest fixture declarations gate: $DECLARATIONS_GATE"
+[[ -f "$DOC" ]] || fail "missing manifest schema cutover preflight architecture note: $DOC"
+
+if ! command -v jq >/dev/null 2>&1; then
+  fail "jq is required to validate the plugin tool manifest schema cutover preflight report"
+fi
+
+grep -q 'Manifest Schema Cutover Preflight' "$DOC" \
+  || fail "architecture note must document Manifest Schema Cutover Preflight"
+grep -q 'block_manifest_preconditions' "$DOC" \
+  || fail "architecture note must document block_manifest_preconditions"
+grep -q 'live mutation disabled' "$DOC" \
+  || fail "architecture note must document live mutation disabled"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "plugin_tool_manifest_schema_cutover_preflight"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .status == "ready"
+  and .source_registry_dry_run_surface == "plugin_tool_registry_source_of_truth_dry_run"
+  and .source_registry_dry_run_ready == true
+  and .source_manifest_parser_fields_surface == "plugin_tool_manifest_parser_fields"
+  and .source_manifest_parser_fields_ready == true
+  and .source_preflight_adapter_bridge_surface == "plugin_tool_manifest_preflight_adapter_bridge"
+  and .source_preflight_adapter_bridge_ready == true
+  and .source_manifest_fixture_declarations_surface == "plugin_tool_manifest_fixture_declarations"
+  and .source_manifest_fixture_declarations_ready == true
+  and .declaration_source == "hepta_system_manifest_fixture_readback"
+  and .planned_candidate_count == 2
+  and .parsed_manifest_declared_candidate_count == 2
+  and .parsed_manifest_schema_complete_count == 2
+  and .parsed_manifest_policy_complete_count == 2
+  and .registration_precondition_satisfied_count == 2
+  and .missing_manifest_precondition_count == 0
+  and .unbound_manifest_declaration_ids == []
+  and .all_manifest_declarations_bound_to_planned_candidates == true
+  and .all_missing_manifest_preconditions_blocked == true
+  and .all_forwarded_candidates_keep_approval_ledger == true
+  and .manifest_schema_cutover_preflight_ready == true
+  and .registration_cutover_allowed == true
+  and .registration_execution_enabled == false
+  and .tool_invocation_enabled == false
+  and .ledger_written == false
+  and .approval_requested == false
+  and .mcp_server_started == false
+  and .app_connector_started == false
+  and .live_mutation_ready == false
+  and .next_migration_step == "restore_tool_registry_invocation_source_of_truth_without_execution"
+  and (.entries | length) == 2
+  and any(.entries[]; .contribution_kind == "mcp_server" and .registry_guard_route == "require_approval_ledger" and .tool_schema_declared == true and .permission_declared == true and .activation_event_declared == true and .tool_policy_declared == true and .manifest_schema_complete == true and .manifest_policy_complete == true and .registration_preconditions_satisfied == true and .decision_route == "forward_require_approval_ledger_dry_run" and .blocked == false and .blocked_reason == null and .tool_invocation_enabled == false)
+  and any(.entries[]; .contribution_kind == "app_connector" and .registry_guard_route == "require_approval_ledger" and .tool_schema_declared == true and .permission_declared == true and .activation_event_declared == true and .tool_policy_declared == true and .manifest_schema_complete == true and .manifest_policy_complete == true and .registration_preconditions_satisfied == true and .decision_route == "forward_require_approval_ledger_dry_run" and .blocked == false and .blocked_reason == null and .tool_invocation_enabled == false)
+  and (.blockers | index("registration_execution_disabled")) != null
+  and (.next_actions | index("restore_tool_registry_invocation_source_of_truth_without_execution")) != null
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$BRIDGE_GATE" >/dev/null
+"$DECLARATIONS_GATE" >/dev/null
+
+(
+  cd "$ROOT/codex-rs"
+  cargo test -p codex-tools plugin_tool_manifest_schema_cutover_preflight --quiet
+)
+
+printf 'hepta-systems-plugin-tool-manifest-schema-cutover-preflight-gate: PASS: manifest schema preflight forwards fixture readback while registration and invocation remain disabled\n'

@@ -1,50 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-QUEUE_GATE="$ROOT/scripts/hepta-systems-session-patch-queue-gate.sh"
-REPORT="$ROOT/scripts/hepta-systems-session-selected-patch-extract-report.sh"
-
-[[ -x "$QUEUE_GATE" ]] || {
-  echo "missing executable session patch queue gate: $QUEUE_GATE" >&2
-  exit 1
-}
-[[ -x "$REPORT" ]] || {
-  echo "missing executable selected patch extract report: $REPORT" >&2
-  exit 1
-}
-
-queue_tmp="$(mktemp)"
-trap 'rm -f "$queue_tmp"' EXIT
-"$QUEUE_GATE" >"$queue_tmp"
-grep -q "Hepta session patch queue gate passed" "$queue_tmp" \
-  || {
-    echo "session patch queue gate did not pass" >&2
-    exit 1
-  }
-
-json="$(
-  HEPTA_SESSION_PATCH_ANCHOR_ID=plugin_contribution_point_abi \
-  HEPTA_SESSION_PATCH_EXTRACT_LIMIT=2 \
-    "$REPORT"
-)"
-
-jq -e '
-  .runtime == "hepta"
-  and .surface == "hepta_systems_session_selected_patch_extract"
-  and .status == "ready"
-  and .anchor_id == "plugin_contribution_point_abi"
-  and .matched_patch_count >= 1
-  and .selected_patch_count >= 1
-  and .selected_patch_count <= 2
-  and .side_effect_free == true
-  and .report_only == true
-  and .replay_applied == false
-  and .patch_body_emitted == true
-  and .patch_replay_enabled == false
-  and all(.selected_patches[]; (.patch_body | contains("*** Begin Patch")) and (.patch_body | contains("/Users/qianqi/.openclaw/workspace/Hepta/")))
-  and .recommended_next_local_step == "manual_apply_check_selected_patch_against_current_checkout"
-' <<<"$json" >/dev/null
-
-printf '%s\n' "$json"
-echo "Hepta selected session patch extract gate passed"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+exec "$ROOT/scripts/hepta-gate-pair-runner" gate "hepta-systems-session-selected-patch-extract"

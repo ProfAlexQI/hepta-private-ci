@@ -70,8 +70,10 @@ struct ShellPairMigrationSpec {
     missing_report_message: String,
     pass_message: String,
     gate_implementation: Option<String>,
+    gate_source_sha256: Option<String>,
     gate_implementation_sha256: Option<String>,
     report_implementation: Option<String>,
+    report_source_sha256: Option<String>,
     report_implementation_sha256: Option<String>,
 }
 
@@ -118,7 +120,9 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "report_path": spec.report_path,
             "blocker_count": spec.blocker_count,
             "captured_shell_compatibility": spec.template == "captured_shell_compat_v1",
+            "gate_source_sha256": spec.gate_source_sha256,
             "gate_implementation_sha256": spec.gate_implementation_sha256,
+            "report_source_sha256": spec.report_source_sha256,
             "report_implementation_sha256": spec.report_implementation_sha256,
             "report_execution_performed": false,
             "side_effect_free": true,
@@ -278,8 +282,10 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         if spec.template == "captured_shell_compat_v1" {
             let required_compatibility_fields = [
                 spec.gate_implementation.as_deref(),
+                spec.gate_source_sha256.as_deref(),
                 spec.gate_implementation_sha256.as_deref(),
                 spec.report_implementation.as_deref(),
+                spec.report_source_sha256.as_deref(),
                 spec.report_implementation_sha256.as_deref(),
             ];
             if required_compatibility_fields
@@ -293,10 +299,12 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                     path.starts_with("scripts/lib/hepta-gate-pair-compat-v1/")
                         && path.ends_with(".report")
                 })
+                || !spec.gate_source_sha256.as_deref().is_some_and(is_sha256)
                 || !spec
                     .gate_implementation_sha256
                     .as_deref()
                     .is_some_and(is_sha256)
+                || !spec.report_source_sha256.as_deref().is_some_and(is_sha256)
                 || !spec
                     .report_implementation_sha256
                     .as_deref()
@@ -481,6 +489,8 @@ fn validate_migrated_pairs(
         {
             anyhow::bail!("migrated Hepta gate pair path mismatch: {id}");
         }
+        validate_thin_wrapper(&expected_gate, "gate", id)?;
+        validate_thin_wrapper(&expected_report, "report", id)?;
         if spec.template == "captured_shell_compat_v1" {
             for (kind, relative_path, expected_sha) in [
                 (
@@ -509,6 +519,18 @@ fn validate_migrated_pairs(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_thin_wrapper(path: &Path, kind: &str, id: &str) -> Result<()> {
+    let expected = format!(
+        "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")/..\" && pwd -P)\"\nexec \"$ROOT/scripts/hepta-gate-pair-runner\" {kind} \"{id}\"\n"
+    );
+    let actual = fs::read_to_string(path)
+        .with_context(|| format!("failed to read thin Hepta {kind} wrapper: {id}"))?;
+    if actual != expected {
+        anyhow::bail!("Hepta {kind} wrapper is not canonical and thin: {id}");
     }
     Ok(())
 }
