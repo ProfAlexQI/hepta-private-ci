@@ -14,6 +14,7 @@ const CAPABILITY_REGISTRY_SCHEMA: &str = "hepta_native_capability_registry_v1";
 const CURRENT_REALITY_CAPABILITY_REGISTRY_SCHEMA: &str =
     "hepta_current_reality_capability_registry_v1";
 const ROUTE_REGISTRY_SCHEMA: &str = "hepta_control_ui_route_registry_v1";
+const IMMUTABLE_RELEASE_MANIFEST_SCHEMA: &str = "hepta_immutable_release_manifest_v1";
 
 #[derive(Debug, Serialize)]
 struct RegistryBinding {
@@ -76,6 +77,9 @@ pub fn canonical_manifest_json() -> Result<String> {
             "nodes": readiness_nodes(),
         },
         "release_policy": {
+            "immutable_release_manifest_schema": IMMUTABLE_RELEASE_MANIFEST_SCHEMA,
+            "immutable_release_tool": "scripts/hepta-immutable-release-tree",
+            "immutable_release_self_test": "scripts/hepta-immutable-release-tree self-test",
             "backend_preflight_required": true,
             "native_profile_required": true,
             "release_profile_required": true,
@@ -122,7 +126,7 @@ fn readiness_nodes() -> [ReadinessNode; 6] {
         ReadinessNode {
             id: "immutable_release_tree",
             requires: &["release_profile"],
-            evidence: "source commit plus artifact SHA-256 manifest",
+            evidence: "scripts/hepta-immutable-release-tree verify --manifest PATH",
         },
         ReadinessNode {
             id: "operator_cutover",
@@ -162,6 +166,10 @@ mod tests {
         assert_eq!(
             value["release_policy"]["install_or_restart_authorized"],
             false
+        );
+        assert_eq!(
+            value["release_policy"]["immutable_release_manifest_schema"],
+            IMMUTABLE_RELEASE_MANIFEST_SCHEMA
         );
         assert_eq!(
             value["release_policy"]["production_mutation_authorized"],

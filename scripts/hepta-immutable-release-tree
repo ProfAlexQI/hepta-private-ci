@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCHEMA_VERSION="hepta_immutable_release_manifest_v1"
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  scripts/hepta-immutable-release-tree materialize --artifact PATH --source-commit SHA|unknown --release-root DIR [--preflight-log PATH]
+  scripts/hepta-immutable-release-tree verify --manifest PATH
+  scripts/hepta-immutable-release-tree activate --manifest PATH --active-link PATH --expected-current-sha256 SHA
+  scripts/hepta-immutable-release-tree self-test
+
+Activation is byte-preserving: current and target SHA-256 must match. Installing
+different bytes belongs to the separately authorized final release cutover.
+EOF
+  exit 2
+}
+
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+
+canonical_file() {
+  local target="$1"
+  local directory
+  directory="$(cd "$(dirname "$target")" && pwd -P)"
+  printf '%s/%s\n' "$directory" "$(basename "$target")"
+}
+
+require_sha256() {
+  [[ "$1" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "invalid SHA-256: $1" >&2
+    exit 1
+  }
+}
+
+materialize() {
+  local artifact="" source_commit="" release_root="" preflight_log=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --artifact) shift; [[ $# -gt 0 ]] || usage; artifact="$1" ;;
+      --source-commit) shift; [[ $# -gt 0 ]] || usage; source_commit="$1" ;;
+      --release-root) shift; [[ $# -gt 0 ]] || usage; release_root="$1" ;;
+      --preflight-log) shift; [[ $# -gt 0 ]] || usage; preflight_log="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+
+  [[ -f "$artifact" && -x "$artifact" ]] || {
+    echo "artifact must be an executable file: $artifact" >&2
+    exit 1
+  }
+  [[ -n "$release_root" ]] || usage
+  if [[ "$source_commit" != "unknown" && ! "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "source commit must be a full Git SHA or unknown" >&2
+    exit 1
+  fi
+  if [[ "$source_commit" == "unknown" && -n "$preflight_log" ]]; then
+    echo "legacy-unbound releases cannot claim preflight binding" >&2
+    exit 1
+  fi
+  if [[ "$source_commit" != "unknown" && -z "$preflight_log" ]]; then
+    echo "source-bound releases require a preflight log" >&2
+    exit 1
+  fi
+
+  artifact="$(canonical_file "$artifact")"
+  mkdir -p "$release_root"
+  release_root="$(cd "$release_root" && pwd -P)"
+
+  local artifact_sha artifact_size release_id release_dir manifest_path
+  artifact_sha="$(sha256_file "$artifact")"
+  require_sha256 "$artifact_sha"
+  artifact_size="$(stat -f '%z' "$artifact")"
+  release_id="${source_commit}-${artifact_sha}"
+  release_dir="$release_root/$release_id"
+  manifest_path="$release_dir/manifest.json"
+
+  local status source_commit_bound preflight_bound preflight_sha preflight_size preflight_head
+  status="ready"
+  source_commit_bound=true
+  preflight_bound=true
+  preflight_sha=""
+  preflight_size=0
+  preflight_head=""
+  if [[ "$source_commit" == "unknown" ]]; then
+    status="legacy_unbound"
+    source_commit_bound=false
+    preflight_bound=false
+  else
+    [[ -f "$preflight_log" ]] || {
+      echo "missing preflight log: $preflight_log" >&2
+      exit 1
+    }
+    rg -q '^Hepta preflight passed$' "$preflight_log" || {
+      echo "preflight log has no pass marker: $preflight_log" >&2
+      exit 1
+    }
+    preflight_head="$(sed -n 's/^\[hepta-preflight-resume\] head=\([0-9a-f][0-9a-f]*\) .*/\1/p' "$preflight_log" | head -n 1)"
+    [[ -n "$preflight_head" && "$source_commit" == "$preflight_head"* ]] || {
+      echo "preflight log head does not match source commit" >&2
+      exit 1
+    }
+    preflight_log="$(canonical_file "$preflight_log")"
+    preflight_sha="$(sha256_file "$preflight_log")"
+    preflight_size="$(stat -f '%z' "$preflight_log")"
+  fi
+
+  if [[ -e "$release_dir" ]]; then
+    [[ -f "$manifest_path" ]] || {
+      echo "existing release directory has no manifest: $release_dir" >&2
+      exit 1
+    }
+    "$0" verify --manifest "$manifest_path" >/dev/null
+    printf '%s\n' "$manifest_path"
+    return 0
+  fi
+
+  local staging
+  staging="$(mktemp -d "$release_root/.staging.XXXXXX")"
+  trap 'chmod -R u+w "$staging" 2>/dev/null || true; rm -rf "$staging"' RETURN
+  mkdir -p "$staging/bin"
+  cp -p "$artifact" "$staging/bin/hepta"
+  chmod 0555 "$staging/bin/hepta"
+
+  jq -n \
+    --arg schema_version "$SCHEMA_VERSION" \
+    --arg status "$status" \
+    --arg release_id "$release_id" \
+    --arg source_commit "$source_commit" \
+    --argjson source_commit_bound "$source_commit_bound" \
+    --arg artifact_sha256 "$artifact_sha" \
+    --argjson artifact_size_bytes "$artifact_size" \
+    --argjson preflight_bound "$preflight_bound" \
+    --arg preflight_sha256 "$preflight_sha" \
+    --arg preflight_source_head "$preflight_head" \
+    --argjson preflight_size_bytes "$preflight_size" \
+    '{
+      schema_version:$schema_version,
+      status:$status,
+      release_id:$release_id,
+      source:{commit:$source_commit,commit_bound:$source_commit_bound},
+      artifact:{relative_path:"bin/hepta",sha256:$artifact_sha256,size_bytes:$artifact_size_bytes,executable:true},
+      preflight:{bound:$preflight_bound,source_head:(if $preflight_bound then $preflight_source_head else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
+      policy:{immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
+      side_effects:{service_restarted:false,active_process_mutated:false,provider_invoked:false,credentials_read:false,memory_or_kg_written:false,channel_message_sent:false}
+    }' >"$staging/manifest.json"
+  chmod 0444 "$staging/manifest.json"
+  chmod 0555 "$staging/bin" "$staging"
+  mv "$staging" "$release_dir"
+  trap - RETURN
+  "$0" verify --manifest "$manifest_path" >/dev/null
+  printf '%s\n' "$manifest_path"
+}
+
+verify_manifest() {
+  local manifest=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+  [[ -f "$manifest" ]] || {
+    echo "missing immutable release manifest: $manifest" >&2
+    exit 1
+  }
+  manifest="$(canonical_file "$manifest")"
+
+  local release_dir artifact artifact_sha expected_size actual_size
+  release_dir="$(dirname "$manifest")"
+  jq -e --arg schema "$SCHEMA_VERSION" '
+    .schema_version == $schema
+    and (.status == "ready" or .status == "legacy_unbound")
+    and (.release_id | type == "string" and length > 64)
+    and .artifact.relative_path == "bin/hepta"
+    and (.artifact.sha256 | test("^[0-9a-f]{64}$"))
+    and (.artifact.size_bytes | type == "number" and . > 0)
+    and .artifact.executable == true
+    and .policy.immutable_tree == true
+    and .policy.activation_byte_change_forbidden == true
+    and .policy.restart_performed == false
+    and (
+      (.status == "ready" and .source.commit_bound == true and (.source.commit | test("^[0-9a-f]{40}$")) and .preflight.bound == true and .preflight.passed == true and (.preflight.source_head | test("^[0-9a-f]{10,40}$")) and (.source.commit as $commit | .preflight.source_head as $head | $commit | startswith($head)) and (.preflight.log_sha256 | test("^[0-9a-f]{64}$")))
+      or
+      (.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false and .preflight.passed == false and .preflight.source_head == null and .preflight.log_sha256 == null)
+    )
+  ' "$manifest" >/dev/null
+
+  artifact="$release_dir/$(jq -r '.artifact.relative_path' "$manifest")"
+  [[ -f "$artifact" && -x "$artifact" ]] || {
+    echo "missing immutable release artifact: $artifact" >&2
+    exit 1
+  }
+  artifact_sha="$(sha256_file "$artifact")"
+  [[ "$artifact_sha" == "$(jq -r '.artifact.sha256' "$manifest")" ]] || {
+    echo "immutable release artifact SHA-256 mismatch" >&2
+    exit 1
+  }
+  expected_size="$(jq -r '.artifact.size_bytes' "$manifest")"
+  actual_size="$(stat -f '%z' "$artifact")"
+  [[ "$actual_size" == "$expected_size" ]] || {
+    echo "immutable release artifact size mismatch" >&2
+    exit 1
+  }
+  [[ "$(stat -f '%Lp' "$artifact")" == "555" ]] || {
+    echo "immutable release artifact mode must be 0555" >&2
+    exit 1
+  }
+  [[ "$(stat -f '%Lp' "$manifest")" == "444" ]] || {
+    echo "immutable release manifest mode must be 0444" >&2
+    exit 1
+  }
+  jq -c '{schema_version,status,release_id,source,artifact,preflight,policy}' "$manifest"
+}
+
+activate() {
+  local manifest="" active_link="" expected_current_sha=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+      --active-link) shift; [[ $# -gt 0 ]] || usage; active_link="$1" ;;
+      --expected-current-sha256) shift; [[ $# -gt 0 ]] || usage; expected_current_sha="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+  [[ -n "$manifest" && -n "$active_link" && -n "$expected_current_sha" ]] || usage
+  require_sha256 "$expected_current_sha"
+  "$0" verify --manifest "$manifest" >/dev/null
+  manifest="$(canonical_file "$manifest")"
+  [[ -f "$active_link" && -x "$active_link" ]] || {
+    echo "active binary must already exist: $active_link" >&2
+    exit 1
+  }
+
+  local current_sha target_sha target release_id active_dir backup tmp_link manifest_link manifest_tmp
+  current_sha="$(sha256_file "$active_link")"
+  target_sha="$(jq -r '.artifact.sha256' "$manifest")"
+  [[ "$current_sha" == "$expected_current_sha" ]] || {
+    echo "active binary changed since review" >&2
+    exit 1
+  }
+  [[ "$current_sha" == "$target_sha" ]] || {
+    echo "immutable activation refuses to change active binary bytes" >&2
+    exit 1
+  }
+  target="$(dirname "$manifest")/$(jq -r '.artifact.relative_path' "$manifest")"
+  release_id="$(jq -r '.release_id' "$manifest")"
+  active_dir="$(dirname "$active_link")"
+  mkdir -p "$active_dir/backups"
+  backup="$active_dir/backups/hepta.pre-immutable-${current_sha}"
+  if [[ ! -e "$backup" ]]; then
+    cp -p "$active_link" "$backup"
+    chmod 0555 "$backup"
+  fi
+  tmp_link="$active_dir/.hepta-link.$$"
+  ln -s "$target" "$tmp_link"
+  mv -f "$tmp_link" "$active_link"
+  [[ "$(sha256_file "$active_link")" == "$current_sha" ]] || {
+    echo "active symlink SHA-256 changed during immutable activation" >&2
+    exit 1
+  }
+  manifest_link="$active_link.manifest"
+  manifest_tmp="$active_dir/.hepta-manifest-link.$$"
+  ln -s "$manifest" "$manifest_tmp"
+  mv -f "$manifest_tmp" "$manifest_link"
+
+  jq -n --arg status ready --arg release_id "$release_id" --arg active_link "$active_link" \
+    --arg target "$target" --arg manifest "$manifest" --arg sha256 "$current_sha" --arg backup "$backup" \
+    '{status:$status,release_id:$release_id,active_link:$active_link,target:$target,manifest:$manifest,sha256:$sha256,backup:$backup,bytes_changed:false,service_restarted:false,active_process_mutated:false}'
+}
+
+self_test() {
+  [[ $# -eq 0 ]] || usage
+  local root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
+  local fixture_sha activation different different_manifest
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  tool="$root/scripts/hepta-immutable-release-tree"
+  tmp="$(mktemp -d /tmp/hepta-immutable-release-tree-self-test.XXXXXX)"
+  trap 'chmod -R u+w "$tmp" 2>/dev/null || true; rm -rf "$tmp"' RETURN
+
+  artifact="$tmp/hepta"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf "hepta fixture\n"' >"$artifact"
+  chmod 0755 "$artifact"
+  source_commit="$(git -C "$root" rev-parse HEAD)"
+  preflight="$tmp/preflight.log"
+  printf '[hepta-preflight-resume] head=%s start_line=1 marker=<start> log=fixture\n' "${source_commit:0:10}" >"$preflight"
+  printf '%s\n' '[hepta-preflight] fixture' 'Hepta preflight passed' >>"$preflight"
+
+  bound_manifest="$($tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$preflight" --release-root "$tmp/releases")"
+  $tool verify --manifest "$bound_manifest" | jq -e '.status == "ready" and .source.commit_bound == true and .preflight.bound == true and .policy.immutable_tree == true' >/dev/null
+
+  legacy_manifest="$($tool materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/releases")"
+  $tool verify --manifest "$legacy_manifest" | jq -e '.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false' >/dev/null
+
+  mkdir -p "$tmp/active"
+  cp "$artifact" "$tmp/active/hepta"
+  chmod 0755 "$tmp/active/hepta"
+  fixture_sha="$(sha256_file "$artifact")"
+  activation="$($tool activate --manifest "$legacy_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
+  jq -e '.status == "ready" and .bytes_changed == false and .service_restarted == false and .active_process_mutated == false' <<<"$activation" >/dev/null
+  [[ -L "$tmp/active/hepta" ]]
+  [[ -L "$tmp/active/hepta.manifest" ]]
+  [[ "$(sha256_file "$tmp/active/hepta")" == "$fixture_sha" ]]
+  [[ -f "$tmp/active/backups/hepta.pre-immutable-$fixture_sha" ]]
+
+  different="$tmp/different"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf "different fixture\n"' >"$different"
+  chmod 0755 "$different"
+  different_manifest="$($tool materialize --artifact "$different" --source-commit unknown --release-root "$tmp/releases")"
+  if $tool activate --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>&1; then
+    echo "immutable activation accepted different binary bytes" >&2
+    exit 1
+  fi
+
+  jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,source_bound_fixture_ready:true,legacy_unbound_fixture_ready:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,service_restarted:false,active_process_mutated:false}'
+  echo "hepta immutable release tree self-test passed"
+}
+
+[[ $# -gt 0 ]] || usage
+command_name="$1"
+shift
+case "$command_name" in
+  materialize) materialize "$@" ;;
+  verify) verify_manifest "$@" ;;
+  activate) activate "$@" ;;
+  self-test) self_test "$@" ;;
+  *) usage ;;
+esac

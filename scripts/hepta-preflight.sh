@@ -1747,6 +1747,9 @@ scripts/hepta-upstream-codex-latest-release-governance-non-activation-gate.sh
 echo "[hepta-preflight] upstream Codex latest operator briefing non-persistence gate"
 scripts/hepta-upstream-codex-latest-operator-briefing-non-persistence-gate.sh
 
+echo "[hepta-preflight] immutable release tree self-test"
+scripts/hepta-immutable-release-tree self-test
+
 echo "[hepta-preflight] hepta-gateway tests"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
