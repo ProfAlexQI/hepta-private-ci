@@ -71,6 +71,18 @@ verify() {
     verify_file_max "scripts/${route_gate_id}-route-gate.sh" 5
     rg -Fq 'scripts/hepta-route-gate-runner' "scripts/${route_gate_id}-route-gate.sh"
   done
+  [[ -x scripts/hepta-core-activation-chain-gate-runner ]]
+  scripts/hepta-core-activation-chain-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-core-activation-chain-gate-specs-v1.json)" == 3 ]]
+  for core_activation_gate_id in \
+    hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial \
+    hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial \
+    hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial
+  do
+    verify_file_max "scripts/${core_activation_gate_id}-gate.sh" 5
+    rg -Fq 'scripts/hepta-core-activation-chain-gate-runner' \
+      "scripts/${core_activation_gate_id}-gate.sh"
+  done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
     'hepta_full_live_activation_closure_index_report'

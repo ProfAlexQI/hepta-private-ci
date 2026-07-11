@@ -12,10 +12,35 @@ use serde::Deserialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::gate_spec::GateSpec;
 use crate::gate_spec::ReceiptStateMachine;
 
 const SHELL_GATE_PAIR_SPECS_JSON: &str =
     include_str!("../../../scripts/hepta-gate-pair-specs-v1.json");
+
+pub(crate) const CORE_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        source_command: "bash scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        capability: "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-replay-idempotency-denial",
+        side_effect_boundary: "local read-only report-only result-receipt replay/idempotency denial persistence gate; captures and validates the no-persistence predecessor with the long-soak environment while never recording or persisting replay state, mutating runtime, invoking providers/models, writing Memory/KG, sending channels, or publishing release state",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        source_command: "bash scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        capability: "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "local read-only report-only result-receipt ordering/monotonicity denial persistence gate; captures and validates the replay/idempotency predecessor with the long-soak environment while never recording cursors or monotonicity state, mutating runtime, invoking providers/models, writing Memory/KG, sending channels, or publishing release state",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        source_command: "bash scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        capability: "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial",
+        side_effect_boundary: "local read-only report-only result-receipt cancellation/supersession denial persistence gate; captures and validates the ordering/monotonicity predecessor with the long-soak environment while never recording cancellation, replacement, tombstone, or supersession state, mutating runtime, invoking providers/models, writing Memory/KG, sending channels, or publishing release state",
+    },
+];
 
 #[derive(Debug, Default)]
 struct ShellScriptAvailability {

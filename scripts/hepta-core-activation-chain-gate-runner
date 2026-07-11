@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-core-activation-chain-gate-specs-v1.json"
+
+usage() {
+  echo "usage: scripts/hepta-core-activation-chain-gate-runner <id|--validate>" >&2
+  exit 2
+}
+
+sha256_text() {
+  printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+
+validate_registry() {
+  jq -e '
+    .schema_version == "hepta_core_activation_chain_gate_specs_v1"
+    and .executor == "scripts/hepta-core-activation-chain-gate-runner"
+    and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
+    and .minimum_long_soak_samples == 24
+    and .normalization.remove_fields == ["base_url", "minimum_required_samples"]
+    and .normalization.remove_suffix == "sha256"
+    and (.specs | length) == 3
+    and ((.specs | map(.id) | unique | length) == 3)
+    and (.specs | all(
+      (.id | test("^[a-z0-9-]+$"))
+      and .gate_spec.method == "LOCAL"
+      and .gate_spec.pattern == ("scripts/" + .id + "-gate.sh")
+      and .gate_spec.source_command == ("bash scripts/" + .id + "-gate.sh")
+      and .gate_spec.capability == .id
+      and .gate_spec.receipt_state == "persistence"
+      and (.gate_spec.side_effect_boundary | contains("read-only"))
+      and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+      and (.source.capture_label | length > 0)
+      and (.source.expected_gate | length > 0)
+      and (.source.expected_schema_version | length > 0)
+      and (.source.ready_field | length > 0)
+      and (.source.status_field | length > 0)
+      and (.source.denied_field | length > 0)
+      and (.source.denied_count | type == "number" and . > 0)
+      and (.fixture_field | length > 0)
+      and (.fixture_defaults | type == "object")
+      and (.fixture_variants | type == "array" and length == 10)
+      and (.denied_field | length > 0)
+      and (.denied_count_field | length > 0)
+      and (.denial_append | type == "array" and length == 30)
+      and (.source_mirror_array_field == null or (.source_mirror_array_field | type == "string" and length > 0))
+      and (.hashes.source_field | endswith("sha256"))
+      and (.hashes.fixture_field | endswith("sha256"))
+      and (.hashes.contract_field | endswith("sha256"))
+      and (.hashes.policy_field | endswith("sha256"))
+      and (.hashes.side_effect_field | endswith("sha256"))
+      and (.hashes.source_projections | type == "object")
+      and (.static_report | type == "object")
+      and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+      and (.pass_message | length > 0)
+    ))
+  ' "$SPEC_FILE" >/dev/null
+}
+
+[[ -f "$SPEC_FILE" ]] || {
+  echo "missing Hepta core activation chain gate spec registry: $SPEC_FILE" >&2
+  exit 1
+}
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required" >&2
+  exit 1
+}
+
+[[ $# == 1 ]] || usage
+if [[ "$1" == "--validate" ]]; then
+  validate_registry
+  echo '{"schema":"hepta_core_activation_chain_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+  exit 0
+fi
+
+id="$1"
+[[ "$id" =~ ^[a-z0-9-]+$ ]] || usage
+validate_registry
+
+spec="$(jq -cer --arg id "$id" '.specs[] | select(.id == $id)' "$SPEC_FILE")" || {
+  echo "unknown Hepta core activation chain gate spec id: $id" >&2
+  exit 1
+}
+
+BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
+
+[[ "$MIN_LONG_SOAK_SAMPLES" =~ ^[0-9]+$ ]] || {
+  echo "minimum long-soak samples must be numeric" >&2
+  exit 1
+}
+if (( MIN_LONG_SOAK_SAMPLES < 24 )); then
+  echo "minimum long-soak samples must be at least 24" >&2
+  exit 1
+fi
+
+cd "$ROOT"
+source scripts/lib/hepta-json-report-capture.sh
+
+source_spec="$(jq -c '.source' <<<"$spec")"
+source_script="$(jq -r '.script' <<<"$source_spec")"
+SOURCE_JSON="$(
+  capture_json_report \
+    "$(jq -r '.capture_label' <<<"$source_spec")" \
+    env \
+      HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+      HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS="${HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS:-0}" \
+      HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS:-0}" \
+      HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS:-0}" \
+      "$source_script"
+)"
+
+jq -e --argjson source_spec "$source_spec" '
+  .runtime == "hepta"
+  and .status == "ready"
+  and .gate == $source_spec.expected_gate
+  and .schema_version == $source_spec.expected_schema_version
+  and .[$source_spec.ready_field] == true
+  and .[$source_spec.status_field] == "blocked"
+  and (.[$source_spec.denied_field] | type == "array")
+  and (.[$source_spec.denied_field] | length) == $source_spec.denied_count
+  and (.side_effects | type == "object")
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$SOURCE_JSON"
+
+fixture_defaults="$(jq -c '.fixture_defaults' <<<"$spec")"
+fixture_variants="$(jq -c '.fixture_variants' <<<"$spec")"
+FIXTURES_JSON="$(
+  jq -cn \
+    --argjson defaults "$fixture_defaults" \
+    --argjson variants "$fixture_variants" \
+    '$variants | map($defaults + .)'
+)"
+
+jq -e '
+  length == 10
+  and all(.receipt_noop_confirmed == true)
+  and all(
+    .activation_performed == false
+    and .provider_invoked == false
+    and .model_invoked == false
+    and .external_send_performed == false
+    and .release_artifact_written == false
+    and .install_executed == false
+    and .service_restarted == false
+    and .active_binary_mutated == false
+    and .upstream_fetch_performed == false
+    and .upstream_merge_performed == false
+    and .credential_read == false
+    and .secret_value_read == false
+  )
+' >/dev/null <<<"$FIXTURES_JSON"
+
+source_sha256="$(sha256_text "$SOURCE_JSON")"
+fixtures_sha256="$(sha256_text "$FIXTURES_JSON")"
+contract_sha256="$(
+  sha256_text "$(jq -r '.hashes.contract_prefix' <<<"$spec"):$source_sha256:$fixtures_sha256:$MIN_LONG_SOAK_SAMPLES"
+)"
+policy_sha256="$(sha256_text "$(jq -r '.hashes.policy_text' <<<"$spec")")"
+side_effect_sha256="$(sha256_text "$(jq -r '.hashes.side_effect_text' <<<"$spec")")"
+
+report="$(
+  jq -n \
+    --arg base_url "$BASE_URL" \
+    --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
+    --argjson spec "$spec" \
+    --argjson source "$SOURCE_JSON" \
+    --argjson fixtures "$FIXTURES_JSON" \
+    --arg source_sha256 "$source_sha256" \
+    --arg fixtures_sha256 "$fixtures_sha256" \
+    --arg contract_sha256 "$contract_sha256" \
+    --arg policy_sha256 "$policy_sha256" \
+    --arg side_effect_sha256 "$side_effect_sha256" \
+    '
+      $spec.static_report
+      | .base_url = $base_url
+      | .minimum_required_samples = $min_long_soak_samples
+      | .[$spec.fixture_field] = $fixtures
+      | .[$spec.denied_field] = ($source[$spec.source.denied_field] + $spec.denial_append)
+      | .[$spec.denied_count_field] = (.[$spec.denied_field] | length)
+      | if $spec.source_mirror_array_field == null then .
+        else .[$spec.source_mirror_array_field] = $source[$spec.source.denied_field]
+        end
+      | .[$spec.hashes.source_field] = $source_sha256
+      | .[$spec.hashes.fixture_field] = $fixtures_sha256
+      | .[$spec.hashes.contract_field] = $contract_sha256
+      | .[$spec.hashes.policy_field] = $policy_sha256
+      | .[$spec.hashes.side_effect_field] = $side_effect_sha256
+      | reduce ($spec.hashes.source_projections | to_entries[]) as $projection
+          (. ; .[$projection.key] = $source[$projection.value])
+    '
+)"
+
+jq -e --argjson spec "$spec" '
+  .runtime == "hepta"
+  and .status == "ready"
+  and (.[$spec.fixture_field] | length) == 10
+  and (.[$spec.denied_field] | length) == .[$spec.denied_count_field]
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report"
+
+actual_output_sha="$(
+  jq -S '
+    del(.base_url, .minimum_required_samples)
+    | with_entries(select(.key | endswith("sha256") | not))
+  ' <<<"$report" | shasum -a 256 | cut -d ' ' -f1
+)"
+expected_output_sha="$(jq -r '.baseline_normalized_output_sha256' <<<"$spec")"
+[[ "$actual_output_sha" == "$expected_output_sha" ]] || {
+  echo "Hepta core activation chain gate normalized output parity mismatch for $id: $actual_output_sha != $expected_output_sha" >&2
+  exit 1
+}
+
+printf '%s\n' "$report" | jq .
+jq -r '.pass_message' <<<"$spec"
