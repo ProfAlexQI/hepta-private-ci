@@ -186,7 +186,7 @@ jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" '
   and .out_of_order_required_marker_count == 0
 ' >/dev/null <<<"$TERMINAL_COVERAGE_JSON"
 
-native_gateway_sha256="$(shasum -a 256 "$NATIVE_GATEWAY_SOURCE" | awk '{print $1}')"
+native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 source_gate_sha256="$(printf '%s' "$SOURCE_GATE_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_coverage_sha256="$(printf '%s' "$TERMINAL_COVERAGE_JSON" | shasum -a 256 | awk '{print $1}')"
 terminal_required_marker_count="$(jq -r '.required_marker_count // 0' <<<"$TERMINAL_COVERAGE_JSON")"

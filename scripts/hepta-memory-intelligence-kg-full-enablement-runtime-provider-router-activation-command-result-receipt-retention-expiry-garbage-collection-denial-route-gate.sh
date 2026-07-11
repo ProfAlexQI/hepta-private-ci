@@ -241,7 +241,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   live_checked=true
 fi
 
-native_gateway_sha256="$(shasum -a 256 "$NATIVE_GATEWAY_SOURCE" | awk '{print $1}')"
+native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 
 jq -n \
   --arg product "Hepta" \

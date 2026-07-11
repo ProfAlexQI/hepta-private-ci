@@ -26,6 +26,7 @@ verify_total_max() {
 }
 
 verify() {
+  local direct_source_set_hash_consumer
   local source_set_consumer
   local stale_native_source_consumer
 
@@ -83,6 +84,18 @@ verify() {
       'hepta-(native-gateway|runtime-public-api|runtime-query)-source-set-v1' \
       scripts
   )
+
+  direct_source_set_hash_consumer="$(
+    rg -l --glob 'hepta-*gate.sh' \
+      'shasum -a 256 "\$(NATIVE_GATEWAY_SOURCE|RUNTIME_LIB_SOURCE|RUNTIME_QUERY_SOURCE)"' \
+      scripts \
+      || true
+  )"
+  [[ -z "$direct_source_set_hash_consumer" ]] \
+    || {
+      echo "gate hashes a source-set identifier as a file: $direct_source_set_hash_consumer" >&2
+      return 1
+    }
 
   stale_native_source_consumer="$(
     rg -l --glob 'hepta-*gate.sh' \

@@ -108,7 +108,7 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
   ' >/dev/null <<<"$LIVE_ROUTE_JSON"
 fi
 
-native_gateway_sha256="$(shasum -a 256 "$NATIVE_GATEWAY_SOURCE" | awk '{print $1}')"
+native_gateway_sha256="$(sha256_file "$NATIVE_GATEWAY_SOURCE")"
 live_route_status="$(jq -r '.status // "skipped"' <<<"$LIVE_ROUTE_JSON")"
 live_route_count="$(jq -r '.route_count // 0' <<<"$LIVE_ROUTE_JSON")"
 live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$LIVE_ROUTE_JSON")"
