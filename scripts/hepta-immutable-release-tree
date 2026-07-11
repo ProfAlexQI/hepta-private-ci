@@ -21,9 +21,7 @@ sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 
 canonical_file() {
   local target="$1"
-  local directory
-  directory="$(cd "$(dirname "$target")" && pwd -P)"
-  printf '%s/%s\n' "$directory" "$(basename "$target")"
+  realpath "$target"
 }
 
 require_sha256() {
@@ -311,6 +309,7 @@ self_test() {
   [[ -L "$tmp/active/hepta.manifest" ]]
   [[ "$(sha256_file "$tmp/active/hepta")" == "$fixture_sha" ]]
   [[ -f "$tmp/active/backups/hepta.pre-immutable-$fixture_sha" ]]
+  $tool verify --manifest "$tmp/active/hepta.manifest" >/dev/null
 
   different="$tmp/different"
   printf '%s\n' '#!/usr/bin/env bash' 'printf "different fixture\n"' >"$different"
