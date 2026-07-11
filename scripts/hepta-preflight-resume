@@ -91,12 +91,41 @@ if [[ -f "$STATE_FILE" ]]; then
   fi
 fi
 
+prelude_end_line="$({
+  awk '/^echo "\[hepta-preflight\] / { print NR - 1; exit }' "$PREFLIGHT"
+})"
+if [[ -z "$prelude_end_line" || "$prelude_end_line" -lt 6 ]]; then
+  echo "could not locate the preflight prelude boundary in scripts/hepta-preflight.sh" >&2
+  exit 1
+fi
+
+terminal_branch_start="$({
+  awk '$0 == "if [[ \"$RUN_NATIVE\" == \"1\" ]]; then" { print NR; exit }' "$PREFLIGHT"
+})"
+if [[ -z "$terminal_branch_start" ]]; then
+  echo "could not locate the native/release branch in scripts/hepta-preflight.sh" >&2
+  exit 1
+fi
+
 start_line=1
 if [[ -n "$resume_marker" ]]; then
-  start_line="$({
-    awk -v expected="echo \"[hepta-preflight] $resume_marker\"" \
-      '$0 == expected { print NR; exit }' "$PREFLIGHT"
-  })"
+  if [[ "$resume_marker" == "native app gates skipped (HEPTA_PREFLIGHT_NATIVE="* ]]; then
+    start_line="$terminal_branch_start"
+  else
+    start_line="$({
+      awk -v expected="$resume_marker" '
+        /^[[:space:]]*echo "\[hepta-preflight\] / {
+          marker = $0
+          sub(/^[[:space:]]*echo "\[hepta-preflight\] /, "", marker)
+          sub(/"$/, "", marker)
+          if (marker == expected) {
+            print NR
+            exit
+          }
+        }
+      ' "$PREFLIGHT"
+    })"
+  fi
   if [[ -z "$start_line" ]]; then
     echo "checkpoint marker no longer exists in scripts/hepta-preflight.sh: $resume_marker" >&2
     exit 1
@@ -104,8 +133,8 @@ if [[ -n "$resume_marker" ]]; then
 
   # The final native/release branches must be resumed from their opening `if`
   # so that the generated suffix remains syntactically balanced.
-  if (( start_line >= 1762 )); then
-    start_line=1762
+  if (( start_line >= terminal_branch_start )); then
+    start_line="$terminal_branch_start"
   fi
 fi
 
@@ -137,7 +166,7 @@ else
   {
     printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail'
     printf 'cd %q\n' "$ROOT"
-    sed -n '6,21p' "$PREFLIGHT"
+    sed -n "6,${prelude_end_line}p" "$PREFLIGHT"
     sed -n "${start_line},\$p" "$PREFLIGHT"
   } >"$generated"
 fi
