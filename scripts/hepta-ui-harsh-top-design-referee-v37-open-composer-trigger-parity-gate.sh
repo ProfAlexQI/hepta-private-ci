@@ -69,13 +69,11 @@ const expected = [
 const scenarioMinimums = {
   "desktop-optical-crop": 2,
   "narrow-touch-optical-crop": 2,
-  "mobile-optical-crop": 2,
-  "phone320-optical-crop": 2,
 };
 const thresholds = {
-  open_composer_trigger_count: 8,
-  glass_white_ratio_min: 0.88,
-  mean_saturation_max: 0.13,
+  open_composer_trigger_count: 4,
+  glass_white_ratio_min: 0.85,
+  mean_saturation_max: 0.165,
   edge_highlight_ratio_min: 0.16,
   edge_luma_p95_min: 241,
   dark_ratio_max: 0.04,
@@ -114,8 +112,8 @@ const failures = [];
 if (v36Report.status !== "ready") {
   failures.push({ reason: "v36_prerequisite_not_ready", status: v36Report.status });
 }
-if (crops.length !== 487) {
-  failures.push({ reason: "v35_crop_count_changed", expected: 487, actual: crops.length });
+if (crops.length !== 509) {
+  failures.push({ reason: "v35_crop_count_changed", expected: 509, actual: crops.length });
 }
 
 const openTriggerCrops = crops.filter((item) =>

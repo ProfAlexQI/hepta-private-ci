@@ -287,6 +287,26 @@ async function triggerGeometry(trigger, viewport) {
   };
 }
 
+async function panelGeometry(panel, viewport) {
+  const box = await boxFor(panel);
+  const failures = [];
+  if (!box) {
+    return { box: null, topmost: false, clipped_ratio: 0, failures: ["missing_panel_box"], ready: false };
+  }
+  if (box.width + 0.5 < 120 || box.height + 0.5 < 44) failures.push("panel_below_minimum_size");
+  const clipped = clippedRatio(box, viewport);
+  if (clipped < 0.995) failures.push("panel_clipped_by_resized_viewport");
+  const topmost = await topmostFor(panel);
+  if (!topmost) failures.push("panel_not_topmost_after_resize");
+  return {
+    box: roundedBox(box),
+    clipped_ratio: round(clipped, 4),
+    topmost,
+    failures,
+    ready: failures.length === 0,
+  };
+}
+
 async function visibleTransientPanels(page) {
   return page.locator(transientPanelSelector).evaluateAll((elements) => elements.flatMap((element) => {
     const rect = element.getBoundingClientRect();
@@ -383,8 +403,16 @@ async function auditResizeTarget(browser, scenario, target) {
   await page.setViewportSize({ width: scenario.resized.width, height: scenario.resized.height });
   await page.waitForTimeout(460);
   const afterResizeState = await transientState(page);
+  const panelRegionRemainsVisible = !(target.group === "row-menu" && scenario.resized.width <= 700);
+  const expectedAfterResizePanelCount = panelRegionRemainsVisible ? 1 : 0;
+  const afterResizePanelGeometry = panelRegionRemainsVisible
+    ? await panelGeometry(page.locator(target.panelSelector).first(), scenario.resized)
+    : { box: null, clipped_ratio: null, topmost: null, failures: [], ready: true, skipped: "owning_region_hidden" };
   const afterPath = path.join(screenshotDir, `${sanitize(scenario.name)}-${sanitize(target.key)}-after-resize.png`);
   await page.screenshot({ path: afterPath, fullPage: false });
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(180);
+  const postDismissState = await transientState(page);
   await page.close();
 
   const failures = [
@@ -392,7 +420,9 @@ async function auditResizeTarget(browser, scenario, target) {
     ...(open.tap_point ? [] : ["missing_trigger_activation_point"]),
     ...(open.panel_visible ? [] : ["panel_not_visible_before_resize"]),
     ...(beforeResizeState.visible_panel_count === 1 ? [] : [`before_resize_expected_one_visible_panel_got_${beforeResizeState.visible_panel_count}`]),
-    ...(afterResizeState.visible_panel_count === 0 ? [] : [`after_resize_residual_visible_panels_${afterResizeState.visible_panel_count}`]),
+    ...(afterResizeState.visible_panel_count === expectedAfterResizePanelCount ? [] : [`after_resize_expected_${expectedAfterResizePanelCount}_visible_panel_got_${afterResizeState.visible_panel_count}`]),
+    ...afterResizePanelGeometry.failures.map((failure) => `after_resize_panel:${failure}`),
+    ...(postDismissState.visible_panel_count === 0 ? [] : [`escape_after_resize_residual_panels_${postDismissState.visible_panel_count}`]),
     ...(afterResizeState.open_tool_details_count === 0 ? [] : [`after_resize_open_tool_details_${afterResizeState.open_tool_details_count}`]),
     ...(afterResizeState.open_composer_picker_count === 0 ? [] : [`after_resize_open_composer_pickers_${afterResizeState.open_composer_picker_count}`]),
     ...(afterResizeState.composer_attr_open_count === 0 ? [] : [`after_resize_composer_attr_open_${afterResizeState.composer_attr_open_count}`]),
@@ -412,6 +442,9 @@ async function auditResizeTarget(browser, scenario, target) {
     panel_visible_before_resize: open.panel_visible,
     before_resize_state: beforeResizeState,
     after_resize_state: afterResizeState,
+    expected_after_resize_visible_panel_count: expectedAfterResizePanelCount,
+    after_resize_panel: afterResizePanelGeometry,
+    post_escape_state: postDismissState,
     screenshots: {
       before_resize: { path: beforePath, sha256: sha256(beforePath) },
       after_resize: { path: afterPath, sha256: sha256(afterPath) },
@@ -459,7 +492,7 @@ async function main() {
   const ready = failures.length === 0 && audits.length === expectedAuditCount;
   const report = {
     schema_version: "hepta-ui-harsh-top-design-referee-v18-resize-orientation-census/v0",
-    standards_version: "2026-06-29-control-open-transient-resize-orientation-zero-residual-census",
+    standards_version: "2026-07-11-control-popover-responsive-resize-orientation-census",
     status: ready ? "ready" : "failed",
     base_url: baseUrl,
     browser_path: "Browser plugin not available; regular Playwright with local Chrome was used",
@@ -478,7 +511,10 @@ async function main() {
         resized: scenario.resized,
       })),
       before_resize_visible_transient_panel_count: 1,
-      after_resize_visible_transient_panel_count: 0,
+      after_resize_visible_transient_panel_count: "1 when owning region remains visible; 0 when a desktop-only row menu resizes into mobile",
+      after_resize_panel_clipped_ratio_min: 0.995,
+      after_resize_panel_topmost: true,
+      escape_after_resize_visible_transient_panel_count: 0,
       after_resize_open_details_count: 0,
       after_resize_open_composer_picker_count: 0,
       after_resize_row_menu_open_count: 0,

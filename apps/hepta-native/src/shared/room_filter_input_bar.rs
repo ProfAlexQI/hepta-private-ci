@@ -53,7 +53,7 @@ script_mod! {
                 color_empty: (COLOR_TELEGRAM_DIM)
                 color_empty_hover: (COLOR_TELEGRAM_DIM)
                 color_empty_focus: (COLOR_TELEGRAM_DIM)
-                text_style: theme.font_regular { font_size: 10 },
+                text_style: theme.font_regular { font_size: 13 },
             }
         }
 

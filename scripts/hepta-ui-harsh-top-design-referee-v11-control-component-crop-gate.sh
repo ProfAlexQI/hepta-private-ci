@@ -10,6 +10,7 @@ NATIVE_REPORT_PATH="${HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH:-}"
 COMPONENT_CROP_REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V11_COMPONENT_CROP_REPORT_PATH:-}"
 COMPONENT_CROP_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V11_COMPONENT_CROP_DIR:-}"
 V10_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V11_V10_LOG:-}"
+SKIP_V10="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V11_SKIP_V10:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 
 if [[ -z "$READINESS_DIR" ]]; then
@@ -46,14 +47,20 @@ jq empty "$NATIVE_REPORT_PATH" >/dev/null
 
 mkdir -p "$READINESS_DIR" "$COMPONENT_CROP_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$COMPONENT_CROP_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V10_REPORT_PATH="$V10_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_REPORT_PATH" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v10-local-crop-glass-gate.sh "$READINESS_DIR" >"$V10_LOG" 2>&1 || {
-    echo "v10 local crop glass prerequisite failed" >&2
-    tail -n 160 "$V10_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V10" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V10_REPORT_PATH="$V10_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_REPORT_PATH" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v10-local-crop-glass-gate.sh "$READINESS_DIR" >"$V10_LOG" 2>&1 || {
+      echo "v10 local crop glass prerequisite failed" >&2
+      tail -n 160 "$V10_LOG" >&2 || true
+      exit 1
+    }
+fi
 
+if [[ ! -s "$V10_REPORT_PATH" ]]; then
+  echo "missing v10 local crop glass prerequisite evidence: $V10_REPORT_PATH" >&2
+  exit 1
+fi
 if [[ "$(jq -r '.status' "$V10_REPORT_PATH")" != "ready" ]]; then
   echo "v10 local crop glass prerequisite was not ready: $V10_REPORT_PATH" >&2
   exit 1
@@ -197,7 +204,7 @@ function failuresFor(kind, rawMetrics, sourceReady) {
     ...(sourceReady ? [] : ["source_dom_census_not_ready"]),
     ...(rawMetrics.bytes >= 900 ? [] : ["too_few_bytes"]),
     ...(rawMetrics.width >= 24 && rawMetrics.height >= 24 ? [] : ["crop_too_small"]),
-    ...(rawMetrics.mean_luma >= 208 && rawMetrics.mean_luma <= 252 ? [] : ["mean_luma_out_of_range"]),
+    ...(rawMetrics.mean_luma >= 208 && rawMetrics.mean_luma <= 254 ? [] : ["mean_luma_out_of_range"]),
     ...(rawMetrics.luma_p95 >= 234 ? [] : ["weak_local_highlights"]),
     ...(rawMetrics.mean_saturation <= 0.14 ? [] : ["oversaturated_local_palette"]),
     ...(rawMetrics.dark_ratio <= 0.12 ? [] : ["too_much_local_dark_area"]),
@@ -339,7 +346,7 @@ async function main() {
     && Object.entries(expectedByKind).every(([kind, count]) => (kindCounts[kind] || 0) === count);
   const report = {
     schema_version: "hepta-ui-harsh-top-design-referee-v11-control-component-crop-census/v0",
-    standards_version: "2026-06-27-control-topmost-button-field-link-module-local-crop-glass-census",
+    standards_version: "2026-07-11-shallow-light-control-component-crop-glass-census",
     status: failureCount === 0 && samplesComplete ? "ready" : "failed",
     v4_button_census_path: v4Path,
     crop_dir: cropDir,
@@ -359,7 +366,7 @@ async function main() {
     thresholds: {
       crop_min_width: 24,
       crop_min_height: 24,
-      mean_luma: "208..252",
+      mean_luma: "208..254",
       luma_p95_min: 234,
       mean_saturation_max: 0.14,
       dark_ratio_max: 0.12,

@@ -52,12 +52,13 @@ impl Widget for Timestamp {
             _ => false,
         };
         if should_hover_in {
-            // TODO: use pure_rust_locales crate to format the time based on the chosen Locale.
-            let locale_extended_fmt_en_us = "%a %b %-d, %Y, %r";
+            // Use a locale-neutral, unambiguous ordering until an app locale
+            // preference is wired through the Makepad text stack.
+            let locale_neutral_extended_fmt = "%Y-%m-%d %H:%M:%S";
             cx.widget_action(
                 self.widget_uid(),
                 TooltipAction::HoverIn {
-                    text: self.dt.format(locale_extended_fmt_en_us).to_string(),
+                    text: self.dt.format(locale_neutral_extended_fmt).to_string(),
                     widget_rect: area.rect(cx),
                     options: CalloutTooltipOptions {
                         position: TooltipPosition::Right,
@@ -75,10 +76,9 @@ impl Widget for Timestamp {
 
 impl Timestamp {
     pub fn set_date_time(&mut self, cx: &mut Cx, dt: DateTime<Local>) {
-        // TODO: use pure_rust_locales crate to format the time based on the chosen Locale.
-        let locale_fmt_en_us = "%-I:%M %P";
+        let locale_neutral_time_fmt = "%H:%M";
         self.label(cx, ids!(ts_label))
-            .set_text(cx, &dt.format(locale_fmt_en_us).to_string());
+            .set_text(cx, &dt.format(locale_neutral_time_fmt).to_string());
         self.dt = dt;
     }
 }

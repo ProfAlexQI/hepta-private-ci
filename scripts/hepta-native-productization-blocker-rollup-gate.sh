@@ -45,12 +45,17 @@ require_file "$HANDOFF_PATH"
 require_file "$BACKEND_GATES_PATH"
 require_file "$NON_BASE_EDGE_GATES_PATH"
 
-if [[ -s "$TRUE_WINDOW_READINESS_PATH" ]]; then
+if [[ -s "$NATIVE_WINDOW_REPORT_PATH" ]]; then
+  true_window_reference_mode="current_window_report"
+elif [[ -s "$TRUE_WINDOW_READINESS_PATH" ]]; then
   true_window_reference_mode="readiness"
-else
+elif [[ -s "$TRUE_WINDOW_DESKTOP_SCREENSHOT_PATH" && -s "$TRUE_WINDOW_MOBILE_SCREENSHOT_PATH" ]]; then
   require_file "$TRUE_WINDOW_DESKTOP_SCREENSHOT_PATH"
   require_file "$TRUE_WINDOW_MOBILE_SCREENSHOT_PATH"
   true_window_reference_mode="standalone_window_smoke"
+else
+  printf 'Missing current true-window report: %s\n' "$NATIVE_WINDOW_REPORT_PATH" >&2
+  exit 1
 fi
 
 if [[ -s "$READINESS_PATH" ]]; then
@@ -379,7 +384,24 @@ jq -e '
   and .side_effects.external_mutation == false
 ' "$NON_BASE_EDGE_GATES_PATH" >/dev/null
 
-if [[ "$true_window_reference_mode" == "readiness" ]]; then
+if [[ "$true_window_reference_mode" == "current_window_report" ]]; then
+  jq -e '
+    (
+      .status == "ready"
+      and .true_window_capture_performed == true
+      and (.screenshots | length) == 2
+      and .native_app_log_error_free == true
+    )
+    or (
+      (.enabled // false) != true
+      and .status == "not_run"
+    )
+    or (
+      .blocked_allowed == true
+      and (.status == "blocked_by_locked_screen" or .status == "blocked_by_local_macos_permissions")
+    )
+  ' "$NATIVE_WINDOW_REPORT_PATH" >/dev/null
+elif [[ "$true_window_reference_mode" == "readiness" ]]; then
   jq -e '
     .status == "ready"
     and .native_window_smoke_ready == true
@@ -463,7 +485,33 @@ non_base_summary_json="$(
   }' "$NON_BASE_EDGE_GATES_PATH"
 )"
 
-if [[ "$true_window_reference_mode" == "readiness" ]]; then
+if [[ "$true_window_reference_mode" == "current_window_report" ]]; then
+  true_window_summary_json="$(
+    jq --arg readiness_dir "$READINESS_DIR" '{
+      status:(.status // "unknown"),
+      reference_mode:"current_window_report",
+      path:input_filename,
+      readiness_dir:$readiness_dir,
+      enabled:(.enabled // false),
+      blocked_allowed:(.blocked_allowed // false),
+      native_window_smoke_ready:(.status == "ready" and .true_window_capture_performed == true and ((.screenshots // []) | length) == 2),
+      accepted_for_current_gate:(
+        (.status == "ready" and .true_window_capture_performed == true and ((.screenshots // []) | length) == 2 and .native_app_log_error_free == true)
+        or (((.enabled // false) != true) and .status == "not_run")
+        or ((.blocked_allowed // false) == true and (.status == "blocked_by_locked_screen" or .status == "blocked_by_local_macos_permissions"))
+      ),
+      true_window_screenshot_count:((.screenshots // []) | length),
+      screenshots:(.screenshots // []),
+      side_effects:(.side_effects // {
+        matrix_login:false,
+        gateway_call:false,
+        provider_invoked:false,
+        channel_delivery:false,
+        external_mutation:false
+      })
+    }' "$NATIVE_WINDOW_REPORT_PATH"
+  )"
+elif [[ "$true_window_reference_mode" == "readiness" ]]; then
   true_window_summary_json="$(
     jq '{
       status,
@@ -473,6 +521,7 @@ if [[ "$true_window_reference_mode" == "readiness" ]]; then
       native_window_smoke_ready,
       native_window_smoke_enabled,
       native_window_app_log_error_free,
+      accepted_for_current_gate:(.native_window_smoke_ready == true and (.native_window_smoke.screenshots | length) == 2),
       true_window_screenshot_count:(.native_window_smoke.screenshots | length),
       screenshots:(.native_window_smoke.screenshots // []),
       side_effects
@@ -501,6 +550,7 @@ else
         log:$log_path,
         native_window_smoke_ready:true,
         native_window_smoke_enabled:true,
+        accepted_for_current_gate:true,
         true_window_screenshot_count:2,
         screenshots:[
           {kind:"desktop", path:$desktop_path, width:$desktop_width, height:$desktop_height, bytes:$desktop_bytes, sha256:$desktop_sha},

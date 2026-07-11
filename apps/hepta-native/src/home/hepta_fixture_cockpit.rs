@@ -138,7 +138,7 @@ script_mod! {
         show_bg: true,
         draw_bg +: {
             color: #xF5FCFFE0
-            border_color: #x7FC8DE42
+            border_color: #x68C9E0A8
             border_size: 1.0
             border_radius: 7.0
         }
@@ -485,8 +485,8 @@ script_mod! {
         show_bg: true,
         draw_bg +: {
             color: #xD7F4FF90
-            border_color: #x00000000
-            border_size: 0.0
+            border_color: #x72CDE3A0
+            border_size: 1.0
             border_radius: 12.0
         }
 
@@ -510,7 +510,7 @@ script_mod! {
         show_bg: true,
         draw_bg +: {
             color: #xF5FCFFE0
-            border_color: #x7FC8DE42
+            border_color: #x68C9E0A8
             border_size: 1.0
             border_radius: 10.0
         }
@@ -544,8 +544,8 @@ script_mod! {
         padding: Inset{top: 6.0, bottom: 6.0, left: 10.0, right: 10.0},
         show_bg: true,
         draw_bg +: {
-            color: #xBDEFFF88
-            border_color: #xBDEFFF88
+            color: #xA8E9F9C8
+            border_color: #x52C5E2C8
             border_size: 1.0
             border_radius: 8.0
         }
@@ -571,9 +571,9 @@ script_mod! {
 
         draw_bg +: {
             color: #x00000000
-            color_hover: #xEAF7FCE8
-            color_down: #xBDEFFF88
-            border_color: #x7FC8DE42
+            color_hover: #xDDF6FCE8
+            color_down: #x9DE5F6C8
+            border_color: #x68C9E0A8
             border_size: 1.0
             border_radius: 17.0
         }
@@ -597,7 +597,7 @@ script_mod! {
         show_bg: true,
         draw_bg +: {
             color: #xF5FCFFE8
-            border_color: #x7FC8DE42
+            border_color: #x68C9E0A8
             border_size: 1.0
             border_radius: 0.0
         }
@@ -618,8 +618,8 @@ script_mod! {
             padding: Inset{top: 12.0, bottom: 12.0, left: 12.0, right: 12.0},
             show_bg: true,
             draw_bg +: {
-                color: #xEAF7FCE8
-                border_color: #xEAF7FCE8
+                color: #xE5F5F9F0
+                border_color: #x78CADDA8
                 border_size: 1.0
                 border_radius: 19.0
             }
@@ -641,7 +641,7 @@ script_mod! {
             height: 44,
             align: Align{x: 0.5, y: 0.5},
             show_bg: true,
-            draw_bg.color: #xBDEFFF88
+            draw_bg.color: #xA8E9F9D8
 
             label := Label {
                 width: Fit,

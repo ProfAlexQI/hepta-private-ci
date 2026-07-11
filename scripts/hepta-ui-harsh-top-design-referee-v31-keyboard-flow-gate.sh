@@ -246,6 +246,8 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
       triggerTag: node.tagName.toLowerCase(),
       triggerFocused: active === node,
       ariaExpanded: node.getAttribute("aria-expanded") || "",
+      nativePopoverTargetMatches: node.popoverTargetElement === panel || Boolean(node.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(node.popoverTargetElement?.matches(":popover-open")),
       ariaHaspopup: node.getAttribute("aria-haspopup") || "",
       ariaControls: node.getAttribute("aria-controls") || "",
       panelFound: Boolean(panel),
@@ -256,7 +258,8 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
 
   const failures = [];
   if (!before.triggerFocused) failures.push("trigger_not_keyboard_focusable");
-  if (before.ariaExpanded !== "false") failures.push("initial_aria_expanded_not_false");
+  const usesNativePopover = before.nativePopoverTargetMatches;
+  if (usesNativePopover ? before.nativePopoverOpen : before.ariaExpanded !== "false") failures.push("initial_expanded_state_not_false");
   if (before.ariaHaspopup !== group.expectedPopup) failures.push("trigger_missing_popup_semantics");
   if (!before.panelFound) failures.push("controlled_panel_missing");
   if (before.panelVisible) failures.push("initial_keyboard_focus_panel_visible");
@@ -278,6 +281,8 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
     const activeVisible = activeRect && activeRect.width > 1 && activeRect.height > 1 && activeStyle.display !== "none" && activeStyle.visibility !== "hidden" && Number(activeStyle.opacity) > 0.01;
     return {
       ariaExpanded: node.getAttribute("aria-expanded") || "",
+      nativePopoverTargetMatches: node.popoverTargetElement === panel || Boolean(node.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(node.popoverTargetElement?.matches(":popover-open")),
       panelVisible: Boolean(panelVisible),
       activeTag: active?.tagName?.toLowerCase?.() || "",
       activeId: active?.id || "",
@@ -294,7 +299,7 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
     };
   }, wireGroup);
 
-  if (openState.ariaExpanded !== "true") failures.push("keyboard_open_aria_expanded_not_true");
+  if (usesNativePopover ? !openState.nativePopoverOpen : openState.ariaExpanded !== "true") failures.push("keyboard_open_expanded_state_not_true");
   if (!openState.panelVisible) failures.push("keyboard_open_panel_not_visible");
   if (!openState.activeInsidePanel) failures.push("keyboard_open_focus_not_inside_panel");
   if (openState.activeIsTrigger) failures.push("keyboard_open_focus_stayed_on_trigger");
@@ -316,6 +321,8 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
     const panelVisible = panel && panelRect.width > 1 && panelRect.height > 1 && panelStyle.display !== "none" && panelStyle.visibility !== "hidden" && Number(panelStyle.opacity) > 0.01;
     return {
       ariaExpanded: node.getAttribute("aria-expanded") || "",
+      nativePopoverTargetMatches: node.popoverTargetElement === panel || Boolean(node.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(node.popoverTargetElement?.matches(":popover-open")),
       panelVisible: Boolean(panelVisible),
       focusReturnedToTrigger: active === node,
       activeTag: active?.tagName?.toLowerCase?.() || "",
@@ -324,7 +331,7 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
     };
   }, wireGroup);
 
-  if (closeState.ariaExpanded !== "false") failures.push("escape_close_aria_expanded_not_false");
+  if (usesNativePopover ? closeState.nativePopoverOpen : closeState.ariaExpanded !== "false") failures.push("escape_close_expanded_state_not_false");
   if (closeState.panelVisible) failures.push("escape_close_panel_still_visible");
   if (!closeState.focusReturnedToTrigger) failures.push("escape_focus_not_returned_to_trigger");
 

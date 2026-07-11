@@ -398,10 +398,14 @@ async function auditOne(page, scenario, target, actionIndex) {
   await page.waitForTimeout(520);
   const afterState = await snapshotState(page);
   const afterScreenshot = await screenshot(page, `${scenario.name}-${target.key}-${actionIndex}-after-action`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(180);
+  const postDismissState = await snapshotState(page);
   const failures = [...triggerFailures, ...actionFailures];
   if (actionCount <= actionIndex) failures.push("action_item_missing");
   if (beforeState.visible_panel_count !== 1) failures.push(`before_action_visible_panels_${beforeState.visible_panel_count}`);
-  if (afterState.visible_panel_count !== 0) failures.push(`after_action_residual_visible_panels_${afterState.visible_panel_count}`);
+  if (afterState.visible_panel_count !== 1) failures.push(`after_action_expected_one_visible_panel_got_${afterState.visible_panel_count}`);
+  if (postDismissState.visible_panel_count !== 0) failures.push(`escape_after_action_residual_visible_panels_${postDismissState.visible_panel_count}`);
   if (afterState.open_tool_details_count !== 0) failures.push(`after_action_open_tool_details_${afterState.open_tool_details_count}`);
   if (afterState.open_composer_picker_count !== 0) failures.push(`after_action_open_composer_pickers_${afterState.open_composer_picker_count}`);
   if (afterState.composer_attr_open_count !== 0) failures.push(`after_action_composer_attr_open_${afterState.composer_attr_open_count}`);
@@ -432,6 +436,7 @@ async function auditOne(page, scenario, target, actionIndex) {
     activation,
     before_action_state: beforeState,
     after_action_state: afterState,
+    post_escape_state: postDismissState,
     screenshots: { before_action: beforeScreenshot, after_action: afterScreenshot },
     failures,
     ready: failures.length === 0,
@@ -519,7 +524,8 @@ function groupBy(items, key) {
     by_action_kind: groupBy(records, "action_kind"),
     thresholds: {
       before_action_visible_transient_panel_count: 1,
-      after_action_visible_transient_panel_count: 0,
+      after_action_visible_transient_panel_count: 1,
+      escape_after_action_visible_transient_panel_count: 0,
       after_action_open_details_count: 0,
       after_action_open_composer_picker_count: 0,
       after_action_row_menu_open_count: 0,
@@ -533,7 +539,7 @@ function groupBy(items, key) {
   };
   console.log(JSON.stringify({
     schema_version: "hepta-ui-harsh-top-design-referee-v19-menu-action-census/v0",
-    standards_version: "2026-06-29-harsh-v18-plus-submenu-item-action-zero-residual-census",
+    standards_version: "2026-07-11-harsh-v18-plus-popover-item-action-escape-dismiss-census",
     status: failures.length === 0 ? "ready" : "failed",
     browser_path: "Browser plugin not available; regular Playwright with local Chrome was used",
     summary,

@@ -107,10 +107,9 @@ impl Widget for EditedIndicator {
             _ => false,
         };
         if should_hover_in {
-            // TODO: use pure_rust_locales crate to format the time based on the chosen Locale.
-            let locale_extended_fmt_en_us = "%a %b %-d, %Y, %r";
+            let locale_neutral_extended_fmt = "%Y-%m-%d %H:%M:%S";
             let mut text = if let Some(ts) = self.latest_edit_ts {
-                format!("Last edited {}", ts.format(locale_extended_fmt_en_us))
+                format!("Last edited {}", ts.format(locale_neutral_extended_fmt))
             } else {
                 "Last edit time unknown".to_string()
             };

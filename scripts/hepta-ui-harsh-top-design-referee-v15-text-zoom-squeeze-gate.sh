@@ -11,6 +11,7 @@ SQUEEZE_SCREENSHOT_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V15_SCREENSHOT_DIR:-
 SQUEEZE_CROP_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V15_CROP_DIR:-}"
 NATIVE_DIR="${HEPTA_NATIVE_FIXTURE_VISUAL_DIR:-}"
 V14_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V15_V14_LOG:-}"
+SKIP_V14="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V15_SKIP_V14:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 MANIFEST="codex-rs/Cargo.toml"
 HOST="${HEPTA_CONTROL_UI_SMOKE_HOST:-127.0.0.1}"
@@ -50,14 +51,20 @@ fi
 
 mkdir -p "$READINESS_DIR" "$NATIVE_DIR" "$SQUEEZE_SCREENSHOT_DIR" "$SQUEEZE_CROP_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$SQUEEZE_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V14_REPORT_PATH="$V14_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v14-scroll-edge-crop-gate.sh "$READINESS_DIR" >"$V14_LOG" 2>&1 || {
-    echo "v14 scroll-edge crop prerequisite failed" >&2
-    tail -n 180 "$V14_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V14" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V14_REPORT_PATH="$V14_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v14-scroll-edge-crop-gate.sh "$READINESS_DIR" >"$V14_LOG" 2>&1 || {
+      echo "v14 scroll-edge crop prerequisite failed" >&2
+      tail -n 180 "$V14_LOG" >&2 || true
+      exit 1
+    }
+fi
 
+if [[ ! -s "$V14_REPORT_PATH" ]]; then
+  echo "missing v14 scroll-edge crop prerequisite evidence: $V14_REPORT_PATH" >&2
+  exit 1
+fi
 if [[ "$(jq -r '.status' "$V14_REPORT_PATH")" != "ready" ]]; then
   echo "v14 scroll-edge crop prerequisite was not ready: $V14_REPORT_PATH" >&2
   exit 1
@@ -571,7 +578,6 @@ async function revealTarget(page, target) {
 }
 
 async function openTarget(page, target) {
-  await revealTarget(page, target);
   const trigger = page.locator(target.triggerSelector).first();
   await trigger.waitFor({ state: "visible", timeout: 5000 });
   await trigger.scrollIntoViewIfNeeded().catch(() => {});

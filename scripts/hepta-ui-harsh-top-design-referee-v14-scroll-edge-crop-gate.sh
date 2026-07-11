@@ -11,6 +11,7 @@ SCROLL_SCREENSHOT_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V14_SCREENSHOT_DIR:-}
 SCROLL_CROP_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V14_CROP_DIR:-}"
 NATIVE_DIR="${HEPTA_NATIVE_FIXTURE_VISUAL_DIR:-}"
 V13_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V14_V13_LOG:-}"
+SKIP_V13="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V14_SKIP_V13:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 MANIFEST="codex-rs/Cargo.toml"
 HOST="${HEPTA_CONTROL_UI_SMOKE_HOST:-127.0.0.1}"
@@ -50,14 +51,20 @@ fi
 
 mkdir -p "$READINESS_DIR" "$NATIVE_DIR" "$SCROLL_SCREENSHOT_DIR" "$SCROLL_CROP_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$SCROLL_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_REPORT_PATH="$V13_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v13-geometry-occlusion-gate.sh "$READINESS_DIR" >"$V13_LOG" 2>&1 || {
-    echo "v13 geometry/occlusion prerequisite failed" >&2
-    tail -n 180 "$V13_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V13" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_REPORT_PATH="$V13_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v13-geometry-occlusion-gate.sh "$READINESS_DIR" >"$V13_LOG" 2>&1 || {
+      echo "v13 geometry/occlusion prerequisite failed" >&2
+      tail -n 180 "$V13_LOG" >&2 || true
+      exit 1
+    }
+fi
 
+if [[ ! -s "$V13_REPORT_PATH" ]]; then
+  echo "missing v13 geometry/occlusion prerequisite evidence: $V13_REPORT_PATH" >&2
+  exit 1
+fi
 if [[ "$(jq -r '.status' "$V13_REPORT_PATH")" != "ready" ]]; then
   echo "v13 geometry/occlusion prerequisite was not ready: $V13_REPORT_PATH" >&2
   exit 1

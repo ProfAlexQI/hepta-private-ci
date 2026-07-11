@@ -959,9 +959,9 @@ cat >"$HTML_PATH" <<'HTML'
       --dim: #6f8190;
       --line: rgba(145,170,188,.20);
       --hairline: rgba(255,255,255,.82);
-      --panel: rgba(255,255,255,.39);
-      --panel-2: rgba(255,255,255,.24);
-      --wash: #fbfcfe;
+      --panel: rgba(255,255,255,.90);
+      --panel-2: rgba(255,255,255,.78);
+      --wash: #f4f9fc;
       --accent: #13799a;
       --accent-2: #cbe8f4;
       --accent-3: #c978a4;
@@ -974,15 +974,23 @@ cat >"$HTML_PATH" <<'HTML'
     body {
       margin: 0;
       min-height: 100vh;
+      position: relative;
       background:
-        url("./hepta-glass-k.png") center / cover no-repeat,
-        linear-gradient(135deg, rgba(255,231,246,.24), transparent 35%),
-        linear-gradient(225deg, rgba(229,255,239,.20), transparent 38%),
-        linear-gradient(145deg, rgba(203,232,244,.22), rgba(255,255,255,0) 42%),
-        repeating-linear-gradient(118deg, rgba(62,98,118,.06) 0 1px, transparent 1px 20px),
+        linear-gradient(135deg, rgba(255,231,246,.18), transparent 35%),
+        linear-gradient(225deg, rgba(229,255,239,.16), transparent 38%),
+        linear-gradient(145deg, rgba(203,232,244,.18), rgba(255,255,255,0) 42%),
         var(--wash);
       color: var(--ink);
       overflow: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: url("./hepta-glass-k.png") center / cover no-repeat;
+      opacity: .24;
+      z-index: 0;
     }
     body.safe-area-check {
       --sim-safe-top: 28px;
@@ -997,20 +1005,21 @@ cat >"$HTML_PATH" <<'HTML'
       grid-template-columns: 258px minmax(420px, 1fr) 314px;
       gap: 10px;
       padding: 10px;
+      position: relative;
+      z-index: 1;
       background: transparent;
       border: 1px solid rgba(255,255,255,.62);
     }
     .rail, .thread, .inspector {
       background-color: var(--panel);
       background-image:
-        url("./hepta-glass-k.png"),
         radial-gradient(at 22% 14%, rgba(255,255,255,.42) 0 1px, transparent 2px),
         radial-gradient(at 82% 10%, rgba(223,247,255,.26) 0 5%, transparent 16%),
         repeating-linear-gradient(104deg, rgba(255,255,255,.22) 0 1px, transparent 1px 30px),
         linear-gradient(142deg, rgba(255,255,255,.38), rgba(216,244,251,.18) 46%, rgba(255,255,255,.17));
-      background-size: cover, 130% 136%, 126% 132%, auto, auto;
-      background-position: center, 0 0, 1px 1px, 2px 0, 0 0;
-      background-blend-mode: normal, screen, screen, screen, normal;
+      background-size: 130% 136%, 126% 132%, auto, auto;
+      background-position: 0 0, 1px 1px, 2px 0, 0 0;
+      background-blend-mode: screen, screen, screen, normal;
       border: 1px solid var(--hairline);
       box-shadow: 0 6px 18px rgba(68,90,108,.05), inset 0 1px 0 rgba(255,255,255,.84), inset 1px 0 0 rgba(255,255,255,.42);
       backdrop-filter: blur(32px) saturate(1.82) contrast(1.05);
@@ -1047,7 +1056,7 @@ cat >"$HTML_PATH" <<'HTML'
       border-radius: 7px;
       padding: 7px 4px;
       text-align: center;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
       color: var(--muted);
       background: rgba(255,255,255,.38);
@@ -1073,9 +1082,9 @@ cat >"$HTML_PATH" <<'HTML'
       min-height: 72px;
     }
     .room.selected { border-color: rgba(29,131,166,.34); background: rgba(255,255,255,.44); }
-    .room-title { font-weight: 800; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
-    .room-title span:last-child { color: var(--accent); font-size: 11px; }
-    .room p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .room-title { font-weight: 800; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+    .room-title span:last-child { color: var(--accent); font-size: 12px; }
+    .room p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
     .thread { display: grid; grid-template-rows: auto 1fr auto; }
     .thread-header {
       padding: 14px 18px;
@@ -1086,13 +1095,13 @@ cat >"$HTML_PATH" <<'HTML'
       gap: 12px;
     }
     h1 { font-size: 18px; line-height: 1.15; margin: 0; letter-spacing: 0; }
-    .subline { margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .subline { margin-top: 4px; color: var(--muted); font-size: 13px; font-weight: 600; }
     .status-strip { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
     .chip {
       border: 1px solid var(--line);
       border-radius: 999px;
       padding: 5px 8px;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 800;
       color: var(--muted);
       background: rgba(255,255,255,.40);
@@ -1113,8 +1122,8 @@ cat >"$HTML_PATH" <<'HTML'
       max-width: 100%;
     }
     .message.accent { border-color: rgba(29,131,166,.24); background: rgba(255,255,255,.38); }
-    .message strong { font-size: 13px; }
-    .message p { margin: 0; font-size: 12px; line-height: 1.48; color: var(--muted); overflow-wrap: normal; word-break: normal; }
+    .message strong { font-size: 14px; }
+    .message p { margin: 0; font-size: 14px; line-height: 1.48; color: var(--muted); overflow-wrap: normal; word-break: normal; }
     .media-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .media-card {
       min-height: 78px;
@@ -1122,7 +1131,7 @@ cat >"$HTML_PATH" <<'HTML'
       border: 1px solid var(--line);
       background: linear-gradient(135deg, rgba(255,231,246,.22), rgba(229,255,239,.18), rgba(203,232,244,.20)), rgba(255,255,255,.36);
       padding: 8px;
-      font-size: 11px;
+      font-size: 12px;
       color: var(--ink);
       display: flex;
       align-items: flex-end;
@@ -1132,7 +1141,7 @@ cat >"$HTML_PATH" <<'HTML'
       display: none;
       border: 1px solid rgba(145,170,188,.24);
       border-radius: 14px;
-      background: linear-gradient(180deg, rgba(255,255,255,.50), rgba(255,255,255,.38));
+      background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,251,252,.88));
       padding: 13px;
       gap: 10px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.74), 0 16px 42px rgba(68,90,108,.12);
@@ -1395,6 +1404,7 @@ cat >"$HTML_PATH" <<'HTML'
       .room p { display: none; }
       .thread-header { padding: 9px 12px; }
       .timeline { padding-top: 8px; padding-bottom: 8px; gap: 8px; }
+      body.safe-area-check .timeline > .message:nth-child(n+3) { display: none; }
       body.keyboard-open .timeline { align-content: start; }
       body.keyboard-open .timeline > .message:nth-child(n+3) { display: none; }
     }
@@ -1820,9 +1830,11 @@ assert_route_tab_density() {
         const bodySurface = inspect("body");
         const glassPanelSelectors = [".rail", ".thread", ".inspector"];
         const glassPanels = glassPanelSelectors.map(inspect).filter(Boolean);
+        // 2026 light tempered-glass hierarchy: content-bearing panels stay
+        // substantially opaque; the environment texture remains behind them.
         const translucentPanels = glassPanels.length === 3 && glassPanels.every((surface) => (
-          surface.background.a >= 0.38
-          && surface.background.a <= 0.72
+          surface.background.a >= 0.85
+          && surface.background.a <= 0.94
           && surface.background_luminance >= 226
           && surface.background_luminance <= 255
         ));
