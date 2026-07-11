@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+verify_file_max() {
+  local file="$1"
+  local max_lines="$2"
+  local actual
+  actual="$(wc -l <"$file" | tr -d '[:space:]')"
+  if (( actual > max_lines )); then
+    echo "architecture line budget exceeded: ${file} has ${actual}, max ${max_lines}" >&2
+    return 1
+  fi
+}
+
+verify_total_max() {
+  local max_lines="$1"
+  shift
+  local total
+  total="$(wc -l "$@" | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
+  if (( total > max_lines )); then
+    echo "architecture aggregate line budget exceeded: ${total} > ${max_lines}: $*" >&2
+    return 1
+  fi
+}
+
+verify() {
+  verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 6000
+  for file in codex-rs/hepta-native-gateway/src/native_gateway/*.rs; do
+    verify_file_max "$file" 60000
+  done
+  verify_total_max 181000 \
+    codex-rs/hepta-native-gateway/src/native_gateway.rs \
+    codex-rs/hepta-native-gateway/src/native_gateway/*.rs
+
+  verify_file_max codex-rs/hepta-runtime/src/lib.rs 1500
+  for file in codex-rs/hepta-runtime/src/runtime_kernel/*.rs; do
+    verify_file_max "$file" 6000
+  done
+  verify_total_max 33000 \
+    codex-rs/hepta-runtime/src/lib.rs \
+    codex-rs/hepta-runtime/src/runtime_kernel/*.rs
+
+  verify_file_max codex-rs/hepta-runtime/src/query.rs 6000
+  for file in codex-rs/hepta-runtime/src/query/*.rs; do
+    verify_file_max "$file" 4000
+  done
+  verify_total_max 12500 \
+    codex-rs/hepta-runtime/src/query.rs \
+    codex-rs/hepta-runtime/src/query/*.rs
+
+  [[ -x scripts/hepta-budgeted-test ]]
+  rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES:-2048' scripts/lib/hepta-json-report-capture.sh
+  rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728' scripts/lib/hepta-json-report-capture.sh
+  rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152' scripts/lib/hepta-json-report-capture.sh
+
+  echo '{"schema":"hepta_architecture_budget_v1","status":"ready","native_gateway_main_max_lines":6000,"native_gateway_domain_max_lines":60000,"native_gateway_total_max_lines":181000,"runtime_lib_max_lines":1500,"runtime_domain_max_lines":6000,"runtime_total_max_lines":33000,"runtime_query_main_max_lines":6000,"runtime_query_domain_max_lines":4000,"runtime_query_total_max_lines":12500,"report_dag_max_entries":2048,"report_dag_max_bytes":134217728,"report_max_bytes":2097152}'
+}
+
+self_test_report_dag_budget() (
+  local cache_dir
+  cache_dir="$(mktemp -d /tmp/hepta-report-dag-budget-self.XXXXXX)"
+  trap 'rm -rf "$cache_dir"' EXIT
+
+  if (
+    export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$cache_dir"
+    export HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES=1
+    export HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES=1024
+    export HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES=512
+    source scripts/lib/hepta-json-report-capture.sh
+    capture_json_report first sh -c 'printf "{\"entry\":1}\n"'
+    capture_json_report second sh -c 'printf "{\"entry\":2}\n"'
+  ) >/dev/null 2>&1; then
+    echo "report DAG entry-budget self-test unexpectedly passed" >&2
+    return 1
+  fi
+
+  if (
+    export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$cache_dir/oversize"
+    export HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES=4
+    export HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES=1024
+    export HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES=16
+    source scripts/lib/hepta-json-report-capture.sh
+    capture_json_report oversize sh -c 'printf "{\"payload\":\"0123456789abcdef\"}\n"'
+  ) >/dev/null 2>&1; then
+    echo "report per-entry budget self-test unexpectedly passed" >&2
+    return 1
+  fi
+)
+
+self_test() {
+  verify >/dev/null
+  scripts/hepta-budgeted-test self-test >/dev/null
+  self_test_report_dag_budget
+  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true}'
+}
+
+case "${1:-verify}" in
+  verify)
+    verify
+    ;;
+  self-test)
+    self_test
+    ;;
+  *)
+    echo "usage: $0 [verify|self-test]" >&2
+    exit 2
+    ;;
+esac

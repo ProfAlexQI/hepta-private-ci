@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "usage: $0 run --name NAME --max-seconds N --workspace PATH [--max-dirty-delta N] -- COMMAND [ARG ...]" >&2
+  echo "       $0 self-test" >&2
+}
+
+snapshot_workspace() {
+  local workspace="$1"
+  local output="$2"
+  {
+    printf 'tracked-diff-sha256 '
+    git -C "$workspace" diff --binary HEAD -- . | shasum -a 256 | awk '{print $1}'
+    git -C "$workspace" status --porcelain=v1 --untracked-files=all | LC_ALL=C sort
+    git -C "$workspace" ls-files --others --exclude-standard -z \
+      | while IFS= read -r -d '' file; do
+          printf 'untracked-sha256 '
+          shasum -a 256 "$workspace/$file" | awk -v file="$file" '{print $1 " " file}'
+        done \
+      | LC_ALL=C sort
+  } >"$output"
+}
+
+run_with_timeout() {
+  local max_seconds="$1"
+  shift
+
+  perl -MPOSIX -e '
+    use strict;
+    use warnings;
+    my $limit = shift @ARGV;
+    my $pid = fork();
+    die "fork failed: $!\n" unless defined $pid;
+    if ($pid == 0) {
+      setpgrp(0, 0);
+      exec @ARGV;
+      die "exec failed: $!\n";
+    }
+    local $SIG{ALRM} = sub {
+      kill "TERM", -$pid;
+      select undef, undef, undef, 0.25;
+      kill "KILL", -$pid;
+      waitpid($pid, 0);
+      exit 124;
+    };
+    alarm $limit;
+    waitpid($pid, 0);
+    alarm 0;
+    my $status = $?;
+    exit(($status & 127) ? 128 + ($status & 127) : ($status >> 8));
+  ' "$max_seconds" "$@"
+}
+
+run_budgeted() {
+  local name=""
+  local max_seconds=""
+  local workspace=""
+  local max_dirty_delta=0
+
+  while (( $# > 0 )); do
+    case "$1" in
+      --name)
+        name="${2:-}"
+        shift 2
+        ;;
+      --max-seconds)
+        max_seconds="${2:-}"
+        shift 2
+        ;;
+      --workspace)
+        workspace="${2:-}"
+        shift 2
+        ;;
+      --max-dirty-delta)
+        max_dirty_delta="${2:-}"
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        usage
+        return 2
+        ;;
+    esac
+  done
+
+  if [[ -z "$name" || ! "$max_seconds" =~ ^[1-9][0-9]*$ \
+    || -z "$workspace" || ! "$max_dirty_delta" =~ ^[0-9]+$ || $# -eq 0 ]]; then
+    usage
+    return 2
+  fi
+  git -C "$workspace" rev-parse --is-inside-work-tree >/dev/null
+
+  local before
+  local after
+  before="$(mktemp /tmp/hepta-budgeted-test-before.XXXXXX)"
+  after="$(mktemp /tmp/hepta-budgeted-test-after.XXXXXX)"
+  snapshot_workspace "$workspace" "$before"
+
+  local command_rc=0
+  local original_pwd="$PWD"
+  cd "$workspace"
+  run_with_timeout "$max_seconds" "$@" || command_rc=$?
+  cd "$original_pwd"
+  snapshot_workspace "$workspace" "$after"
+
+  local dirty_delta
+  dirty_delta="$({ comm -13 "$before" "$after"; comm -23 "$before" "$after"; } | wc -l | tr -d '[:space:]')"
+  if (( dirty_delta > max_dirty_delta )); then
+    echo "[hepta-budgeted-test] ${name}: workspace dirty delta ${dirty_delta} exceeds ${max_dirty_delta}" >&2
+    diff -u "$before" "$after" >&2 || true
+    rm -f "$before" "$after"
+    return 90
+  fi
+  if (( command_rc == 124 )); then
+    echo "[hepta-budgeted-test] ${name}: exceeded ${max_seconds}s hard timeout" >&2
+  elif (( command_rc != 0 )); then
+    echo "[hepta-budgeted-test] ${name}: command failed with ${command_rc}" >&2
+  fi
+  rm -f "$before" "$after"
+  return "$command_rc"
+}
+
+self_test() (
+  local temp_repo
+  temp_repo="$(mktemp -d /tmp/hepta-budgeted-test-self.XXXXXX)"
+  trap 'rm -rf "$temp_repo"' EXIT
+  git -C "$temp_repo" init -q
+  git -C "$temp_repo" config user.name hepta-budget-self-test
+  git -C "$temp_repo" config user.email hepta-budget-self-test@invalid
+  printf 'baseline\n' >"$temp_repo/baseline"
+  git -C "$temp_repo" add baseline
+  git -C "$temp_repo" commit -qm baseline
+
+  run_budgeted --name success --max-seconds 2 --workspace "$temp_repo" -- sh -c 'exit 0'
+
+  local rc=0
+  run_budgeted --name timeout --max-seconds 1 --workspace "$temp_repo" -- sh -c 'sleep 3' || rc=$?
+  [[ "$rc" -eq 124 ]] || { echo "timeout self-test expected 124, got $rc" >&2; return 1; }
+
+  rc=0
+  run_budgeted --name write-denial --max-seconds 2 --workspace "$temp_repo" -- \
+    sh -c 'printf unexpected > unexpected-file' || rc=$?
+  [[ "$rc" -eq 90 ]] || { echo "write self-test expected 90, got $rc" >&2; return 1; }
+
+  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","timeout_enforced":true,"workspace_write_budget_enforced":true}'
+)
+
+case "${1:-}" in
+  run)
+    shift
+    run_budgeted "$@"
+    ;;
+  self-test)
+    self_test
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

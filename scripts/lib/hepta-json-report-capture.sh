@@ -76,6 +76,48 @@ hepta_json_report_capture_cache_write() {
   local cache_file="$1"
   local report="$2"
 
+  local max_entries="${HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES:-2048}"
+  local max_total_bytes="${HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728}"
+  local max_report_bytes="${HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152}"
+  local budget_name
+  local budget_value
+
+  for budget_name in max_entries max_total_bytes max_report_bytes; do
+    budget_value="${!budget_name}"
+    if [[ ! "$budget_value" =~ ^[1-9][0-9]*$ ]]; then
+      echo "invalid JSON report capture budget ${budget_name}=${budget_value}" >&2
+      return 1
+    fi
+  done
+
+  local report_bytes
+  report_bytes="$(printf '%s\n' "$report" | wc -c | tr -d '[:space:]')"
+  if (( report_bytes > max_report_bytes )); then
+    echo "JSON report capture exceeds per-report budget: ${report_bytes} > ${max_report_bytes} bytes" >&2
+    return 1
+  fi
+
+  local cache_dir
+  cache_dir="$(dirname "$cache_file")"
+  local entry_count
+  local total_bytes
+  local replaced_bytes=0
+  entry_count="$(find "$cache_dir" -maxdepth 1 -type f -name '*.json' | wc -l | tr -d '[:space:]')"
+  total_bytes="$(find "$cache_dir" -maxdepth 1 -type f -name '*.json' -exec wc -c {} + 2>/dev/null \
+    | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
+
+  if [[ -f "$cache_file" ]]; then
+    replaced_bytes="$(wc -c <"$cache_file" | tr -d '[:space:]')"
+  elif (( entry_count >= max_entries )); then
+    echo "JSON report capture exceeds DAG entry budget: ${entry_count} >= ${max_entries}" >&2
+    return 1
+  fi
+
+  if (( total_bytes - replaced_bytes + report_bytes > max_total_bytes )); then
+    echo "JSON report capture exceeds DAG byte budget: $((total_bytes - replaced_bytes + report_bytes)) > ${max_total_bytes}" >&2
+    return 1
+  fi
+
   local cache_tmp
   cache_tmp="${cache_file}.tmp.$$"
 
@@ -126,7 +168,10 @@ capture_json_report() {
   fi
 
   if [[ -n "$cache_file" ]]; then
-    hepta_json_report_capture_cache_write "$cache_file" "$report" || true
+    if ! hepta_json_report_capture_cache_write "$cache_file" "$report"; then
+      echo "$command_name could not enter the bounded JSON report DAG cache" >&2
+      exit 1
+    fi
   fi
 
   printf '%s\n' "$report"

@@ -8,8 +8,23 @@ NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
 NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
 RUN_NATIVE="${HEPTA_PREFLIGHT_NATIVE:-${HEPTA_CODEX_PREFLIGHT_NATIVE:-1}}"
 RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}}"
+HEPTA_FOCUSED_TEST_MAX_SECONDS="${HEPTA_FOCUSED_TEST_MAX_SECONDS:-600}"
+HEPTA_FULL_TEST_MAX_SECONDS="${HEPTA_FULL_TEST_MAX_SECONDS:-1800}"
+HEPTA_TEST_MAX_DIRTY_DELTA="${HEPTA_TEST_MAX_DIRTY_DELTA:-0}"
 
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+
+budgeted_cargo_test() {
+  local name="$1"
+  local max_seconds="$2"
+  shift 2
+  scripts/hepta-budgeted-test run \
+    --name "$name" \
+    --max-seconds "$max_seconds" \
+    --workspace "$PWD" \
+    --max-dirty-delta "$HEPTA_TEST_MAX_DIRTY_DELTA" \
+    -- cargo test "$@"
+}
 
 HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=0
 if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
@@ -37,19 +52,24 @@ cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-cli --bin hepta
 
 echo "[hepta-preflight] adapter behavior-equivalence gate"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
+budgeted_cargo_test adapter-runtime-behavior-equivalence "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
   codex_engine_adapter_behavior_equivalence_gate -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
+budgeted_cargo_test adapter-native-boundary "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_codex_engine_adapter_boundary -- --nocapture
 
 echo "[hepta-preflight] adapter shadow-replay gate"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
+budgeted_cargo_test adapter-shadow-replay "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
   all_adapter_shadow_replay -- --nocapture
 
 echo "[hepta-preflight] name/repository closure gate"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
+budgeted_cargo_test name-repository-runtime "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime \
   name_repository_closure -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
+budgeted_cargo_test name-repository-native "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   hepta_name_repository_closure -- --nocapture
 
 echo "[hepta-preflight] active service dependency isolation gate"
@@ -1750,14 +1770,22 @@ scripts/hepta-upstream-codex-latest-operator-briefing-non-persistence-gate.sh
 echo "[hepta-preflight] immutable release tree self-test"
 scripts/hepta-immutable-release-tree self-test
 
+echo "[hepta-preflight] architecture hard budget verify/self-test"
+scripts/hepta-architecture-budget verify
+scripts/hepta-architecture-budget self-test
+
 echo "[hepta-preflight] hepta-gateway tests"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
+budgeted_cargo_test hepta-gateway "$HEPTA_FULL_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
 
 echo "[hepta-preflight] codex-cli native tests"
 echo "[hepta-preflight] Hepta-owned native gateway tests"
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_gateway -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_telegram -- --nocapture
-cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_post -- --nocapture
+budgeted_cargo_test native-gateway "$HEPTA_FULL_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_gateway -- --nocapture
+budgeted_cargo_test native-telegram "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_telegram -- --nocapture
+budgeted_cargo_test native-post "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_post -- --nocapture
 
 echo "[hepta-preflight] control-ui smoke"
 CARGO_NET_OFFLINE=true scripts/hepta-control-ui-smoke.sh
