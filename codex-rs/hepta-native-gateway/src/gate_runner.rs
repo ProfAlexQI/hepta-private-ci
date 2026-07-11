@@ -69,6 +69,10 @@ struct ShellPairMigrationSpec {
     missing_source_message: String,
     missing_report_message: String,
     pass_message: String,
+    gate_implementation: Option<String>,
+    gate_implementation_sha256: Option<String>,
+    report_implementation: Option<String>,
+    report_implementation_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +117,9 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "source_report": spec.source_report,
             "report_path": spec.report_path,
             "blocker_count": spec.blocker_count,
+            "captured_shell_compatibility": spec.template == "captured_shell_compat_v1",
+            "gate_implementation_sha256": spec.gate_implementation_sha256,
+            "report_implementation_sha256": spec.report_implementation_sha256,
             "report_execution_performed": false,
             "side_effect_free": true,
         }))
@@ -184,7 +191,8 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         validate_id(&spec.id)?;
         if !matches!(
             spec.template.as_str(),
-            "signing_final_ack_readback"
+            "captured_shell_compat_v1"
+                | "signing_final_ack_readback"
                 | "signing_final_ack_final_index"
                 | "signing_terminal_status_attachment"
                 | "signing_terminal_status_final_index"
@@ -209,7 +217,8 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             );
         }
         if !spec.source_report.starts_with("scripts/")
-            || !spec.source_report.ends_with("-report.sh")
+            || (spec.template != "captured_shell_compat_v1"
+                && !spec.source_report.ends_with("-report.sh"))
         {
             anyhow::bail!(
                 "Hepta migrated gate pair {} has invalid source report: {}",
@@ -265,6 +274,45 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 "Hepta migrated summary pair {} has no observability prefix",
                 spec.id
             );
+        }
+        if spec.template == "captured_shell_compat_v1" {
+            let required_compatibility_fields = [
+                spec.gate_implementation.as_deref(),
+                spec.gate_implementation_sha256.as_deref(),
+                spec.report_implementation.as_deref(),
+                spec.report_implementation_sha256.as_deref(),
+            ];
+            if required_compatibility_fields
+                .iter()
+                .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+                || !spec.gate_implementation.as_deref().is_some_and(|path| {
+                    path.starts_with("scripts/lib/hepta-gate-pair-compat-v1/")
+                        && path.ends_with(".gate")
+                })
+                || !spec.report_implementation.as_deref().is_some_and(|path| {
+                    path.starts_with("scripts/lib/hepta-gate-pair-compat-v1/")
+                        && path.ends_with(".report")
+                })
+                || !spec
+                    .gate_implementation_sha256
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                || !spec
+                    .report_implementation_sha256
+                    .as_deref()
+                    .is_some_and(is_sha256)
+            {
+                anyhow::bail!(
+                    "Hepta captured-shell pair {} has invalid compatibility fields",
+                    spec.id
+                );
+            }
+            if spec.source_report != *spec.report_implementation.as_ref().unwrap() {
+                anyhow::bail!(
+                    "Hepta captured-shell pair {} source report is not its compatibility payload",
+                    spec.id
+                );
+            }
         }
         if spec.template == "signing_final_ack_final_index"
             && spec
@@ -432,6 +480,34 @@ fn validate_migrated_pairs(
             || !source_report.starts_with(&scripts_root)
         {
             anyhow::bail!("migrated Hepta gate pair path mismatch: {id}");
+        }
+        if spec.template == "captured_shell_compat_v1" {
+            for (kind, relative_path, expected_sha) in [
+                (
+                    "gate",
+                    spec.gate_implementation.as_deref().unwrap(),
+                    spec.gate_implementation_sha256.as_deref().unwrap(),
+                ),
+                (
+                    "report",
+                    spec.report_implementation.as_deref().unwrap(),
+                    spec.report_implementation_sha256.as_deref().unwrap(),
+                ),
+            ] {
+                let implementation = fs::canonicalize(repo_root.join(relative_path))
+                    .with_context(|| format!("missing captured Hepta {kind} payload: {id}"))?;
+                if !implementation.starts_with(&scripts_root) {
+                    anyhow::bail!("captured Hepta {kind} payload escapes scripts root: {id}");
+                }
+                let bytes = fs::read(&implementation).with_context(|| {
+                    format!("failed to read captured Hepta {kind} payload: {id}")
+                })?;
+                let mut hasher = Sha256::new();
+                hasher.update(bytes);
+                if hex_digest(hasher.finalize()) != expected_sha {
+                    anyhow::bail!("captured Hepta {kind} payload SHA-256 mismatch: {id}");
+                }
+            }
         }
     }
     Ok(())
@@ -706,6 +782,13 @@ fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
         let _ = write!(&mut digest, "{byte:02x}");
     }
     digest
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn validate_id(id: &str) -> Result<()> {

@@ -46,8 +46,12 @@ next_migration_step="$(jq -r '.next_migration_step' <<<"$spec")"
 missing_source_message="$(jq -r '.missing_source_message' <<<"$spec")"
 missing_report_message="$(jq -r '.missing_report_message' <<<"$spec")"
 pass_message="$(jq -r '.pass_message' <<<"$spec")"
+gate_implementation="$(jq -r '.gate_implementation // empty' <<<"$spec")"
+gate_implementation_sha256="$(jq -r '.gate_implementation_sha256 // empty' <<<"$spec")"
+report_implementation="$(jq -r '.report_implementation // empty' <<<"$spec")"
+report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <<<"$spec")"
 
-[[ "$source_report_rel" == scripts/*-report.sh ]] || {
+[[ "$template" == "captured_shell_compat_v1" || "$source_report_rel" == scripts/*-report.sh ]] || {
   echo "invalid Hepta migrated source report path for: $id" >&2
   exit 1
 }
@@ -59,7 +63,7 @@ pass_message="$(jq -r '.pass_message' <<<"$spec")"
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
-[[ "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_readback" ]] || {
+[[ "$template" == "captured_shell_compat_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_readback" ]] || {
   echo "unexpected Hepta migrated pair template for: $id" >&2
   exit 1
 }
@@ -70,6 +74,41 @@ pass_message="$(jq -r '.pass_message' <<<"$spec")"
 [[ "$template" != "signing_final_ack_final_index" || -n "$final_ack_denial_side_effect_key" ]] || {
   echo "missing Hepta migrated final-index denial side-effect key for: $id" >&2
   exit 1
+}
+
+execute_captured_shell_compat() {
+  local implementation expected_sha actual_sha
+  if [[ "$kind" == "gate" ]]; then
+    implementation="$gate_implementation"
+    expected_sha="$gate_implementation_sha256"
+  else
+    implementation="$report_implementation"
+    expected_sha="$report_implementation_sha256"
+  fi
+
+  [[ "$implementation" == scripts/lib/hepta-gate-pair-compat-v1/*.$kind ]] || {
+    echo "invalid captured Hepta $kind implementation path for: $id" >&2
+    exit 1
+  }
+  [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "invalid captured Hepta $kind implementation SHA-256 for: $id" >&2
+    exit 1
+  }
+  implementation="$ROOT/$implementation"
+  [[ -f "$implementation" ]] || {
+    echo "missing captured Hepta $kind implementation: $implementation" >&2
+    exit 1
+  }
+  actual_sha="$(shasum -a 256 "$implementation" | awk '{print $1}')"
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    echo "captured Hepta $kind implementation SHA-256 mismatch for: $id" >&2
+    exit 1
+  }
+
+  # Evaluate inside this stable top-level runner so legacy BASH_SOURCE-based
+  # repo-root discovery still resolves to scripts/ while the old pair bodies
+  # live in a content-addressed compatibility store.
+  eval "$(<"$implementation")"
 }
 render_report() {
   local source_report="$ROOT/$source_report_rel"
@@ -480,6 +519,7 @@ verify_summary_gate() {
 }
 
 case "$kind:$template" in
+  gate:captured_shell_compat_v1|report:captured_shell_compat_v1) execute_captured_shell_compat ;;
   report:signing_final_ack_readback) render_report ;;
   gate:signing_final_ack_readback) verify_gate ;;
   report:signing_final_ack_final_index) render_final_index_report ;;

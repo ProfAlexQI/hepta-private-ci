@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+IMPL_DIR="$ROOT/scripts/lib/hepta-gate-pair-compat-v1"
+
+usage() {
+  echo "usage: scripts/hepta-gate-pair-bulk-migrate --snapshot PATH" >&2
+  exit 2
+}
+
+[[ $# -eq 2 && "$1" == "--snapshot" ]] || usage
+snapshot="$2"
+[[ -f "$snapshot" ]] || {
+  echo "missing pre-migration parity snapshot: $snapshot" >&2
+  exit 1
+}
+[[ -f "$SPEC_FILE" ]] || {
+  echo "missing gate pair registry: $SPEC_FILE" >&2
+  exit 1
+}
+
+jq -e '
+  .schema_version == "hepta_shell_gate_parity_snapshot_v1"
+  and .exact_pair_count == 1282
+  and .thin_wrapper_pair_count == 27
+  and .legacy_pair_count == 1255
+  and ([.entries[] | select(.exact_pair == true)] | length) == 1282
+' "$snapshot" >/dev/null
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-gate-pair-bulk-migrate.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+jq -r '.pairs[].id' "$SPEC_FILE" | LC_ALL=C sort >"$tmp/already-migrated"
+jq -c '.entries[] | select(.exact_pair == true)' "$snapshot" >"$tmp/exact-pairs"
+: >"$tmp/new-specs"
+mkdir -p "$IMPL_DIR"
+
+receipt_state_for_id() {
+  local id="$1"
+  if [[ "$id" == *terminal* ]]; then
+    echo terminal
+  elif [[ "$id" == *retention* || "$id" == *expiry* || "$id" == *garbage-collection* ]]; then
+    echo retention
+  elif [[ "$id" == *persistence* || "$id" == *persist* ]]; then
+    echo persistence
+  elif [[ "$id" == *receipt* ]]; then
+    echo receipt
+  elif [[ "$id" == *denial* || "$id" == *denied* || "$id" == *blocked* ]]; then
+    echo denial
+  else
+    echo precondition
+  fi
+}
+
+write_wrapper() {
+  local wrapper="$1" kind="$2" id="$3"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -euo pipefail' \
+    '' \
+    'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"' \
+    "exec \"\$ROOT/scripts/hepta-gate-pair-runner\" $kind \"$id\"" \
+    >"$wrapper"
+  chmod 0755 "$wrapper"
+}
+
+migrated_count=0
+while IFS= read -r entry; do
+  id="$(jq -r '.id' <<<"$entry")"
+  if grep -Fqx "$id" "$tmp/already-migrated"; then
+    continue
+  fi
+
+  gate_rel="$(jq -r '.gate_path' <<<"$entry")"
+  report_rel="$(jq -r '.report_path' <<<"$entry")"
+  gate_sha="$(jq -r '.gate_sha256' <<<"$entry")"
+  report_sha="$(jq -r '.report_sha256' <<<"$entry")"
+  gate="$ROOT/$gate_rel"
+  report="$ROOT/$report_rel"
+  gate_impl_rel="scripts/lib/hepta-gate-pair-compat-v1/$id.gate"
+  report_impl_rel="scripts/lib/hepta-gate-pair-compat-v1/$id.report"
+  gate_impl="$ROOT/$gate_impl_rel"
+  report_impl="$ROOT/$report_impl_rel"
+
+  [[ -f "$gate" && -f "$report" ]] || {
+    echo "missing legacy pair before migration: $id" >&2
+    exit 1
+  }
+  [[ "$(shasum -a 256 "$gate" | awk '{print $1}')" == "$gate_sha" ]] || {
+    echo "gate drifted from parity snapshot: $id" >&2
+    exit 1
+  }
+  [[ "$(shasum -a 256 "$report" | awk '{print $1}')" == "$report_sha" ]] || {
+    echo "report drifted from parity snapshot: $id" >&2
+    exit 1
+  }
+  [[ ! -e "$gate_impl" && ! -e "$report_impl" ]] || {
+    echo "captured compatibility payload already exists: $id" >&2
+    exit 1
+  }
+
+  mv "$gate" "$gate_impl"
+  mv "$report" "$report_impl"
+  write_wrapper "$gate" gate "$id"
+  write_wrapper "$report" report "$id"
+
+  receipt_state="$(receipt_state_for_id "$id")"
+  jq -cn \
+    --arg id "$id" \
+    --arg receipt_state "$receipt_state" \
+    --arg boundary "read-only $receipt_state compatibility; never mutates, publishes, sends, installs, or restarts" \
+    --arg source_report "$report_impl_rel" \
+    --arg report_path "$report_rel" \
+    --arg gate_implementation "$gate_impl_rel" \
+    --arg gate_implementation_sha256 "$gate_sha" \
+    --arg report_implementation "$report_impl_rel" \
+    --arg report_implementation_sha256 "$report_sha" \
+    '{
+      id:$id,
+      template:"captured_shell_compat_v1",
+      capability:$id,
+      receipt_state:$receipt_state,
+      side_effect_boundary:$boundary,
+      source_report:$source_report,
+      report_path:$report_path,
+      attachment_surface:$id,
+      readback_surface:$id,
+      acknowledgement_prefix:$id,
+      summary_prefix:$id,
+      blocker_count:1,
+      next_migration_step:"captured_shell_compatibility_preserved_without_mutation",
+      missing_source_message:"missing captured compatibility report payload",
+      missing_report_message:"missing thin compatibility report wrapper",
+      pass_message:("hepta-gate-pair-runner: PASS: captured compatibility gate " + $id),
+      gate_implementation:$gate_implementation,
+      gate_implementation_sha256:$gate_implementation_sha256,
+      report_implementation:$report_implementation,
+      report_implementation_sha256:$report_implementation_sha256
+    }' >>"$tmp/new-specs"
+  migrated_count=$((migrated_count + 1))
+done <"$tmp/exact-pairs"
+
+[[ "$migrated_count" -eq 1255 ]] || {
+  echo "expected to migrate 1255 legacy pairs, migrated $migrated_count" >&2
+  exit 1
+}
+
+jq -s '.' "$tmp/new-specs" >"$tmp/new-specs.json"
+jq --slurpfile additions "$tmp/new-specs.json" \
+  '.pairs += $additions[0] | .pairs |= sort_by(.id)' \
+  "$SPEC_FILE" >"$tmp/specs.json"
+jq -e '.pairs | length == 1282 and (map(.id) | unique | length) == 1282' "$tmp/specs.json" >/dev/null
+mv "$tmp/specs.json" "$SPEC_FILE"
+chmod 0644 "$SPEC_FILE"
+
+jq -n \
+  --arg status ready \
+  --argjson migrated_pair_count "$migrated_count" \
+  --argjson total_pair_count 1282 \
+  '{status:$status,migrated_pair_count:$migrated_pair_count,total_pair_count:$total_pair_count,remaining_legacy_pair_count:0,compatibility_payload_byte_parity_count:($migrated_pair_count * 2),thin_wrapper_pair_count:$total_pair_count,side_effects:{script_execution_performed:false,provider_invoked:false,model_invoked:false,credentials_read:false,production_state_mutated:false,service_restarted:false}}'
