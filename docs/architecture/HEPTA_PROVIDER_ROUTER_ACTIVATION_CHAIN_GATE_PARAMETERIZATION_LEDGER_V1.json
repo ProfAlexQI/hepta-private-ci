@@ -1,0 +1,98 @@
+{
+  "schema_version": "hepta_provider_router_activation_chain_gate_parameterization_ledger_v1",
+  "generated_at": "2026-07-12T14:30:30+08:00",
+  "base_commit": "59ab388258447d3333c51ba13b97e17fd9a86e3a",
+  "status": "focused_validation_ready_full_preflight_pending",
+  "family": {
+    "id": "provider-router-activation-command-result-receipt-terminal-denials",
+    "receipt_state_machine": [
+      "precondition",
+      "denial",
+      "receipt",
+      "persistence",
+      "retention",
+      "terminal"
+    ],
+    "executor": "scripts/hepta-provider-router-activation-chain-gate-runner",
+    "registry": "scripts/hepta-provider-router-activation-chain-gate-specs-v1.json",
+    "canonical_gate_specs": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
+    "spec_count": 3,
+    "side_effect_boundary": "read-only report-only; provider/model invocation, Memory/KG writes, channel sends, publication, installation, and restart remain disabled"
+  },
+  "convergence": {
+    "legacy_wrapper_count": 3,
+    "legacy_total_lines": 2560,
+    "legacy_total_bytes": 148654,
+    "parameterized_wrapper_count": 3,
+    "parameterized_wrapper_total_lines": 15,
+    "parameterized_wrapper_total_bytes": 913,
+    "executor_lines": 201,
+    "executor_bytes": 7826,
+    "registry_lines": 4927,
+    "registry_bytes": 286749,
+    "inline_legacy_body_reference_count": 0,
+    "deleted_legacy_inline_lines": 2545,
+    "thin_wrapper_line_budget": 5,
+    "executor_line_budget": 250,
+    "registry_line_budget": 6000
+  },
+  "artifacts": {
+    "executor_sha256": "504c3d26b5eee39fab3bc5314ad71c5ea7adde72220a80caaf37a1bc8dc449e0",
+    "registry_sha256": "048b44b4e533c939eef592d288b49b93cb46df94fbeaee5469f717bf08e08f36"
+  },
+  "gates": [
+    {
+      "id": "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial",
+      "legacy_script_lines": 847,
+      "legacy_script_bytes": 47489,
+      "legacy_script_sha256": "5a9b0398e726f97f1425228efd85c5d6f602533e9af057a8f93e2f48164e4104",
+      "wrapper_lines": 5,
+      "wrapper_bytes": 301,
+      "wrapper_sha256": "08c5e60654cdbe6963ba0983fb07f4ac5b7fb7a409ce2f409afa2efea780c838",
+      "legacy_output_sha256": "3b4e4cecba28b259abad87d2d8fc91c420bf5ee6beab1c911ad562acff8b34ac",
+      "parameterized_output_sha256": "3b4e4cecba28b259abad87d2d8fc91c420bf5ee6beab1c911ad562acff8b34ac",
+      "normalized_output_sha256": "09a60ab8d33f00629e619c30cee11b63e303322d4e47ae676cfac7f2e589c0fa",
+      "byte_exact_parity": true
+    },
+    {
+      "id": "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial",
+      "legacy_script_lines": 891,
+      "legacy_script_bytes": 52285,
+      "legacy_script_sha256": "e067f4057458c703251cac0b8ab989af740720494a78627ef908080fef3d15ba",
+      "wrapper_lines": 5,
+      "wrapper_bytes": 304,
+      "wrapper_sha256": "4fbfbfa21116dc6e8c8bd97fb00e1337eb3c0601c5dee7510edde5d82a332662",
+      "legacy_output_sha256": "11fc0337be114c4209d237efc6df60e55e567bdb402db93ff7f3d5a3e24c0dbd",
+      "parameterized_output_sha256": "11fc0337be114c4209d237efc6df60e55e567bdb402db93ff7f3d5a3e24c0dbd",
+      "normalized_output_sha256": "ef61693bffec50f56126c3d94ceff7326bad5b92a49a3329d9db34147ebb19d9",
+      "byte_exact_parity": true
+    },
+    {
+      "id": "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial",
+      "legacy_script_lines": 822,
+      "legacy_script_bytes": 48880,
+      "legacy_script_sha256": "4e89a08dac3955b31f9030d2b2f9bb7f20648af0c025e8b2e48b7ad536a3d44f",
+      "wrapper_lines": 5,
+      "wrapper_bytes": 308,
+      "wrapper_sha256": "ac470584e534e3fe29f3931cdc63950d71ee8d88d597a1da634f50dcbfeb56a0",
+      "legacy_output_sha256": "3979a42f0425158c8ec6e914c0dbff2c0c82ee39179ae50a4371d9bfe1e6adef",
+      "parameterized_output_sha256": "3979a42f0425158c8ec6e914c0dbff2c0c82ee39179ae50a4371d9bfe1e6adef",
+      "normalized_output_sha256": "3087bdbd2bd3fc6dcc64fe0b57645347ea1d523dde8a6d5dc283c26b2a5b8fe4",
+      "byte_exact_parity": true
+    }
+  ],
+  "focused_validation": {
+    "registry_validation": "ready",
+    "shell_syntax": "ready",
+    "json_syntax": "ready",
+    "cargo_fmt": "ready",
+    "canonical_gate_spec_test": "1 passed; 0 failed",
+    "native_gateway_tests": "310 passed; 0 failed",
+    "architecture_budget_verify": "ready",
+    "architecture_budget_self_test": "ready",
+    "suffix_ladder_freeze": "ready; 0 violations",
+    "terminal_coverage_inventory": "422/422 markers present",
+    "module_bazel_lock": "ready",
+    "full_three_profile_preflight": "pending_on_candidate_commit"
+  }
+}

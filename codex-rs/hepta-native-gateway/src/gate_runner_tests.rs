@@ -396,3 +396,68 @@ fn parameterized_core_activation_chain_fixtures_match_canonical_gate_specs() {
         );
     }
 }
+
+#[test]
+fn parameterized_provider_router_activation_chain_fixtures_match_canonical_gate_specs() {
+    let fixture_path =
+        repo_root().join("scripts/hepta-provider-router-activation-chain-gate-specs-v1.json");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&fixture_path)
+            .with_context(|| format!("failed to read {}", fixture_path.display()))
+            .expect("provider-router activation chain fixture registry"),
+    )
+    .expect("provider-router activation chain fixture value");
+
+    assert_eq!(
+        manifest["schema_version"],
+        "hepta_provider_router_activation_chain_gate_specs_v1"
+    );
+    assert_eq!(
+        manifest["receipt_state_machine"],
+        serde_json::json!(ReceiptStateMachine::ORDERED_STATES)
+    );
+    let fixtures = manifest["specs"]
+        .as_array()
+        .expect("parameterized provider-router activation chain family");
+    assert_eq!(
+        fixtures.len(),
+        PROVIDER_ROUTER_ACTIVATION_CHAIN_GATE_SPECS.len()
+    );
+
+    for fixture in fixtures {
+        let id = fixture["id"]
+            .as_str()
+            .expect("provider-router activation chain fixture id");
+        let gate_spec = &fixture["gate_spec"];
+        let canonical = PROVIDER_ROUTER_ACTIVATION_CHAIN_GATE_SPECS
+            .iter()
+            .find(|spec| spec.capability == id)
+            .unwrap_or_else(|| panic!("missing canonical GateSpec for {id}"));
+
+        assert_eq!(gate_spec["method"], canonical.method);
+        assert_eq!(gate_spec["pattern"], canonical.pattern);
+        assert_eq!(gate_spec["source_command"], canonical.source_command);
+        assert_eq!(gate_spec["capability"], canonical.capability);
+        assert_eq!(
+            gate_spec["side_effect_boundary"],
+            canonical.side_effect_boundary
+        );
+        assert_eq!(
+            gate_spec["receipt_state"].as_str(),
+            canonical.receipt_state().map(|state| state.as_str())
+        );
+
+        let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
+        let wrapper = fs::read_to_string(&wrapper_path)
+            .with_context(|| format!("failed to read {}", wrapper_path.display()))
+            .expect("parameterized provider-router activation chain wrapper");
+        assert_eq!(wrapper.lines().count(), 5, "thin wrapper for {id}");
+        assert!(wrapper.contains("scripts/hepta-provider-router-activation-chain-gate-runner"));
+        assert!(wrapper.contains(id));
+        assert!(
+            fixture["baseline_normalized_output_sha256"]
+                .as_str()
+                .is_some_and(is_sha256)
+        );
+    }
+}

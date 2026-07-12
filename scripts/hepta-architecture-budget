@@ -83,6 +83,20 @@ verify() {
     rg -Fq 'scripts/hepta-core-activation-chain-gate-runner' \
       "scripts/${core_activation_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-provider-router-activation-chain-gate-runner ]]
+  verify_file_max scripts/hepta-provider-router-activation-chain-gate-runner 250
+  verify_file_max scripts/hepta-provider-router-activation-chain-gate-specs-v1.json 6000
+  scripts/hepta-provider-router-activation-chain-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-provider-router-activation-chain-gate-specs-v1.json)" == 3 ]]
+  for provider_router_activation_gate_id in \
+    hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial \
+    hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial \
+    hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial
+  do
+    verify_file_max "scripts/${provider_router_activation_gate_id}-gate.sh" 5
+    rg -Fq 'scripts/hepta-provider-router-activation-chain-gate-runner' \
+      "scripts/${provider_router_activation_gate_id}-gate.sh"
+  done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
     'hepta_full_live_activation_closure_index_report'

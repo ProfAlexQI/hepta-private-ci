@@ -18,6 +18,7 @@ use crate::gate_spec::ReceiptStateMachine;
 const SHELL_GATE_PAIR_SPECS_JSON: &str =
     include_str!("../../../scripts/hepta-gate-pair-specs-v1.json");
 
+#[allow(dead_code)]
 pub(crate) const CORE_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
     GateSpec {
         method: "LOCAL",
@@ -39,6 +40,31 @@ pub(crate) const CORE_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
         source_command: "bash scripts/hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
         capability: "hepta-core-activation-operator-approval-gap-ledger-summary-briefing-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial",
         side_effect_boundary: "local read-only report-only result-receipt cancellation/supersession denial persistence gate; captures and validates the ordering/monotonicity predecessor with the long-soak environment while never recording cancellation, replacement, tombstone, or supersession state, mutating runtime, invoking providers/models, writing Memory/KG, sending channels, or publishing release state",
+    },
+];
+
+#[allow(dead_code)]
+pub(crate) const PROVIDER_ROUTER_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-replay-idempotency-denial",
+        side_effect_boundary: "local read-only report-only runtime provider-router activation-command result-receipt replay/idempotency denial gate; never mutates runtime, invokes providers/models, writes Memory/KG, reads credentials or secrets, sends channels, publishes releases, installs, or restarts",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "local read-only report-only runtime provider-router activation-command result-receipt ordering/monotonicity denial gate; never mutates runtime, invokes providers/models, writes Memory/KG, reads credentials or secrets, sends channels, publishes releases, installs, or restarts",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-activation-command-result-receipt-cancellation-supersession-denial",
+        side_effect_boundary: "local read-only report-only runtime provider-router activation-command result-receipt cancellation/supersession denial gate; never mutates runtime, invokes providers/models, writes Memory/KG, reads credentials or secrets, sends channels, publishes releases, installs, or restarts",
     },
 ];
 
