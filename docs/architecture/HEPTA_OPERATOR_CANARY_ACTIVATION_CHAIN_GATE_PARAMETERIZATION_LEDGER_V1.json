@@ -1,0 +1,102 @@
+{
+  "schema_version": "hepta_operator_canary_activation_chain_gate_parameterization_ledger_v1",
+  "generated_at": "2026-07-12T19:30:25+08:00",
+  "base_commit": "7906f6988ba9cd45f5a05332e6fe4b06842e38c4",
+  "status": "focused_validation_ready_full_preflight_pending",
+  "family": {
+    "id": "operator-canary-controlled-request-activation-command-result-receipt-terminal-denials",
+    "receipt_state_machine": [
+      "precondition",
+      "denial",
+      "receipt",
+      "persistence",
+      "retention",
+      "terminal"
+    ],
+    "executor": "scripts/hepta-operator-canary-activation-chain-gate-runner",
+    "registry": "scripts/hepta-operator-canary-activation-chain-gate-specs-v1.json",
+    "canonical_gate_specs": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
+    "spec_count": 3,
+    "release_binary_semantics": "HEPTA_RELEASE_BIN -> HEPTA_CODEX_RELEASE_BIN -> $HOME/.local/opt/hepta/bin/hepta; forwarded unchanged to each captured predecessor",
+    "side_effect_boundary": "read-only report-only; provider/model invocation, Memory/KG writes, credential/secret reads, channel sends, publication, installation, and restart remain disabled"
+  },
+  "convergence": {
+    "legacy_wrapper_count": 3,
+    "legacy_total_lines": 1944,
+    "legacy_total_bytes": 121371,
+    "parameterized_wrapper_count": 3,
+    "parameterized_wrapper_total_lines": 15,
+    "parameterized_wrapper_total_bytes": 1075,
+    "executor_lines": 226,
+    "executor_bytes": 8710,
+    "registry_lines": 4825,
+    "registry_bytes": 299005,
+    "inline_legacy_body_reference_count": 0,
+    "deleted_legacy_inline_lines": 1929,
+    "thin_wrapper_line_budget": 5,
+    "executor_line_budget": 250,
+    "registry_line_budget": 6000
+  },
+  "artifacts": {
+    "executor_sha256": "2d2a3e71b9032bdd628dd636f0a25c95a20b0631ddb649278cb8e2d5398b00db",
+    "registry_sha256": "4615bd062d54a0b9d2a2c7ee084760a2336f0d8056de551f6568907e0bd77e65"
+  },
+  "gates": [
+    {
+      "id": "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial",
+      "legacy_script_lines": 638,
+      "legacy_script_bytes": 39061,
+      "legacy_script_sha256": "7225be573ca45f1f24821173e81f6bcfebc273c7cd6993799c7a22e16bb92e41",
+      "wrapper_lines": 5,
+      "wrapper_bytes": 355,
+      "wrapper_sha256": "bc1ad633d9cd80429f1748190383e4ffeb7deccf28b8efd5817d65c04e1835d5",
+      "legacy_output_sha256": "e7ecf0bc981417883f48240899216fd1afed38744fd30638453b4c0b789b4b2b",
+      "parameterized_output_sha256": "e7ecf0bc981417883f48240899216fd1afed38744fd30638453b4c0b789b4b2b",
+      "normalized_output_sha256": "a70d0c5692ac796d4e1aaa355e8f0884d1769074c0382a3e801e2e8077c4770f",
+      "byte_exact_parity": true
+    },
+    {
+      "id": "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial",
+      "legacy_script_lines": 618,
+      "legacy_script_bytes": 38237,
+      "legacy_script_sha256": "20baab86614ec2591119602240d74c6a19ac24f43d5e1fc9720a2bc79890463b",
+      "wrapper_lines": 5,
+      "wrapper_bytes": 358,
+      "wrapper_sha256": "efcbf7a7db8291eb75ecbf3b2ac1d06947ca138f42e7a522d11a143dfbf5e7af",
+      "legacy_output_sha256": "27d18f99c269a9160bafec8606143a6b8eafb663e8ffce792697ea8f04306ba1",
+      "parameterized_output_sha256": "27d18f99c269a9160bafec8606143a6b8eafb663e8ffce792697ea8f04306ba1",
+      "normalized_output_sha256": "bae96dce18b4d98be653e828474f6663cd0867c3cf293672fdbd925df0897c01",
+      "byte_exact_parity": true
+    },
+    {
+      "id": "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial",
+      "legacy_script_lines": 688,
+      "legacy_script_bytes": 44073,
+      "legacy_script_sha256": "3ce1933849b9f6a485ada88fcb74c4e4b0a10e1fcd55c310595e820efe553227",
+      "wrapper_lines": 5,
+      "wrapper_bytes": 362,
+      "wrapper_sha256": "2af322e098eb4a40db357414d014001f2b7f7c8e0f3fa156f82bb4d6c89145b5",
+      "legacy_output_sha256": "21f2bca673f62186b48f78fadd70a6cbed52578cc522cc59fe2b3d2c7c4644ac",
+      "parameterized_output_sha256": "21f2bca673f62186b48f78fadd70a6cbed52578cc522cc59fe2b3d2c7c4644ac",
+      "normalized_output_sha256": "f9c182ef45b6fb01f7c2e94984fb3ac03fbe69ce8be7c6314b9b8e764779e4af",
+      "byte_exact_parity": true
+    }
+  ],
+  "focused_validation": {
+    "registry_validation": "ready",
+    "shell_syntax": "ready",
+    "json_syntax": "ready",
+    "cargo_fmt": "ready",
+    "canonical_gate_spec_test": "1 passed; 0 failed",
+    "native_gateway_tests": "311 passed; 0 failed",
+    "representative_read_only_route_gate": "replay/idempotency passed; SHA-256 f6949e4c2a63083800e5098e0d8fc6a33207b325593da4df5ea9cf0a041a27cc",
+    "architecture_budget_verify": "ready",
+    "architecture_budget_self_test": "ready",
+    "suffix_ladder_freeze": "ready; 0 violations",
+    "terminal_coverage_inventory": "ready",
+    "terminal_coverage_diagnostic": "ready",
+    "module_bazel_lock": "ready",
+    "batch_validation_log_sha256": "51bf2aa1cb9ff42f8887c5e5052adfd5a3de8210bc73e146c0b9ab46ca3f81d4",
+    "full_three_profile_preflight": "pending_on_candidate_commit"
+  }
+}

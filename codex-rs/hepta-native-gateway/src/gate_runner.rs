@@ -68,6 +68,31 @@ pub(crate) const PROVIDER_ROUTER_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
     },
 ];
 
+#[allow(dead_code)]
+pub(crate) const OPERATOR_CANARY_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-replay-idempotency-denial",
+        side_effect_boundary: "local read-only report-only operator-canary controlled-request activation-command result-receipt replay/idempotency denial gate; preserves HEPTA_RELEASE_BIN while never mutating runtime, invoking providers/models, writing Memory/KG, reading credentials or secrets, sending channels, publishing releases, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "local read-only report-only operator-canary controlled-request activation-command result-receipt ordering/monotonicity denial gate; preserves HEPTA_RELEASE_BIN while never mutating runtime, invoking providers/models, writing Memory/KG, reading credentials or secrets, sending channels, publishing releases, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-enablement-operator-canary-controlled-request-harness-operator-review-acknowledgement-activation-command-result-receipt-cancellation-supersession-denial",
+        side_effect_boundary: "local read-only report-only operator-canary controlled-request activation-command result-receipt cancellation/supersession denial gate; preserves HEPTA_RELEASE_BIN while never mutating runtime, invoking providers/models, writing Memory/KG, reading credentials or secrets, sending channels, publishing releases, installing, or restarting",
+    },
+];
+
 #[derive(Debug, Default)]
 struct ShellScriptAvailability {
     gate: Option<PathBuf>,
