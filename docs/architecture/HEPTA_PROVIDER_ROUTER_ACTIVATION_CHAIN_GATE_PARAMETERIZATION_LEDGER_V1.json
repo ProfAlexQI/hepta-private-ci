@@ -2,7 +2,7 @@
   "schema_version": "hepta_provider_router_activation_chain_gate_parameterization_ledger_v1",
   "generated_at": "2026-07-12T14:30:30+08:00",
   "base_commit": "59ab388258447d3333c51ba13b97e17fd9a86e3a",
-  "status": "focused_validation_ready_full_preflight_pending",
+  "status": "full_three_profile_preflight_passed",
   "family": {
     "id": "provider-router-activation-command-result-receipt-terminal-denials",
     "receipt_state_machine": [
@@ -93,6 +93,18 @@
     "suffix_ladder_freeze": "ready; 0 violations",
     "terminal_coverage_inventory": "422/422 markers present",
     "module_bazel_lock": "ready",
-    "full_three_profile_preflight": "pending_on_candidate_commit"
+    "full_three_profile_preflight": "passed_on_7906f6988ba9cd45f5a05332e6fe4b06842e38c4"
+  },
+  "full_preflight": {
+    "completed_at": "2026-07-12T19:07:00+08:00",
+    "candidate_commit": "7906f6988ba9cd45f5a05332e6fe4b06842e38c4",
+    "backend_native_release_profiles_passed": true,
+    "checkpoint_cleared": true,
+    "resume_log": "/tmp/hepta-preflight-resume-7906f6988b.log",
+    "resume_log_line_count": 299275,
+    "resume_log_sha256": "4bb2b3515ed7686a795090ea6c9c5ab449c3ef507f09396ce850a0d067a222a0",
+    "supervisor_log": "/tmp/hepta-preflight-supervisor-7906f6988.log",
+    "supervisor_log_line_count": 299277,
+    "supervisor_log_sha256": "70992fe3c581941bd8e2264766f192a71d649bbc318b97e64a00d10de4716541"
   }
 }

@@ -2,7 +2,7 @@
   "schema_version": "hepta_operator_canary_activation_chain_gate_parameterization_ledger_v1",
   "generated_at": "2026-07-12T19:30:25+08:00",
   "base_commit": "7906f6988ba9cd45f5a05332e6fe4b06842e38c4",
-  "status": "focused_validation_ready_full_preflight_pending",
+  "status": "full_three_profile_preflight_passed",
   "family": {
     "id": "operator-canary-controlled-request-activation-command-result-receipt-terminal-denials",
     "receipt_state_machine": [
@@ -97,6 +97,18 @@
     "terminal_coverage_diagnostic": "ready",
     "module_bazel_lock": "ready",
     "batch_validation_log_sha256": "51bf2aa1cb9ff42f8887c5e5052adfd5a3de8210bc73e146c0b9ab46ca3f81d4",
-    "full_three_profile_preflight": "pending_on_candidate_commit"
+    "full_three_profile_preflight": "passed_on_9c4532ca2a16a0ec34d085a51efc57d17cf98720"
+  },
+  "full_preflight": {
+    "completed_at": "2026-07-12T23:52:00+08:00",
+    "candidate_commit": "9c4532ca2a16a0ec34d085a51efc57d17cf98720",
+    "backend_native_release_profiles_passed": true,
+    "checkpoint_cleared": true,
+    "resume_log": "/tmp/hepta-preflight-resume-9c4532ca2a.log",
+    "resume_log_line_count": 298861,
+    "resume_log_sha256": "f32c7c0ae53b9177088c63fde3d9ed1f8d52737fbaea97d5214c58797399970d",
+    "supervisor_log": "/tmp/hepta-preflight-supervisor-9c4532ca2.log",
+    "supervisor_log_line_count": 298863,
+    "supervisor_log_sha256": "c3e523eec9042bb46a44a7f4bcbdcaf645b901e903688aa717686edeab990261"
   }
 }
