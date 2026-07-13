@@ -143,6 +143,31 @@ pub(crate) const ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_GATE_SPECS:
     },
 ];
 
+#[allow(dead_code)]
+pub(crate) const MEMORY_LIVE_MUTATION_RESULT_RECEIPT_GATE_SPECS: [GateSpec; 3] = [
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial-gate.sh",
+        capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial",
+        side_effect_boundary: "local read-only report-only Memory live-mutation result-receipt replay/idempotency denial gate; captures its prior no-state-write gate while never recording or storing replay state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial-gate.sh",
+        capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "local read-only report-only Memory live-mutation result-receipt ordering/monotonicity denial gate; captures its replay/idempotency predecessor while never recording cursor or monotonicity state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial-gate.sh",
+        capability: "hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial",
+        side_effect_boundary: "local read-only report-only Memory live-mutation result-receipt cancellation/supersession denial gate; captures its ordering/monotonicity predecessor while never recording cancellation, replacement, tombstone, or supersession state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, installing, or restarting",
+    },
+];
+
 #[derive(Debug, Default)]
 struct ShellScriptAvailability {
     gate: Option<PathBuf>,

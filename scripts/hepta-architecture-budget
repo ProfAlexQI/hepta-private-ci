@@ -139,6 +139,20 @@ verify() {
     rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner' \
       "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-memory-live-mutation-result-receipt-gate-runner ]]
+  verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-runner 210
+  verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-specs-v1.json 2600
+  scripts/hepta-memory-live-mutation-result-receipt-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-memory-live-mutation-result-receipt-gate-specs-v1.json)" == 3 ]]
+  for memory_live_mutation_result_receipt_gate_id in \
+    hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-replay-idempotency-denial \
+    hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-ordering-monotonicity-denial \
+    hepta-memory-live-mutation-operator-write-execution-activation-command-result-receipt-cancellation-supersession-denial
+  do
+    verify_file_max "scripts/${memory_live_mutation_result_receipt_gate_id}-gate.sh" 4
+    rg -Fq 'scripts/hepta-memory-live-mutation-result-receipt-gate-runner' \
+      "scripts/${memory_live_mutation_result_receipt_gate_id}-gate.sh"
+  done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
     'hepta_full_live_activation_closure_index_report'
