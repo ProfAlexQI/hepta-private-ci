@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-SOURCE_REPLAY_IDEMPOTENCY_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-replay-idempotency-denial-gate.sh"
+SOURCE_REPLAY_IDEMPOTENCY_GATE="scripts/hepta-artifact-download-install-affordance-result-receipt-gate-specs-v1.json"
 source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
 NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
@@ -40,7 +40,7 @@ require_source_text "$SOURCE_REPLAY_IDEMPOTENCY_GATE" \
   'release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count' \
   "source replay/idempotency gate covers replay surfaces"
 require_source_text "$SOURCE_REPLAY_IDEMPOTENCY_GATE" \
-  'release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count == 18' \
+  '"release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count": 18' \
   "source replay/idempotency gate asserts 18 replay surfaces"
 require_source_text "$SOURCE_REPLAY_IDEMPOTENCY_GATE" \
   'completion_ack_replay_denied' \

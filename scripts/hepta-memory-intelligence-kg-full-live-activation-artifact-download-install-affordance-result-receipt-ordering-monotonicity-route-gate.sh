@@ -25,7 +25,7 @@ require_source_text() {
   fi
 }
 
-SOURCE_ORDERING_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial-gate.sh"
+SOURCE_ORDERING_GATE="scripts/hepta-artifact-download-install-affordance-result-receipt-gate-specs-v1.json"
 source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
 NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
@@ -34,7 +34,7 @@ require_source_text "$SOURCE_ORDERING_GATE" \
   'hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_gate' \
   "source ordering/monotonicity gate identity"
 require_source_text "$SOURCE_ORDERING_GATE" \
-  'release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count == 18' \
+  '"release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count": 18' \
   "source ordering/monotonicity gate asserts 18 ordering surfaces"
 require_source_text "$SOURCE_ORDERING_GATE" \
   'sequence_cursor_acceptance_denied' \

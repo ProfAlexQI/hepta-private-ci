@@ -125,6 +125,20 @@ verify() {
     rg -Fq 'scripts/hepta-release-publication-result-receipt-gate-runner' \
       "scripts/${release_publication_result_receipt_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner ]]
+  verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner 240
+  verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-gate-specs-v1.json 5500
+  scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-artifact-download-install-affordance-result-receipt-gate-specs-v1.json)" == 3 ]]
+  for artifact_download_install_affordance_result_receipt_gate_id in \
+    hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-replay-idempotency-denial \
+    hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial \
+    hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial
+  do
+    verify_file_max "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh" 5
+    rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner' \
+      "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh"
+  done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
     'hepta_full_live_activation_closure_index_report'
