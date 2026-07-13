@@ -16,10 +16,10 @@ RUST_MIN_STACK="${CONTROL_UI_RUST_MIN_STACK}" \
   cargo test --manifest-path "${MANIFEST}" -q -p hepta-core operator_security_report_reaches_local_100_without_external_claims
 RUST_MIN_STACK="${CONTROL_UI_RUST_MIN_STACK}" \
   cargo test --manifest-path "${MANIFEST}" -q -p hepta-gateway native_post_execution_readiness_report_is_gateway_owned
-# The full native-gateway suite creates its own bounded report threads. Do not
-# multiply their stack reservation across every parallel libtest worker.
+# The full native-gateway suite is already covered by hepta-preflight.sh. Keep
+# this smoke bounded to the native control-UI contract tests.
 env -u RUST_MIN_STACK \
-  cargo test --manifest-path "${MANIFEST}" -q -p hepta-native-gateway --lib native_gateway
+  cargo test --manifest-path "${MANIFEST}" -q -p hepta-native-gateway --lib control_ui_
 
 if [[ "${HEPTA_CONTROL_UI_SKIP_BROWSER_SMOKE:-0}" != "1" ]]; then
   ./scripts/hepta-control-ui-browser-smoke.sh
