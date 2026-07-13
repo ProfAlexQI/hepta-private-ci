@@ -111,6 +111,20 @@ verify() {
     rg -Fq 'scripts/hepta-operator-canary-activation-chain-gate-runner' \
       "scripts/${operator_canary_activation_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-release-publication-result-receipt-gate-runner ]]
+  verify_file_max scripts/hepta-release-publication-result-receipt-gate-runner 220
+  verify_file_max scripts/hepta-release-publication-result-receipt-gate-specs-v1.json 4500
+  scripts/hepta-release-publication-result-receipt-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-release-publication-result-receipt-gate-specs-v1.json)" == 3 ]]
+  for release_publication_result_receipt_gate_id in \
+    hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-replay-idempotency-denial \
+    hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-ordering-monotonicity-denial \
+    hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-cancellation-supersession-denial
+  do
+    verify_file_max "scripts/${release_publication_result_receipt_gate_id}-gate.sh" 5
+    rg -Fq 'scripts/hepta-release-publication-result-receipt-gate-runner' \
+      "scripts/${release_publication_result_receipt_gate_id}-gate.sh"
+  done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
     'hepta_full_live_activation_closure_index_report'
