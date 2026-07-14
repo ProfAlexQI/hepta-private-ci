@@ -781,9 +781,9 @@ fn parameterized_terminal_public_claim_delivery_receipt_fixtures_match_canonical
             .with_context(|| format!("failed to read {}", wrapper_path.display()))
             .expect("parameterized terminal-public-claim delivery-receipt wrapper");
         assert_eq!(wrapper.lines().count(), 3, "thin wrapper for {id}");
-        assert!(wrapper.contains(
-            "scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner"
-        ));
+        assert!(
+            wrapper.contains("scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner")
+        );
         assert!(wrapper.contains(id));
         assert!(
             fixture["baseline_normalized_output_sha256"]
