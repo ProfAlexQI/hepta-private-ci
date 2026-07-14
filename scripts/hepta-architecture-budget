@@ -167,6 +167,20 @@ verify() {
     rg -Fq 'scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner' \
       "scripts/${operator_identity_session_replay_reinstatement_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner ]]
+  verify_file_max scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner 210
+  verify_file_max scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-specs-v1.json 2600
+  scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-specs-v1.json)" == 3 ]]
+  for durable_memory_dry_run_result_receipt_boundary_gate_id in \
+    hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary \
+    hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary \
+    hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary
+  do
+    verify_file_max "scripts/${durable_memory_dry_run_result_receipt_boundary_gate_id}-gate.sh" 4
+    rg -Fq 'scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner' \
+      "scripts/${durable_memory_dry_run_result_receipt_boundary_gate_id}-gate.sh"
+  done
   [[ -x scripts/hepta-memory-live-mutation-result-receipt-gate-runner ]]
   verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-runner 210
   verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-specs-v1.json 2600

@@ -268,6 +268,31 @@ pub(crate) const OPERATOR_IDENTITY_SESSION_REPLAY_REINSTATEMENT_GATE_SPECS: [Gat
     },
 ];
 
+#[allow(dead_code)]
+pub(crate) const DURABLE_MEMORY_DRY_RUN_RESULT_RECEIPT_BOUNDARY_GATE_SPECS: [GateSpec; 3] = [
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-gate.sh",
+        source_command: "bash scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-gate.sh",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
+        side_effect_boundary: "local read-only report-only durable Memory dry-run execution result-receipt replay/idempotency denial boundary; captures its result-receipt predecessor while never writing replay/idempotency state, executing a write, mutating Memory/KG or runtime, invoking providers/models, reading secrets, sending channels, publishing, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-gate.sh",
+        source_command: "bash scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-gate.sh",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+        side_effect_boundary: "local read-only report-only durable Memory dry-run execution result-receipt ordering/monotonicity denial boundary; captures its replay/idempotency predecessor while never writing ordering state, executing a write, mutating Memory/KG or runtime, invoking providers/models, reading secrets, sending channels, publishing, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-gate.sh",
+        source_command: "bash scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-gate.sh",
+        capability: "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
+        side_effect_boundary: "local read-only report-only durable Memory dry-run execution result-receipt cancellation/supersession denial boundary; captures its ordering/monotonicity predecessor while never writing cancellation, replacement, tombstone, or supersession state, executing a write, mutating Memory/KG or runtime, invoking providers/models, reading secrets, sending channels, publishing, installing, or restarting",
+    },
+];
+
 #[derive(Debug, Default)]
 struct ShellScriptAvailability {
     gate: Option<PathBuf>,

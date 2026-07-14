@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-specs-v1.json"
+
+usage() {
+  echo "usage: scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner <id|--validate>" >&2
+  exit 2
+}
+
+sha256_text() {
+  printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+
+validate_registry() {
+  jq -e '
+    .schema_version == "hepta_durable_memory_dry_run_result_receipt_boundary_gate_specs_v1"
+    and .executor == "scripts/hepta-durable-memory-dry-run-result-receipt-boundary-gate-runner"
+    and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
+    and .normalization.remove_fields == ["base_url"]
+    and .normalization.remove_suffix == "sha256"
+    and (.specs | length) == 3
+    and ((.specs | map(.id) | unique | length) == 3)
+    and (.specs | all(
+      (.id | test("^[a-z0-9-]+$"))
+      and .gate_spec.method == "LOCAL"
+      and .gate_spec.pattern == ("scripts/" + .id + "-gate.sh")
+      and .gate_spec.source_command == ("bash scripts/" + .id + "-gate.sh")
+      and .gate_spec.capability == .id
+      and .gate_spec.receipt_state == "receipt"
+      and (.gate_spec.side_effect_boundary | contains("read-only"))
+      and (.source.capture_label | length > 0)
+      and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+      and (.source.expected_gate | length > 0)
+      and (.source.ready_field | length > 0)
+      and (.source.report_hash_field | endswith("sha256"))
+      and (.source.variable_bindings | type == "object" and length > 0)
+      and (.source.projections | type == "object" and length > 0)
+      and (.source.expected_false_side_effect_fields | type == "array" and length > 0)
+      and (.target.ready_field | length > 0)
+      and (.target.surface_field | length > 0)
+      and (.target.expected_surface_count > 0)
+      and (.target.denied_field | length > 0)
+      and (.target.expected_denied_count > 0)
+      and (.target.expected_false_side_effect_fields | type == "array" and length > 0)
+      and (.hashes | type == "array" and length >= 10)
+      and (.hashes | all(
+        (.var | test("^[a-z0-9_]+_sha256$"))
+        and (.field | endswith("sha256"))
+        and (.template | length > 0)
+      ))
+      and ((.hashes | map(.var) | unique | length) == (.hashes | length))
+      and ((.hashes | map(.field) | unique | length) == (.hashes | length))
+      and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+      and (.report_template | type == "object")
+      and (. as $spec | ($spec.report_template[$spec.target.surface_field] | length) == $spec.target.expected_surface_count)
+      and (. as $spec | ($spec.report_template[$spec.target.denied_field] | length) == $spec.target.expected_denied_count)
+    ))
+  ' "$SPEC_FILE" >/dev/null
+}
+
+[[ -f "$SPEC_FILE" ]] || {
+  echo "missing durable Memory dry-run result-receipt boundary gate registry: $SPEC_FILE" >&2
+  exit 1
+}
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required" >&2
+  exit 1
+}
+
+[[ $# == 1 ]] || usage
+if [[ "$1" == "--validate" ]]; then
+  validate_registry
+  echo '{"schema":"hepta_durable_memory_dry_run_result_receipt_boundary_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+  exit 0
+fi
+
+id="$1"
+[[ "$id" =~ ^[a-z0-9-]+$ ]] || usage
+validate_registry
+
+spec="$(jq -cer --arg id "$id" '.specs[] | select(.id == $id)' "$SPEC_FILE")" || {
+  echo "unknown durable Memory dry-run result-receipt boundary gate spec id: $id" >&2
+  exit 1
+}
+
+BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+
+cd "$ROOT"
+source scripts/lib/hepta-json-report-capture.sh
+
+source_spec="$(jq -c '.source' <<<"$spec")"
+source_script="$(jq -r '.script' <<<"$source_spec")"
+SOURCE_JSON="$(
+  capture_json_report     "$(jq -r '.capture_label' <<<"$source_spec")"     env       HEPTA_LIVE_URL="$BASE_URL"       HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS="${HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS:-0}"       HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS:-0}"       HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS:-0}"       "$source_script"
+)"
+
+jq -e --argjson source_spec "$source_spec" '
+  . as $source
+  | .runtime == "hepta"
+    and .status == "ready"
+    and .gate == $source_spec.expected_gate
+    and .[$source_spec.ready_field] == true
+    and (.side_effects | type == "object")
+    and ($source_spec.expected_false_side_effect_fields
+      | all(. as $key | $source.side_effects[$key] == false))
+' >/dev/null <<<"$SOURCE_JSON" || {
+  echo "durable Memory dry-run result-receipt boundary source invariant mismatch for $id" >&2
+  exit 1
+}
+
+source_sha256="$(sha256_text "$SOURCE_JSON")"
+report="$(
+  jq -n     --arg base_url "$BASE_URL"     --arg source_sha256 "$source_sha256"     --argjson spec "$spec"     --argjson source "$SOURCE_JSON" '
+      $spec.report_template
+      | .base_url = $base_url
+      | .[$spec.source.report_hash_field] = $source_sha256
+      | reduce ($spec.source.projections | to_entries[]) as $projection
+          (. ; .[$projection.key] = $source[$projection.value])
+    '
+)"
+vars="$(
+  jq -n     --arg source_sha256 "$source_sha256"     --argjson spec "$spec"     --argjson source "$SOURCE_JSON" '
+      {source_report_sha256: $source_sha256}
+      + reduce ($spec.source.variable_bindings | to_entries[]) as $binding
+          ({}; .[$binding.key] = $source[$binding.value])
+    '
+)"
+
+while IFS= read -r hash_spec; do
+  hash_var="$(jq -r '.var' <<<"$hash_spec")"
+  hash_field="$(jq -r '.field' <<<"$hash_spec")"
+  hash_template="$(jq -r '.template' <<<"$hash_spec")"
+  expanded="$(
+    jq -nr       --arg template "$hash_template"       --argjson vars "$vars" '
+        reduce ($vars | to_entries[]) as $entry
+          ($template;
+           split("${" + $entry.key + "}") | join(($entry.value | tostring)))
+      '
+  )"
+  [[ "$expanded" != *'${'* ]] || {
+    echo "unresolved durable Memory dry-run result-receipt boundary hash template for $id: $expanded" >&2
+    exit 1
+  }
+  hash_value="$(sha256_text "$expanded")"
+  report="$(jq -c --arg field "$hash_field" --arg value "$hash_value" '.[$field] = $value' <<<"$report")"
+  vars="$(jq -c --arg var "$hash_var" --arg value "$hash_value" '.[$var] = $value' <<<"$vars")"
+done < <(jq -c '.hashes[]' <<<"$spec")
+
+jq -e --argjson spec "$spec" '
+  . as $report
+  | .runtime == "hepta"
+    and .status == "ready"
+    and .gate == $spec.report_template.gate
+    and .[$spec.target.ready_field] == true
+    and (.[$spec.target.surface_field] | length) == $spec.target.expected_surface_count
+    and (.[$spec.target.denied_field] | length) == $spec.target.expected_denied_count
+    and (.side_effects | type == "object")
+    and ($spec.target.expected_false_side_effect_fields
+      | all(. as $key | $report.side_effects[$key] == false))
+' >/dev/null <<<"$report" || {
+  echo "durable Memory dry-run result-receipt boundary report invariant mismatch for $id" >&2
+  exit 1
+}
+
+actual_output_sha="$(
+  jq -S '
+    del(.base_url)
+    | with_entries(select(.key | endswith("sha256") | not))
+  ' <<<"$report" | shasum -a 256 | cut -d ' ' -f1
+)"
+expected_output_sha="$(jq -r '.baseline_normalized_output_sha256' <<<"$spec")"
+[[ "$actual_output_sha" == "$expected_output_sha" ]] || {
+  echo "durable Memory dry-run result-receipt boundary normalized output parity mismatch for $id: $actual_output_sha != $expected_output_sha" >&2
+  exit 1
+}
+
+jq . <<<"$report"
