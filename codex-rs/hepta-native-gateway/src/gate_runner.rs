@@ -193,6 +193,31 @@ pub(crate) const TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_GATE_SPECS: [GateSpec; 3
     },
 ];
 
+#[allow(dead_code)]
+pub(crate) const PACKET_ACCEPTANCE_RECEIPT_GATE_SPECS: [GateSpec; 3] = [
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial",
+        side_effect_boundary: "local read-only report-only packet-acceptance receipt replay/idempotency denial gate; captures its non-state predecessor while never replaying, deduplicating, or storing idempotency state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial",
+        side_effect_boundary: "local read-only report-only packet-acceptance receipt ordering/monotonicity denial gate; captures its replay/idempotency predecessor while never recording sequence or monotonicity state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, installing, or restarting",
+    },
+    GateSpec {
+        method: "LOCAL",
+        pattern: "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial-gate.sh",
+        source_command: "bash scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial-gate.sh",
+        capability: "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial",
+        side_effect_boundary: "local read-only report-only packet-acceptance receipt cancellation/supersession denial gate; captures its ordering/monotonicity predecessor while never recording cancellation, replacement, tombstone, or supersession state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, installing, or restarting",
+    },
+];
+
 #[derive(Debug, Default)]
 struct ShellScriptAvailability {
     gate: Option<PathBuf>,

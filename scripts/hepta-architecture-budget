@@ -167,6 +167,20 @@ verify() {
     rg -Fq 'scripts/hepta-terminal-public-claim-delivery-receipt-gate-runner' \
       "scripts/${terminal_public_claim_delivery_receipt_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-packet-acceptance-receipt-gate-runner ]]
+  verify_file_max scripts/hepta-packet-acceptance-receipt-gate-runner 210
+  verify_file_max scripts/hepta-packet-acceptance-receipt-gate-specs-v1.json 1900
+  scripts/hepta-packet-acceptance-receipt-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-packet-acceptance-receipt-gate-specs-v1.json)" == 3 ]]
+  for packet_acceptance_receipt_gate_id in \
+    hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-replay-idempotency-denial \
+    hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-ordering-monotonicity-denial \
+    hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-cancellation-supersession-denial
+  do
+    verify_file_max "scripts/${packet_acceptance_receipt_gate_id}-gate.sh" 5
+    rg -Fq 'scripts/hepta-packet-acceptance-receipt-gate-runner' \
+      "scripts/${packet_acceptance_receipt_gate_id}-gate.sh"
+  done
   hepta_source_path_contains \
     "$HEPTA_NATIVE_GATEWAY_SOURCE_SET_V1" \
     'hepta_full_live_activation_closure_index_report'
