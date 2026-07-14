@@ -28,6 +28,7 @@ use crate::ThreadsPage;
 use crate::apply_rollout_item;
 use crate::migrations::runtime_logs_migrator;
 use crate::migrations::runtime_state_migrator;
+use crate::migrations::runtime_thread_history_migrator;
 use crate::model::AgentJobRow;
 use crate::model::AgentJobWorkGraphShadowEventRow;
 use crate::model::InterAgentMailboxEventRow;
@@ -243,6 +244,20 @@ async fn open_logs_sqlite(
         "open_logs",
         "migrate_logs",
         telemetry_override,
+    )
+    .await
+}
+
+/// Open and migrate the rebuildable paginated thread-history database.
+pub async fn open_thread_history_db(sqlite_home: &Path) -> anyhow::Result<SqlitePool> {
+    let migrator = runtime_thread_history_migrator();
+    open_sqlite(
+        thread_history_db_path(sqlite_home).as_path(),
+        &migrator,
+        DbKind::ThreadHistory,
+        "open_thread_history",
+        "migrate_thread_history",
+        /*telemetry_override*/ None,
     )
     .await
 }

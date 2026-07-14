@@ -4,6 +4,8 @@ mod helpers;
 mod list_threads;
 mod live_writer;
 mod read_thread;
+mod thread_history;
+mod thread_history_materialization;
 mod unarchive_thread;
 mod update_thread_metadata;
 
@@ -20,6 +22,8 @@ use std::collections::hash_map::Entry;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::sync::OnceCell;
+use tokio::sync::OwnedMutexGuard;
 
 use crate::AppendThreadItemsParams;
 use crate::ArchiveThreadParams;
@@ -54,7 +58,9 @@ use crate::UpdateThreadMetadataParams;
 pub struct LocalThreadStore {
     pub(super) config: LocalThreadStoreConfig,
     live_recorders: Arc<Mutex<HashMap<ThreadId, LiveRecorderEntry>>>,
+    live_writer_locks: Arc<LiveWriterLocks>,
     state_db: Option<StateDbHandle>,
+    thread_history_db: Arc<OnceCell<sqlx::SqlitePool>>,
 }
 
 struct LiveRecorderEntry {
@@ -62,6 +68,26 @@ struct LiveRecorderEntry {
     // Rollout files are materialized lazily. Retain the immutable mode selected when live
     // persistence opened so an early metadata update can seed a missing SQLite row correctly.
     history_mode: ThreadHistoryMode,
+}
+
+#[derive(Default)]
+struct LiveWriterLocks {
+    // Keep per-thread locks after a writer goes idle. Removing one while another caller is about
+    // to acquire it could let two operations for the same thread run at once.
+    by_thread: Mutex<HashMap<ThreadId, Arc<Mutex<()>>>>,
+}
+
+impl LiveWriterLocks {
+    async fn lock(&self, thread_id: ThreadId) -> OwnedMutexGuard<()> {
+        let lock = self
+            .by_thread
+            .lock()
+            .await
+            .entry(thread_id)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone();
+        lock.lock_owned().await
+    }
 }
 
 /// Process-scoped configuration for local thread storage.
@@ -100,13 +126,26 @@ impl LocalThreadStore {
         Self {
             config,
             live_recorders: Arc::new(Mutex::new(HashMap::new())),
+            live_writer_locks: Arc::new(LiveWriterLocks::default()),
             state_db,
+            thread_history_db: Arc::new(OnceCell::new()),
         }
     }
 
     /// Return the state DB handle used by local rollout writers.
     pub async fn state_db(&self) -> Option<StateDbHandle> {
         self.state_db.clone()
+    }
+
+    async fn thread_history_db(&self) -> ThreadStoreResult<&sqlx::SqlitePool> {
+        self.thread_history_db
+            .get_or_try_init(|| async {
+                codex_state::open_thread_history_db(self.config.sqlite_home.as_path()).await
+            })
+            .await
+            .map_err(|err| ThreadStoreError::Internal {
+                message: format!("failed to open thread history database: {err}"),
+            })
     }
 
     /// Read a local rollout-backed thread by path.
@@ -128,18 +167,6 @@ impl LocalThreadStore {
     /// Return the live local rollout path for legacy local-only code paths.
     pub async fn live_rollout_path(&self, thread_id: ThreadId) -> ThreadStoreResult<PathBuf> {
         live_writer::rollout_path(self, thread_id).await
-    }
-
-    pub(super) async fn live_recorder(
-        &self,
-        thread_id: ThreadId,
-    ) -> ThreadStoreResult<RolloutRecorder> {
-        self.live_recorders
-            .lock()
-            .await
-            .get(&thread_id)
-            .map(|entry| entry.recorder.clone())
-            .ok_or(ThreadStoreError::ThreadNotFound { thread_id })
     }
 
     pub(super) async fn ensure_live_recorder_absent(

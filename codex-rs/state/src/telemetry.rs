@@ -39,7 +39,6 @@ pub fn install_process_db_telemetry(telemetry: DbTelemetryHandle) -> bool {
 pub(crate) enum DbKind {
     State,
     Logs,
-    #[allow(dead_code)]
     ThreadHistory,
 }
 
