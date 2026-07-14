@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-operator-identity-session-replay-reinstatement-gate-specs-v1.json"
+
+usage() {
+  echo "usage: scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner <id|--validate>" >&2
+  exit 2
+}
+
+sha256_text() {
+  printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+
+validate_registry() {
+  jq -e '
+    .schema_version == "hepta_operator_identity_session_replay_reinstatement_gate_specs_v1"
+    and .executor == "scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner"
+    and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
+    and .minimum_long_soak_samples == 24
+    and .normalization.remove_fields == ["base_url", "minimum_required_samples"]
+    and .normalization.remove_suffix == "sha256"
+    and (.specs | length) == 3
+    and ((.specs | map(.id) | unique | length) == 3)
+    and (.specs | all(
+      (.id | test("^[a-z0-9-]+$"))
+      and .gate_spec.method == "LOCAL"
+      and .gate_spec.pattern == ("scripts/" + .id + "-gate.sh")
+      and .gate_spec.source_command == ("bash scripts/" + .id + "-gate.sh")
+      and .gate_spec.capability == .id
+      and .gate_spec.receipt_state == "receipt"
+      and (.gate_spec.side_effect_boundary | contains("read-only"))
+      and (.source.capture_label | length > 0)
+      and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+      and (.source.expected_gate | length > 0)
+      and (.source.ready_field | length > 0)
+      and (.source.report_hash_field | endswith("sha256"))
+      and (.source.projections | type == "object" and length > 0)
+      and (.target.ready_field | length > 0)
+      and (.hashes.contract_field | endswith("sha256"))
+      and (.hashes.contract_prefix | length > 0)
+      and (.surface_field | length > 0)
+      and .expected_surface_count == 18
+      and (.attempt_field | length > 0)
+      and .output_format == "pretty"
+      and (.report_template | type == "object")
+      and (. as $spec | ($spec.report_template[$spec.surface_field] | type) == "array")
+      and (. as $spec | ($spec.report_template[$spec.surface_field] | length) == 18)
+      and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+      and (.pass_message | length > 0)
+    ))
+  ' "$SPEC_FILE" >/dev/null
+}
+
+[[ -f "$SPEC_FILE" ]] || {
+  echo "missing operator identity/session replay/reinstatement gate spec registry: $SPEC_FILE" >&2
+  exit 1
+}
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required" >&2
+  exit 1
+}
+
+[[ $# == 1 ]] || usage
+if [[ "$1" == "--validate" ]]; then
+  validate_registry
+  echo '{"schema":"hepta_operator_identity_session_replay_reinstatement_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+  exit 0
+fi
+
+id="$1"
+[[ "$id" =~ ^[a-z0-9-]+$ ]] || usage
+validate_registry
+
+spec="$(jq -cer --arg id "$id" '.specs[] | select(.id == $id)' "$SPEC_FILE")" || {
+  echo "unknown operator identity/session replay/reinstatement gate spec id: $id" >&2
+  exit 1
+}
+
+BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
+case "$MIN_LONG_SOAK_SAMPLES" in
+  ''|*[!0-9]*) echo "HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES must be an unsigned integer" >&2; exit 2 ;;
+esac
+if (( MIN_LONG_SOAK_SAMPLES < 24 )); then
+  echo "minimum long-soak samples must be at least 24" >&2
+  exit 1
+fi
+
+cd "$ROOT"
+source scripts/lib/hepta-json-report-capture.sh
+
+source_spec="$(jq -c '.source' <<<"$spec")"
+source_script="$(jq -r '.script' <<<"$source_spec")"
+SOURCE_JSON="$(
+  capture_json_report \
+    "$(jq -r '.capture_label' <<<"$source_spec")" \
+    env \
+      HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+      HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS="${HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS:-0}" \
+      HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS:-0}" \
+      HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS:-0}" \
+      "$source_script"
+)"
+
+jq -e --argjson source_spec "$source_spec" '
+  .runtime == "hepta"
+  and .status == "ready"
+  and .gate == $source_spec.expected_gate
+  and .[$source_spec.ready_field] == true
+  and (.side_effects | type == "object")
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$SOURCE_JSON" || {
+  echo "operator identity/session replay/reinstatement source invariant mismatch for $id" >&2
+  exit 1
+}
+
+source_sha256="$(sha256_text "$SOURCE_JSON")"
+contract_sha256="$(sha256_text "$(jq -r '.hashes.contract_prefix' <<<"$spec"):$source_sha256:$MIN_LONG_SOAK_SAMPLES")"
+
+report="$(
+  jq -n \
+    --arg base_url "$BASE_URL" \
+    --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
+    --argjson spec "$spec" \
+    --argjson source "$SOURCE_JSON" \
+    --arg source_sha256 "$source_sha256" \
+    --arg contract_sha256 "$contract_sha256" '
+      $spec.report_template
+      | .base_url = $base_url
+      | .minimum_required_samples = $min_long_soak_samples
+      | .[$spec.source.report_hash_field] = $source_sha256
+      | .[$spec.hashes.contract_field] = $contract_sha256
+      | reduce ($spec.source.projections | to_entries[]) as $projection
+          (. ; .[$projection.key] = $source[$projection.value])
+    '
+)"
+
+jq -e --argjson spec "$spec" '
+  .runtime == "hepta"
+  and .status == "ready"
+  and .gate == $spec.report_template.gate
+  and .[$spec.target.ready_field] == true
+  and (.[$spec.surface_field] | length) == $spec.expected_surface_count
+  and (.[$spec.surface_field] | all(.[$spec.attempt_field] == true))
+  and (.side_effects | type == "object")
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null <<<"$report" || {
+  echo "operator identity/session replay/reinstatement report invariant mismatch for $id" >&2
+  exit 1
+}
+
+actual_output_sha="$(
+  jq -S '
+    del(.base_url, .minimum_required_samples)
+    | with_entries(select(.key | endswith("sha256") | not))
+  ' <<<"$report" | shasum -a 256 | cut -d ' ' -f1
+)"
+expected_output_sha="$(jq -r '.baseline_normalized_output_sha256' <<<"$spec")"
+[[ "$actual_output_sha" == "$expected_output_sha" ]] || {
+  echo "operator identity/session replay/reinstatement normalized output parity mismatch for $id: $actual_output_sha != $expected_output_sha" >&2
+  exit 1
+}
+
+jq . <<<"$report"
+jq -r '.pass_message' <<<"$spec"
