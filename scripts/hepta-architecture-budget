@@ -139,6 +139,20 @@ verify() {
     rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner' \
       "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-artifact-signing-receipt-gate-runner ]]
+  verify_file_max scripts/hepta-artifact-signing-receipt-gate-runner 210
+  verify_file_max scripts/hepta-artifact-signing-receipt-gate-specs-v1.json 5000
+  scripts/hepta-artifact-signing-receipt-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-artifact-signing-receipt-gate-specs-v1.json)" == 3 ]]
+  for artifact_signing_receipt_gate_id in \
+    hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial \
+    hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial \
+    hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial
+  do
+    verify_file_max "scripts/${artifact_signing_receipt_gate_id}-gate.sh" 4
+    rg -Fq 'scripts/hepta-artifact-signing-receipt-gate-runner' \
+      "scripts/${artifact_signing_receipt_gate_id}-gate.sh"
+  done
   [[ -x scripts/hepta-memory-live-mutation-result-receipt-gate-runner ]]
   verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-runner 210
   verify_file_max scripts/hepta-memory-live-mutation-result-receipt-gate-specs-v1.json 2600
