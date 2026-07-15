@@ -150,6 +150,17 @@ verify() {
     rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner' \
       "$artifact_download_install_affordance_result_receipt_route_gate_wrapper"
   done < <(jq -r '.specs[].wrapper' scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json)
+  [[ -x scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner ]]
+  verify_file_max scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner 230
+  verify_file_max scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json 2500
+  scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json)" == 3 ]]
+  while IFS= read -r memory_live_mutation_activation_command_result_receipt_route_gate_wrapper
+  do
+    verify_file_max "$memory_live_mutation_activation_command_result_receipt_route_gate_wrapper" 4
+    rg -Fq 'scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner' \
+      "$memory_live_mutation_activation_command_result_receipt_route_gate_wrapper"
+  done < <(jq -r '.specs[].wrapper' scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-artifact-signing-receipt-gate-runner ]]
   verify_file_max scripts/hepta-artifact-signing-receipt-gate-runner 210
   verify_file_max scripts/hepta-artifact-signing-receipt-gate-specs-v1.json 5000
