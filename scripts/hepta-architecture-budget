@@ -161,6 +161,17 @@ verify() {
     rg -Fq 'scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner' \
       "$memory_live_mutation_activation_command_result_receipt_route_gate_wrapper"
   done < <(jq -r '.specs[].wrapper' scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json)
+  [[ -x scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner ]]
+  verify_file_max scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner 220
+  verify_file_max scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json 400
+  scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json)" == 3 ]]
+  while IFS= read -r runtime_provider_router_activation_command_result_receipt_route_gate_wrapper
+  do
+    verify_file_max "$runtime_provider_router_activation_command_result_receipt_route_gate_wrapper" 4
+    rg -Fq 'scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner' \
+      "$runtime_provider_router_activation_command_result_receipt_route_gate_wrapper"
+  done < <(jq -r '.specs[].wrapper' scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner ]]
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner 260
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-specs-v1.json 900
