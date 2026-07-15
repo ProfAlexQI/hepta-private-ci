@@ -139,6 +139,17 @@ verify() {
     rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-gate-runner' \
       "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh"
   done
+  [[ -x scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner ]]
+  verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner 240
+  verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json 1200
+  scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json)" == 3 ]]
+  while IFS= read -r artifact_download_install_affordance_result_receipt_route_gate_wrapper
+  do
+    verify_file_max "$artifact_download_install_affordance_result_receipt_route_gate_wrapper" 4
+    rg -Fq 'scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner' \
+      "$artifact_download_install_affordance_result_receipt_route_gate_wrapper"
+  done < <(jq -r '.specs[].wrapper' scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-artifact-signing-receipt-gate-runner ]]
   verify_file_max scripts/hepta-artifact-signing-receipt-gate-runner 210
   verify_file_max scripts/hepta-artifact-signing-receipt-gate-specs-v1.json 5000

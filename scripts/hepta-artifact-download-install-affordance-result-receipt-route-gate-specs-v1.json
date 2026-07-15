@@ -1,0 +1,230 @@
+{
+  "schema_version": "hepta_artifact_download_install_affordance_result_receipt_route_gate_specs_v1",
+  "executor": "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+  "receipt_state_machine": [
+    "precondition",
+    "denial",
+    "receipt",
+    "persistence",
+    "retention",
+    "terminal"
+  ],
+  "specs": [
+    {
+      "id": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial",
+      "wrapper": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-replay-idempotency-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial",
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial --json",
+        "capability": "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial",
+        "side_effect_boundary": "read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt replay/idempotency denial; models denied duplicate receipt replay, idempotency key/state recording, cross-scope reuse, nonce/status/hash/signature/operator-identity replay, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+        "receipt_state": "terminal"
+      },
+      "source": {
+        "mode": "file",
+        "path": "scripts/hepta-artifact-download-install-affordance-result-receipt-gate-specs-v1.json",
+        "hash_field": "source_replay_idempotency_gate_sha256",
+        "requirements": [
+          "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_gate",
+          "source_result_receipt_no_persistence_present",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count",
+          "completion_ack_replay_denied",
+          "memory_provider_kg_replay_denied"
+        ]
+      },
+      "native_requirements": [
+        {"file":"hepta-native-gateway-source-set-v1","text":"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-replay-idempotency-denial --json"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_report"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_route_enabled"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_endpoint_blocks_replay_and_authority"}
+      ],
+      "focused_test": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_endpoint_blocks_replay_and_authority",
+      "test_log_stem": "hepta-artifact-download-install-affordance-result-receipt-replay-idempotency-route-tests",
+      "live_validation": {
+        "true_fields": [
+          "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_route_enabled",
+          "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_denial_ready",
+          "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_no_persistence_ready"
+        ],
+        "false_fields": ["operator_approval_recorded","release_publication_authority_derived","activation_authority_derived","install_executed","active_binary_mutated","external_send_performed"],
+        "zero_fields": [
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_allowed_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_duplicate_accepted_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_idempotency_key_accepted_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_idempotency_state_persisted_count"
+        ],
+        "number_fields": {"release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surface_count":18},
+        "array_lengths": {
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_surfaces":18,
+          "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency":20
+        }
+      },
+      "report_fields": {
+        "activation_mode":"full_live_activation_artifact_download_install_affordance_result_receipt_replay_idempotency_native_route_status",
+        "side_effect_free":true,
+        "native_route":true,
+        "route_enabled":true,
+        "source_replay_idempotency_gate_text_verified":true,
+        "source_replay_idempotency_gate_sha256":"",
+        "native_gateway_sha256":"",
+        "focused_test_log":"",
+        "terminal_coverage_sha256":"",
+        "live_endpoint_checked":false,
+        "source_route_count_expected":153,
+        "terminal_required_marker_count_expected":293,
+        "result_receipt_replay_idempotency_surface_count":18,
+        "result_receipt_replay_allowed_count":0,
+        "result_receipt_duplicate_accepted_count":0,
+        "result_receipt_idempotency_key_accepted_count":0,
+        "result_receipt_idempotency_state_persisted_count":0,
+        "live_route_status":"skipped",
+        "live_route_count":0,
+        "live_missing_route_count":0,
+        "side_effects":{"result_receipt_replayed":false,"duplicate_receipt_accepted":false,"idempotency_key_recorded":false,"idempotency_state_persisted":false,"replay_authority_derived":false,"install_executed":false,"active_binary_mutated":false,"memory_store_write_performed":false,"live_kg_write_performed":false,"external_send_performed":false}
+      },
+      "baseline_normalized_output_sha256":"e0d851b277f6d57cedc0a7173e2a0e1bf0665404a11376fd948e051729415cf4",
+      "pass_message":"artifact download/install affordance result receipt replay/idempotency denial route gate passed: endpoint ready, 18 surfaces, source route count 154, terminal markers 294/294"
+    },
+    {
+      "id":"hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial",
+      "wrapper":"scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-ordering-monotonicity-route-gate.sh",
+      "gate_spec": {
+        "method":"GET",
+        "pattern":"/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial",
+        "source_command":"/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial --json",
+        "capability":"hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial",
+        "side_effect_boundary":"read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt ordering/monotonicity denial; models denied sequence cursors, monotonicity state, out-of-order/gap/future/stale/latest-wins claims, ordering bypasses, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+        "receipt_state":"terminal"
+      },
+      "source": {
+        "mode":"file",
+        "path":"scripts/hepta-artifact-download-install-affordance-result-receipt-gate-specs-v1.json",
+        "hash_field":"source_ordering_gate_sha256",
+        "requirements":[
+          "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_gate",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count",
+          "sequence_cursor_acceptance_denied",
+          "latest_wins_overwrite_denied",
+          "install_restart_active_binary_ordering_bypass_denied"
+        ]
+      },
+      "native_requirements":[
+        {"file":"hepta-native-gateway-source-set-v1","text":"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-ordering-monotonicity-denial --json"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_report"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_route_enabled"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_endpoint_blocks_ordering_and_authority"}
+      ],
+      "focused_test":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_endpoint_blocks_ordering_and_authority",
+      "test_log_stem":"hepta-artifact-download-install-affordance-result-receipt-ordering-monotonicity-route-tests",
+      "live_validation": {
+        "true_fields":[
+          "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_route_enabled",
+          "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_denial_ready",
+          "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replay_idempotency_ready"
+        ],
+        "false_fields":["operator_approval_recorded","release_publication_authority_derived","activation_authority_derived","install_executed","active_binary_mutated","external_send_performed"],
+        "zero_fields":[
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_allowed_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_sequence_cursor_recorded_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_monotonicity_state_recorded_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_latest_wins_overwrite_accepted_count"
+        ],
+        "number_fields":{
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surface_count":18,
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_attempt_count":18
+        },
+        "array_lengths":{
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_surfaces":18,
+          "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity":26
+        }
+      },
+      "report_fields":{
+        "activation_mode":"full_live_activation_artifact_download_install_affordance_result_receipt_ordering_monotonicity_native_route_status",
+        "side_effect_free":true,"native_route":true,"route_enabled":true,
+        "source_ordering_gate_text_verified":true,"source_ordering_gate_sha256":"","native_gateway_sha256":"","focused_test_log":"","terminal_coverage_sha256":"","live_endpoint_checked":false,
+        "source_route_count_expected":153,"terminal_required_marker_count_expected":293,
+        "result_receipt_ordering_monotonicity_surface_count":18,"result_receipt_ordering_allowed_count":0,"result_receipt_sequence_cursor_recorded_count":0,"result_receipt_monotonicity_state_recorded_count":0,"result_receipt_latest_wins_overwrite_accepted_count":0,
+        "live_route_status":"skipped","live_route_count":0,"live_missing_route_count":0,
+        "side_effects":{"sequence_cursor_recorded":false,"monotonicity_state_recorded":false,"out_of_order_receipt_accepted":false,"latest_wins_overwrite_accepted":false,"ordering_authority_derived":false,"install_executed":false,"active_binary_mutated":false,"memory_store_write_performed":false,"live_kg_write_performed":false,"external_send_performed":false}
+      },
+      "baseline_normalized_output_sha256":"1f83aac8c055e98c4a76c7a57d492590c5f5846ca0d52ccfbca82c47650fe603",
+      "pass_message":"artifact download/install affordance result receipt ordering/monotonicity denial route gate passed: endpoint ready, 18 surfaces, source route count 154, terminal markers 294/294"
+    },
+    {
+      "id":"hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial",
+      "wrapper":"scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-cancellation-supersession-route-gate.sh",
+      "gate_spec": {
+        "method":"GET",
+        "pattern":"/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial",
+        "source_command":"/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial --json",
+        "capability":"hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial",
+        "side_effect_boundary":"read-only Memory/Intelligence/KG full live activation operator readiness packet template packet-acceptance receipt release/publication result receipt terminal distribution delivery receipt artifact download/install affordance result receipt cancellation/supersession denial; models denied cancellation, revocation, withdrawal, supersession, replacement receipt, tombstone, delete marker, latest/ack/query/export/observability replacement, authority, install/restart/active-binary mutation, and live execution surfaces while preserving report-only no-op boundaries",
+        "receipt_state":"terminal"
+      },
+      "source": {
+        "mode":"report",
+        "path":"scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial-gate.sh",
+        "capture_label":"artifact-download-install-affordance-result-receipt-cancellation-supersession-gate",
+        "expected_gate":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_gate",
+        "ready_field":"memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_ready",
+        "hash_field":"source_cancellation_gate_sha256",
+        "requirements":[]
+      },
+      "native_requirements":[
+        {"file":"hepta-native-gateway-source-set-v1","text":"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/api/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-result-receipt-cancellation-supersession-denial --json"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_report"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_route_enabled"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_surface_count"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_endpoint_blocks_cancellation_and_authority"}
+      ],
+      "focused_test":"hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_endpoint_blocks_cancellation_and_authority",
+      "test_log_stem":"hepta-artifact-download-install-affordance-result-receipt-cancellation-supersession-route-tests",
+      "live_validation": {
+        "true_fields":[
+          "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_route_enabled",
+          "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_denial_ready",
+          "source_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_ordering_monotonicity_ready"
+        ],
+        "false_fields":["operator_approval_recorded","activation_authority_derived","install_executed","active_binary_mutated","external_send_performed"],
+        "zero_fields":[
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_recorded_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_supersession_recorded_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_replacement_receipt_recorded_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_tombstone_recorded_count",
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_latest_replacement_accepted_count"
+        ],
+        "number_fields":{
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_surface_count":18,
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_attempt_count":18
+        },
+        "array_lengths":{
+          "release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession_surfaces":18,
+          "denied_by_packet_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_cancellation_supersession":27
+        }
+      },
+      "report_fields":{
+        "activation_mode":"full_live_activation_artifact_download_install_affordance_result_receipt_cancellation_supersession_native_route_status",
+        "side_effect_free":true,"native_route":true,"route_enabled":true,
+        "source_cancellation_supersession_gate_ready":true,"source_cancellation_gate_sha256":"","native_gateway_sha256":"","focused_test_log":"","terminal_coverage_sha256":"","live_endpoint_checked":false,
+        "source_route_count_expected":153,"terminal_required_marker_count_expected":293,
+        "result_receipt_cancellation_supersession_surface_count":18,"result_receipt_cancellation_recorded_count":0,"result_receipt_supersession_recorded_count":0,"result_receipt_replacement_receipt_recorded_count":0,"result_receipt_tombstone_recorded_count":0,"result_receipt_latest_replacement_accepted_count":0,
+        "live_route_status":"skipped","live_route_count":0,"live_missing_route_count":0,
+        "side_effects":{"cancellation_recorded":false,"supersession_recorded":false,"replacement_receipt_recorded":false,"tombstone_recorded":false,"latest_replacement_accepted":false,"cancellation_authority_derived":false,"install_executed":false,"active_binary_mutated":false,"memory_store_write_performed":false,"live_kg_write_performed":false,"external_send_performed":false}
+      },
+      "baseline_normalized_output_sha256":"c13e229cbd8ed5a6f9d8b1e13d4abef9ec5ebd5d492c214c49ed3ebd748c5aef",
+      "pass_message":"artifact download/install affordance result receipt cancellation/supersession denial route gate passed: endpoint ready, 18 surfaces, source route count 154, terminal markers 294/294"
+    }
+  ]
+}
