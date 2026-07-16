@@ -1,0 +1,349 @@
+{
+  "schema_version": "hepta_durable_memory_receipt_boundary_route_gate_specs_v1",
+  "executor": "scripts/hepta-durable-memory-receipt-boundary-route-gate-runner",
+  "receipt_state_machine": [
+    "precondition",
+    "denial",
+    "receipt",
+    "persistence",
+    "retention",
+    "terminal"
+  ],
+  "specs": [
+    {
+      "id": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
+      "wrapper": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary --json",
+        "capability": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
+        "side_effect_boundary": "scoped production durable Memory write dry-run execution result receipt replay/idempotency denial boundary; consumes the dry-run execution result receipt boundary as source evidence while accepting only a non-persistent replay/idempotency denial matrix for duplicate receipts, stale receipts, nonce reuse, identity/session cross-binding, hash-chain mismatch, and ordering preconditions; performs no replay state persistence, idempotency ledger write, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+        "receipt_state": "persistence"
+      },
+      "source": {
+        "capture_label": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-gate",
+        "script": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary-gate.sh",
+        "validation_filter": "  .status == \"ready\"\n  and .memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_ready == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_performed == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_accepted == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_mode == \"dry_run_execution_result_receipt_replay_idempotency_denial_boundary_no_replay_state_persistence_no_execution_no_production_durable_memory_mutation\"\n  and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_ready == true\n  and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_accepted_count == 1\n  and .source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_fixture_count == 1\n  and .source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_fixture_count == 9\n  and .approved_production_namespace == \"hepta.memory.production.scoped\"\n  and .approved_production_store == \"hepta-memory-durable-store-production-preflight-only\"\n  and .approved_production_scope == \"operator-approved-session\"\n  and .production_durable_memory_target_id == \"hepta-scoped-production-durable-memory-write-target-v1\"\n  and (.source_dry_run_execution_result_hash_sha256 | type == \"string\" and length > 0)\n  and (.source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_hash_sha256 | type == \"string\" and length > 0)\n  and (.source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_policy_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_denial_matrix_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_identity_session_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_nonce_scope_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_cross_session_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_handoff_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replay_idempotency_result_hash_sha256 | type == \"string\" and length > 0)\n  and (.scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_hash_sha256 | type == \"string\" and length > 0)\n  and (.scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_policy_hash_sha256 | type == \"string\" and length > 0)\n  and .required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_surface_count == 16\n  and .ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_surface_count == 16\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 10\n  and .accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 1\n  and .blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 9\n  and .denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_count == 54\n  and ([.scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixtures[] | select(.scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_accepted == true)] | length) == 1\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_performed_count == 1\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_recorded_count == 1\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_accepted_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_denial_matrix_bound_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_identity_session_bound_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_nonce_scope_bound_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denied_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denied_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denied_count == 1\n  and .dry_run_execution_result_receipt_replay_idempotency_cross_session_denied_count == 1\n  and .dry_run_execution_result_receipt_replay_state_persisted_count == 0\n  and .dry_run_execution_result_receipt_idempotency_ledger_written_count == 0\n  and .dry_run_execution_result_receipt_replay_guard_state_recorded_count == 0\n  and .dry_run_execution_result_receipt_duplicate_receipt_accepted_count == 0\n  and .dry_run_execution_result_receipt_stale_receipt_accepted_count == 0\n  and .dry_run_execution_result_receipt_cross_session_replay_accepted_count == 0\n  and .dry_run_execution_result_receipt_hash_chain_mismatch_accepted_count == 0\n  and .dry_run_execution_result_receipt_persisted_count == 0\n  and .dry_run_execution_executed_count == 0\n  and .dry_run_execution_result_persisted_count == 0\n  and .operator_packet_persisted_count == 0\n  and .production_durable_memory_write_executed_count == 0\n  and .production_durable_memory_store_write_performed_count == 0\n  and .actual_production_durable_memory_write_performed_count == 0\n  and .durable_memory_store_write_performed_count == 0\n  and .durable_memory_store_read_performed_count == 0\n  and .durable_memory_store_rollback_performed_count == 0\n  and .memory_store_write_performed_count == 0\n  and .wal_write_performed_count == 0\n  and .receipt_persisted_count == 0\n  and .post_write_readback_performed_count == 0\n  and .rollback_performed_count == 0\n  and .tombstone_cleanup_executed_count == 0\n  and .live_kg_write_performed_count == 0\n  and .provider_invoked_count == 0\n  and .model_invoked_count == 0\n  and .credential_read_count == 0\n  and .channel_send_performed_count == 0\n  and .external_send_performed_count == 0\n  and .release_artifact_written_count == 0\n  and .install_executed_count == 0\n  and .service_restarted_count == 0\n  and .active_binary_mutated_count == 0\n  and .source_dry_run_execution_result_receipt_boundary_bound == true\n  and .dry_run_execution_result_receipt_replay_idempotency_denial_matrix_bound == true\n  and .dry_run_execution_result_receipt_replay_idempotency_duplicate_receipt_denied == true\n  and .dry_run_execution_result_receipt_replay_idempotency_stale_receipt_denied == true\n  and .dry_run_execution_result_receipt_replay_idempotency_hash_chain_mismatch_denied == true\n  and .dry_run_execution_result_receipt_replay_idempotency_cross_session_denied == true\n  and .dry_run_execution_result_receipt_replay_state_persistence_forbidden == true\n  and .dry_run_execution_result_receipt_idempotency_ledger_write_forbidden == true\n  and .dry_run_execution_execution_forbidden_on_replay_idempotency_route == true\n  and .production_write_execution_forbidden_on_replay_idempotency_route == true\n  and .production_durable_memory_write_forbidden == true\n  and .memory_store_mutation_forbidden == true\n  and .kg_live_write_forbidden == true\n  and .provider_model_invocation_forbidden == true\n  and .credential_channel_public_release_forbidden == true\n  and .install_restart_active_binary_mutation_forbidden == true\n  and .dry_run_execution_result_receipt_replay_state_persisted == false\n  and .dry_run_execution_result_receipt_idempotency_ledger_written == false\n  and .dry_run_execution_result_receipt_duplicate_receipt_accepted == false\n  and .dry_run_execution_result_receipt_stale_receipt_accepted == false\n  and .dry_run_execution_result_receipt_cross_session_replay_accepted == false\n  and .dry_run_execution_result_receipt_hash_chain_mismatch_accepted == false\n  and .dry_run_execution_result_receipt_persisted == false\n  and .dry_run_execution_executed == false\n  and .dry_run_execution_result_persisted == false\n  and .production_durable_memory_write_executed == false\n  and .production_durable_memory_store_write_performed == false\n  and .actual_production_durable_memory_write_performed == false\n  and .durable_memory_store_write_performed == false\n  and .durable_memory_store_read_performed == false\n  and .durable_memory_store_rollback_performed == false\n  and .memory_write_execution_performed == false\n  and .memory_store_write_performed == false\n  and .memory_store_mutated == false\n  and .wal_write_performed == false\n  and .receipt_persisted == false\n  and .post_write_readback_performed == false\n  and .rollback_executed == false\n  and .rollback_performed == false\n  and .tombstone_write_performed == false\n  and .tombstone_cleanup_executed == false\n  and .raw_payload_plaintext_recorded == false\n  and .raw_payload_plaintext_persisted == false\n  and .live_kg_write_performed == false\n  and .provider_invoked == false\n  and .model_invoked == false\n  and .credential_read == false\n  and .channel_send_performed == false\n  and .external_send_performed == false\n  and .release_artifact_written == false\n  and .install_executed == false\n  and .service_restarted == false\n  and .active_binary_mutated == false\n  and .side_effects.scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_performed == true\n  and .side_effects.scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_accepted == true\n  and .side_effects.dry_run_execution_result_receipt_replay_state_persisted == false\n  and .side_effects.dry_run_execution_result_receipt_idempotency_ledger_written == false\n  and .side_effects.dry_run_execution_executed == false\n  and .side_effects.production_durable_memory_store_write_performed == false\n  and .side_effects.memory_store_write_performed == false\n  and .side_effects.wal_write_performed == false\n  and .side_effects.receipt_persisted == false\n  and .side_effects.external_send_performed == false\n  and .allowed_next_actions[0].action == \"run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_require_live_gate\"\n  and .allowed_next_actions[0].persists_replay_state == false\n  and .allowed_next_actions[0].writes_idempotency_ledger == false\n  and .allowed_next_actions[0].executes_dry_run == false\n  and .allowed_next_actions[0].writes_production_durable_memory == false\n  and .allowed_next_actions[1].action == \"prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary\"\n  and .allowed_next_actions[1].requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary == true"
+      },
+      "native_requirements": [
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_BOUNDARY_ENDPOINT"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary --json"
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_report"
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "\"scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_ready\""
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "\"scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_result_accepted_count\""
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_blocks_replay_without_state_persistence_execution_or_production_side_effects"
+        }
+      ],
+      "focused_test": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_blocks_replay_without_state_persistence_execution_or_production_side_effects",
+      "test_log_stem": "hepta-durable-memory-receipt-route-replay-idempotency-tests",
+      "live_validation_filter": "    .status == \"ready\"\n    and .route_count == $expected\n    and .implemented_route_count == $expected\n    and .missing_route_count == 0\n    and .route_count_source_command_accepted == true\n    and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_accepted == true\n    and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_ready == true\n    and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_accepted_count == 1\n    and .accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 1\n    and .blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 9\n    and .denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_count == 54\n    and .dry_run_execution_result_receipt_replay_state_persisted == false\n    and .dry_run_execution_result_receipt_idempotency_ledger_written == false\n    and .dry_run_execution_result_receipt_duplicate_receipt_accepted == false\n    and .dry_run_execution_result_receipt_stale_receipt_accepted == false\n    and .dry_run_execution_result_receipt_cross_session_replay_accepted == false\n    and .dry_run_execution_result_receipt_hash_chain_mismatch_accepted == false\n    and .dry_run_execution_result_receipt_persisted == false\n    and .dry_run_execution_executed == false\n    and .production_durable_memory_write_executed == false\n    and .production_durable_memory_store_write_performed == false\n    and .actual_production_durable_memory_write_performed == false\n    and .durable_memory_store_write_performed == false\n    and .durable_memory_store_read_performed == false\n    and .durable_memory_store_rollback_performed == false\n    and .memory_store_write_performed == false\n    and .wal_write_performed == false\n    and .receipt_persisted == false\n    and .post_write_readback_performed == false\n    and .rollback_executed == false\n    and .rollback_performed == false\n    and .tombstone_cleanup_executed == false\n    and .raw_payload_plaintext_recorded == false\n    and .raw_payload_plaintext_persisted == false\n    and .live_kg_write_performed == false\n    and .provider_invoked == false\n    and .model_invoked == false\n    and .credential_read == false\n    and .channel_send_performed == false\n    and .external_send_performed == false\n    and .release_artifact_written == false\n    and .install_executed == false\n    and .service_restarted == false\n    and .active_binary_mutated == false",
+      "normalization_remove_fields": [
+        "expected_route_count",
+        "script_gate_sha256",
+        "live_route_sha256",
+        "terminal_coverage_sha256",
+        "test_log_sha256",
+        "terminal_coverage_present_required_marker_count",
+        "terminal_coverage_required_marker_count"
+      ],
+      "baseline_normalized_output_sha256": "6ae2cb0cf8b643d14592e23419f7e7c1bbdce8c83dfc5fb2b42fa1119f185a98",
+      "report_template": {
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": "ready",
+        "gate": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_route_gate",
+        "endpoint": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary --json",
+        "expected_route_count": 283,
+        "require_live_endpoint": 0,
+        "scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_route_gate_ready": true,
+        "source_text_verified": true,
+        "focused_rust_test_verified": true,
+        "script_gate_verified": true,
+        "live_endpoint_verified": false,
+        "terminal_coverage_verified": true,
+        "test_log_sha256": "f17c368e086ed9323a791572e9854bb185f473b58f63bac1df847bb9e92f29a9",
+        "script_gate_sha256": "ba2d0510cdbd09eafe120ad06dac0f7f5c85827cfa4f5cae45a5cc65a25accaf",
+        "live_route_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "terminal_coverage_sha256": "d1671de0a84b375b9e1e864f2372c9d5629e252a9e97710d5ab12e795983d8a7",
+        "script_gate_status": "ready",
+        "script_gate_denial_count": 54,
+        "script_gate_replay_state_persisted": false,
+        "script_gate_idempotency_ledger_written": false,
+        "script_gate_dry_run_executed": false,
+        "script_gate_production_write_executed": false,
+        "live_route_status": "not_required",
+        "terminal_coverage_required_marker_count": 422,
+        "terminal_coverage_present_required_marker_count": 422
+      }
+    },
+    {
+      "id": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+      "wrapper": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary --json",
+        "capability": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+        "side_effect_boundary": "scoped production durable Memory write dry-run execution result receipt ordering/monotonicity denial boundary; consumes the dry-run execution result receipt replay/idempotency denial boundary as source evidence while accepting only a non-persistent ordering/monotonicity denial matrix for late receipts, future receipts, rollback sequence attempts, same-sequence replacements, latest-wins promotion, and sequence gaps; performs no ordering cursor persistence, monotonic sequence recording, replay state persistence, idempotency ledger write, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+        "receipt_state": "persistence"
+      },
+      "source": {
+        "capture_label": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-gate",
+        "script": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary-gate.sh",
+        "validation_filter": "  .status == \"ready\"\n  and .memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_ready == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_ready == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_mode == \"dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_no_ordering_cursor_no_monotonic_sequence_no_execution_no_production_durable_memory_mutation\"\n  and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready == true\n  and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_accepted_count == 1\n  and .source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 1\n  and .source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_fixture_count == 9\n  and .approved_production_namespace == \"hepta.memory.production.scoped\"\n  and .approved_production_store == \"hepta-memory-durable-store-production-preflight-only\"\n  and .approved_production_scope == \"operator-approved-session\"\n  and .production_durable_memory_target_id == \"hepta-scoped-production-durable-memory-write-target-v1\"\n  and (.dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_ordering_sequence_policy_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_late_receipt_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_future_receipt_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_rollback_sequence_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_same_sequence_replacement_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_latest_wins_promotion_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_sequence_gap_denial_hash_sha256 | type == \"string\" and length > 0)\n  and .required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surface_count == 16\n  and .ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_surface_count == 16\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 10\n  and .accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 1\n  and .blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 9\n  and .denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_count == 55\n  and ([.scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixtures[] | select(.scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted == true)] | length) == 1\n  and .dry_run_execution_result_receipt_ordering_monotonicity_denial_matrix_bound_count == 1\n  and .dry_run_execution_result_receipt_late_receipt_denied_count == 1\n  and .dry_run_execution_result_receipt_future_receipt_denied_count == 1\n  and .dry_run_execution_result_receipt_rollback_sequence_denied_count == 1\n  and .dry_run_execution_result_receipt_same_sequence_replacement_denied_count == 1\n  and .dry_run_execution_result_receipt_latest_wins_promotion_denied_count == 1\n  and .dry_run_execution_result_receipt_sequence_gap_denied_count == 1\n  and .dry_run_execution_result_receipt_ordering_cursor_persisted_count == 0\n  and .dry_run_execution_result_receipt_ordering_ledger_written_count == 0\n  and .dry_run_execution_result_receipt_monotonic_sequence_recorded_count == 0\n  and .dry_run_execution_result_receipt_late_receipt_accepted_count == 0\n  and .dry_run_execution_result_receipt_future_receipt_accepted_count == 0\n  and .dry_run_execution_result_receipt_rollback_sequence_accepted_count == 0\n  and .dry_run_execution_result_receipt_same_sequence_replacement_accepted_count == 0\n  and .dry_run_execution_result_receipt_latest_wins_promoted_count == 0\n  and .dry_run_execution_result_receipt_sequence_gap_accepted_count == 0\n  and .dry_run_execution_result_receipt_ordering_cursor_persisted == false\n  and .dry_run_execution_result_receipt_ordering_ledger_written == false\n  and .dry_run_execution_result_receipt_monotonic_sequence_recorded == false\n  and .dry_run_execution_result_receipt_late_receipt_accepted == false\n  and .dry_run_execution_result_receipt_future_receipt_accepted == false\n  and .dry_run_execution_result_receipt_rollback_sequence_accepted == false\n  and .dry_run_execution_result_receipt_same_sequence_replacement_accepted == false\n  and .dry_run_execution_result_receipt_latest_wins_promoted == false\n  and .dry_run_execution_result_receipt_sequence_gap_accepted == false\n  and .dry_run_execution_result_receipt_persisted == false\n  and .dry_run_execution_executed == false\n  and .production_durable_memory_write_executed == false\n  and .production_durable_memory_store_write_performed == false\n  and .actual_production_durable_memory_write_performed == false\n  and .durable_memory_store_write_performed == false\n  and .durable_memory_store_read_performed == false\n  and .durable_memory_store_rollback_performed == false\n  and .memory_store_write_performed == false\n  and .wal_write_performed == false\n  and .receipt_persisted == false\n  and .post_write_readback_performed == false\n  and .rollback_executed == false\n  and .rollback_performed == false\n  and .tombstone_cleanup_executed == false\n  and .live_kg_write_performed == false\n  and .provider_invoked == false\n  and .model_invoked == false\n  and .credential_read == false\n  and .channel_send_performed == false\n  and .external_send_performed == false\n  and .release_artifact_written == false\n  and .install_executed == false\n  and .service_restarted == false\n  and .active_binary_mutated == false\n  and .side_effects.scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_performed == true\n  and .side_effects.scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_result_accepted == true\n  and .side_effects.dry_run_execution_result_receipt_ordering_cursor_persisted == false\n  and .side_effects.dry_run_execution_result_receipt_monotonic_sequence_recorded == false\n  and .side_effects.dry_run_execution_executed == false\n  and .side_effects.production_durable_memory_store_write_performed == false\n  and .side_effects.memory_store_write_performed == false\n  and .side_effects.wal_write_performed == false\n  and .side_effects.receipt_persisted == false\n  and .side_effects.external_send_performed == false\n  and .allowed_next_actions[0].action == \"run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_require_live_gate\"\n  and .allowed_next_actions[0].persists_ordering_cursor == false\n  and .allowed_next_actions[0].records_monotonic_sequence == false\n  and .allowed_next_actions[0].executes_dry_run == false\n  and .allowed_next_actions[0].writes_production_durable_memory == false\n  and .allowed_next_actions[1].action == \"prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary\"\n  and .allowed_next_actions[1].requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary == true"
+      },
+      "native_requirements": [
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_BOUNDARY_ENDPOINT"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary --json"
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_report"
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "\"scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_ready\""
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "\"dry_run_execution_result_receipt_ordering_cursor_persisted\""
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_blocks_ordering_without_cursor_sequence_execution_or_production_side_effects"
+        }
+      ],
+      "focused_test": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_blocks_ordering_without_cursor_sequence_execution_or_production_side_effects",
+      "test_log_stem": "hepta-durable-memory-receipt-route-ordering-monotonicity-tests",
+      "live_validation_filter": "    .status == \"ready\"\n    and .route_count == $expected\n    and .implemented_route_count == $expected\n    and .missing_route_count == 0\n    and .route_count_source_command_accepted == true\n    and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_accepted == true\n    and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_replay_idempotency_denial_boundary_ready == true\n    and .accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 1\n    and .blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 9\n    and .denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_count == 55\n    and .dry_run_execution_result_receipt_ordering_cursor_persisted == false\n    and .dry_run_execution_result_receipt_monotonic_sequence_recorded == false\n    and .dry_run_execution_result_receipt_late_receipt_accepted == false\n    and .dry_run_execution_result_receipt_future_receipt_accepted == false\n    and .dry_run_execution_result_receipt_rollback_sequence_accepted == false\n    and .dry_run_execution_result_receipt_same_sequence_replacement_accepted == false\n    and .dry_run_execution_result_receipt_latest_wins_promoted == false\n    and .dry_run_execution_result_receipt_sequence_gap_accepted == false\n    and .dry_run_execution_result_receipt_persisted == false\n    and .dry_run_execution_executed == false\n    and .production_durable_memory_write_executed == false\n    and .production_durable_memory_store_write_performed == false\n    and .actual_production_durable_memory_write_performed == false\n    and .durable_memory_store_write_performed == false\n    and .durable_memory_store_read_performed == false\n    and .durable_memory_store_rollback_performed == false\n    and .memory_store_write_performed == false\n    and .wal_write_performed == false\n    and .receipt_persisted == false\n    and .post_write_readback_performed == false\n    and .rollback_executed == false\n    and .rollback_performed == false\n    and .tombstone_cleanup_executed == false\n    and .raw_payload_plaintext_recorded == false\n    and .raw_payload_plaintext_persisted == false\n    and .live_kg_write_performed == false\n    and .provider_invoked == false\n    and .model_invoked == false\n    and .credential_read == false\n    and .channel_send_performed == false\n    and .external_send_performed == false\n    and .release_artifact_written == false\n    and .install_executed == false\n    and .service_restarted == false\n    and .active_binary_mutated == false",
+      "normalization_remove_fields": [
+        "expected_route_count",
+        "native_gateway_sha256",
+        "focused_test_log",
+        "focused_test_log_sha256",
+        "script_gate_sha256",
+        "terminal_coverage_sha256",
+        "terminal_missing_required_marker_count",
+        "terminal_present_required_marker_count",
+        "terminal_required_marker_count",
+        "live_route_count",
+        "live_missing_route_count"
+      ],
+      "baseline_normalized_output_sha256": "122b5b9ff84b314b44d6c7796e6a5c1cb52fe5c0870879aad1e1afbe4fd670f2",
+      "report_template": {
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": "ready",
+        "gate": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_route_gate",
+        "endpoint": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary --json",
+        "expected_route_count": 283,
+        "route_gate_ready": true,
+        "native_gateway_sha256": "372a25c66ca00d1bfef9c67d818acc38a87bb3693eec7732313dd2c211a2f0ad",
+        "focused_test": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_blocks_ordering_without_cursor_sequence_execution_or_production_side_effects",
+        "focused_test_log": "/tmp/hepta-scoped-production-durable-memory-write-dry-run-result-receipt-ordering-monotonicity-route-tests.n0UKgF",
+        "focused_test_log_sha256": "41315aa1748129780b0cd8e69a8cb090064aa9334baa1a4f554e8e329c53e16b",
+        "script_gate_sha256": "c04b38ac1745838348eb9a57b95df5459b07bc6478f7d0decb12bd7fa6b766c3",
+        "terminal_coverage_sha256": "d1671de0a84b375b9e1e864f2372c9d5629e252a9e97710d5ab12e795983d8a7",
+        "live_endpoint_required": false,
+        "live_endpoint_verified": false,
+        "live_route_count": null,
+        "live_missing_route_count": null,
+        "script_gate_status": "ready",
+        "script_gate_denial_count": 55,
+        "script_gate_ordering_cursor_persisted": false,
+        "script_gate_monotonic_sequence_recorded": false,
+        "script_gate_dry_run_executed": false,
+        "script_gate_production_write_executed": false,
+        "terminal_present_required_marker_count": 422,
+        "terminal_required_marker_count": 422,
+        "terminal_missing_required_marker_count": 0,
+        "side_effects": {
+          "route_gate_workspace_written": false,
+          "dry_run_execution_executed": false,
+          "production_durable_memory_write_executed": false,
+          "ordering_cursor_persisted": false,
+          "monotonic_sequence_recorded": false,
+          "idempotency_ledger_written": false,
+          "replay_state_persisted": false,
+          "memory_store_mutated": false,
+          "wal_write_performed": false,
+          "receipt_persisted": false,
+          "live_kg_write_performed": false,
+          "provider_invoked": false,
+          "model_invoked": false,
+          "credential_read": false,
+          "channel_send_performed": false,
+          "external_send_performed": false,
+          "release_artifact_written": false,
+          "install_executed": false,
+          "service_restarted": false,
+          "active_binary_mutated": false
+        }
+      }
+    },
+    {
+      "id": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
+      "wrapper": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary --json",
+        "capability": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
+        "side_effect_boundary": "scoped production durable Memory write dry-run execution result receipt cancellation/supersession denial boundary; consumes the dry-run execution result receipt ordering/monotonicity denial boundary as source evidence while accepting only a non-persistent cancellation/supersession denial matrix for cancellation requests, supersession, replacement receipts, tombstone/delete markers, latest replacement, completion-ack replacement, and export/query replacement; performs no cancellation ledger write, supersession state persistence, replacement receipt persistence, dry-run execution, dry-run envelope/result receipt persistence, production durable Memory write, durable Memory backend read/rollback, Memory store mutation, WAL write, receipt persistence, KG write, provider/model invocation, credential read, channel/external send, release artifact write, install/restart authority, or active-binary mutation",
+        "receipt_state": "persistence"
+      },
+      "source": {
+        "capture_label": "hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-gate",
+        "script": "scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary-gate.sh",
+        "validation_filter": "  .status == \"ready\"\n  and .memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_ready == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_ready == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_accepted == true\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_mode == \"dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_no_cancel_no_supersede_no_replacement_no_tombstone_no_execution_no_production_durable_memory_mutation\"\n  and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_ready == true\n  and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_accepted_count == 1\n  and .source_accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 1\n  and .source_blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_fixture_count == 9\n  and .source_denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_count == 55\n  and .approved_production_namespace == \"hepta.memory.production.scoped\"\n  and .approved_production_store == \"hepta-memory-durable-store-production-preflight-only\"\n  and .approved_production_scope == \"operator-approved-session\"\n  and .production_durable_memory_target_id == \"hepta-scoped-production-durable-memory-write-target-v1\"\n  and (.dry_run_execution_result_receipt_cancellation_supersession_denial_matrix_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_cancellation_policy_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_supersession_policy_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_replacement_receipt_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_tombstone_delete_marker_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_latest_replacement_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_completion_ack_replacement_denial_hash_sha256 | type == \"string\" and length > 0)\n  and (.dry_run_execution_result_receipt_export_query_replacement_denial_hash_sha256 | type == \"string\" and length > 0)\n  and .required_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_surface_count == 16\n  and .ready_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_surface_count == 16\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_fixture_count == 10\n  and .accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_fixture_count == 1\n  and .blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_fixture_count == 9\n  and .denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_count == 65\n  and ([.scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_fixtures[] | select(.scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_accepted == true)] | length) == 1\n  and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_result_accepted_count == 1\n  and .source_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_accepted_count == 1\n  and .dry_run_execution_result_receipt_cancellation_supersession_denial_matrix_bound_count == 1\n  and .dry_run_execution_result_receipt_cancellation_policy_bound_count == 1\n  and .dry_run_execution_result_receipt_supersession_policy_bound_count == 1\n  and .dry_run_execution_result_receipt_cancellation_request_denied_count == 1\n  and .dry_run_execution_result_receipt_supersession_request_denied_count == 1\n  and .dry_run_execution_result_receipt_replacement_receipt_denied_count == 1\n  and .dry_run_execution_result_receipt_tombstone_delete_marker_denied_count == 1\n  and .dry_run_execution_result_receipt_latest_replacement_denied_count == 1\n  and .dry_run_execution_result_receipt_completion_ack_replacement_denied_count == 1\n  and .dry_run_execution_result_receipt_export_query_replacement_denied_count == 1\n  and .dry_run_execution_result_receipt_cancellation_request_accepted_count == 0\n  and .dry_run_execution_result_receipt_cancellation_recorded_count == 0\n  and .dry_run_execution_result_receipt_cancellation_persisted_count == 0\n  and .dry_run_execution_result_receipt_supersession_request_accepted_count == 0\n  and .dry_run_execution_result_receipt_supersession_recorded_count == 0\n  and .dry_run_execution_result_receipt_supersession_persisted_count == 0\n  and .dry_run_execution_result_receipt_replacement_receipt_accepted_count == 0\n  and .dry_run_execution_result_receipt_replacement_receipt_recorded_count == 0\n  and .dry_run_execution_result_receipt_replacement_receipt_persisted_count == 0\n  and .dry_run_execution_result_receipt_tombstone_delete_marker_accepted_count == 0\n  and .dry_run_execution_result_receipt_tombstone_delete_marker_written_count == 0\n  and .dry_run_execution_result_receipt_latest_replacement_promoted_count == 0\n  and .dry_run_execution_result_receipt_completion_ack_replaced_count == 0\n  and .dry_run_execution_result_receipt_export_query_replaced_count == 0\n  and .dry_run_execution_result_receipt_cancellation_supersession_state_persisted_count == 0\n  and .dry_run_execution_executed_count == 0\n  and .production_durable_memory_write_executed_count == 0\n  and .production_durable_memory_store_write_performed_count == 0\n  and .memory_store_write_performed_count == 0\n  and .wal_write_performed_count == 0\n  and .receipt_persisted_count == 0\n  and .post_write_readback_performed_count == 0\n  and .rollback_executed_count == 0\n  and .tombstone_cleanup_executed_count == 0\n  and .live_kg_write_performed_count == 0\n  and .provider_invoked_count == 0\n  and .model_invoked_count == 0\n  and .credential_read_count == 0\n  and .channel_send_performed_count == 0\n  and .external_send_performed_count == 0\n  and .release_artifact_written_count == 0\n  and .install_executed_count == 0\n  and .service_restarted_count == 0\n  and .active_binary_mutated_count == 0\n  and .dry_run_execution_result_receipt_cancellation_request_accepted == false\n  and .dry_run_execution_result_receipt_supersession_request_accepted == false\n  and .dry_run_execution_result_receipt_replacement_receipt_persisted == false\n  and .dry_run_execution_result_receipt_tombstone_delete_marker_written == false\n  and .dry_run_execution_result_receipt_latest_replacement_promoted == false\n  and .dry_run_execution_result_receipt_completion_ack_replaced == false\n  and .dry_run_execution_result_receipt_export_query_replaced == false\n  and .dry_run_execution_result_receipt_cancellation_supersession_state_persisted == false\n  and .dry_run_execution_executed == false\n  and .production_durable_memory_write_executed == false\n  and .production_durable_memory_store_write_performed == false\n  and .actual_production_durable_memory_write_performed == false\n  and .durable_memory_store_write_performed == false\n  and .durable_memory_store_read_performed == false\n  and .durable_memory_store_rollback_performed == false\n  and .memory_store_write_performed == false\n  and .wal_write_performed == false\n  and .receipt_persisted == false\n  and .post_write_readback_performed == false\n  and .rollback_executed == false\n  and .rollback_performed == false\n  and .tombstone_cleanup_executed == false\n  and .raw_payload_plaintext_recorded == false\n  and .raw_payload_plaintext_persisted == false\n  and .live_kg_write_performed == false\n  and .provider_invoked == false\n  and .model_invoked == false\n  and .credential_read == false\n  and .channel_send_performed == false\n  and .external_send_performed == false\n  and .release_artifact_written == false\n  and .install_executed == false\n  and .service_restarted == false\n  and .active_binary_mutated == false\n  and .side_effects.scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_performed == true\n  and .side_effects.scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_result_accepted == true\n  and .side_effects.dry_run_execution_result_receipt_cancellation_request_accepted == false\n  and .side_effects.dry_run_execution_result_receipt_supersession_request_accepted == false\n  and .side_effects.dry_run_execution_result_receipt_replacement_receipt_persisted == false\n  and .side_effects.dry_run_execution_result_receipt_tombstone_delete_marker_written == false\n  and .side_effects.dry_run_execution_executed == false\n  and .side_effects.production_durable_memory_store_write_performed == false\n  and .side_effects.memory_store_write_performed == false\n  and .side_effects.wal_write_performed == false\n  and .side_effects.receipt_persisted == false\n  and .side_effects.external_send_performed == false\n  and .allowed_next_actions[0].action == \"run_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_require_live_gate\"\n  and .allowed_next_actions[0].records_cancellation == false\n  and .allowed_next_actions[0].records_supersession == false\n  and .allowed_next_actions[0].accepts_replacement_receipt == false\n  and .allowed_next_actions[0].writes_tombstone_delete_marker == false\n  and .allowed_next_actions[0].executes_dry_run == false\n  and .allowed_next_actions[0].writes_production_durable_memory == false\n  and .allowed_next_actions[1].action == \"prepare_scoped_production_durable_memory_write_dry_run_execution_result_receipt_audit_trail_immutable_evidence_denial_boundary\"\n  and .allowed_next_actions[1].requires_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary == true"
+      },
+      "native_requirements": [
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "HEPTA_MEMORY_LIVE_MUTATION_OPERATOR_WRITE_EXECUTION_SCOPED_PRODUCTION_DURABLE_MEMORY_WRITE_DRY_RUN_EXECUTION_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_BOUNDARY_ENDPOINT"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary"
+        },
+        {
+          "file": "codex-rs/hepta-native-gateway/src/route_registry.rs",
+          "text": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary --json"
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_report"
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "\"scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_ready\""
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "\"dry_run_execution_result_receipt_cancellation_request_accepted\""
+        },
+        {
+          "file": "hepta-native-gateway-source-set-v1",
+          "text": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_blocks_cancel_supersede_replace_tombstone_execution_or_production_side_effects"
+        }
+      ],
+      "focused_test": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_blocks_cancel_supersede_replace_tombstone_execution_or_production_side_effects",
+      "test_log_stem": "hepta-durable-memory-receipt-route-cancellation-supersession-tests",
+      "live_validation_filter": "    .status == \"ready\"\n    and .route_count == $expected\n    and .implemented_route_count == $expected\n    and .missing_route_count == 0\n    and .route_count_source_command_accepted == true\n    and .scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_accepted == true\n    and .source_scoped_production_durable_memory_write_dry_run_execution_result_receipt_ordering_monotonicity_denial_boundary_ready == true\n    and .accepted_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_fixture_count == 1\n    and .blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_fixture_count == 9\n    and .denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_count == 65\n    and .dry_run_execution_result_receipt_cancellation_request_accepted == false\n    and .dry_run_execution_result_receipt_cancellation_recorded == false\n    and .dry_run_execution_result_receipt_cancellation_persisted == false\n    and .dry_run_execution_result_receipt_supersession_request_accepted == false\n    and .dry_run_execution_result_receipt_supersession_recorded == false\n    and .dry_run_execution_result_receipt_supersession_persisted == false\n    and .dry_run_execution_result_receipt_replacement_receipt_accepted == false\n    and .dry_run_execution_result_receipt_replacement_receipt_recorded == false\n    and .dry_run_execution_result_receipt_replacement_receipt_persisted == false\n    and .dry_run_execution_result_receipt_tombstone_delete_marker_accepted == false\n    and .dry_run_execution_result_receipt_tombstone_delete_marker_written == false\n    and .dry_run_execution_result_receipt_latest_replacement_promoted == false\n    and .dry_run_execution_result_receipt_completion_ack_replaced == false\n    and .dry_run_execution_result_receipt_export_query_replaced == false\n    and .dry_run_execution_result_receipt_cancellation_supersession_state_persisted == false\n    and .dry_run_execution_result_receipt_persisted == false\n    and .dry_run_execution_executed == false\n    and .production_durable_memory_write_executed == false\n    and .production_durable_memory_store_write_performed == false\n    and .actual_production_durable_memory_write_performed == false\n    and .durable_memory_store_write_performed == false\n    and .durable_memory_store_read_performed == false\n    and .durable_memory_store_rollback_performed == false\n    and .memory_store_write_performed == false\n    and .wal_write_performed == false\n    and .receipt_persisted == false\n    and .post_write_readback_performed == false\n    and .rollback_executed == false\n    and .rollback_performed == false\n    and .tombstone_cleanup_executed == false\n    and .raw_payload_plaintext_recorded == false\n    and .raw_payload_plaintext_persisted == false\n    and .live_kg_write_performed == false\n    and .provider_invoked == false\n    and .model_invoked == false\n    and .credential_read == false\n    and .channel_send_performed == false\n    and .external_send_performed == false\n    and .release_artifact_written == false\n    and .install_executed == false\n    and .service_restarted == false\n    and .active_binary_mutated == false",
+      "normalization_remove_fields": [
+        "expected_route_count",
+        "native_gateway_sha256",
+        "focused_test_log",
+        "focused_test_log_sha256",
+        "script_gate_sha256",
+        "terminal_coverage_sha256",
+        "terminal_missing_required_marker_count",
+        "terminal_present_required_marker_count",
+        "terminal_required_marker_count",
+        "live_route_count",
+        "live_missing_route_count"
+      ],
+      "baseline_normalized_output_sha256": "0c59b76d6a73806324257820ab638ae8323f00355e5953993e273b49fc604174",
+      "report_template": {
+        "product": "Hepta",
+        "runtime": "hepta",
+        "status": "ready",
+        "gate": "hepta_memory_live_mutation_operator_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_boundary_route_gate",
+        "endpoint": "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
+        "source_command": "/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary --json",
+        "expected_route_count": 283,
+        "route_gate_ready": true,
+        "native_gateway_sha256": "372a25c66ca00d1bfef9c67d818acc38a87bb3693eec7732313dd2c211a2f0ad",
+        "focused_test": "hepta_memory_write_execution_scoped_production_durable_memory_write_dry_run_execution_result_receipt_cancellation_supersession_denial_blocks_cancel_supersede_replace_tombstone_execution_or_production_side_effects",
+        "focused_test_log": "/tmp/hepta-scoped-production-durable-memory-write-dry-run-result-receipt-cancellation-supersession-route-tests.AHyUEf",
+        "focused_test_log_sha256": "15fe32453da88c5a4348768e060aada5584a26d99c40036e144d23f2afaafbb5",
+        "script_gate_sha256": "ee181e71cef81c98d63709c3aa024eb0e7c5873a1f73c5a3853d124c3f591d66",
+        "terminal_coverage_sha256": "d1671de0a84b375b9e1e864f2372c9d5629e252a9e97710d5ab12e795983d8a7",
+        "live_endpoint_required": false,
+        "live_endpoint_verified": false,
+        "live_route_count": null,
+        "live_missing_route_count": null,
+        "script_gate_status": "ready",
+        "script_gate_denial_count": 65,
+        "script_gate_cancellation_request_accepted": false,
+        "script_gate_supersession_request_accepted": false,
+        "script_gate_replacement_receipt_persisted": false,
+        "script_gate_tombstone_delete_marker_written": false,
+        "script_gate_dry_run_executed": false,
+        "script_gate_production_write_executed": false,
+        "terminal_present_required_marker_count": 422,
+        "terminal_required_marker_count": 422,
+        "terminal_missing_required_marker_count": 0,
+        "side_effects": {
+          "route_gate_workspace_written": false,
+          "dry_run_execution_executed": false,
+          "production_durable_memory_write_executed": false,
+          "cancellation_recorded": false,
+          "cancellation_persisted": false,
+          "supersession_recorded": false,
+          "supersession_persisted": false,
+          "replacement_receipt_persisted": false,
+          "tombstone_delete_marker_written": false,
+          "memory_store_mutated": false,
+          "wal_write_performed": false,
+          "receipt_persisted": false,
+          "live_kg_write_performed": false,
+          "provider_invoked": false,
+          "model_invoked": false,
+          "credential_read": false,
+          "channel_send_performed": false,
+          "external_send_performed": false,
+          "release_artifact_written": false,
+          "install_executed": false,
+          "service_restarted": false,
+          "active_binary_mutated": false
+        }
+      }
+    }
+  ]
+}
