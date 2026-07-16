@@ -1147,6 +1147,72 @@ fn parameterized_packet_acceptance_receipt_route_fixtures_match_canonical_gate_s
 }
 
 #[test]
+fn parameterized_operator_canary_receipt_route_fixtures_match_canonical_gate_specs() {
+    let fixture_path =
+        repo_root().join("scripts/hepta-operator-canary-receipt-route-gate-specs-v1.json");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&fixture_path)
+            .with_context(|| format!("failed to read {}", fixture_path.display()))
+            .expect("operator-canary receipt route fixture registry"),
+    )
+    .expect("operator-canary receipt route fixture value");
+
+    assert_eq!(
+        manifest["schema_version"],
+        "hepta_operator_canary_receipt_route_gate_specs_v1"
+    );
+    assert_eq!(
+        manifest["receipt_state_machine"],
+        serde_json::json!(ReceiptStateMachine::ORDERED_STATES)
+    );
+    let fixtures = manifest["specs"]
+        .as_array()
+        .expect("parameterized operator-canary receipt route family");
+    assert_eq!(fixtures.len(), 3);
+
+    for fixture in fixtures {
+        let id = fixture["id"]
+            .as_str()
+            .expect("operator-canary receipt route fixture id");
+        let gate_spec = &fixture["gate_spec"];
+        let canonical = crate::route_registry::CONTROL_UI_ROUTE_SPECS
+            .iter()
+            .find(|spec| spec.capability == id)
+            .unwrap_or_else(|| panic!("missing canonical route GateSpec for {id}"));
+
+        assert_eq!(gate_spec["method"], canonical.method);
+        assert_eq!(gate_spec["pattern"], canonical.pattern);
+        assert_eq!(gate_spec["source_command"], canonical.source_command);
+        assert_eq!(gate_spec["capability"], canonical.capability);
+        assert_eq!(
+            gate_spec["side_effect_boundary"],
+            canonical.side_effect_boundary
+        );
+        assert_eq!(
+            gate_spec["receipt_state"].as_str(),
+            canonical.receipt_state().map(|state| state.as_str())
+        );
+
+        let wrapper_path = repo_root().join(
+            fixture["wrapper"]
+                .as_str()
+                .expect("operator-canary receipt route wrapper path"),
+        );
+        let wrapper = fs::read_to_string(&wrapper_path)
+            .with_context(|| format!("failed to read {}", wrapper_path.display()))
+            .expect("parameterized operator-canary receipt route wrapper");
+        assert_eq!(wrapper.lines().count(), 4, "thin route wrapper for {id}");
+        assert!(wrapper.contains("scripts/hepta-operator-canary-receipt-route-gate-runner"));
+        assert!(wrapper.contains(id));
+        assert!(
+            fixture["baseline_normalized_output_sha256"]
+                .as_str()
+                .is_some_and(is_sha256)
+        );
+    }
+}
+
+#[test]
 fn parameterized_operator_identity_session_replay_reinstatement_route_fixtures_match_canonical_gate_specs()
  {
     let fixture_path = repo_root().join(

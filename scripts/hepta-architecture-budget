@@ -213,6 +213,17 @@ verify() {
     rg -Fq 'scripts/hepta-packet-acceptance-receipt-route-gate-runner' \
       "$packet_acceptance_receipt_route_gate_wrapper"
   done < <(jq -r '.specs[].wrapper' scripts/hepta-packet-acceptance-receipt-route-gate-specs-v1.json)
+  [[ -x scripts/hepta-operator-canary-receipt-route-gate-runner ]]
+  verify_file_max scripts/hepta-operator-canary-receipt-route-gate-runner 240
+  verify_file_max scripts/hepta-operator-canary-receipt-route-gate-specs-v1.json 1000
+  scripts/hepta-operator-canary-receipt-route-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-operator-canary-receipt-route-gate-specs-v1.json)" == 3 ]]
+  while IFS= read -r operator_canary_receipt_route_gate_wrapper
+  do
+    verify_file_max "$operator_canary_receipt_route_gate_wrapper" 4
+    rg -Fq 'scripts/hepta-operator-canary-receipt-route-gate-runner' \
+      "$operator_canary_receipt_route_gate_wrapper"
+  done < <(jq -r '.specs[].wrapper' scripts/hepta-operator-canary-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner ]]
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner 260
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-specs-v1.json 900
