@@ -1,0 +1,138 @@
+{
+  "schema_version": "hepta_artifact_signing_receipt_route_gate_specs_v1",
+  "executor": "scripts/hepta-artifact-signing-receipt-route-gate-runner",
+  "receipt_state_machine": ["precondition", "denial", "receipt", "persistence", "retention", "terminal"],
+  "specs": [
+    {
+      "id": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-replay-idempotency-denial",
+      "wrapper": "scripts/hepta-artifact-signing-receipt-replay-idempotency-denial-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-replay-idempotency-denial",
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-replay-idempotency-denial --json",
+        "capability": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-replay-idempotency-denial",
+        "side_effect_boundary": "read-only Memory/Intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing/notarization result receipt replay/idempotency denial; models denied signing/notarization receipt replay, duplicate acceptance, idempotency key/state recording, nonce/cross-scope reuse, status rebind, authority, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, and channel/external sends while preserving report-only no-op boundaries",
+        "receipt_state": "receipt"
+      },
+      "source": {
+        "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate",
+        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
+        "validation_filter": ".runtime == \"hepta\" and .status == \"ready\" and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_replay_idempotency_denial_ready == true and .source_artifact_distribution_signing_notarization_result_receipt_ready == true and .artifact_distribution_signing_notarization_receipt_replay_idempotency_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_replay_idempotency_denied_count == 18 and (.side_effects | to_entries | all(.value == false))"
+      },
+      "native_requirements": [
+        {"file":"hepta-native-gateway-source-set-v1","text":"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-replay-idempotency-denial"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-replay-idempotency-denial --json"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_replay_idempotency_denial_report"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"\"memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_replay_idempotency_denial_route_enabled\": true"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"\"artifact_distribution_signing_notarization_receipt_replay_idempotency_surface_count\": surface_count"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_replay_idempotency_endpoint_blocks_replay_and_authority"}
+      ],
+      "focused_test": "hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_replay_idempotency_endpoint_blocks_replay_and_authority",
+      "test_log_stem": "hepta-artifact-signing-receipt-replay-idempotency-route-tests",
+      "live_validation_filter": ".status == \"ready\" and .route_count == $expected_route_count and .implemented_route_count == $expected_route_count and .missing_route_count == 0 and .memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_replay_idempotency_denial_route_enabled == true and .artifact_distribution_signing_notarization_receipt_replay_idempotency_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_replay_idempotency_denied_count == 18 and (.side_effects | to_entries | all(.value == false))",
+      "report_fields": {
+        "gate":"hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_replay_idempotency_denial_route_gate",
+        "activation_mode":"artifact_signing_receipt_replay_idempotency_native_route_status",
+        "side_effect_free":true,"native_route":true,"route_enabled":true,"source_replay_idempotency_gate_ready":true,
+        "artifact_distribution_signing_notarization_receipt_replay_idempotency_surface_count":18,
+        "artifact_distribution_signing_notarization_receipt_replay_idempotency_denied_count":18,
+        "artifact_distribution_signing_notarization_receipt_replay_allowed_count":0,
+        "artifact_distribution_signing_notarization_receipt_duplicate_accepted_count":0,
+        "artifact_distribution_signing_notarization_receipt_idempotency_key_accepted_count":0,
+        "artifact_distribution_signing_notarization_receipt_idempotency_state_persisted_count":0,
+        "side_effects":{"signing_receipt_replayed":false,"duplicate_receipt_accepted":false,"idempotency_key_recorded":false,"idempotency_state_persisted":false,"replay_authority_derived":false,"install_executed":false,"active_binary_mutated":false,"memory_store_write_performed":false,"live_kg_write_performed":false,"provider_invoked":false,"model_invoked":false,"credential_read":false,"external_send_performed":false}
+      },
+      "baseline_normalized_output_sha256": "f06b11906a01fa002ee80130fc316d4e3a80a6280ff7bfe0e9cb000217bcb430",
+      "pass_message": "Hepta artifact signing receipt replay/idempotency route gate passed"
+    },
+    {
+      "id": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-ordering-monotonicity-denial",
+      "wrapper": "scripts/hepta-artifact-signing-receipt-ordering-monotonicity-denial-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-ordering-monotonicity-denial",
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-ordering-monotonicity-denial --json",
+        "capability": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-ordering-monotonicity-denial",
+        "side_effect_boundary": "read-only Memory/Intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing/notarization result receipt ordering/monotonicity denial; models denied signing/notarization receipt ordering, monotonic cursor/state recording, late/future/rollback/latest-wins acceptance, status/authority derivation, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, and channel/external sends while preserving report-only no-op boundaries",
+        "receipt_state": "receipt"
+      },
+      "source": {
+        "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate",
+        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
+        "validation_filter": ".runtime == \"hepta\" and .status == \"ready\" and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denial_ready == true and .source_artifact_distribution_signing_notarization_receipt_replay_idempotency_ready == true and .artifact_distribution_signing_notarization_receipt_ordering_monotonicity_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denied_count == 18 and (.side_effects | to_entries | all(.value == false))"
+      },
+      "native_requirements": [
+        {"file":"hepta-native-gateway-source-set-v1","text":"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-ordering-monotonicity-denial"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-ordering-monotonicity-denial --json"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_ordering_monotonicity_denial_report"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"\"memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_ordering_monotonicity_denial_route_enabled\": true"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"\"artifact_distribution_signing_notarization_receipt_ordering_monotonicity_surface_count\": surface_count"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_ordering_monotonicity_endpoint_blocks_ordering_and_authority"}
+      ],
+      "focused_test": "hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_ordering_monotonicity_endpoint_blocks_ordering_and_authority",
+      "test_log_stem": "hepta-artifact-signing-receipt-ordering-monotonicity-route-tests",
+      "live_validation_filter": ".status == \"ready\" and .route_count == $expected_route_count and .implemented_route_count == $expected_route_count and .missing_route_count == 0 and .memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_ordering_monotonicity_denial_route_enabled == true and .artifact_distribution_signing_notarization_receipt_ordering_monotonicity_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denied_count == 18 and (.side_effects | to_entries | all(.value == false))",
+      "report_fields": {
+        "gate":"hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_ordering_monotonicity_denial_route_gate",
+        "activation_mode":"artifact_signing_receipt_ordering_monotonicity_native_route_status",
+        "side_effect_free":true,"native_route":true,"route_enabled":true,"source_ordering_monotonicity_gate_ready":true,
+        "artifact_distribution_signing_notarization_receipt_ordering_monotonicity_surface_count":18,
+        "artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denied_count":18,
+        "artifact_distribution_signing_notarization_receipt_ordering_monotonicity_allowed_count":0,
+        "artifact_distribution_signing_notarization_receipt_sequence_cursor_recorded_count":0,
+        "artifact_distribution_signing_notarization_receipt_monotonicity_state_persisted_count":0,
+        "artifact_distribution_signing_notarization_receipt_latest_wins_overwrite_accepted_count":0,
+        "side_effects":{"ordering_accepted":false,"sequence_cursor_recorded":false,"monotonicity_state_persisted":false,"latest_wins_overwrite_accepted":false,"ordering_authority_derived":false,"install_executed":false,"active_binary_mutated":false,"memory_store_write_performed":false,"live_kg_write_performed":false,"provider_invoked":false,"model_invoked":false,"credential_read":false,"external_send_performed":false}
+      },
+      "baseline_normalized_output_sha256": "6aad5f48f6f053eca4caeede8372039d664f3a2784813d54991e23d0268b1128",
+      "pass_message": "Hepta artifact signing receipt ordering/monotonicity route gate passed"
+    },
+    {
+      "id": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial",
+      "wrapper": "scripts/hepta-artifact-signing-receipt-cancellation-supersession-denial-route-gate.sh",
+      "gate_spec": {
+        "method": "GET",
+        "pattern": "/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial",
+        "source_command": "/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial --json",
+        "capability": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial",
+        "side_effect_boundary": "read-only Memory/Intelligence/KG full live activation artifact download/install affordance result receipt operator identity/session revocation/logout replay/reinstatement operator intent/consent evidence artifact signing/notarization result receipt cancellation/supersession denial; models denied signing/notarization receipt cancellation, withdrawal, supersession, replacement receipts, tombstones, delete markers, lifecycle persistence, authority, install/restart/active-binary mutation, Memory/KG writes, provider/model invocation, credential reads, and channel/external sends while preserving report-only no-op boundaries",
+        "receipt_state": "persistence"
+      },
+      "source": {
+        "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate",
+        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
+        "validation_filter": ".runtime == \"hepta\" and .status == \"ready\" and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_cancellation_supersession_denial_ready == true and .source_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_ready == true and .artifact_distribution_signing_notarization_receipt_cancellation_supersession_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_cancellation_supersession_denied_count == 18 and (.side_effects | to_entries | all(.value == false))"
+      },
+      "native_requirements": [
+        {"file":"hepta-native-gateway-source-set-v1","text":"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/api/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial"},
+        {"file":"codex-rs/hepta-native-gateway/src/route_registry.rs","text":"/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-cancellation-supersession-denial --json"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_cancellation_supersession_denial_report"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"\"memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_cancellation_supersession_denial_route_enabled\": true"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"\"artifact_distribution_signing_notarization_receipt_cancellation_supersession_surface_count\": surface_count"},
+        {"file":"hepta-native-gateway-source-set-v1","text":"hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_cancellation_supersession_endpoint_blocks_lifecycle_and_authority"}
+      ],
+      "focused_test": "hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_cancellation_supersession_endpoint_blocks_lifecycle_and_authority",
+      "test_log_stem": "hepta-artifact-signing-receipt-cancellation-supersession-route-tests",
+      "live_validation_filter": ".status == \"ready\" and .route_count == $expected_route_count and .implemented_route_count == $expected_route_count and .missing_route_count == 0 and .memory_intelligence_kg_full_live_activation_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_signing_receipt_cancellation_supersession_denial_route_enabled == true and .artifact_distribution_signing_notarization_receipt_cancellation_supersession_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_cancellation_supersession_denied_count == 18 and (.side_effects | to_entries | all(.value == false))",
+      "report_fields": {
+        "gate":"hepta_memory_intelligence_kg_full_live_activation_artifact_signing_receipt_cancellation_supersession_denial_route_gate",
+        "activation_mode":"artifact_signing_receipt_cancellation_supersession_native_route_status",
+        "side_effect_free":true,"native_route":true,"route_enabled":true,"source_cancellation_supersession_gate_ready":true,
+        "artifact_distribution_signing_notarization_receipt_cancellation_supersession_surface_count":18,
+        "artifact_distribution_signing_notarization_receipt_cancellation_supersession_denied_count":18,
+        "denied_by_artifact_distribution_signing_notarization_receipt_cancellation_supersession_count":17,
+        "artifact_distribution_signing_notarization_receipt_cancellation_supersession_allowed_count":0,
+        "artifact_distribution_signing_notarization_receipt_lifecycle_cancellation_supersession_persisted_count":0,
+        "side_effects":{"cancellation_accepted":false,"supersession_accepted":false,"replacement_receipt_accepted":false,"tombstone_recorded":false,"delete_marker_recorded":false,"lifecycle_state_persisted":false,"authority_derived":false,"install_executed":false,"active_binary_mutated":false,"memory_store_write_performed":false,"live_kg_write_performed":false,"provider_invoked":false,"model_invoked":false,"credential_read":false,"external_send_performed":false}
+      },
+      "baseline_normalized_output_sha256": "d2059bc7f448cd4cedcee7b5accff93c19c7877fe568288fa5641ac1b2647efc",
+      "pass_message": "Hepta artifact signing receipt cancellation/supersession route gate passed"
+    }
+  ]
+}

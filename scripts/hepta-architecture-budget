@@ -182,6 +182,16 @@ verify() {
     verify_file_max "$release_publication_result_receipt_route_gate_wrapper" 4
     rg -Fq 'scripts/hepta-release-publication-result-receipt-route-gate-runner' "$release_publication_result_receipt_route_gate_wrapper"
   done < <(jq -r '.specs[].wrapper' scripts/hepta-release-publication-result-receipt-route-gate-specs-v1.json)
+  [[ -x scripts/hepta-artifact-signing-receipt-route-gate-runner ]]
+  verify_file_max scripts/hepta-artifact-signing-receipt-route-gate-runner 230
+  verify_file_max scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json 300
+  scripts/hepta-artifact-signing-receipt-route-gate-runner --validate >/dev/null
+  [[ "$(jq '.specs | length' scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json)" == 3 ]]
+  while IFS= read -r artifact_signing_receipt_route_gate_wrapper
+  do
+    verify_file_max "$artifact_signing_receipt_route_gate_wrapper" 4
+    rg -Fq 'scripts/hepta-artifact-signing-receipt-route-gate-runner' "$artifact_signing_receipt_route_gate_wrapper"
+  done < <(jq -r '.specs[].wrapper' scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner ]]
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-runner 260
   verify_file_max scripts/hepta-operator-identity-session-replay-reinstatement-route-gate-specs-v1.json 900

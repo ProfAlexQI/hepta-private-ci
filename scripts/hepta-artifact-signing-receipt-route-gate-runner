@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json"
+
+usage() {
+  echo "usage: scripts/hepta-artifact-signing-receipt-route-gate-runner <id|--validate>" >&2
+  exit 2
+}
+
+validate_registry() {
+  jq -e '
+    .schema_version == "hepta_artifact_signing_receipt_route_gate_specs_v1"
+    and .executor == "scripts/hepta-artifact-signing-receipt-route-gate-runner"
+    and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
+    and (.specs | length) == 3
+    and ((.specs | map(.id) | unique | length) == 3)
+    and (.specs | map(.gate_spec.receipt_state)) == ["receipt", "receipt", "persistence"]
+    and (.specs | all(
+      (.id | test("^[a-z0-9-]+$"))
+      and .gate_spec.method == "GET"
+      and .gate_spec.pattern == ("/api/" + .id)
+      and .gate_spec.source_command == ("/" + .id + " --json")
+      and .gate_spec.capability == .id
+      and (.gate_spec.receipt_state | IN("receipt", "persistence"))
+      and (.gate_spec.side_effect_boundary | contains("read-only"))
+      and (.wrapper | test("^scripts/[a-z0-9-]+-route-gate\\.sh$"))
+      and (.source.capture_label | test("^[a-z0-9-]+-gate$"))
+      and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+      and (.source.validation_filter | type == "string" and length > 100)
+      and (.native_requirements | type == "array" and length >= 7)
+      and (.focused_test | test("^[a-z0-9_]+$"))
+      and (.test_log_stem | test("^[a-z0-9-]+$"))
+      and (.live_validation_filter | type == "string" and length > 100)
+      and (.report_fields | type == "object" and length > 5)
+      and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+      and (.pass_message | type == "string" and length > 20)
+    ))
+  ' "$SPEC_FILE" >/dev/null
+}
+
+[[ -f "$SPEC_FILE" ]] || {
+  echo "missing artifact-signing receipt route registry: $SPEC_FILE" >&2
+  exit 1
+}
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required" >&2
+  exit 1
+}
+
+[[ $# == 1 ]] || usage
+if [[ "$1" == "--validate" ]]; then
+  validate_registry
+  echo '{"schema":"hepta_artifact_signing_receipt_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+  exit 0
+fi
+
+id="$1"
+[[ "$id" =~ ^[a-z0-9-]+$ ]] || usage
+validate_registry
+spec="$(jq -cer --arg id "$id" '.specs[] | select(.id == $id)' "$SPEC_FILE")" || {
+  echo "unknown artifact-signing receipt route spec id: $id" >&2
+  exit 1
+}
+
+BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
+MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
+REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
+EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(bash "$ROOT/scripts/lib/hepta-native-route-count.sh")}"
+NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
+
+case "$MIN_LONG_SOAK_SAMPLES" in
+  ''|*[!0-9]*)
+    echo "HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES must be an unsigned integer" >&2
+    exit 2
+    ;;
+esac
+[[ "$MIN_LONG_SOAK_SAMPLES" -ge 24 ]] || {
+  echo "minimum long-soak samples must be at least 24" >&2
+  exit 1
+}
+
+cd "$ROOT"
+source scripts/lib/hepta-json-report-capture.sh
+source scripts/lib/hepta-source-set.sh
+
+source_json="$(
+  capture_json_report \
+    "$(jq -r '.source.capture_label' <<<"$spec")" \
+    env HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+      "$(jq -r '.source.script' <<<"$spec")"
+)"
+jq -e "$(jq -r '.source.validation_filter' <<<"$spec")" >/dev/null <<<"$source_json"
+
+while IFS= read -r requirement; do
+  require_source_text \
+    "$(jq -r '.file' <<<"$requirement")" \
+    "$(jq -r '.text' <<<"$requirement")" \
+    "$id native route invariant"
+done < <(jq -c '.native_requirements[]' <<<"$spec")
+
+TEST_LOG="$(mktemp "/tmp/$(jq -r '.test_log_stem' <<<"$spec").XXXXXX")"
+cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
+  "$(jq -r '.focused_test' <<<"$spec")" -- --nocapture >"$TEST_LOG"
+
+live_json='{}'
+live_checked=false
+if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
+  live_json="$(curl -fsS "$BASE_URL$(jq -r '.gate_spec.pattern' <<<"$spec")")"
+  jq -e --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
+    "$(jq -r '.live_validation_filter' <<<"$spec")" >/dev/null <<<"$live_json"
+  live_checked=true
+fi
+
+terminal_json="$(
+  capture_json_report \
+    "hepta-preflight-terminal-coverage-inventory-gate" \
+    scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
+)"
+jq -e '
+  .status == "ready"
+  and .preflight_terminal_coverage_inventory_ready == true
+  and .required_marker_count >= 300
+  and .present_required_marker_count == .required_marker_count
+  and .missing_required_marker_count == 0
+  and .duplicate_required_marker_count == 0
+  and .out_of_order_required_marker_count == 0
+' >/dev/null <<<"$terminal_json"
+
+source_script="$(jq -r '.source.script' <<<"$spec")"
+report="$(
+  jq -n \
+    --arg base_url "$BASE_URL" \
+    --arg gate "$(tr '-' '_' <<<"$id")_route_gate" \
+    --arg endpoint "$(jq -r '.gate_spec.pattern' <<<"$spec")" \
+    --arg source_command "$(jq -r '.gate_spec.source_command' <<<"$spec")" \
+    --arg source_gate_sha256 "$(sha256_file "$source_script")" \
+    --arg native_gateway_sha256 "$(sha256_file "$NATIVE_GATEWAY_SOURCE")" \
+    --arg focused_test_log "$TEST_LOG" \
+    --arg terminal_coverage_sha256 "$(printf '%s' "$terminal_json" | shasum -a 256 | awk '{print $1}')" \
+    --arg live_route_status "$(jq -r '.status // "skipped"' <<<"$live_json")" \
+    --argjson live_endpoint_checked "$live_checked" \
+    --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
+    --argjson terminal_required_marker_count "$(jq -r '.required_marker_count // 0' <<<"$terminal_json")" \
+    --argjson terminal_present_required_marker_count "$(jq -r '.present_required_marker_count // 0' <<<"$terminal_json")" \
+    --argjson terminal_missing_required_marker_count "$(jq -r '.missing_required_marker_count // 0' <<<"$terminal_json")" \
+    --argjson live_route_count "$(jq -r '.route_count // 0' <<<"$live_json")" \
+    --argjson live_missing_route_count "$(jq -r '.missing_route_count // 0' <<<"$live_json")" \
+    --argjson report_fields "$(jq -c '.report_fields' <<<"$spec")" '
+      {
+        product:"Hepta", runtime:"hepta", status:"ready", base_url:$base_url,
+        gate:$gate, endpoint:$endpoint, source_command:$source_command,
+        source_gate_sha256:$source_gate_sha256,
+        native_gateway_sha256:$native_gateway_sha256,
+        focused_test_log:$focused_test_log,
+        terminal_coverage_sha256:$terminal_coverage_sha256,
+        live_endpoint_checked:$live_endpoint_checked,
+        expected_route_count:$expected_route_count,
+        terminal_required_marker_count:$terminal_required_marker_count,
+        terminal_present_required_marker_count:$terminal_present_required_marker_count,
+        terminal_missing_required_marker_count:$terminal_missing_required_marker_count,
+        live_route_status:$live_route_status,
+        live_route_count:$live_route_count,
+        live_missing_route_count:$live_missing_route_count
+      } + $report_fields
+    '
+)"
+
+actual_output_sha="$(
+  jq -S 'del(
+    .base_url,.source_gate_sha256,.native_gateway_sha256,.focused_test_log,
+    .terminal_coverage_sha256,.live_endpoint_checked,.expected_route_count,
+    .terminal_required_marker_count,.terminal_present_required_marker_count,
+    .terminal_missing_required_marker_count,.live_route_status,.live_route_count,
+    .live_missing_route_count
+  )' <<<"$report" | shasum -a 256 | awk '{print $1}'
+)"
+expected_output_sha="$(jq -r '.baseline_normalized_output_sha256' <<<"$spec")"
+[[ "$actual_output_sha" == "$expected_output_sha" ]] || {
+  echo "artifact-signing receipt route normalized output parity mismatch for $id: $actual_output_sha != $expected_output_sha" >&2
+  exit 1
+}
+
+jq . <<<"$report"
+echo "$(jq -r '.pass_message' <<<"$spec")"
