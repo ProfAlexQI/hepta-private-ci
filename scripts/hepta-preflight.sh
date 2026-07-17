@@ -1780,8 +1780,13 @@ budgeted_cargo_test hepta-gateway "$HEPTA_FULL_TEST_MAX_SECONDS" \
 
 echo "[hepta-preflight] codex-cli native tests"
 echo "[hepta-preflight] Hepta-owned native gateway tests"
+# These report tests build deep source-report chains on explicitly enlarged
+# worker stacks. Serialize the harness so concurrent convergence lanes cannot
+# exhaust thread/virtual-memory resources and turn a successful report into a
+# synthetic `source_report_thread_failed` result.
 budgeted_cargo_test native-gateway "$HEPTA_FULL_TEST_MAX_SECONDS" \
-  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_gateway -- --nocapture
+  --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_gateway -- \
+  --nocapture --test-threads=1
 budgeted_cargo_test native-telegram "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
   --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib native_telegram -- --nocapture
 budgeted_cargo_test native-post "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
