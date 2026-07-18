@@ -374,7 +374,9 @@ impl Environment {
         Self {
             exec_server_url: None,
             remote_transport: None,
-            exec_backend: Arc::new(LocalProcess::default()),
+            exec_backend: Arc::new(LocalProcess::with_local_runtime_paths(
+                local_runtime_paths.clone(),
+            )),
             filesystem: Arc::new(LocalFileSystem::with_runtime_paths(
                 local_runtime_paths.clone(),
             )),
@@ -837,6 +839,42 @@ mod tests {
             .expect("start process");
 
         assert_eq!(response.process.process_id().as_str(), "default-env-proc");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_environment_passes_runtime_paths_to_sandboxed_exec_backend() {
+        let current_exe = std::env::current_exe().expect("current exe");
+        let runtime_paths = ExecServerRuntimePaths::new(current_exe.clone(), Some(current_exe))
+            .expect("runtime paths");
+        let environment = Environment::local(runtime_paths);
+        let cwd: codex_utils_absolute_path::AbsolutePathBuf = std::env::current_dir()
+            .expect("read current dir")
+            .try_into()
+            .expect("absolute cwd");
+        let sandbox = crate::FileSystemSandboxContext::from_permission_profile_with_cwd(
+            codex_protocol::models::PermissionProfile::workspace_write(),
+            cwd.clone(),
+        );
+
+        let response = environment
+            .get_exec_backend()
+            .start(crate::ExecParams {
+                process_id: ProcessId::from("local-sandbox-proc"),
+                argv: vec!["true".to_string()],
+                cwd: cwd.to_path_buf(),
+                env_policy: None,
+                env: Default::default(),
+                tty: false,
+                pipe_stdin: false,
+                arg0: None,
+                sandbox: Some(sandbox),
+                enforce_managed_network: false,
+            })
+            .await
+            .expect("start sandboxed process");
+
+        assert_eq!(response.process.process_id().as_str(), "local-sandbox-proc");
     }
 
     #[tokio::test]

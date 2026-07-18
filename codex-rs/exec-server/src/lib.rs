@@ -12,6 +12,7 @@ mod local_file_system;
 mod local_process;
 mod process;
 mod process_id;
+mod process_sandbox;
 mod protocol;
 mod relay;
 mod relay_proto;
