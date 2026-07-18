@@ -210,10 +210,13 @@ async fn file_system_sandbox_context_uses_active_attempt() {
     let manager = SandboxManager::new();
     let attempt = SandboxAttempt {
         sandbox: SandboxType::MacosSeatbelt,
+        sandbox_requested: true,
         permissions: &permissions,
+        exec_server_permissions: &permissions,
         enforce_managed_network: false,
         manager: &manager,
         sandbox_cwd: &path,
+        workspace_roots: std::slice::from_ref(&path),
         codex_linux_sandbox_exe: None,
         use_legacy_landlock: true,
         windows_sandbox_level: WindowsSandboxLevel::RestrictedToken,
@@ -263,10 +266,13 @@ async fn no_sandbox_attempt_has_no_file_system_context() {
     let manager = SandboxManager::new();
     let attempt = SandboxAttempt {
         sandbox: SandboxType::None,
+        sandbox_requested: false,
         permissions: &permissions,
+        exec_server_permissions: &permissions,
         enforce_managed_network: false,
         manager: &manager,
         sandbox_cwd: &path,
+        workspace_roots: std::slice::from_ref(&path),
         codex_linux_sandbox_exe: None,
         use_legacy_landlock: false,
         windows_sandbox_level: WindowsSandboxLevel::Disabled,

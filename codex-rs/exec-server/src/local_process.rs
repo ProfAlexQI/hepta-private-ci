@@ -722,6 +722,8 @@ mod tests {
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         }
     }
 

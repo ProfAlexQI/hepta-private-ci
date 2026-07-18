@@ -295,9 +295,20 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecProcess> for UnifiedExecRunt
                 build_sandbox_command(&command, &req.cwd, &env, req.additional_permissions.clone())
                     .map_err(|_| ToolError::Rejected("missing command line for PTY".to_string()))?;
             let options = unified_exec_options(attempt.network_denial_cancellation_token.clone());
-            let mut exec_env = attempt
-                .env_for(command, options, managed_network)
-                .map_err(|err| ToolError::Codex(err.into()))?;
+            let mut exec_env = if environment_is_remote {
+                attempt
+                    .env_for_exec_server(
+                        command,
+                        options,
+                        managed_network,
+                        Some(&req.environment_id),
+                    )
+                    .map_err(ToolError::Codex)?
+            } else {
+                attempt
+                    .env_for(command, options, managed_network)
+                    .map_err(|err| ToolError::Codex(err.into()))?
+            };
             exec_env.exec_server_env_config = req.exec_server_env_config.clone();
             match zsh_fork_backend::maybe_prepare_unified_exec(
                 req,
@@ -346,9 +357,15 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecProcess> for UnifiedExecRunt
             build_sandbox_command(&command, &req.cwd, &env, req.additional_permissions.clone())
                 .map_err(|_| ToolError::Rejected("missing command line for PTY".to_string()))?;
         let options = unified_exec_options(attempt.network_denial_cancellation_token.clone());
-        let mut exec_env = attempt
-            .env_for(command, options, managed_network)
-            .map_err(|err| ToolError::Codex(err.into()))?;
+        let mut exec_env = if environment_is_remote {
+            attempt
+                .env_for_exec_server(command, options, managed_network, Some(&req.environment_id))
+                .map_err(ToolError::Codex)?
+        } else {
+            attempt
+                .env_for(command, options, managed_network)
+                .map_err(|err| ToolError::Codex(err.into()))?
+        };
         exec_env.exec_server_env_config = req.exec_server_env_config.clone();
         self.manager
             .open_session_with_exec_env(

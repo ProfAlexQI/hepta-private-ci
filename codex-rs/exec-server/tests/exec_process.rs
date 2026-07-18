@@ -79,6 +79,8 @@ async fn assert_exec_process_starts_and_exits(use_remote: bool) -> Result<()> {
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), "proc-1");
@@ -220,6 +222,8 @@ async fn assert_exec_process_streams_output(use_remote: bool) -> Result<()> {
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -251,6 +255,8 @@ async fn assert_exec_process_pushes_events(use_remote: bool) -> Result<()> {
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -298,6 +304,8 @@ async fn assert_exec_process_replays_events_after_close(use_remote: bool) -> Res
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -346,6 +354,8 @@ async fn assert_exec_process_retains_output_after_exit_until_streams_close(
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -419,6 +429,8 @@ async fn assert_exec_process_write_then_read(use_remote: bool) -> Result<()> {
             tty: true,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -456,6 +468,8 @@ async fn assert_exec_process_write_then_read_without_tty(use_remote: bool) -> Re
             tty: false,
             pipe_stdin: true,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -489,6 +503,8 @@ async fn assert_exec_process_rejects_write_without_pipe_stdin(use_remote: bool) 
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
     assert_eq!(session.process.process_id().as_str(), process_id);
@@ -524,6 +540,8 @@ async fn assert_exec_process_preserves_queued_events_before_subscribe(
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
 
@@ -558,6 +576,8 @@ async fn remote_exec_process_reports_transport_disconnect() -> Result<()> {
             tty: false,
             pipe_stdin: false,
             arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
         })
         .await?;
 

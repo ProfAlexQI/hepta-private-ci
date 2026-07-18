@@ -77,6 +77,12 @@ pub struct ExecParams {
     #[serde(default)]
     pub pipe_stdin: bool,
     pub arg0: Option<String>,
+    /// Portable sandbox intent. Concrete wrapper argv is resolved by the exec-server.
+    #[serde(default)]
+    pub sandbox: Option<FileSystemSandboxContext>,
+    /// Whether the eventual executor-side sandbox must enforce managed networking.
+    #[serde(default)]
+    pub enforce_managed_network: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
