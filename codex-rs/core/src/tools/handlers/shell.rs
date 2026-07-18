@@ -198,6 +198,7 @@ async fn run_exec_like(args: RunExecLikeArgs) -> Result<FunctionToolOutput, Func
 
     let req = ShellRequest {
         command: exec_params.command.clone(),
+        environment_id: turn_environment.environment_id.clone(),
         shell_type,
         hook_command,
         cwd: exec_params.cwd.clone(),

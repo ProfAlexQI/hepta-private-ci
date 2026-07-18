@@ -48,6 +48,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug)]
 pub struct ShellRequest {
     pub command: Vec<String>,
+    pub environment_id: String,
     pub shell_type: Option<ShellType>,
     pub hook_command: String,
     pub cwd: AbsolutePathBuf,
@@ -85,6 +86,7 @@ pub struct ShellRuntime {
 
 #[derive(serde::Serialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct ApprovalKey {
+    environment_id: String,
     command: Vec<String>,
     cwd: AbsolutePathBuf,
     sandbox_permissions: SandboxPermissions,
@@ -119,6 +121,7 @@ impl Approvable<ShellRequest> for ShellRuntime {
 
     fn approval_keys(&self, req: &ShellRequest) -> Vec<Self::ApprovalKey> {
         vec![ApprovalKey {
+            environment_id: req.environment_id.clone(),
             command: canonicalize_command_for_approval(&req.command),
             cwd: req.cwd.clone(),
             sandbox_permissions: req.sandbox_permissions,
@@ -134,6 +137,7 @@ impl Approvable<ShellRequest> for ShellRuntime {
         let keys = self.approval_keys(req);
         let command = req.command.clone();
         let cwd = req.cwd.clone();
+        let environment_id = Some(req.environment_id.clone());
         let retry_reason = ctx.retry_reason.clone();
         let reason = retry_reason.clone().or_else(|| req.justification.clone());
         let session = ctx.session;
@@ -165,6 +169,7 @@ impl Approvable<ShellRequest> for ShellRuntime {
                         turn,
                         call_id,
                         /*approval_id*/ None,
+                        environment_id,
                         command,
                         cwd,
                         reason,
@@ -281,3 +286,7 @@ impl ToolRuntime<ShellRequest, ExecToolCallOutput> for ShellRuntime {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+#[path = "shell_tests.rs"]
+mod tests;

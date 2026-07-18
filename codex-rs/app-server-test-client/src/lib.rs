@@ -1955,6 +1955,7 @@ impl HeptaClient {
             item_id,
             started_at_ms: _,
             approval_id,
+            environment_id,
             reason,
             network_approval_context,
             command,
@@ -1972,6 +1973,9 @@ impl HeptaClient {
         );
         self.command_approval_count += 1;
         self.command_approval_item_ids.push(item_id.clone());
+        if let Some(environment_id) = environment_id.as_deref() {
+            println!("< environment: {environment_id}");
+        }
         if let Some(reason) = reason.as_deref() {
             println!("< reason: {reason}");
         }

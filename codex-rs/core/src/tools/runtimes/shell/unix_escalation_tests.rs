@@ -427,6 +427,7 @@ async fn execve_permission_request_hook_short_circuits_prompt() -> anyhow::Resul
         session: std::sync::Arc::new(session),
         turn: std::sync::Arc::new(turn_context),
         call_id: "execve-hook-call".to_string(),
+        environment_id: "local".to_string(),
         tool_name: GuardianCommandSource::Shell,
         approval_policy: AskForApproval::OnRequest,
         permission_profile: permission_profile_from_sandbox_policy(

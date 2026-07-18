@@ -57,6 +57,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Clone, Debug)]
 pub struct UnifiedExecRequest {
     pub command: Vec<String>,
+    pub environment_id: String,
     pub shell_type: ShellType,
     pub hook_command: String,
     pub process_id: i32,
@@ -80,6 +81,7 @@ pub struct UnifiedExecRequest {
 /// unified-exec launches.
 #[derive(serde::Serialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct UnifiedExecApprovalKey {
+    pub environment_id: String,
     pub command: Vec<String>,
     pub cwd: AbsolutePathBuf,
     pub tty: bool,
@@ -132,6 +134,7 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
 
     fn approval_keys(&self, req: &UnifiedExecRequest) -> Vec<Self::ApprovalKey> {
         vec![UnifiedExecApprovalKey {
+            environment_id: req.environment_id.clone(),
             command: canonicalize_command_for_approval(&req.command),
             cwd: req.cwd.clone(),
             tty: req.tty,
@@ -151,6 +154,7 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
         let call_id = ctx.call_id.to_string();
         let command = req.command.clone();
         let cwd = req.cwd.clone();
+        let environment_id = Some(req.environment_id.clone());
         let retry_reason = ctx.retry_reason.clone();
         let reason = retry_reason.clone().or_else(|| req.justification.clone());
         let guardian_review_id = ctx.guardian_review_id.clone();
@@ -180,6 +184,7 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
                         turn,
                         call_id,
                         /*approval_id*/ None,
+                        environment_id,
                         command,
                         cwd.clone(),
                         reason,
@@ -398,6 +403,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn approval_key_includes_environment_id() {
+        let manager = UnifiedExecProcessManager::default();
+        let runtime = UnifiedExecRuntime::new(&manager, UnifiedExecShellMode::Direct);
+        let cwd = AbsolutePathBuf::try_from(std::env::current_dir().expect("read current dir"))
+            .expect("current dir is absolute");
+        let mut request = UnifiedExecRequest {
+            command: vec!["echo".to_string(), "hello".to_string()],
+            environment_id: "remote".to_string(),
+            shell_type: ShellType::Sh,
+            hook_command: "echo hello".to_string(),
+            process_id: 1000,
+            cwd: cwd.clone(),
+            sandbox_cwd: cwd,
+            environment: Arc::new(Environment::default_for_tests()),
+            env: HashMap::new(),
+            exec_server_env_config: None,
+            explicit_env_overrides: HashMap::new(),
+            network: None,
+            tty: false,
+            sandbox_permissions: SandboxPermissions::UseDefault,
+            additional_permissions: None,
+            #[cfg(unix)]
+            additional_permissions_preapproved: false,
+            justification: None,
+            exec_approval_requirement: ExecApprovalRequirement::Skip {
+                bypass_sandbox: false,
+                proposed_execpolicy_amendment: None,
+            },
+        };
+        let original_key = runtime.approval_keys(&request);
+        request.environment_id = "other".to_string();
+        let other_key = runtime.approval_keys(&request);
+
+        assert_ne!(original_key, other_key);
+    }
+
+    #[tokio::test]
     async fn unified_exec_uses_the_trusted_sandbox_cwd() {
         let cwd_dir = tempdir().expect("create process temp dir");
         let sandbox_dir = tempdir().expect("create sandbox temp dir");
@@ -409,6 +451,7 @@ mod tests {
         let runtime = UnifiedExecRuntime::new(&manager, UnifiedExecShellMode::Direct);
         let request = UnifiedExecRequest {
             command: vec!["pwd".to_string()],
+            environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),
             shell_type: ShellType::Sh,
             hook_command: "pwd".to_string(),
             process_id: 1000,

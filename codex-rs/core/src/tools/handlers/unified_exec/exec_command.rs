@@ -254,6 +254,7 @@ impl ToolExecutor<ToolInvocation> for ExecCommandHandler {
             .exec_command(
                 ExecCommandRequest {
                     command,
+                    environment_id: turn_environment.environment_id.clone(),
                     shell_type,
                     hook_command: hook_command.clone(),
                     process_id,
