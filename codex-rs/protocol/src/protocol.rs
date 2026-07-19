@@ -2561,6 +2561,26 @@ impl InitialHistory {
             }
         }
     }
+
+    /// Return the persisted storage contract for resumed threads.
+    ///
+    /// New, cleared, and forked histories use the caller-selected default: a
+    /// copied `SessionMeta` from a fork source does not define the new thread.
+    pub fn get_history_mode(&self, default_history_mode: ThreadHistoryMode) -> ThreadHistoryMode {
+        match self {
+            InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {
+                default_history_mode
+            }
+            InitialHistory::Resumed(resumed) => resumed
+                .history
+                .iter()
+                .find_map(|item| match item {
+                    RolloutItem::SessionMeta(meta_line) => Some(meta_line.meta.history_mode),
+                    _ => None,
+                })
+                .unwrap_or(default_history_mode),
+        }
+    }
 }
 
 fn session_cwd_from_items(items: &[RolloutItem]) -> Option<PathBuf> {
@@ -2805,6 +2825,9 @@ pub struct SessionMeta {
     pub dynamic_tools: Option<Vec<DynamicToolSpec>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_mode: Option<String>,
+    /// Immutable storage contract selected when the thread is created.
+    #[serde(default)]
+    pub history_mode: ThreadHistoryMode,
 }
 
 impl Default for SessionMeta {
@@ -2825,6 +2848,7 @@ impl Default for SessionMeta {
             base_instructions: None,
             dynamic_tools: None,
             memory_mode: None,
+            history_mode: ThreadHistoryMode::default(),
         }
     }
 }
@@ -5588,6 +5612,58 @@ mod tests {
             Ok(ThreadHistoryMode::Paginated)
         );
         assert!(ThreadHistoryMode::from_str("future").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn session_meta_defaults_to_legacy_and_rejects_unknown_history_mode() -> Result<()> {
+        let meta: SessionMeta = serde_json::from_value(json!({
+            "id": "00000000-0000-0000-0000-000000000001",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp",
+            "originator": "hepta",
+            "cli_version": "0.0.0",
+            "model_provider": null,
+            "base_instructions": null
+        }))?;
+
+        assert_eq!(meta.history_mode, ThreadHistoryMode::Legacy);
+        let mut serialized = serde_json::to_value(meta)?;
+        assert_eq!(serialized["history_mode"], json!("legacy"));
+        serialized["history_mode"] = json!("future");
+        assert!(serde_json::from_value::<SessionMeta>(serialized).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn resumed_history_uses_canonical_persisted_history_mode() -> Result<()> {
+        let thread_id = ThreadId::from_string("00000000-0000-0000-0000-000000000001")?;
+        let session_meta = RolloutItem::SessionMeta(SessionMetaLine {
+            meta: SessionMeta {
+                id: thread_id,
+                history_mode: ThreadHistoryMode::Paginated,
+                ..SessionMeta::default()
+            },
+            git: None,
+        });
+        let resumed = InitialHistory::Resumed(ResumedHistory {
+            conversation_id: thread_id,
+            history: vec![session_meta.clone()],
+            rollout_path: None,
+        });
+
+        assert_eq!(
+            resumed.get_history_mode(ThreadHistoryMode::Legacy),
+            ThreadHistoryMode::Paginated
+        );
+        assert_eq!(
+            InitialHistory::Forked(vec![session_meta]).get_history_mode(ThreadHistoryMode::Legacy),
+            ThreadHistoryMode::Legacy
+        );
+        assert_eq!(
+            InitialHistory::New.get_history_mode(ThreadHistoryMode::Paginated),
+            ThreadHistoryMode::Paginated
+        );
         Ok(())
     }
 

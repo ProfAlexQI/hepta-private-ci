@@ -57,6 +57,7 @@ use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionMeta;
 use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadSource;
 use codex_state::StateRuntime;
 use codex_utils_path as path_utils;
@@ -85,6 +86,7 @@ pub enum RolloutRecorderParams {
         thread_source: Option<ThreadSource>,
         base_instructions: BaseInstructions,
         dynamic_tools: Vec<DynamicToolSpec>,
+        history_mode: ThreadHistoryMode,
     },
     Resume {
         path: PathBuf,
@@ -168,7 +170,18 @@ impl RolloutRecorderParams {
             thread_source,
             base_instructions,
             dynamic_tools,
+            history_mode: ThreadHistoryMode::default(),
         }
+    }
+
+    pub fn with_history_mode(mut self, history_mode: ThreadHistoryMode) -> Self {
+        if let Self::Create {
+            history_mode: mode, ..
+        } = &mut self
+        {
+            *mode = history_mode;
+        }
+        self
     }
 
     pub fn resume(path: PathBuf) -> Self {
@@ -656,6 +669,7 @@ impl RolloutRecorder {
                 thread_source,
                 base_instructions,
                 dynamic_tools,
+                history_mode,
             } => {
                 let log_file_info = precompute_log_file_info(config, conversation_id)?;
                 let path = log_file_info.path.clone();
@@ -690,6 +704,7 @@ impl RolloutRecorder {
                         Some(dynamic_tools)
                     },
                     memory_mode: (!config.generate_memories()).then_some("disabled".to_string()),
+                    history_mode,
                 };
 
                 (None, Some(log_file_info), path, Some(session_meta))
@@ -863,6 +878,11 @@ impl RolloutRecorder {
                     }
                 },
                 Err(e) => {
+                    if thread_id.is_none() {
+                        // The first SessionMeta defines this rollout. Later SessionMeta lines may
+                        // be copied fork history, so unknown modes only fail the canonical prefix.
+                        reject_unknown_thread_history_mode(&v)?;
+                    }
                     trace!("failed to parse rollout line: {e}");
                     parse_errors = parse_errors.saturating_add(1);
                 }
@@ -921,6 +941,21 @@ impl RolloutRecorder {
         };
         Ok(())
     }
+}
+
+pub(crate) fn reject_unknown_thread_history_mode(value: &Value) -> std::io::Result<()> {
+    if value.get("type").and_then(Value::as_str) != Some("session_meta") {
+        return Ok(());
+    }
+    let Some(history_mode) = value
+        .get("payload")
+        .and_then(|payload| payload.get("history_mode"))
+    else {
+        return Ok(());
+    };
+    serde_json::from_value::<ThreadHistoryMode>(history_mode.clone())
+        .map(|_| ())
+        .map_err(|err| IoError::other(format!("invalid session metadata history_mode: {err}")))
 }
 
 fn strip_legacy_ghost_snapshot_rollout_line(value: &mut Value) -> bool {

@@ -152,6 +152,7 @@ async fn backfill_scans_existing_rollouts() -> Result<()> {
                     base_instructions: None,
                     dynamic_tools: Some(dynamic_tools_for_hook),
                     memory_mode: None,
+                    history_mode: Default::default(),
                 },
                 git: None,
             };

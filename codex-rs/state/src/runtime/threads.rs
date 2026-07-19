@@ -1403,6 +1403,7 @@ mod tests {
                 base_instructions: None,
                 dynamic_tools: None,
                 memory_mode: Some("polluted".to_string()),
+                history_mode: Default::default(),
             },
             git: None,
         })];
@@ -1462,6 +1463,7 @@ mod tests {
                 base_instructions: None,
                 dynamic_tools: None,
                 memory_mode: None,
+                history_mode: Default::default(),
             },
             git: Some(GitInfo {
                 commit_hash: Some(codex_git_utils::GitSha::new("rollout-sha")),

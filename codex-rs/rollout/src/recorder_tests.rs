@@ -15,6 +15,7 @@ use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionMeta;
 use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::UserMessageEvent;
 use pretty_assertions::assert_eq;
@@ -99,6 +100,7 @@ async fn state_db_init_backfills_before_returning() -> anyhow::Result<()> {
             base_instructions: None,
             dynamic_tools: None,
             memory_mode: None,
+            history_mode: ThreadHistoryMode::Legacy,
         },
         git: None,
     };
@@ -214,6 +216,66 @@ async fn load_rollout_items_skips_legacy_ghost_snapshot_lines() -> std::io::Resu
         RolloutItem::ResponseItem(ResponseItem::Message { .. })
     ));
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_rollout_items_fails_closed_for_unknown_canonical_history_mode() -> std::io::Result<()>
+{
+    let home = TempDir::new().expect("temp dir");
+    let uuid = Uuid::new_v4();
+    let rollout_path = write_session_file(home.path(), "2025-01-03T12-00-00", uuid)?;
+    let text = fs::read_to_string(&rollout_path)?;
+    let text = text.replacen(
+        "\"model_provider\":\"test-provider\"",
+        "\"model_provider\":\"test-provider\",\"history_mode\":\"future\"",
+        1,
+    );
+    fs::write(&rollout_path, text)?;
+
+    let error = RolloutRecorder::load_rollout_items(&rollout_path)
+        .await
+        .expect_err("unknown canonical history mode must fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("invalid session metadata history_mode")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_rollout_items_ignores_unknown_history_mode_in_copied_fork_metadata()
+-> std::io::Result<()> {
+    let home = TempDir::new().expect("temp dir");
+    let uuid = Uuid::new_v4();
+    let thread_id = ThreadId::from_string(&uuid.to_string()).expect("thread id");
+    let rollout_path = write_session_file(home.path(), "2025-01-03T12-00-00", uuid)?;
+    let mut file = fs::OpenOptions::new().append(true).open(&rollout_path)?;
+    writeln!(
+        file,
+        "{}",
+        serde_json::json!({
+            "timestamp": "2025-01-03T12:00:01Z",
+            "type": "session_meta",
+            "payload": {
+                "id": Uuid::new_v4(),
+                "timestamp": "2025-01-03T12:00:01Z",
+                "cwd": ".",
+                "originator": "fork_source",
+                "cli_version": "test_version",
+                "source": "cli",
+                "model_provider": "test-provider",
+                "history_mode": "future"
+            }
+        })
+    )?;
+
+    let (items, loaded_thread_id, parse_errors) =
+        RolloutRecorder::load_rollout_items(&rollout_path).await?;
+    assert_eq!(loaded_thread_id, Some(thread_id));
+    assert_eq!(parse_errors, 1);
+    assert_eq!(items.len(), 2);
     Ok(())
 }
 
@@ -373,7 +435,8 @@ async fn recorder_materializes_on_flush_with_pending_items() -> std::io::Result<
             /*thread_source*/ None,
             BaseInstructions::default(),
             Vec::new(),
-        ),
+        )
+        .with_history_mode(ThreadHistoryMode::Paginated),
     )
     .await?;
 
@@ -420,6 +483,10 @@ async fn recorder_materializes_on_flush_with_pending_items() -> std::io::Result<
     assert!(
         text.contains("\"type\":\"session_meta\""),
         "expected session metadata in rollout"
+    );
+    assert!(
+        text.contains("\"history_mode\":\"paginated\""),
+        "expected selected history mode in rollout metadata"
     );
     let buffered_idx = text
         .find("buffered-event")
@@ -1146,6 +1213,7 @@ async fn resume_candidate_matches_cwd_reads_latest_turn_context() -> std::io::Re
             developer_instructions: None,
             final_output_json_schema: None,
             truncation_policy: None,
+            context_manifest: None,
         }),
     };
     writeln!(file, "{}", serde_json::to_string(&turn_context)?)?;
