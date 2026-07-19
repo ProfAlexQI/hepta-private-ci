@@ -533,6 +533,90 @@ async fn file_system_sandboxed_read_allows_readable_root(use_remote: bool) -> Re
 #[test_case(false ; "local")]
 #[test_case(true ; "remote")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_system_workspace_roots_limit_symbolic_project_access(use_remote: bool) -> Result<()> {
+    let context = create_file_system_context(use_remote).await?;
+    let file_system = context.file_system;
+
+    let tmp = tempfile::Builder::new()
+        .prefix("codex-workspace-roots-")
+        .tempdir_in(std::env::current_dir()?)?;
+    let selected_dir = tmp.path().join("selected");
+    let outside_dir = tmp.path().join("outside");
+    std::fs::create_dir_all(&selected_dir)?;
+    std::fs::create_dir_all(&outside_dir)?;
+    let selected_path = selected_dir.join("allowed.txt");
+    let outside_path = outside_dir.join("blocked.txt");
+    let mut sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(
+        PermissionProfile::workspace_write(),
+        absolute_path(tmp.path().to_path_buf()),
+    );
+    sandbox.workspace_roots = vec![absolute_path(selected_dir)];
+
+    file_system
+        .write_file(
+            &absolute_path(selected_path.clone()),
+            b"allowed".to_vec(),
+            Some(&sandbox),
+        )
+        .await
+        .with_context(|| format!("write selected workspace root mode={use_remote}"))?;
+    let error = match file_system
+        .write_file(
+            &absolute_path(outside_path.clone()),
+            b"blocked".to_vec(),
+            Some(&sandbox),
+        )
+        .await
+    {
+        Ok(()) => anyhow::bail!("write outside selected workspace roots should be blocked"),
+        Err(error) => error,
+    };
+
+    assert_eq!(std::fs::read(&selected_path)?, b"allowed");
+    assert_sandbox_denied(&error);
+    assert!(!outside_path.exists());
+
+    Ok(())
+}
+
+#[test_case(false ; "local")]
+#[test_case(true ; "remote")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_system_preserves_explicit_empty_workspace_roots(use_remote: bool) -> Result<()> {
+    let context = create_file_system_context(use_remote).await?;
+    let file_system = context.file_system;
+
+    let tmp = tempfile::Builder::new()
+        .prefix("codex-empty-workspace-roots-")
+        .tempdir_in(std::env::current_dir()?)?;
+    let blocked_path = tmp.path().join("blocked.txt");
+    let mut sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(
+        PermissionProfile::workspace_write(),
+        absolute_path(tmp.path().to_path_buf()),
+    );
+    sandbox.workspace_roots.clear();
+
+    let error = match file_system
+        .write_file(
+            &absolute_path(blocked_path.clone()),
+            b"blocked".to_vec(),
+            Some(&sandbox),
+        )
+        .await
+    {
+        Ok(()) => anyhow::bail!("empty workspace roots should not grant cwd access"),
+        Err(error) => error,
+    };
+
+    assert_sandbox_denied(&error);
+    assert!(!blocked_path.exists());
+
+    Ok(())
+}
+
+#[test_case(false ; "local")]
+#[test_case(true ; "remote")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn file_system_sandboxed_write_rejects_unwritable_path(use_remote: bool) -> Result<()> {
     let context = create_file_system_context(use_remote).await?;
     let file_system = context.file_system;

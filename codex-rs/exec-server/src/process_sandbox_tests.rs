@@ -130,3 +130,34 @@ fn sandbox_request_requires_runtime_paths() {
     assert_eq!(err.code, -32602);
     assert_eq!(err.message, "sandbox runtime paths are not configured");
 }
+
+#[test]
+fn sandbox_context_preserves_explicit_empty_workspace_roots() {
+    let mut sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(
+        PermissionProfile::workspace_write(),
+        AbsolutePathBuf::current_dir().expect("current directory"),
+    );
+    sandbox.workspace_roots.clear();
+
+    assert_eq!(
+        sandbox.materialized_permissions(),
+        PermissionProfile::workspace_write().materialize_project_roots_with_workspace_roots(&[])
+    );
+}
+
+#[test]
+fn sandbox_context_materializes_transported_workspace_roots() {
+    let cwd = AbsolutePathBuf::current_dir().expect("current directory");
+    let workspace_root = cwd.join("selected-workspace");
+    let mut sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(
+        PermissionProfile::workspace_write(),
+        cwd,
+    );
+    sandbox.workspace_roots = vec![workspace_root.clone()];
+
+    assert_eq!(
+        sandbox.materialized_permissions(),
+        PermissionProfile::workspace_write()
+            .materialize_project_roots_with_workspace_roots(&[workspace_root])
+    );
+}

@@ -59,7 +59,8 @@ impl FileSystemSandboxRunner {
         request: FsHelperRequest,
     ) -> Result<FsHelperPayload, JSONRPCErrorError> {
         let cwd = sandbox_cwd(sandbox)?;
-        let mut file_system_policy = sandbox.permissions.file_system_sandbox_policy();
+        let materialized_permissions = sandbox.materialized_permissions();
+        let mut file_system_policy = materialized_permissions.file_system_sandbox_policy();
         let helper_read_roots = if sandbox.use_legacy_landlock {
             Vec::new()
         } else {

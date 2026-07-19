@@ -44,15 +44,7 @@ pub(crate) fn prepare_exec_request(
     let runtime_paths = runtime_paths
         .ok_or_else(|| invalid_params("sandbox runtime paths are not configured".to_string()))?;
     let sandbox_policy_cwd = sandbox_context.cwd.as_ref().unwrap_or(&native_cwd);
-    let workspace_roots = if sandbox_context.workspace_roots.is_empty() {
-        std::slice::from_ref(sandbox_policy_cwd)
-    } else {
-        sandbox_context.workspace_roots.as_slice()
-    };
-    let permissions = sandbox_context
-        .permissions
-        .clone()
-        .materialize_project_roots_with_workspace_roots(workspace_roots);
+    let permissions = sandbox_context.materialized_permissions();
     let (file_system_policy, network_policy) = permissions.to_runtime_permissions();
     let sandbox_manager = SandboxManager::new();
     let sandbox = sandbox_manager.select_initial(

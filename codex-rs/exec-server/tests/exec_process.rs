@@ -12,10 +12,18 @@ use codex_exec_server::ExecOutputStream;
 use codex_exec_server::ExecParams;
 use codex_exec_server::ExecProcess;
 use codex_exec_server::ExecProcessEvent;
+use codex_exec_server::FileSystemSandboxContext;
 use codex_exec_server::ProcessId;
 use codex_exec_server::ReadResponse;
 use codex_exec_server::StartedExecProcess;
 use codex_exec_server::WriteStatus;
+use codex_protocol::models::PermissionProfile;
+use codex_protocol::permissions::FileSystemAccessMode;
+use codex_protocol::permissions::FileSystemPath;
+use codex_protocol::permissions::FileSystemSandboxEntry;
+use codex_protocol::permissions::FileSystemSandboxPolicy;
+use codex_protocol::permissions::FileSystemSpecialPath;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 use test_case::test_case;
@@ -89,6 +97,54 @@ async fn assert_exec_process_starts_and_exits(use_remote: bool) -> Result<()> {
         collect_process_output_from_reads(session.process, wake_rx).await?;
 
     assert_eq!(exit_code, Some(0));
+    assert!(closed);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn remote_process_preserves_explicit_empty_workspace_roots() -> Result<()> {
+    if let Some(warning) = codex_sandboxing::system_bwrap_warning(&PermissionProfile::read_only()) {
+        eprintln!("skipping bwrap test: {warning}");
+        return Ok(());
+    }
+
+    let context = create_process_context(/*use_remote*/ true).await?;
+    let tmp = TempDir::new()?;
+    let file = tmp.path().join("excluded.txt");
+    std::fs::write(&file, b"excluded")?;
+    let cwd = tmp.path().to_path_buf();
+    let policy = FileSystemSandboxPolicy::restricted(vec![FileSystemSandboxEntry {
+        path: FileSystemPath::Special {
+            value: FileSystemSpecialPath::project_roots(/*subpath*/ None),
+        },
+        access: FileSystemAccessMode::Read,
+    }]);
+    let mut sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(
+        PermissionProfile::from_runtime_permissions(&policy, NetworkSandboxPolicy::Restricted),
+        cwd.clone().try_into()?,
+    );
+    sandbox.workspace_roots.clear();
+
+    let session = context
+        .backend
+        .start(ExecParams {
+            process_id: ProcessId::from("proc-empty-workspace-roots"),
+            argv: vec!["/bin/cat".to_string(), file.to_string_lossy().into_owned()],
+            cwd,
+            env_policy: /*env_policy*/ None,
+            env: Default::default(),
+            tty: false,
+            pipe_stdin: false,
+            arg0: None,
+            sandbox: Some(sandbox),
+            enforce_managed_network: false,
+        })
+        .await?;
+    let (stdout, _stderr, exit_code, closed) =
+        collect_process_output_from_events(session.process).await?;
+
+    assert!(!stdout.contains("excluded"), "unexpected stdout: {stdout}");
+    assert_ne!(exit_code, Some(0));
     assert!(closed);
     Ok(())
 }

@@ -103,6 +103,15 @@ impl FileSystemSandboxContext {
             && !file_system_policy.has_full_disk_write_access()
     }
 
+    /// Resolves symbolic project-root permissions against the roots carried by
+    /// this context. An explicitly empty root list stays empty and must not
+    /// inherit the executor working directory.
+    pub fn materialized_permissions(&self) -> PermissionProfile {
+        self.permissions
+            .clone()
+            .materialize_project_roots_with_workspace_roots(&self.workspace_roots)
+    }
+
     pub fn has_cwd_dependent_permissions(&self) -> bool {
         let file_system_policy = self.permissions.file_system_sandbox_policy();
         file_system_policy_has_cwd_dependent_entries(&file_system_policy)
