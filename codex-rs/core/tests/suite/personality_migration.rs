@@ -80,10 +80,12 @@ async fn write_rollout_with_user_event(dir: &Path, thread_id: ThreadId) -> io::R
     };
     let meta_line = RolloutLine {
         timestamp: TEST_TIMESTAMP.to_string(),
+        ordinal: None,
         item: RolloutItem::SessionMeta(session_meta),
     };
     let user_event = RolloutLine {
         timestamp: TEST_TIMESTAMP.to_string(),
+        ordinal: None,
         item: RolloutItem::EventMsg(EventMsg::UserMessage(UserMessageEvent {
             message: "hello".to_string(),
             images: None,
@@ -128,6 +130,7 @@ async fn write_rollout_with_meta_only(dir: &Path, thread_id: ThreadId) -> io::Re
     };
     let meta_line = RolloutLine {
         timestamp: TEST_TIMESTAMP.to_string(),
+        ordinal: None,
         item: RolloutItem::SessionMeta(session_meta),
     };
 
