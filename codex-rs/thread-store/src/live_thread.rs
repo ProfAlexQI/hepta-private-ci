@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::RolloutItem;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_rollout::EventPersistenceMode;
-use codex_rollout::persisted_rollout_items;
+use codex_rollout::persisted_rollout_items_for_thread;
 use tokio::sync::Mutex;
 use tracing::warn;
 
@@ -34,6 +35,7 @@ pub struct LiveThread {
     thread_id: ThreadId,
     thread_store: Arc<dyn ThreadStore>,
     event_persistence_mode: EventPersistenceMode,
+    history_mode: ThreadHistoryMode,
     metadata_sync: Arc<Mutex<ThreadMetadataSync>>,
 }
 
@@ -93,12 +95,14 @@ impl LiveThread {
     ) -> ThreadStoreResult<Self> {
         let thread_id = params.thread_id;
         let event_persistence_mode = event_persistence_mode(params.event_persistence_mode);
+        let history_mode = params.history_mode;
         let metadata_sync = ThreadMetadataSync::for_create(&params).await;
         thread_store.create_thread(params).await?;
         Ok(Self {
             thread_id,
             thread_store,
             event_persistence_mode,
+            history_mode,
             metadata_sync: Arc::new(Mutex::new(metadata_sync)),
         })
     }
@@ -109,6 +113,11 @@ impl LiveThread {
     ) -> ThreadStoreResult<Self> {
         let thread_id = params.thread_id;
         let event_persistence_mode = event_persistence_mode(params.event_persistence_mode);
+        let history_mode = params
+            .history
+            .as_deref()
+            .map(crate::types::canonical_history_mode_from_rollout_items)
+            .unwrap_or(ThreadHistoryMode::Legacy);
         let should_load_history = params.history.is_none();
         let include_archived = params.include_archived;
         thread_store.resume_thread(params.clone()).await?;
@@ -132,12 +141,17 @@ impl LiveThread {
             thread_id,
             thread_store,
             event_persistence_mode,
+            history_mode,
             metadata_sync: Arc::new(Mutex::new(metadata_sync)),
         })
     }
 
     pub async fn append_items(&self, items: &[RolloutItem]) -> ThreadStoreResult<()> {
-        let canonical_items = persisted_rollout_items(items, self.event_persistence_mode);
+        let canonical_items = persisted_rollout_items_for_thread(
+            items,
+            self.event_persistence_mode,
+            self.history_mode,
+        );
         if canonical_items.is_empty() {
             return Ok(());
         }

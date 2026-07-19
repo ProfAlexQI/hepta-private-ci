@@ -56,6 +56,8 @@ pub use metadata::builder_from_items;
 pub use policy::EventPersistenceMode;
 pub use policy::is_persisted_rollout_item;
 pub use policy::persisted_rollout_items;
+pub use policy::persisted_rollout_items_for_history_mode;
+pub use policy::persisted_rollout_items_for_thread;
 pub use policy::should_persist_response_item_for_memories;
 pub use recorder::RolloutRecorder;
 pub use recorder::RolloutRecorderParams;

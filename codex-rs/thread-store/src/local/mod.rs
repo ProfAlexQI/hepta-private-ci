@@ -297,8 +297,11 @@ mod tests {
     use std::sync::Arc;
 
     use codex_protocol::ThreadId;
+    use codex_protocol::items::TurnItem;
+    use codex_protocol::items::UserMessageItem;
     use codex_protocol::models::BaseInstructions;
     use codex_protocol::protocol::EventMsg;
+    use codex_protocol::protocol::ItemCompletedEvent;
     use codex_protocol::protocol::RolloutItem;
     use codex_protocol::protocol::SessionSource;
     use codex_protocol::protocol::ThreadHistoryMode;
@@ -1101,15 +1104,61 @@ mod tests {
                 .await
                 .expect_err("resume should fail"),
         );
+    }
 
-        let mut create_params = create_thread_params(ThreadId::default());
+    #[tokio::test]
+    async fn paginated_live_appends_persist_canonical_items_only() {
+        let home = TempDir::new().expect("temp dir");
+        let store = Arc::new(LocalThreadStore::new(
+            test_config(home.path()),
+            /*state_db*/ None,
+        ));
+        let thread_id = ThreadId::default();
+        let mut create_params = create_thread_params(thread_id);
         create_params.history_mode = ThreadHistoryMode::Paginated;
-        assert_paginated_threads_unsupported(
-            store
-                .create_thread(create_params)
-                .await
-                .expect_err("paginated create should fail"),
-        );
+        let live_thread = LiveThread::create(store.clone(), create_params)
+            .await
+            .expect("create paginated thread");
+        let canonical_item = RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
+            thread_id,
+            turn_id: "turn-1".to_string(),
+            item: TurnItem::UserMessage(UserMessageItem {
+                id: "item-1".to_string(),
+                content: Vec::new(),
+            }),
+            completed_at_ms: 1,
+        }));
+
+        live_thread
+            .append_items(&[
+                user_message_item("legacy event should not persist"),
+                canonical_item,
+            ])
+            .await
+            .expect("append paginated items");
+        live_thread.flush().await.expect("flush paginated thread");
+
+        let rollout_path = store
+            .live_rollout_path(thread_id)
+            .await
+            .expect("paginated rollout path");
+        let (items, _, _) = RolloutRecorder::load_rollout_items(rollout_path.as_path())
+            .await
+            .expect("load paginated rollout");
+        assert!(items.iter().any(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::ItemCompleted(event))
+                    if event.turn_id == "turn-1"
+            )
+        }));
+        assert!(!items.iter().any(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::UserMessage(event))
+                    if event.message == "legacy event should not persist"
+            )
+        }));
     }
 
     fn create_thread_params(thread_id: ThreadId) -> CreateThreadParams {

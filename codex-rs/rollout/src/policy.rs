@@ -1,6 +1,7 @@
 use crate::protocol::EventMsg;
 use crate::protocol::RolloutItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_utils_string::truncate_middle_chars;
 
 const PERSISTED_EXEC_AGGREGATED_OUTPUT_MAX_BYTES: usize = 10_000;
@@ -15,9 +16,27 @@ pub enum EventPersistenceMode {
 /// Whether a rollout `item` should be persisted in rollout files for the
 /// provided persistence `mode`.
 pub fn is_persisted_rollout_item(item: &RolloutItem, mode: EventPersistenceMode) -> bool {
+    is_persisted_rollout_item_for_thread(item, mode, ThreadHistoryMode::Legacy)
+}
+
+/// Whether a rollout `item` should be persisted for both independent thread contracts.
+pub fn is_persisted_rollout_item_for_thread(
+    item: &RolloutItem,
+    event_mode: EventPersistenceMode,
+    history_mode: ThreadHistoryMode,
+) -> bool {
+    if !history_mode_allows_item(item, history_mode) {
+        return false;
+    }
+
     match item {
         RolloutItem::ResponseItem(item) => should_persist_response_item(item),
-        RolloutItem::EventMsg(ev) => should_persist_event_msg(ev, mode),
+        RolloutItem::EventMsg(EventMsg::ItemCompleted(_))
+            if history_mode == ThreadHistoryMode::Paginated =>
+        {
+            true
+        }
+        RolloutItem::EventMsg(ev) => should_persist_event_msg(ev, event_mode),
         // Persist Hepta executive markers so we can analyze flows (e.g., compaction, API turns).
         RolloutItem::Compacted(_) | RolloutItem::TurnContext(_) | RolloutItem::SessionMeta(_) => {
             true
@@ -30,13 +49,65 @@ pub fn persisted_rollout_items(
     items: &[RolloutItem],
     mode: EventPersistenceMode,
 ) -> Vec<RolloutItem> {
+    persisted_rollout_items_for_thread(items, mode, ThreadHistoryMode::Legacy)
+}
+
+/// Return canonical rollout items selected by both event richness and history representation.
+pub fn persisted_rollout_items_for_thread(
+    items: &[RolloutItem],
+    event_mode: EventPersistenceMode,
+    history_mode: ThreadHistoryMode,
+) -> Vec<RolloutItem> {
     let mut persisted = Vec::new();
     for item in items {
-        if is_persisted_rollout_item(item, mode) {
-            persisted.push(sanitize_rollout_item_for_persistence(item.clone(), mode));
+        if is_persisted_rollout_item_for_thread(item, event_mode, history_mode) {
+            persisted.push(sanitize_rollout_item_for_persistence(
+                item.clone(),
+                event_mode,
+            ));
         }
     }
     persisted
+}
+
+/// Apply only the immutable history representation contract.
+///
+/// Thread stores use this as a defensive second filter because their raw append API does not
+/// carry the caller's independent event-richness setting.
+pub fn persisted_rollout_items_for_history_mode(
+    items: &[RolloutItem],
+    history_mode: ThreadHistoryMode,
+) -> Vec<RolloutItem> {
+    items
+        .iter()
+        .filter(|item| history_mode_allows_item(item, history_mode))
+        .cloned()
+        .collect()
+}
+
+fn history_mode_allows_item(item: &RolloutItem, history_mode: ThreadHistoryMode) -> bool {
+    let RolloutItem::EventMsg(event) = item else {
+        return true;
+    };
+
+    match event {
+        EventMsg::ItemCompleted(event) => {
+            history_mode == ThreadHistoryMode::Paginated
+                || matches!(event.item, codex_protocol::items::TurnItem::Plan(_))
+        }
+        EventMsg::UserMessage(_)
+        | EventMsg::AgentMessage(_)
+        | EventMsg::AgentReasoning(_)
+        | EventMsg::AgentReasoningRawContent(_)
+        | EventMsg::PatchApplyEnd(_)
+        | EventMsg::ContextCompacted(_)
+        | EventMsg::EnteredReviewMode(_)
+        | EventMsg::ExitedReviewMode(_)
+        | EventMsg::McpToolCallEnd(_)
+        | EventMsg::WebSearchEnd(_)
+        | EventMsg::ImageGenerationEnd(_) => history_mode == ThreadHistoryMode::Legacy,
+        _ => true,
+    }
 }
 
 fn sanitize_rollout_item_for_persistence(
