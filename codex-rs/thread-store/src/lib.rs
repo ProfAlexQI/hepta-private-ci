@@ -35,6 +35,7 @@ pub use types::ReadThreadByRolloutPathParams;
 pub use types::ReadThreadParams;
 pub use types::ResumeThreadParams;
 pub use types::SortDirection;
+pub use types::StoredModelContext;
 pub use types::StoredThread;
 pub use types::StoredThreadHistory;
 pub use types::StoredTurn;

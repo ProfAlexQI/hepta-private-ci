@@ -3,6 +3,7 @@ mod create_thread;
 mod helpers;
 mod list_threads;
 mod live_writer;
+mod model_context;
 mod read_thread;
 mod thread_history;
 mod thread_history_materialization;
@@ -33,6 +34,7 @@ use crate::LoadThreadHistoryParams;
 use crate::ReadThreadByRolloutPathParams;
 use crate::ReadThreadParams;
 use crate::ResumeThreadParams;
+use crate::StoredModelContext;
 use crate::StoredThread;
 use crate::StoredThreadHistory;
 use crate::ThreadPage;
@@ -277,6 +279,13 @@ impl ThreadStore for LocalThreadStore {
         .ok_or_else(|| ThreadStoreError::Internal {
             message: format!("failed to load history for thread {}", params.thread_id),
         })
+    }
+
+    async fn load_latest_model_context(
+        &self,
+        params: LoadThreadHistoryParams,
+    ) -> ThreadStoreResult<StoredModelContext> {
+        model_context::load_latest_model_context(self, params).await
     }
 
     async fn read_thread(&self, params: ReadThreadParams) -> ThreadStoreResult<StoredThread> {

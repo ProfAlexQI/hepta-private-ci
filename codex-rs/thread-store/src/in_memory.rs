@@ -21,6 +21,7 @@ use crate::LoadThreadHistoryParams;
 use crate::ReadThreadByRolloutPathParams;
 use crate::ReadThreadParams;
 use crate::ResumeThreadParams;
+use crate::StoredModelContext;
 use crate::StoredThread;
 use crate::StoredThreadHistory;
 use crate::ThreadMetadataPatch;
@@ -253,6 +254,7 @@ pub struct InMemoryThreadStoreCalls {
     pub shutdown_thread: usize,
     pub discard_thread: usize,
     pub load_history: usize,
+    pub load_latest_model_context: usize,
     pub read_thread: usize,
     pub read_thread_by_rollout_path: usize,
     pub list_threads: usize,
@@ -380,6 +382,25 @@ impl ThreadStore for InMemoryThreadStore {
                 })?;
         reject_paginated_history_mode(history_mode_from_state(&state, params.thread_id))?;
         Ok(StoredThreadHistory {
+            thread_id: params.thread_id,
+            items: items.clone(),
+        })
+    }
+
+    async fn load_latest_model_context(
+        &self,
+        params: LoadThreadHistoryParams,
+    ) -> ThreadStoreResult<StoredModelContext> {
+        let mut state = self.state.lock().await;
+        state.calls.load_latest_model_context += 1;
+        let items =
+            state
+                .histories
+                .get(&params.thread_id)
+                .ok_or(ThreadStoreError::ThreadNotFound {
+                    thread_id: params.thread_id,
+                })?;
+        Ok(StoredModelContext {
             thread_id: params.thread_id,
             items: items.clone(),
         })

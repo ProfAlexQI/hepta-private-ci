@@ -14,6 +14,7 @@ use crate::LoadThreadHistoryParams;
 use crate::ReadThreadByRolloutPathParams;
 use crate::ReadThreadParams;
 use crate::ResumeThreadParams;
+use crate::StoredModelContext;
 use crate::StoredThread;
 use crate::StoredThreadHistory;
 use crate::ThreadPage;
@@ -70,6 +71,18 @@ pub trait ThreadStore: Any + Send + Sync {
         &self,
         params: LoadThreadHistoryParams,
     ) -> ThreadStoreResult<StoredThreadHistory>;
+
+    /// Loads the persisted rollout items needed to reconstruct the latest model-visible context.
+    ///
+    /// Implementations that cannot perform a targeted read may return the full persisted history.
+    async fn load_latest_model_context(
+        &self,
+        _params: LoadThreadHistoryParams,
+    ) -> ThreadStoreResult<StoredModelContext> {
+        Err(ThreadStoreError::Unsupported {
+            operation: "load_latest_model_context",
+        })
+    }
 
     /// Reads a thread summary and optionally its persisted history.
     async fn read_thread(&self, params: ReadThreadParams) -> ThreadStoreResult<StoredThread>;
