@@ -6,6 +6,7 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadSource;
 use sqlx::Row;
 use sqlx::sqlite::SqliteRow;
@@ -69,6 +70,8 @@ pub struct ThreadMetadata {
     pub updated_at: DateTime<Utc>,
     /// The session source (stringified enum).
     pub source: String,
+    /// Persisted thread history contract selected when this thread was created.
+    pub history_mode: ThreadHistoryMode,
     /// Optional analytics source classification for this thread.
     pub thread_source: Option<ThreadSource>,
     /// Optional random unique nickname assigned to an AgentControl-spawned sub-agent.
@@ -122,6 +125,8 @@ pub struct ThreadMetadataBuilder {
     pub updated_at: Option<DateTime<Utc>>,
     /// The session source.
     pub source: SessionSource,
+    /// Persisted thread history contract selected when this thread was created.
+    pub history_mode: ThreadHistoryMode,
     /// Optional analytics source classification for this thread.
     pub thread_source: Option<ThreadSource>,
     /// Optional random unique nickname assigned to the session.
@@ -164,6 +169,7 @@ impl ThreadMetadataBuilder {
             created_at,
             updated_at: None,
             source,
+            history_mode: ThreadHistoryMode::Legacy,
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -196,6 +202,7 @@ impl ThreadMetadataBuilder {
             created_at,
             updated_at,
             source,
+            history_mode: self.history_mode,
             thread_source: self.thread_source,
             agent_nickname: self.agent_nickname.clone(),
             agent_role: self.agent_role.clone(),
@@ -256,6 +263,9 @@ impl ThreadMetadata {
         }
         if self.source != other.source {
             diffs.push("source");
+        }
+        if self.history_mode != other.history_mode {
+            diffs.push("history_mode");
         }
         if self.agent_nickname != other.agent_nickname {
             diffs.push("agent_nickname");
@@ -326,6 +336,7 @@ pub(crate) struct ThreadRow {
     created_at: i64,
     updated_at: i64,
     source: String,
+    history_mode: String,
     thread_source: Option<String>,
     agent_nickname: Option<String>,
     agent_role: Option<String>,
@@ -355,6 +366,7 @@ impl ThreadRow {
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             source: row.try_get("source")?,
+            history_mode: row.try_get("history_mode")?,
             thread_source: row.try_get("thread_source")?,
             agent_nickname: row.try_get("agent_nickname")?,
             agent_role: row.try_get("agent_role")?,
@@ -388,6 +400,7 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
             created_at,
             updated_at,
             source,
+            history_mode,
             thread_source,
             agent_nickname,
             agent_role,
@@ -412,12 +425,14 @@ impl TryFrom<ThreadRow> for ThreadMetadata {
             .map(|thread_source| thread_source.parse())
             .transpose()
             .map_err(anyhow::Error::msg)?;
+        let history_mode = history_mode.parse().map_err(anyhow::Error::msg)?;
         Ok(Self {
             id: ThreadId::try_from(id)?,
             rollout_path: PathBuf::from(rollout_path),
             created_at: epoch_millis_to_datetime(created_at)?,
             updated_at: epoch_millis_to_datetime(updated_at)?,
             source,
+            history_mode,
             thread_source,
             agent_nickname,
             agent_role,
@@ -495,6 +510,7 @@ mod tests {
     use chrono::Utc;
     use codex_protocol::ThreadId;
     use codex_protocol::openai_models::ReasoningEffort;
+    use codex_protocol::protocol::ThreadHistoryMode;
     use pretty_assertions::assert_eq;
     use std::path::PathBuf;
 
@@ -505,6 +521,7 @@ mod tests {
             created_at: 1_700_000_000,
             updated_at: 1_700_000_100,
             source: "cli".to_string(),
+            history_mode: "legacy".to_string(),
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -535,6 +552,7 @@ mod tests {
             created_at: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).expect("timestamp"),
             updated_at: DateTime::<Utc>::from_timestamp(1_700_000_100, 0).expect("timestamp"),
             source: "cli".to_string(),
+            history_mode: ThreadHistoryMode::Legacy,
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -577,5 +595,13 @@ mod tests {
             metadata,
             expected_thread_metadata(/*reasoning_effort*/ None)
         );
+    }
+
+    #[test]
+    fn thread_row_rejects_unknown_history_mode() {
+        let mut row = thread_row(/*reasoning_effort*/ None);
+        row.history_mode = "future".to_string();
+
+        assert!(ThreadMetadata::try_from(row).is_err());
     }
 }
