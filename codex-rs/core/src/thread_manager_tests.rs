@@ -124,6 +124,7 @@ fn truncates_before_requested_user_message() {
         &SnapshotTurnState {
             ends_mid_turn: false,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -149,6 +150,7 @@ fn truncates_before_requested_user_message() {
         &SnapshotTurnState {
             ends_mid_turn: false,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -173,6 +175,7 @@ fn out_of_range_truncation_drops_only_unfinished_suffix_mid_turn() {
         &SnapshotTurnState {
             ends_mid_turn: true,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -224,6 +227,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
         SnapshotTurnState {
             ends_mid_turn: true,
             active_turn_id: Some("turn-2".to_string()),
+            active_turn_started_at: None,
             active_turn_start_index: Some(2),
         },
     );
@@ -261,6 +265,7 @@ async fn ignores_session_prefix_messages_when_truncating() {
         &SnapshotTurnState {
             ends_mid_turn: false,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -1019,6 +1024,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
             append_interrupted_boundary(
                 committed_history,
                 /*turn_id*/ None,
+                /*started_at*/ Some(42),
                 InterruptedTurnHistoryMarker::ContextualUser,
             )
             .get_rollout_items()
@@ -1028,6 +1034,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
             RolloutItem::ResponseItem(user_msg("hello")),
             RolloutItem::ResponseItem(contextual_user_interrupted_marker()),
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                started_at: Some(42),
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,
@@ -1041,6 +1048,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
             append_interrupted_boundary(
                 InitialHistory::New,
                 /*turn_id*/ None,
+                /*started_at*/ None,
                 InterruptedTurnHistoryMarker::ContextualUser,
             )
             .get_rollout_items()
@@ -1049,6 +1057,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
         serde_json::to_value(vec![
             RolloutItem::ResponseItem(contextual_user_interrupted_marker()),
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                started_at: None,
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,
@@ -1069,6 +1078,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
             append_interrupted_boundary(
                 committed_history,
                 /*turn_id*/ None,
+                /*started_at*/ None,
                 InterruptedTurnHistoryMarker::Disabled,
             )
             .get_rollout_items()
@@ -1077,6 +1087,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
         serde_json::to_value(vec![
             RolloutItem::ResponseItem(user_msg("hello")),
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                started_at: None,
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,
@@ -1090,6 +1101,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
             append_interrupted_boundary(
                 InitialHistory::New,
                 /*turn_id*/ None,
+                /*started_at*/ None,
                 InterruptedTurnHistoryMarker::Disabled,
             )
             .get_rollout_items()
@@ -1097,6 +1109,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
         .expect("serialize disabled interrupted empty fork history"),
         serde_json::to_value(vec![RolloutItem::EventMsg(EventMsg::TurnAborted(
             TurnAbortedEvent {
+                started_at: None,
                 turn_id: None,
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,
@@ -1114,6 +1127,7 @@ fn interrupted_snapshot_is_not_mid_turn() {
         RolloutItem::ResponseItem(assistant_msg("partial")),
         RolloutItem::ResponseItem(contextual_user_interrupted_marker()),
         RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+            started_at: None,
             turn_id: Some("turn-1".to_string()),
             reason: TurnAbortReason::Interrupted,
             completed_at: None,
@@ -1126,6 +1140,7 @@ fn interrupted_snapshot_is_not_mid_turn() {
         SnapshotTurnState {
             ends_mid_turn: false,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -1171,6 +1186,7 @@ fn completed_legacy_event_history_is_not_mid_turn() {
         SnapshotTurnState {
             ends_mid_turn: false,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -1194,6 +1210,7 @@ fn mixed_response_and_legacy_user_event_history_is_mid_turn() {
         SnapshotTurnState {
             ends_mid_turn: true,
             active_turn_id: None,
+            active_turn_started_at: None,
             active_turn_start_index: None,
         },
     );
@@ -1278,6 +1295,7 @@ async fn interrupted_fork_snapshot_does_not_synthesize_turn_id_for_legacy_histor
     .expect("serialize interrupted marker");
     let interrupted_abort_json = serde_json::to_value(RolloutItem::EventMsg(
         EventMsg::TurnAborted(TurnAbortedEvent {
+            started_at: None,
             turn_id: expected_turn_id,
             reason: TurnAbortReason::Interrupted,
             completed_at: None,
@@ -1363,6 +1381,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
         SnapshotTurnState {
             ends_mid_turn: true,
             active_turn_id: Some("turn-explicit".to_string()),
+            active_turn_started_at: None,
             active_turn_start_index: Some(1),
         },
     );
@@ -1395,6 +1414,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
         matches!(
             item,
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+            started_at: None,
                 turn_id: Some(turn_id),
                 reason: TurnAbortReason::Interrupted,
             completed_at: None,
@@ -1533,6 +1553,7 @@ async fn interrupted_fork_snapshot_uses_persisted_mid_turn_history_without_live_
                 matches!(
                     item,
                     RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                        started_at: None,
                         reason: TurnAbortReason::Interrupted,
                         ..
                     }))

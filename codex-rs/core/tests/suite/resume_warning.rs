@@ -69,6 +69,8 @@ fn resume_history(
             })),
             RolloutItem::TurnContext(turn_ctx),
             RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                started_at: None,
+                error: None,
                 turn_id,
                 last_agent_message: None,
                 completed_at: None,

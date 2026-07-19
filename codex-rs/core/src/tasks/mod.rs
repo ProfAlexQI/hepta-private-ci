@@ -751,6 +751,7 @@ impl Session {
             .turn_timing_state
             .completed_at_and_duration_ms()
             .await;
+        let started_at = turn_context.turn_timing_state.started_at_unix_secs().await;
         let time_to_first_token_ms = turn_context
             .turn_timing_state
             .time_to_first_token_ms()
@@ -768,6 +769,8 @@ impl Session {
             warn!("failed to apply goal runtime turn-finished event: {err}");
         }
         let event = EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at,
+            error: turn_context.terminal_error.lock().await.clone(),
             turn_id: turn_context.sub_id.clone(),
             last_agent_message,
             completed_at,
@@ -872,7 +875,13 @@ impl Session {
             .turn_timing_state
             .completed_at_and_duration_ms()
             .await;
+        let started_at = task
+            .turn_context
+            .turn_timing_state
+            .started_at_unix_secs()
+            .await;
         let event = EventMsg::TurnAborted(TurnAbortedEvent {
+            started_at,
             turn_id: Some(task.turn_context.sub_id.clone()),
             reason,
             completed_at,

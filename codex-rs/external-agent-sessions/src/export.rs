@@ -49,15 +49,19 @@ pub fn load_session_for_import(path: &Path) -> io::Result<Option<ImportedExterna
 fn rollout_items_from_messages(messages: &[ConversationMessage]) -> Vec<RolloutItem> {
     let mut items = Vec::new();
     let mut response_items = Vec::new();
-    let mut current_turn: Option<(String, Option<String>)> = None;
+    let mut current_turn: Option<(String, Option<i64>, Option<String>)> = None;
     let mut user_turn_count = 0usize;
 
     for message in messages {
         match message.role {
             MessageRole::User => {
-                if let Some((turn_id, last_agent_message)) = current_turn.take() {
+                let started_at = message.timestamp;
+                if let Some((turn_id, previous_started_at, last_agent_message)) =
+                    current_turn.take()
+                {
                     items.push(turn_complete_item(
                         turn_id,
+                        previous_started_at,
                         last_agent_message,
                         /*completed_at*/ None,
                     ));
@@ -84,10 +88,10 @@ fn rollout_items_from_messages(messages: &[ConversationMessage]) -> Vec<RolloutI
                         ..Default::default()
                     },
                 )));
-                current_turn = Some((turn_id, None));
+                current_turn = Some((turn_id, started_at, None));
             }
             MessageRole::Assistant => {
-                let Some((_, last_agent_message)) = current_turn.as_mut() else {
+                let Some((_, _, last_agent_message)) = current_turn.as_mut() else {
                     continue;
                 };
                 let response_item = response_item(message);
@@ -105,12 +109,13 @@ fn rollout_items_from_messages(messages: &[ConversationMessage]) -> Vec<RolloutI
         }
     }
 
-    if let Some((turn_id, last_agent_message)) = current_turn {
+    if let Some((turn_id, started_at, last_agent_message)) = current_turn {
         items.push(external_session_imported_marker_item());
         items.push(token_count_item(&response_items));
         let completed_at = messages.last().and_then(|message| message.timestamp);
         items.push(turn_complete_item(
             turn_id,
+            started_at,
             last_agent_message,
             completed_at,
         ));
@@ -182,10 +187,13 @@ fn estimate_response_items_token_count(response_items: &[ResponseItem]) -> i64 {
 
 fn turn_complete_item(
     turn_id: String,
+    started_at: Option<i64>,
     last_agent_message: Option<String>,
     completed_at: Option<i64>,
 ) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+        started_at,
+        error: None,
         turn_id,
         last_agent_message,
         completed_at,
@@ -279,6 +287,12 @@ mod tests {
         assert_eq!(
             last_turn_complete.and_then(|event| event.last_agent_message.as_deref()),
             Some("first answer")
+        );
+        assert!(
+            last_turn_complete
+                .and_then(|event| event.started_at)
+                .is_some(),
+            "imported terminal snapshots should retain the matching turn start"
         );
     }
 

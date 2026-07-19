@@ -381,6 +381,7 @@ async fn interrupting_regular_turn_waiting_on_startup_prewarm_emits_turn_aborted
         .expect("expected turn aborted event")
         .expect("channel open");
     let EventMsg::TurnAborted(TurnAbortedEvent {
+        started_at,
         turn_id,
         reason,
         completed_at,
@@ -391,6 +392,7 @@ async fn interrupting_regular_turn_waiting_on_startup_prewarm_emits_turn_aborted
     };
     assert_eq!(turn_id, Some(tc.sub_id.clone()));
     assert_eq!(reason, TurnAbortReason::Interrupted);
+    assert!(started_at.is_some());
     assert!(completed_at.is_some());
     assert!(duration_ms.is_some());
 }
@@ -2375,6 +2377,8 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
         RolloutItem::TurnContext(previous_context_item.clone()),
         RolloutItem::EventMsg(EventMsg::TurnComplete(
             codex_protocol::protocol::TurnCompleteEvent {
+                started_at: None,
+                error: None,
                 turn_id,
                 last_agent_message: None,
                 completed_at: None,
@@ -2571,6 +2575,8 @@ async fn thread_rollback_recomputes_previous_turn_settings_and_reference_context
         RolloutItem::ResponseItem(turn_one_user.clone()),
         RolloutItem::ResponseItem(turn_one_assistant.clone()),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: first_turn_id,
             last_agent_message: None,
             completed_at: None,
@@ -2598,6 +2604,8 @@ async fn thread_rollback_recomputes_previous_turn_settings_and_reference_context
         RolloutItem::ResponseItem(turn_two_user),
         RolloutItem::ResponseItem(turn_two_assistant),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: rolled_back_turn_id,
             last_agent_message: None,
             completed_at: None,
@@ -2680,6 +2688,8 @@ async fn thread_rollback_restores_cleared_reference_context_item_after_compactio
         RolloutItem::ResponseItem(user_message("turn 1 user")),
         RolloutItem::ResponseItem(assistant_message("turn 1 assistant")),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: first_turn_id,
             last_agent_message: None,
             completed_at: None,
@@ -2699,6 +2709,8 @@ async fn thread_rollback_restores_cleared_reference_context_item_after_compactio
             replacement_history: Some(compacted_history.clone()),
         }),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: compact_turn_id,
             last_agent_message: None,
             completed_at: None,
@@ -2728,6 +2740,8 @@ async fn thread_rollback_restores_cleared_reference_context_item_after_compactio
         RolloutItem::ResponseItem(user_message("turn 2 user")),
         RolloutItem::ResponseItem(assistant_message("turn 2 assistant")),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: rolled_back_turn_id,
             last_agent_message: None,
             completed_at: None,
@@ -2779,6 +2793,8 @@ async fn thread_rollback_persists_marker_and_replays_cumulatively() {
         RolloutItem::ResponseItem(user_message("turn 1 user")),
         RolloutItem::ResponseItem(assistant_message("turn 1 assistant")),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: "turn-1".to_string(),
             last_agent_message: None,
             completed_at: None,
@@ -2804,6 +2820,8 @@ async fn thread_rollback_persists_marker_and_replays_cumulatively() {
         RolloutItem::ResponseItem(user_message("turn 2 user")),
         RolloutItem::ResponseItem(assistant_message("turn 2 assistant")),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: "turn-2".to_string(),
             last_agent_message: None,
             completed_at: None,
@@ -2829,6 +2847,8 @@ async fn thread_rollback_persists_marker_and_replays_cumulatively() {
         RolloutItem::ResponseItem(user_message("turn 3 user")),
         RolloutItem::ResponseItem(assistant_message("turn 3 assistant")),
         RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id: "turn-3".to_string(),
             last_agent_message: None,
             completed_at: None,
@@ -11195,6 +11215,8 @@ async fn task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input()
     assert!(matches!(
         fifth.msg,
         EventMsg::TurnComplete(TurnCompleteEvent {
+            started_at: None,
+            error: None,
             turn_id,
             last_agent_message: None,
             time_to_first_token_ms: None,

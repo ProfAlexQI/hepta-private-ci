@@ -51,6 +51,7 @@ async fn forward_events_cancelled_while_send_blocked_shuts_down_delegate() {
         .send(Event {
             id: "full".to_string(),
             msg: EventMsg::TurnAborted(TurnAbortedEvent {
+                started_at: None,
                 turn_id: Some("turn-1".to_string()),
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,

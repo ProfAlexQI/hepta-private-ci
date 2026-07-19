@@ -1399,6 +1399,7 @@ async fn thread_resume_token_usage_replay_can_belong_to_interrupted_turn() -> Re
             "timestamp": meta_rfc3339,
             "type": "event_msg",
             "payload": serde_json::to_value(EventMsg::TurnAborted(TurnAbortedEvent {
+            started_at: None,
                 turn_id: Some(interrupted_turn_id.to_string()),
                 reason: TurnAbortReason::Interrupted,
                 completed_at: None,

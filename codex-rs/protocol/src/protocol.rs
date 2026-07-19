@@ -1966,7 +1966,7 @@ pub struct ExitedReviewModeEvent {
 
 // Individual event payload types matching each `EventMsg` variant.
 
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
 pub struct ErrorEvent {
     pub message: String,
     #[serde(default)]
@@ -2019,7 +2019,14 @@ pub struct ContextCompactedEvent;
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct TurnCompleteEvent {
     pub turn_id: String,
+    /// Unix timestamp (in seconds) when the turn started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub started_at: Option<i64>,
     pub last_agent_message: Option<String>,
+    /// Terminal error details when the turn completed unsuccessfully.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorEvent>,
     /// Unix timestamp (in seconds) when the turn completed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null", optional)]
@@ -5343,6 +5350,10 @@ pub struct Chunk {
 pub struct TurnAbortedEvent {
     pub turn_id: Option<String>,
     pub reason: TurnAbortReason,
+    /// Unix timestamp (in seconds) when the turn started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub started_at: Option<i64>,
     /// Unix timestamp (in seconds) when the turn was aborted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null", optional)]
@@ -7043,7 +7054,10 @@ mod tests {
 
         match event {
             EventMsg::TurnAborted(TurnAbortedEvent {
-                turn_id, reason, ..
+                started_at: None,
+                turn_id,
+                reason,
+                ..
             }) => {
                 assert_eq!(turn_id, None);
                 assert_eq!(reason, TurnAbortReason::Interrupted);
@@ -8599,6 +8613,32 @@ mod tests {
                 .expect("new_or_append should return info");
 
         assert_eq!(info.model_context_window, Some(258_400));
+    }
+
+    #[test]
+    fn terminal_turn_snapshot_fields_preserve_legacy_json_shape() -> anyhow::Result<()> {
+        let complete: TurnCompleteEvent = serde_json::from_value(serde_json::json!({
+            "turn_id": "turn-1",
+            "last_agent_message": null,
+            "completed_at": 20,
+            "duration_ms": 10_000,
+            "time_to_first_token_ms": null
+        }))?;
+        assert_eq!(complete.started_at, None);
+        assert_eq!(complete.error, None);
+        let complete_json = serde_json::to_value(&complete)?;
+        assert!(complete_json.get("started_at").is_none());
+        assert!(complete_json.get("error").is_none());
+
+        let aborted: TurnAbortedEvent = serde_json::from_value(serde_json::json!({
+            "turn_id": "turn-1",
+            "reason": "interrupted",
+            "completed_at": 20,
+            "duration_ms": 10_000
+        }))?;
+        assert_eq!(aborted.started_at, None);
+        assert!(serde_json::to_value(&aborted)?.get("started_at").is_none());
+        Ok(())
     }
 
     fn test_selected_snippet_envelope() -> TurnContextRecallSelectedSnippetEnvelope {
