@@ -1972,11 +1972,20 @@ async fn state_check(config: &Config) -> DoctorCheck {
     path_readiness(&mut details, "sqlite home", &config.sqlite_home);
     let state_db = codex_state::state_db_path(&config.sqlite_home);
     let log_db = codex_state::logs_db_path(&config.sqlite_home);
+    let thread_history_db = codex_state::thread_history_db_path(&config.sqlite_home);
     path_readiness(&mut details, "state DB", &state_db);
     path_readiness(&mut details, "log DB", &log_db);
+    path_readiness(&mut details, "thread history DB", &thread_history_db);
     let mut integrity_failures = Vec::new();
     sqlite_integrity_detail(&mut details, &mut integrity_failures, "state DB", &state_db).await;
     sqlite_integrity_detail(&mut details, &mut integrity_failures, "log DB", &log_db).await;
+    sqlite_integrity_detail(
+        &mut details,
+        &mut integrity_failures,
+        "thread history DB",
+        &thread_history_db,
+    )
+    .await;
     rollout_stats_details(&mut details, &config.codex_home);
     standalone_release_cache_details(&mut details);
 
