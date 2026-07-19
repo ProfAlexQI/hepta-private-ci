@@ -18,6 +18,7 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::GitInfo;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_thread_store::StoredThread;
 use core_test_support::PathBufExt;
 use core_test_support::PathExt;
@@ -49,6 +50,7 @@ fn stored_thread(cwd: &str, title: &str, first_user_message: &str) -> StoredThre
         cwd: PathBuf::from(cwd),
         cli_version: "test".to_string(),
         source: SessionSource::Cli,
+        history_mode: ThreadHistoryMode::Legacy,
         thread_source: None,
         agent_nickname: None,
         agent_role: None,

@@ -40,6 +40,7 @@ use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadGoal;
 use codex_protocol::protocol::ThreadGoalStatus;
 use codex_protocol::protocol::ThreadGoalUpdatedEvent;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::UserMessageEvent;
 
 const NO_SOURCE_FILTER: &[SessionSource] = &[];
@@ -380,6 +381,69 @@ async fn assert_state_db_rollout_path(
         .await
         .expect("state db lookup should succeed");
     assert_eq!(path.as_deref(), expected_path);
+}
+
+#[tokio::test]
+async fn read_thread_item_from_rollout_preserves_history_mode() {
+    let temp = TempDir::new().unwrap();
+    let home = temp.path();
+    let uuid = Uuid::from_u128(302);
+    let ts = "2025-01-03T12-00-00";
+    write_session_file(
+        home,
+        ts,
+        uuid,
+        /*num_records*/ 1,
+        Some(SessionSource::Cli),
+    )
+    .unwrap();
+    let path = home.join(format!("sessions/2025/01/03/rollout-{ts}-{uuid}.jsonl"));
+    let contents = fs::read_to_string(&path).unwrap();
+    let mut lines = contents.lines();
+    let mut canonical_meta: serde_json::Value =
+        serde_json::from_str(lines.next().expect("canonical session meta")).unwrap();
+    canonical_meta["payload"]["history_mode"] = serde_json::json!("paginated");
+    let rest = lines.collect::<Vec<_>>().join("\n");
+    fs::write(&path, format!("{canonical_meta}\n{rest}\n")).unwrap();
+
+    let item = crate::list::read_thread_item_from_rollout(path)
+        .await
+        .expect("thread item");
+    assert_eq!(item.history_mode, ThreadHistoryMode::Paginated);
+}
+
+#[tokio::test]
+async fn read_thread_item_from_rollout_rejects_unknown_canonical_history_mode() {
+    let temp = TempDir::new().unwrap();
+    let home = temp.path();
+    let uuid = Uuid::from_u128(303);
+    let ts = "2025-01-03T12-00-00";
+    write_session_file(
+        home,
+        ts,
+        uuid,
+        /*num_records*/ 1,
+        Some(SessionSource::Cli),
+    )
+    .unwrap();
+    let path = home.join(format!("sessions/2025/01/03/rollout-{ts}-{uuid}.jsonl"));
+    let contents = fs::read_to_string(&path).unwrap();
+    let mut lines = contents.lines();
+    let mut canonical_meta: serde_json::Value =
+        serde_json::from_str(lines.next().expect("canonical session meta")).unwrap();
+    canonical_meta["payload"]["history_mode"] = serde_json::json!("future");
+    let user_event = lines.next().expect("user event");
+    let mut source_meta = canonical_meta.clone();
+    let source_uuid = Uuid::from_u128(304);
+    source_meta["payload"]["id"] = serde_json::json!(source_uuid);
+    source_meta["payload"]["history_mode"] = serde_json::json!("legacy");
+    fs::write(
+        &path,
+        format!("{canonical_meta}\n{user_event}\n{source_meta}\n"),
+    )
+    .unwrap();
+
+    assert_eq!(crate::list::read_thread_item_from_rollout(path).await, None);
 }
 
 fn write_session_file(
@@ -733,6 +797,7 @@ async fn test_list_conversations_latest_first() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -750,6 +815,7 @@ async fn test_list_conversations_latest_first() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -767,6 +833,7 @@ async fn test_list_conversations_latest_first() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -877,6 +944,7 @@ async fn test_pagination_cursor() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -894,6 +962,7 @@ async fn test_pagination_cursor() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -947,6 +1016,7 @@ async fn test_pagination_cursor() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -964,6 +1034,7 @@ async fn test_pagination_cursor() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -1009,6 +1080,7 @@ async fn test_pagination_cursor() {
             git_sha: None,
             git_origin_url: None,
             source: Some(SessionSource::VSCode),
+            history_mode: Default::default(),
             agent_nickname: None,
             agent_role: None,
             model_provider: Some(TEST_PROVIDER.to_string()),
@@ -1179,6 +1251,7 @@ async fn test_get_thread_contents() {
             git_sha: None,
             git_origin_url: None,
             source: Some(SessionSource::VSCode),
+            history_mode: Default::default(),
             agent_nickname: None,
             agent_role: None,
             model_provider: Some(TEST_PROVIDER.to_string()),
@@ -1530,6 +1603,7 @@ async fn test_timestamp_only_cursor_skips_same_second_filesystem_ties() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),
@@ -1547,6 +1621,7 @@ async fn test_timestamp_only_cursor_skips_same_second_filesystem_ties() {
                 git_sha: None,
                 git_origin_url: None,
                 source: Some(SessionSource::VSCode),
+                history_mode: Default::default(),
                 agent_nickname: None,
                 agent_role: None,
                 model_provider: Some(TEST_PROVIDER.to_string()),

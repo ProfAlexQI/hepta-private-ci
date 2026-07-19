@@ -32,6 +32,7 @@ use codex_feedback::CodexFeedback;
 use codex_protocol::ThreadId;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_thread_store::CreateThreadParams;
 use codex_thread_store::InMemoryThreadStore;
@@ -233,6 +234,7 @@ fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
                 thread_source: None,
                 base_instructions: BaseInstructions::default(),
                 dynamic_tools: Vec::new(),
+                history_mode: ThreadHistoryMode::Legacy,
                 metadata: ThreadPersistenceMetadata {
                     cwd: None,
                     model_provider: "test-provider".to_string(),

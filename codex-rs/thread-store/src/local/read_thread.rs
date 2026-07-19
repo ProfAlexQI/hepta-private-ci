@@ -24,6 +24,7 @@ use crate::StoredThread;
 use crate::StoredThreadHistory;
 use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
+use crate::error::reject_paginated_history_mode;
 
 pub(super) async fn read_thread(
     store: &LocalThreadStore,
@@ -149,6 +150,7 @@ async fn attach_history_if_requested(
     if !include_history {
         return Ok(());
     }
+    reject_paginated_history_mode(thread.history_mode)?;
     let thread_id = thread.thread_id;
     let Some(path) = thread.rollout_path.clone() else {
         return Err(ThreadStoreError::Internal {
@@ -229,6 +231,7 @@ async fn read_thread_from_rollout_path(
     })?;
     if let Ok(meta_line) = read_session_meta_line(path.as_path()).await {
         thread.forked_from_id = meta_line.meta.forked_from_id;
+        thread.history_mode = meta_line.meta.history_mode;
         if let Some(model_provider) = meta_line
             .meta
             .model_provider
@@ -281,6 +284,10 @@ async fn stored_thread_from_sqlite_metadata(
         .ok()
         .map(|meta_line| meta_line.meta);
     let forked_from_id = session_meta.as_ref().and_then(|meta| meta.forked_from_id);
+    let history_mode = session_meta
+        .as_ref()
+        .map(|meta| meta.history_mode)
+        .unwrap_or(metadata.history_mode);
     let preview = metadata
         .preview
         .clone()
@@ -305,6 +312,7 @@ async fn stored_thread_from_sqlite_metadata(
         cwd: metadata.cwd,
         cli_version: metadata.cli_version,
         source: parse_session_source(&metadata.source),
+        history_mode,
         thread_source: metadata.thread_source,
         agent_nickname: metadata.agent_nickname,
         agent_role: metadata.agent_role,
@@ -371,6 +379,7 @@ fn stored_thread_from_meta_line(
         cwd: meta_line.meta.cwd,
         cli_version: meta_line.meta.cli_version,
         source: meta_line.meta.source,
+        history_mode: meta_line.meta.history_mode,
         thread_source: meta_line.meta.thread_source,
         agent_nickname: meta_line.meta.agent_nickname,
         agent_role: meta_line.meta.agent_role,

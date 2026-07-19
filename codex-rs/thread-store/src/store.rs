@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use codex_protocol::ThreadId;
+use codex_protocol::protocol::ThreadHistoryMode;
 use std::any::Any;
 
 use crate::AppendThreadItemsParams;
@@ -26,6 +27,14 @@ use crate::UpdateThreadMetadataParams;
 pub trait ThreadStore: Any + Send + Sync {
     /// Return this store as [`Any`] for implementation-owned escape hatches.
     fn as_any(&self) -> &dyn Any;
+
+    /// Returns the history mode to use when history does not carry a persisted mode.
+    ///
+    /// Legacy remains the compatibility default until a store implements the complete paginated
+    /// persistence contract.
+    fn default_history_mode(&self) -> ThreadHistoryMode {
+        ThreadHistoryMode::Legacy
+    }
 
     /// Creates a new live thread.
     async fn create_thread(&self, params: CreateThreadParams) -> ThreadStoreResult<()>;

@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_rollout::ARCHIVED_SESSIONS_SUBDIR;
 use uuid::Uuid;
 
@@ -70,6 +71,47 @@ pub(super) fn write_session_file_with_fork(
     model_provider: Option<&str>,
     forked_from_id: Option<Uuid>,
 ) -> std::io::Result<PathBuf> {
+    write_session_file_with_fork_and_history_mode(
+        root,
+        day_dir,
+        ts,
+        uuid,
+        first_user_message,
+        model_provider,
+        forked_from_id,
+        ThreadHistoryMode::Legacy,
+    )
+}
+
+pub(super) fn write_session_file_with_history_mode(
+    root: &Path,
+    ts: &str,
+    uuid: Uuid,
+    history_mode: ThreadHistoryMode,
+) -> std::io::Result<PathBuf> {
+    write_session_file_with_fork_and_history_mode(
+        root,
+        root.join("sessions/2025/01/03"),
+        ts,
+        uuid,
+        "Hello from user",
+        Some("test-provider"),
+        /*forked_from_id*/ None,
+        history_mode,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_session_file_with_fork_and_history_mode(
+    root: &Path,
+    day_dir: PathBuf,
+    ts: &str,
+    uuid: Uuid,
+    first_user_message: &str,
+    model_provider: Option<&str>,
+    forked_from_id: Option<Uuid>,
+    history_mode: ThreadHistoryMode,
+) -> std::io::Result<PathBuf> {
     fs::create_dir_all(&day_dir)?;
     let path = day_dir.join(format!("rollout-{ts}-{uuid}.jsonl"));
     let mut file = fs::File::create(&path)?;
@@ -85,6 +127,7 @@ pub(super) fn write_session_file_with_fork(
             "cli_version": "test_version",
             "source": "cli",
             "model_provider": model_provider,
+            "history_mode": history_mode,
             "git": {
                 "commit_hash": "abcdef",
                 "branch": "main",
