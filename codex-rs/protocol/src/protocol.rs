@@ -804,6 +804,42 @@ pub enum ThreadMemoryMode {
     Disabled,
 }
 
+/// Persisted storage contract for a thread's canonical history.
+///
+/// Legacy remains the default so binaries that predate paginated history keep
+/// interpreting omitted metadata exactly as they do today. Callers must fail
+/// closed before opening a paginated thread unless they implement that
+/// contract end to end.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename_all = "lowercase")]
+pub enum ThreadHistoryMode {
+    #[default]
+    Legacy,
+    Paginated,
+}
+
+impl ThreadHistoryMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::Paginated => "paginated",
+        }
+    }
+}
+
+impl FromStr for ThreadHistoryMode {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "legacy" => Ok(Self::Legacy),
+            "paginated" => Ok(Self::Paginated),
+            _ => Err(format!("unknown thread history mode `{value}`")),
+        }
+    }
+}
+
 impl From<Vec<UserInput>> for Op {
     fn from(value: Vec<UserInput>) -> Self {
         Op::UserInput {
@@ -5533,6 +5569,27 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
     use tempfile::TempDir;
+
+    #[test]
+    fn thread_history_mode_has_stable_wire_values_and_legacy_default() -> Result<()> {
+        assert_eq!(ThreadHistoryMode::default(), ThreadHistoryMode::Legacy);
+        assert_eq!(ThreadHistoryMode::Legacy.as_str(), "legacy");
+        assert_eq!(ThreadHistoryMode::Paginated.as_str(), "paginated");
+        assert_eq!(
+            serde_json::to_string(&ThreadHistoryMode::Paginated)?,
+            r#""paginated""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ThreadHistoryMode>(r#""legacy""#)?,
+            ThreadHistoryMode::Legacy
+        );
+        assert_eq!(
+            ThreadHistoryMode::from_str("paginated"),
+            Ok(ThreadHistoryMode::Paginated)
+        );
+        assert!(ThreadHistoryMode::from_str("future").is_err());
+        Ok(())
+    }
 
     #[test]
     fn strip_user_message_context_accepts_current_marker() {
