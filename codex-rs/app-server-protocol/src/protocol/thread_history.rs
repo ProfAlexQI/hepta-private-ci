@@ -83,6 +83,41 @@ pub fn build_turns_from_rollout_items(items: &[RolloutItem]) -> Vec<Turn> {
     builder.finish()
 }
 
+/// A materialized `ThreadItem` snapshot that changed while handling one input.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadHistoryItemChange {
+    pub turn_id: String,
+    pub item: ThreadItem,
+}
+
+/// Lightweight turn metadata snapshot for projectors that track turn status without
+/// re-reading the full item list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreadHistoryTurnChange {
+    pub turn_id: String,
+    pub status: TurnStatus,
+    pub error: Option<TurnError>,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub duration_ms: Option<i64>,
+}
+
+/// Incremental changes emitted by stateless or stateful thread-history projectors.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ThreadHistoryChangeSet {
+    pub changed_items: Vec<ThreadHistoryItemChange>,
+    pub changed_turns: Vec<ThreadHistoryTurnChange>,
+    pub removed_turn_ids: Vec<String>,
+}
+
+impl ThreadHistoryChangeSet {
+    pub fn is_empty(&self) -> bool {
+        self.changed_items.is_empty()
+            && self.changed_turns.is_empty()
+            && self.removed_turn_ids.is_empty()
+    }
+}
+
 pub struct ThreadHistoryBuilder {
     turns: Vec<Turn>,
     current_turn: Option<PendingTurn>,
