@@ -81,7 +81,7 @@ fn exec_server_params_use_env_policy_overlay_contract() {
             &file_system_sandbox_policy,
             network_sandbox_policy,
         );
-    let request = ExecRequest {
+    let mut request = ExecRequest {
         command: vec!["bash".to_string(), "-lc".to_string(), "true".to_string()],
         cwd: cwd.clone(),
         env: HashMap::from([
@@ -109,7 +109,7 @@ fn exec_server_params_use_env_policy_overlay_contract() {
         windows_sandbox_policy_cwd: cwd,
         windows_sandbox_level: codex_protocol::config_types::WindowsSandboxLevel::Disabled,
         windows_sandbox_private_desktop: false,
-        permission_profile,
+        permission_profile: permission_profile.clone(),
         file_system_sandbox_policy,
         network_sandbox_policy,
         windows_sandbox_filesystem_overrides: None,
@@ -130,11 +130,16 @@ fn exec_server_params_use_env_policy_overlay_contract() {
             ("CODEX_THREAD_ID".to_string(), "thread-1".to_string()),
         ])
     );
-}
-
-#[test]
-fn exec_server_process_id_matches_unified_exec_process_id() {
-    assert_eq!(exec_server_process_id(/*process_id*/ 4321), "4321");
+    request.exec_server_sandbox = Some(
+        codex_exec_server::FileSystemSandboxContext::from_permission_profile(permission_profile),
+    );
+    let first =
+        exec_server_params_for_request(/*process_id*/ 123, &request, /*tty*/ true);
+    let second =
+        exec_server_params_for_request(/*process_id*/ 123, &request, /*tty*/ true);
+    assert!(first.process_id.as_str().starts_with("123-"));
+    assert!(second.process_id.as_str().starts_with("123-"));
+    assert_ne!(first.process_id, second.process_id);
 }
 
 #[tokio::test]

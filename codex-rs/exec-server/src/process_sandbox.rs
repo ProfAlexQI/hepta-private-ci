@@ -18,6 +18,7 @@ pub(crate) struct PreparedExecRequest {
     pub(crate) cwd: AbsolutePathBuf,
     pub(crate) env: HashMap<String, String>,
     pub(crate) arg0: Option<String>,
+    pub(crate) sandbox: SandboxType,
 }
 
 pub(crate) fn prepare_exec_request(
@@ -37,6 +38,7 @@ pub(crate) fn prepare_exec_request(
             cwd: native_cwd,
             env,
             arg0: params.arg0.clone(),
+            sandbox: SandboxType::None,
         });
     };
     let runtime_paths = runtime_paths
@@ -104,6 +106,7 @@ pub(crate) fn prepare_exec_request(
         cwd: request.cwd,
         env: request.env,
         arg0: request.arg0,
+        sandbox,
     })
 }
 
