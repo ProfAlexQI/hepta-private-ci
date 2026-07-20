@@ -62,13 +62,15 @@
 //! 1. **PreChecking**: Validate CLIENT, SYNC_SERVICE, and access_token existence
 //! 2. **StoppingSyncService**: Stop sync service to prevent new data
 //! 3. **LoggingOutFromServer**: Call `client.matrix_auth().logout()` (60s timeout)
-//! 4. **PointOfNoReturn**: Set global flags, delete saved user ID
-//! 5. **ClosingTabs**: Close desktop tabs via `MainDesktopUiAction::CloseAllTabs`
-//! 6. **CleaningAppState**: Drops globals and signals `LOGOUT_NOTIFY`. The
+//! 4. **PointOfNoReturn**: Set global flags after server-side invalidation.
+//! 5. **PointOfNoReturn cleanup**: Delete the keyring credential, safe session
+//!    metadata, and latest-user pointer.
+//! 6. **ClosingTabs**: Close desktop tabs via `MainDesktopUiAction::CloseAllTabs`
+//! 7. **CleaningAppState**: Drops globals and signals `LOGOUT_NOTIFY`. The
 //!    login loop in `start_matrix_client_login_and_sync` does the actual
 //!    teardown of per-session tasks. The tokio runtime stays alive, since
 //!    tearing it down here would race with the new client's SQLite setup.
-//! 7. **Completed**: Send `LogoutAction::LogoutSuccess`
+//! 8. **Completed**: Send `LogoutAction::LogoutSuccess`
 //!
 //! ## Usage
 //!
@@ -87,7 +89,7 @@ use anyhow::{anyhow, Result};
 use makepad_widgets::{Cx, log};
 
 use crate::home::navigation_tab_bar::NavigationBarAction;
-use crate::persistence::delete_latest_user_id;
+use crate::persistence::clear_persisted_session;
 use crate::sliding_sync::clear_app_state;
 use crate::{
     home::main_desktop_ui::MainDesktopUiAction,
@@ -328,6 +330,10 @@ impl LogoutStateMachine {
         )
         .await?;
 
+        let logged_out_user_id = get_client()
+            .and_then(|client| client.user_id().map(ToOwned::to_owned))
+            .ok_or_else(|| anyhow!("Matrix client has no authenticated user ID"))?;
+
         match self.perform_server_logout().await {
             Ok(_) => {
                 self.point_of_no_return.store(true, Ordering::Release);
@@ -338,13 +344,6 @@ impl LogoutStateMachine {
                     50,
                 )
                 .await?;
-
-                // We delete latest_user_id after reaching LOGOUT_POINT_OF_NO_RETURN:
-                // 1. To prevent auto-login with invalid session on next start
-                // 2. While keeping session file intact for potential future login
-                if let Err(e) = delete_latest_user_id().await {
-                    log!("Warning: Failed to delete latest user ID: {}", e);
-                }
             }
             Err(e) => {
                 // Check if it's an M_UNKNOWN_TOKEN error
@@ -359,11 +358,6 @@ impl LogoutStateMachine {
                         50,
                     )
                     .await?;
-
-                    // Same delete operation as in the success case above
-                    if let Err(e) = delete_latest_user_id().await {
-                        log!("Warning: Failed to delete latest user ID: {}", e);
-                    }
                 } else {
                     // Restart sync service since we haven't reached point of no return
                     if let Some(sync_service) = get_sync_service() {
@@ -380,6 +374,22 @@ impl LogoutStateMachine {
                     return Err(anyhow!(e));
                 }
             }
+        }
+
+        if let Err(cleanup_error) = clear_persisted_session(&logged_out_user_id).await {
+            let error = LogoutError::Unrecoverable(UnrecoverableError::PostPointOfNoReturnFailure(
+                format!(
+                    "server logout succeeded but local credential cleanup failed: {cleanup_error:#}"
+                ),
+            ));
+            self.transition_to(
+                LogoutState::Failed(error.clone()),
+                "Failed to clear local session credentials".to_string(),
+                0,
+            )
+            .await?;
+            self.handle_error(&error).await;
+            return Err(anyhow!(error));
         }
 
         // From here on, all failures are unrecoverable

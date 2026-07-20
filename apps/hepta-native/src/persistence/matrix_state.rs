@@ -1,94 +1,25 @@
 //! Handles app persistence by saving and restoring client session data to/from the filesystem.
 
-use std::path::PathBuf;
 use anyhow::{anyhow, bail};
 use makepad_widgets::{log, Cx};
 use matrix_sdk::{
-    authentication::matrix::MatrixSession,
     ruma::{OwnedUserId, UserId},
-    sliding_sync, Client,
+    Client,
 };
-use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::{app_data_dir, login::login_screen::LoginAction};
-
-/// The data needed to re-build a client.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ClientSessionPersisted {
-    /// The URL of the homeserver of the user.
-    pub homeserver: String,
-
-    /// The database path. New sessions store this as a relative subfolder
-    /// (joined with `app_data_dir()` at restore time); legacy sessions
-    /// may have an absolute path. `restore_session` handles both.
-    pub db_path: PathBuf,
-
-    /// The passphrase of the database.
-    pub passphrase: String,
-}
-
-impl std::fmt::Debug for ClientSessionPersisted {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientSessionPersisted")
-            .field("homeserver", &self.homeserver)
-            .field("db_path", &self.db_path)
-            .field("passphrase", &"<REDACTED>")
-            .finish()
-    }
-}
-
-/// The full session to persist.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FullSessionPersisted {
-    /// The data to re-build the client.
-    pub client_session: ClientSessionPersisted,
-
-    /// The Matrix user session.
-    pub user_session: MatrixSession,
-
-    /// The latest sync token.
-    ///
-    /// It is only needed to persist it when using `Client::sync_once()` and we
-    /// want to make our syncs faster by not receiving all the initial sync
-    /// again.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sync_token: Option<String>,
-
-    /// The sliding sync version to use for this client session.
-    ///
-    /// This determines the sync protocol used by the Matrix client:
-    /// - `Native`: Uses the server's native sliding sync implementation for efficient syncing
-    /// - `None`: Falls back to standard Matrix sync (without sliding sync optimizations)
-    ///
-    /// The value is restored and applied to the client via `client.set_sliding_sync_version()`
-    /// when rebuilding the session from persistent storage.
-    #[serde(default)]
-    pub sliding_sync_version: SlidingSyncVersion,
-}
-
-/// A serializable duplicate of [`sliding_sync::Version`].
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub enum SlidingSyncVersion {
-    #[default]
-    Native,
-    None,
-}
-impl From<SlidingSyncVersion> for sliding_sync::Version {
-    fn from(version: SlidingSyncVersion) -> Self {
-        match version {
-            SlidingSyncVersion::None => sliding_sync::Version::None,
-            SlidingSyncVersion::Native => sliding_sync::Version::Native,
-        }
-    }
-}
-impl From<sliding_sync::Version> for SlidingSyncVersion {
-    fn from(version: sliding_sync::Version) -> Self {
-        match version {
-            sliding_sync::Version::None => SlidingSyncVersion::None,
-            sliding_sync::Version::Native => SlidingSyncVersion::Native,
-        }
-    }
-}
+use super::matrix_session_store::SessionMaterial;
+use super::matrix_session_store::clear_session_material;
+use super::matrix_session_store::load_session_material;
+use super::matrix_session_store::referenced_db_path_from_slice;
+use super::matrix_session_store::save_session_material;
+use super::matrix_session_store::wipe_client_passphrase;
+use super::matrix_session_store::wipe_session_tokens;
+use super::matrix_session_store::wipe_sync_token;
+use super::matrix_session_store::write_latest_user_id as write_latest_user_id_private;
+pub use super::matrix_session_store::ClientSessionPersisted;
+pub use super::matrix_session_store::SlidingSyncVersion;
 
 fn user_id_to_file_name(user_id: &UserId) -> String {
     user_id.as_str().replace(":", "_").replace("@", "")
@@ -159,8 +90,8 @@ async fn collect_referenced_db_paths() -> std::collections::HashSet<PathBuf> {
         let Ok(bytes) = tokio::fs::read(&session_file).await else {
             continue;
         };
-        let session: FullSessionPersisted = match serde_json::from_slice(&bytes) {
-            Ok(s) => s,
+        let db_path = match referenced_db_path_from_slice(&bytes) {
+            Ok(db_path) => db_path,
             Err(e) => {
                 log!(
                     "collect_referenced_db_paths: skipping unparsable session file {}: {e}",
@@ -169,7 +100,7 @@ async fn collect_referenced_db_paths() -> std::collections::HashSet<PathBuf> {
                 continue;
             }
         };
-        paths.insert(resolve_db_path(session.client_session.db_path));
+        paths.insert(resolve_db_path(db_path));
     }
 
     paths
@@ -262,12 +193,7 @@ async fn dir_size_bytes(path: &std::path::Path) -> Option<u64> {
 
 /// Save which user was the most recently logged in.
 async fn save_latest_user_id(user_id: &UserId) -> anyhow::Result<()> {
-    tokio::fs::write(
-        app_data_dir().join(LATEST_USER_ID_FILE_NAME),
-        user_id.as_str(),
-    )
-    .await?;
-    Ok(())
+    write_latest_user_id_private(&app_data_dir().join(LATEST_USER_ID_FILE_NAME), user_id).await
 }
 
 /// Restores the given user's previous session from the filesystem.
@@ -299,14 +225,12 @@ pub async fn restore_session(
         status: status_str,
     });
 
-    // The session was serialized as JSON in a file.
-    let serialized_session = tokio::fs::read_to_string(session_file).await?;
-    let FullSessionPersisted {
-        client_session,
+    let SessionMaterial {
+        mut client_session,
         user_session,
         sync_token,
         sliding_sync_version,
-    } = serde_json::from_str(&serialized_session)?;
+    } = load_session_material(&session_file, &user_id).await?;
 
     let status_str = format!(
         "Loaded session file for:\n{user_id}\n\nTrying to connect to homeserver...\n{}",
@@ -318,7 +242,7 @@ pub async fn restore_session(
         status: status_str,
     });
     let original_stored = client_session.db_path.clone();
-    let db_path = resolve_db_path(client_session.db_path);
+    let db_path = resolve_db_path(client_session.db_path.clone());
     if db_path != original_stored {
         log!(
             "Stored db_path '{}' relocated to '{}'",
@@ -334,15 +258,17 @@ pub async fn restore_session(
     let store_config =
         crate::sliding_sync::build_sqlite_store_config(&db_path, &client_session.passphrase);
     // Build the client with the previous settings from the session.
-    let client = Client::builder()
-        .homeserver_url(client_session.homeserver)
+    let client_result = Client::builder()
+        .homeserver_url(client_session.homeserver.clone())
         .sqlite_store_with_config_and_cache_path(store_config, None::<&std::path::Path>)
         .with_threading_support(matrix_sdk::ThreadingSupport::Enabled {
             with_subscriptions: true,
         })
         .handle_refresh_tokens()
         .build()
-        .await?;
+        .await;
+    wipe_client_passphrase(&mut client_session);
+    let client = client_result?;
     let sliding_sync_version = sliding_sync_version.into();
     client.set_sliding_sync_version(sliding_sync_version);
     let status_str = format!(
@@ -362,12 +288,7 @@ pub async fn restore_session(
     Ok((client, sync_token))
 }
 
-/// Persist a logged-in client session to the filesystem for later use.
-///
-/// TODO: This is not very secure, for simplicity. We should use robius-keychain
-///       or `keyring-rs` to storing secrets securely.
-///
-/// Note that we could also build the user session from the login response.
+/// Persist a logged-in client session using private metadata plus the OS keyring.
 pub async fn save_session(
     client: &Client,
     client_session: ClientSessionPersisted,
@@ -377,23 +298,42 @@ pub async fn save_session(
         .session()
         .ok_or_else(|| anyhow!("A logged-in client should have a session"))?;
 
-    save_latest_user_id(&user_session.meta.user_id).await?;
     let sliding_sync_version = client.sliding_sync_version().into();
-    // Save that user's session.
     let session_file = session_file_path(&user_session.meta.user_id);
-    let serialized_session = serde_json::to_string(&FullSessionPersisted {
+    let mut material = SessionMaterial {
         client_session,
         user_session,
         sync_token: None,
         sliding_sync_version,
-    })?;
-    if let Some(parent) = session_file.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-    tokio::fs::write(&session_file, serialized_session).await?;
+    };
+    let user_id = material.user_session.meta.user_id.clone();
+    let save_result = save_session_material(
+        &session_file,
+        &app_data_dir().join(LATEST_USER_ID_FILE_NAME),
+        &mut material,
+    )
+    .await;
+    wipe_client_passphrase(&mut material.client_session);
+    wipe_session_tokens(&mut material.user_session);
+    wipe_sync_token(&mut material.sync_token);
+    save_result?;
 
-    log!("Session persisted to: {}", session_file.display());
+    log!(
+        "Session persisted securely for {user_id} at: {}",
+        session_file.display()
+    );
     Ok(())
+}
+
+/// Remove the persisted Matrix credential, session metadata, and latest-user
+/// pointer for a user after server-side logout has invalidated the session.
+pub async fn clear_persisted_session(user_id: &UserId) -> anyhow::Result<()> {
+    clear_session_material(
+        &session_file_path(user_id),
+        &app_data_dir().join(LATEST_USER_ID_FILE_NAME),
+        user_id,
+    )
+    .await
 }
 
 /// Remove the LATEST_USER_ID_FILE_NAME file if it exists

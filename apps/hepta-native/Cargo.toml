@@ -29,6 +29,7 @@ robius-location = { git = "https://github.com/project-robius/robius" }
 
 
 anyhow = "1.0"
+codex-keyring-store = { path = "../../codex-rs/keyring-store" }
 hepta-core = { path = "../../codex-rs/hepta-core" }
 hepta-runtime = { path = "../../codex-rs/hepta-runtime" }
 bitflags = "2.6.0"
@@ -83,6 +84,7 @@ tokio = { version = "1.43.1", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = "0.3.17"
 unicode-segmentation = "1.11.0"
 url = "2.5.0"
+zeroize = "1.8.2"
 
 
 ## Dependencies for TSP support.
@@ -113,6 +115,9 @@ reqwest = { version = "0.12", default-features = false, optional = true, feature
 
 ## For OAuth/SSO login on iOS, via `ASWebAuthenticationSession`. Ugh....
 [target.'cfg(target_os = "ios")'.dependencies]
+## `codex-keyring-store` owns the abstraction, while this target-specific edge
+## enables keyring's Apple backend on iOS as well as macOS.
+keyring = { version = "3.6", default-features = false, features = ["apple-native", "crypto-rust"] }
 robius-web-auth-session = { git = "https://github.com/project-robius/robius" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
@@ -136,6 +141,10 @@ log_timeline_diffs = []
 
 ## Logs all diffs received by the Matrix SpaceService.
 log_space_service_diffs = []
+
+
+[dev-dependencies]
+tempfile = "3.20"
 
 
 [patch.crates-io]
