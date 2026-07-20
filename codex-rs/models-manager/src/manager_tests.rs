@@ -10,6 +10,8 @@ use codex_login::ExternalAuthRefreshContext;
 use codex_login::ExternalAuthTokens;
 use codex_login::TokenData;
 use codex_protocol::openai_models::ModelsResponse;
+use codex_protocol::openai_models::ReasoningEffort;
+use codex_protocol::openai_models::WebSearchToolType;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::collections::VecDeque;
@@ -936,4 +938,197 @@ fn bundled_models_json_roundtrips() {
         !response.models.is_empty(),
         "bundled models.json should contain at least one model"
     );
+}
+
+#[test]
+fn bundled_catalog_matches_hepta_gpt_5_6_absorption_contract() {
+    let response = crate::bundled_models_response()
+        .unwrap_or_else(|err| panic!("bundled models.json should parse: {err}"));
+    let slugs = response
+        .models
+        .iter()
+        .map(|model| model.slug.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        slugs,
+        vec![
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.2",
+            "codex-auto-review",
+        ]
+    );
+
+    let model = |slug: &str| {
+        response
+            .models
+            .iter()
+            .find(|model| model.slug == slug)
+            .unwrap_or_else(|| panic!("{slug} should be present"))
+    };
+    let hepta_instruction_source = model("gpt-5.5");
+    for slug in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+        let candidate = model(slug);
+        assert_eq!(
+            candidate.base_instructions, hepta_instruction_source.base_instructions,
+            "{slug} should retain the Hepta instruction profile"
+        );
+        assert_eq!(
+            candidate.model_messages, hepta_instruction_source.model_messages,
+            "{slug} should retain Hepta personality messages"
+        );
+        assert!(candidate.base_instructions.starts_with("You are Hepta"));
+        assert!(!candidate.base_instructions.contains("You are Codex"));
+        assert!(candidate.supports_personality());
+        assert_eq!(candidate.context_window, Some(272_000));
+        assert_eq!(candidate.max_context_window, Some(272_000));
+        assert!(candidate.supports_parallel_tool_calls);
+        assert!(candidate.supports_image_detail_original);
+        assert_eq!(
+            candidate.web_search_tool_type,
+            WebSearchToolType::TextAndImage
+        );
+        assert_eq!(candidate.additional_speed_tiers, vec!["fast"]);
+        assert_eq!(candidate.service_tiers.len(), 1);
+        assert_eq!(candidate.service_tiers[0].id, "priority");
+        assert_eq!(
+            candidate
+                .supported_reasoning_levels
+                .iter()
+                .map(|preset| preset.effort)
+                .collect::<Vec<_>>(),
+            vec![
+                ReasoningEffort::Low,
+                ReasoningEffort::Medium,
+                ReasoningEffort::High,
+                ReasoningEffort::XHigh,
+            ]
+        );
+    }
+
+    assert_eq!(
+        model("gpt-5.6-sol").default_reasoning_level,
+        Some(ReasoningEffort::Low)
+    );
+    assert_eq!(model("gpt-5.6-sol").priority, 1);
+    assert_eq!(model("gpt-5.6-terra").priority, 2);
+    assert_eq!(model("gpt-5.6-luna").priority, 3);
+    assert_eq!(model("gpt-5.5").priority, 7);
+    assert!(
+        model("gpt-5.5")
+            .availability_nux
+            .as_ref()
+            .is_some_and(|nux| nux.message.contains("available in Hepta"))
+    );
+    for slug in ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "codex-auto-review"] {
+        assert!(model(slug).base_instructions.starts_with("You are Hepta"));
+        assert!(!model(slug).base_instructions.contains("You are Codex"));
+    }
+    assert!(model("gpt-5.2").base_instructions.contains("Hepta CLI"));
+
+    let gpt_5_4 = model("gpt-5.4");
+    assert_eq!(gpt_5_4.visibility, ModelVisibility::Hide);
+    assert_eq!(gpt_5_4.priority, 16);
+    assert_eq!(
+        gpt_5_4
+            .upgrade
+            .as_ref()
+            .map(|upgrade| upgrade.model.as_str()),
+        Some("gpt-5.6-terra")
+    );
+    assert!(
+        gpt_5_4
+            .upgrade
+            .as_ref()
+            .is_some_and(|upgrade| upgrade.migration_markdown.contains("Hepta now uses"))
+    );
+
+    let gpt_5_4_mini = model("gpt-5.4-mini");
+    assert_eq!(gpt_5_4_mini.visibility, ModelVisibility::Hide);
+    assert_eq!(gpt_5_4_mini.priority, 23);
+    assert_eq!(
+        gpt_5_4_mini
+            .upgrade
+            .as_ref()
+            .map(|upgrade| upgrade.model.as_str()),
+        Some("gpt-5.6-luna")
+    );
+    assert_eq!(model("gpt-5.2").priority, 29);
+    assert!(model("gpt-5.2").upgrade.is_none());
+    assert_eq!(model("codex-auto-review").display_name, "Hepta Auto Review");
+    assert_eq!(model("codex-auto-review").priority, 43);
+
+    let raw: serde_json::Value = serde_json::from_str(include_str!("../models.json"))
+        .expect("bundled models.json should parse as raw JSON");
+    for candidate in raw["models"].as_array().expect("models should be an array") {
+        let slug = candidate["slug"]
+            .as_str()
+            .expect("model slug should be a string");
+        let messages = candidate["model_messages"].as_object();
+        assert!(messages.is_none_or(|messages| !messages.contains_key("auto_review")));
+        assert!(messages.is_none_or(|messages| !messages.contains_key("permissions")));
+        let plans = candidate["available_in_plans"]
+            .as_array()
+            .expect("available_in_plans should be an array");
+        for required_plan in ["edu_plus", "edu_pro", "enterprise_cbp_automation", "sci"] {
+            assert!(plans.iter().any(|plan| plan == required_plan));
+        }
+        if slug.starts_with("gpt-5.6-") {
+            assert_eq!(candidate["minimal_client_version"], "0.144.0");
+            assert!(candidate.get("multi_agent_version").is_none());
+            assert!(candidate.get("tool_mode").is_none());
+            assert!(candidate.get("use_responses_lite").is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn bundled_catalog_defaults_to_sol_and_keeps_retired_slug_compatible() {
+    let catalog = crate::bundled_models_response()
+        .unwrap_or_else(|err| panic!("bundled models.json should parse: {err}"));
+    let manager = static_manager_for_tests(catalog);
+    let presets = manager.list_models(RefreshStrategy::Offline).await;
+
+    assert_eq!(
+        presets
+            .iter()
+            .find(|preset| preset.is_default)
+            .map(|preset| preset.model.as_str()),
+        Some("gpt-5.6-sol")
+    );
+    for slug in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.model == slug && preset.show_in_picker)
+        );
+    }
+    for slug in ["gpt-5.4", "gpt-5.4-mini", "codex-auto-review"] {
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.model == slug && !preset.show_in_picker)
+        );
+    }
+    assert!(!presets.iter().any(|preset| preset.model == "gpt-5.3-codex"));
+
+    let explicit_retired = Some("gpt-5.3-codex".to_string());
+    assert_eq!(
+        manager
+            .get_default_model(&explicit_retired, RefreshStrategy::Offline)
+            .await,
+        "gpt-5.3-codex"
+    );
+    for slug in ["gpt-5.3-codex", "custom/gpt-5.3-codex"] {
+        let info = manager
+            .get_model_info(slug, &ModelsManagerConfig::default())
+            .await;
+        assert_eq!(info.slug, slug);
+        assert!(info.used_fallback_model_metadata);
+        assert_eq!(info.visibility, ModelVisibility::None);
+    }
 }
