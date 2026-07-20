@@ -1,0 +1,75 @@
+{
+  "schema": "hepta_ci_baseline_contract_v1",
+  "status": "ready",
+  "baseline_workflow": {
+    "path": ".github/workflows/hepta-ci.yml",
+    "allowed_events": [
+      "pull_request",
+      "push",
+      "workflow_dispatch"
+    ],
+    "required_jobs": [
+      "contract",
+      "static",
+      "rust-backend"
+    ],
+    "required_commands": [
+      "scripts/hepta-ci-baseline contract",
+      "scripts/hepta-ci-baseline contract-self-test",
+      "scripts/hepta-ci-baseline static",
+      "scripts/hepta-ci-baseline rust-backend"
+    ]
+  },
+  "full_workflow": {
+    "path": ".github/workflows/hepta-full-preflight.yml",
+    "allowed_events": [
+      "workflow_dispatch"
+    ],
+    "required_confirmation": "VERIFY_ONLY_NO_DEPLOY",
+    "required_profiles": [
+      "backend-only",
+      "backend-native",
+      "backend-native-release"
+    ],
+    "required_command": "scripts/hepta-preflight-resume --reset"
+  },
+  "upstream_intake": {
+    "url": "https://github.com/openai/codex.git",
+    "ref": "refs/remotes/upstream/hepta-intake-20260721",
+    "sha": "45ac251e178416ff5c3022457ad8d2778c0d4549",
+    "materialize_command": "scripts/hepta-ci-materialize-upstream-intake materialize"
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "cache_bindings": [
+    "codex-rs/rust-toolchain.toml",
+    "codex-rs/Cargo.lock"
+  ],
+  "forbidden_workflow_tokens": [
+    "secrets.",
+    "permissions: write-all",
+    "contents: write",
+    "id-token: write",
+    "packages: write",
+    "actions: write",
+    "pull_request_target",
+    "repository_dispatch",
+    "release:",
+    "environment:",
+    "scripts/hepta-immutable-release-tree activate",
+    "scripts/hepta-watchdog.sh",
+    "launchctl",
+    "systemctl",
+    "codesign",
+    "notarytool",
+    "gh release",
+    "docker push",
+    "npm publish",
+    "cargo publish",
+    "git fetch ",
+    "git merge ",
+    "git checkout ",
+    "git push "
+  ]
+}

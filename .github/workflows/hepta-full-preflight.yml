@@ -1,0 +1,94 @@
+name: Hepta manual full preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Verification profile; no profile deploys, installs, signs, notarizes, or publishes
+        required: true
+        type: choice
+        default: backend-only
+        options:
+          - backend-only
+          - backend-native
+          - backend-native-release
+      confirm_verify_only:
+        description: Type VERIFY_ONLY_NO_DEPLOY to run the selected profile
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-full-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  full-preflight:
+    name: Verification-only full preflight
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
+        with:
+          toolchain: 1.93.0
+          components: rustfmt
+      - name: Cache Cargo inputs and preflight targets
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            codex-rs/target
+            apps/hepta-native/target
+          key: ${{ runner.os }}-hepta-full-v1-${{ github.job }}-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/rust-toolchain.toml', 'apps/hepta-native/Cargo.lock') }}
+      - name: Install preflight tools
+        run: brew install jq ripgrep
+      - name: Verify workflow contract
+        run: scripts/hepta-ci-baseline contract
+      - name: Materialize frozen upstream intake ref
+        run: scripts/hepta-ci-materialize-upstream-intake materialize
+      - name: Select explicit verification profile
+        env:
+          HEPTA_CI_PROFILE: ${{ inputs.profile }}
+          HEPTA_CI_CONFIRM_VERIFY_ONLY: ${{ inputs.confirm_verify_only }}
+        run: |
+          test "$HEPTA_CI_CONFIRM_VERIFY_ONLY" = "VERIFY_ONLY_NO_DEPLOY"
+          case "$HEPTA_CI_PROFILE" in
+            backend-only)
+              printf '%s\n' 'HEPTA_PREFLIGHT_NATIVE=0' 'HEPTA_PREFLIGHT_RELEASE=0' >>"$GITHUB_ENV"
+              ;;
+            backend-native)
+              printf '%s\n' 'HEPTA_PREFLIGHT_NATIVE=1' 'HEPTA_PREFLIGHT_RELEASE=0' >>"$GITHUB_ENV"
+              ;;
+            backend-native-release)
+              printf '%s\n' 'HEPTA_PREFLIGHT_NATIVE=1' 'HEPTA_PREFLIGHT_RELEASE=1' >>"$GITHUB_ENV"
+              ;;
+            *)
+              exit 2
+              ;;
+          esac
+      - name: Fetch locked dependency graphs
+        run: |
+          cargo fetch --locked --manifest-path codex-rs/Cargo.toml
+          if test "$HEPTA_PREFLIGHT_NATIVE" = "1"; then
+            cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml
+          fi
+      - name: Run full preflight without deployment
+        env:
+          CARGO_NET_OFFLINE: "true"
+          HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "0"
+          HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "0"
+        run: scripts/hepta-preflight-resume --reset

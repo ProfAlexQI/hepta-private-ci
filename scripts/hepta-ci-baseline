@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+MANIFEST="$ROOT/codex-rs/Cargo.toml"
+
+usage() {
+  echo "usage: scripts/hepta-ci-baseline <contract|contract-self-test|static|rust-backend>" >&2
+  exit 2
+}
+
+require_tools() {
+  local tool
+  for tool in "$@"; do
+    command -v "$tool" >/dev/null || {
+      echo "missing Hepta CI baseline tool: $tool" >&2
+      exit 1
+    }
+  done
+}
+
+assert_lockfiles_clean() {
+  if ! git -C "$ROOT" diff --quiet -- codex-rs/Cargo.lock apps/hepta-native/Cargo.lock MODULE.bazel.lock \
+    || ! git -C "$ROOT" diff --cached --quiet -- codex-rs/Cargo.lock apps/hepta-native/Cargo.lock MODULE.bazel.lock; then
+    echo "Hepta CI baseline detected dependency lockfile drift" >&2
+    git -C "$ROOT" status --short -- \
+      codex-rs/Cargo.lock apps/hepta-native/Cargo.lock MODULE.bazel.lock >&2
+    exit 1
+  fi
+}
+
+run_static() {
+  require_tools bash git jq perl rg shasum
+  cd "$ROOT"
+  run_static_gate architecture-budget-verify scripts/hepta-architecture-budget verify
+  run_static_gate architecture-budget-self-test scripts/hepta-architecture-budget self-test
+  run_static_gate terminal-coverage-inventory scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
+  run_static_gate terminal-coverage-diagnostic scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
+  run_static_gate runtime-export-source-set scripts/hepta-runtime-crate-root-source-set-self-test
+  run_static_gate immutable-release-provenance scripts/hepta-immutable-release-tree self-test
+  run_static_gate watchdog-provenance scripts/hepta-watchdog-provenance-self-test.sh
+  git diff --check
+  git diff --cached --check
+}
+
+run_static_gate() {
+  local name="$1"
+  shift
+  echo "[hepta-ci-baseline] static gate: $name"
+  "$@" >/dev/null
+}
+
+budgeted_cargo() {
+  local name="$1"
+  local max_seconds="$2"
+  shift 2
+  "$ROOT/scripts/hepta-budgeted-test" run \
+    --name "$name" \
+    --max-seconds "$max_seconds" \
+    --workspace "$ROOT" \
+    -- "$@"
+}
+
+run_rust_backend() {
+  require_tools cargo git perl shasum
+  assert_lockfiles_clean
+  budgeted_cargo ci-rustfmt 300 \
+    cargo fmt --all --manifest-path "$MANIFEST" -- --check
+  budgeted_cargo ci-backend-check 2400 \
+    cargo check --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-core \
+      -p hepta-memory \
+      -p hepta-plugins \
+      -p hepta-runtime \
+      -p hepta-gateway \
+      -p hepta-cli --bin hepta
+  budgeted_cargo ci-model-catalog-tests 1800 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p codex-models-manager bundled_catalog_
+  budgeted_cargo ci-core-history-tests 2400 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p codex-core context_manager::history::tests
+  budgeted_cargo ci-state-memory-mode-test 1800 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p codex-state claim_stage1_jobs_include_enabled_paginated_and_skip_disabled_paginated_threads
+  budgeted_cargo ci-thread-store-tests 1800 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p codex-thread-store paginated_
+  budgeted_cargo ci-plugin-tests 2400 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p codex-core-plugins
+  assert_lockfiles_clean
+  git -C "$ROOT" diff --check
+  git -C "$ROOT" diff --cached --check
+}
+
+[[ $# -eq 1 ]] || usage
+case "$1" in
+  contract)
+    exec "$ROOT/scripts/hepta-ci-baseline-contract" verify
+    ;;
+  contract-self-test)
+    exec "$ROOT/scripts/hepta-ci-baseline-contract" self-test
+    ;;
+  static)
+    run_static
+    ;;
+  rust-backend)
+    run_rust_backend
+    ;;
+  *)
+    usage
+    ;;
+esac

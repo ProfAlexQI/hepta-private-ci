@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+CONTRACT="${HEPTA_CI_CONTRACT:-$ROOT/.github/hepta-ci-contract-v1.json}"
+
+usage() {
+  echo "usage: scripts/hepta-ci-baseline-contract <verify|self-test>" >&2
+  exit 2
+}
+
+require_exact_literal() {
+  local file="$1"
+  local literal="$2"
+  local label="$3"
+  local count
+  count="$(grep -Fxc -- "$literal" "$file" || true)"
+  if [[ "$count" != "1" ]]; then
+    echo "Hepta CI contract expected one $label in $file, found $count" >&2
+    return 1
+  fi
+}
+
+require_literal_count() {
+  local file="$1"
+  local literal="$2"
+  local expected="$3"
+  local label="$4"
+  local count
+  count="$(grep -Fxc -- "$literal" "$file" || true)"
+  if [[ "$count" != "$expected" ]]; then
+    echo "Hepta CI contract expected $expected $label entries in $file, found $count" >&2
+    return 1
+  fi
+}
+
+require_literal() {
+  local file="$1"
+  local literal="$2"
+  local label="$3"
+  grep -Fq -- "$literal" "$file" || {
+    echo "Hepta CI contract missing $label in $file" >&2
+    return 1
+  }
+}
+
+reject_literal() {
+  local file="$1"
+  local literal="$2"
+  if grep -Fq -- "$literal" "$file"; then
+    echo "Hepta CI contract rejected token '$literal' in $file" >&2
+    return 1
+  fi
+}
+
+verify_contract() {
+  command -v jq >/dev/null || {
+    echo "missing Hepta CI contract tool: jq" >&2
+    return 1
+  }
+  jq -e '
+    .schema == "hepta_ci_baseline_contract_v1"
+    and .status == "ready"
+    and .permissions == {contents:"read"}
+    and (.baseline_workflow.allowed_events | sort == ["pull_request","push","workflow_dispatch"])
+    and (.full_workflow.allowed_events == ["workflow_dispatch"])
+    and .upstream_intake == {
+      url:"https://github.com/openai/codex.git",
+      ref:"refs/remotes/upstream/hepta-intake-20260721",
+      sha:"45ac251e178416ff5c3022457ad8d2778c0d4549",
+      materialize_command:"scripts/hepta-ci-materialize-upstream-intake materialize"
+    }
+  ' "$CONTRACT" >/dev/null
+
+  local baseline_rel full_rel baseline full
+  baseline_rel="$(jq -er '.baseline_workflow.path' "$CONTRACT")"
+  full_rel="$(jq -er '.full_workflow.path' "$CONTRACT")"
+  baseline="$ROOT/$baseline_rel"
+  full="$ROOT/$full_rel"
+  [[ -f "$baseline" && -f "$full" ]] || {
+    echo "Hepta CI workflow file missing" >&2
+    return 1
+  }
+
+  require_exact_literal "$baseline" "  pull_request:" "pull_request trigger"
+  require_exact_literal "$baseline" "  push:" "push trigger"
+  require_exact_literal "$baseline" "  workflow_dispatch:" "manual trigger"
+  require_exact_literal "$full" "  workflow_dispatch:" "full manual-only trigger"
+  reject_literal "$full" "  pull_request:"
+  reject_literal "$full" "  push:"
+  reject_literal "$full" "  schedule:"
+
+  local workflow
+  for workflow in "$baseline" "$full"; do
+    require_exact_literal "$workflow" "permissions:" "permissions block"
+    require_exact_literal "$workflow" "  contents: read" "read-only contents permission"
+    require_literal "$workflow" "concurrency:" "concurrency policy"
+    require_exact_literal "$workflow" "  cancel-in-progress: true" "cancellation policy"
+    require_literal "$workflow" "uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" "pinned checkout action"
+    while IFS= read -r forbidden; do
+      reject_literal "$workflow" "$forbidden"
+    done < <(jq -er '.forbidden_workflow_tokens[]' "$CONTRACT")
+  done
+
+  local job command_name binding profile
+  while IFS= read -r job; do
+    require_exact_literal "$baseline" "  $job:" "baseline job $job"
+  done < <(jq -er '.baseline_workflow.required_jobs[]' "$CONTRACT")
+  while IFS= read -r command_name; do
+    require_literal "$baseline" "run: $command_name" "baseline command $command_name"
+  done < <(jq -er '.baseline_workflow.required_commands[]' "$CONTRACT")
+  require_literal "$baseline" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
+  require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
+  require_literal_count "$baseline" "          persist-credentials: false" 3 "checkout credential isolation"
+  require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
+  while IFS= read -r binding; do
+    require_literal "$baseline" "'$binding'" "Cargo cache binding $binding"
+  done < <(jq -er '.cache_bindings[]' "$CONTRACT")
+
+  require_literal "$full" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
+  require_literal "$full" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned full preflight Cargo cache action"
+  require_exact_literal "$full" "          persist-credentials: false" "full checkout credential isolation"
+  require_literal "$full" '${{ github.job }}' "full job-bound Cargo cache key"
+  require_literal "$full" "$(jq -er '.full_workflow.required_confirmation' "$CONTRACT")" "verification-only confirmation"
+  while IFS= read -r profile; do
+    require_literal "$full" "          - $profile" "full profile $profile"
+  done < <(jq -er '.full_workflow.required_profiles[]' "$CONTRACT")
+  require_literal "$full" "run: $(jq -er '.full_workflow.required_command' "$CONTRACT")" "full preflight command"
+  require_exact_literal "$full" "        run: $(jq -er '.upstream_intake.materialize_command' "$CONTRACT")" "frozen upstream intake materialization command"
+  require_literal "$full" "HEPTA_PREFLIGHT_NATIVE=0" "backend-only native opt-out"
+  require_literal "$full" "HEPTA_PREFLIGHT_RELEASE=0" "release opt-out"
+  require_literal "$full" "HEPTA_PREFLIGHT_NATIVE=1" "explicit native profile"
+  require_literal "$full" "HEPTA_PREFLIGHT_RELEASE=1" "explicit release profile"
+
+  local action_ref
+  while IFS= read -r action_ref; do
+    if [[ ! "$action_ref" =~ ^[0-9a-f]{40}$ ]]; then
+      echo "Hepta CI contract rejected an unpinned action ref: $action_ref" >&2
+      return 1
+    fi
+  done < <(sed -nE 's/^[[:space:]]*uses:[[:space:]]*[^@[:space:]]+@([0-9A-Za-z._-]+).*/\1/p' "$baseline" "$full")
+
+  jq -n \
+    --arg schema hepta_ci_baseline_contract_verification_v1 \
+    --arg status ready \
+    --arg baseline_workflow "$baseline_rel" \
+    --arg full_workflow "$full_rel" \
+    '{schema:$schema,status:$status,baseline_workflow:$baseline_workflow,full_workflow:$full_workflow,permissions_read_only:true,ordinary_pr_full_preflight_denied:true,deploy_install_sign_publish_denied:true,cache_lock_toolchain_bound:true,frozen_upstream_intake_bound:true}'
+}
+
+self_test() (
+  local tmp baseline_rel full_rel
+  tmp="$(mktemp -d /tmp/hepta-ci-contract-self-test.XXXXXX)"
+  trap 'rm -rf "$tmp"' EXIT
+  baseline_rel="$(jq -er '.baseline_workflow.path' "$CONTRACT")"
+  full_rel="$(jq -er '.full_workflow.path' "$CONTRACT")"
+  mkdir -p "$tmp/$(dirname "$baseline_rel")" "$tmp/$(dirname "$full_rel")" "$tmp/scripts"
+  cp "$CONTRACT" "$tmp/contract.json"
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
+  cp "$ROOT/scripts/hepta-ci-baseline-contract" "$tmp/scripts/hepta-ci-baseline-contract"
+  cp "$ROOT/scripts/hepta-ci-materialize-upstream-intake" "$tmp/scripts/hepta-ci-materialize-upstream-intake"
+
+  HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null
+
+  printf '\npermissions: write-all\n' >>"$tmp/$baseline_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted write-all permissions" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+
+  printf '\n  pull_request:\n' >>"$tmp/$full_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted ordinary PR full preflight" >&2
+    return 1
+  fi
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
+
+  jq '.upstream_intake.url = "https://example.invalid/floating.git"' \
+    "$tmp/contract.json" >"$tmp/contract-mutated.json"
+  if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted a different upstream intake URL" >&2
+    return 1
+  fi
+  jq '.upstream_intake.ref = "refs/remotes/upstream/main"' \
+    "$tmp/contract.json" >"$tmp/contract-mutated.json"
+  if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted a different upstream intake ref" >&2
+    return 1
+  fi
+  jq '.upstream_intake.sha = "0000000000000000000000000000000000000000"' \
+    "$tmp/contract.json" >"$tmp/contract-mutated.json"
+  if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted a different upstream intake SHA" >&2
+    return 1
+  fi
+
+  printf '\n      - run: git fetch upstream main\n' >>"$tmp/$full_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted a floating upstream fetch" >&2
+    return 1
+  fi
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
+
+  git -C "$tmp" init -q
+  git -C "$tmp" config user.name hepta-ci-contract-self-test
+  git -C "$tmp" config user.email hepta-ci-contract-self-test@invalid
+  printf 'fixture\n' >"$tmp/fixture"
+  git -C "$tmp" add fixture
+  git -C "$tmp" commit -qm fixture
+  git -C "$tmp" update-ref \
+    refs/remotes/upstream/hepta-intake-20260721 \
+    "$(git -C "$tmp" rev-parse HEAD)"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$tmp" \
+    "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test overwrote an unexpected upstream intake ref" >&2
+    return 1
+  fi
+
+  sed -i.bak '/codex-rs\/Cargo.lock/d' "$tmp/$baseline_rel"
+  rm -f "$tmp/$baseline_rel.bak"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted an unbound Cargo cache" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+
+  printf '\n      - run: scripts/hepta-immutable-release-tree activate\n' >>"$tmp/$full_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted deployment activation" >&2
+    return 1
+  fi
+
+  jq -n \
+    --arg schema hepta_ci_baseline_contract_self_test_v1 \
+    --arg status ready \
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,different_upstream_url_ref_sha_denied:true,floating_upstream_fetch_denied:true,unexpected_upstream_ref_overwrite_denied:true}'
+)
+
+[[ $# -eq 1 ]] || usage
+case "$1" in
+  verify)
+    verify_contract
+    ;;
+  self-test)
+    self_test
+    ;;
+  *)
+    usage
+    ;;
+esac

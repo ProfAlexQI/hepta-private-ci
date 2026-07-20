@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_CI_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+CONTRACT="${HEPTA_CI_CONTRACT:-$ROOT/.github/hepta-ci-contract-v1.json}"
+EXPECTED_URL="https://github.com/openai/codex.git"
+EXPECTED_REF="refs/remotes/upstream/hepta-intake-20260721"
+EXPECTED_SHA="45ac251e178416ff5c3022457ad8d2778c0d4549"
+
+usage() {
+  echo "usage: scripts/hepta-ci-materialize-upstream-intake <verify|materialize>" >&2
+  exit 2
+}
+
+load_contract() {
+  command -v jq >/dev/null || {
+    echo "missing Hepta upstream intake tool: jq" >&2
+    return 1
+  }
+  url="$(jq -er '.upstream_intake.url' "$CONTRACT")"
+  ref="$(jq -er '.upstream_intake.ref' "$CONTRACT")"
+  sha="$(jq -er '.upstream_intake.sha' "$CONTRACT")"
+  if [[ "$url" != "$EXPECTED_URL" || "$ref" != "$EXPECTED_REF" || "$sha" != "$EXPECTED_SHA" ]]; then
+    echo "Hepta upstream intake contract does not match the frozen cutoff" >&2
+    return 1
+  fi
+}
+
+verify_ref() {
+  local actual
+  actual="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null)" || {
+    echo "Hepta frozen upstream intake ref is missing: $ref" >&2
+    return 1
+  }
+  if [[ "$actual" != "$sha" ]]; then
+    echo "Hepta frozen upstream intake ref mismatch: expected $sha, found $actual" >&2
+    return 1
+  fi
+}
+
+materialize_ref() {
+  local existing fetched
+  existing="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null || true)"
+  if [[ -n "$existing" ]]; then
+    if [[ "$existing" != "$sha" ]]; then
+      echo "Hepta frozen upstream intake ref already exists at unexpected commit: $existing" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  if ! git -C "$ROOT" cat-file -e "$sha^{commit}" 2>/dev/null; then
+    git -C "$ROOT" fetch --no-tags --filter=blob:none "$url" "$sha"
+    fetched="$(git -C "$ROOT" rev-parse --verify 'FETCH_HEAD^{commit}')"
+    if [[ "$fetched" != "$sha" ]]; then
+      echo "Hepta frozen upstream intake fetch mismatch: expected $sha, found $fetched" >&2
+      return 1
+    fi
+  fi
+
+  git -C "$ROOT" update-ref "$ref" "$sha" ""
+  verify_ref
+}
+
+[[ $# -eq 1 ]] || usage
+load_contract
+case "$1" in
+  verify)
+    verify_ref
+    ;;
+  materialize)
+    materialize_ref
+    ;;
+  *)
+    usage
+    ;;
+esac
+
+jq -n \
+  --arg schema hepta_ci_upstream_intake_v1 \
+  --arg status ready \
+  --arg url "$url" \
+  --arg ref "$ref" \
+  --arg sha "$sha" \
+  '{schema:$schema,status:$status,url:$url,ref:$ref,sha:$sha,exact_fetch_only:true,merge_performed:false,checkout_performed:false,push_performed:false}'
