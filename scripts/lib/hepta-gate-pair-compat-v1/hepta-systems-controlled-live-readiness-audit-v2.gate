@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
+READ_ONLY_E2E_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-hepta-system-status-read-only-e2e.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_READINESS_AUDIT_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-readiness-audit-v2-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 5 v2 report: $REPORT"
+[[ -x "$READ_ONLY_E2E_GATE" ]] || fail "missing executable Phase 4 read-only E2E gate: $READ_ONLY_E2E_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 5 architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required to validate the Phase 5 controlled-live readiness audit report"
+
+grep -q 'Controlled Live Readiness Audit' "$DOC" \
+  || fail "architecture note must document Controlled Live Readiness Audit"
+grep -q 'audit ready, cutover blocked' "$DOC" \
+  || fail "architecture note must document audit-ready cutover-blocked status"
+grep -q 'no live execution, Native POST mutation, Telegram transport mutation, gateway/auth mutation, tool invocation, ledger write, approval request, receipt persistence, event-log write, SQLite write, replay, rollback, package, release, or Public GA promotion' "$DOC" \
+  || fail "architecture note must document the closed live boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_readiness_audit"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_readiness_audit_gate"
+  and .schema_version == "controlled_live_readiness_audit_v2"
+  and .compatibility_migration == "clean_worktree_boundary_v2"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_plugin_lifecycle_ready == true
+  and .source_tool_dispatch_ready == true
+  and .source_workflow_adapter_ready == true
+  and .source_read_only_e2e_ready == true
+  and .source_single_source_of_truth_ready == true
+  and .replay_validation_metadata_present == true
+  and .rollback_metadata_present == true
+  and .live_readiness_runtime_source_present == true
+  and .lib_export_present == true
+  and .git_status_source == "actual_repository"
+  and .worktree_boundary_observed == true
+  and .git_status_entry_count == (.git_tracked_change_count + .git_untracked_count)
+  and .audit_precondition_count == 12
+  and (.satisfied_precondition_count + .blocking_precondition_count) == 12
+  and .blocker_count == .blocking_precondition_count
+  and ((.git_status_entry_count == 0
+      and .worktree_boundary_state == "clean"
+      and .dirty_worktree_boundary_tracked == false
+      and .satisfied_precondition_count == 6
+      and .blocking_precondition_count == 6
+      and .blocker_count == 6
+      and any(.preconditions[]; .id == "clean_worktree_required" and .satisfied == true and .blocks_cutover == false)
+      and all(.blockers[]; .id != "dirty_worktree_boundary"))
+    or (.git_status_entry_count > 0
+      and .worktree_boundary_state == "dirty"
+      and .dirty_worktree_boundary_tracked == true
+      and .satisfied_precondition_count == 5
+      and .blocking_precondition_count == 7
+      and .blocker_count == 7
+      and any(.preconditions[]; .id == "clean_worktree_required" and .satisfied == false and .blocks_cutover == true)
+      and any(.blockers[]; .id == "dirty_worktree_boundary")))
+  and .manual_operator_live_cutover_approval_required == true
+  and .operator_live_approval_recorded == false
+  and .fresh_soak_readback_evidence_recorded == false
+  and .credential_boundary_attestation_recorded == false
+  and .gateway_native_telegram_post_boundary_approval_recorded == false
+  and .rollback_rehearsal_evidence_recorded == false
+  and .kill_switch_rehearsal_evidence_recorded == false
+  and .controlled_live_audit_ready == true
+  and .controlled_live_cutover_ready == false
+  and .live_execution_allowed == false
+  and .activation_allowed == false
+  and (.preconditions | length) == 12
+  and (.preconditions | all(.required_for_live == true))
+  and any(.preconditions[]; .id == "single_source_of_truth_ready" and .satisfied == true)
+  and any(.preconditions[]; .id == "read_only_e2e_chain_ready" and .satisfied == true)
+  and any(.preconditions[]; .id == "replay_validation_metadata_present" and .satisfied == true)
+  and any(.preconditions[]; .id == "rollback_metadata_present" and .satisfied == true)
+  and any(.preconditions[]; .id == "explicit_operator_live_approval_recorded" and .blocks_cutover == true)
+  and any(.preconditions[]; .id == "fresh_soak_readback_evidence_recorded" and .blocks_cutover == true)
+  and any(.preconditions[]; .id == "credential_boundary_attestation_recorded" and .blocks_cutover == true)
+  and any(.preconditions[]; .id == "gateway_native_telegram_post_boundary_approval_recorded" and .blocks_cutover == true)
+  and any(.preconditions[]; .id == "rollback_rehearsal_evidence_recorded" and .blocks_cutover == true)
+  and any(.preconditions[]; .id == "kill_switch_rehearsal_evidence_recorded" and .blocks_cutover == true)
+  and (.blockers | all(.operator_recoverable == true))
+  and (.next_actions | index("phase5a_controlled_live_readiness_denial_readback_index_without_cutover")) != null
+  and .next_migration_step == "phase5a_controlled_live_readiness_denial_readback_index_without_cutover"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$READ_ONLY_E2E_GATE" >/dev/null
+
+printf 'hepta-systems-controlled-live-readiness-audit-v2-gate: PASS: clean and dirty worktree states are observed without opening controlled-live cutover\n'

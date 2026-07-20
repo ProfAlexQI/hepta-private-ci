@@ -1,0 +1,56 @@
+{
+  "schema_version": "hepta_controlled_live_worktree_boundary_v2_impact_v1",
+  "migration": "clean_worktree_boundary_v2",
+  "migrated_pairs": [
+    {
+      "id": "hepta-systems-controlled-live-readiness-audit",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.gate"
+    },
+    {
+      "id": "hepta-systems-controlled-live-readiness-denial-readback-index",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.gate"
+    },
+    {
+      "id": "hepta-systems-current-reality-capability-matrix",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.gate"
+    }
+  ],
+  "readback_contract": {
+    "stable_slot_count": 7,
+    "clean_active_blocker_count": 6,
+    "dirty_active_blocker_count": 7,
+    "clean_dirty_worktree_slot_state": "satisfied",
+    "dirty_dirty_worktree_slot_state": "missing",
+    "controlled_live_cutover_ready": false,
+    "live_execution_allowed": false
+  },
+  "unmigrated_direct_consumers": [
+    "hepta-systems-controlled-live-operator-packet-preview",
+    "hepta-systems-controlled-live-required-evidence-collection-plan"
+  ],
+  "unmigrated_indirect_consumers": [
+    "hepta-systems-controlled-live-operator-packet-non-send-readback",
+    "hepta-systems-controlled-live-required-evidence-readback-index",
+    "hepta-systems-controlled-live-required-evidence-gap-summary",
+    "hepta-systems-controlled-live-required-evidence-gap-diff-view",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-non-send-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-transport-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-credential-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback",
+    "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback"
+  ],
+  "unmigrated_consumer_policy": "legacy consumers that require seven simultaneously missing blockers remain blocked on a clean tree; v2 never fabricates a dirty-worktree blocker to make them ready",
+  "legacy_payloads_preserved_in_place": true,
+  "service_or_external_mutation_allowed": false
+}

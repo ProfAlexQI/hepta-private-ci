@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.report"
+AUDIT_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.gate"
+DENIAL_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CURRENT_REALITY_CAPABILITY_MATRIX_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-current-reality-capability-matrix-v2-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable current-reality v2 report: $REPORT"
+[[ -x "$AUDIT_GATE" ]] || fail "missing executable controlled-live v2 audit gate: $AUDIT_GATE"
+[[ -x "$DENIAL_GATE" ]] || fail "missing executable controlled-live v2 denial gate: $DENIAL_GATE"
+[[ -f "$DOC" ]] || fail "missing current-reality architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required to validate the current-reality v2 compatibility projection"
+
+grep -q 'Current Reality Capability Matrix' "$DOC" \
+  || fail "architecture note must document Current Reality Capability Matrix"
+grep -q 'memory/filesystem drift' "$DOC" \
+  || fail "architecture note must document memory/filesystem drift"
+grep -q 'does not open live execution' "$DOC" \
+  || fail "architecture note must document no live execution"
+
+HEPTA_MATRIX_REPORT_RENDER_JOBS="${HEPTA_MATRIX_REPORT_RENDER_JOBS:-8}" \
+  "$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "current_reality_capability_matrix"
+  and .status == "blocked"
+  and .schema_version == "current_reality_capability_matrix_v2"
+  and .compatibility_migration == "controlled_live_clean_worktree_boundary_v2"
+  and .matrix_date == "2026-06-27"
+  and .local_capability_count == (.capabilities | length)
+  and .local_capability_ready_count > 0
+  and .local_capability_blocked_count > 0
+  and (.local_capability_ready_count + .local_capability_blocked_count) == .local_capability_count
+  and .current_reality_capability_matrix_ready == false
+  and .live_enabled_count == 0
+  and .all_live_paths_blocked == true
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+  and .plugin_fixture_shape_ready == true
+  and .plugin_manifest_present == true
+  and .memory_filesystem_drift_tracked == true
+  and .worktree_boundary_observed == true
+  and .git_status_entry_count == (.git_tracked_change_count + .git_untracked_count)
+  and ((.git_status_entry_count == 0
+      and .worktree_boundary_state == "clean"
+      and .dirty_worktree_boundary_tracked == false
+      and .controlled_live_active_blocker_count == 6)
+    or (.git_status_entry_count > 0
+      and .worktree_boundary_state == "dirty"
+      and .dirty_worktree_boundary_tracked == true
+      and .controlled_live_active_blocker_count == 7))
+  and .controlled_live_audit_ready == true
+  and .controlled_live_cutover_ready == false
+  and .controlled_live_readback_slot_count == 7
+  and (.capabilities | all(.live_enabled == false))
+  and ([.capabilities[] | select(.ready == true)] | length) == .local_capability_ready_count
+  and ([.capabilities[] | select(.ready == false)] | length) == .local_capability_blocked_count
+  and any(.capabilities[]; .id == "controlled_live_readiness_audit" and .status == "ready_blocked" and .ready == true and .live_enabled == false and (.source | endswith("controlled-live-readiness-audit-v2.report")))
+  and any(.capabilities[]; .id == "controlled_live_readiness_denial_readback_index" and .status == "ready_blocked" and .ready == true and .live_enabled == false and (.source | endswith("controlled-live-readiness-denial-readback-index-v2.report")))
+  and (.blockers | index("controlled_live_cutover_blocked_by_operator_approval_and_evidence")) != null
+  and (.blockers | index("controlled_live_denial_readback_index_blocks_waiver_and_acceptance")) != null
+  and (.blockers | index("live_and_public_ga_blocked_by_design")) != null
+  and (.next_actions | index("close_controlled_live_evidence_before_status_canary_start")) != null
+  and .next_migration_step == "close_controlled_live_evidence_before_status_canary_start"
+' >/dev/null
+
+"$AUDIT_GATE" >/dev/null
+"$DENIAL_GATE" >/dev/null
+
+printf 'hepta-systems-current-reality-capability-matrix-v2-gate: PASS: current reality observes clean or dirty state accurately while all live paths remain blocked\n'

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+LEGACY_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"
+AUDIT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
+DENIAL_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
+
+fail() {
+  printf 'hepta-systems-current-reality-capability-matrix-v2-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$LEGACY_REPORT" ]] || fail "missing executable legacy current-reality report: $LEGACY_REPORT"
+[[ -x "$AUDIT_REPORT" ]] || fail "missing executable controlled-live v2 audit report: $AUDIT_REPORT"
+[[ -x "$DENIAL_REPORT" ]] || fail "missing executable controlled-live v2 denial report: $DENIAL_REPORT"
+command -v jq >/dev/null 2>&1 || fail "jq is required to render the current-reality v2 compatibility projection"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+env \
+  -u HEPTA_CONTROLLED_LIVE_AUDIT_JSON \
+  -u HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON \
+  "$LEGACY_REPORT" >"$tmpdir/legacy.json" \
+  || fail "failed to render legacy current-reality report"
+"$AUDIT_REPORT" >"$tmpdir/audit.json" \
+  || fail "failed to render controlled-live v2 audit report"
+HEPTA_CONTROLLED_LIVE_AUDIT_JSON="$tmpdir/audit.json" \
+  "$DENIAL_REPORT" >"$tmpdir/denial.json" \
+  || fail "failed to render controlled-live v2 denial report"
+
+jq -n \
+  --slurpfile legacy "$tmpdir/legacy.json" \
+  --slurpfile audit "$tmpdir/audit.json" \
+  --slurpfile denial "$tmpdir/denial.json" \
+  '
+  ($legacy[0]) as $legacy |
+  ($audit[0]) as $audit |
+  ($denial[0]) as $denial |
+  ($legacy.capabilities | map(
+    if .id == "controlled_live_readiness_audit" then
+      .status = $audit.status
+      | .ready = ($audit.controlled_live_audit_ready == true
+          and $audit.controlled_live_cutover_ready == false
+          and $audit.blocker_count == $audit.blocking_precondition_count
+          and ($audit.blocker_count == 6 or $audit.blocker_count == 7))
+      | .live_enabled = false
+      | .source = "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
+      | .current_fact = (if $audit.worktree_boundary_state == "clean"
+          then "controlled-live audit is ready-blocked with a clean worktree and six explicit approval/evidence blockers"
+          else "controlled-live audit is ready-blocked with a dirty-worktree blocker plus six explicit approval/evidence blockers"
+          end)
+    elif .id == "controlled_live_readiness_denial_readback_index" then
+      .status = $denial.status
+      | .ready = ($denial.readback_index_ready == true
+          and $denial.controlled_live_cutover_ready == false
+          and $denial.index_entry_count == 7
+          and $denial.queryable_entry_count == 7
+          and $denial.active_blocker_count == $audit.blocker_count)
+      | .live_enabled = false
+      | .source = "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
+      | .current_fact = "seven stable readback slots expose the actual six-or-seven active blockers while waiver, acceptance, persistence, approval, and live execution remain disabled"
+    else . end
+  )) as $capabilities |
+  ($capabilities | map(select(.ready == true)) | length) as $ready_count |
+  ($capabilities | map(select(.ready == false)) | length) as $blocked_count |
+  ($capabilities | map(select(.live_enabled == true)) | length) as $live_enabled_count |
+  $legacy
+  | .schema_version = "current_reality_capability_matrix_v2"
+  | .compatibility_migration = "controlled_live_clean_worktree_boundary_v2"
+  | .legacy_report = "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report"
+  | .capabilities = $capabilities
+  | .local_capability_ready_count = $ready_count
+  | .local_capability_blocked_count = $blocked_count
+  | .live_enabled_count = $live_enabled_count
+  | .all_live_paths_blocked = ($live_enabled_count == 0)
+  | .git_status_entry_count = $audit.git_status_entry_count
+  | .git_untracked_count = $audit.git_untracked_count
+  | .git_tracked_change_count = $audit.git_tracked_change_count
+  | .worktree_boundary_observed = $audit.worktree_boundary_observed
+  | .worktree_boundary_state = $audit.worktree_boundary_state
+  | .dirty_worktree_boundary_tracked = $audit.dirty_worktree_boundary_tracked
+  | .controlled_live_audit_ready = $audit.controlled_live_audit_ready
+  | .controlled_live_cutover_ready = false
+  | .controlled_live_active_blocker_count = $denial.active_blocker_count
+  | .controlled_live_readback_slot_count = $denial.index_entry_count
+  | .current_reality_capability_matrix_ready = false
+  | .status = "blocked"
+  '

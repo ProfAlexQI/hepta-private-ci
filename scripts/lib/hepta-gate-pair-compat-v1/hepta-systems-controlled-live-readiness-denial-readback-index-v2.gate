@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
+AUDIT_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_READINESS_DENIAL_READBACK_INDEX_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-readiness-denial-readback-index-v2-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 5a v2 report: $REPORT"
+[[ -x "$AUDIT_GATE" ]] || fail "missing executable Phase 5 v2 audit gate: $AUDIT_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 5a architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required to validate the Phase 5a denial readback index report"
+
+grep -q 'Controlled Live Readiness Denial Readback Index' "$DOC" \
+  || fail "architecture note must document Controlled Live Readiness Denial Readback Index"
+grep -q 'queryable and operator-facing' "$DOC" \
+  || fail "architecture note must document queryable and operator-facing blockers"
+grep -q 'no waiver, acceptance, approval request, readback persistence, live execution, Native POST mutation, Telegram transport mutation, gateway/auth mutation, replay, rollback, package, release, or Public GA promotion' "$DOC" \
+  || fail "architecture note must document the closed denial readback boundary"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_readiness_denial_readback_index"
+  and .status == "ready_blocked"
+  and .gate == "controlled_live_readiness_denial_readback_index_gate"
+  and .schema_version == "controlled_live_readiness_denial_readback_index_v2"
+  and .compatibility_migration == "clean_worktree_boundary_v2"
+  and .plugin_id == "hepta-system@hepta-local"
+  and .source_controlled_live_audit_ready == true
+  and .source_controlled_live_cutover_ready == false
+  and .source_cutover_blocked == true
+  and .source_blocker_count == .source_blocking_precondition_count
+  and .source_audit_status == "ready_blocked"
+  and .lib_export_present == true
+  and .index_entry_count == 7
+  and .queryable_entry_count == 7
+  and .operator_facing_entry_count == 7
+  and .readback_route_count == 7
+  and .accepted_denial_count == 0
+  and .waived_blocker_count == 0
+  and .readback_index_ready == true
+  and .controlled_live_cutover_ready == false
+  and .ready_for_approval_request == false
+  and .ready_for_approval_recording == false
+  and .ready_for_readback_persistence == false
+  and .ready_for_live_execution == false
+  and ((.source_worktree_boundary_state == "clean"
+      and .source_dirty_worktree_boundary_tracked == false
+      and .source_blocker_count == 6
+      and .active_blocker_count == 6
+      and .blocking_entry_count == 6
+      and .satisfied_entry_count == 1
+      and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .current_state == "satisfied" and .active_blocker == false and .evidence_required == false and .blocks_cutover == false))
+    or (.source_worktree_boundary_state == "dirty"
+      and .source_dirty_worktree_boundary_tracked == true
+      and .source_blocker_count == 7
+      and .active_blocker_count == 7
+      and .blocking_entry_count == 7
+      and .satisfied_entry_count == 0
+      and any(.entries[]; .source_blocker_id == "dirty_worktree_boundary" and .current_state == "missing" and .active_blocker == true and .evidence_required == true and .blocks_cutover == true)))
+  and (.entries | length) == 7
+  and (.entries | all(.queryable == true and .operator_facing == true and .operator_recoverable == true and .waiver_allowed == false and .acceptance_allowed == false and .live_mutation_allowed == false))
+  and any(.entries[]; .source_blocker_id == "operator_live_approval_missing" and .current_state == "missing" and .active_blocker == true)
+  and any(.entries[]; .source_blocker_id == "fresh_soak_readback_missing" and .current_state == "missing" and .active_blocker == true)
+  and any(.entries[]; .source_blocker_id == "credential_boundary_attestation_missing" and .current_state == "missing" and .active_blocker == true)
+  and any(.entries[]; .source_blocker_id == "gateway_native_telegram_post_boundary_approval_missing" and .current_state == "missing" and .active_blocker == true)
+  and any(.entries[]; .source_blocker_id == "rollback_rehearsal_missing" and .current_state == "missing" and .active_blocker == true)
+  and any(.entries[]; .source_blocker_id == "kill_switch_rehearsal_missing" and .current_state == "missing" and .active_blocker == true)
+  and (.next_actions | index("phase5b_controlled_live_operator_packet_preview_without_approval_request")) != null
+  and .next_migration_step == "phase5b_controlled_live_operator_packet_preview_without_approval_request"
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$AUDIT_GATE" >/dev/null
+
+printf 'hepta-systems-controlled-live-readiness-denial-readback-index-v2-gate: PASS: seven stable readback slots expose six or seven active blockers without waiver, persistence, approval, or live execution\n'

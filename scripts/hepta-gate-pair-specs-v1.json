@@ -2151,7 +2151,7 @@
       "capability": "hepta-systems-controlled-live-readiness-audit",
       "receipt_state": "precondition",
       "side_effect_boundary": "read-only precondition compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report",
       "report_path": "scripts/hepta-systems-controlled-live-readiness-audit-report.sh",
       "attachment_surface": "hepta-systems-controlled-live-readiness-audit",
       "readback_surface": "hepta-systems-controlled-live-readiness-audit",
@@ -2162,12 +2162,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-controlled-live-readiness-audit",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.gate",
       "gate_source_sha256": "4eb73b6539aa14574f36c0df2fec898bbc4b00a5a608ef7bbaabe715c3207144",
-      "gate_implementation_sha256": "d29029998063797dace2c82e4bec27e9a258ffa04e1d8de5183adea47d9f7ad1",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit.report",
+      "gate_implementation_sha256": "628b5a2fc4418f897227c38ee8fce358ef87ee9de278d30c2ca38a0677a1e5f9",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report",
       "report_source_sha256": "ef20970d0948932f31d9f12db892d1b82468052c30b8b2b96e0995017416d449",
-      "report_implementation_sha256": "295558ee653c11cb39d33375502637f307ef3d2fe97eb827f3999c7305109fab"
+      "report_implementation_sha256": "8702e6d664ce0ae684ac07120492f1d0b5f72a36c0e804e9eb422df29e65f7f9"
     },
     {
       "id": "hepta-systems-controlled-live-readiness-denial-readback-index",
@@ -2175,7 +2175,7 @@
       "capability": "hepta-systems-controlled-live-readiness-denial-readback-index",
       "receipt_state": "denial",
       "side_effect_boundary": "read-only denial compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report",
       "report_path": "scripts/hepta-systems-controlled-live-readiness-denial-readback-index-report.sh",
       "attachment_surface": "hepta-systems-controlled-live-readiness-denial-readback-index",
       "readback_surface": "hepta-systems-controlled-live-readiness-denial-readback-index",
@@ -2186,12 +2186,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-controlled-live-readiness-denial-readback-index",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.gate",
       "gate_source_sha256": "9d4d57074033f910511b32bac3653da36045aecd800796646be64f9abacd32e3",
-      "gate_implementation_sha256": "164e5c21d32405425baf06b3c4618e4e3e271ec0596900ede9ee7414a4974cf1",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index.report",
+      "gate_implementation_sha256": "f48153bc68450bc155a4d0c0c40fed6da4bdc208d4e82f1b20c9e58ccbb4ecc1",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report",
       "report_source_sha256": "a13c81367359228c625b36eefdc03c5fa2537d1f8b57111be022d43982dcf85f",
-      "report_implementation_sha256": "c58c45a6a35c16f52fda986de4ac7fc9165bf2494b2c5e1cc057eb8ba4834395"
+      "report_implementation_sha256": "48604ee03e8d127e47a6bb312523b56e2d7c97fb6c9fe7a6151f95b40e47c026"
     },
     {
       "id": "hepta-systems-controlled-live-required-evidence-collection-plan",
@@ -2679,7 +2679,7 @@
       "capability": "hepta-systems-current-reality-capability-matrix",
       "receipt_state": "precondition",
       "side_effect_boundary": "read-only precondition compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.report",
       "report_path": "scripts/hepta-systems-current-reality-capability-matrix-report.sh",
       "attachment_surface": "hepta-systems-current-reality-capability-matrix",
       "readback_surface": "hepta-systems-current-reality-capability-matrix",
@@ -2690,12 +2690,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-current-reality-capability-matrix",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.gate",
       "gate_source_sha256": "e7a90b0238e9e1a9dbbc74e02df891a6efdb37bb71213b7eed09866cff10dbca",
-      "gate_implementation_sha256": "3d8f1d44868ae773ad5d788a35cf551ed773f48f5af44d19d177c0b93e432717",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.report",
+      "gate_implementation_sha256": "b2272385a3f8b4a3f8b27e07fa2ee0f9fdc101eaaf86b2f10836c47af4b85894",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.report",
       "report_source_sha256": "412a1661dff12d4676482d3afcc18b00fae16c13c0e4e890bbeb18f0994ef3f4",
-      "report_implementation_sha256": "15f85319e4bb1ef8cd197b5b05780d5266219c1604bcf7bd1a807e63ef18f243"
+      "report_implementation_sha256": "d2433bbbe6111158f72aef931799d7d7be9944cd8306ca856473892117a7611a"
     },
     {
       "id": "hepta-systems-current-reality-matrix-compact-cache-boundary-readback",
