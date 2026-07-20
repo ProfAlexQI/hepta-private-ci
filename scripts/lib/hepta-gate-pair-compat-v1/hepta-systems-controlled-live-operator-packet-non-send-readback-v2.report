@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+PACKET_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report"
+LEGACY_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_operator_packet_non_send_readback.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+RUNTIME_SOURCE_SET="${HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET:-$ROOT/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh}"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_OPERATOR_PACKET_NON_SEND_READBACK_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-operator-packet-non-send-readback-v2-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PACKET_REPORT" ]] || fail "missing executable Phase 5b v2 packet report: $PACKET_REPORT"
+[[ -x "$LEGACY_REPORT" ]] || fail "missing executable legacy Phase 5c report: $LEGACY_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5c Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -x "$RUNTIME_SOURCE_SET" ]] || fail "missing executable runtime crate-root source-set resolver: $RUNTIME_SOURCE_SET"
+[[ -f "$DOC" ]] || fail "missing Phase 5c architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required to render the Phase 5c v2 report"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if HEPTA_REPO_ROOT="$ROOT" "$RUNTIME_SOURCE_SET" grep -q \
+  'controlled_live_operator_packet_non_send_readback_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+packet_json="${HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON:-}"
+if [[ -n "$packet_json" ]]; then
+  [[ -f "$packet_json" ]] || fail "missing cached Phase 5b v2 packet report: $packet_json"
+else
+  packet_json="$tmpdir/packet.json"
+  "$PACKET_REPORT" >"$packet_json" || fail "failed to render Phase 5b v2 packet report"
+fi
+
+legacy_json="$tmpdir/legacy.json"
+HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$packet_json" \
+  "$LEGACY_REPORT" >"$legacy_json" || fail "failed to render legacy Phase 5c report"
+
+jq -n \
+  --slurpfile legacy "$legacy_json" \
+  --slurpfile packet "$packet_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.gate" \
+  --arg legacy_gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.gate" \
+  --arg legacy_report "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report" \
+  '
+  ($legacy[0]) as $legacy |
+  ($packet[0]) as $packet |
+  (($packet.source_worktree_boundary_state == "clean"
+      and $packet.source_blocker_count == 6
+      and $packet.active_blocker_count == 6
+      and $packet.satisfied_entry_count == 1)
+    or ($packet.source_worktree_boundary_state == "dirty"
+      and $packet.source_blocker_count == 7
+      and $packet.active_blocker_count == 7
+      and $packet.satisfied_entry_count == 0)) as $worktree_state_consistent |
+  ($packet.schema_version == "controlled_live_operator_packet_preview_v2"
+    and $packet.compatibility_migration == "clean_worktree_boundary_v2_propagation"
+    and $packet.operator_packet_preview_ready == true
+    and $packet.blocker_readback_count == 7
+    and $packet.controlled_live_cutover_ready == false
+    and $packet.live_execution_allowed == false
+    and $packet.approval_request_ready == false
+    and $packet.approval_request_sent == false
+    and $packet.approval_recorded == false
+    and $packet.packet_persisted == false
+    and $packet.side_effect_free == true
+    and ($packet.side_effects | to_entries | all(.value == false))
+    and $worktree_state_consistent
+    and $lib_export_present == true
+    and $legacy.readback_entry_count == 6
+    and $legacy.readback_ready_count == 6
+    and ($legacy.entries | length) == 6
+    and $legacy.side_effect_free == true
+    and ($legacy.side_effects | to_entries | all(.value == false))
+    and ($legacy.entries | all(.operator_visible == true and .non_send_confirmed == true and .persistence_blocked == true and .approval_request_blocked == true and .live_mutation_allowed == false))) as $non_send_ready |
+  $legacy
+  | .status = (if $non_send_ready then "ready_blocked" else "blocked" end)
+  | .schema_version = "controlled_live_operator_packet_non_send_readback_v2"
+  | .compatibility_migration = "clean_worktree_boundary_v2_propagation"
+  | .legacy_report = $legacy_report
+  | .legacy_gate = $legacy_gate
+  | .source_worktree_boundary_state = $packet.source_worktree_boundary_state
+  | .source_dirty_worktree_boundary_tracked = $packet.source_dirty_worktree_boundary_tracked
+  | .source_blocker_count = $packet.source_blocker_count
+  | .source_blocker_readback_count = $packet.blocker_readback_count
+  | .source_active_blocker_count = $packet.active_blocker_count
+  | .source_satisfied_entry_count = $packet.satisfied_entry_count
+  | .stable_blocker_slot_count = $packet.stable_blocker_slot_count
+  | .lib_export_present = $lib_export_present
+  | .packet_visible_to_operator = $non_send_ready
+  | .non_send_readback_ready = $non_send_ready
+  | .controlled_live_cutover_ready = false
+  | .live_execution_allowed = false
+  | .local_gate = $gate
+  '
