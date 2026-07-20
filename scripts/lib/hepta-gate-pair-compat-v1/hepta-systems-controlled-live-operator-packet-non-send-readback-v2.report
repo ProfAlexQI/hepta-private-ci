@@ -52,13 +52,35 @@ jq -n \
   --arg legacy_gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.gate" \
   --arg legacy_report "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report" \
   '
+  def closed_side_effects($effects; $expected_keys):
+    ($effects | type) == "object"
+    and (($effects | keys | sort) == ($expected_keys | sort))
+    and ($effects | to_entries | all(.value == false));
+  def packet_side_effect_keys: [
+    "approval_recorded", "approval_requested", "blocker_waived", "channel_send_performed",
+    "denial_accepted", "gateway_or_auth_mutated", "git_index_mutated", "kill_switch_mutated",
+    "ledger_written", "live_execution_started", "model_invoked", "native_post_mutation_performed",
+    "package_or_release_written", "packet_persisted", "provider_invoked", "public_ga_promoted",
+    "readback_persisted", "report_written", "rollback_executed", "sqlite_written",
+    "telegram_transport_mutated", "workflow_event_log_written"
+  ];
+  def nonsend_side_effect_keys: [
+    "approval_recorded", "approval_requested", "channel_send_performed", "gateway_or_auth_mutated",
+    "git_index_mutated", "ledger_written", "live_execution_started", "model_invoked",
+    "native_post_mutation_performed", "package_or_release_written", "packet_persisted", "packet_sent",
+    "provider_invoked", "public_ga_promoted", "readback_persisted", "replay_executed",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
   ($legacy[0]) as $legacy |
   ($packet[0]) as $packet |
   (($packet.source_worktree_boundary_state == "clean"
+      and $packet.source_dirty_worktree_boundary_tracked == false
       and $packet.source_blocker_count == 6
       and $packet.active_blocker_count == 6
       and $packet.satisfied_entry_count == 1)
     or ($packet.source_worktree_boundary_state == "dirty"
+      and $packet.source_dirty_worktree_boundary_tracked == true
       and $packet.source_blocker_count == 7
       and $packet.active_blocker_count == 7
       and $packet.satisfied_entry_count == 0)) as $worktree_state_consistent |
@@ -72,15 +94,18 @@ jq -n \
     and $packet.approval_request_sent == false
     and $packet.approval_recorded == false
     and $packet.packet_persisted == false
+    and $packet.source_index_entry_count == 7
+    and $packet.stable_blocker_slot_count == 7
+    and $packet.required_evidence_count == $packet.active_blocker_count
     and $packet.side_effect_free == true
-    and ($packet.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($packet.side_effects; packet_side_effect_keys)
     and $worktree_state_consistent
     and $lib_export_present == true
     and $legacy.readback_entry_count == 6
     and $legacy.readback_ready_count == 6
     and ($legacy.entries | length) == 6
     and $legacy.side_effect_free == true
-    and ($legacy.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($legacy.side_effects; nonsend_side_effect_keys)
     and ($legacy.entries | all(.operator_visible == true and .non_send_confirmed == true and .persistence_blocked == true and .approval_request_blocked == true and .live_mutation_allowed == false))) as $non_send_ready |
   $legacy
   | .status = (if $non_send_ready then "ready_blocked" else "blocked" end)

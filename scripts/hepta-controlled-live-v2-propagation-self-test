@@ -9,6 +9,7 @@ NONSEND_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-contro
 PLAN_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report"
 INDEX_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report"
 LEDGER="$ROOT/scripts/hepta-controlled-live-v2-propagation-ledger.json"
+IMPACT="$ROOT/scripts/hepta-controlled-live-worktree-boundary-v2-impact.json"
 SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
 
 PAIR_IDS=(
@@ -27,6 +28,7 @@ for executable in "$AUDIT_REPORT" "$DENIAL_REPORT" "$PACKET_REPORT" "$NONSEND_RE
   [[ -x "$executable" ]] || fail "missing executable v2 report: $executable"
 done
 [[ -f "$LEDGER" ]] || fail "missing propagation ledger: $LEDGER"
+[[ -f "$IMPACT" ]] || fail "missing worktree-boundary impact ledger: $IMPACT"
 [[ -f "$SPEC_FILE" ]] || fail "missing pair spec registry: $SPEC_FILE"
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
@@ -256,6 +258,49 @@ HEPTA_REPO_ROOT="$fixture_root" \
 jq -e '.status == "blocked" and .readback_index_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
   "$tmpdir/invalid-index-result.json" >/dev/null
 
+jq 'del(.side_effects.provider_invoked)' "$tmpdir/clean-denial.json" >"$tmpdir/missing-key-denial.json"
+HEPTA_REPO_ROOT="$fixture_root" \
+  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/missing-key-denial.json" \
+  "$PACKET_REPORT" >"$tmpdir/missing-key-packet-result.json"
+jq -e '.status == "blocked" and .operator_packet_preview_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
+  "$tmpdir/missing-key-packet-result.json" >/dev/null
+
+jq '.side_effects = {}' "$tmpdir/clean-packet.json" >"$tmpdir/empty-side-effects-packet.json"
+HEPTA_REPO_ROOT="$fixture_root" \
+  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/empty-side-effects-packet.json" \
+  "$NONSEND_REPORT" >"$tmpdir/empty-side-effects-nonsend-result.json"
+jq -e '.status == "blocked" and .non_send_readback_ready == false and .controlled_live_cutover_ready == false and .live_execution_allowed == false' \
+  "$tmpdir/empty-side-effects-nonsend-result.json" >/dev/null
+
+jq '.source_dirty_worktree_boundary_tracked = true' "$tmpdir/clean-denial.json" >"$tmpdir/mismatched-denial-boundary.json"
+HEPTA_REPO_ROOT="$fixture_root" \
+  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/mismatched-denial-boundary.json" \
+  "$PACKET_REPORT" >"$tmpdir/mismatched-boundary-packet-result.json"
+jq -e '.status == "blocked" and .operator_packet_preview_ready == false' \
+  "$tmpdir/mismatched-boundary-packet-result.json" >/dev/null
+
+jq '.stable_blocker_slot_count = 8' "$tmpdir/clean-packet.json" >"$tmpdir/mismatched-packet-slots.json"
+HEPTA_REPO_ROOT="$fixture_root" \
+  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_JSON="$tmpdir/mismatched-packet-slots.json" \
+  "$NONSEND_REPORT" >"$tmpdir/mismatched-slots-nonsend-result.json"
+jq -e '.status == "blocked" and .non_send_readback_ready == false' \
+  "$tmpdir/mismatched-slots-nonsend-result.json" >/dev/null
+
+jq '.source_worktree_boundary_state = "dirty"' "$tmpdir/clean-nonsend.json" >"$tmpdir/mismatched-nonsend-boundary.json"
+HEPTA_REPO_ROOT="$fixture_root" \
+  HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" \
+  HEPTA_CONTROLLED_LIVE_OPERATOR_PACKET_NONSEND_JSON="$tmpdir/mismatched-nonsend-boundary.json" \
+  "$PLAN_REPORT" >"$tmpdir/mismatched-boundary-plan-result.json"
+jq -e '.status == "blocked" and .evidence_collection_plan_ready == false' \
+  "$tmpdir/mismatched-boundary-plan-result.json" >/dev/null
+
+jq '.stable_blocker_slot_count = 8' "$tmpdir/clean-plan.json" >"$tmpdir/mismatched-plan-slots.json"
+HEPTA_REPO_ROOT="$fixture_root" \
+  HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$tmpdir/mismatched-plan-slots.json" \
+  "$INDEX_REPORT" >"$tmpdir/mismatched-slots-index-result.json"
+jq -e '.status == "blocked" and .readback_index_ready == false' \
+  "$tmpdir/mismatched-slots-index-result.json" >/dev/null
+
 jq -e '
   .stable_blocker_slot_count == 7
   and .clean_active_blocker_count == 6
@@ -271,16 +316,32 @@ jq -e '
   and .service_or_external_mutation_allowed == false
 ' "$LEDGER" >/dev/null
 
+base_rc="$(jq -r '.base_rc' "$LEDGER")"
+git -C "$ROOT" cat-file -e "$base_rc^{commit}" || fail "missing ledger base RC commit: $base_rc"
+
 for pair_id in "${PAIR_IDS[@]}"; do
   spec="$(jq -cer --arg id "$pair_id" '.pairs[] | select(.id == $id)' "$SPEC_FILE")" || fail "missing pair spec: $pair_id"
+  migration="$(jq -cer --arg id "$pair_id" '.migrated_pairs[] | select(.id == $id)' "$IMPACT")" || fail "missing impact migration: $pair_id"
+  source_report="$(jq -r '.source_report' <<<"$spec")"
   report_implementation="$(jq -r '.report_implementation' <<<"$spec")"
   gate_implementation="$(jq -r '.gate_implementation' <<<"$spec")"
-  [[ "$report_implementation" == *-v2.report ]] || fail "pair does not select v2 report: $pair_id"
-  [[ "$gate_implementation" == *-v2.gate ]] || fail "pair does not select v2 gate: $pair_id"
+  expected_report="$(jq -r '.v2_report' <<<"$migration")"
+  expected_gate="$(jq -r '.v2_gate' <<<"$migration")"
+  [[ "$source_report" == "$report_implementation" ]] || fail "pair source/report implementation mismatch: $pair_id"
+  [[ "$report_implementation" == "$expected_report" ]] || fail "pair does not select impact-ledger v2 report: $pair_id"
+  [[ "$gate_implementation" == "$expected_gate" ]] || fail "pair does not select impact-ledger v2 gate: $pair_id"
   [[ "$(shasum -a 256 "$ROOT/$report_implementation" | awk '{print $1}')" == "$(jq -r '.report_implementation_sha256' <<<"$spec")" ]] \
     || fail "v2 report hash mismatch: $pair_id"
   [[ "$(shasum -a 256 "$ROOT/$gate_implementation" | awk '{print $1}')" == "$(jq -r '.gate_implementation_sha256' <<<"$spec")" ]] \
     || fail "v2 gate hash mismatch: $pair_id"
+  for legacy_key in legacy_report legacy_gate; do
+    legacy_path="$(jq -r --arg key "$legacy_key" '.[$key]' <<<"$migration")"
+    [[ "$legacy_path" == scripts/lib/hepta-gate-pair-compat-v1/* ]] || fail "invalid legacy path for $pair_id: $legacy_path"
+    [[ -f "$ROOT/$legacy_path" ]] || fail "missing legacy payload for $pair_id: $legacy_path"
+    base_blob="$(git -C "$ROOT" rev-parse "$base_rc:$legacy_path")" || fail "legacy payload missing from base RC: $legacy_path"
+    current_blob="$(git -C "$ROOT" hash-object "$ROOT/$legacy_path")"
+    [[ "$current_blob" == "$base_blob" ]] || fail "legacy payload changed since base RC: $legacy_path"
+  done
 done
 
 HEPTA_CONTROLLED_LIVE_DENIAL_READBACK_JSON="$tmpdir/clean-denial.json" "$PACKET_REPORT" | jq -S . >"$tmpdir/direct-packet.json"
@@ -313,6 +374,9 @@ jq -n '
     pair_report_parity:true,
     remaining_gap_family_clean_state:"conservatively_blocked",
     invalid_upstream_side_effects_fail_closed:true,
+    missing_side_effect_keys_fail_closed:true,
+    mismatched_boundary_metadata_fail_closed:true,
+    legacy_payload_blobs_preserved:true,
     controlled_live_cutover_ready:false,
     live_execution_allowed:false,
     external_side_effects_performed:false

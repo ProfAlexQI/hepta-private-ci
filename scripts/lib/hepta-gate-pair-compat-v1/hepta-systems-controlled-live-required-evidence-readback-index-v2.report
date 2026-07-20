@@ -52,6 +52,27 @@ jq -n \
   --arg legacy_gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.gate" \
   --arg legacy_report "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report" \
   '
+  def closed_side_effects($effects; $expected_keys):
+    ($effects | type) == "object"
+    and (($effects | keys | sort) == ($expected_keys | sort))
+    and ($effects | to_entries | all(.value == false));
+  def plan_side_effect_keys: [
+    "approval_accepted", "approval_recorded", "approval_requested", "blocker_waived",
+    "channel_send_performed", "credential_read", "evidence_persisted", "evidence_recorded",
+    "gateway_or_auth_mutated", "git_index_mutated", "ledger_written", "live_execution_started",
+    "model_invoked", "native_post_mutation_performed", "package_or_release_written", "packet_sent",
+    "provider_invoked", "public_ga_promoted", "readback_persisted", "replay_executed",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
+  def index_side_effect_keys: [
+    "approval_accepted", "approval_recorded", "approval_requested", "blocker_waived",
+    "channel_send_performed", "credential_read", "evidence_persisted", "evidence_recorded",
+    "gateway_or_auth_mutated", "git_index_mutated", "ledger_written", "live_execution_started",
+    "model_invoked", "native_post_mutation_performed", "package_or_release_written", "provider_invoked",
+    "public_ga_promoted", "readback_persisted", "replay_executed", "report_written",
+    "rollback_executed", "sqlite_written", "telegram_transport_mutated", "workflow_event_log_written"
+  ];
   ($legacy[0]) as $legacy |
   ($plan[0]) as $plan |
   ($plan.entries | map({key:.source_blocker_id, value:.}) | from_entries) as $plan_by_id |
@@ -69,11 +90,13 @@ jq -n \
   ($entries | map(select(.evidence_required == true and .evidence_state == "missing")) | length) as $missing_evidence_count |
   ($entries | map(select(.evidence_state == "satisfied")) | length) as $satisfied_entry_count |
   (($plan.source_worktree_boundary_state == "clean"
+      and $plan.source_dirty_worktree_boundary_tracked == false
       and $plan.source_blocker_count == 6
       and $active_blocker_count == 6
       and $missing_evidence_count == 6
       and $satisfied_entry_count == 1)
     or ($plan.source_worktree_boundary_state == "dirty"
+      and $plan.source_dirty_worktree_boundary_tracked == true
       and $plan.source_blocker_count == 7
       and $active_blocker_count == 7
       and $missing_evidence_count == 7
@@ -86,8 +109,12 @@ jq -n \
     and $plan.live_execution_allowed == false
     and $plan.evidence_recorded_count == 0
     and $plan.approval_accepted == false
+    and $plan.stable_blocker_slot_count == 7
+    and $plan.active_blocker_count == $active_blocker_count
+    and $plan.required_evidence_count == $active_blocker_count
+    and $plan.satisfied_entry_count == $satisfied_entry_count
     and $plan.side_effect_free == true
-    and ($plan.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($plan.side_effects; plan_side_effect_keys)
     and $worktree_state_consistent
     and $lib_export_present == true
     and ($entries | length) == 7
@@ -98,7 +125,7 @@ jq -n \
     and ($entries | map(select(.evidence_recorded == true)) | length) == 0
     and ($entries | map(select(.blocker_waiver_allowed == true)) | length) == 0
     and $legacy.side_effect_free == true
-    and ($legacy.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($legacy.side_effects; index_side_effect_keys)
     and ($entries | all(
       .evidence_recording_allowed == false
       and .credential_read_allowed == false

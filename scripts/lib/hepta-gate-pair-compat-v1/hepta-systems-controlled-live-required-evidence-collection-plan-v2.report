@@ -64,6 +64,35 @@ jq -n \
   --arg legacy_gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.gate" \
   --arg legacy_report "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.report" \
   '
+  def closed_side_effects($effects; $expected_keys):
+    ($effects | type) == "object"
+    and (($effects | keys | sort) == ($expected_keys | sort))
+    and ($effects | to_entries | all(.value == false));
+  def denial_side_effect_keys: [
+    "approval_recorded", "approval_requested", "blocker_waived", "channel_send_performed",
+    "denial_accepted", "gateway_or_auth_mutated", "git_index_mutated", "kill_switch_mutated",
+    "ledger_written", "live_execution_started", "model_invoked", "native_post_mutation_performed",
+    "package_or_release_written", "provider_invoked", "public_ga_promoted", "readback_persisted",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
+  def nonsend_side_effect_keys: [
+    "approval_recorded", "approval_requested", "channel_send_performed", "gateway_or_auth_mutated",
+    "git_index_mutated", "ledger_written", "live_execution_started", "model_invoked",
+    "native_post_mutation_performed", "package_or_release_written", "packet_persisted", "packet_sent",
+    "provider_invoked", "public_ga_promoted", "readback_persisted", "replay_executed",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
+  def plan_side_effect_keys: [
+    "approval_accepted", "approval_recorded", "approval_requested", "blocker_waived",
+    "channel_send_performed", "credential_read", "evidence_persisted", "evidence_recorded",
+    "gateway_or_auth_mutated", "git_index_mutated", "ledger_written", "live_execution_started",
+    "model_invoked", "native_post_mutation_performed", "package_or_release_written", "packet_sent",
+    "provider_invoked", "public_ga_promoted", "readback_persisted", "replay_executed",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
   ($legacy[0]) as $legacy |
   ($denial[0]) as $denial |
   ($nonsend[0]) as $nonsend |
@@ -82,11 +111,13 @@ jq -n \
   ($entries | map(select(.evidence_required == true and (.required_evidence | length) > 0)) | length) as $required_evidence_count |
   ($entries | map(select(.current_state == "satisfied")) | length) as $satisfied_entry_count |
   (($denial.source_worktree_boundary_state == "clean"
+      and $denial.source_dirty_worktree_boundary_tracked == false
       and $denial.source_blocker_count == 6
       and $active_blocker_count == 6
       and $required_evidence_count == 6
       and $satisfied_entry_count == 1)
     or ($denial.source_worktree_boundary_state == "dirty"
+      and $denial.source_dirty_worktree_boundary_tracked == true
       and $denial.source_blocker_count == 7
       and $active_blocker_count == 7
       and $required_evidence_count == 7
@@ -96,8 +127,12 @@ jq -n \
     and $denial.readback_index_ready == true
     and $denial.controlled_live_cutover_ready == false
     and $denial.ready_for_live_execution == false
+    and $denial.index_entry_count == 7
+    and $denial.active_blocker_count == $active_blocker_count
+    and $denial.blocking_entry_count == $active_blocker_count
+    and $denial.satisfied_entry_count == $satisfied_entry_count
     and $denial.side_effect_free == true
-    and ($denial.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($denial.side_effects; denial_side_effect_keys)
     and $nonsend.schema_version == "controlled_live_operator_packet_non_send_readback_v2"
     and $nonsend.compatibility_migration == "clean_worktree_boundary_v2_propagation"
     and $nonsend.non_send_readback_ready == true
@@ -105,9 +140,15 @@ jq -n \
     and $nonsend.live_execution_allowed == false
     and $nonsend.packet_send_attempted == false
     and $nonsend.packet_persisted == false
+    and $nonsend.source_worktree_boundary_state == $denial.source_worktree_boundary_state
+    and $nonsend.source_dirty_worktree_boundary_tracked == $denial.source_dirty_worktree_boundary_tracked
+    and $nonsend.source_blocker_count == $denial.source_blocker_count
     and $nonsend.side_effect_free == true
-    and ($nonsend.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($nonsend.side_effects; nonsend_side_effect_keys)
     and $nonsend.source_active_blocker_count == $active_blocker_count
+    and $nonsend.source_satisfied_entry_count == $satisfied_entry_count
+    and $nonsend.source_blocker_readback_count == 7
+    and $nonsend.stable_blocker_slot_count == 7
     and $worktree_state_consistent
     and $lib_export_present == true
     and ($entries | length) == 7
@@ -116,7 +157,7 @@ jq -n \
     and ($entries | map(select(.evidence_recorded == true)) | length) == 0
     and ($entries | map(select(.blocker_waiver_allowed == true)) | length) == 0
     and $legacy.side_effect_free == true
-    and ($legacy.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($legacy.side_effects; plan_side_effect_keys)
     and ($entries | all(
       .collection_mode == "plan_only_no_recording"
       and .evidence_recording_allowed == false

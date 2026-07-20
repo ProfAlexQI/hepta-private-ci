@@ -52,6 +52,26 @@ jq -n \
   --arg legacy_gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.gate" \
   --arg legacy_report "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.report" \
   '
+  def closed_side_effects($effects; $expected_keys):
+    ($effects | type) == "object"
+    and (($effects | keys | sort) == ($expected_keys | sort))
+    and ($effects | to_entries | all(.value == false));
+  def denial_side_effect_keys: [
+    "approval_recorded", "approval_requested", "blocker_waived", "channel_send_performed",
+    "denial_accepted", "gateway_or_auth_mutated", "git_index_mutated", "kill_switch_mutated",
+    "ledger_written", "live_execution_started", "model_invoked", "native_post_mutation_performed",
+    "package_or_release_written", "provider_invoked", "public_ga_promoted", "readback_persisted",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
+  def packet_side_effect_keys: [
+    "approval_recorded", "approval_requested", "blocker_waived", "channel_send_performed",
+    "denial_accepted", "gateway_or_auth_mutated", "git_index_mutated", "kill_switch_mutated",
+    "ledger_written", "live_execution_started", "model_invoked", "native_post_mutation_performed",
+    "package_or_release_written", "packet_persisted", "provider_invoked", "public_ga_promoted",
+    "readback_persisted", "report_written", "rollback_executed", "sqlite_written",
+    "telegram_transport_mutated", "workflow_event_log_written"
+  ];
   ($legacy[0]) as $legacy |
   ($denial[0]) as $denial |
   ($denial.entries | map({key:.source_blocker_id, value:.}) | from_entries) as $denial_by_id |
@@ -68,10 +88,12 @@ jq -n \
   ($blocker_readbacks | map(select(.active_blocker == true)) | length) as $active_blocker_count |
   ($blocker_readbacks | map(select(.current_state == "satisfied")) | length) as $satisfied_entry_count |
   (($denial.source_worktree_boundary_state == "clean"
+      and $denial.source_dirty_worktree_boundary_tracked == false
       and $denial.source_blocker_count == 6
       and $active_blocker_count == 6
       and $satisfied_entry_count == 1)
     or ($denial.source_worktree_boundary_state == "dirty"
+      and $denial.source_dirty_worktree_boundary_tracked == true
       and $denial.source_blocker_count == 7
       and $active_blocker_count == 7
       and $satisfied_entry_count == 0)) as $worktree_state_consistent |
@@ -83,15 +105,19 @@ jq -n \
     and $denial.ready_for_approval_recording == false
     and $denial.ready_for_readback_persistence == false
     and $denial.ready_for_live_execution == false
+    and $denial.index_entry_count == 7
+    and $denial.active_blocker_count == $active_blocker_count
+    and $denial.blocking_entry_count == $active_blocker_count
+    and $denial.satisfied_entry_count == $satisfied_entry_count
     and $denial.side_effect_free == true
-    and ($denial.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($denial.side_effects; denial_side_effect_keys)
     and $worktree_state_consistent
     and $lib_export_present == true
     and $legacy.packet_section_count == 6
     and ($legacy.sections | length) == 6
     and ($legacy.sections | all(.preview_ready == true and .mutation_enabled == false))
     and $legacy.side_effect_free == true
-    and ($legacy.side_effects | to_entries | all(.value == false))
+    and closed_side_effects($legacy.side_effects; packet_side_effect_keys)
     and ($blocker_readbacks | length) == 7
     and ($blocker_readbacks | all(
       .included_in_packet == true
