@@ -64,13 +64,22 @@ verify() {
   verify_file_max scripts/hepta-route-gate-runner 500
   verify_file_max scripts/hepta-route-gate-specs-v1.json 1000
   scripts/hepta-route-gate-runner --validate >/dev/null
-  [[ "$(jq '.families | length' scripts/hepta-route-gate-specs-v1.json)" == 2 ]]
+  [[ "$(jq '.families | length' scripts/hepta-route-gate-specs-v1.json)" == 3 ]]
   [[ "$(jq '.families[0].specs | length' scripts/hepta-route-gate-specs-v1.json)" == 3 ]]
   jq -e '
     any(.families[];
       .id == "memory_live_mutation_activation_command_result_receipt_v1"
-      and .execution_profile == "native_requirements_terminal_v1"
+      and .execution_profile == "native_requirements_report_v1"
       and .spec_registry == "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+    )
+  ' scripts/hepta-route-gate-specs-v1.json >/dev/null
+  jq -e '
+    any(.families[];
+      .id == "runtime_provider_router_activation_command_result_receipt_v1"
+      and .execution_profile == "native_requirements_report_v1"
+      and .spec_registry == "scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json"
+      and .terminal_coverage_required == false
+      and .include_route_gate_ready == false
     )
   ' scripts/hepta-route-gate-specs-v1.json >/dev/null
   [[ -x scripts/hepta-route-gate-family-registry-self-test ]]
@@ -177,9 +186,11 @@ verify() {
       "$memory_live_mutation_activation_command_result_receipt_route_gate_wrapper"
   done < <(jq -r '.specs[].wrapper' scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json)
   [[ -x scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner ]]
-  verify_file_max scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner 220
+  verify_file_max scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner 40
   verify_file_max scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json 400
   scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner --validate >/dev/null
+  rg -Fq 'scripts/hepta-route-gate-runner' \
+    scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner
   [[ "$(jq '.specs | length' scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json)" == 3 ]]
   while IFS= read -r runtime_provider_router_activation_command_result_receipt_route_gate_wrapper
   do

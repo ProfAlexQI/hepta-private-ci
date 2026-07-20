@@ -14,17 +14,25 @@ focused tests, optional live GET validation, report construction, and normalized
 
 ## Pilot boundary
 
-The pilot migrates only the
-`memory_live_mutation_activation_command_result_receipt_v1` family. It was selected because its
-specialized executor was the shortest (154 lines) and has no source-report capture dependency.
+The pilot migrates two families in separate atomic commits:
+
+- `memory_live_mutation_activation_command_result_receipt_v1`, whose specialized executor was the
+  shortest at 154 lines and has no source-report capture dependency;
+- `runtime_provider_router_activation_command_result_receipt_v1`, whose 172-line executor shares
+  the same report base but declares source capture, a 24-sample parameter floor, no terminal fields,
+  and a pass message.
 
 - `scripts/hepta-route-gate-specs-v1.json` is the central family registry.
 - `scripts/hepta-route-gate-runner` resolves embedded and referenced family specs and executes the
-  `native_requirements_terminal_v1` profile.
-- The old family registry remains the referenced spec payload so its JSON path and schema stay
+  configurable `native_requirements_report_v1` profile.
+- The old family registries remain the referenced spec payloads so their JSON paths and schemas stay
   compatible.
-- The old family runner remains at its original path as a 36-line compatibility dispatcher.
-- The three existing route wrappers remain byte-for-byte unchanged.
+- Both old family runners remain at their original paths as 36-line compatibility dispatchers.
+- All six existing route wrappers remain byte-for-byte unchanged.
+
+Across the central executor and these two specialized executors, production runner code moves from
+545 lines at the baseline to 509 lines after the second migration, while adding reusable validation
+and report-profile controls for subsequent families.
 
 No compatibility entry is deleted in this pilot. The central registry rejects duplicate family or
 spec IDs, unknown profiles, path traversal, missing registries, incompatible schemas, and invalid
@@ -35,8 +43,8 @@ normalized-output receipts.
 `scripts/hepta-route-gate-family-registry-self-test` checks:
 
 - exact legacy `--validate`, usage, unknown-ID output, and exit status;
-- seven fail-closed registry fixtures;
-- direct unified-runner versus legacy-runner normalized output for all three states;
+- eight fail-closed registry fixtures;
+- direct unified-runner versus legacy-runner normalized output for all six states;
 - every existing per-spec `baseline_normalized_output_sha256` receipt.
 
 The existing native gateway contract continues to compare each external `GateSpec` with the

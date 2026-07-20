@@ -45,12 +45,23 @@ validate_registry() {
             and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
             and (.pass_message | length > 0)
           ))
-        elif .execution_profile == "native_requirements_terminal_v1" then
+        elif .execution_profile == "native_requirements_report_v1" then
           (.spec_registry | test("^scripts/[a-z0-9-]+-route-gate-specs-v1\\.json$"))
           and (.spec_schema_version | test("^[a-z0-9_]+_v1$"))
           and (.compatibility_executor | test("^scripts/[a-z0-9-]+-route-gate-runner$"))
           and (.compatibility_validation_schema | test("^[a-z0-9_]+_v1$"))
           and (.compatibility_error_label | type == "string" and length > 10)
+          and (.source_capture_mode | IN("none", "live_url_min_soak_v1"))
+          and (.minimum_long_soak_samples | type == "number" and . >= 0 and floor == .)
+          and (.live_expected_arg | IN("expected", "expected_route_count"))
+          and (.terminal_coverage_required | type == "boolean")
+          and (.include_route_gate_ready | type == "boolean")
+          and (.output_mode | IN("pretty_json", "pretty_json_with_message"))
+          and (.native_requirement_min | type == "number" and . >= 1 and floor == .)
+          and (.requires_source_contract | type == "boolean")
+          and (.requires_pass_message | type == "boolean")
+          and (.normalization_remove_fields | type == "array" and length >= 5)
+          and ((.normalization_remove_fields | unique | length) == (.normalization_remove_fields | length))
         else false
         end
       )
@@ -58,19 +69,26 @@ validate_registry() {
   ' "$SPEC_FILE" >/dev/null
 
   local all_ids embedded_ids external_registry external_schema compatibility_executor
+  local native_requirement_min requires_source_contract requires_pass_message
   embedded_ids="$(jq -r '.families[].specs[]?.id' "$SPEC_FILE")"
   all_ids="$embedded_ids"
   while IFS= read -r family; do
     external_registry="$(jq -r '.spec_registry' <<<"$family")"
     external_schema="$(jq -r '.spec_schema_version' <<<"$family")"
     compatibility_executor="$(jq -r '.compatibility_executor' <<<"$family")"
+    native_requirement_min="$(jq -r '.native_requirement_min' <<<"$family")"
+    requires_source_contract="$(jq -r '.requires_source_contract' <<<"$family")"
+    requires_pass_message="$(jq -r '.requires_pass_message' <<<"$family")"
     [[ -f "$ROOT/$external_registry" ]] || {
       echo "missing Hepta route gate family registry: $ROOT/$external_registry" >&2
       return 1
     }
     jq -e \
       --arg schema "$external_schema" \
-      --arg executor "$compatibility_executor" '
+      --arg executor "$compatibility_executor" \
+      --argjson native_requirement_min "$native_requirement_min" \
+      --argjson requires_source_contract "$requires_source_contract" \
+      --argjson requires_pass_message "$requires_pass_message" '
         .schema_version == $schema
         and .executor == $executor
         and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
@@ -85,17 +103,29 @@ validate_registry() {
           and (.gate_spec.receipt_state | IN("precondition", "denial", "receipt", "persistence", "retention", "terminal"))
           and (.gate_spec.side_effect_boundary | contains("read-only"))
           and (.wrapper | test("^scripts/[a-z0-9-]+-route-gate\\.sh$"))
-          and (.native_requirements | type == "array" and length >= 8)
+          and (.native_requirements | type == "array" and length >= $native_requirement_min)
           and (.focused_test | test("^[a-z0-9_]+$"))
           and (.test_log_stem | test("^[a-z0-9-]+$"))
           and (.live_validation_filter | type == "string" and length > 100)
           and (.report_fields | type == "object")
           and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+          and (
+            if $requires_source_contract then
+              (.source.capture_label | test("^[a-z0-9-]+-gate$"))
+              and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+              and (.source.validation_filter | type == "string" and length > 100)
+            else true end
+          )
+          and (
+            if $requires_pass_message then
+              (.pass_message | type == "string" and length > 20)
+            else true end
+          )
         ))
       ' "$ROOT/$external_registry" >/dev/null
     external_ids="$(jq -r '.specs[].id' "$ROOT/$external_registry")"
     all_ids="${all_ids}${all_ids:+$'\n'}${external_ids}"
-  done < <(jq -c '.families[] | select(.execution_profile == "native_requirements_terminal_v1")' "$SPEC_FILE")
+  done < <(jq -c '.families[] | select(.execution_profile == "native_requirements_report_v1")' "$SPEC_FILE")
 
   [[ "$(printf '%s\n' "$all_ids" | awk 'NF' | wc -l | tr -d ' ')" == \
     "$(printf '%s\n' "$all_ids" | awk 'NF' | LC_ALL=C sort -u | wc -l | tr -d ' ')" ]]
@@ -158,6 +188,21 @@ REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
 EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(bash "$ROOT/scripts/lib/hepta-native-route-count.sh")}"
 NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
+minimum_long_soak_samples="$(jq -r '.minimum_long_soak_samples // 0' <<<"$family")"
+MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-$minimum_long_soak_samples}"
+
+if [[ "$minimum_long_soak_samples" -gt 0 ]]; then
+  case "$MIN_LONG_SOAK_SAMPLES" in
+    ''|*[!0-9]*)
+      echo "HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES must be an unsigned integer" >&2
+      exit 2
+      ;;
+  esac
+  [[ "$MIN_LONG_SOAK_SAMPLES" -ge "$minimum_long_soak_samples" ]] || {
+    echo "minimum long-soak samples must be at least $minimum_long_soak_samples" >&2
+    exit 1
+  }
+fi
 
 cd "$ROOT"
 source "$ROOT/scripts/lib/hepta-source-set.sh"
@@ -209,17 +254,31 @@ if [[ "$execution_profile" == "first_model_invocation_transition_v1" ]]; then
   ]'
   output_mode="compact_with_message"
   error_prefix="Hepta route gate"
+  terminal_coverage_required=false
+  include_route_gate_ready=true
+  source_capture_mode="none"
+  live_expected_arg="expected"
 else
   native_requirements="$(jq -c '.native_requirements' <<<"$spec")"
   report_fields="$(jq -c '.report_fields' <<<"$spec")"
-  volatile_report_fields='[
-    "base_url","native_gateway_sha256","focused_test_log","live_endpoint_checked",
-    "live_route_status","live_route_count","live_missing_route_count","expected_route_count",
-    "terminal_coverage_sha256","terminal_required_marker_count",
-    "terminal_present_required_marker_count","terminal_missing_required_marker_count"
-  ]'
-  output_mode="pretty_json"
+  volatile_report_fields="$(jq -c '.normalization_remove_fields' <<<"$family")"
+  output_mode="$(jq -r '.output_mode' <<<"$family")"
   error_prefix="$(jq -r '.compatibility_error_label' <<<"$family") route"
+  terminal_coverage_required="$(jq -r '.terminal_coverage_required' <<<"$family")"
+  include_route_gate_ready="$(jq -r '.include_route_gate_ready' <<<"$family")"
+  source_capture_mode="$(jq -r '.source_capture_mode' <<<"$family")"
+  live_expected_arg="$(jq -r '.live_expected_arg' <<<"$family")"
+fi
+
+if [[ "$source_capture_mode" == "live_url_min_soak_v1" ]]; then
+  source_json="$(
+    HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+      capture_json_report \
+        "$(jq -r '.source.capture_label' <<<"$spec")" \
+        "$(jq -r '.source.script' <<<"$spec")"
+  )"
+  jq -e "$(jq -r '.source.validation_filter' <<<"$spec")" >/dev/null <<<"$source_json"
 fi
 
 while IFS= read -r requirement; do
@@ -279,11 +338,12 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
     ' >/dev/null <<<"$live_json"
   else
     live_filter="$(jq -r '.live_validation_filter' <<<"$spec")"
-    jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" "$live_filter" >/dev/null <<<"$live_json"
+    jq -e --argjson "$live_expected_arg" "$EXPECTED_ROUTE_COUNT" \
+      "$live_filter" >/dev/null <<<"$live_json"
   fi
 fi
 
-if [[ "$execution_profile" == "native_requirements_terminal_v1" ]]; then
+if [[ "$terminal_coverage_required" == "true" ]]; then
   terminal_json="$(
     capture_json_report \
       "hepta-preflight-terminal-coverage-inventory-gate" \
@@ -329,6 +389,7 @@ report="$(
     --argjson live_route_count "$live_route_count" \
     --argjson live_missing_route_count "$live_missing_route_count" \
     --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
+    --argjson include_route_gate_ready "$include_route_gate_ready" \
     --argjson report_fields "$report_fields" \
     --argjson terminal_report_fields "$terminal_report_fields" '
     {
@@ -348,6 +409,7 @@ report="$(
       expected_route_count:$expected_route_count,
       route_gate_ready:true
     }
+    | if $include_route_gate_ready then . else del(.route_gate_ready) end
     + $report_fields
     + $terminal_report_fields
   '
@@ -369,4 +431,7 @@ if [[ "$output_mode" == "compact_with_message" ]]; then
   jq -r '.pass_message' <<<"$spec"
 else
   jq . <<<"$report"
+  if [[ "$output_mode" == "pretty_json_with_message" ]]; then
+    echo "$(jq -r '.pass_message' <<<"$spec")"
+  fi
 fi
