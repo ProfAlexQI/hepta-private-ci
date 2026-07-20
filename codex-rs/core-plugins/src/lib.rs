@@ -10,6 +10,11 @@ mod manifest_tool_declarations;
 pub mod manifest_v1_validator;
 pub mod marketplace;
 pub mod marketplace_add;
+#[allow(
+    dead_code,
+    reason = "the admission matcher lands before mutation entry-point wiring"
+)]
+mod marketplace_policy;
 pub mod marketplace_remove;
 pub mod marketplace_upgrade;
 pub mod remote;

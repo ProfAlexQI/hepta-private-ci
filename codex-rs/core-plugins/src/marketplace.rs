@@ -698,7 +698,7 @@ pub fn plugin_interface_with_marketplace_category(
     interface
 }
 
-fn marketplace_root_dir(
+pub(crate) fn marketplace_root_dir(
     marketplace_path: &AbsolutePathBuf,
 ) -> Result<AbsolutePathBuf, MarketplaceError> {
     for relative_path in MARKETPLACE_MANIFEST_RELATIVE_PATHS {
