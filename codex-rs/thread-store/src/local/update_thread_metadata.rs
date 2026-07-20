@@ -70,19 +70,23 @@ pub(super) async fn update_thread_metadata(
     } else {
         None
     };
-    let paginated_git_update = matches!(history_mode, Some(ThreadHistoryMode::Paginated))
-        && patch.git_info.is_some()
+    let paginated_sqlite_update = matches!(history_mode, Some(ThreadHistoryMode::Paginated))
         && patch.name.is_none()
-        && patch.memory_mode.is_none();
+        && (patch.git_info.is_some() || patch.memory_mode.is_some());
     if needs_rollout_compat
         && matches!(history_mode, Some(ThreadHistoryMode::Paginated))
-        && !paginated_git_update
+        && !paginated_sqlite_update
     {
-        // Only Git metadata has a SQLite-owned paginated write path in this absorption. Preserve
-        // the existing fail-closed behavior for name and memory compatibility writes.
+        // Thread names remain outside this absorption. Preserve the existing fail-closed behavior
+        // until the dedicated paginated-name lane is semantically adapted.
         reject_paginated_history_mode(ThreadHistoryMode::Paginated)?;
     }
-    let require_sqlite_write = sqlite_write_failure_should_block(&patch) || paginated_git_update;
+    if paginated_sqlite_update && store.state_db().await.is_none() {
+        return Err(ThreadStoreError::Internal {
+            message: format!("sqlite state db unavailable for thread {thread_id}"),
+        });
+    }
+    let require_sqlite_write = sqlite_write_failure_should_block(&patch) || paginated_sqlite_update;
     let mut updated = apply_metadata_update(
         store,
         thread_id,
@@ -92,17 +96,17 @@ pub(super) async fn update_thread_metadata(
         history_mode,
     )
     .await?;
-    if paginated_git_update {
+    if paginated_sqlite_update {
         let Some(state_db) = store.state_db().await else {
             return Err(ThreadStoreError::Internal {
                 message: format!("sqlite state db unavailable for thread {thread_id}"),
             });
         };
-        let git_info = patch
-            .git_info
-            .as_ref()
-            .expect("paginated Git update requires a Git patch");
-        apply_thread_git_info_patch(state_db.as_ref(), thread_id, git_info).await?;
+        if let Some(git_info) = patch.git_info.as_ref() {
+            // The generic upsert preserves non-null Git fields for rollout reconciliation. Apply
+            // the explicit patch afterward so clears are written to SQLite too.
+            apply_thread_git_info_patch(state_db.as_ref(), thread_id, git_info).await?;
+        }
         updated = read_thread::read_thread(
             store,
             ReadThreadParams {
@@ -859,7 +863,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_thread_metadata_rejects_paginated_rollout_compatibility_writes() {
+    async fn update_thread_metadata_keeps_paginated_memory_mode_in_sqlite_only() {
         let home = TempDir::new().expect("temp dir");
         let config = test_config(home.path());
         let uuid = Uuid::from_u128(303);
@@ -878,36 +882,127 @@ mod tests {
         )
         .await
         .expect("state db should initialize");
-        let store = LocalThreadStore::new(config, Some(runtime.clone()));
+        let store = LocalThreadStore::new(config.clone(), Some(runtime.clone()));
 
-        assert!(matches!(
-            store
-                .update_thread_metadata(UpdateThreadMetadataParams {
-                    thread_id,
-                    patch: ThreadMetadataPatch {
-                        memory_mode: Some(ThreadMemoryMode::Disabled),
-                        ..Default::default()
-                    },
-                    include_archived: false,
-                })
-                .await
-                .expect_err("paginated rollout compatibility write should fail"),
-            ThreadStoreError::Unsupported {
-                operation: "paginated_threads"
-            }
-        ));
+        let thread = store
+            .update_thread_metadata(UpdateThreadMetadataParams {
+                thread_id,
+                patch: ThreadMetadataPatch {
+                    memory_mode: Some(ThreadMemoryMode::Disabled),
+                    ..Default::default()
+                },
+                include_archived: false,
+            })
+            .await
+            .expect("paginated memory mode update");
 
-        assert_eq!(
-            std::fs::read_to_string(&path).expect("read rollout"),
-            original_rollout
-        );
+        assert_eq!(thread.history_mode, ThreadHistoryMode::Paginated);
         assert_eq!(
             runtime
                 .get_thread_memory_mode(thread_id)
                 .await
                 .expect("thread memory mode should be readable")
                 .as_deref(),
-            Some("enabled")
+            Some("disabled")
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read rollout"),
+            original_rollout,
+            "paginated memory updates must not append SessionMeta"
+        );
+
+        codex_rollout::state_db::reconcile_rollout(
+            Some(runtime.as_ref()),
+            path.as_path(),
+            config.default_model_provider_id.as_str(),
+            /*builder*/ None,
+            &[],
+            /*archived_only*/ None,
+            /*new_thread_memory_mode*/ None,
+        )
+        .await;
+        assert_eq!(
+            runtime
+                .get_thread_memory_mode(thread_id)
+                .await
+                .expect("thread memory mode after reconcile")
+                .as_deref(),
+            Some("disabled"),
+            "a stale rollout None must not re-enable the canonical SQLite mode"
+        );
+
+        store
+            .update_thread_metadata(UpdateThreadMetadataParams {
+                thread_id,
+                patch: ThreadMetadataPatch {
+                    git_info: Some(GitInfoPatch {
+                        branch: Some(Some("feature-memory-none".to_string())),
+                        ..Default::default()
+                    }),
+                    memory_mode: None,
+                    ..Default::default()
+                },
+                include_archived: false,
+            })
+            .await
+            .expect("paginated Git update with no memory-mode patch");
+        assert_eq!(
+            runtime
+                .get_thread_memory_mode(thread_id)
+                .await
+                .expect("thread memory mode after None patch")
+                .as_deref(),
+            Some("disabled"),
+            "None is no update and must not restore an enabled mode"
+        );
+
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read rollout"),
+            original_rollout
+        );
+    }
+
+    #[tokio::test]
+    async fn update_thread_metadata_still_rejects_paginated_name_compatibility_writes() {
+        let home = TempDir::new().expect("temp dir");
+        let config = test_config(home.path());
+        let uuid = Uuid::from_u128(305);
+        let thread_id = ThreadId::from_string(&uuid.to_string()).expect("valid thread id");
+        let path = write_session_file_with_history_mode(
+            home.path(),
+            "2025-01-03T14-35-30",
+            uuid,
+            ThreadHistoryMode::Paginated,
+        )
+        .expect("session file");
+        let original_rollout = std::fs::read_to_string(&path).expect("read rollout");
+        let runtime = codex_state::StateRuntime::init(
+            home.path().to_path_buf(),
+            config.default_model_provider_id.clone(),
+        )
+        .await
+        .expect("state db should initialize");
+        let store = LocalThreadStore::new(config, Some(runtime));
+
+        assert!(matches!(
+            store
+                .update_thread_metadata(UpdateThreadMetadataParams {
+                    thread_id,
+                    patch: ThreadMetadataPatch {
+                        name: Some(Some("deferred-name".to_string())),
+                        ..Default::default()
+                    },
+                    include_archived: false,
+                })
+                .await
+                .expect_err("paginated thread-name P1 should remain fail-closed"),
+            ThreadStoreError::Unsupported {
+                operation: "paginated_threads"
+            }
+        ));
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read rollout"),
+            original_rollout
         );
     }
 

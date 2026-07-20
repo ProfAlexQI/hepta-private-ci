@@ -13,6 +13,7 @@ use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionMeta;
 use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_state::BackfillStatus;
 use codex_state::ThreadMetadataBuilder;
 use pretty_assertions::assert_eq;
@@ -289,6 +290,53 @@ async fn backfill_sessions_preserves_existing_git_branch_and_fills_missing_git_f
 }
 
 #[tokio::test]
+async fn backfill_sessions_preserves_existing_paginated_memory_mode() {
+    let dir = tempdir().expect("tempdir");
+    let codex_home = dir.path().to_path_buf();
+    let thread_uuid = Uuid::new_v4();
+    let rollout_path = write_rollout_in_sessions_with_metadata(
+        codex_home.as_path(),
+        "2026-01-27T12-34-56",
+        "2026-01-27T12:34:56Z",
+        thread_uuid,
+        codex_home.clone(),
+        /*git*/ None,
+        ThreadHistoryMode::Paginated,
+        Some("enabled"),
+    );
+
+    let runtime = codex_state::StateRuntime::init(codex_home.clone(), "test-provider".to_string())
+        .await
+        .expect("initialize runtime");
+    let thread_id = ThreadId::from_string(&thread_uuid.to_string()).expect("thread id");
+    let existing = extract_metadata_from_rollout(&rollout_path, "test-provider")
+        .await
+        .expect("extract")
+        .metadata;
+    runtime
+        .upsert_thread(&existing)
+        .await
+        .expect("existing metadata upsert");
+    assert!(
+        runtime
+            .set_thread_memory_mode(thread_id, "disabled")
+            .await
+            .expect("disable memory mode")
+    );
+
+    backfill_sessions(runtime.as_ref(), codex_home.as_path(), "test-provider").await;
+
+    assert_eq!(
+        runtime
+            .get_thread_memory_mode(thread_id)
+            .await
+            .expect("get memory mode")
+            .as_deref(),
+        Some("disabled")
+    );
+}
+
+#[tokio::test]
 async fn backfill_sessions_normalizes_cwd_before_upsert() {
     let dir = tempdir().expect("tempdir");
     let codex_home = dir.path().to_path_buf();
@@ -345,6 +393,29 @@ fn write_rollout_in_sessions_with_cwd(
     cwd: PathBuf,
     git: Option<GitInfo>,
 ) -> PathBuf {
+    write_rollout_in_sessions_with_metadata(
+        codex_home,
+        filename_ts,
+        event_ts,
+        thread_uuid,
+        cwd,
+        git,
+        ThreadHistoryMode::Legacy,
+        /*memory_mode*/ None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_rollout_in_sessions_with_metadata(
+    codex_home: &Path,
+    filename_ts: &str,
+    event_ts: &str,
+    thread_uuid: Uuid,
+    cwd: PathBuf,
+    git: Option<GitInfo>,
+    history_mode: ThreadHistoryMode,
+    memory_mode: Option<&str>,
+) -> PathBuf {
     let id = ThreadId::from_string(&thread_uuid.to_string()).expect("thread id");
     let sessions_dir = codex_home.join("sessions");
     std::fs::create_dir_all(sessions_dir.as_path()).expect("create sessions dir");
@@ -364,8 +435,8 @@ fn write_rollout_in_sessions_with_cwd(
         model_provider: Some("test-provider".to_string()),
         base_instructions: None,
         dynamic_tools: None,
-        memory_mode: None,
-        history_mode: Default::default(),
+        memory_mode: memory_mode.map(str::to_string),
+        history_mode,
     };
     let session_meta_line = SessionMetaLine {
         meta: session_meta,

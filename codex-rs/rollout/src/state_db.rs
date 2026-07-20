@@ -11,6 +11,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 pub use codex_state::LogEntry;
 use codex_state::ThreadMetadataBuilder;
 use codex_utils_path::normalize_for_path_comparison;
@@ -539,8 +540,13 @@ pub async fn reconcile_rollout(
     let mut metadata = outcome.metadata;
     let memory_mode = outcome.memory_mode.unwrap_or_else(|| "enabled".to_string());
     metadata.cwd = normalize_cwd_for_state_db(&metadata.cwd);
-    if let Ok(Some(existing_metadata)) = ctx.get_thread(metadata.id).await {
-        metadata.prefer_existing_git_info(&existing_metadata);
+    let existing_metadata = ctx.get_thread(metadata.id).await.ok().flatten();
+    // Paginated metadata updates are SQLite-only. Seed missing rows from the rollout, but never
+    // replace the canonical SQLite mode on an existing row.
+    let restore_memory_mode_from_rollout =
+        existing_metadata.is_none() || matches!(metadata.history_mode, ThreadHistoryMode::Legacy);
+    if let Some(existing_metadata) = existing_metadata.as_ref() {
+        metadata.prefer_existing_git_info(existing_metadata);
     }
     match archived_only {
         Some(true) if metadata.archived_at.is_none() => {
@@ -558,9 +564,10 @@ pub async fn reconcile_rollout(
         );
         return;
     }
-    if let Err(err) = ctx
-        .set_thread_memory_mode(metadata.id, memory_mode.as_str())
-        .await
+    if restore_memory_mode_from_rollout
+        && let Err(err) = ctx
+            .set_thread_memory_mode(metadata.id, memory_mode.as_str())
+            .await
     {
         warn!(
             "state db reconcile_rollout memory_mode update failed {}: {err}",

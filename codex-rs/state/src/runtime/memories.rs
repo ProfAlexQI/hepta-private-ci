@@ -1288,6 +1288,7 @@ mod tests {
     use chrono::Duration;
     use chrono::Utc;
     use codex_protocol::ThreadId;
+    use codex_protocol::protocol::ThreadHistoryMode;
     use pretty_assertions::assert_eq;
     use sqlx::Row;
     use std::sync::Arc;
@@ -1756,7 +1757,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claim_stage1_jobs_skips_threads_with_disabled_memory_mode() {
+    async fn claim_stage1_jobs_include_enabled_paginated_and_skip_disabled_paginated_threads() {
         let codex_home = unique_temp_dir();
         let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
             .await
@@ -1769,6 +1770,8 @@ mod tests {
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("current thread id");
         let disabled_thread_id =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("disabled thread id");
+        let paginated_thread_id =
+            ThreadId::from_string(&Uuid::new_v4().to_string()).expect("paginated thread id");
         let enabled_thread_id =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("enabled thread id");
 
@@ -1785,6 +1788,7 @@ mod tests {
             test_thread_metadata(&codex_home, disabled_thread_id, codex_home.join("disabled"));
         disabled.created_at = eligible_at;
         disabled.updated_at = eligible_at;
+        disabled.history_mode = ThreadHistoryMode::Paginated;
         runtime
             .upsert_thread(&disabled)
             .await
@@ -1794,6 +1798,19 @@ mod tests {
             .execute(runtime.pool.as_ref())
             .await
             .expect("disable thread memory mode");
+
+        let mut paginated = test_thread_metadata(
+            &codex_home,
+            paginated_thread_id,
+            codex_home.join("paginated"),
+        );
+        paginated.created_at = eligible_at;
+        paginated.updated_at = eligible_at;
+        paginated.history_mode = ThreadHistoryMode::Paginated;
+        runtime
+            .upsert_thread(&paginated)
+            .await
+            .expect("upsert paginated thread");
 
         let mut enabled =
             test_thread_metadata(&codex_home, enabled_thread_id, codex_home.join("enabled"));
@@ -1820,8 +1837,40 @@ mod tests {
             .await
             .expect("claim stage1 startup jobs");
 
-        assert_eq!(claims.len(), 1);
-        assert_eq!(claims[0].thread.id, enabled_thread_id);
+        let mut claimed_ids = claims
+            .iter()
+            .map(|claim| claim.thread.id.to_string())
+            .collect::<Vec<_>>();
+        claimed_ids.sort();
+        let mut expected_ids = vec![
+            enabled_thread_id.to_string(),
+            paginated_thread_id.to_string(),
+        ];
+        expected_ids.sort();
+        assert_eq!(claimed_ids, expected_ids);
+
+        let paginated_job_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = ? AND job_key = ?")
+                .bind(JOB_KIND_MEMORY_STAGE1)
+                .bind(paginated_thread_id.to_string())
+                .fetch_one(runtime.pool.as_ref())
+                .await
+                .expect("read paginated stage1 job count");
+        assert_eq!(
+            paginated_job_count, 1,
+            "enabled paginated mode creates a job"
+        );
+        let disabled_job_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE kind = ? AND job_key = ?")
+                .bind(JOB_KIND_MEMORY_STAGE1)
+                .bind(disabled_thread_id.to_string())
+                .fetch_one(runtime.pool.as_ref())
+                .await
+                .expect("read disabled stage1 job count");
+        assert_eq!(
+            disabled_job_count, 0,
+            "disabled paginated mode does not create a new job"
+        );
 
         let _ = tokio::fs::remove_dir_all(codex_home).await;
     }
@@ -2820,7 +2869,7 @@ VALUES (?, ?, ?, ?, ?)
     }
 
     #[tokio::test]
-    async fn list_stage1_outputs_for_global_skips_polluted_threads() {
+    async fn list_stage1_outputs_for_global_includes_paginated_and_skips_polluted_threads() {
         let codex_home = unique_temp_dir();
         let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
             .await
@@ -2836,12 +2885,11 @@ VALUES (?, ?, ?, ?, ?)
             (thread_id_enabled, "workspace-enabled"),
             (thread_id_polluted, "workspace-polluted"),
         ] {
+            let mut metadata =
+                test_thread_metadata(&codex_home, thread_id, codex_home.join(workspace));
+            metadata.history_mode = ThreadHistoryMode::Paginated;
             runtime
-                .upsert_thread(&test_thread_metadata(
-                    &codex_home,
-                    thread_id,
-                    codex_home.join(workspace),
-                ))
+                .upsert_thread(&metadata)
                 .await
                 .expect("upsert thread");
 
