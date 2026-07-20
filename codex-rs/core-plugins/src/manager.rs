@@ -32,6 +32,7 @@ use crate::marketplace::list_marketplaces;
 use crate::marketplace::load_marketplace;
 use crate::marketplace::plugin_interface_with_marketplace_category;
 use crate::marketplace_policy::MarketplacePolicy;
+use crate::marketplace_policy::configured_plugins_from_stack;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeError;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome;
 use crate::marketplace_upgrade::upgrade_configured_git_marketplaces;
@@ -982,7 +983,8 @@ impl PluginsManager {
         )
         .await
         .map_err(PluginRemoteSyncError::from)?;
-        let configured_plugins = configured_plugins_from_stack(&config.config_layer_stack);
+        let configured_plugins =
+            configured_plugins_from_stack(&config.config_layer_stack, self.codex_home.as_path());
         let curated_marketplace_root = curated_plugins_repo_path(self.codex_home.as_path());
         let curated_marketplace_path = AbsolutePathBuf::try_from(
             curated_marketplace_root.join(".agents/plugins/marketplace.json"),
@@ -1873,7 +1875,8 @@ impl PluginsManager {
         &self,
         config: &PluginsConfigInput,
     ) -> (HashSet<String>, HashSet<String>) {
-        let configured_plugins = configured_plugins_from_stack(&config.config_layer_stack);
+        let configured_plugins =
+            configured_plugins_from_stack(&config.config_layer_stack, self.codex_home.as_path());
         let installed_plugins = configured_plugins
             .keys()
             .filter(|plugin_key| {
@@ -2004,31 +2007,6 @@ impl PluginUninstallError {
 
     pub fn is_invalid_request(&self) -> bool {
         matches!(self, Self::InvalidPluginId(_))
-    }
-}
-
-pub(crate) fn configured_plugins_from_stack(
-    config_layer_stack: &ConfigLayerStack,
-) -> HashMap<String, PluginConfig> {
-    // Plugin entries remain persisted user config only.
-    let Some(user_config) = config_layer_stack.effective_user_config() else {
-        return HashMap::new();
-    };
-    configured_plugins_from_user_config_value(&user_config)
-}
-
-fn configured_plugins_from_user_config_value(
-    user_config: &toml::Value,
-) -> HashMap<String, PluginConfig> {
-    let Some(plugins_value) = user_config.get("plugins") else {
-        return HashMap::new();
-    };
-    match plugins_value.clone().try_into() {
-        Ok(plugins) => plugins,
-        Err(err) => {
-            warn!("invalid plugins config: {err}");
-            HashMap::new()
-        }
     }
 }
 

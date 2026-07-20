@@ -5,6 +5,7 @@ use crate::manifest::load_plugin_manifest;
 use crate::marketplace::MarketplacePluginSource;
 use crate::marketplace::list_marketplaces;
 use crate::marketplace::load_marketplace;
+use crate::marketplace_policy::configured_plugins_from_stack;
 use crate::remote::RemoteInstalledPlugin;
 use crate::store::PluginStore;
 use crate::store::plugin_version_for_source;
@@ -115,7 +116,8 @@ pub async fn load_plugins_from_layer_stack(
     plugin_hooks_enabled: bool,
 ) -> PluginLoadOutcome<McpServerConfig> {
     let skill_config_rules = skill_config_rules_from_stack(config_layer_stack);
-    let mut configured_plugins = configured_plugins_from_stack(config_layer_stack);
+    let mut configured_plugins =
+        configured_plugins_from_stack(config_layer_stack, store.codex_home().as_path());
     configured_plugins.extend(extra_plugins);
     let mut configured_plugins: Vec<_> = configured_plugins.into_iter().collect();
     configured_plugins.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
@@ -373,15 +375,6 @@ fn refresh_non_curated_plugin_cache_with_mode(
     }
 
     Ok(cache_refreshed)
-}
-
-fn configured_plugins_from_stack(
-    config_layer_stack: &ConfigLayerStack,
-) -> HashMap<String, PluginConfig> {
-    let Some(user_config) = config_layer_stack.effective_user_config() else {
-        return HashMap::new();
-    };
-    configured_plugins_from_user_config_value(&user_config)
 }
 
 fn is_full_git_sha(value: &str) -> bool {

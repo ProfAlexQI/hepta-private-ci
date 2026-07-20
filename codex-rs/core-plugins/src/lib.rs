@@ -10,10 +10,6 @@ mod manifest_tool_declarations;
 pub mod manifest_v1_validator;
 pub mod marketplace;
 pub mod marketplace_add;
-#[allow(
-    dead_code,
-    reason = "the admission matcher lands before mutation entry-point wiring"
-)]
 mod marketplace_policy;
 pub mod marketplace_remove;
 pub mod marketplace_upgrade;
@@ -67,5 +63,6 @@ pub use manager::PluginUninstallError;
 pub use manager::PluginsConfigInput;
 pub use manager::PluginsManager;
 pub use manager::RemotePluginSyncResult;
+pub use marketplace_policy::allowed_configured_marketplace_names;
 pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeError as PluginMarketplaceUpgradeError;
 pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome as PluginMarketplaceUpgradeOutcome;

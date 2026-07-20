@@ -8,6 +8,7 @@ use codex_core_plugins::ConfiguredMarketplace;
 use codex_core_plugins::PluginInstallRequest;
 use codex_core_plugins::PluginsConfigInput;
 use codex_core_plugins::PluginsManager;
+use codex_core_plugins::allowed_configured_marketplace_names;
 use codex_core_plugins::installed_marketplaces::marketplace_install_root;
 use codex_core_plugins::installed_marketplaces::resolve_configured_marketplace_root;
 use codex_core_plugins::marketplace::MarketplaceListError;
@@ -364,9 +365,14 @@ fn configured_marketplace_snapshot_issues(
     };
 
     let default_install_root = marketplace_install_root(codex_home);
+    let allowed_marketplace_names =
+        allowed_configured_marketplace_names(&plugins_input.config_layer_stack, codex_home);
     let mut manifest_paths = Vec::new();
     let mut issues = Vec::new();
     for (configured_name, marketplace) in configured_marketplaces {
+        if !allowed_marketplace_names.contains(configured_name) {
+            continue;
+        }
         if marketplace_name.is_some_and(|name| configured_name != name) {
             continue;
         }

@@ -1347,6 +1347,93 @@ source = {marketplace_root:?}
 }
 
 #[tokio::test]
+async fn runtime_policy_filters_blocked_marketplaces_and_plugins() {
+    let codex_home = TempDir::new().expect("create Hepta home");
+    for marketplace_name in ["allowed", "blocked"] {
+        let marketplace_root = marketplace_install_root(codex_home.path()).join(marketplace_name);
+        write_plugin(&marketplace_root, "sample", "sample");
+        write_file(
+            &marketplace_root.join(".agents/plugins/marketplace.json"),
+            &format!(
+                r#"{{
+  "name": "{marketplace_name}",
+  "plugins": [
+    {{
+      "name": "sample",
+      "source": {{"source": "local", "path": "./sample"}}
+    }}
+  ]
+}}"#
+            ),
+        );
+        write_plugin(
+            &codex_home
+                .path()
+                .join("plugins/cache")
+                .join(marketplace_name),
+            "sample/local",
+            "sample",
+        );
+    }
+
+    let user_config = r#"
+[marketplaces.allowed]
+source_type = "git"
+source = "https://github.com/example/allowed.git"
+
+[marketplaces.blocked]
+source_type = "git"
+source = "https://github.com/example/blocked.git"
+
+[plugins."sample@allowed"]
+enabled = true
+
+[plugins."sample@blocked"]
+enabled = true
+"#;
+    let requirements = r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.company]
+source = "git"
+url = "https://github.com/example/allowed.git"
+"#;
+    let config = PluginsConfigInput::new(
+        config_layer_stack_with_requirements(codex_home.path(), user_config, requirements),
+        /*plugins_enabled*/ true,
+        /*remote_plugin_enabled*/ false,
+        /*plugin_hooks_enabled*/ false,
+        String::new(),
+    );
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+
+    let loaded = manager.plugins_for_config(&config).await;
+    assert_eq!(
+        loaded
+            .plugins()
+            .iter()
+            .map(|plugin| plugin.config_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["sample@allowed"]
+    );
+
+    let listed = manager
+        .list_marketplaces_for_config(&config, &[])
+        .expect("list projected marketplaces");
+    assert_eq!(
+        listed
+            .marketplaces
+            .iter()
+            .map(|marketplace| marketplace.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["allowed"]
+    );
+    assert_eq!(listed.marketplaces[0].plugins[0].id, "sample@allowed");
+    assert!(listed.marketplaces[0].plugins[0].enabled);
+}
+
+#[tokio::test]
 async fn install_openai_curated_plugin_uses_short_sha_cache_version() {
     let tmp = tempfile::tempdir().unwrap();
     let curated_root = curated_plugins_repo_path(tmp.path());

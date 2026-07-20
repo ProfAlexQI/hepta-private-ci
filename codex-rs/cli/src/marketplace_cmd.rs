@@ -6,6 +6,7 @@ use codex_core::config::Config;
 use codex_core::config::find_codex_home;
 use codex_core_plugins::PluginMarketplaceUpgradeOutcome;
 use codex_core_plugins::PluginsManager;
+use codex_core_plugins::allowed_configured_marketplace_names;
 use codex_core_plugins::installed_marketplaces::marketplace_install_root;
 use codex_core_plugins::installed_marketplaces::resolve_configured_marketplace_root;
 use codex_core_plugins::marketplace_add::MarketplaceAddRequest;
@@ -169,7 +170,14 @@ async fn run_list(overrides: Vec<(String, toml::Value)>) -> Result<()> {
     }
 
     let default_install_root = marketplace_install_root(config.codex_home.as_path());
+    let allowed_marketplace_names = allowed_configured_marketplace_names(
+        &config.config_layer_stack,
+        config.codex_home.as_path(),
+    );
     for (marketplace_name, marketplace) in configured_marketplaces {
+        if !allowed_marketplace_names.contains(marketplace_name) {
+            continue;
+        }
         if !marketplace.is_table() {
             eprintln!("Ignoring invalid marketplace `{marketplace_name}`: expected table.");
             continue;
