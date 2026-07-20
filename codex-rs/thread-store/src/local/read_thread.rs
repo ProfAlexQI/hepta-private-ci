@@ -17,7 +17,8 @@ use super::LocalThreadStore;
 use super::helpers::distinct_thread_metadata_title;
 use super::helpers::git_info_from_parts;
 use super::helpers::rollout_path_is_archived;
-use super::helpers::set_thread_name_from_title;
+use super::helpers::set_thread_name;
+use super::helpers::sqlite_thread_name;
 use super::helpers::stored_thread_from_rollout_item;
 use super::live_writer;
 use crate::ReadThreadParams;
@@ -111,6 +112,9 @@ pub(super) async fn read_thread_by_rollout_path(
         });
     }
     if let Some(metadata) = read_sqlite_metadata(store, thread.thread_id).await {
+        if thread.history_mode == ThreadHistoryMode::Paginated {
+            thread.name = sqlite_thread_name(&metadata);
+        }
         thread.git_info = if thread.history_mode == ThreadHistoryMode::Paginated {
             // The rollout contains only its initial Git tuple. Preserve SQLite NULLs as explicit
             // clears instead of falling back to stale rollout values.
@@ -251,10 +255,12 @@ async fn read_thread_from_rollout_path(
             thread.model_provider = model_provider;
         }
     }
-    if let Ok(Some(title)) =
-        find_thread_name_by_id(store.config.codex_home.as_path(), &thread.thread_id).await
+    if thread.history_mode == ThreadHistoryMode::Legacy
+        && let Ok(Some(name)) =
+            find_thread_name_by_id(store.config.codex_home.as_path(), &thread.thread_id).await
+        && !name.trim().is_empty()
     {
-        set_thread_name_from_title(&mut thread, title);
+        set_thread_name(&mut thread, name);
     }
     Ok(thread)
 }
@@ -282,14 +288,6 @@ async fn stored_thread_from_sqlite_metadata(
     store: &LocalThreadStore,
     metadata: ThreadMetadata,
 ) -> StoredThread {
-    let name = match distinct_thread_metadata_title(&metadata) {
-        Some(title) => Some(title),
-        None => find_thread_name_by_id(store.config.codex_home.as_path(), &metadata.id)
-            .await
-            .ok()
-            .flatten()
-            .filter(|title| !title.trim().is_empty()),
-    };
     let session_meta = read_session_meta_line(metadata.rollout_path.as_path())
         .await
         .ok()
@@ -299,6 +297,7 @@ async fn stored_thread_from_sqlite_metadata(
         .as_ref()
         .map(|meta| meta.history_mode)
         .unwrap_or(metadata.history_mode);
+    let name = thread_name_from_metadata(store, &metadata, history_mode).await;
     let preview = metadata
         .preview
         .clone()
@@ -341,6 +340,27 @@ async fn stored_thread_from_sqlite_metadata(
         token_usage: None,
         first_user_message: metadata.first_user_message,
         history: None,
+    }
+}
+
+async fn thread_name_from_metadata(
+    store: &LocalThreadStore,
+    metadata: &ThreadMetadata,
+    history_mode: ThreadHistoryMode,
+) -> Option<String> {
+    match history_mode {
+        ThreadHistoryMode::Paginated => sqlite_thread_name(metadata),
+        ThreadHistoryMode::Legacy => {
+            if let Some(title) = distinct_thread_metadata_title(metadata) {
+                Some(title)
+            } else {
+                find_thread_name_by_id(store.config.codex_home.as_path(), &metadata.id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .filter(|name| !name.trim().is_empty())
+            }
+        }
     }
 }
 

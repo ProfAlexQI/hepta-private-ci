@@ -1,15 +1,12 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 
-use codex_protocol::ThreadId;
 use codex_rollout::RolloutConfig;
 use codex_rollout::RolloutRecorder;
-use codex_rollout::find_thread_names_by_ids;
 use codex_rollout::parse_cursor;
 
 use super::LocalThreadStore;
-use super::helpers::distinct_thread_metadata_title;
-use super::helpers::set_thread_name_from_title;
+use super::helpers::resolve_thread_names;
+use super::helpers::set_thread_name;
 use super::helpers::stored_thread_from_rollout_item;
 use crate::ListThreadsParams;
 use crate::SortDirection;
@@ -75,32 +72,14 @@ pub(super) async fn list_threads(
         })
         .collect::<Vec<_>>();
 
-    let thread_ids = items
+    let thread_history_modes = items
         .iter()
-        .map(|thread| thread.thread_id)
-        .collect::<HashSet<_>>();
-    let mut names = HashMap::<ThreadId, String>::with_capacity(thread_ids.len());
-    if let Some(state_db_ctx) = store.state_db().await {
-        for &thread_id in &thread_ids {
-            let Ok(Some(metadata)) = state_db_ctx.get_thread(thread_id).await else {
-                continue;
-            };
-            if let Some(title) = distinct_thread_metadata_title(&metadata) {
-                names.insert(thread_id, title);
-            }
-        }
-    }
-    if names.len() < thread_ids.len()
-        && let Ok(legacy_names) =
-            find_thread_names_by_ids(store.config.codex_home.as_path(), &thread_ids).await
-    {
-        for (thread_id, title) in legacy_names {
-            names.entry(thread_id).or_insert(title);
-        }
-    }
+        .map(|thread| (thread.thread_id, thread.history_mode))
+        .collect::<HashMap<_, _>>();
+    let names = resolve_thread_names(store, &thread_history_modes).await;
     for thread in &mut items {
-        if let Some(title) = names.get(&thread.thread_id).cloned() {
-            set_thread_name_from_title(thread, title);
+        if let Some(name) = names.get(&thread.thread_id).cloned() {
+            set_thread_name(thread, name);
         }
     }
 
