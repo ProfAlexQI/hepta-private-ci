@@ -401,6 +401,7 @@ pub struct CodexSpawnOk {
 
 pub(crate) struct CodexSpawnArgs {
     pub(crate) config: Config,
+    pub(crate) requested_history_mode: Option<codex_protocol::protocol::ThreadHistoryMode>,
     pub(crate) installation_id: String,
     pub(crate) auth_manager: Arc<AuthManager>,
     pub(crate) models_manager: SharedModelsManager,
@@ -464,6 +465,7 @@ impl Codex {
     async fn spawn_internal(args: CodexSpawnArgs) -> CodexResult<CodexSpawnOk> {
         let CodexSpawnArgs {
             mut config,
+            requested_history_mode,
             installation_id,
             auth_manager,
             models_manager,
@@ -618,6 +620,9 @@ impl Codex {
             account_plan_type,
             config.features.enabled(Feature::FastMode),
         );
+        let history_mode = conversation_history.get_history_mode(
+            requested_history_mode.unwrap_or_else(|| thread_store.default_history_mode()),
+        );
         let session_configuration = SessionConfiguration {
             provider: config.model_provider.clone(),
             collaboration_mode,
@@ -626,6 +631,7 @@ impl Codex {
             developer_instructions: config.developer_instructions.clone(),
             user_instructions,
             personality: config.personality,
+            history_mode,
             base_instructions,
             compact_prompt: config.compact_prompt.clone(),
             approval_policy: config.permissions.approval_policy.clone(),

@@ -115,7 +115,7 @@ fn write_session_file_with_fork_and_history_mode(
     fs::create_dir_all(&day_dir)?;
     let path = day_dir.join(format!("rollout-{ts}-{uuid}.jsonl"));
     let mut file = fs::File::create(&path)?;
-    let meta = serde_json::json!({
+    let mut meta = serde_json::json!({
         "timestamp": ts,
         "type": "session_meta",
         "payload": {
@@ -135,6 +135,9 @@ fn write_session_file_with_fork_and_history_mode(
             }
         },
     });
+    if matches!(history_mode, ThreadHistoryMode::Paginated) {
+        meta["ordinal"] = serde_json::json!(0);
+    }
     writeln!(file, "{meta}")?;
     if matches!(history_mode, ThreadHistoryMode::Legacy) {
         let user_event = serde_json::json!({

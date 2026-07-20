@@ -634,11 +634,11 @@ impl ThreadRequestProcessor {
 
     pub(crate) async fn thread_turns_items_list(
         &self,
-        _params: ThreadTurnsItemsListParams,
+        params: ThreadTurnsItemsListParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        Err(method_not_found(
-            "thread/turns/items/list is not supported yet",
-        ))
+        self.thread_turns_items_list_response_inner(params)
+            .await
+            .map(|response| Some(response.into()))
     }
 
     pub(crate) async fn thread_shell_command(
@@ -853,11 +853,19 @@ impl ThreadRequestProcessor {
             experimental_raw_events,
             personality,
             ephemeral,
+            history_mode,
             session_start_source,
             thread_source,
             environments,
             persist_extended_history,
         } = params;
+        if matches!(history_mode, Some(ThreadHistoryMode::Paginated))
+            && !self.thread_store.supports_paginated_history_lists()
+        {
+            return Err(invalid_request(
+                "paginated threads require thread/turns/list and thread/turns/items/list support",
+            ));
+        }
         if sandbox.is_some() && permissions.is_some() {
             return Err(invalid_request(
                 "`permissions` cannot be combined with `sandbox`",
@@ -908,6 +916,7 @@ impl ThreadRequestProcessor {
                 config,
                 typesafe_overrides,
                 dynamic_tools,
+                history_mode,
                 session_start_source,
                 thread_source.map(Into::into),
                 environment_selections,
@@ -992,6 +1001,7 @@ impl ThreadRequestProcessor {
         config_overrides: Option<HashMap<String, serde_json::Value>>,
         typesafe_overrides: ConfigOverrides,
         dynamic_tools: Option<Vec<ApiDynamicToolSpec>>,
+        history_mode: Option<ThreadHistoryMode>,
         session_start_source: Option<codex_app_server_protocol::ThreadStartSource>,
         thread_source: Option<codex_protocol::protocol::ThreadSource>,
         environments: Option<Vec<TurnEnvironmentSelection>>,
@@ -1110,6 +1120,7 @@ impl ThreadRequestProcessor {
                     codex_app_server_protocol::ThreadStartSource::Startup => InitialHistory::New,
                     codex_app_server_protocol::ThreadStartSource::Clear => InitialHistory::Cleared,
                 },
+                history_mode,
                 session_source: None,
                 thread_source,
                 dynamic_tools: core_dynamic_tools,
@@ -1682,6 +1693,11 @@ impl ThreadRequestProcessor {
         }
 
         let (thread_id, thread) = self.load_thread(&thread_id).await?;
+        if thread.config_snapshot().await.history_mode == ThreadHistoryMode::Paginated {
+            return Err(invalid_request(
+                "paginated threads do not support thread/rollback",
+            ));
+        }
 
         let request = request_id.clone();
 
@@ -2018,6 +2034,22 @@ impl ThreadRequestProcessor {
         include_turns: bool,
     ) -> Result<Option<Thread>, ThreadReadViewError> {
         let fallback_provider = self.config.model_provider_id.as_str();
+        if include_turns
+            && self
+                .thread_store
+                .read_thread(StoreReadThreadParams {
+                    thread_id,
+                    include_archived: true,
+                    include_history: false,
+                })
+                .await
+                .ok()
+                .is_some_and(|thread| thread.history_mode == ThreadHistoryMode::Paginated)
+        {
+            return Err(ThreadReadViewError::InvalidRequest(
+                "paginated threads do not support thread/read(includeTurns=true)".to_string(),
+            ));
+        }
         match self
             .thread_store
             .read_thread(StoreReadThreadParams {
@@ -2064,6 +2096,11 @@ impl ThreadRequestProcessor {
         if include_turns && config_snapshot.ephemeral {
             return Err(ThreadReadViewError::InvalidRequest(
                 "ephemeral threads do not support includeTurns".to_string(),
+            ));
+        }
+        if include_turns && config_snapshot.history_mode == ThreadHistoryMode::Paginated {
+            return Err(ThreadReadViewError::InvalidRequest(
+                "paginated threads do not support thread/read(includeTurns=true)".to_string(),
             ));
         }
         let fallback_thread =
@@ -2118,6 +2155,39 @@ impl ThreadRequestProcessor {
 
         let thread_uuid = ThreadId::from_string(&thread_id)
             .map_err(|err| invalid_request(format!("invalid thread id: {err}")))?;
+
+        match self
+            .thread_store
+            .read_thread(StoreReadThreadParams {
+                thread_id: thread_uuid,
+                include_archived: true,
+                include_history: false,
+            })
+            .await
+        {
+            Ok(thread) if thread.history_mode == ThreadHistoryMode::Paginated => {
+                return self
+                    .paginated_thread_turns_list_response(
+                        thread_uuid,
+                        cursor,
+                        limit,
+                        sort_direction,
+                        items_view,
+                    )
+                    .await;
+            }
+            Ok(_) => {}
+            Err(ThreadStoreError::InvalidRequest { message })
+                if message == format!("no rollout found for thread id {thread_uuid}") => {}
+            Err(ThreadStoreError::ThreadNotFound { thread_id }) if thread_id == thread_uuid => {}
+            Err(ThreadStoreError::InvalidRequest { message }) => {
+                return Err(invalid_request(message));
+            }
+            Err(ThreadStoreError::Unsupported { operation }) => {
+                return Err(unsupported_thread_store_operation(operation));
+            }
+            Err(err) => return Err(internal_error(format!("failed to read thread: {err}"))),
+        }
 
         let items = self
             .load_thread_turns_list_history(thread_uuid)
@@ -2194,6 +2264,126 @@ impl ThreadRequestProcessor {
         )?;
         Ok(ThreadTurnsListResponse {
             data: page.turns,
+            next_cursor: page.next_cursor,
+            backwards_cursor: page.backwards_cursor,
+        })
+    }
+
+    async fn paginated_thread_turns_list_response(
+        &self,
+        thread_id: ThreadId,
+        cursor: Option<String>,
+        limit: Option<u32>,
+        sort_direction: Option<SortDirection>,
+        items_view: TurnItemsView,
+    ) -> Result<ThreadTurnsListResponse, JSONRPCErrorError> {
+        let stored_items_view = match items_view {
+            TurnItemsView::NotLoaded => StoredTurnItemsView::NotLoaded,
+            TurnItemsView::Summary => StoredTurnItemsView::Summary,
+            TurnItemsView::Full => {
+                return Err(invalid_request(
+                    "thread/turns/list itemsView full is not supported for paginated threads; use thread/turns/items/list",
+                ));
+            }
+        };
+        let page = self
+            .thread_store
+            .list_turns(StoreListTurnsParams {
+                thread_id,
+                include_archived: true,
+                cursor,
+                page_size: limit
+                    .map(|value| value as usize)
+                    .unwrap_or(THREAD_TURNS_DEFAULT_LIMIT)
+                    .clamp(1, THREAD_TURNS_MAX_LIMIT),
+                sort_direction: match sort_direction.unwrap_or(SortDirection::Desc) {
+                    SortDirection::Asc => StoreSortDirection::Asc,
+                    SortDirection::Desc => StoreSortDirection::Desc,
+                },
+                items_view: stored_items_view,
+            })
+            .await
+            .map_err(|err| match err {
+                ThreadStoreError::InvalidRequest { message } => invalid_request(message),
+                ThreadStoreError::Unsupported { .. } => {
+                    method_not_found("thread/turns/list is not supported yet")
+                }
+                ThreadStoreError::ThreadNotFound { thread_id } => {
+                    invalid_request(format!("no rollout found for thread id {thread_id}"))
+                }
+                err => internal_error(format!("failed to list thread history: {err}")),
+            })?;
+        let mut turns = page
+            .turns
+            .into_iter()
+            .map(|turn| stored_turn_to_api_turn(turn, items_view))
+            .collect::<Result<Vec<_>, _>>()?;
+        let loaded_thread = self.thread_manager.get_thread(thread_id).await.ok();
+        let has_live_running_thread = match loaded_thread.as_ref() {
+            Some(thread) => matches!(thread.agent_status().await, AgentStatus::Running),
+            None => false,
+        };
+        normalize_thread_turns_status(
+            &mut turns,
+            self.thread_watch_manager
+                .loaded_status_for_thread(&thread_id.to_string())
+                .await,
+            has_live_running_thread,
+        );
+        Ok(ThreadTurnsListResponse {
+            data: turns,
+            next_cursor: page.next_cursor,
+            backwards_cursor: page.backwards_cursor,
+        })
+    }
+
+    async fn thread_turns_items_list_response_inner(
+        &self,
+        params: ThreadTurnsItemsListParams,
+    ) -> Result<ThreadTurnsItemsListResponse, JSONRPCErrorError> {
+        let ThreadTurnsItemsListParams {
+            thread_id,
+            turn_id,
+            cursor,
+            limit,
+            sort_direction,
+        } = params;
+        let thread_id = ThreadId::from_string(&thread_id)
+            .map_err(|err| invalid_request(format!("invalid thread id: {err}")))?;
+        let page = self
+            .thread_store
+            .list_items(StoreListItemsParams {
+                thread_id,
+                turn_id,
+                include_archived: true,
+                cursor,
+                page_size: limit
+                    .map(|value| value as usize)
+                    .unwrap_or(THREAD_ITEMS_DEFAULT_LIMIT)
+                    .clamp(1, THREAD_ITEMS_MAX_LIMIT),
+                sort_direction: match sort_direction.unwrap_or(SortDirection::Asc) {
+                    SortDirection::Asc => StoreSortDirection::Asc,
+                    SortDirection::Desc => StoreSortDirection::Desc,
+                },
+            })
+            .await
+            .map_err(|err| match err {
+                ThreadStoreError::InvalidRequest { message } => invalid_request(message),
+                ThreadStoreError::Unsupported { .. } => {
+                    method_not_found("thread/turns/items/list is not supported yet")
+                }
+                ThreadStoreError::ThreadNotFound { thread_id } => {
+                    invalid_request(format!("no rollout found for thread id {thread_id}"))
+                }
+                err => internal_error(format!("failed to list thread items: {err}")),
+            })?;
+        let data = page
+            .items
+            .into_iter()
+            .map(deserialize_stored_thread_item)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ThreadTurnsItemsListResponse {
+            data,
             next_cursor: page.next_cursor,
             backwards_cursor: page.backwards_cursor,
         })
@@ -2415,7 +2605,7 @@ impl ThreadRequestProcessor {
                 .await
                 .map(|thread_history| (thread_history, None))
         } else {
-            self.resume_thread_from_rollout(&thread_id, path.as_ref())
+            self.resume_thread_from_rollout(&thread_id, path.as_ref(), exclude_turns)
                 .await
                 .map(|(thread_history, stored_thread)| (thread_history, Some(stored_thread)))
         } {
@@ -2659,7 +2849,7 @@ impl ThreadRequestProcessor {
                 .read_stored_thread_for_resume(
                     &params.thread_id,
                     params.path.as_ref(),
-                    /*include_history*/ true,
+                    /*include_history*/ false,
                 )
                 .await?;
             let existing_thread_id = source_thread.thread_id;
@@ -2686,7 +2876,7 @@ impl ThreadRequestProcessor {
                 .read_stored_thread_for_resume(
                     &params.thread_id,
                     /*path*/ None,
-                    /*include_history*/ true,
+                    /*include_history*/ false,
                 )
                 .await?;
             if source_thread.thread_id != existing_thread_id {
@@ -2700,7 +2890,7 @@ impl ThreadRequestProcessor {
             None
         };
 
-        if let Some((existing_thread_id, existing_thread, source_thread)) = running_thread {
+        if let Some((existing_thread_id, existing_thread, mut source_thread)) = running_thread {
             if fail_running_resume_for_test_client(app_server_client_name.as_deref()) {
                 return Err(invalid_request(format!(
                     "thread {existing_thread_id} is running without a test listener; use thread/read fallback"
@@ -2708,10 +2898,29 @@ impl ThreadRequestProcessor {
             }
             let redact_resume_payloads =
                 should_redact_thread_resume_payloads(app_server_client_name.as_deref());
+            if source_thread.history_mode == ThreadHistoryMode::Paginated && !params.exclude_turns {
+                return Err(invalid_request(
+                    "paginated threads do not support full-history thread/resume; pass excludeTurns=true",
+                ));
+            }
+            if source_thread.history_mode == ThreadHistoryMode::Legacy {
+                source_thread = self
+                    .thread_store
+                    .read_thread(StoreReadThreadParams {
+                        thread_id: existing_thread_id,
+                        include_archived: true,
+                        include_history: true,
+                    })
+                    .await
+                    .map_err(thread_store_resume_read_error)?;
+            }
             let history_items = source_thread
                 .history
                 .as_ref()
                 .map(|history| history.items.clone())
+                .or_else(|| {
+                    (source_thread.history_mode == ThreadHistoryMode::Paginated).then(Vec::new)
+                })
                 .ok_or_else(|| {
                     internal_error(format!(
                         "thread {existing_thread_id} did not include persisted history"
@@ -2815,7 +3024,32 @@ impl ThreadRequestProcessor {
         &self,
         thread_id: &str,
         path: Option<&PathBuf>,
+        exclude_turns: bool,
     ) -> Result<(InitialHistory, StoredThread), JSONRPCErrorError> {
+        let stored_thread = self
+            .read_stored_thread_for_resume(thread_id, path, /*include_history*/ false)
+            .await?;
+        if stored_thread.history_mode == ThreadHistoryMode::Paginated {
+            if !exclude_turns {
+                return Err(invalid_request(
+                    "paginated threads do not support full-history thread/resume; pass excludeTurns=true",
+                ));
+            }
+            let model_context = self
+                .thread_store
+                .load_latest_model_context(codex_thread_store::LoadThreadHistoryParams {
+                    thread_id: stored_thread.thread_id,
+                    include_archived: true,
+                })
+                .await
+                .map_err(thread_store_resume_read_error)?;
+            let history = InitialHistory::Resumed(ResumedHistory {
+                conversation_id: model_context.thread_id,
+                history: model_context.items,
+                rollout_path: stored_thread.rollout_path.clone(),
+            });
+            return Ok((history, stored_thread));
+        }
         let stored_thread = self
             .read_stored_thread_for_resume(thread_id, path, /*include_history*/ true)
             .await?;
@@ -3436,6 +3670,8 @@ fn xcode_26_4_mcp_elicitations_auto_deny(
 
 const THREAD_TURNS_DEFAULT_LIMIT: usize = 25;
 const THREAD_TURNS_MAX_LIMIT: usize = 100;
+const THREAD_ITEMS_DEFAULT_LIMIT: usize = 100;
+const THREAD_ITEMS_MAX_LIMIT: usize = 1000;
 
 fn thread_backwards_cursor_for_sort_key(
     thread: &StoredThread,
@@ -3610,6 +3846,47 @@ fn thread_read_view_error(err: ThreadReadViewError) -> JSONRPCErrorError {
         }
         ThreadReadViewError::Internal(message) => internal_error(message),
     }
+}
+
+fn deserialize_stored_thread_item(item: StoredThreadItem) -> Result<ThreadItem, JSONRPCErrorError> {
+    serde_json::from_slice::<ThreadItem>(&item.item_json).map_err(|err| {
+        internal_error(format!(
+            "failed to deserialize stored thread item {}: {err}",
+            item.item_id
+        ))
+    })
+}
+
+fn stored_turn_to_api_turn(
+    turn: StoredTurn,
+    items_view: TurnItemsView,
+) -> Result<Turn, JSONRPCErrorError> {
+    let status = match turn.status {
+        StoredTurnStatus::Completed => TurnStatus::Completed,
+        StoredTurnStatus::Interrupted => TurnStatus::Interrupted,
+        StoredTurnStatus::Failed => TurnStatus::Failed,
+        StoredTurnStatus::InProgress => TurnStatus::InProgress,
+    };
+    let error = turn.error.map(|error| TurnError {
+        message: error.message,
+        codex_error_info: error.codex_error_info,
+        additional_details: error.additional_details,
+    });
+    let items = turn
+        .items
+        .into_iter()
+        .map(deserialize_stored_thread_item)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Turn {
+        id: turn.turn_id,
+        items,
+        items_view,
+        status,
+        error,
+        started_at: turn.started_at,
+        completed_at: turn.completed_at,
+        duration_ms: turn.duration_ms,
+    })
 }
 
 fn unsupported_thread_store_operation(operation: &'static str) -> JSONRPCErrorError {
@@ -3792,6 +4069,7 @@ pub(crate) fn thread_from_stored_thread(
         forked_from_id: thread.forked_from_id.map(|id| id.to_string()),
         preview: thread.preview,
         ephemeral: false,
+        history_mode: thread.history_mode,
         model_provider: if thread.model_provider.is_empty() {
             fallback_provider.to_string()
         } else {
@@ -3997,6 +4275,7 @@ fn build_thread_from_snapshot(
         forked_from_id: None,
         preview: String::new(),
         ephemeral: config_snapshot.ephemeral,
+        history_mode: config_snapshot.history_mode,
         model_provider: config_snapshot.model_provider_id.clone(),
         created_at: now,
         updated_at: now,

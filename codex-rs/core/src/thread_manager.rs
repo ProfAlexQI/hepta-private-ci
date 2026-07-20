@@ -175,6 +175,7 @@ pub struct ThreadManager {
 pub struct StartThreadOptions {
     pub config: Config,
     pub initial_history: InitialHistory,
+    pub history_mode: Option<codex_protocol::protocol::ThreadHistoryMode>,
     pub session_source: Option<SessionSource>,
     pub thread_source: Option<ThreadSource>,
     pub dynamic_tools: Vec<codex_protocol::dynamic_tools::DynamicToolSpec>,
@@ -567,6 +568,7 @@ impl ThreadManager {
         Box::pin(self.start_thread_with_options(StartThreadOptions {
             config,
             initial_history: InitialHistory::New,
+            history_mode: None,
             session_source: None,
             thread_source: None,
             dynamic_tools,
@@ -591,6 +593,7 @@ impl ThreadManager {
         Box::pin(self.state.spawn_thread_with_source(
             options.config,
             options.initial_history,
+            options.history_mode,
             Arc::clone(&self.state.auth_manager),
             self.agent_control(),
             session_source,
@@ -1028,6 +1031,7 @@ impl ThreadManagerState {
         Box::pin(self.spawn_thread_with_source(
             config,
             InitialHistory::New,
+            /*requested_history_mode*/ None,
             Arc::clone(&self.auth_manager),
             agent_control,
             session_source,
@@ -1062,6 +1066,7 @@ impl ThreadManagerState {
         Box::pin(self.spawn_thread_with_source(
             config,
             initial_history,
+            /*requested_history_mode*/ None,
             Arc::clone(&self.auth_manager),
             agent_control,
             session_source,
@@ -1097,6 +1102,7 @@ impl ThreadManagerState {
         Box::pin(self.spawn_thread_with_source(
             config,
             initial_history,
+            /*requested_history_mode*/ None,
             Arc::clone(&self.auth_manager),
             agent_control,
             session_source,
@@ -1132,6 +1138,7 @@ impl ThreadManagerState {
         Box::pin(self.spawn_thread_with_source(
             config,
             initial_history,
+            /*requested_history_mode*/ None,
             auth_manager,
             agent_control,
             self.session_source.clone(),
@@ -1153,6 +1160,7 @@ impl ThreadManagerState {
         &self,
         config: Config,
         initial_history: InitialHistory,
+        requested_history_mode: Option<codex_protocol::protocol::ThreadHistoryMode>,
         auth_manager: Arc<AuthManager>,
         agent_control: AgentControl,
         session_source: SessionSource,
@@ -1198,6 +1206,7 @@ impl ThreadManagerState {
             codex, thread_id, ..
         } = Codex::spawn(CodexSpawnArgs {
             config,
+            requested_history_mode,
             installation_id: self.installation_id.clone(),
             auth_manager,
             models_manager: Arc::clone(&self.models_manager),

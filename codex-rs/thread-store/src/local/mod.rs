@@ -29,7 +29,10 @@ use tokio::sync::OwnedMutexGuard;
 use crate::AppendThreadItemsParams;
 use crate::ArchiveThreadParams;
 use crate::CreateThreadParams;
+use crate::ItemPage;
+use crate::ListItemsParams;
 use crate::ListThreadsParams;
+use crate::ListTurnsParams;
 use crate::LoadThreadHistoryParams;
 use crate::ReadThreadByRolloutPathParams;
 use crate::ReadThreadParams;
@@ -41,6 +44,7 @@ use crate::ThreadPage;
 use crate::ThreadStore;
 use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
+use crate::TurnPage;
 use crate::UpdateThreadMetadataParams;
 
 /// Local filesystem/SQLite-backed implementation of [`ThreadStore`].
@@ -307,6 +311,18 @@ impl ThreadStore for LocalThreadStore {
 
     async fn list_threads(&self, params: ListThreadsParams) -> ThreadStoreResult<ThreadPage> {
         list_threads::list_threads(self, params).await
+    }
+
+    fn supports_paginated_history_lists(&self) -> bool {
+        self.state_db.is_some()
+    }
+
+    async fn list_turns(&self, params: ListTurnsParams) -> ThreadStoreResult<TurnPage> {
+        thread_history::list_turns(self, params).await
+    }
+
+    async fn list_items(&self, params: ListItemsParams) -> ThreadStoreResult<ItemPage> {
+        thread_history::list_items(self, params).await
     }
 
     async fn update_thread_metadata(
@@ -1063,7 +1079,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn paginated_threads_allow_metadata_reads_and_reject_legacy_history_paths() {
+    async fn paginated_threads_allow_metadata_reads_and_resume_but_reject_legacy_history_paths() {
         let home = TempDir::new().expect("temp dir");
         let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
         let uuid = uuid::Uuid::from_u128(408);
@@ -1127,19 +1143,17 @@ mod tests {
                 .await
                 .expect_err("history load should fail"),
         );
-        assert_paginated_threads_unsupported(
-            store
-                .resume_thread(ResumeThreadParams {
-                    thread_id,
-                    rollout_path: Some(rollout_path),
-                    history: None,
-                    include_archived: false,
-                    metadata: thread_metadata(),
-                    event_persistence_mode: ThreadEventPersistenceMode::default(),
-                })
-                .await
-                .expect_err("resume should fail"),
-        );
+        store
+            .resume_thread(ResumeThreadParams {
+                thread_id,
+                rollout_path: Some(rollout_path),
+                history: None,
+                include_archived: false,
+                metadata: thread_metadata(),
+                event_persistence_mode: ThreadEventPersistenceMode::default(),
+            })
+            .await
+            .expect("resume should succeed");
     }
 
     #[tokio::test]

@@ -62,6 +62,7 @@ pub struct ThreadConfigSnapshot {
     pub workspace_roots: Vec<AbsolutePathBuf>,
     pub profile_workspace_roots: Vec<AbsolutePathBuf>,
     pub ephemeral: bool,
+    pub history_mode: codex_protocol::protocol::ThreadHistoryMode,
     pub reasoning_effort: Option<ReasoningEffort>,
     pub personality: Option<Personality>,
     pub session_source: SessionSource,

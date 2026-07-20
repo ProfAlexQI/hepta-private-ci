@@ -32,6 +32,7 @@ use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::ThreadStatus;
 use codex_app_server_protocol::ThreadTurnsItemsListParams;
+use codex_app_server_protocol::ThreadTurnsItemsListResponse;
 use codex_app_server_protocol::ThreadTurnsListParams;
 use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::TurnItemsView;
@@ -1091,7 +1092,7 @@ async fn thread_turns_list_rejects_unmaterialized_loaded_thread() -> Result<()> 
 }
 
 #[tokio::test]
-async fn thread_turns_items_list_returns_unsupported() -> Result<()> {
+async fn paginated_thread_routes_projected_turns_and_turn_items() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &server.uri())?;
@@ -1099,13 +1100,104 @@ async fn thread_turns_items_list_returns_unsupported() -> Result<()> {
     let mut mcp = McpProcess::new(codex_home.path()).await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
-    let read_id = mcp
-        .send_thread_turns_items_list_request(ThreadTurnsItemsListParams {
-            thread_id: "thr_123".to_string(),
-            turn_id: "turn_456".to_string(),
+    let start_id = mcp
+        .send_thread_start_request(ThreadStartParams {
+            history_mode: Some(ThreadHistoryMode::Paginated),
+            ..Default::default()
+        })
+        .await?;
+    let start_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(start_id)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response(start_response)?;
+
+    let turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "Hello".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let turn_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
+    )
+    .await??;
+    let _: TurnStartResponse = to_response(turn_response)?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+
+    let turns_id = mcp
+        .send_thread_turns_list_request(ThreadTurnsListParams {
+            thread_id: thread.id.clone(),
             cursor: None,
-            limit: None,
-            sort_direction: None,
+            limit: Some(1),
+            sort_direction: Some(SortDirection::Asc),
+            items_view: Some(TurnItemsView::Summary),
+        })
+        .await?;
+    let turns_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turns_id)),
+    )
+    .await??;
+    let ThreadTurnsListResponse { data: turns, .. } = to_response(turns_response)?;
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].status, TurnStatus::Completed);
+    assert_eq!(turns[0].items_view, TurnItemsView::Summary);
+    let projected_turn_id = turns[0].id.clone();
+
+    let first_items_id = mcp
+        .send_thread_turns_items_list_request(ThreadTurnsItemsListParams {
+            thread_id: thread.id.clone(),
+            turn_id: projected_turn_id.clone(),
+            cursor: None,
+            limit: Some(1),
+            sort_direction: Some(SortDirection::Asc),
+        })
+        .await?;
+    let first_items_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(first_items_id)),
+    )
+    .await??;
+    let first_page: ThreadTurnsItemsListResponse = to_response(first_items_response)?;
+    assert_eq!(first_page.data.len(), 1);
+    assert!(matches!(first_page.data[0], ThreadItem::UserMessage { .. }));
+
+    let second_items_id = mcp
+        .send_thread_turns_items_list_request(ThreadTurnsItemsListParams {
+            thread_id: thread.id.clone(),
+            turn_id: projected_turn_id,
+            cursor: first_page.next_cursor,
+            limit: Some(1),
+            sort_direction: Some(SortDirection::Asc),
+        })
+        .await?;
+    let second_items_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(second_items_id)),
+    )
+    .await??;
+    let second_page: ThreadTurnsItemsListResponse = to_response(second_items_response)?;
+    assert_eq!(second_page.data.len(), 1);
+    assert!(matches!(
+        second_page.data[0],
+        ThreadItem::AgentMessage { .. }
+    ));
+
+    let read_id = mcp
+        .send_thread_read_request(ThreadReadParams {
+            thread_id: thread.id.clone(),
+            include_turns: true,
         })
         .await?;
     let read_err: JSONRPCError = timeout(
@@ -1113,12 +1205,41 @@ async fn thread_turns_items_list_returns_unsupported() -> Result<()> {
         mcp.read_stream_until_error_message(RequestId::Integer(read_id)),
     )
     .await??;
+    assert_eq!(read_err.error.code, -32600);
+    assert!(read_err.error.message.contains("paginated threads"));
 
-    assert_eq!(read_err.error.code, -32601);
-    assert_eq!(
-        read_err.error.message,
-        "thread/turns/items/list is not supported yet"
-    );
+    let full_resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread.id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let full_resume_err: JSONRPCError = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(full_resume_id)),
+    )
+    .await??;
+    assert_eq!(full_resume_err.error.code, -32600);
+    assert!(full_resume_err.error.message.contains("excludeTurns=true"));
+
+    let metadata_resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread.id,
+            exclude_turns: true,
+            ..Default::default()
+        })
+        .await?;
+    let metadata_resume_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(metadata_resume_id)),
+    )
+    .await??;
+    let ThreadResumeResponse {
+        thread: resumed_thread,
+        ..
+    } = to_response(metadata_resume_response)?;
+    assert_eq!(resumed_thread.history_mode, ThreadHistoryMode::Paginated);
+    assert!(resumed_thread.turns.is_empty());
 
     Ok(())
 }

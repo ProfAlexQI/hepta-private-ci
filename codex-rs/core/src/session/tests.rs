@@ -2954,6 +2954,7 @@ async fn set_rate_limits_retains_previous_credits() {
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -3058,6 +3059,7 @@ async fn set_rate_limits_updates_plan_type_when_present() {
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -3532,6 +3534,7 @@ pub(crate) async fn make_session_configuration_for_tests() -> SessionConfigurati
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -4170,6 +4173,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -4279,6 +4283,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -4513,6 +4518,7 @@ async fn make_session_with_config_and_rx(
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -4616,6 +4622,7 @@ async fn make_session_with_history_source_and_agent_control_and_rx(
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()
@@ -6137,6 +6144,7 @@ where
         user_instructions: config.user_instructions.clone(),
         service_tier: None,
         personality: config.personality,
+        history_mode: ThreadHistoryMode::Legacy,
         base_instructions: config
             .base_instructions
             .clone()

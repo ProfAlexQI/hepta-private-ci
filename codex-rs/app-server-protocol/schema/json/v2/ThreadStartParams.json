@@ -106,6 +106,14 @@
       ],
       "type": "string"
     },
+    "ThreadHistoryMode": {
+      "description": "Persisted storage contract for a thread's canonical history.\n\nLegacy remains the default so binaries that predate paginated history keep interpreting omitted metadata exactly as they do today. Callers must fail closed before opening a paginated thread unless they implement that contract end to end.",
+      "enum": [
+        "legacy",
+        "paginated"
+      ],
+      "type": "string"
+    },
     "ThreadSource": {
       "enum": [
         "user",

@@ -131,6 +131,7 @@ fn sample_thread(thread_id: &str) -> Thread {
         forked_from_id: None,
         preview: "first prompt".to_string(),
         ephemeral: false,
+        history_mode: Default::default(),
         model_provider: "openai".to_string(),
         created_at: 1,
         updated_at: 2,

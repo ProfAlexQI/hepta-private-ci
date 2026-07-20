@@ -122,6 +122,7 @@ mod tests {
             forked_from_id: None,
             preview: String::new(),
             ephemeral: false,
+            history_mode: Default::default(),
             model_provider: "openai".to_string(),
             created_at: 0,
             updated_at: 0,

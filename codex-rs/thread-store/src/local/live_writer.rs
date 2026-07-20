@@ -18,7 +18,6 @@ use crate::ReadThreadParams;
 use crate::ResumeThreadParams;
 use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
-use crate::error::reject_paginated_history_mode;
 use crate::types::canonical_history_mode_from_rollout_items;
 
 pub(super) async fn create_thread(
@@ -64,7 +63,6 @@ pub(super) async fn resume_thread(
         .await?
         .history_mode
     };
-    reject_paginated_history_mode(history_mode)?;
     let rollout_path = match (params.rollout_path, params.history) {
         (Some(rollout_path), _history) => rollout_path,
         (None, history) => {

@@ -241,6 +241,7 @@ impl MemoryStartupContext {
             .start_thread_with_options(StartThreadOptions {
                 config,
                 initial_history: InitialHistory::New,
+                history_mode: None,
                 session_source: Some(SessionSource::Internal(
                     InternalSessionSource::MemoryConsolidation,
                 )),

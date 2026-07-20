@@ -67,6 +67,7 @@ export type { ServerRequest } from "./ServerRequest";
 export type { SessionSource } from "./SessionSource";
 export type { Settings } from "./Settings";
 export type { SubAgentSource } from "./SubAgentSource";
+export type { ThreadHistoryMode } from "./ThreadHistoryMode";
 export type { ThreadId } from "./ThreadId";
 export type { ThreadMemoryMode } from "./ThreadMemoryMode";
 export type { Tool } from "./Tool";

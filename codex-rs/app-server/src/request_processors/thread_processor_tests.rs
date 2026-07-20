@@ -663,6 +663,7 @@ mod thread_processor_behavior_tests {
             workspace_roots: Vec::new(),
             profile_workspace_roots: Vec::new(),
             ephemeral: false,
+            history_mode: ThreadHistoryMode::Legacy,
             reasoning_effort: None,
             personality: None,
             session_source: SessionSource::Cli,

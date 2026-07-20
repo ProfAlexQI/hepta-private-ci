@@ -4,6 +4,7 @@ use codex_protocol::SessionId;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::permissions::FileSystemPath;
 use codex_protocol::permissions::FileSystemSpecialPath;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use tokio::sync::Semaphore;
@@ -53,6 +54,7 @@ pub(crate) struct SessionConfiguration {
 
     /// Personality preference for the model.
     pub(super) personality: Option<Personality>,
+    pub(super) history_mode: ThreadHistoryMode,
 
     /// Base instructions for the session.
     pub(super) base_instructions: String,
@@ -177,6 +179,7 @@ impl SessionConfiguration {
             workspace_roots: self.workspace_roots.clone(),
             profile_workspace_roots: self.profile_workspace_roots().to_vec(),
             ephemeral: self.original_config_do_not_use.ephemeral,
+            history_mode: self.history_mode,
             reasoning_effort: self.collaboration_mode.reasoning_effort(),
             personality: self.personality,
             session_source: self.session_source.clone(),
@@ -493,7 +496,7 @@ impl Session {
                                     text: session_configuration.base_instructions.clone(),
                                 },
                                 dynamic_tools: session_configuration.dynamic_tools.clone(),
-                                history_mode: thread_store.default_history_mode(),
+                                history_mode: session_configuration.history_mode,
                                 metadata: ThreadPersistenceMetadata {
                                     cwd: Some(config.cwd.to_path_buf()),
                                     model_provider: config.model_provider_id.clone(),

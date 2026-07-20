@@ -168,6 +168,7 @@ fn sample_thread_with_metadata(
         forked_from_id: None,
         preview: "first prompt".to_string(),
         ephemeral,
+        history_mode: Default::default(),
         model_provider: "openai".to_string(),
         created_at: 1,
         updated_at: 2,

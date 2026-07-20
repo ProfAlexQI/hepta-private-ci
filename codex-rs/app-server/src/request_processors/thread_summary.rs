@@ -279,6 +279,7 @@ pub(crate) fn summary_to_thread(
         forked_from_id: None,
         preview,
         ephemeral: false,
+        history_mode: Default::default(),
         model_provider,
         created_at: created_at.map(|dt| dt.timestamp()).unwrap_or(0),
         updated_at: updated_at.map(|dt| dt.timestamp()).unwrap_or(0),

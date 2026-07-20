@@ -306,6 +306,7 @@ impl ExternalAgentConfigRequestProcessor {
             .start_thread_with_options(StartThreadOptions {
                 config,
                 initial_history: InitialHistory::Forked(rollout_items),
+                history_mode: None,
                 session_source: None,
                 thread_source: None,
                 dynamic_tools: Vec::new(),

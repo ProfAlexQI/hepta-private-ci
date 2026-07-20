@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use chrono::DateTime;
 use chrono::Utc;
+use codex_app_server_protocol::CodexErrorInfo;
 use codex_protocol::ThreadId;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::BaseInstructions;
@@ -268,6 +269,8 @@ pub enum StoredTurnStatus {
 pub struct StoredTurnError {
     /// User-visible error message.
     pub message: String,
+    /// Structured Codex error classification, when available.
+    pub codex_error_info: Option<CodexErrorInfo>,
     /// Optional additional detail for clients that expose expanded error context.
     pub additional_details: Option<String>,
 }
@@ -295,7 +298,7 @@ pub struct StoredTurn {
     /// Turn id.
     pub turn_id: String,
     /// Persisted rollout items associated with this turn, according to `items_view`.
-    pub items: Vec<RolloutItem>,
+    pub items: Vec<StoredThreadItem>,
     /// Amount of item detail included in `items`.
     pub items_view: StoredTurnItemsView,
     /// Store-owned status for API layer projection.
@@ -338,11 +341,24 @@ pub struct ListItemsParams {
     pub sort_direction: SortDirection,
 }
 
+/// A projected app-server `ThreadItem` snapshot within a turn.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredThreadItem {
+    /// Turn containing this item.
+    pub turn_id: String,
+    /// Stable item identifier within the turn.
+    pub item_id: String,
+    /// Unix timestamp (milliseconds) when this logical item was first projected.
+    pub created_at_ms: i64,
+    /// Serialized app-server `ThreadItem` snapshot.
+    pub item_json: Vec<u8>,
+}
+
 /// A page of persisted rollout items within a turn.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ItemPage {
     /// Items returned for this page.
-    pub items: Vec<RolloutItem>,
+    pub items: Vec<StoredThreadItem>,
     /// Opaque cursor to continue listing.
     pub next_cursor: Option<String>,
     /// Opaque cursor for fetching in the opposite direction.

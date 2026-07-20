@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::Write;
+use std::sync::Arc;
 
 use codex_app_server_protocol::ThreadItem;
 use codex_protocol::ThreadId;
@@ -26,6 +27,11 @@ use super::super::LocalThreadStore;
 use super::super::test_support::test_config;
 use crate::AppendThreadItemsParams;
 use crate::CreateThreadParams;
+use crate::ListItemsParams;
+use crate::ListTurnsParams;
+use crate::LiveThread;
+use crate::SortDirection;
+use crate::StoredTurnItemsView;
 use crate::ThreadEventPersistenceMode;
 use crate::ThreadPersistenceMetadata;
 use crate::ThreadStore;
@@ -153,6 +159,142 @@ WHERE thread_id = ?
     .await
     .expect("read projection state");
     assert_eq!(projection_state, (rollout_len, 5));
+}
+
+#[tokio::test]
+async fn paginated_projection_lists_turns_and_turn_items_with_scoped_cursors() {
+    let home = TempDir::new().expect("temp dir");
+    let state_db =
+        codex_state::StateRuntime::init(home.path().to_path_buf(), "test-provider".to_string())
+            .await
+            .expect("state db");
+    let store = Arc::new(LocalThreadStore::new(
+        test_config(home.path()),
+        Some(state_db),
+    ));
+    let thread_id = ThreadId::default();
+    let live_thread = LiveThread::create(store.clone(), paginated_thread_params(thread_id))
+        .await
+        .expect("create paginated thread");
+    live_thread
+        .append_items(&[
+            turn_started("turn-1"),
+            completed_item(
+                thread_id,
+                "turn-1",
+                TurnItem::UserMessage(UserMessageItem {
+                    id: "user-1".to_string(),
+                    content: Vec::new(),
+                }),
+            ),
+            completed_item(
+                thread_id,
+                "turn-1",
+                TurnItem::AgentMessage(AgentMessageItem {
+                    id: "agent-1".to_string(),
+                    content: Vec::new(),
+                    phase: None,
+                    memory_citation: None,
+                }),
+            ),
+            turn_completed("turn-1"),
+            turn_started("turn-2"),
+            completed_item(
+                thread_id,
+                "turn-2",
+                TurnItem::UserMessage(UserMessageItem {
+                    id: "user-2".to_string(),
+                    content: Vec::new(),
+                }),
+            ),
+            turn_completed("turn-2"),
+        ])
+        .await
+        .expect("append projected history");
+    live_thread
+        .persist()
+        .await
+        .expect("persist session metadata");
+
+    assert!(ThreadStore::supports_paginated_history_lists(&*store));
+    let newest = ThreadStore::list_turns(
+        &*store,
+        ListTurnsParams {
+            thread_id,
+            include_archived: true,
+            cursor: None,
+            page_size: 1,
+            sort_direction: SortDirection::Desc,
+            items_view: StoredTurnItemsView::Summary,
+        },
+    )
+    .await
+    .expect("newest turn page");
+    assert_eq!(newest.turns.len(), 1);
+    assert_eq!(newest.turns[0].turn_id, "turn-2");
+    assert_eq!(newest.turns[0].items.len(), 1);
+    let older = ThreadStore::list_turns(
+        &*store,
+        ListTurnsParams {
+            thread_id,
+            include_archived: true,
+            cursor: newest.next_cursor,
+            page_size: 1,
+            sort_direction: SortDirection::Desc,
+            items_view: StoredTurnItemsView::NotLoaded,
+        },
+    )
+    .await
+    .expect("older turn page");
+    assert_eq!(older.turns[0].turn_id, "turn-1");
+    assert!(older.turns[0].items.is_empty());
+
+    let first_item = ThreadStore::list_items(
+        &*store,
+        ListItemsParams {
+            thread_id,
+            turn_id: "turn-1".to_string(),
+            include_archived: true,
+            cursor: None,
+            page_size: 1,
+            sort_direction: SortDirection::Asc,
+        },
+    )
+    .await
+    .expect("first item page");
+    assert_eq!(first_item.items[0].item_id, "user-1");
+    let second_item = ThreadStore::list_items(
+        &*store,
+        ListItemsParams {
+            thread_id,
+            turn_id: "turn-1".to_string(),
+            include_archived: true,
+            cursor: first_item.next_cursor,
+            page_size: 1,
+            sort_direction: SortDirection::Asc,
+        },
+    )
+    .await
+    .expect("second item page");
+    assert_eq!(second_item.items[0].item_id, "agent-1");
+
+    let wrong_scope = ThreadStore::list_items(
+        &*store,
+        ListItemsParams {
+            thread_id,
+            turn_id: "turn-2".to_string(),
+            include_archived: true,
+            cursor: second_item.backwards_cursor,
+            page_size: 1,
+            sort_direction: SortDirection::Desc,
+        },
+    )
+    .await
+    .expect_err("item cursor must remain scoped to its turn");
+    assert!(matches!(
+        wrong_scope,
+        crate::ThreadStoreError::InvalidRequest { .. }
+    ));
 }
 
 #[tokio::test]
@@ -724,23 +866,27 @@ async fn shutdown_materializes_items_queued_without_a_flush() {
 
 async fn create_paginated_thread(store: &LocalThreadStore, thread_id: ThreadId) {
     store
-        .create_thread(CreateThreadParams {
-            thread_id,
-            forked_from_id: None,
-            source: SessionSource::Exec,
-            thread_source: None,
-            base_instructions: BaseInstructions::default(),
-            dynamic_tools: Vec::new(),
-            history_mode: ThreadHistoryMode::Paginated,
-            metadata: ThreadPersistenceMetadata {
-                cwd: Some(std::env::current_dir().expect("cwd")),
-                model_provider: "test-provider".to_string(),
-                memory_mode: ThreadMemoryMode::Enabled,
-            },
-            event_persistence_mode: ThreadEventPersistenceMode::Limited,
-        })
+        .create_thread(paginated_thread_params(thread_id))
         .await
         .expect("create paginated thread");
+}
+
+fn paginated_thread_params(thread_id: ThreadId) -> CreateThreadParams {
+    CreateThreadParams {
+        thread_id,
+        forked_from_id: None,
+        source: SessionSource::Exec,
+        thread_source: None,
+        base_instructions: BaseInstructions::default(),
+        dynamic_tools: Vec::new(),
+        history_mode: ThreadHistoryMode::Paginated,
+        metadata: ThreadPersistenceMetadata {
+            cwd: Some(std::env::current_dir().expect("cwd")),
+            model_provider: "test-provider".to_string(),
+            memory_mode: ThreadMemoryMode::Enabled,
+        },
+        event_persistence_mode: ThreadEventPersistenceMode::Limited,
+    }
 }
 
 fn turn_started(turn_id: &str) -> RolloutItem {

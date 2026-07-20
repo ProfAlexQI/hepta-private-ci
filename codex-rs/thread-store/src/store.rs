@@ -98,6 +98,11 @@ pub trait ThreadStore: Any + Send + Sync {
     /// Lists stored threads matching the supplied filters.
     async fn list_threads(&self, params: ListThreadsParams) -> ThreadStoreResult<ThreadPage>;
 
+    /// Whether paginated threads can hydrate durable history through turn and item lists.
+    fn supports_paginated_history_lists(&self) -> bool {
+        false
+    }
+
     /// Lists turns within a stored thread.
     async fn list_turns(&self, _params: ListTurnsParams) -> ThreadStoreResult<TurnPage> {
         Err(ThreadStoreError::Unsupported {
