@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SOURCE_SET="$ROOT/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+AUDIT_REPORT="$ROOT/scripts/hepta-systems-controlled-live-readiness-audit-report.sh"
+
+fail() {
+  printf 'hepta-runtime-crate-root-source-set-self-test: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$SOURCE_SET" ]] || fail "missing executable source-set resolver: $SOURCE_SET"
+[[ -x "$AUDIT_REPORT" ]] || fail "missing controlled-live audit report: $AUDIT_REPORT"
+command -v jq >/dev/null 2>&1 || fail 'jq is required'
+command -v rg >/dev/null 2>&1 || fail 'rg is required'
+
+source_file_count="$({ HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" list; } | wc -l | tr -d ' ')"
+[[ "$source_file_count" -ge 2 ]] \
+  || fail "crate-root source set must contain lib.rs and at least one direct include"
+
+HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" grep -q \
+  'controlled_live_readiness_audit_report' "$LIB_SOURCE" \
+  || fail 'public symbol in runtime_kernel/exports.rs was not recognized'
+HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" rg -q \
+  'controlled_live_readiness_audit_report' "$LIB_SOURCE" \
+  || fail 'rg compatibility did not recognize the exported symbol'
+
+if HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" grep -q \
+  '^fn precondition(' "$LIB_SOURCE"; then
+  fail 'private implementation-module symbol leaked into the crate-root source set'
+fi
+if HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" grep -q \
+  '__hepta_runtime_intentionally_missing_crate_root_symbol__' "$LIB_SOURCE"; then
+  fail 'missing crate-root symbol was incorrectly accepted'
+fi
+
+runtime_report_files=()
+while IFS= read -r report_file; do
+  runtime_report_files+=("$report_file")
+done < <(
+  rg -l '(LIB_SOURCE|HEPTA_RUNTIME_LIB_SOURCE)="\$ROOT/codex-rs/hepta-runtime/src/lib\.rs"' \
+    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1"
+)
+[[ "${#runtime_report_files[@]}" -gt 0 ]] \
+  || fail 'no captured reports declare the hepta-runtime lib source'
+
+pattern_file="$(mktemp /tmp/hepta-runtime-crate-root-patterns.XXXXXX)"
+trap 'rm -f "$pattern_file"' EXIT
+rg '(grep|rg) -q .*\$(LIB_SOURCE|HEPTA_RUNTIME_LIB_SOURCE)' \
+  "${runtime_report_files[@]}" \
+  | sed -E "s/.*(grep|rg) -q '([^']*)'.*/\2/" \
+  | sort -u >"$pattern_file"
+
+symbol_pattern_count=0
+lib_rs_only_symbol_match_count=0
+direct_include_symbol_match_count=0
+while IFS= read -r symbol_pattern; do
+  symbol_pattern_count=$(( symbol_pattern_count + 1 ))
+  if command grep -q "$symbol_pattern" "$LIB_SOURCE"; then
+    lib_rs_only_symbol_match_count=$(( lib_rs_only_symbol_match_count + 1 ))
+  else
+    direct_include_symbol_match_count=$(( direct_include_symbol_match_count + 1 ))
+  fi
+  HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" grep -q "$symbol_pattern" "$LIB_SOURCE" \
+    || fail "captured report references a missing crate-root symbol: $symbol_pattern"
+done <"$pattern_file"
+[[ "$symbol_pattern_count" -gt 0 ]] || fail 'no captured runtime symbol patterns were found'
+[[ "$direct_include_symbol_match_count" -gt 0 ]] \
+  || fail 'self-test did not exercise a symbol outside the physical lib.rs file'
+
+audit_json="$(HEPTA_REPO_ROOT="$ROOT" "$AUDIT_REPORT")"
+jq -e '.lib_export_present == true' <<<"$audit_json" >/dev/null \
+  || fail 'captured compatibility report did not use the crate-root source set'
+
+jq -n \
+  --arg status ready \
+  --argjson source_file_count "$source_file_count" \
+  --argjson runtime_report_file_count "${#runtime_report_files[@]}" \
+  --argjson symbol_pattern_count "$symbol_pattern_count" \
+  --argjson lib_rs_only_symbol_match_count "$lib_rs_only_symbol_match_count" \
+  --argjson direct_include_symbol_match_count "$direct_include_symbol_match_count" \
+  '{
+    status:$status,
+    schema_version:"hepta_runtime_crate_root_source_set_self_test_v1",
+    source_file_count:$source_file_count,
+    runtime_report_file_count:$runtime_report_file_count,
+    symbol_pattern_count:$symbol_pattern_count,
+    lib_rs_only_symbol_match_count:$lib_rs_only_symbol_match_count,
+    direct_include_symbol_match_count:$direct_include_symbol_match_count,
+    all_captured_runtime_symbol_patterns_resolved:true,
+    lib_rs_direct_include_export_recognized:true,
+    rg_compatibility_recognized:true,
+    private_module_symbol_rejected:true,
+    missing_symbol_rejected:true,
+    captured_compatibility_report_verified:true,
+    side_effect_free:true
+  }'

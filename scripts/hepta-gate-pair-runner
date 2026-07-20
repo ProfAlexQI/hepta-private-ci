@@ -109,6 +109,40 @@ execute_captured_shell_compat() {
   # repo-root discovery still resolves to scripts/ while the old pair bodies
   # live in a content-addressed compatibility store.
   export HEPTA_REPO_ROOT="$ROOT"
+  export HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET="$ROOT/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh"
+  [[ -x "$HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" ]] || {
+    echo "missing Hepta runtime crate-root source-set resolver: $HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" >&2
+    exit 1
+  }
+
+  # Captured reports historically treated hepta-runtime/src/lib.rs as the
+  # whole crate root. The runtime now keeps crate-root exports in direct
+  # include! files, so searching lib.rs alone produces false negatives. Keep
+  # the content-addressed payloads immutable and adapt only the exact legacy
+  # grep/rg target through a fail-closed crate-root source-set resolver.
+  grep() {
+    local last_argument=""
+    if [[ $# -gt 0 ]]; then
+      last_argument="${!#}"
+    fi
+    if [[ "$last_argument" == "$HEPTA_REPO_ROOT/codex-rs/hepta-runtime/src/lib.rs" ]]; then
+      "$HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" grep "$@"
+    else
+      command grep "$@"
+    fi
+  }
+  rg() {
+    local last_argument=""
+    if [[ $# -gt 0 ]]; then
+      last_argument="${!#}"
+    fi
+    if [[ "$last_argument" == "$HEPTA_REPO_ROOT/codex-rs/hepta-runtime/src/lib.rs" ]]; then
+      "$HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" rg "$@"
+    else
+      command rg "$@"
+    fi
+  }
+  export -f grep rg
   eval "$(<"$implementation")"
 }
 render_report() {

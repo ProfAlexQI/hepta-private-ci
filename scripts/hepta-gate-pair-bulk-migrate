@@ -235,4 +235,4 @@ jq -n \
   --arg status ready \
   --argjson migrated_pair_count "$migrated_count" \
   --argjson total_pair_count 1282 \
-  '{status:$status,migrated_pair_count:$migrated_pair_count,total_pair_count:$total_pair_count,remaining_legacy_pair_count:0,pre_migration_source_hash_binding_count:($migrated_pair_count * 2),thin_wrapper_pair_count:$total_pair_count,compatibility_transforms:["exact_pair_path_redirection","HEPTA_REPO_ROOT_binding"],side_effects:{script_execution_performed:false,provider_invoked:false,model_invoked:false,credentials_read:false,production_state_mutated:false,service_restarted:false}}'
+  '{status:$status,migrated_pair_count:$migrated_pair_count,total_pair_count:$total_pair_count,remaining_legacy_pair_count:0,pre_migration_source_hash_binding_count:($migrated_pair_count * 2),thin_wrapper_pair_count:$total_pair_count,compatibility_transforms:["exact_pair_path_redirection","HEPTA_REPO_ROOT_binding","hepta_runtime_crate_root_direct_include_source_set"],side_effects:{script_execution_performed:false,provider_invoked:false,model_invoked:false,credentials_read:false,production_state_mutated:false,service_restarted:false}}'

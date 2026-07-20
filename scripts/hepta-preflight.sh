@@ -1774,6 +1774,9 @@ echo "[hepta-preflight] architecture hard budget verify/self-test"
 scripts/hepta-architecture-budget verify
 scripts/hepta-architecture-budget self-test
 
+echo "[hepta-preflight] runtime crate-root source-set compatibility self-test"
+scripts/hepta-runtime-crate-root-source-set-self-test
+
 echo "[hepta-preflight] hepta-gateway tests"
 budgeted_cargo_test hepta-gateway "$HEPTA_FULL_TEST_MAX_SECONDS" \
   --offline --manifest-path "$MANIFEST" -q -p hepta-gateway
