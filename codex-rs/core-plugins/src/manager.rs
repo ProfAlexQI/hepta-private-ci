@@ -14,8 +14,8 @@ use crate::loader::log_plugin_load_errors;
 use crate::loader::materialize_marketplace_plugin_source;
 use crate::loader::plugin_telemetry_metadata_from_root;
 use crate::loader::refresh_curated_plugin_cache;
-use crate::loader::refresh_non_curated_plugin_cache;
-use crate::loader::refresh_non_curated_plugin_cache_force_reinstall;
+use crate::loader::refresh_non_curated_plugin_cache_detailed;
+use crate::loader::refresh_non_curated_plugin_cache_force_reinstall_detailed;
 use crate::loader::remote_installed_plugins_to_config;
 use crate::manifest::PluginManifestInterface;
 use crate::manifest::load_plugin_manifest;
@@ -28,10 +28,12 @@ use crate::marketplace::MarketplacePluginSource;
 use crate::marketplace::ResolvedMarketplacePlugin;
 use crate::marketplace::find_installable_marketplace_plugin;
 use crate::marketplace::find_marketplace_plugin;
-use crate::marketplace::list_marketplaces;
+use crate::marketplace::home_dir;
+use crate::marketplace::list_marketplaces_with_home;
 use crate::marketplace::load_marketplace;
 use crate::marketplace::plugin_interface_with_marketplace_category;
 use crate::marketplace_policy::MarketplacePolicy;
+use crate::marketplace_policy::allowed_configured_marketplace_names;
 use crate::marketplace_policy::configured_plugins_from_stack;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeError;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome;
@@ -153,6 +155,7 @@ struct RemoteInstalledPluginsCacheRefreshState {
 #[derive(Clone, PartialEq, Eq)]
 struct NonCuratedCacheRefreshRequest {
     roots: Vec<AbsolutePathBuf>,
+    configured_plugin_keys: Vec<String>,
     mode: NonCuratedCacheRefreshMode,
 }
 
@@ -711,7 +714,7 @@ impl PluginsManager {
         roots: &[AbsolutePathBuf],
         on_effective_plugins_changed: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
     ) {
-        self.maybe_start_non_curated_plugin_cache_refresh(roots);
+        self.maybe_start_non_curated_plugin_cache_refresh(config, roots);
         self.maybe_start_remote_installed_plugins_cache_refresh(
             config,
             auth.clone(),
@@ -1191,8 +1194,10 @@ impl PluginsManager {
         }
 
         let (installed_plugins, enabled_plugins) = self.configured_plugin_states(config);
-        let marketplace_outcome =
-            list_marketplaces(&self.marketplace_roots(config, additional_roots))?;
+        let marketplace_outcome = self.list_marketplaces_with_policy(
+            config,
+            &self.marketplace_roots(config, additional_roots),
+        )?;
         let mut seen_plugin_keys = HashSet::new();
         let marketplaces = marketplace_outcome
             .marketplaces
@@ -1273,6 +1278,17 @@ impl PluginsManager {
         }
 
         let plugin = find_marketplace_plugin(&request.marketplace_path, &request.plugin_name)?;
+        MarketplacePolicy::from_requirements(config.config_layer_stack.requirements())
+            .validate_install(
+                &config.config_layer_stack,
+                self.codex_home.as_path(),
+                &request.marketplace_path,
+                &plugin.plugin_id.marketplace_name,
+            )
+            .map_err(|message| MarketplaceError::InvalidMarketplaceFile {
+                path: request.marketplace_path.to_path_buf(),
+                message,
+            })?;
         if !self.restriction_product_matches(plugin.policy.products.as_deref()) {
             return Err(MarketplaceError::PluginNotFound {
                 plugin_name: plugin.plugin_id.plugin_name,
@@ -1569,14 +1585,30 @@ impl PluginsManager {
             ));
         }
         if !outcome.upgraded_roots.is_empty() {
-            match refresh_non_curated_plugin_cache_force_reinstall(
+            let mut configured_plugin_keys = configured_plugins_from_stack(
+                &config.config_layer_stack,
+                self.codex_home.as_path(),
+            )
+            .into_keys()
+            .collect::<Vec<_>>();
+            configured_plugin_keys.sort_unstable();
+            match refresh_non_curated_plugin_cache_force_reinstall_detailed(
                 self.codex_home.as_path(),
                 &outcome.upgraded_roots,
+                &configured_plugin_keys,
             ) {
-                Ok(cache_refreshed) => {
-                    if cache_refreshed {
+                Ok(refresh_outcome) => {
+                    if refresh_outcome.cache_refreshed {
                         self.clear_cache();
                     }
+                    outcome
+                        .errors
+                        .extend(refresh_outcome.errors.into_iter().map(|error| {
+                            ConfiguredMarketplaceUpgradeError {
+                                marketplace_name: error.marketplace_name,
+                                message: error.message,
+                            }
+                        }));
                 }
                 Err(err) => {
                     self.clear_cache();
@@ -1596,9 +1628,11 @@ impl PluginsManager {
 
     pub fn maybe_start_non_curated_plugin_cache_refresh(
         self: &Arc<Self>,
+        config: &PluginsConfigInput,
         roots: &[AbsolutePathBuf],
     ) {
         self.schedule_non_curated_plugin_cache_refresh(
+            config,
             roots,
             NonCuratedCacheRefreshMode::IfVersionChanged,
         );
@@ -1648,38 +1682,80 @@ impl PluginsManager {
 
     fn schedule_non_curated_plugin_cache_refresh(
         self: &Arc<Self>,
+        config: &PluginsConfigInput,
         roots: &[AbsolutePathBuf],
         mode: NonCuratedCacheRefreshMode,
     ) {
-        let mut roots = roots.to_vec();
+        let marketplace_roots = self.marketplace_roots(config, roots);
+        let outcome = match self.list_marketplaces_with_policy(config, &marketplace_roots) {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                warn!("failed to prepare non-curated plugin cache refresh: {err}");
+                return;
+            }
+        };
+        let policy = MarketplacePolicy::from_requirements(config.config_layer_stack.requirements());
+        let mut roots = outcome
+            .marketplaces
+            .into_iter()
+            .filter(|marketplace| marketplace.name != OPENAI_CURATED_MARKETPLACE_NAME)
+            .filter_map(|marketplace| {
+                match policy.validate_install(
+                    &config.config_layer_stack,
+                    self.codex_home.as_path(),
+                    &marketplace.path,
+                    &marketplace.name,
+                ) {
+                    Ok(()) => Some(marketplace.path),
+                    Err(err) => {
+                        warn!(
+                            marketplace = marketplace.name,
+                            path = %marketplace.path.display(),
+                            error = %err,
+                            "skipping marketplace source during plugin cache refresh"
+                        );
+                        None
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
         roots.sort_unstable();
         roots.dedup();
-        if roots.is_empty() {
+        let mut configured_plugin_keys =
+            configured_plugins_from_stack(&config.config_layer_stack, self.codex_home.as_path())
+                .into_keys()
+                .collect::<Vec<_>>();
+        configured_plugin_keys.sort_unstable();
+        if roots.is_empty() || configured_plugin_keys.is_empty() {
             return;
         }
-        let request = NonCuratedCacheRefreshRequest { roots, mode };
+        let mut request = NonCuratedCacheRefreshRequest {
+            roots,
+            configured_plugin_keys,
+            mode,
+        };
 
         let should_spawn = {
             let mut state = match self.non_curated_cache_refresh_state.write() {
                 Ok(state) => state,
                 Err(err) => err.into_inner(),
             };
-            // Collapse repeated plugin/list requests onto one worker and only queue another pass
-            // when the requested roots set actually changes. Forced reinstall requests are not
-            // deduped against the last completed pass because the same marketplace root path can
-            // point at newly activated files after an auto-upgrade.
-            if state.requested.as_ref() == Some(&request)
-                || (mode == NonCuratedCacheRefreshMode::IfVersionChanged
-                    && !state.in_flight
-                    && state.last_refreshed.as_ref() == Some(&request))
-            {
-                return;
-            }
-            if mode == NonCuratedCacheRefreshMode::IfVersionChanged
+            if request.mode == NonCuratedCacheRefreshMode::IfVersionChanged
                 && state.requested.as_ref().is_some_and(|requested| {
                     requested.mode == NonCuratedCacheRefreshMode::ForceReinstall
                         && requested.roots == request.roots
                 })
+            {
+                request.mode = NonCuratedCacheRefreshMode::ForceReinstall;
+            }
+            // Collapse repeated plugin/list requests onto one worker and only queue another pass
+            // when the roots or configured plugin set changes. Forced reinstall requests are not
+            // deduped against the last completed pass because the same marketplace root path can
+            // point at newly activated files after an auto-upgrade.
+            if state.requested.as_ref() == Some(&request)
+                || (request.mode == NonCuratedCacheRefreshMode::IfVersionChanged
+                    && !state.in_flight
+                    && state.last_refreshed.as_ref() == Some(&request))
             {
                 return;
             }
@@ -1833,21 +1909,33 @@ impl PluginsManager {
 
             let refresh_result = match request.mode {
                 NonCuratedCacheRefreshMode::IfVersionChanged => {
-                    refresh_non_curated_plugin_cache(self.codex_home.as_path(), &request.roots)
-                }
-                NonCuratedCacheRefreshMode::ForceReinstall => {
-                    refresh_non_curated_plugin_cache_force_reinstall(
+                    refresh_non_curated_plugin_cache_detailed(
                         self.codex_home.as_path(),
                         &request.roots,
+                        &request.configured_plugin_keys,
+                    )
+                }
+                NonCuratedCacheRefreshMode::ForceReinstall => {
+                    refresh_non_curated_plugin_cache_force_reinstall_detailed(
+                        self.codex_home.as_path(),
+                        &request.roots,
+                        &request.configured_plugin_keys,
                     )
                 }
             };
             let refreshed = match refresh_result {
-                Ok(cache_refreshed) => {
-                    if cache_refreshed {
+                Ok(refresh_outcome) => {
+                    if refresh_outcome.cache_refreshed {
                         self.clear_cache();
                     }
-                    true
+                    for error in &refresh_outcome.errors {
+                        warn!(
+                            marketplace = error.marketplace_name,
+                            error = %error.message,
+                            "failed to refresh configured plugin cache"
+                        );
+                    }
+                    refresh_outcome.errors.is_empty()
                 }
                 Err(err) => {
                     self.clear_cache();
@@ -1914,6 +2002,27 @@ impl PluginsManager {
         roots.sort_unstable();
         roots.dedup();
         roots
+    }
+
+    fn list_marketplaces_with_policy(
+        &self,
+        config: &PluginsConfigInput,
+        roots: &[AbsolutePathBuf],
+    ) -> Result<crate::marketplace::MarketplaceListOutcome, MarketplaceError> {
+        let mut outcome = list_marketplaces_with_home(roots, home_dir().as_deref())?;
+        let policy = MarketplacePolicy::from_requirements(config.config_layer_stack.requirements());
+        if !policy.is_restricted() {
+            return Ok(outcome);
+        }
+        let allowed_marketplace_names = allowed_configured_marketplace_names(
+            &config.config_layer_stack,
+            self.codex_home.as_path(),
+        );
+        outcome.marketplaces.retain(|marketplace| {
+            marketplace.name == OPENAI_CURATED_MARKETPLACE_NAME
+                || allowed_marketplace_names.contains(&marketplace.name)
+        });
+        Ok(outcome)
     }
 }
 
