@@ -3,6 +3,8 @@ set -euo pipefail
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+source "$REPO_ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh"
+
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}}"
 INSTALLED_BIN="${HEPTA_INSTALLED_BIN:-${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
 WATCHDOG_MODE="${HEPTA_WATCHDOG_MODE:-deployment-consistency}"
@@ -93,276 +95,37 @@ case "$WATCHDOG_MODE" in
     ;;
 esac
 
-validate_release_evidence() {
-  local role="$1"
-  local binary="$2"
-  local manifest="$3"
-  local expected_source_commit="$4"
-  local failure_reasons="[]"
-  local binary_present=false binary_executable=false binary_sha=""
-  local manifest_present=false manifest_contract_valid=false manifest_bound=false
-  local manifest_resolved="" manifest_artifact="" manifest_artifact_sha="" manifest_source_commit=""
-  local manifest_sha="" release_id="" toolchain_sha="" dependency_sha="" preflight_log_sha=""
-  local binary_matches_manifest=false manifest_targets_binary=false
-
-  add_failure_reason() {
-    failure_reasons="$(
-      jq -cn \
-        --argjson reasons "$failure_reasons" \
-        --arg reason "$1" \
-        '$reasons + [$reason]'
-    )"
-  }
-
-  if [[ -f "$binary" ]]; then
-    binary_present=true
-    binary_sha="$(shasum -a 256 "$binary" | awk '{print $1}')"
-    if [[ -x "$binary" ]]; then
-      binary_executable=true
-    else
-      add_failure_reason "${role}_binary_not_executable"
-    fi
-  else
-    add_failure_reason "${role}_binary_missing"
-  fi
-
-  if [[ -f "$manifest" ]]; then
-    manifest_present=true
-    manifest_resolved="$(realpath "$manifest")"
-    manifest_sha="$(shasum -a 256 "$manifest" | awk '{print $1}')"
-    if "$REPO_ROOT/scripts/hepta-immutable-release-tree" verify --manifest "$manifest" >/dev/null 2>&1; then
-      manifest_contract_valid=true
-    else
-      add_failure_reason "${role}_manifest_contract_invalid"
-    fi
-
-    if jq -e '
-      .status == "ready"
-      and .source.commit_bound == true
-      and (.source.commit | test("^[0-9a-f]{40}$"))
-      and .preflight.bound == true
-      and .preflight.passed == true
-      and (.preflight.log_sha256 | test("^[0-9a-f]{64}$"))
-      and .build_provenance.schema_version == "hepta_build_provenance_v1"
-      and .build_provenance.source.commit_bound == true
-      and .build_provenance.source.commit == .source.commit
-      and .build_provenance.toolchain.bound == true
-      and (.build_provenance.toolchain.aggregate_sha256 | test("^[0-9a-f]{64}$"))
-      and .build_provenance.dependencies.bound == true
-      and (.build_provenance.dependencies.aggregate_sha256 | test("^[0-9a-f]{64}$"))
-      and .build_provenance.artifact.bound == true
-      and .build_provenance.artifact.sha256 == .artifact.sha256
-      and .build_provenance.preflight_profiles.backend == true
-      and .build_provenance.preflight_profiles.native == true
-      and .build_provenance.preflight_profiles.release == true
-    ' "$manifest" >/dev/null 2>&1; then
-      manifest_bound=true
-    else
-      add_failure_reason "${role}_manifest_not_source_toolchain_dependency_preflight_bound"
-    fi
-
-    manifest_artifact_sha="$(jq -r '.artifact.sha256 // ""' "$manifest" 2>/dev/null || true)"
-    manifest_source_commit="$(jq -r '.source.commit // ""' "$manifest" 2>/dev/null || true)"
-    release_id="$(jq -r '.release_id // ""' "$manifest" 2>/dev/null || true)"
-    toolchain_sha="$(
-      jq -r '.build_provenance.toolchain.aggregate_sha256 // ""' "$manifest" 2>/dev/null || true
-    )"
-    dependency_sha="$(
-      jq -r '.build_provenance.dependencies.aggregate_sha256 // ""' "$manifest" 2>/dev/null || true
-    )"
-    preflight_log_sha="$(jq -r '.preflight.log_sha256 // ""' "$manifest" 2>/dev/null || true)"
-    manifest_artifact="$(
-      jq -r '.artifact.relative_path // ""' "$manifest" 2>/dev/null || true
-    )"
-    if [[ -n "$manifest_artifact" ]]; then
-      manifest_artifact="$(dirname "$manifest_resolved")/$manifest_artifact"
-      if [[ -f "$manifest_artifact" && -f "$binary" ]]; then
-        if [[ "$(realpath "$manifest_artifact")" == "$(realpath "$binary")" ]]; then
-          manifest_targets_binary=true
-        else
-          add_failure_reason "${role}_manifest_targets_different_binary"
-        fi
-      else
-        add_failure_reason "${role}_manifest_artifact_missing"
-      fi
-    else
-      add_failure_reason "${role}_manifest_artifact_path_missing"
-    fi
-
-    if [[ -n "$binary_sha" && "$binary_sha" == "$manifest_artifact_sha" ]]; then
-      binary_matches_manifest=true
-    else
-      add_failure_reason "${role}_binary_manifest_sha_mismatch"
-    fi
-
-    if [[ -n "$expected_source_commit" && "$manifest_source_commit" != "$expected_source_commit" ]]; then
-      add_failure_reason "${role}_source_commit_mismatch"
-    fi
-  else
-    add_failure_reason "${role}_manifest_missing"
-  fi
-
-  local ready=false
-  if [[ "$(jq 'length' <<<"$failure_reasons")" == "0" ]]; then
-    ready=true
-  fi
-
-  jq -cn \
-    --arg role "$role" \
-    --arg binary "$binary" \
-    --arg manifest "$manifest" \
-    --arg manifest_resolved "$manifest_resolved" \
-    --arg manifest_sha256 "$manifest_sha" \
-    --arg binary_sha256 "$binary_sha" \
-    --arg manifest_artifact "$manifest_artifact" \
-    --arg manifest_artifact_sha256 "$manifest_artifact_sha" \
-    --arg source_commit "$manifest_source_commit" \
-    --arg release_id "$release_id" \
-    --arg toolchain_sha256 "$toolchain_sha" \
-    --arg dependency_sha256 "$dependency_sha" \
-    --arg preflight_log_sha256 "$preflight_log_sha" \
-    --arg expected_source_commit "$expected_source_commit" \
-    --argjson binary_present "$binary_present" \
-    --argjson binary_executable "$binary_executable" \
-    --argjson manifest_present "$manifest_present" \
-    --argjson manifest_contract_valid "$manifest_contract_valid" \
-    --argjson manifest_bound "$manifest_bound" \
-    --argjson manifest_targets_binary "$manifest_targets_binary" \
-    --argjson binary_matches_manifest "$binary_matches_manifest" \
-    --argjson ready "$ready" \
-    --argjson failure_reasons "$failure_reasons" \
-    '{
-      role:$role,
-      status:(if $ready then "ready" else "failed" end),
-      ready:$ready,
-      binary:$binary,
-      binary_present:$binary_present,
-      binary_executable:$binary_executable,
-      binary_sha256:$binary_sha256,
-      manifest:$manifest,
-      manifest_resolved:$manifest_resolved,
-      manifest_sha256:$manifest_sha256,
-      manifest_present:$manifest_present,
-      manifest_contract_valid:$manifest_contract_valid,
-      manifest_source_toolchain_dependency_preflight_bound:$manifest_bound,
-      manifest_artifact:$manifest_artifact,
-      manifest_artifact_sha256:$manifest_artifact_sha256,
-      manifest_targets_binary:$manifest_targets_binary,
-      binary_matches_manifest:$binary_matches_manifest,
-      source_commit:$source_commit,
-      release_id:$release_id,
-      toolchain_sha256:$toolchain_sha256,
-      dependency_sha256:$dependency_sha256,
-      preflight_log_sha256:$preflight_log_sha256,
-      expected_source_commit:(if $expected_source_commit == "" then null else $expected_source_commit end),
-      failure_reasons:$failure_reasons
-    }'
-}
-
-release_sha=""
-installed_sha=""
-candidate_evidence='{"status":"not_checked","ready":null,"failure_reasons":[]}'
-deployed_evidence='{"status":"not_checked","ready":null,"failure_reasons":[]}'
-if [[ "$require_candidate_artifact" == "true" ]]; then
-  candidate_evidence="$(
-    validate_release_evidence candidate "$RELEASE_BIN" "$CANDIDATE_MANIFEST" "$EXPECTED_SOURCE_COMMIT"
-  )"
-  release_sha="$(jq -r '.binary_sha256' <<<"$candidate_evidence")"
-fi
-if [[ "$require_deployed_receipt" == "true" ]]; then
-  deployed_evidence="$(
-    validate_release_evidence deployed "$INSTALLED_BIN" "$INSTALLED_RECEIPT" "$EXPECTED_SOURCE_COMMIT"
-  )"
-  installed_sha="$(jq -r '.binary_sha256' <<<"$deployed_evidence")"
-fi
-
-release_evidence_failure_reasons="$(
-  jq -cn \
-    --argjson candidate "$candidate_evidence" \
-    --argjson deployed "$deployed_evidence" \
-    '$candidate.failure_reasons + $deployed.failure_reasons'
+release_evidence_bundle="$(
+  hepta_watchdog_release_evidence_bundle \
+    "$REPO_ROOT" \
+    "$require_candidate_artifact" \
+    "$RELEASE_BIN" \
+    "$CANDIDATE_MANIFEST" \
+    "$require_deployed_receipt" \
+    "$INSTALLED_BIN" \
+    "$INSTALLED_RECEIPT" \
+    "$EXPECTED_SOURCE_COMMIT" \
+    "$require_deployment_match"
 )"
-binary_sha_match=false
-if [[ -n "$release_sha" && "$release_sha" == "$installed_sha" ]]; then
-  binary_sha_match=true
-fi
-if [[ "$require_deployment_match" == "true" ]]; then
-  if [[ -n "$release_sha" && -n "$installed_sha" && "$binary_sha_match" != "true" ]]; then
-    release_evidence_failure_reasons="$(
-      jq -cn \
-        --argjson reasons "$release_evidence_failure_reasons" \
-        '$reasons + ["candidate_installed_sha_mismatch"]'
-    )"
-  fi
-  if [[ "$(jq -r '.ready' <<<"$candidate_evidence")" == "true" \
-    && "$(jq -r '.ready' <<<"$deployed_evidence")" == "true" ]]; then
-    release_evidence_failure_reasons="$(
-      jq -cn \
-        --argjson reasons "$release_evidence_failure_reasons" \
-        --argjson candidate "$candidate_evidence" \
-        --argjson deployed "$deployed_evidence" \
-        '$reasons
-        + (if $candidate.source_commit == $deployed.source_commit then [] else ["candidate_installed_source_commit_mismatch"] end)
-        + (if $candidate.toolchain_sha256 == $deployed.toolchain_sha256 then [] else ["candidate_installed_toolchain_mismatch"] end)
-        + (if $candidate.dependency_sha256 == $deployed.dependency_sha256 then [] else ["candidate_installed_dependency_mismatch"] end)
-        + (if $candidate.release_id == $deployed.release_id then [] else ["candidate_installed_release_id_mismatch"] end)
-        + (if $candidate.manifest_sha256 == $deployed.manifest_sha256 then [] else ["candidate_installed_receipt_mismatch"] end)'
-    )"
-  fi
-fi
-
-release_evidence_ready=false
-if [[ "$(jq 'length' <<<"$release_evidence_failure_reasons")" == "0" ]]; then
-  release_evidence_ready=true
-fi
-
-emit_evidence_report() {
-  local status="failed"
-  if [[ "$release_evidence_ready" == "true" ]]; then
-    status="ok"
-  fi
-  jq -n \
-    --arg product "Hepta" \
-    --arg runtime "hepta" \
-    --arg base_url "$BASE_URL" \
-    --arg mode "$WATCHDOG_MODE" \
-    --arg status "$status" \
-    --arg release_sha "$release_sha" \
-    --arg installed_sha "$installed_sha" \
-    --argjson active_health_required "$require_active_health" \
-    --argjson candidate_required "$require_candidate_artifact" \
-    --argjson deployed_required "$require_deployed_receipt" \
-    --argjson deployment_match_required "$require_deployment_match" \
-    --argjson binary_sha_match "$binary_sha_match" \
-    --argjson candidate "$candidate_evidence" \
-    --argjson deployed "$deployed_evidence" \
-    --argjson failure_reasons "$release_evidence_failure_reasons" \
-    '{
-      product:$product,
-      runtime:$runtime,
-      base_url:$base_url,
-      watchdog_mode:$mode,
-      status:$status,
-      active_health:{required:$active_health_required,status:"not_checked"},
-      candidate_artifact:{required:$candidate_required,evidence:$candidate},
-      deployed_receipt:{required:$deployed_required,evidence:$deployed},
-      deployment_consistency_required:$deployment_match_required,
-      release_sha256:$release_sha,
-      installed_sha256:$installed_sha,
-      binary_sha_match:$binary_sha_match,
-      failure_reasons:$failure_reasons,
-      side_effects:{
-        live_endpoint_read:false,
-        service_restarted:false,
-        active_process_mutated:false,
-        installed_binary_mutated:false,
-        release_artifact_mutated:false
-      }
-    }'
-}
+release_sha="$(jq -r '.release_sha256' <<<"$release_evidence_bundle")"
+installed_sha="$(jq -r '.installed_sha256' <<<"$release_evidence_bundle")"
+binary_sha_match="$(jq -r '.binary_sha_match' <<<"$release_evidence_bundle")"
+candidate_evidence="$(jq -c '.candidate' <<<"$release_evidence_bundle")"
+deployed_evidence="$(jq -c '.deployed' <<<"$release_evidence_bundle")"
+release_evidence_failure_reasons="$(jq -c '.failure_reasons' <<<"$release_evidence_bundle")"
+release_evidence_ready="$(jq -r '.ready' <<<"$release_evidence_bundle")"
 
 if [[ "$require_active_health" != "true" || "$release_evidence_ready" != "true" ]]; then
-  evidence_report="$(emit_evidence_report)"
+  evidence_report="$(
+    hepta_watchdog_release_evidence_report \
+      "$BASE_URL" \
+      "$WATCHDOG_MODE" \
+      "$require_active_health" \
+      "$require_candidate_artifact" \
+      "$require_deployed_receipt" \
+      "$require_deployment_match" \
+      "$release_evidence_bundle"
+  )"
   printf '%s\n' "$evidence_report"
   if [[ "$(jq -r '.status' <<<"$evidence_report")" != "ok" ]]; then
     exit 1

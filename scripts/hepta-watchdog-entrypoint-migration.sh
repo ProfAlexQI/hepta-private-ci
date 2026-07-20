@@ -5,12 +5,15 @@ cd "$(dirname "$0")/.."
 
 canonical="scripts/hepta-watchdog.sh"
 legacy="scripts/hepta-codex-watchdog.sh"
+release_evidence_helper="scripts/lib/hepta-watchdog-release-evidence-v1.sh"
 
 [[ -x "$canonical" ]]
 [[ -x "$legacy" ]]
+[[ -r "$release_evidence_helper" ]]
 
 bash -n "$canonical"
 bash -n "$legacy"
+bash -n "$release_evidence_helper"
 
 grep -q 'Hepta watchdog passed' "$canonical"
 grep -q 'HEPTA_RELEASE_BIN' "$canonical"
@@ -22,7 +25,13 @@ grep -q 'deployment-consistency' "$canonical"
 grep -q 'active-health' "$canonical"
 grep -q 'HEPTA_CANDIDATE_MANIFEST' "$canonical"
 grep -q 'HEPTA_INSTALLED_RECEIPT' "$canonical"
-grep -q 'candidate_installed_sha_mismatch' "$canonical"
+grep -q 'source "$REPO_ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh"' "$canonical"
+grep -q 'candidate_installed_sha_mismatch' "$release_evidence_helper"
+
+if grep -q 'curl -fsS' "$release_evidence_helper"; then
+  echo "release evidence helper must not implement active-health network probes" >&2
+  exit 1
+fi
 
 if grep -q 'RELEASE_BIN="$INSTALLED_BIN"' "$canonical"; then
   echo "canonical watchdog must not fall back from a missing candidate to the installed binary" >&2
