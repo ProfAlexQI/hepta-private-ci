@@ -1486,10 +1486,16 @@ HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
 echo "[hepta-preflight] upstream Codex diff ledger gate"
 scripts/hepta-upstream-codex-diff-ledger.sh
 
+echo "[hepta-preflight] upstream Codex current intake freshness gate"
+scripts/hepta-upstream-codex-current-intake.sh
+
+echo "[hepta-preflight] upstream Codex current intake negative fixture"
+scripts/hepta-upstream-codex-current-intake-negative-fixture.sh
+
 echo "[hepta-preflight] upstream Codex doctor environment diagnostics absorption gate"
 scripts/hepta-upstream-codex-doctor-environment-diagnostics-absorption.sh
 
-echo "[hepta-preflight] upstream Codex latest multi-surface absorption gate"
+echo "[hepta-preflight] upstream Codex historical latest multi-surface absorption receipt gate"
 scripts/hepta-upstream-codex-latest-multisurface-absorption.sh
 
 echo "[hepta-preflight] upstream Codex product-governance absorption gate"

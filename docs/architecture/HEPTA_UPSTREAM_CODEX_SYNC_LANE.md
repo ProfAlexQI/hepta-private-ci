@@ -33,7 +33,34 @@ Set `HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=1` to perform a read-only
 `HEPTA_UPSTREAM_CODEX_BASE_HEAD` and either `HEPTA_UPSTREAM_CODEX_TARGET_HEAD`
 or remote observation to materialize a candidate diff range.
 
-The concrete local diff-range ledger gate is:
+The canonical current-intake freshness gate is:
+
+```bash
+scripts/hepta-upstream-codex-current-intake.sh
+```
+
+It is offline and fail-closed. Its machine-readable ledger is
+`docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json`. The
+ledger pins the import baseline
+`108234b5ebe6941764a6b8edbb37b2aa04369f07`, the local-only ref
+`refs/remotes/upstream/hepta-intake-20260721`, and the exact cutoff
+`45ac251e178416ff5c3022457ad8d2778c0d4549`. The gate rejects a missing or
+different ref, cutoff drift, inventory drift, missing selected upstream
+commits, or missing Hepta absorption receipts. Its negative fixture is:
+
+```bash
+scripts/hepta-upstream-codex-current-intake-negative-fixture.sh
+```
+
+The frozen range contains 1,803 commits, 3,359 changed repository paths, and
+3,097 changed `codex-rs` paths. Those are **observed** values, not a claim that
+the whole range has been absorbed. The ledger separately records ten
+**classified and selectively absorbed** upstream changes and four explicitly
+**deferred** decisions. It also records the local split used for upstream
+`9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7`; that upstream commit must not be
+mechanically cherry-picked again.
+
+The generic local diff-range ledger gate is:
 
 ```bash
 scripts/hepta-upstream-codex-diff-ledger.sh
@@ -41,18 +68,28 @@ scripts/hepta-upstream-codex-diff-ledger.sh
 
 This gate is also offline by default. It uses the local upstream import baseline
 `108234b5ebe6941764a6b8edbb37b2aa04369f07` and the local
-`refs/remotes/openai-codex/main` target, currently
-`7d47056ea42636271ac020b86347fbbef49490aa`, to classify the
+`refs/remotes/upstream/hepta-intake-20260721` target, pinned by the current
+intake gate to `45ac251e178416ff5c3022457ad8d2778c0d4549`, to classify the
 `codex-rs` diff range into provider/security, runtime/session/tool,
 legacy CLI/TUI compatibility, and product/release-governance buckets. Set
 `HEPTA_UPSTREAM_CODEX_DIFF_BASE_HEAD`, `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD`,
 or `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF` to audit a different already-present
-local range. The gate does not fetch or merge upstream.
+local range. Overrides make the generic ledger useful for historical receipts;
+they do not satisfy the canonical current-intake freshness gate. Neither gate
+fetches, merges, rebases, or changes refs.
 
-For narrow upstream deltas, not every bucket must be populated. The ledger emits
-`populated_bucket_count` and `narrow_delta_ready` so a one-bucket update can
-still be tracked without pretending that provider/security or runtime/app-server
-surfaces changed. The latest observed narrow range is
+## Historical absorption receipts
+
+The gates below this point are retained historical absorption and replay
+receipts. Their old SHAs and counts are provenance, not the current intake
+cutoff. In particular, the 878 changed-path / 716 selected-path receipt covers
+the older `108234b5…7d47056e` range and must not be read as proof that all 3,097
+current `codex-rs` path deltas have been ported.
+
+For historical narrow upstream deltas, not every bucket must be populated. The
+ledger emits `populated_bucket_count` and `narrow_delta_ready` so a one-bucket
+update can still be tracked without pretending that provider/security or
+runtime/app-server surfaces changed. The retained historical narrow range is
 `7d47056ea42636271ac020b86347fbbef49490aa..9f42c89c0112771dc29100a6f3fc904049b2655f`,
 which contains upstream `feat(doctor): add environment diagnostics (#24261)`.
 Its Hepta-owned absorption gate is:
@@ -231,14 +268,16 @@ The absorption/replay readiness gate is:
 scripts/hepta-upstream-codex-absorption-replay-readiness.sh
 ```
 
-This gate verifies
+This historical gate verifies
 `docs/architecture/HEPTA_UPSTREAM_CODEX_ABSORPTION_REPLAY_READINESS.md`. It
-summarizes the frozen diff ledger as 878 changed upstream paths, 716 selected
-absorption paths, four selected buckets, four absorption contracts, and four
-required translation/replay packets. It does not claim that every upstream file
-has been ported into active Hepta code; it only closes readiness for the
-selected bucket contracts while keeping active Codex engine dependencies,
-runtime wiring, automatic rebase, gateway RPC, and public release claims false.
+summarizes its older `108234b5…7d47056e` ledger as 878 changed upstream paths,
+716 selected absorption paths, four selected buckets, four absorption
+contracts, and four required translation/replay packets. Those values are
+preserved as receipt provenance and are explicitly not the current-intake
+freshness proof. It does not claim that every upstream file has been ported into
+active Hepta code; it only closes readiness for the selected historical bucket
+contracts while keeping active Codex engine dependencies, runtime wiring,
+automatic rebase, gateway RPC, and public release claims false.
 
 The promotion-readiness decision gate is:
 

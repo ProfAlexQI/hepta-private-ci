@@ -1,6 +1,26 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+pub const HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD: &str = "108234b5ebe6941764a6b8edbb37b2aa04369f07";
+pub const HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF: &str =
+    "refs/remotes/upstream/hepta-intake-20260721";
+pub const HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD: &str =
+    "45ac251e178416ff5c3022457ad8d2778c0d4549";
+
+// This older range is retained as provenance for the bucket-level absorption
+// and replay receipts. It is not the current upstream freshness cutoff.
+const HEPTA_UPSTREAM_CODEX_HISTORICAL_RECEIPT_TARGET_HEAD: &str =
+    "7d47056ea42636271ac020b86347fbbef49490aa";
+const HEPTA_UPSTREAM_CODEX_HISTORICAL_LEDGER_CHANGED_FILE_COUNT: usize = 878;
+const HEPTA_UPSTREAM_CODEX_HISTORICAL_SELECTED_ABSORPTION_COUNT: usize = 716;
+
+fn historical_upstream_codex_receipt_diff_range() -> String {
+    format!(
+        "{}..{}",
+        HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD, HEPTA_UPSTREAM_CODEX_HISTORICAL_RECEIPT_TARGET_HEAD
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HeptaUpstreamCodexSyncRisk {
@@ -153,6 +173,58 @@ pub struct HeptaUpstreamCodexDiffLedgerReport {
     pub channel_delivery_performed: bool,
     pub gateway_rpc_performed: bool,
     pub buckets: Vec<HeptaUpstreamCodexDiffLedgerBucket>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeptaUpstreamCodexCurrentIntakeDisposition {
+    Absorbed,
+    Deferred,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexCurrentIntakeDecision {
+    pub classification: String,
+    pub disposition: HeptaUpstreamCodexCurrentIntakeDisposition,
+    pub upstream_commit: Option<String>,
+    pub local_receipts: Vec<String>,
+    pub absorption_kind: Option<String>,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeptaUpstreamCodexCurrentIntakeReport {
+    pub product: String,
+    pub status: String,
+    pub intake_id: String,
+    pub manifest_path: String,
+    pub observation_state: String,
+    pub classification_state: String,
+    pub selected_state: String,
+    pub remaining_state: String,
+    pub baseline_head: String,
+    pub cutoff_ref: String,
+    pub cutoff_head: String,
+    pub candidate_diff_range: String,
+    pub observed_commit_count: usize,
+    pub observed_changed_file_count: usize,
+    pub observed_codex_rs_changed_file_count: usize,
+    pub selected_absorption_count: usize,
+    pub deferred_decision_count: usize,
+    pub historical_receipt_target_head: String,
+    pub historical_receipt_changed_file_count: usize,
+    pub historical_receipt_selected_absorption_count: usize,
+    pub historical_receipt_is_current_freshness_proof: bool,
+    pub current_intake_ready: bool,
+    pub full_range_absorption_claimed: bool,
+    pub upstream_fetch_performed: bool,
+    pub upstream_merge_performed: bool,
+    pub upstream_rebase_performed: bool,
+    pub whole_tree_replacement_performed: bool,
+    pub cargo_lock_replacement_performed: bool,
+    pub active_runtime_dependency_allowed: bool,
+    pub public_release_claim_allowed: bool,
+    pub decisions: Vec<HeptaUpstreamCodexCurrentIntakeDecision>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2526,8 +2598,8 @@ impl HeptaUpstreamCodexDiffLedgerReport {
             })
             .count();
         let diff_ledger_ready = bucket_count > 0 && ready_bucket_count == bucket_count;
-        let baseline_upstream_head = "108234b5ebe6941764a6b8edbb37b2aa04369f07".to_string();
-        let target_upstream_head = "7d47056ea42636271ac020b86347fbbef49490aa".to_string();
+        let baseline_upstream_head = HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD.to_string();
+        let target_upstream_head = HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD.to_string();
 
         Self {
             product: "Hepta".into(),
@@ -2542,8 +2614,8 @@ impl HeptaUpstreamCodexDiffLedgerReport {
             candidate_diff_range: format!("{baseline_upstream_head}..{target_upstream_head}"),
             baseline_upstream_head,
             target_upstream_head,
-            target_head_source: "refs/remotes/openai-codex/main".into(),
-            target_ref: "refs/remotes/openai-codex/main".into(),
+            target_head_source: HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF.into(),
+            target_ref: HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF.into(),
             snapshot_gate: "scripts/hepta-upstream-codex-snapshot.sh".into(),
             diff_ledger_gate: "scripts/hepta-upstream-codex-diff-ledger.sh".into(),
             sync_lane_gate: "scripts/hepta-upstream-codex-sync-lane.sh".into(),
@@ -2573,6 +2645,241 @@ impl HeptaUpstreamCodexDiffLedgerReport {
     }
 }
 
+fn current_intake_absorbed(
+    classification: &str,
+    upstream_commit: &str,
+    local_receipts: &[&str],
+    absorption_kind: &str,
+    rationale: &str,
+) -> HeptaUpstreamCodexCurrentIntakeDecision {
+    HeptaUpstreamCodexCurrentIntakeDecision {
+        classification: classification.into(),
+        disposition: HeptaUpstreamCodexCurrentIntakeDisposition::Absorbed,
+        upstream_commit: Some(upstream_commit.into()),
+        local_receipts: local_receipts
+            .iter()
+            .map(|receipt| (*receipt).into())
+            .collect(),
+        absorption_kind: Some(absorption_kind.into()),
+        rationale: rationale.into(),
+    }
+}
+
+fn current_intake_deferred(
+    classification: &str,
+    upstream_commit: Option<&str>,
+    rationale: &str,
+) -> HeptaUpstreamCodexCurrentIntakeDecision {
+    HeptaUpstreamCodexCurrentIntakeDecision {
+        classification: classification.into(),
+        disposition: HeptaUpstreamCodexCurrentIntakeDisposition::Deferred,
+        upstream_commit: upstream_commit.map(Into::into),
+        local_receipts: Vec::new(),
+        absorption_kind: None,
+        rationale: rationale.into(),
+    }
+}
+
+fn default_upstream_codex_current_intake_decisions() -> Vec<HeptaUpstreamCodexCurrentIntakeDecision>
+{
+    vec![
+        current_intake_absorbed(
+            "history_integrity",
+            "86102db5a1a7a49ce08e79f900e0897d94aa3770",
+            &["59f544a9316f2ac12044eb8672380c63a755b397"],
+            "semantic_port",
+            "reject unsupported canonical history modes",
+        ),
+        current_intake_absorbed(
+            "history_integrity",
+            "19b2273d8a54ec28aa0174a95884182aa6e5081e",
+            &["fdbee7b12cb5e8e482f2148212f3d540018d659b"],
+            "semantic_port",
+            "keep paginated Git metadata in SQLite",
+        ),
+        current_intake_absorbed(
+            "memory_history_integrity",
+            "2793c826e8f5a04e0619a18e9bbdae91c0435cd5",
+            &["4c1ad77903d6f0efbeeb5c382d876944d989a195"],
+            "semantic_port",
+            "keep paginated memory mode in SQLite",
+        ),
+        current_intake_absorbed(
+            "exec_security",
+            "bf3c1972b7d045c0a3a48dff91f381070f8f69e1",
+            &["a66754492b52bc34ebd1ce039efa09297ae66f1f"],
+            "semantic_port",
+            "migrate legacy exec-policy allow rules fail closed",
+        ),
+        current_intake_absorbed(
+            "tool_history_integrity",
+            "8431dc590a5bba9a1185d5579a5aabfbc469e50b",
+            &["d8795967f2812bc13f236c550858f2926555896e"],
+            "semantic_port",
+            "preserve canonical history on invalid tool images",
+        ),
+        current_intake_absorbed(
+            "shell_environment_integrity",
+            "2deed3fb9c00c74dac3d177ea700d6fb7a94539d",
+            &["e3fa5fbc8bb2baa806ac30ce0b58066aeb3932ca"],
+            "semantic_port",
+            "preserve zsh tied PATH exports in shell snapshots",
+        ),
+        current_intake_absorbed(
+            "model_catalog",
+            "5a4f5ee64c4e7de22c21f1c38feb3edfb167b7d8",
+            &["95276ae5619b0601a931f999570e39a34b29900d"],
+            "translated_catalog",
+            "refresh model metadata while retaining Hepta identity and capability fields",
+        ),
+        current_intake_absorbed(
+            "thread_metadata_integrity",
+            "5a208c1fc353573fa3838c70a90ea9c59ad8884c",
+            &["1d49bb4ff759fa5a93494b7a8ff239fc6967cb33"],
+            "semantic_port",
+            "persist paginated thread names in SQLite",
+        ),
+        current_intake_absorbed(
+            "history_storage_efficiency",
+            HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD,
+            &["31c6065061185de711aa36ee6e9cf7c4a4795821"],
+            "semantic_port",
+            "share history snapshots copy-on-write",
+        ),
+        current_intake_absorbed(
+            "plugin_marketplace_trust",
+            "9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7",
+            &[
+                "45ef7b7b01b232a245b22a50d4ffdbcfe57d8f0b",
+                "411c6a1b9a146ae540dc4f86b9c1736031c84b07",
+                "63d34505b27d0917a656d3bdcdc74ea2e1958664",
+                "1656048a546fb20799df1031b75deffe7852b659",
+                "b84a35b0774f5fcc9c9178c01b2e17af681008dd",
+                "e7c7b0c8e245258c7d125bc5cb8e84fdca80158b",
+                "bafdb195c5f9d7bc555ee3859381c8bbf3283ba4",
+            ],
+            "local_split",
+            "enforce marketplace source policy across admission, mutation and runtime reads",
+        ),
+        current_intake_deferred(
+            "audio_history_and_tool_output",
+            Some("6f785632b000f7d8e85100506b88b3bab5b8d8a0"),
+            "requires a separately reviewed audio capability and dependency lane",
+        ),
+        current_intake_deferred(
+            "mcp_endpoint_ownership",
+            Some("6bf4845b60e0abccd0c64690e9c7591e0efb85d8"),
+            "requires Hepta trust and endpoint-ownership review before routing Codex Apps MCP",
+        ),
+        current_intake_deferred(
+            "bulk_tui_performance_batch",
+            None,
+            "requires bounded compatibility lanes rather than broad TUI import",
+        ),
+        current_intake_deferred(
+            "whole_tree_or_lockfile_import",
+            None,
+            "unrelated histories and divergent dependency graphs prohibit whole-tree or Cargo.lock replacement",
+        ),
+    ]
+}
+
+impl HeptaUpstreamCodexCurrentIntakeReport {
+    pub fn native_default() -> Self {
+        let decisions = default_upstream_codex_current_intake_decisions();
+        let selected_absorption_count = decisions
+            .iter()
+            .filter(|decision| {
+                decision.disposition == HeptaUpstreamCodexCurrentIntakeDisposition::Absorbed
+            })
+            .count();
+        let deferred_decision_count = decisions.len() - selected_absorption_count;
+        let selected_commits: Vec<&str> = decisions
+            .iter()
+            .filter_map(|decision| {
+                (decision.disposition == HeptaUpstreamCodexCurrentIntakeDisposition::Absorbed)
+                    .then_some(decision.upstream_commit.as_deref())
+                    .flatten()
+            })
+            .collect();
+        let selected_commits_are_unique = selected_commits
+            .iter()
+            .enumerate()
+            .all(|(index, commit)| !selected_commits[..index].contains(commit));
+        let decisions_are_bounded = decisions.iter().all(|decision| {
+            !decision.classification.is_empty()
+                && !decision.rationale.is_empty()
+                && match decision.disposition {
+                    HeptaUpstreamCodexCurrentIntakeDisposition::Absorbed => {
+                        decision
+                            .upstream_commit
+                            .as_deref()
+                            .is_some_and(|commit| commit.len() == 40)
+                            && !decision.local_receipts.is_empty()
+                            && decision
+                                .local_receipts
+                                .iter()
+                                .all(|receipt| receipt.len() == 40)
+                            && decision.absorption_kind.is_some()
+                    }
+                    HeptaUpstreamCodexCurrentIntakeDisposition::Deferred => {
+                        decision.local_receipts.is_empty() && decision.absorption_kind.is_none()
+                    }
+                }
+        });
+        let current_intake_ready = selected_absorption_count == 10
+            && deferred_decision_count == 4
+            && selected_commits_are_unique
+            && decisions_are_bounded;
+
+        Self {
+            product: "Hepta".into(),
+            status: if current_intake_ready {
+                "ready"
+            } else {
+                "attention"
+            }
+            .into(),
+            intake_id: "upstream-codex-intake-2026-07-21".into(),
+            manifest_path: "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json"
+                .into(),
+            observation_state: "observed".into(),
+            classification_state: "classified".into(),
+            selected_state: "absorbed".into(),
+            remaining_state: "deferred".into(),
+            baseline_head: HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD.into(),
+            cutoff_ref: HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF.into(),
+            cutoff_head: HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD.into(),
+            candidate_diff_range: format!(
+                "{}..{}",
+                HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD
+            ),
+            observed_commit_count: 1803,
+            observed_changed_file_count: 3359,
+            observed_codex_rs_changed_file_count: 3097,
+            selected_absorption_count,
+            deferred_decision_count,
+            historical_receipt_target_head: HEPTA_UPSTREAM_CODEX_HISTORICAL_RECEIPT_TARGET_HEAD
+                .into(),
+            historical_receipt_changed_file_count:
+                HEPTA_UPSTREAM_CODEX_HISTORICAL_LEDGER_CHANGED_FILE_COUNT,
+            historical_receipt_selected_absorption_count:
+                HEPTA_UPSTREAM_CODEX_HISTORICAL_SELECTED_ABSORPTION_COUNT,
+            historical_receipt_is_current_freshness_proof: false,
+            current_intake_ready,
+            full_range_absorption_claimed: false,
+            upstream_fetch_performed: false,
+            upstream_merge_performed: false,
+            upstream_rebase_performed: false,
+            whole_tree_replacement_performed: false,
+            cargo_lock_replacement_performed: false,
+            active_runtime_dependency_allowed: false,
+            public_release_claim_allowed: false,
+            decisions,
+        }
+    }
+}
+
 impl HeptaUpstreamCodexProductGovernanceAbsorptionReport {
     pub fn native_default() -> Self {
         let selected_paths = default_product_governance_selected_paths();
@@ -2595,9 +2902,7 @@ impl HeptaUpstreamCodexProductGovernanceAbsorptionReport {
             status: if contract_ready { "ready" } else { "attention" }.into(),
             absorption_id: "upstream-codex-product-governance-absorption-contract".into(),
             upstream_repository: "https://github.com/openai/codex".into(),
-            candidate_diff_range:
-                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
-                    .into(),
+            candidate_diff_range: historical_upstream_codex_receipt_diff_range(),
             selected_bucket_id: "product-doc-release-governance".into(),
             selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P2Product,
             selected_changed_file_count,
@@ -2800,9 +3105,7 @@ impl HeptaUpstreamCodexLegacyCompatibilityAbsorptionReport {
             status: if contract_ready { "ready" } else { "attention" }.into(),
             absorption_id: "upstream-codex-legacy-compatibility-absorption-contract".into(),
             upstream_repository: "https://github.com/openai/codex".into(),
-            candidate_diff_range:
-                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
-                    .into(),
+            candidate_diff_range: historical_upstream_codex_receipt_diff_range(),
             selected_bucket_id: "legacy-cli-tui-compatibility".into(),
             selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P1Compatibility,
             selected_changed_file_count,
@@ -3022,9 +3325,7 @@ impl HeptaUpstreamCodexProviderSecurityAbsorptionReport {
             status: if contract_ready { "ready" } else { "attention" }.into(),
             absorption_id: "upstream-codex-provider-security-absorption-contract".into(),
             upstream_repository: "https://github.com/openai/codex".into(),
-            candidate_diff_range:
-                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
-                    .into(),
+            candidate_diff_range: historical_upstream_codex_receipt_diff_range(),
             selected_bucket_id: "provider-credential-sandbox-security".into(),
             selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P0Security,
             selected_changed_file_count,
@@ -3258,9 +3559,7 @@ impl HeptaUpstreamCodexRuntimeAppServerAbsorptionReport {
             status: if contract_ready { "ready" } else { "attention" }.into(),
             absorption_id: "upstream-codex-runtime-appserver-absorption-contract".into(),
             upstream_repository: "https://github.com/openai/codex".into(),
-            candidate_diff_range:
-                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
-                    .into(),
+            candidate_diff_range: historical_upstream_codex_receipt_diff_range(),
             selected_bucket_id: "runtime-session-tool-mcp-appserver".into(),
             selected_bucket_risk: HeptaUpstreamCodexSyncRisk::P0Runtime,
             selected_changed_file_count,
@@ -3515,11 +3814,10 @@ impl HeptaUpstreamCodexAbsorptionReplayReadinessReport {
             readiness_packet_path:
                 "docs/architecture/HEPTA_UPSTREAM_CODEX_ABSORPTION_REPLAY_READINESS.md".into(),
             upstream_repository: "https://github.com/openai/codex".into(),
-            candidate_diff_range:
-                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
-                    .into(),
-            ledger_changed_file_count: 878,
-            selected_absorption_changed_file_count: 716,
+            candidate_diff_range: historical_upstream_codex_receipt_diff_range(),
+            ledger_changed_file_count: HEPTA_UPSTREAM_CODEX_HISTORICAL_LEDGER_CHANGED_FILE_COUNT,
+            selected_absorption_changed_file_count:
+                HEPTA_UPSTREAM_CODEX_HISTORICAL_SELECTED_ABSORPTION_COUNT,
             selected_bucket_count,
             required_selected_bucket_count,
             absorption_contract_ready_count,
@@ -3663,9 +3961,7 @@ impl HeptaUpstreamCodexPromotionReadinessReport {
             decision_packet_path: "docs/architecture/HEPTA_UPSTREAM_CODEX_PROMOTION_READINESS.md"
                 .into(),
             upstream_repository: "https://github.com/openai/codex".into(),
-            candidate_diff_range:
-                "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
-                    .into(),
+            candidate_diff_range: historical_upstream_codex_receipt_diff_range(),
             source_readiness_gate: "scripts/hepta-upstream-codex-absorption-replay-readiness.sh"
                 .into(),
             promotion_readiness_gate: "scripts/hepta-upstream-codex-promotion-readiness.sh".into(),
@@ -8725,6 +9021,10 @@ pub fn hepta_upstream_codex_diff_ledger_report() -> HeptaUpstreamCodexDiffLedger
     HeptaUpstreamCodexDiffLedgerReport::native_default()
 }
 
+pub fn hepta_upstream_codex_current_intake_report() -> HeptaUpstreamCodexCurrentIntakeReport {
+    HeptaUpstreamCodexCurrentIntakeReport::native_default()
+}
+
 fn default_product_governance_selected_paths() -> Vec<String> {
     [
         "codex-rs/Cargo.lock",
@@ -9086,19 +9386,23 @@ mod tests {
         assert_eq!(report.ledger_id, "upstream-codex-diff-range-ledger");
         assert_eq!(
             report.baseline_upstream_head,
-            "108234b5ebe6941764a6b8edbb37b2aa04369f07"
+            HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD
         );
         assert_eq!(
             report.target_upstream_head,
-            "7d47056ea42636271ac020b86347fbbef49490aa"
+            HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD
         );
+        assert_eq!(report.target_ref, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF);
         assert_eq!(
             report.diff_ledger_gate,
             "scripts/hepta-upstream-codex-diff-ledger.sh"
         );
         assert_eq!(
             report.candidate_diff_range,
-            "108234b5ebe6941764a6b8edbb37b2aa04369f07..7d47056ea42636271ac020b86347fbbef49490aa"
+            format!(
+                "{}..{}",
+                HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD
+            )
         );
         assert!(report.commit_inventory_required);
         assert!(report.file_inventory_required);
@@ -9151,6 +9455,95 @@ mod tests {
             bucket.id == "product-doc-release-governance"
                 && bucket.promotion_gate.contains("long soak evidence")
         }));
+    }
+
+    #[test]
+    fn upstream_codex_current_intake_separates_observation_from_absorption() {
+        let report = hepta_upstream_codex_current_intake_report();
+
+        assert_eq!(report.product, "Hepta");
+        assert_eq!(report.status, "ready");
+        assert_eq!(report.observation_state, "observed");
+        assert_eq!(report.classification_state, "classified");
+        assert_eq!(report.selected_state, "absorbed");
+        assert_eq!(report.remaining_state, "deferred");
+        assert_eq!(report.baseline_head, HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD);
+        assert_eq!(report.cutoff_ref, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF);
+        assert_eq!(report.cutoff_head, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD);
+        assert_eq!(report.observed_commit_count, 1803);
+        assert_eq!(report.observed_changed_file_count, 3359);
+        assert_eq!(report.observed_codex_rs_changed_file_count, 3097);
+        assert_eq!(report.selected_absorption_count, 10);
+        assert_eq!(report.deferred_decision_count, 4);
+        assert!(report.current_intake_ready);
+        assert!(!report.full_range_absorption_claimed);
+        assert!(!report.upstream_fetch_performed);
+        assert!(!report.upstream_merge_performed);
+        assert!(!report.upstream_rebase_performed);
+        assert!(!report.whole_tree_replacement_performed);
+        assert!(!report.cargo_lock_replacement_performed);
+        assert!(!report.active_runtime_dependency_allowed);
+        assert!(!report.public_release_claim_allowed);
+    }
+
+    #[test]
+    fn upstream_codex_current_intake_tracks_selected_and_deferred_decisions() {
+        let report = hepta_upstream_codex_current_intake_report();
+        let absorbed: Vec<&HeptaUpstreamCodexCurrentIntakeDecision> = report
+            .decisions
+            .iter()
+            .filter(|decision| {
+                decision.disposition == HeptaUpstreamCodexCurrentIntakeDisposition::Absorbed
+            })
+            .collect();
+        let deferred: Vec<&HeptaUpstreamCodexCurrentIntakeDecision> = report
+            .decisions
+            .iter()
+            .filter(|decision| {
+                decision.disposition == HeptaUpstreamCodexCurrentIntakeDisposition::Deferred
+            })
+            .collect();
+
+        assert_eq!(absorbed.len(), 10);
+        assert_eq!(deferred.len(), 4);
+        assert!(absorbed.iter().all(|decision| {
+            decision.upstream_commit.is_some()
+                && !decision.local_receipts.is_empty()
+                && decision.absorption_kind.is_some()
+        }));
+        assert!(deferred.iter().all(|decision| {
+            decision.local_receipts.is_empty() && decision.absorption_kind.is_none()
+        }));
+        assert!(absorbed.iter().any(|decision| {
+            decision.upstream_commit.as_deref() == Some("9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7")
+                && decision.absorption_kind.as_deref() == Some("local_split")
+                && decision.local_receipts.len() == 7
+        }));
+        assert!(deferred.iter().any(|decision| {
+            decision.classification == "mcp_endpoint_ownership"
+                && decision.upstream_commit.as_deref()
+                    == Some("6bf4845b60e0abccd0c64690e9c7591e0efb85d8")
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_current_intake_preserves_historical_receipt_provenance() {
+        let report = hepta_upstream_codex_current_intake_report();
+
+        assert_eq!(
+            report.historical_receipt_target_head,
+            HEPTA_UPSTREAM_CODEX_HISTORICAL_RECEIPT_TARGET_HEAD
+        );
+        assert_eq!(
+            report.historical_receipt_changed_file_count,
+            HEPTA_UPSTREAM_CODEX_HISTORICAL_LEDGER_CHANGED_FILE_COUNT
+        );
+        assert_eq!(
+            report.historical_receipt_selected_absorption_count,
+            HEPTA_UPSTREAM_CODEX_HISTORICAL_SELECTED_ABSORPTION_COUNT
+        );
+        assert!(!report.historical_receipt_is_current_freshness_proof);
+        assert_ne!(report.cutoff_head, report.historical_receipt_target_head);
     }
 
     #[test]

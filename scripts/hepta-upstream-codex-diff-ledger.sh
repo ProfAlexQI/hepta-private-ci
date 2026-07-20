@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 BASE_HEAD="${HEPTA_UPSTREAM_CODEX_DIFF_BASE_HEAD:-108234b5ebe6941764a6b8edbb37b2aa04369f07}"
-TARGET_REF="${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF:-refs/remotes/openai-codex/main}"
+TARGET_REF="${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_REF:-refs/remotes/upstream/hepta-intake-20260721}"
 TARGET_HEAD="${HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD:-}"
 REQUIRE_DESCENDANT="${HEPTA_UPSTREAM_CODEX_DIFF_REQUIRE_DESCENDANT:-1}"
 
@@ -125,7 +125,7 @@ commit_sample_json="$(
     jq -R -s 'split("\n") | map(select(length > 0) | capture("(?<commit>[0-9a-f]+)\t(?<subject>.*)"))'
 )"
 path_sample_json="$(
-  printf '%s\n' "$changed_paths" | head -n 80 | json_array_from_stdin
+  printf '%s\n' "$changed_paths" | sed -n '1,80p' | json_array_from_stdin
 )"
 
 report="$(

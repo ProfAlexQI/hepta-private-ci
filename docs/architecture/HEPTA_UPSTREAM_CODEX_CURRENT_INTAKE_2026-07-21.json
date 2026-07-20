@@ -1,0 +1,192 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v1",
+  "intake_id": "upstream-codex-intake-2026-07-21",
+  "state_model": [
+    "observed",
+    "classified",
+    "absorbed",
+    "deferred"
+  ],
+  "observation": {
+    "state": "observed",
+    "upstream_repository": "https://github.com/openai/codex",
+    "baseline_head": "108234b5ebe6941764a6b8edbb37b2aa04369f07",
+    "cutoff_ref": "refs/remotes/upstream/hepta-intake-20260721",
+    "cutoff_head": "45ac251e178416ff5c3022457ad8d2778c0d4549",
+    "commit_count": 1803,
+    "changed_file_count": 3359,
+    "codex_rs_changed_file_count": 3097,
+    "bucket_observations": {
+      "provider_credential_sandbox_security": 381,
+      "runtime_session_tool_mcp_appserver": 1300,
+      "legacy_cli_tui_compatibility": 650,
+      "product_doc_release_governance": 53
+    },
+    "bucket_counts_are_non_exclusive": true,
+    "network_observation_performed": false,
+    "fetch_performed": false,
+    "merge_performed": false,
+    "rebase_performed": false
+  },
+  "classification": {
+    "state": "classified",
+    "policy": "selective_semantic_absorption_only",
+    "bulk_merge_allowed": false,
+    "bulk_rebase_allowed": false,
+    "whole_tree_replacement_allowed": false,
+    "cargo_lock_replacement_allowed": false,
+    "selected_absorption_count": 10,
+    "deferred_decision_count": 4
+  },
+  "selected_absorptions": [
+    {
+      "state": "absorbed",
+      "classification": "history_integrity",
+      "upstream_commit": "86102db5a1a7a49ce08e79f900e0897d94aa3770",
+      "local_receipts": [
+        "59f544a9316f2ac12044eb8672380c63a755b397"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "reject unsupported canonical history modes"
+    },
+    {
+      "state": "absorbed",
+      "classification": "history_integrity",
+      "upstream_commit": "19b2273d8a54ec28aa0174a95884182aa6e5081e",
+      "local_receipts": [
+        "fdbee7b12cb5e8e482f2148212f3d540018d659b"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "keep paginated Git metadata in SQLite"
+    },
+    {
+      "state": "absorbed",
+      "classification": "memory_history_integrity",
+      "upstream_commit": "2793c826e8f5a04e0619a18e9bbdae91c0435cd5",
+      "local_receipts": [
+        "4c1ad77903d6f0efbeeb5c382d876944d989a195"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "keep paginated memory mode in SQLite"
+    },
+    {
+      "state": "absorbed",
+      "classification": "exec_security",
+      "upstream_commit": "bf3c1972b7d045c0a3a48dff91f381070f8f69e1",
+      "local_receipts": [
+        "a66754492b52bc34ebd1ce039efa09297ae66f1f"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "migrate legacy exec-policy allow rules fail closed"
+    },
+    {
+      "state": "absorbed",
+      "classification": "tool_history_integrity",
+      "upstream_commit": "8431dc590a5bba9a1185d5579a5aabfbc469e50b",
+      "local_receipts": [
+        "d8795967f2812bc13f236c550858f2926555896e"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "preserve canonical history on invalid tool images"
+    },
+    {
+      "state": "absorbed",
+      "classification": "shell_environment_integrity",
+      "upstream_commit": "2deed3fb9c00c74dac3d177ea700d6fb7a94539d",
+      "local_receipts": [
+        "e3fa5fbc8bb2baa806ac30ce0b58066aeb3932ca"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "preserve zsh tied PATH exports in shell snapshots"
+    },
+    {
+      "state": "absorbed",
+      "classification": "model_catalog",
+      "upstream_commit": "5a4f5ee64c4e7de22c21f1c38feb3edfb167b7d8",
+      "local_receipts": [
+        "95276ae5619b0601a931f999570e39a34b29900d"
+      ],
+      "absorption_kind": "translated_catalog",
+      "summary": "refresh model metadata while retaining Hepta identity and capability fields"
+    },
+    {
+      "state": "absorbed",
+      "classification": "thread_metadata_integrity",
+      "upstream_commit": "5a208c1fc353573fa3838c70a90ea9c59ad8884c",
+      "local_receipts": [
+        "1d49bb4ff759fa5a93494b7a8ff239fc6967cb33"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "persist paginated thread names in SQLite"
+    },
+    {
+      "state": "absorbed",
+      "classification": "history_storage_efficiency",
+      "upstream_commit": "45ac251e178416ff5c3022457ad8d2778c0d4549",
+      "local_receipts": [
+        "31c6065061185de711aa36ee6e9cf7c4a4795821"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "share history snapshots copy-on-write"
+    },
+    {
+      "state": "absorbed",
+      "classification": "plugin_marketplace_trust",
+      "upstream_commit": "9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7",
+      "local_receipts": [
+        "45ef7b7b01b232a245b22a50d4ffdbcfe57d8f0b",
+        "411c6a1b9a146ae540dc4f86b9c1736031c84b07",
+        "63d34505b27d0917a656d3bdcdc74ea2e1958664",
+        "1656048a546fb20799df1031b75deffe7852b659",
+        "b84a35b0774f5fcc9c9178c01b2e17af681008dd",
+        "e7c7b0c8e245258c7d125bc5cb8e84fdca80158b",
+        "bafdb195c5f9d7bc555ee3859381c8bbf3283ba4"
+      ],
+      "absorption_kind": "local_split",
+      "summary": "enforce marketplace source policy across admission, mutation and runtime reads"
+    }
+  ],
+  "deferred_decisions": [
+    {
+      "state": "deferred",
+      "classification": "audio_history_and_tool_output",
+      "upstream_commit": "6f785632b000f7d8e85100506b88b3bab5b8d8a0",
+      "reason": "requires a separately reviewed audio capability and dependency lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "mcp_endpoint_ownership",
+      "upstream_commit": "6bf4845b60e0abccd0c64690e9c7591e0efb85d8",
+      "reason": "requires Hepta trust and endpoint-ownership review before routing Codex Apps MCP"
+    },
+    {
+      "state": "deferred",
+      "classification": "bulk_tui_performance_batch",
+      "upstream_commit": null,
+      "reason": "requires bounded compatibility lanes rather than broad TUI import"
+    },
+    {
+      "state": "deferred",
+      "classification": "whole_tree_or_lockfile_import",
+      "upstream_commit": null,
+      "reason": "unrelated histories and divergent dependency graphs prohibit whole-tree or Cargo.lock replacement"
+    }
+  ],
+  "historical_absorption_receipt": {
+    "state": "historical_receipt",
+    "baseline_head": "108234b5ebe6941764a6b8edbb37b2aa04369f07",
+    "target_head": "7d47056ea42636271ac020b86347fbbef49490aa",
+    "ledger_changed_file_count": 878,
+    "selected_absorption_changed_file_count": 716,
+    "scope": "legacy bucket-level absorption and replay contracts",
+    "current_intake_freshness_proof": false
+  },
+  "boundaries": {
+    "offline_only": true,
+    "local_ref_must_match_cutoff": true,
+    "active_runtime_auto_rebase_allowed": false,
+    "active_runtime_dependency_allowed": false,
+    "active_service_restart_allowed": false,
+    "public_release_claim_allowed": false
+  }
+}

@@ -45,8 +45,13 @@ Current state:
   `codex-rs` compatibility tree, optional read-only upstream Codex HEAD, and
   the risk classification buckets that must exist before absorption work.
 - `scripts/hepta-upstream-codex-diff-ledger.sh` records the local upstream
-  baseline-to-target range and classifies the first `codex-rs` upstream delta
-  inventory before any absorption patch is allowed.
+  baseline-to-target range and classifies the selected `codex-rs` upstream
+  delta inventory before any absorption patch is allowed.
+- `scripts/hepta-upstream-codex-current-intake.sh` pins the current local-only
+  cutoff, verifies its exact observed inventory and selected local receipts,
+  and keeps observed, classified, absorbed, and deferred states distinct. The
+  older bucket-level gates remain historical receipts rather than freshness
+  claims.
 - `scripts/hepta-upstream-codex-product-governance-absorption.sh` selects the
   first bounded absorption family from that ledger and requires Hepta-specific
   product/release-governance translation before promotion.
