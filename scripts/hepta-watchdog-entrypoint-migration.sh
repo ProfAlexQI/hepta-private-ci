@@ -17,6 +17,17 @@ grep -q 'HEPTA_RELEASE_BIN' "$canonical"
 grep -q 'HEPTA_INSTALLED_BIN' "$canonical"
 grep -q 'HEPTA_CODEX_RELEASE_BIN' "$canonical"
 grep -q 'HEPTA_CODEX_INSTALLED_BIN' "$canonical"
+grep -q 'HEPTA_WATCHDOG_MODE' "$canonical"
+grep -q 'deployment-consistency' "$canonical"
+grep -q 'active-health' "$canonical"
+grep -q 'HEPTA_CANDIDATE_MANIFEST' "$canonical"
+grep -q 'HEPTA_INSTALLED_RECEIPT' "$canonical"
+grep -q 'candidate_installed_sha_mismatch' "$canonical"
+
+if grep -q 'RELEASE_BIN="$INSTALLED_BIN"' "$canonical"; then
+  echo "canonical watchdog must not fall back from a missing candidate to the installed binary" >&2
+  exit 1
+fi
 
 if grep -q 'hepta-script-family-alias.sh' "$canonical"; then
   echo "canonical watchdog must not route through the legacy script-family alias" >&2
@@ -47,6 +58,9 @@ jq -n \
     legacy_watchdog_wrapper:$legacy,
     legacy_env_aliases_preserved:true,
     legacy_wrapper_has_no_live_probe_implementation:true,
+    default_deployment_consistency_fail_closed:true,
+    active_health_mode_requires_explicit_selection:true,
+    missing_candidate_installed_fallback_removed:true,
     active_service_watchdog_retained:true,
     upstream_activation_evidence_slot_retained:true
   }'

@@ -2,6 +2,9 @@
 set -euo pipefail
 
 SCHEMA_VERSION="hepta_immutable_release_manifest_v1"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -13,6 +16,9 @@ usage:
 
 Activation is byte-preserving: current and target SHA-256 must match. Installing
 different bytes belongs to the separately authorized final release cutover.
+Source-bound materialization requires a preflight provenance receipt binding
+the source commit, Rust toolchains, Cargo lockfiles, artifact, and all required
+backend/native/release profiles.
 EOF
   exit 2
 }
@@ -75,12 +81,14 @@ materialize() {
   manifest_path="$release_dir/manifest.json"
 
   local status source_commit_bound preflight_bound preflight_sha preflight_size preflight_head
+  local build_provenance_json
   status="ready"
   source_commit_bound=true
   preflight_bound=true
   preflight_sha=""
   preflight_size=0
   preflight_head=""
+  build_provenance_json="null"
   if [[ "$source_commit" == "unknown" ]]; then
     status="legacy_unbound"
     source_commit_bound=false
@@ -104,6 +112,43 @@ materialize() {
     fi
     [[ -n "$preflight_head" && "$source_commit" == "$preflight_head"* ]] || {
       echo "preflight log head does not match source commit" >&2
+      exit 1
+    }
+    local provenance_line_count
+    provenance_line_count="$(rg -c '^\[hepta-preflight-provenance\] ' "$preflight_log" || true)"
+    [[ "$provenance_line_count" == "1" ]] || {
+      echo "preflight log must contain exactly one build provenance receipt" >&2
+      exit 1
+    }
+    build_provenance_json="$(sed -n 's/^\[hepta-preflight-provenance\] //p' "$preflight_log")"
+    jq -e . >/dev/null <<<"$build_provenance_json" || {
+      echo "preflight build provenance receipt is not valid JSON" >&2
+      exit 1
+    }
+    hepta_release_validate_build_provenance_json \
+      "$build_provenance_json" \
+      "$source_commit" \
+      "$artifact_sha" || {
+      echo "preflight build provenance receipt is incomplete or does not bind the artifact" >&2
+      exit 1
+    }
+    jq -e '
+      .preflight_profiles.backend == true
+      and .preflight_profiles.native == true
+      and .preflight_profiles.release == true
+    ' >/dev/null <<<"$build_provenance_json" || {
+      echo "preflight build provenance receipt does not bind all required profiles" >&2
+      exit 1
+    }
+    local current_build_provenance
+    current_build_provenance="$(
+      hepta_release_build_provenance_json "$REPO_ROOT" "$source_commit" "$artifact"
+    )"
+    jq -e \
+      --argjson current "$current_build_provenance" \
+      '. as $receipt | ($receipt | del(.preflight_profiles)) == $current' \
+      >/dev/null <<<"$build_provenance_json" || {
+      echo "preflight build provenance no longer matches source, toolchain, dependencies, or artifact" >&2
       exit 1
     }
     preflight_log="$(canonical_file "$preflight_log")"
@@ -140,12 +185,14 @@ materialize() {
     --arg preflight_sha256 "$preflight_sha" \
     --arg preflight_source_head "$preflight_head" \
     --argjson preflight_size_bytes "$preflight_size" \
+    --argjson build_provenance "$build_provenance_json" \
     '{
       schema_version:$schema_version,
       status:$status,
       release_id:$release_id,
       source:{commit:$source_commit,commit_bound:$source_commit_bound},
       artifact:{relative_path:"bin/hepta",sha256:$artifact_sha256,size_bytes:$artifact_size_bytes,executable:true},
+      build_provenance:$build_provenance,
       preflight:{bound:$preflight_bound,source_head:(if $preflight_bound then $preflight_source_head else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
       policy:{immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
       side_effects:{service_restarted:false,active_process_mutated:false,provider_invoked:false,credentials_read:false,memory_or_kg_written:false,channel_message_sent:false}
@@ -187,9 +234,31 @@ verify_manifest() {
     and .policy.activation_byte_change_forbidden == true
     and .policy.restart_performed == false
     and (
-      (.status == "ready" and .source.commit_bound == true and (.source.commit | test("^[0-9a-f]{40}$")) and .preflight.bound == true and .preflight.passed == true and (.preflight.source_head | test("^[0-9a-f]{10,40}$")) and (.source.commit as $commit | .preflight.source_head as $head | $commit | startswith($head)) and (.preflight.log_sha256 | test("^[0-9a-f]{64}$")))
+      (.status == "ready"
+        and .source.commit_bound == true
+        and (.source.commit | test("^[0-9a-f]{40}$"))
+        and .preflight.bound == true
+        and .preflight.passed == true
+        and (.preflight.source_head | test("^[0-9a-f]{10,40}$"))
+        and (.source.commit as $commit | .preflight.source_head as $head | $commit | startswith($head))
+        and (.preflight.log_sha256 | test("^[0-9a-f]{64}$"))
+        and .build_provenance.schema_version == "hepta_build_provenance_v1"
+        and .build_provenance.source.commit_bound == true
+        and .build_provenance.source.commit == .source.commit
+        and .build_provenance.toolchain.bound == true
+        and (.build_provenance.toolchain.aggregate_sha256 | test("^[0-9a-f]{64}$"))
+        and (.build_provenance.toolchain.manifest_inputs | type == "array" and length >= 2)
+        and (.build_provenance.toolchain.rustc_verbose_inputs | type == "array" and length >= 2)
+        and .build_provenance.dependencies.bound == true
+        and (.build_provenance.dependencies.aggregate_sha256 | test("^[0-9a-f]{64}$"))
+        and (.build_provenance.dependencies.lock_inputs | type == "array" and length >= 2)
+        and .build_provenance.artifact.bound == true
+        and .build_provenance.artifact.sha256 == .artifact.sha256
+        and .build_provenance.preflight_profiles.backend == true
+        and .build_provenance.preflight_profiles.native == true
+        and .build_provenance.preflight_profiles.release == true)
       or
-      (.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false and .preflight.passed == false and .preflight.source_head == null and .preflight.log_sha256 == null)
+      (.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .build_provenance == null and .preflight.bound == false and .preflight.passed == false and .preflight.source_head == null and .preflight.log_sha256 == null)
     )
   ' "$manifest" >/dev/null
 
@@ -217,7 +286,7 @@ verify_manifest() {
     echo "immutable release manifest mode must be 0444" >&2
     exit 1
   }
-  jq -c '{schema_version,status,release_id,source,artifact,preflight,policy}' "$manifest"
+  jq -c '{schema_version,status,release_id,source,artifact,build_provenance,preflight,policy}' "$manifest"
 }
 
 activate() {
@@ -280,7 +349,7 @@ activate() {
 self_test() {
   [[ $# -eq 0 ]] || usage
   local root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
-  local fixture_sha activation different different_manifest
+  local fixture_sha activation different different_manifest provenance invalid_manifest
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   tool="$root/scripts/hepta-immutable-release-tree"
   tmp="$(mktemp -d /tmp/hepta-immutable-release-tree-self-test.XXXXXX)"
@@ -291,10 +360,34 @@ self_test() {
   chmod 0755 "$artifact"
   source_commit="$(git -C "$root" rev-parse HEAD)"
   preflight="$tmp/preflight.log"
-  printf '%s\n' '[hepta-preflight] fixture' "{\"hepta_repo_head\": \"$source_commit\"}" 'Hepta preflight passed' >"$preflight"
+  provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$artifact")"
+  provenance="$(
+    jq -c '. + {preflight_profiles:{backend:true,native:true,release:true}}' <<<"$provenance"
+  )"
+  printf '%s\n' \
+    '[hepta-preflight] fixture' \
+    "{\"hepta_repo_head\": \"$source_commit\"}" \
+    "[hepta-preflight-provenance] $provenance" \
+    'Hepta preflight passed' >"$preflight"
 
   bound_manifest="$($tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$preflight" --release-root "$tmp/releases")"
-  $tool verify --manifest "$bound_manifest" | jq -e '.status == "ready" and .source.commit_bound == true and .preflight.bound == true and .policy.immutable_tree == true' >/dev/null
+  $tool verify --manifest "$bound_manifest" | jq -e '
+    .status == "ready"
+    and .source.commit_bound == true
+    and .build_provenance.toolchain.bound == true
+    and .build_provenance.dependencies.bound == true
+    and .build_provenance.artifact.bound == true
+    and .preflight.bound == true
+    and .policy.immutable_tree == true
+  ' >/dev/null
+
+  invalid_manifest="$tmp/invalid-manifest.json"
+  jq 'del(.build_provenance)' "$bound_manifest" >"$invalid_manifest"
+  chmod 0444 "$invalid_manifest"
+  if $tool verify --manifest "$invalid_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted a source-bound manifest without provenance" >&2
+    exit 1
+  fi
 
   legacy_manifest="$($tool materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/releases")"
   $tool verify --manifest "$legacy_manifest" | jq -e '.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false' >/dev/null

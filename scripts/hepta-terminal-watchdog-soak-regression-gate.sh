@@ -69,6 +69,7 @@ WATCHDOG_JSON="$(
   capture_json_report_allow_parseable_failure \
     "hepta-watchdog" \
     env HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_WATCHDOG_MODE=deployment-consistency \
       scripts/hepta-watchdog.sh
 )"
 

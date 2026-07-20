@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+REPO_ROOT="$PWD"
+source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
+
 MANIFEST="${HEPTA_MANIFEST:-${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}}"
 NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
 NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
@@ -11,6 +14,7 @@ RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}}"
 HEPTA_FOCUSED_TEST_MAX_SECONDS="${HEPTA_FOCUSED_TEST_MAX_SECONDS:-600}"
 HEPTA_FULL_TEST_MAX_SECONDS="${HEPTA_FULL_TEST_MAX_SECONDS:-1800}"
 HEPTA_TEST_MAX_DIRTY_DELTA="${HEPTA_TEST_MAX_DIRTY_DELTA:-0}"
+PREFLIGHT_SOURCE_COMMIT="$(git rev-parse HEAD)"
 
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 
@@ -36,7 +40,11 @@ if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
 fi
 
 echo "[hepta-preflight] metadata"
-cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1 >/tmp/hepta-preflight-metadata.json
+PREFLIGHT_RELEASE_TARGET_DIR="$(
+  cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1 \
+    | tee /tmp/hepta-preflight-metadata.json \
+    | jq -r '.target_directory'
+)"
 
 echo "[hepta-preflight] fmt"
 cargo fmt --all --manifest-path "$MANIFEST" -- --check
@@ -1770,6 +1778,9 @@ scripts/hepta-upstream-codex-latest-operator-briefing-non-persistence-gate.sh
 echo "[hepta-preflight] immutable release tree self-test"
 scripts/hepta-immutable-release-tree self-test
 
+echo "[hepta-preflight] watchdog build provenance self-test"
+scripts/hepta-watchdog-provenance-self-test.sh
+
 echo "[hepta-preflight] architecture hard budget verify/self-test"
 scripts/hepta-architecture-budget verify
 scripts/hepta-architecture-budget self-test
@@ -1820,5 +1831,35 @@ echo "[hepta-preflight] whitespace/status"
 git diff --check
 git diff --cached --check
 git status -sb
+
+if [[ "$RUN_RELEASE" == "1" ]]; then
+  [[ "$(git rev-parse HEAD)" == "$PREFLIGHT_SOURCE_COMMIT" ]] || {
+    echo "release preflight source commit changed while validation was running" >&2
+    exit 1
+  }
+  [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
+    echo "release preflight provenance requires a clean worktree" >&2
+    exit 1
+  }
+
+  release_artifact="${HEPTA_PREFLIGHT_RELEASE_ARTIFACT:-$PREFLIGHT_RELEASE_TARGET_DIR/release/hepta}"
+  [[ -f "$release_artifact" && -x "$release_artifact" ]] || {
+    echo "release preflight artifact is missing or not executable: $release_artifact" >&2
+    exit 1
+  }
+  release_build_provenance="$(
+    hepta_release_build_provenance_json \
+      "$REPO_ROOT" \
+      "$PREFLIGHT_SOURCE_COMMIT" \
+      "$release_artifact"
+  )"
+  release_build_provenance="$(
+    jq -c \
+      --argjson native "$RUN_NATIVE" \
+      '. + {preflight_profiles:{backend:true,native:($native == 1),release:true}}' \
+      <<<"$release_build_provenance"
+  )"
+  printf '[hepta-preflight-provenance] %s\n' "$release_build_provenance"
+fi
 
 echo "Hepta preflight passed"
