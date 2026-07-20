@@ -1100,7 +1100,7 @@ impl PluginRequestProcessor {
         };
 
         let result = plugins_manager
-            .install_plugin(request)
+            .install_plugin(&config.config_layer_stack, request)
             .await
             .map_err(Self::plugin_install_error)?;
         let config = match self.load_latest_config(config_cwd).await {

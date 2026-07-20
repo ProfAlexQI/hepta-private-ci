@@ -760,12 +760,33 @@ impl ExternalAgentConfigService {
                     continue;
                 }
             };
+            let install_config = match ConfigBuilder::default()
+                .codex_home(self.codex_home.clone())
+                .fallback_cwd(Some(
+                    cwd.map(Path::to_path_buf)
+                        .unwrap_or_else(|| self.codex_home.clone()),
+                ))
+                .build()
+                .await
+            {
+                Ok(config) => config,
+                Err(err) => {
+                    outcome.failed_plugin_ids.extend(plugin_ids);
+                    tracing::warn!(
+                        "failed to reload config after adding marketplace during plugin import: {err}"
+                    );
+                    continue;
+                }
+            };
             for plugin_name in plugin_names {
                 match plugins_manager
-                    .install_plugin(PluginInstallRequest {
-                        plugin_name: plugin_name.clone(),
-                        marketplace_path: marketplace_path.clone(),
-                    })
+                    .install_plugin(
+                        &install_config.config_layer_stack,
+                        PluginInstallRequest {
+                            plugin_name: plugin_name.clone(),
+                            marketplace_path: marketplace_path.clone(),
+                        },
+                    )
                     .await
                 {
                     Ok(_) => outcome

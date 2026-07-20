@@ -31,6 +31,7 @@ use crate::marketplace::find_marketplace_plugin;
 use crate::marketplace::list_marketplaces;
 use crate::marketplace::load_marketplace;
 use crate::marketplace::plugin_interface_with_marketplace_category;
+use crate::marketplace_policy::MarketplacePolicy;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeError;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome;
 use crate::marketplace_upgrade::configured_git_marketplace_names;
@@ -796,14 +797,35 @@ impl PluginsManager {
 
     pub async fn install_plugin(
         &self,
+        config_layer_stack: &ConfigLayerStack,
         request: PluginInstallRequest,
     ) -> Result<PluginInstallOutcome, PluginInstallError> {
+        let resolved = self.resolve_installable_plugin(config_layer_stack, &request)?;
+        self.install_resolved_plugin(resolved).await
+    }
+
+    fn resolve_installable_plugin(
+        &self,
+        config_layer_stack: &ConfigLayerStack,
+        request: &PluginInstallRequest,
+    ) -> Result<ResolvedMarketplacePlugin, PluginInstallError> {
         let resolved = find_installable_marketplace_plugin(
             &request.marketplace_path,
             &request.plugin_name,
             self.restriction_product,
         )?;
-        self.install_resolved_plugin(resolved).await
+        MarketplacePolicy::from_requirements(config_layer_stack.requirements())
+            .validate_install(
+                config_layer_stack,
+                self.codex_home.as_path(),
+                &request.marketplace_path,
+                &resolved.plugin_id.marketplace_name,
+            )
+            .map_err(|message| MarketplaceError::InvalidMarketplaceFile {
+                path: request.marketplace_path.to_path_buf(),
+                message,
+            })?;
+        Ok(resolved)
     }
 
     pub async fn install_plugin_with_remote_sync(
@@ -812,11 +834,7 @@ impl PluginsManager {
         auth: Option<&CodexAuth>,
         request: PluginInstallRequest,
     ) -> Result<PluginInstallOutcome, PluginInstallError> {
-        let resolved = find_installable_marketplace_plugin(
-            &request.marketplace_path,
-            &request.plugin_name,
-            self.restriction_product,
-        )?;
+        let resolved = self.resolve_installable_plugin(&config.config_layer_stack, &request)?;
         let plugin_id = resolved.plugin_id.as_key();
         // This only forwards the backend mutation before the local install flow.
         crate::remote_legacy::enable_remote_plugin(
