@@ -11,6 +11,7 @@ use serde::de::value::Error as ValueDeserializerError;
 use serde::de::value::StrDeserializer;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::path::PathBuf;
 use wildmatch::WildMatchPattern;
 
 use super::requirements_exec_policy::RequirementsExecPolicy;
@@ -92,6 +93,7 @@ pub struct ConfigRequirements {
     pub managed_hooks: Option<ConstrainedWithSource<ManagedHooksRequirementsToml>>,
     pub mcp_servers: Option<Sourced<BTreeMap<String, McpServerRequirement>>>,
     pub plugins: Option<Sourced<BTreeMap<String, PluginRequirementsToml>>>,
+    pub marketplaces: Option<Sourced<MarketplaceRequirementsToml>>,
     pub exec_policy: Option<Sourced<RequirementsExecPolicy>>,
     pub enforce_residency: ConstrainedWithSource<Option<ResidencyRequirement>>,
     /// Managed network constraints derived from requirements.
@@ -126,6 +128,7 @@ impl Default for ConfigRequirements {
             managed_hooks: None,
             mcp_servers: None,
             plugins: None,
+            marketplaces: None,
             exec_policy: None,
             enforce_residency: ConstrainedWithSource::new(
                 Constrained::allow_any(/*initial_value*/ None),
@@ -159,6 +162,41 @@ pub struct McpServerRequirement {
 #[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginRequirementsToml {
     pub mcp_servers: Option<BTreeMap<String, McpServerRequirement>>,
+}
+
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MarketplaceRequirementsToml {
+    pub restrict_to_allowed_sources: Option<bool>,
+    #[serde(default)]
+    pub allowed_sources: BTreeMap<String, MarketplaceAllowedSourceToml>,
+}
+
+impl MarketplaceRequirementsToml {
+    pub fn is_empty(&self) -> bool {
+        self.restrict_to_allowed_sources.is_none() && self.allowed_sources.is_empty()
+    }
+}
+
+/// Raw marketplace source rule whose active fields are interpreted after
+/// requirements composition.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MarketplaceAllowedSourceToml {
+    pub source: Option<MarketplaceAllowedSourceKind>,
+    pub url: Option<String>,
+    #[serde(rename = "ref")]
+    pub ref_name: Option<String>,
+    pub host_pattern: Option<String>,
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceAllowedSourceKind {
+    Git,
+    HostPattern,
+    Local,
 }
 
 impl PluginRequirementsToml {
@@ -696,6 +734,7 @@ pub struct ConfigRequirementsToml {
     pub hooks: Option<ManagedHooksRequirementsToml>,
     pub mcp_servers: Option<BTreeMap<String, McpServerRequirement>>,
     pub plugins: Option<BTreeMap<String, PluginRequirementsToml>>,
+    pub marketplaces: Option<MarketplaceRequirementsToml>,
     pub apps: Option<AppsRequirementsToml>,
     pub rules: Option<RequirementsExecPolicyToml>,
     pub enforce_residency: Option<ResidencyRequirement>,
@@ -744,6 +783,7 @@ pub struct ConfigRequirementsWithSources {
     pub hooks: Option<Sourced<ManagedHooksRequirementsToml>>,
     pub mcp_servers: Option<Sourced<BTreeMap<String, McpServerRequirement>>>,
     pub plugins: Option<Sourced<BTreeMap<String, PluginRequirementsToml>>>,
+    pub marketplaces: Option<Sourced<MarketplaceRequirementsToml>>,
     pub apps: Option<Sourced<AppsRequirementsToml>>,
     pub rules: Option<Sourced<RequirementsExecPolicyToml>>,
     pub enforce_residency: Option<Sourced<ResidencyRequirement>>,
@@ -781,6 +821,7 @@ impl ConfigRequirementsWithSources {
             hooks: _,
             mcp_servers: _,
             plugins: _,
+            marketplaces: _,
             apps: _,
             rules: _,
             enforce_residency: _,
@@ -819,6 +860,17 @@ impl ConfigRequirementsWithSources {
             }
         );
 
+        if let Some(incoming_marketplaces) = other.marketplaces.take() {
+            if let Some(existing_marketplaces) = self.marketplaces.as_mut() {
+                merge_marketplace_requirements_descending(
+                    &mut existing_marketplaces.value,
+                    incoming_marketplaces,
+                );
+            } else {
+                self.marketplaces = Some(Sourced::new(incoming_marketplaces, source.clone()));
+            }
+        }
+
         if let Some(incoming_apps) = other.apps.take() {
             if let Some(existing_apps) = self.apps.as_mut() {
                 merge_app_requirements_descending(&mut existing_apps.value, incoming_apps);
@@ -839,6 +891,7 @@ impl ConfigRequirementsWithSources {
             hooks,
             mcp_servers,
             plugins,
+            marketplaces,
             apps,
             rules,
             enforce_residency,
@@ -857,12 +910,48 @@ impl ConfigRequirementsWithSources {
             hooks: hooks.map(|sourced| sourced.value),
             mcp_servers: mcp_servers.map(|sourced| sourced.value),
             plugins: plugins.map(|sourced| sourced.value),
+            marketplaces: marketplaces.map(|sourced| sourced.value),
             apps: apps.map(|sourced| sourced.value),
             rules: rules.map(|sourced| sourced.value),
             enforce_residency: enforce_residency.map(|sourced| sourced.value),
             network: network.map(|sourced| sourced.value),
             permissions: permissions.map(|sourced| sourced.value),
             guardian_policy_config: guardian_policy_config.map(|sourced| sourced.value),
+        }
+    }
+}
+
+fn merge_marketplace_requirements_descending(
+    higher: &mut MarketplaceRequirementsToml,
+    lower: MarketplaceRequirementsToml,
+) {
+    if higher.restrict_to_allowed_sources.is_none() {
+        higher.restrict_to_allowed_sources = lower.restrict_to_allowed_sources;
+    }
+
+    for (name, lower_source) in lower.allowed_sources {
+        match higher.allowed_sources.entry(name) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(lower_source);
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let higher_source = entry.get_mut();
+                if higher_source.source.is_none() {
+                    higher_source.source = lower_source.source;
+                }
+                if higher_source.url.is_none() {
+                    higher_source.url = lower_source.url;
+                }
+                if higher_source.ref_name.is_none() {
+                    higher_source.ref_name = lower_source.ref_name;
+                }
+                if higher_source.host_pattern.is_none() {
+                    higher_source.host_pattern = lower_source.host_pattern;
+                }
+                if higher_source.path.is_none() {
+                    higher_source.path = lower_source.path;
+                }
+            }
         }
     }
 }
@@ -951,6 +1040,10 @@ impl ConfigRequirementsToml {
                 .as_ref()
                 .is_none_or(|plugins| plugins.values().all(PluginRequirementsToml::is_empty))
             && self
+                .marketplaces
+                .as_ref()
+                .is_none_or(MarketplaceRequirementsToml::is_empty)
+            && self
                 .apps
                 .as_ref()
                 .is_none_or(AppsRequirementsToml::is_empty)
@@ -979,6 +1072,7 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             hooks,
             mcp_servers,
             plugins,
+            marketplaces,
             apps: _apps,
             rules,
             enforce_residency,
@@ -1215,6 +1309,7 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             managed_hooks,
             mcp_servers,
             plugins,
+            marketplaces,
             exec_policy,
             enforce_residency,
             network,
@@ -1288,6 +1383,7 @@ mod tests {
             hooks,
             mcp_servers,
             plugins,
+            marketplaces,
             apps,
             rules,
             enforce_residency,
@@ -1311,6 +1407,7 @@ mod tests {
             hooks: hooks.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             mcp_servers: mcp_servers.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             plugins: plugins.map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            marketplaces: marketplaces.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             apps: apps.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             rules: rules.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             enforce_residency: enforce_residency
@@ -1384,6 +1481,7 @@ mod tests {
             hooks: None,
             mcp_servers: None,
             plugins: None,
+            marketplaces: None,
             apps: None,
             rules: None,
             enforce_residency: Some(enforce_residency),
@@ -1421,6 +1519,7 @@ mod tests {
                 hooks: None,
                 mcp_servers: None,
                 plugins: None,
+                marketplaces: None,
                 apps: None,
                 rules: None,
                 enforce_residency: Some(Sourced::new(enforce_residency, enforce_source)),
@@ -1461,6 +1560,7 @@ mod tests {
                 hooks: None,
                 mcp_servers: None,
                 plugins: None,
+                marketplaces: None,
                 apps: None,
                 rules: None,
                 enforce_residency: None,
@@ -1509,6 +1609,7 @@ mod tests {
                 hooks: None,
                 mcp_servers: None,
                 plugins: None,
+                marketplaces: None,
                 apps: None,
                 rules: None,
                 enforce_residency: None,
@@ -2972,6 +3073,152 @@ command = "python3 /enterprise/hooks/pre.py"
                 ]),
                 RequirementSource::Unknown,
             ))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn merge_unset_fields_merges_marketplace_allowed_sources_recursively() -> Result<()> {
+        let mut target = ConfigRequirementsWithSources::default();
+        target.merge_unset_fields(
+            RequirementSource::CloudRequirements,
+            from_str(
+                r#"
+                    [marketplaces.allowed_sources.shared]
+                    ref = "release"
+                "#,
+            )?,
+        );
+        target.merge_unset_fields(
+            RequirementSource::LegacyManagedConfigTomlFromMdm,
+            from_str(
+                r#"
+                    [marketplaces]
+                    restrict_to_allowed_sources = true
+
+                    [marketplaces.allowed_sources.shared]
+                    source = "git"
+                    url = "https://github.com/example/old.git"
+                    ref = "main"
+
+                    [marketplaces.allowed_sources.other]
+                    source = "git"
+                    url = "https://github.com/example/other.git"
+                "#,
+            )?,
+        );
+
+        let marketplaces = target.marketplaces.expect("marketplaces should be present");
+        assert_eq!(marketplaces.source, RequirementSource::CloudRequirements);
+        assert_eq!(
+            marketplaces.value,
+            MarketplaceRequirementsToml {
+                restrict_to_allowed_sources: Some(true),
+                allowed_sources: BTreeMap::from([
+                    (
+                        "other".to_string(),
+                        MarketplaceAllowedSourceToml {
+                            source: Some(MarketplaceAllowedSourceKind::Git),
+                            url: Some("https://github.com/example/other.git".to_string()),
+                            ref_name: None,
+                            host_pattern: None,
+                            path: None,
+                        },
+                    ),
+                    (
+                        "shared".to_string(),
+                        MarketplaceAllowedSourceToml {
+                            source: Some(MarketplaceAllowedSourceKind::Git),
+                            url: Some("https://github.com/example/old.git".to_string()),
+                            ref_name: Some("release".to_string()),
+                            host_pattern: None,
+                            path: None,
+                        },
+                    ),
+                ]),
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn merge_unset_fields_preserves_raw_fields_when_marketplace_source_switches() -> Result<()> {
+        let mut target = ConfigRequirementsWithSources::default();
+        target.merge_unset_fields(
+            RequirementSource::CloudRequirements,
+            from_str(
+                r#"
+                    [marketplaces.allowed_sources.company]
+                    source = "host_pattern"
+                    host_pattern = '^github\.example\.com$'
+                "#,
+            )?,
+        );
+        target.merge_unset_fields(
+            RequirementSource::LegacyManagedConfigTomlFromMdm,
+            from_str(
+                r#"
+                    [marketplaces.allowed_sources.company]
+                    source = "git"
+                    url = "https://github.com/example/plugins.git"
+                    ref = "main"
+                "#,
+            )?,
+        );
+
+        let company = &target
+            .marketplaces
+            .expect("marketplaces should be present")
+            .value
+            .allowed_sources["company"];
+        assert_eq!(
+            company,
+            &MarketplaceAllowedSourceToml {
+                source: Some(MarketplaceAllowedSourceKind::HostPattern),
+                url: Some("https://github.com/example/plugins.git".to_string()),
+                ref_name: Some("main".to_string()),
+                host_pattern: Some("^github\\.example\\.com$".to_string()),
+                path: None,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn marketplace_allowed_source_rejects_unknown_fields() {
+        let err = from_str::<ConfigRequirementsToml>(
+            r#"
+                [marketplaces.allowed_sources.invalid]
+                source = "git"
+                url = "https://github.com/example/plugins.git"
+                reff = "main"
+            "#,
+        )
+        .expect_err("invalid marketplace rule should fail");
+
+        assert!(err.to_string().contains("unknown field `reff`"));
+    }
+
+    #[test]
+    fn local_marketplace_requirement_preserves_relative_path() -> Result<()> {
+        let config: ConfigRequirementsToml = from_str(
+            r#"
+                [marketplaces]
+                restrict_to_allowed_sources = true
+
+                [marketplaces.allowed_sources.local]
+                source = "local"
+                path = "../plugins"
+            "#,
+        )?;
+
+        assert_eq!(
+            config
+                .marketplaces
+                .expect("marketplaces should be present")
+                .allowed_sources["local"]
+                .path,
+            Some(PathBuf::from("../plugins"))
         );
         Ok(())
     }

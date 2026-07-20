@@ -2416,6 +2416,7 @@ impl Config {
             managed_hooks: _,
             mcp_servers,
             plugins: _,
+            marketplaces: _,
             exec_policy: _,
             enforce_residency,
             network: network_requirements,
