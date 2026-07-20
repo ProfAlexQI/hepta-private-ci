@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+UNIFIED_RUNNER="$ROOT/scripts/hepta-route-gate-runner"
+UNIFIED_REGISTRY="$ROOT/scripts/hepta-route-gate-specs-v1.json"
+COMPAT_RUNNER="$ROOT/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner"
+COMPAT_REGISTRY="$ROOT/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+MODE="${1:---schema}"
+
+[[ "$MODE" == "--schema" || "$MODE" == "--runtime-parity" ]] || {
+  echo "usage: scripts/hepta-route-gate-family-registry-self-test [--schema|--runtime-parity]" >&2
+  exit 2
+}
+
+expected_unified_validation='{"schema":"hepta_route_gate_specs_validation_v1","status":"ready","family_count":2,"spec_count":6}'
+expected_compat_validation='{"schema":"hepta_memory_live_mutation_activation_command_result_receipt_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+[[ "$("$UNIFIED_RUNNER" --validate)" == "$expected_unified_validation" ]]
+[[ "$("$COMPAT_RUNNER" --validate)" == "$expected_compat_validation" ]]
+
+fixture_root="$(mktemp -d /tmp/hepta-route-gate-family-registry.XXXXXX)"
+trap 'rm -rf "$fixture_root"' EXIT
+
+reset_fixture() {
+  rm -rf "$fixture_root/scripts"
+  mkdir -p "$fixture_root/scripts"
+  cp "$UNIFIED_RUNNER" "$fixture_root/scripts/hepta-route-gate-runner"
+  cp "$UNIFIED_REGISTRY" "$fixture_root/scripts/hepta-route-gate-specs-v1.json"
+  cp "$COMPAT_REGISTRY" \
+    "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+  chmod +x "$fixture_root/scripts/hepta-route-gate-runner"
+}
+
+replace_json() {
+  local filter="$1"
+  local target="$2"
+  local staged="$target.next"
+  jq "$filter" "$target" >"$staged"
+  mv "$staged" "$target"
+}
+
+assert_fixture_rejected() {
+  local label="$1"
+  if "$fixture_root/scripts/hepta-route-gate-runner" --validate \
+    >"$fixture_root/$label.stdout" 2>"$fixture_root/$label.stderr"; then
+    echo "route gate family negative fixture unexpectedly passed: $label" >&2
+    exit 1
+  fi
+}
+
+reset_fixture
+replace_json '.families[1].id = .families[0].id' \
+  "$fixture_root/scripts/hepta-route-gate-specs-v1.json"
+assert_fixture_rejected duplicate_family_id
+
+reset_fixture
+replace_json '.families[1].execution_profile = "unknown_profile_v1"' \
+  "$fixture_root/scripts/hepta-route-gate-specs-v1.json"
+assert_fixture_rejected unknown_execution_profile
+
+reset_fixture
+replace_json '.families[1].spec_registry = "../escape.json"' \
+  "$fixture_root/scripts/hepta-route-gate-specs-v1.json"
+assert_fixture_rejected registry_path_traversal
+
+reset_fixture
+replace_json '.families[1].spec_registry = "scripts/hepta-missing-route-gate-specs-v1.json"' \
+  "$fixture_root/scripts/hepta-route-gate-specs-v1.json"
+assert_fixture_rejected missing_family_registry
+
+reset_fixture
+replace_json '.schema_version = "wrong_schema_v1"' \
+  "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+assert_fixture_rejected incompatible_family_schema
+
+reset_fixture
+replace_json '.specs[0].baseline_normalized_output_sha256 = "not-a-sha"' \
+  "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+assert_fixture_rejected invalid_normalized_output_receipt
+
+reset_fixture
+duplicate_id="$(jq -r '.families[0].specs[0].id' "$fixture_root/scripts/hepta-route-gate-specs-v1.json")"
+staged="$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json.next"
+jq --arg id "$duplicate_id" '
+  .specs[0].id = $id
+  | .specs[0].gate_spec.pattern = ("/api/" + $id)
+  | .specs[0].gate_spec.source_command = ("/" + $id + " --json")
+  | .specs[0].gate_spec.capability = $id
+' "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json" >"$staged"
+mv "$staged" \
+  "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+assert_fixture_rejected duplicate_cross_family_spec_id
+
+set +e
+compat_usage="$($COMPAT_RUNNER 2>&1)"
+compat_usage_rc=$?
+compat_unknown="$($COMPAT_RUNNER hepta-unknown-memory-route 2>&1)"
+compat_unknown_rc=$?
+set -e
+[[ "$compat_usage_rc" == 2 ]]
+[[ "$compat_usage" == \
+  "usage: scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner <id|--validate>" ]]
+[[ "$compat_unknown_rc" == 1 ]]
+[[ "$compat_unknown" == \
+  "unknown Memory live-mutation activation-command result-receipt route spec id: hepta-unknown-memory-route" ]]
+
+if [[ "$MODE" == "--runtime-parity" ]]; then
+  while IFS= read -r id; do
+    "$UNIFIED_RUNNER" "$id" >"$fixture_root/$id.unified.json"
+    "$COMPAT_RUNNER" "$id" >"$fixture_root/$id.compat.json"
+    jq -S 'del(.focused_test_log)' "$fixture_root/$id.unified.json" \
+      >"$fixture_root/$id.unified.normalized.json"
+    jq -S 'del(.focused_test_log)' "$fixture_root/$id.compat.json" \
+      >"$fixture_root/$id.compat.normalized.json"
+    cmp "$fixture_root/$id.unified.normalized.json" \
+      "$fixture_root/$id.compat.normalized.json"
+  done < <(jq -r '.specs[].id' "$COMPAT_REGISTRY")
+fi
+
+printf '{"schema":"hepta_route_gate_family_registry_self_test_v1","status":"ready","negative_fixture_count":7,"compatibility_exit_fixture_count":2,"runtime_parity_checked":%s}\n' \
+  "$([[ "$MODE" == "--runtime-parity" ]] && echo true || echo false)"

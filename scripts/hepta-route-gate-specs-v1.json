@@ -12,6 +12,7 @@
   "families": [
     {
       "id": "first_model_invocation_result_receipt_transition_v1",
+      "execution_profile": "first_model_invocation_transition_v1",
       "side_effect_boundary": "static source verification plus focused offline tests; optional live GET validation; never invokes a provider or model and never writes Memory, KG, channels, service state, or release state",
       "common_report_fields": {
         "provider_invocation_authorized": false,
@@ -408,6 +409,16 @@
           "pass_message": "Hepta first model invocation operator approval final authorization dry-run result receipt cancellation/supersession denial route gate passed"
         }
       ]
+    },
+    {
+      "id": "memory_live_mutation_activation_command_result_receipt_v1",
+      "execution_profile": "native_requirements_terminal_v1",
+      "spec_registry": "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json",
+      "spec_schema_version": "hepta_memory_live_mutation_activation_command_result_receipt_route_gate_specs_v1",
+      "compatibility_executor": "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner",
+      "compatibility_validation_schema": "hepta_memory_live_mutation_activation_command_result_receipt_route_gate_specs_validation_v1",
+      "compatibility_error_label": "Memory live-mutation activation-command result-receipt",
+      "side_effect_boundary": "static native route verification plus focused offline tests and terminal coverage; optional live GET validation; never writes Memory, KG, channels, service state, or release state"
     }
   ]
 }

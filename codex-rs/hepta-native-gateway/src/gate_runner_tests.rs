@@ -761,6 +761,41 @@ fn parameterized_memory_live_mutation_activation_command_result_receipt_route_fi
     );
     assert_eq!(fixtures.len(), 3);
 
+    let unified_fixture_path = repo_root().join("scripts/hepta-route-gate-specs-v1.json");
+    let unified_manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&unified_fixture_path)
+            .with_context(|| format!("failed to read {}", unified_fixture_path.display()))
+            .expect("unified route gate family registry"),
+    )
+    .expect("unified route gate family registry value");
+    let unified_family = unified_manifest["families"]
+        .as_array()
+        .expect("unified route gate families")
+        .iter()
+        .find(|family| family["id"] == "memory_live_mutation_activation_command_result_receipt_v1")
+        .expect("Memory live-mutation family projected into unified route registry");
+    assert_eq!(
+        unified_family["execution_profile"],
+        "native_requirements_terminal_v1"
+    );
+    assert_eq!(
+        unified_family["spec_registry"],
+        "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
+    );
+    assert_eq!(
+        unified_family["compatibility_executor"],
+        "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner"
+    );
+
+    let compatibility_runner_path = repo_root().join(
+        "scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-runner",
+    );
+    let compatibility_runner = fs::read_to_string(&compatibility_runner_path)
+        .with_context(|| format!("failed to read {}", compatibility_runner_path.display()))
+        .expect("Memory live-mutation compatibility route runner");
+    assert!(compatibility_runner.lines().count() <= 40);
+    assert!(compatibility_runner.contains("scripts/hepta-route-gate-runner"));
+
     for fixture in fixtures {
         let id = fixture["id"]
             .as_str()
