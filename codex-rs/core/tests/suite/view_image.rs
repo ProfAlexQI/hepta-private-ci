@@ -62,9 +62,8 @@ use tempfile::TempDir;
 use tokio::time::Duration;
 use wiremock::BodyPrintLimit;
 use wiremock::MockServer;
-#[cfg(not(debug_assertions))]
 use wiremock::ResponseTemplate;
-#[cfg(not(debug_assertions))]
+use wiremock::http::Method;
 use wiremock::matchers::body_string_contains;
 
 const VIEW_IMAGE_TURN_COMPLETE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -321,6 +320,7 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
     let mut item_started = None;
     let mut item_completed = None;
     let mut legacy_event = None;
+    let mut unexpected_error = None;
     wait_for_event_with_timeout(
         codex,
         |event| match event {
@@ -340,6 +340,10 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
                 legacy_event = Some(event.clone());
                 false
             }
+            EventMsg::Error(error) => {
+                unexpected_error = Some(error.clone());
+                false
+            }
             EventMsg::TurnComplete(_) => true,
             _ => false,
         },
@@ -348,6 +352,11 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
         VIEW_IMAGE_TURN_COMPLETE_TIMEOUT,
     )
     .await;
+
+    assert!(
+        unexpected_error.is_none(),
+        "valid view_image path emitted an error: {unexpected_error:?}"
+    );
 
     match item_started.expect("view image item started event emitted") {
         codex_protocol::items::TurnItem::ImageView(item) => {
@@ -1443,12 +1452,34 @@ async fn view_image_tool_returns_unsupported_message_for_text_only_model() -> an
     Ok(())
 }
 
-#[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn replaces_invalid_local_image_after_bad_request() -> anyhow::Result<()> {
+async fn invalid_tool_image_error_does_not_retry_or_rewrite_history() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
+
+    let mut builder = test_codex();
+    let test = builder.build_with_remote_env(&server).await?;
+    let TestCodex {
+        codex,
+        session_configured,
+        ..
+    } = &test;
+
+    let rel_path = "assets/poisoned.png";
+    write_workspace_png(&test, rel_path, 1024, 512, [10u8, 20, 30, 255]).await?;
+
+    let call_id = "invalid-view-image-call";
+    let arguments = serde_json::json!({ "path": rel_path }).to_string();
+    let tool_call_mock = responses::mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_function_call(call_id, "view_image", &arguments),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
 
     const INVALID_IMAGE_ERROR: &str =
         "The image data you provided does not represent a valid image";
@@ -1462,33 +1493,87 @@ async fn replaces_invalid_local_image_after_bad_request() -> anyhow::Result<()> 
     )
     .await;
 
-    let success_response = sse(vec![
-        ev_response_created("resp-2"),
-        ev_assistant_message("msg-1", "done"),
-        ev_completed("resp-2"),
-    ]);
-
-    let completion_mock = responses::mount_sse_once(&server, success_response).await;
-
-    let mut builder = test_codex();
-    let test = builder.build_with_remote_env(&server).await?;
-    let TestCodex {
-        codex,
-        session_configured,
-        ..
-    } = &test;
-
-    let rel_path = "assets/poisoned.png";
-    let abs_path = write_workspace_png(&test, rel_path, 1024, 512, [10u8, 20, 30, 255]).await?;
-
     let session_model = session_configured.model.clone();
 
     codex
         .submit(disabled_user_turn(
             &test,
-            vec![UserInput::LocalImage {
-                path: abs_path.clone(),
-                detail: None,
+            vec![UserInput::Text {
+                text: "inspect the image".into(),
+                text_elements: Vec::new(),
+            }],
+            session_model.clone(),
+        ))
+        .await?;
+
+    let mut invalid_image_error = None;
+    wait_for_event_with_timeout(
+        &codex,
+        |event| match event {
+            EventMsg::Error(error) => {
+                invalid_image_error = Some(error.clone());
+                false
+            }
+            EventMsg::TurnComplete(_) => true,
+            _ => false,
+        },
+        VIEW_IMAGE_TURN_COMPLETE_TIMEOUT,
+    )
+    .await;
+
+    tool_call_mock.single_request();
+    let invalid_request = invalid_image_mock.single_request();
+    let invalid_output = invalid_request.function_call_output(call_id);
+    let invalid_output_items = invalid_output
+        .get("output")
+        .and_then(Value::as_array)
+        .expect("view_image output should be content items");
+    assert_eq!(
+        invalid_output_items
+            .iter()
+            .filter(|item| item.get("type").and_then(Value::as_str) == Some("input_image"))
+            .count(),
+        1,
+        "the rejected request should contain the tool image"
+    );
+
+    let error = invalid_image_error.expect("invalid image should emit a terminal error");
+    assert_eq!(
+        error.codex_error_info,
+        Some(codex_protocol::protocol::CodexErrorInfo::BadRequest)
+    );
+    assert!(error.message.contains("Invalid image"));
+
+    let response_requests_after_error = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|request| {
+            request.method == Method::POST && request.url.path().ends_with("/responses")
+        })
+        .count();
+    assert_eq!(
+        response_requests_after_error, 2,
+        "invalid tool images must not trigger a sanitized retry"
+    );
+
+    let followup_mock = responses::mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-3"),
+            ev_assistant_message("msg-3", "done"),
+            ev_completed("resp-3"),
+        ]),
+    )
+    .await;
+
+    codex
+        .submit(disabled_user_turn(
+            &test,
+            vec![UserInput::Text {
+                text: "continue without changing prior history".into(),
+                text_elements: Vec::new(),
             }],
             session_model,
         ))
@@ -1501,20 +1586,27 @@ async fn replaces_invalid_local_image_after_bad_request() -> anyhow::Result<()> 
     )
     .await;
 
-    let first_body = invalid_image_mock.single_request().body_json();
-    assert!(
-        find_image_message(&first_body).is_some(),
-        "initial request should include the uploaded image"
+    let followup_request = followup_mock.single_request();
+    let preserved_output = followup_request.function_call_output(call_id);
+    let preserved_output_items = preserved_output
+        .get("output")
+        .and_then(Value::as_array)
+        .expect("preserved view_image output should be content items");
+    assert_eq!(
+        preserved_output_items
+            .iter()
+            .filter(|item| item.get("type").and_then(Value::as_str) == Some("input_image"))
+            .count(),
+        1,
+        "the next turn should see the original tool image in canonical history"
     );
-
-    let second_request = completion_mock.single_request();
-    let second_body = second_request.body_json();
     assert!(
-        find_image_message(&second_body).is_none(),
-        "second request should replace the invalid image"
+        !preserved_output_items.iter().any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("input_text")
+                && item.get("text").and_then(Value::as_str) == Some("Invalid image")
+        }),
+        "canonical history must not contain the legacy replacement placeholder"
     );
-    let user_texts = second_request.message_input_texts("user");
-    assert!(user_texts.iter().any(|text| text == "Invalid image"));
 
     Ok(())
 }
