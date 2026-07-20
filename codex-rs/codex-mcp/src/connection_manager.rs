@@ -20,6 +20,7 @@ use crate::elicitation::ElicitationRequestManager;
 use crate::elicitation::ElicitationReviewerHandle;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::ToolPluginProvenance;
+use crate::mcp::codex_apps_mcp_url_accepts_chatgpt_session_auth;
 use crate::rmcp_client::AsyncManagedClient;
 use crate::rmcp_client::DEFAULT_STARTUP_TIMEOUT;
 use crate::rmcp_client::MCP_TOOLS_FETCH_UNCACHED_DURATION_METRIC;
@@ -233,12 +234,20 @@ impl McpConnectionManager {
                         } => bearer_token_env_var.is_some(),
                         McpServerTransportConfig::Stdio { .. } => false,
                     });
-            let runtime_auth_provider =
-                if server_name == CODEX_APPS_MCP_SERVER_NAME && !uses_env_bearer_token {
-                    codex_apps_auth_provider.clone()
-                } else {
-                    None
-                };
+            let runtime_auth_provider = if server_name == CODEX_APPS_MCP_SERVER_NAME
+                && !uses_env_bearer_token
+                && server
+                    .configured_config()
+                    .is_some_and(|config| match &config.transport {
+                        McpServerTransportConfig::StreamableHttp { url, .. } => {
+                            codex_apps_mcp_url_accepts_chatgpt_session_auth(url)
+                        }
+                        McpServerTransportConfig::Stdio { .. } => false,
+                    }) {
+                codex_apps_auth_provider.clone()
+            } else {
+                None
+            };
             let async_managed_client = AsyncManagedClient::new(
                 server_name.clone(),
                 server,

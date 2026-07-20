@@ -15,6 +15,7 @@ use tracing::warn;
 use crate::server::EffectiveMcpServer;
 
 use super::CODEX_APPS_MCP_SERVER_NAME;
+use super::codex_apps_mcp_url_accepts_chatgpt_session_auth;
 
 #[derive(Debug, Clone)]
 pub struct McpOAuthLoginConfig {
@@ -145,8 +146,10 @@ where
                     &config.transport,
                     McpServerTransportConfig::StreamableHttp {
                         bearer_token_env_var: None,
+                        url,
                         ..
                     }
+                    if codex_apps_mcp_url_accepts_chatgpt_session_auth(url)
                 )
             });
         async move {

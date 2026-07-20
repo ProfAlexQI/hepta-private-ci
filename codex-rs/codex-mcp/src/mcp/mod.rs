@@ -24,6 +24,7 @@ use codex_config::types::AppToolApproval;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::OAuthCredentialsStoreMode;
 use codex_login::CodexAuth;
+use codex_model_provider::CHATGPT_CODEX_BASE_URL;
 use codex_plugin::PluginCapabilitySummary;
 use codex_protocol::mcp::Resource;
 use codex_protocol::mcp::ResourceTemplate;
@@ -414,17 +415,33 @@ fn normalize_codex_apps_base_url(base_url: &str) -> String {
 
 fn codex_apps_mcp_url_for_base_url(base_url: &str, apps_mcp_path_override: Option<&str>) -> String {
     let base_url = normalize_codex_apps_base_url(base_url);
-    let (base_url, default_path) = if base_url.contains("/backend-api") {
-        (base_url, "wham/apps")
-    } else if base_url.contains("/api/codex") {
-        (base_url, "apps")
+    let base_url = if base_url.contains("/backend-api") || base_url.contains("/api/codex") {
+        base_url
     } else {
-        (format!("{base_url}/api/codex"), "apps")
+        format!("{base_url}/api/codex")
     };
     let path = apps_mcp_path_override
-        .unwrap_or(default_path)
+        .unwrap_or("ps/mcp")
         .trim_start_matches('/');
     format!("{base_url}/{path}")
+}
+
+/// Returns whether a host-owned Apps MCP URL may receive the current ChatGPT
+/// session credential.
+///
+/// `chatgpt_base_url` remains configurable for local and compatibility
+/// endpoints, but that configuration must not expand the first-party credential
+/// boundary. Explicit environment bearer tokens are handled separately.
+pub(crate) fn codex_apps_mcp_url_accepts_chatgpt_session_auth(url: &str) -> bool {
+    let trusted_origin = url::Url::parse(CHATGPT_CODEX_BASE_URL)
+        .ok()
+        .map(|url| url.origin());
+    let candidate_origin = url::Url::parse(url)
+        .ok()
+        .filter(|url| url.scheme() == "https")
+        .map(|url| url.origin());
+
+    trusted_origin.is_some() && candidate_origin == trusted_origin
 }
 
 fn codex_apps_mcp_server_config(config: &McpConfig) -> McpServerConfig {

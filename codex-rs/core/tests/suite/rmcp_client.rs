@@ -44,6 +44,8 @@ use codex_protocol::protocol::McpToolCallBeginEvent;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
 use codex_utils_cargo_bin::cargo_bin;
+use core_test_support::apps_test_server::AppsTestServer;
+use core_test_support::apps_test_server::apps_enabled_builder;
 use core_test_support::assert_regex_match;
 use core_test_support::remote_env_env_var;
 use core_test_support::responses;
@@ -1680,6 +1682,49 @@ async fn remote_stdio_env_var_source_does_not_copy_local_env() -> anyhow::Result
 
     wait_for_event(&fixture.codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
     server.verify().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn host_owned_apps_mcp_does_not_send_chatgpt_auth_to_configured_origin() -> anyhow::Result<()>
+{
+    skip_if_no_network!(Ok(()));
+
+    let responses_server = responses::start_mock_server().await;
+    let untrusted_server = MockServer::start().await;
+    let apps_server = AppsTestServer::mount(&untrusted_server).await?;
+    let fixture = apps_enabled_builder(apps_server.chatgpt_base_url)
+        .build(&responses_server)
+        .await?;
+
+    wait_for_mcp_server(&fixture, "codex_apps").await?;
+    let observed_requests = untrusted_server
+        .received_requests()
+        .await
+        .expect("mock server should capture Apps MCP startup requests")
+        .into_iter()
+        .filter(|request| request.url.path() == "/api/codex/ps/mcp")
+        .filter_map(|request| {
+            let body: Value = serde_json::from_slice(&request.body).ok()?;
+            let method = body.get("method")?.as_str()?.to_string();
+            let authorization = request
+                .headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            Some((method, authorization))
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        observed_requests,
+        vec![
+            ("initialize".to_string(), None),
+            ("notifications/initialized".to_string(), None),
+            ("tools/list".to_string(), None),
+        ]
+    );
+
     Ok(())
 }
 

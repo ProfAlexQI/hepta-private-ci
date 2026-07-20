@@ -164,49 +164,49 @@ fn tool_plugin_provenance_collects_app_and_mcp_sources() {
 }
 
 #[test]
-fn codex_apps_mcp_url_for_base_url_keeps_existing_paths() {
+fn codex_apps_mcp_url_for_base_url_uses_plugin_service_paths() {
     assert_eq!(
         codex_apps_mcp_url_for_base_url(
             "https://chatgpt.com/backend-api",
             /*apps_mcp_path_override*/ None,
         ),
-        "https://chatgpt.com/backend-api/wham/apps"
+        "https://chatgpt.com/backend-api/ps/mcp"
     );
     assert_eq!(
         codex_apps_mcp_url_for_base_url(
             "https://chat.openai.com",
             /*apps_mcp_path_override*/ None,
         ),
-        "https://chat.openai.com/backend-api/wham/apps"
+        "https://chat.openai.com/backend-api/ps/mcp"
     );
     assert_eq!(
         codex_apps_mcp_url_for_base_url(
             "http://localhost:8080/api/codex",
             /*apps_mcp_path_override*/ None,
         ),
-        "http://localhost:8080/api/codex/apps"
+        "http://localhost:8080/api/codex/ps/mcp"
     );
     assert_eq!(
         codex_apps_mcp_url_for_base_url(
             "http://localhost:8080",
             /*apps_mcp_path_override*/ None,
         ),
-        "http://localhost:8080/api/codex/apps"
+        "http://localhost:8080/api/codex/ps/mcp"
     );
 }
 
 #[test]
-fn codex_apps_mcp_url_uses_legacy_codex_apps_path() {
+fn codex_apps_mcp_url_uses_plugin_service_path() {
     let config = test_mcp_config(PathBuf::from("/tmp"));
 
     assert_eq!(
         codex_apps_mcp_url(&config),
-        "https://chatgpt.com/backend-api/wham/apps"
+        "https://chatgpt.com/backend-api/ps/mcp"
     );
 }
 
 #[test]
-fn codex_apps_server_config_uses_legacy_codex_apps_path() {
+fn codex_apps_server_config_uses_plugin_service_path() {
     let mut config = test_mcp_config(PathBuf::from("/tmp"));
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
 
@@ -227,7 +227,34 @@ fn codex_apps_server_config_uses_legacy_codex_apps_path() {
         _ => panic!("expected streamable http transport for Hepta apps"),
     };
 
-    assert_eq!(url, "https://chatgpt.com/backend-api/wham/apps");
+    assert_eq!(url, "https://chatgpt.com/backend-api/ps/mcp");
+}
+
+#[test]
+fn codex_apps_chatgpt_session_auth_is_limited_to_first_party_https_origin() {
+    for trusted in [
+        "https://chatgpt.com/backend-api/ps/mcp",
+        "https://chatgpt.com:443/backend-api/ps/mcp",
+        "https://chatgpt.com/api/codex/ps/mcp?version=1",
+    ] {
+        assert!(
+            codex_apps_mcp_url_accepts_chatgpt_session_auth(trusted),
+            "expected trusted first-party Apps MCP URL: {trusted}"
+        );
+    }
+
+    for untrusted in [
+        "http://chatgpt.com/backend-api/ps/mcp",
+        "https://chat.openai.com/backend-api/ps/mcp",
+        "https://chatgpt.com.attacker.example/backend-api/ps/mcp",
+        "https://chatgpt.com@attacker.example/backend-api/ps/mcp",
+        "not-a-url",
+    ] {
+        assert!(
+            !codex_apps_mcp_url_accepts_chatgpt_session_auth(untrusted),
+            "expected Apps MCP URL to remain outside the session-auth boundary: {untrusted}"
+        );
+    }
 }
 
 #[test]
@@ -343,6 +370,31 @@ async fn effective_mcp_servers_preserve_user_servers_and_add_codex_apps() {
             tools: HashMap::new(),
         },
     );
+    config.configured_mcp_servers.insert(
+        CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        McpServerConfig {
+            transport: McpServerTransportConfig::StreamableHttp {
+                url: "https://untrusted.example/mcp".to_string(),
+                bearer_token_env_var: None,
+                http_headers: None,
+                env_http_headers: None,
+            },
+            experimental_environment: None,
+            enabled: true,
+            required: false,
+            supports_parallel_tool_calls: false,
+            disabled_reason: None,
+            startup_timeout_sec: None,
+            tool_timeout_sec: None,
+            default_tools_approval_mode: None,
+            enabled_tools: None,
+            disabled_tools: None,
+            scopes: None,
+            oauth: None,
+            oauth_resource: None,
+            tools: HashMap::new(),
+        },
+    );
 
     let effective = effective_mcp_servers(&config, Some(&auth));
 
@@ -378,7 +430,7 @@ async fn effective_mcp_servers_preserve_user_servers_and_add_codex_apps() {
     }
     match &codex_apps.transport {
         McpServerTransportConfig::StreamableHttp { url, .. } => {
-            assert_eq!(url, "https://chatgpt.com/backend-api/wham/apps");
+            assert_eq!(url, "https://chatgpt.com/backend-api/ps/mcp");
         }
         other => panic!("expected streamable http transport, got {other:?}"),
     }

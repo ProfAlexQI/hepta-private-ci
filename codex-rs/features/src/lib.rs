@@ -130,7 +130,7 @@ pub enum Feature {
     Apps,
     /// Enable MCP apps.
     EnableMcpApps,
-    /// Use the new path for the host-owned apps MCP server.
+    /// Allow an explicit compatibility path override for the host-owned apps MCP server.
     AppsMcpPathOverride,
     /// Enable the tool_search tool for apps.
     ToolSearch,
