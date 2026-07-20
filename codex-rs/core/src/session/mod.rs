@@ -33,7 +33,9 @@ use crate::context::PermissionsInstructions;
 use crate::context::PersonalitySpecInstructions;
 use crate::default_skill_metadata_budget;
 use crate::environment_selection::ResolvedTurnEnvironments;
+use crate::exec_policy::BANNED_PREFIX_SUGGESTIONS;
 use crate::exec_policy::ExecPolicyManager;
+use crate::exec_policy::default_policy_path;
 use crate::parse_turn_item;
 use crate::path_utils::normalize_for_native_workdir;
 use crate::realtime_conversation::RealtimeConversationManager;
@@ -54,6 +56,7 @@ use codex_config::types::OAuthCredentialsStoreMode;
 use codex_exec_server::Environment;
 use codex_exec_server::EnvironmentManager;
 use codex_exec_server::FileSystemSandboxContext;
+use codex_execpolicy::prefix_rule_migration;
 use codex_extension_api::PromptSlot;
 use codex_features::FEATURES;
 use codex_features::Feature;
@@ -436,6 +439,36 @@ pub(crate) const INITIAL_SUBMIT_ID: &str = "";
 pub(crate) const SUBMISSION_CHANNEL_CAPACITY: usize = 512;
 const CYBER_VERIFY_URL: &str = "https://chatgpt.com/cyber";
 
+async fn migrate_legacy_exec_policy_allow_rules(config: &Config) -> CodexResult<()> {
+    if config
+        .config_layer_stack
+        .ignore_user_and_project_exec_policy_rules()
+    {
+        return Ok(());
+    }
+
+    let codex_home = config.codex_home.clone();
+    let policy_path = default_policy_path(codex_home.as_path());
+    tokio::task::spawn_blocking(move || {
+        prefix_rule_migration(
+            codex_home.as_path(),
+            policy_path.as_path(),
+            BANNED_PREFIX_SUGGESTIONS,
+        )
+    })
+    .await
+    .map_err(|err| {
+        CodexErr::Fatal(format!(
+            "failed to join legacy exec policy allow-rule migration: {err}"
+        ))
+    })?
+    .map_err(|err| {
+        CodexErr::Fatal(format!(
+            "failed to migrate legacy exec policy allow rules: {err}"
+        ))
+    })
+}
+
 impl Codex {
     /// Spawn a new Hepta runtime and initialize the session.
     pub(crate) async fn spawn(args: CodexSpawnArgs) -> CodexResult<CodexSpawnOk> {
@@ -529,6 +562,10 @@ impl Codex {
         } else if let Some(exec_policy) = &inherited_exec_policy {
             Arc::clone(exec_policy)
         } else {
+            // Legacy broad allow rules were once suggested by Codex itself.
+            // Remove those exact rules before loading policy, and fail closed
+            // when migration cannot be proven complete.
+            migrate_legacy_exec_policy_allow_rules(&config).await?;
             Arc::new(
                 ExecPolicyManager::load(&config.config_layer_stack)
                     .await

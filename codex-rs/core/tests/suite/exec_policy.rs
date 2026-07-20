@@ -23,6 +23,8 @@ use core_test_support::wait_for_event;
 use serde_json::Value;
 use serde_json::json;
 use std::fs;
+use std::sync::Arc;
+use tempfile::TempDir;
 
 fn collaboration_mode_for_model(model: String) -> CollaborationMode {
     CollaborationMode {
@@ -77,6 +79,82 @@ fn assert_no_matched_rules_invariant(output_item: &Value) {
         !output.contains("invariant failed: matched_rules must be non-empty"),
         "unexpected invariant panic surfaced in output: {output}"
     );
+}
+
+#[tokio::test]
+async fn startup_migrates_default_policy_and_honors_ignore_rules() -> Result<()> {
+    const LEGACY_POLICY: &str = r#"prefix_rule(pattern=["rm"], decision="allow")
+prefix_rule(pattern=["git", "status"], decision="allow")
+"#;
+    const MIGRATED_POLICY: &str = r#"prefix_rule(pattern=["git", "status"], decision="allow")
+"#;
+    const MIGRATION_MARKER_FILENAME: &str = ".sandbox_migration";
+
+    let server = start_mock_server().await;
+    let migrated_home = Arc::new(TempDir::new()?);
+    let migrated_policy_path = migrated_home.path().join("rules/default.rules");
+    fs::create_dir_all(
+        migrated_policy_path
+            .parent()
+            .expect("rules directory must have a parent"),
+    )?;
+    fs::write(&migrated_policy_path, LEGACY_POLICY)?;
+    let mut migrated_builder = test_codex().with_home(Arc::clone(&migrated_home));
+    let migrated = migrated_builder.build(&server).await?;
+    assert_eq!(fs::read_to_string(&migrated_policy_path)?, MIGRATED_POLICY);
+    assert_eq!(
+        fs::read_to_string(migrated.codex_home_path().join(MIGRATION_MARKER_FILENAME))?,
+        "v1\n"
+    );
+
+    let ignored_home = Arc::new(TempDir::new()?);
+    let ignored_policy_path = ignored_home.path().join("rules/default.rules");
+    fs::create_dir_all(
+        ignored_policy_path
+            .parent()
+            .expect("rules directory must have a parent"),
+    )?;
+    fs::write(&ignored_policy_path, LEGACY_POLICY)?;
+    let mut ignored_builder = test_codex()
+        .with_home(Arc::clone(&ignored_home))
+        .with_config(|config| {
+            config.config_layer_stack = config
+                .config_layer_stack
+                .clone()
+                .with_user_and_project_exec_policy_rules_ignored(
+                    /*ignore_user_and_project_exec_policy_rules*/ true,
+                );
+        });
+    let ignored = ignored_builder.build(&server).await?;
+    assert_eq!(fs::read_to_string(&ignored_policy_path)?, LEGACY_POLICY);
+    assert!(
+        !ignored
+            .codex_home_path()
+            .join(MIGRATION_MARKER_FILENAME)
+            .exists()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn startup_fails_closed_for_invalid_migration_marker() -> Result<()> {
+    const MIGRATION_MARKER_FILENAME: &str = ".sandbox_migration";
+    let server = start_mock_server().await;
+    let codex_home = Arc::new(TempDir::new()?);
+    fs::write(codex_home.path().join(MIGRATION_MARKER_FILENAME), "partial")?;
+    let mut builder = test_codex().with_home(Arc::clone(&codex_home));
+
+    let error = match builder.build(&server).await {
+        Ok(_) => panic!("session startup must reject an unproven migration marker"),
+        Err(error) => error,
+    };
+    assert!(
+        format!("{error:#}").contains("failed to migrate legacy exec policy allow rules"),
+        "unexpected startup error: {error:#}"
+    );
+
+    Ok(())
 }
 
 #[tokio::test]

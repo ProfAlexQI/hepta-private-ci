@@ -245,6 +245,7 @@ fn assert_no_local_persistence_artifacts(codex_home: &Path) -> Result<()> {
     assert_eq!(
         entries,
         BTreeSet::from([
+            ".sandbox_migration".to_string(),
             "config.toml".to_string(),
             "installation_id".to_string(),
             "memories".to_string(),
