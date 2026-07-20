@@ -314,6 +314,61 @@ fn for_prompt_preserves_inter_agent_assistant_messages() {
 }
 
 #[test]
+fn cloned_large_history_shares_items_until_live_or_snapshot_mutates() {
+    let first = assistant_msg(&"first ".repeat(64 * 1_024));
+    let second = assistant_msg("second");
+    let replacement = assistant_msg("compacted replacement");
+    let mut live_history = create_history_with_items(vec![first.clone()]);
+    let frozen_snapshot = live_history.clone();
+    let initial_version = live_history.history_version();
+
+    assert!(std::ptr::eq(
+        live_history.raw_items().as_ptr(),
+        frozen_snapshot.raw_items().as_ptr()
+    ));
+    assert_eq!(std::sync::Arc::strong_count(&live_history.items), 2);
+
+    let read_only_snapshots = (0..64).map(|_| live_history.clone()).collect::<Vec<_>>();
+    assert!(read_only_snapshots.iter().all(|snapshot| std::ptr::eq(
+        live_history.raw_items().as_ptr(),
+        snapshot.raw_items().as_ptr()
+    )));
+    assert_eq!(std::sync::Arc::strong_count(&live_history.items), 66);
+    drop(read_only_snapshots);
+    assert_eq!(std::sync::Arc::strong_count(&live_history.items), 2);
+
+    live_history.record_items(
+        std::slice::from_ref(&second),
+        TruncationPolicy::Tokens(200_000),
+    );
+
+    assert!(!std::ptr::eq(
+        live_history.raw_items().as_ptr(),
+        frozen_snapshot.raw_items().as_ptr()
+    ));
+    assert_eq!(frozen_snapshot.raw_items(), std::slice::from_ref(&first));
+    assert_eq!(live_history.raw_items(), &[first.clone(), second]);
+    assert_eq!(live_history.history_version(), initial_version);
+    assert_eq!(frozen_snapshot.history_version(), initial_version);
+
+    let mut rewritten_snapshot = frozen_snapshot.clone();
+    rewritten_snapshot.replace(vec![replacement.clone()]);
+
+    assert_eq!(frozen_snapshot.raw_items(), std::slice::from_ref(&first));
+    assert_eq!(live_history.raw_items(), &[first, assistant_msg("second")]);
+    assert_eq!(
+        rewritten_snapshot.raw_items(),
+        std::slice::from_ref(&replacement)
+    );
+    assert_eq!(frozen_snapshot.history_version(), initial_version);
+    assert_eq!(live_history.history_version(), initial_version);
+    assert_eq!(
+        rewritten_snapshot.history_version(),
+        initial_version.saturating_add(1)
+    );
+}
+
+#[test]
 fn drop_last_n_user_turns_treats_inter_agent_assistant_messages_as_instruction_turns() {
     let first_turn = user_input_text_msg("first");
     let first_reply = assistant_msg("done");
@@ -425,8 +480,10 @@ fn for_prompt_strips_images_when_model_does_not_support_images() {
         },
     ];
     let history = create_history_with_items(items);
+    let canonical_items = history.raw_items().to_vec();
+    let canonical_version = history.history_version();
     let text_only_modalities = vec![InputModality::Text];
-    let stripped = history.for_prompt(&text_only_modalities);
+    let stripped = history.clone().for_prompt(&text_only_modalities);
 
     let expected = vec![
         ResponseItem::Message {
@@ -487,6 +544,8 @@ fn for_prompt_strips_images_when_model_does_not_support_images() {
         },
     ];
     assert_eq!(stripped, expected);
+    assert_eq!(history.raw_items(), canonical_items);
+    assert_eq!(history.history_version(), canonical_version);
 
     // With image support, images are preserved
     let modalities = default_input_modalities();
@@ -737,6 +796,37 @@ fn drop_last_n_user_turns_preserves_prefix() {
         history.for_prompt(&modalities),
         vec![assistant_msg("session prefix item")]
     );
+}
+
+#[test]
+fn rollback_on_clone_does_not_mutate_canonical_history_or_version() {
+    let full_history = vec![
+        assistant_msg("session prefix item"),
+        user_msg("u1"),
+        assistant_msg("a1"),
+        user_msg("u2"),
+        assistant_msg("a2"),
+    ];
+    let canonical_history = create_history_with_items(full_history.clone());
+    let canonical_version = canonical_history.history_version();
+    let mut rollback_history = canonical_history.clone();
+
+    rollback_history.drop_last_n_user_turns(/*num_turns*/ 1);
+
+    assert_eq!(canonical_history.raw_items(), full_history);
+    assert_eq!(canonical_history.history_version(), canonical_version);
+    assert_eq!(
+        rollback_history.raw_items(),
+        &full_history[..full_history.len() - 2]
+    );
+    assert_eq!(
+        rollback_history.history_version(),
+        canonical_version.saturating_add(1)
+    );
+    assert!(!std::ptr::eq(
+        canonical_history.raw_items().as_ptr(),
+        rollback_history.raw_items().as_ptr()
+    ));
 }
 
 #[test]
