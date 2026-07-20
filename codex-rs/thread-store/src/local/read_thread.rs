@@ -4,6 +4,7 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_rollout::RolloutRecorder;
 use codex_rollout::find_archived_thread_path_by_id_str;
 use codex_rollout::find_thread_name_by_id;
@@ -110,20 +111,30 @@ pub(super) async fn read_thread_by_rollout_path(
         });
     }
     if let Some(metadata) = read_sqlite_metadata(store, thread.thread_id).await {
-        let existing_git_info = thread.git_info.take();
-        let (fallback_sha, fallback_branch, fallback_origin_url) = match existing_git_info {
-            Some(info) => (
-                info.commit_hash.map(|sha| sha.0),
-                info.branch,
-                info.repository_url,
-            ),
-            None => (None, None, None),
+        thread.git_info = if thread.history_mode == ThreadHistoryMode::Paginated {
+            // The rollout contains only its initial Git tuple. Preserve SQLite NULLs as explicit
+            // clears instead of falling back to stale rollout values.
+            git_info_from_parts(
+                metadata.git_sha,
+                metadata.git_branch,
+                metadata.git_origin_url,
+            )
+        } else {
+            let (fallback_sha, fallback_branch, fallback_origin_url) = match thread.git_info.take()
+            {
+                Some(info) => (
+                    info.commit_hash.map(|sha| sha.0),
+                    info.branch,
+                    info.repository_url,
+                ),
+                None => (None, None, None),
+            };
+            git_info_from_parts(
+                metadata.git_sha.or(fallback_sha),
+                metadata.git_branch.or(fallback_branch),
+                metadata.git_origin_url.or(fallback_origin_url),
+            )
         };
-        thread.git_info = git_info_from_parts(
-            metadata.git_sha.or(fallback_sha),
-            metadata.git_branch.or(fallback_branch),
-            metadata.git_origin_url.or(fallback_origin_url),
-        );
     }
     attach_history_if_requested(&mut thread, include_history).await?;
     Ok(thread)
@@ -434,6 +445,7 @@ mod tests {
     use crate::local::test_support::write_archived_session_file;
     use crate::local::test_support::write_session_file;
     use crate::local::test_support::write_session_file_with_fork;
+    use crate::local::test_support::write_session_file_with_history_mode;
 
     #[tokio::test]
     async fn read_thread_returns_active_rollout_summary() {
@@ -540,6 +552,55 @@ mod tests {
             git_info.repository_url.as_deref(),
             Some("https://example.com/repo.git")
         );
+    }
+
+    #[tokio::test]
+    async fn read_paginated_thread_by_rollout_path_uses_complete_sqlite_git_tuple() {
+        let home = TempDir::new().expect("temp dir");
+        let config = test_config(home.path());
+        let uuid = Uuid::from_u128(224);
+        let thread_id = ThreadId::from_string(&uuid.to_string()).expect("valid thread id");
+        let active_path = write_session_file_with_history_mode(
+            home.path(),
+            "2025-01-03T12-00-00",
+            uuid,
+            ThreadHistoryMode::Paginated,
+        )
+        .expect("session file");
+        let runtime = codex_state::StateRuntime::init(
+            config.sqlite_home.clone(),
+            config.default_model_provider_id.clone(),
+        )
+        .await
+        .expect("state db should initialize");
+        let store = LocalThreadStore::new(config.clone(), Some(runtime.clone()));
+        let mut builder = ThreadMetadataBuilder::new(
+            thread_id,
+            active_path.clone(),
+            Utc::now(),
+            SessionSource::Cli,
+        );
+        builder.model_provider = Some(config.default_model_provider_id.clone());
+        builder.history_mode = ThreadHistoryMode::Paginated;
+        builder.git_branch = Some("sqlite-branch".to_string());
+        runtime
+            .upsert_thread(&builder.build(config.default_model_provider_id.as_str()))
+            .await
+            .expect("state db upsert should succeed");
+
+        let thread = store
+            .read_thread_by_rollout_path(
+                active_path,
+                /*include_archived*/ false,
+                /*include_history*/ false,
+            )
+            .await
+            .expect("read paginated thread by rollout path");
+
+        let git_info = thread.git_info.expect("sqlite branch should be present");
+        assert_eq!(git_info.commit_hash, None);
+        assert_eq!(git_info.branch.as_deref(), Some("sqlite-branch"));
+        assert_eq!(git_info.repository_url, None);
     }
 
     #[tokio::test]
