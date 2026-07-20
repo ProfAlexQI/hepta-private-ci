@@ -2761,15 +2761,17 @@ fn default_upstream_codex_current_intake_decisions() -> Vec<HeptaUpstreamCodexCu
             "local_split",
             "enforce marketplace source policy across admission, mutation and runtime reads",
         ),
+        current_intake_absorbed(
+            "mcp_endpoint_ownership",
+            "6bf4845b60e0abccd0c64690e9c7591e0efb85d8",
+            &["f983f4ae7fc7e4b224272990106049f30ee472d7"],
+            "semantic_port",
+            "route host-owned Apps MCP through the plugin service while constraining ChatGPT session auth to the first-party HTTPS origin",
+        ),
         current_intake_deferred(
             "audio_history_and_tool_output",
             Some("6f785632b000f7d8e85100506b88b3bab5b8d8a0"),
             "requires a separately reviewed audio capability and dependency lane",
-        ),
-        current_intake_deferred(
-            "mcp_endpoint_ownership",
-            Some("6bf4845b60e0abccd0c64690e9c7591e0efb85d8"),
-            "requires Hepta trust and endpoint-ownership review before routing Codex Apps MCP",
         ),
         current_intake_deferred(
             "bulk_tui_performance_batch",
@@ -2827,8 +2829,8 @@ impl HeptaUpstreamCodexCurrentIntakeReport {
                     }
                 }
         });
-        let current_intake_ready = selected_absorption_count == 10
-            && deferred_decision_count == 4
+        let current_intake_ready = selected_absorption_count == 11
+            && deferred_decision_count == 3
             && selected_commits_are_unique
             && decisions_are_bounded;
 
@@ -9473,8 +9475,8 @@ mod tests {
         assert_eq!(report.observed_commit_count, 1803);
         assert_eq!(report.observed_changed_file_count, 3359);
         assert_eq!(report.observed_codex_rs_changed_file_count, 3097);
-        assert_eq!(report.selected_absorption_count, 10);
-        assert_eq!(report.deferred_decision_count, 4);
+        assert_eq!(report.selected_absorption_count, 11);
+        assert_eq!(report.deferred_decision_count, 3);
         assert!(report.current_intake_ready);
         assert!(!report.full_range_absorption_claimed);
         assert!(!report.upstream_fetch_performed);
@@ -9504,8 +9506,8 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(absorbed.len(), 10);
-        assert_eq!(deferred.len(), 4);
+        assert_eq!(absorbed.len(), 11);
+        assert_eq!(deferred.len(), 3);
         assert!(absorbed.iter().all(|decision| {
             decision.upstream_commit.is_some()
                 && !decision.local_receipts.is_empty()
@@ -9519,10 +9521,12 @@ mod tests {
                 && decision.absorption_kind.as_deref() == Some("local_split")
                 && decision.local_receipts.len() == 7
         }));
-        assert!(deferred.iter().any(|decision| {
+        assert!(absorbed.iter().any(|decision| {
             decision.classification == "mcp_endpoint_ownership"
                 && decision.upstream_commit.as_deref()
                     == Some("6bf4845b60e0abccd0c64690e9c7591e0efb85d8")
+                && decision.absorption_kind.as_deref() == Some("semantic_port")
+                && decision.local_receipts == ["f983f4ae7fc7e4b224272990106049f30ee472d7"]
         }));
     }
 

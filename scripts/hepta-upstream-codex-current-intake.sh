@@ -8,11 +8,14 @@ PINNED_BASE_HEAD="108234b5ebe6941764a6b8edbb37b2aa04369f07"
 PINNED_CUTOFF_REF="refs/remotes/upstream/hepta-intake-20260721"
 PINNED_CUTOFF_HEAD="45ac251e178416ff5c3022457ad8d2778c0d4549"
 PINNED_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json"
+PINNED_APPS_MCP_UPSTREAM_COMMIT="6bf4845b60e0abccd0c64690e9c7591e0efb85d8"
+PINNED_APPS_MCP_LOCAL_RECEIPT="f983f4ae7fc7e4b224272990106049f30ee472d7"
 
 MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST:-$PINNED_MANIFEST}"
 BASE_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_BASE_HEAD:-$PINNED_BASE_HEAD}"
 CUTOFF_REF="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_REF:-$PINNED_CUTOFF_REF}"
 CUTOFF_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD:-$PINNED_CUTOFF_HEAD}"
+APPS_MCP_LOCAL_RECEIPT="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_APPS_MCP_LOCAL_RECEIPT:-$PINNED_APPS_MCP_LOCAL_RECEIPT}"
 SKIP_RUST_TESTS="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_SKIP_RUST_TESTS:-0}"
 CODEX_MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 
@@ -40,13 +43,18 @@ count_matching_paths() {
 [[ "$BASE_HEAD" == "$PINNED_BASE_HEAD" ]] || fail "baseline does not match pinned baseline: expected $PINNED_BASE_HEAD got $BASE_HEAD"
 [[ "$CUTOFF_REF" == "$PINNED_CUTOFF_REF" ]] || fail "cutoff ref does not match pinned ref: expected $PINNED_CUTOFF_REF got $CUTOFF_REF"
 [[ "$CUTOFF_HEAD" == "$PINNED_CUTOFF_HEAD" ]] || fail "cutoff head does not match pinned cutoff: expected $PINNED_CUTOFF_HEAD got $CUTOFF_HEAD"
+[[ "$APPS_MCP_LOCAL_RECEIPT" == "$PINNED_APPS_MCP_LOCAL_RECEIPT" ]] || fail "Apps MCP receipt does not match pinned receipt: expected $PINNED_APPS_MCP_LOCAL_RECEIPT got $APPS_MCP_LOCAL_RECEIPT"
 validate_sha "baseline" "$BASE_HEAD"
 validate_sha "cutoff" "$CUTOFF_HEAD"
+validate_sha "Apps MCP upstream commit" "$PINNED_APPS_MCP_UPSTREAM_COMMIT"
+validate_sha "Apps MCP local receipt" "$APPS_MCP_LOCAL_RECEIPT"
 
 jq -e \
   --arg base "$PINNED_BASE_HEAD" \
   --arg cutoff_ref "$PINNED_CUTOFF_REF" \
   --arg cutoff "$PINNED_CUTOFF_HEAD" \
+  --arg apps_mcp_upstream_commit "$PINNED_APPS_MCP_UPSTREAM_COMMIT" \
+  --arg apps_mcp_local_receipt "$PINNED_APPS_MCP_LOCAL_RECEIPT" \
   '
     .schema_version == "hepta_upstream_codex_current_intake_v1"
     and .intake_id == "upstream-codex-intake-2026-07-21"
@@ -71,7 +79,7 @@ jq -e \
     and .classification.cargo_lock_replacement_allowed == false
     and .classification.selected_absorption_count == (.selected_absorptions | length)
     and .classification.deferred_decision_count == (.deferred_decisions | length)
-    and (.selected_absorptions | length) == 10
+    and (.selected_absorptions | length) == 11
     and (.selected_absorptions | all(
       .state == "absorbed"
       and (.classification | type == "string" and length > 0)
@@ -81,14 +89,25 @@ jq -e \
       and (.absorption_kind == "semantic_port" or .absorption_kind == "translated_catalog" or .absorption_kind == "local_split")
     ))
     and ([.selected_absorptions[].upstream_commit] | length == (unique | length))
-    and (.deferred_decisions | length) == 4
+    and ([.selected_absorptions[] | select(
+      .state == "absorbed"
+      and .classification == "mcp_endpoint_ownership"
+      and .upstream_commit == $apps_mcp_upstream_commit
+      and .local_receipts == [$apps_mcp_local_receipt]
+      and .absorption_kind == "semantic_port"
+    )] | length) == 1
+    and (.deferred_decisions | length) == 3
     and (.deferred_decisions | all(
       .state == "deferred"
       and (.classification | type == "string" and length > 0)
       and (.reason | type == "string" and length > 0)
       and (.upstream_commit == null or (.upstream_commit | test("^[0-9a-f]{40}$")))
     ))
-    and (([.selected_absorptions[].upstream_commit] - [.deferred_decisions[].upstream_commit]) | length == 10)
+    and ([.deferred_decisions[] | select(
+      .classification == "mcp_endpoint_ownership"
+      or .upstream_commit == $apps_mcp_upstream_commit
+    )] | length) == 0
+    and (([.selected_absorptions[].upstream_commit] - [.deferred_decisions[].upstream_commit]) | length == 11)
     and .historical_absorption_receipt.state == "historical_receipt"
     and .historical_absorption_receipt.current_intake_freshness_proof == false
     and .boundaries.offline_only == true

@@ -54,11 +54,14 @@ scripts/hepta-upstream-codex-current-intake-negative-fixture.sh
 
 The frozen range contains 1,803 commits, 3,359 changed repository paths, and
 3,097 changed `codex-rs` paths. Those are **observed** values, not a claim that
-the whole range has been absorbed. The ledger separately records ten
-**classified and selectively absorbed** upstream changes and four explicitly
+the whole range has been absorbed. The ledger separately records eleven
+**classified and selectively absorbed** upstream changes and three explicitly
 **deferred** decisions. It also records the local split used for upstream
 `9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7`; that upstream commit must not be
-mechanically cherry-picked again.
+mechanically cherry-picked again. The Apps MCP endpoint absorption for upstream
+`6bf4845b60e0abccd0c64690e9c7591e0efb85d8` is a bounded semantic port: it
+routes the host-owned endpoint through `ps/mcp` while constraining implicit
+ChatGPT session authentication to the official first-party HTTPS origin.
 
 The generic local diff-range ledger gate is:
 

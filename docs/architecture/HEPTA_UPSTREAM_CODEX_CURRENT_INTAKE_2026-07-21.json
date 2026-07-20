@@ -35,8 +35,8 @@
     "bulk_rebase_allowed": false,
     "whole_tree_replacement_allowed": false,
     "cargo_lock_replacement_allowed": false,
-    "selected_absorption_count": 10,
-    "deferred_decision_count": 4
+    "selected_absorption_count": 11,
+    "deferred_decision_count": 3
   },
   "selected_absorptions": [
     {
@@ -144,6 +144,16 @@
       ],
       "absorption_kind": "local_split",
       "summary": "enforce marketplace source policy across admission, mutation and runtime reads"
+    },
+    {
+      "state": "absorbed",
+      "classification": "mcp_endpoint_ownership",
+      "upstream_commit": "6bf4845b60e0abccd0c64690e9c7591e0efb85d8",
+      "local_receipts": [
+        "f983f4ae7fc7e4b224272990106049f30ee472d7"
+      ],
+      "absorption_kind": "semantic_port",
+      "summary": "route host-owned Apps MCP through the plugin service while constraining ChatGPT session auth to the first-party HTTPS origin"
     }
   ],
   "deferred_decisions": [
@@ -152,12 +162,6 @@
       "classification": "audio_history_and_tool_output",
       "upstream_commit": "6f785632b000f7d8e85100506b88b3bab5b8d8a0",
       "reason": "requires a separately reviewed audio capability and dependency lane"
-    },
-    {
-      "state": "deferred",
-      "classification": "mcp_endpoint_ownership",
-      "upstream_commit": "6bf4845b60e0abccd0c64690e9c7591e0efb85d8",
-      "reason": "requires Hepta trust and endpoint-ownership review before routing Codex Apps MCP"
     },
     {
       "state": "deferred",

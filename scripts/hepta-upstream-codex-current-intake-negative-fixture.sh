@@ -7,6 +7,7 @@ cd "$REPO_ROOT"
 GATE="scripts/hepta-upstream-codex-current-intake.sh"
 OLD_REF="refs/remotes/openai-codex/main"
 OLD_HEAD="7d47056ea42636271ac020b86347fbbef49490aa"
+OLD_APPS_MCP_RECEIPT="0000000000000000000000000000000000000000"
 
 expect_denied() {
   local fixture_id="$1"
@@ -36,12 +37,18 @@ expect_denied \
   "cutoff head does not match pinned cutoff" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD="$OLD_HEAD"
 
+expect_denied \
+  "apps_mcp_receipt_drift" \
+  "Apps MCP receipt does not match pinned receipt" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_APPS_MCP_LOCAL_RECEIPT="$OLD_APPS_MCP_RECEIPT"
+
 jq -n '{
   product:"Hepta",
   status:"ready",
   gate:"hepta_upstream_codex_current_intake_negative_fixture",
   stale_ref_denied:true,
   cutoff_drift_denied:true,
+  apps_mcp_receipt_drift_denied:true,
   network_access_performed:false,
   ref_mutation_performed:false,
   workspace_mutation_performed:false
