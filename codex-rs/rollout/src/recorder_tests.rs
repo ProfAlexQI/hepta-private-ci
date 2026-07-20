@@ -307,6 +307,40 @@ async fn load_rollout_items_fails_closed_for_unknown_canonical_history_mode() ->
 }
 
 #[tokio::test]
+async fn load_rollout_items_accepts_supported_canonical_history_modes() -> std::io::Result<()> {
+    for (index, (wire_mode, expected_mode)) in [
+        ("legacy", ThreadHistoryMode::Legacy),
+        ("paginated", ThreadHistoryMode::Paginated),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let home = TempDir::new().expect("temp dir");
+        let uuid = Uuid::from_u128(10_000 + index as u128);
+        let thread_id = ThreadId::from_string(&uuid.to_string()).expect("thread id");
+        let rollout_path = write_session_file(home.path(), "2025-01-03T12-00-00", uuid)?;
+        let text = fs::read_to_string(&rollout_path)?;
+        let mut lines = text.lines();
+        let mut canonical_meta: serde_json::Value =
+            serde_json::from_str(lines.next().expect("canonical session meta"))?;
+        canonical_meta["payload"]["history_mode"] = serde_json::json!(wire_mode);
+        let remainder = lines.collect::<Vec<_>>().join("\n");
+        fs::write(&rollout_path, format!("{canonical_meta}\n{remainder}\n"))?;
+
+        let (items, loaded_thread_id, parse_errors) =
+            RolloutRecorder::load_rollout_items(&rollout_path).await?;
+        assert_eq!(loaded_thread_id, Some(thread_id));
+        assert_eq!(parse_errors, 0);
+        assert!(matches!(
+            items.first(),
+            Some(RolloutItem::SessionMeta(session_meta))
+                if session_meta.meta.history_mode == expected_mode
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn load_rollout_items_ignores_unknown_history_mode_in_copied_fork_metadata()
 -> std::io::Result<()> {
     let home = TempDir::new().expect("temp dir");

@@ -859,6 +859,12 @@ impl RolloutRecorder {
                 trace!("skipping legacy ghost_snapshot rollout line");
                 continue;
             }
+            if thread_id.is_none() {
+                // The first SessionMeta defines this rollout. Later SessionMeta lines may
+                // be copied fork history, so validate the canonical prefix before the
+                // complete rollout line is deserialized.
+                reject_unknown_thread_history_mode(&v)?;
+            }
 
             // Parse the rollout line structure
             match serde_json::from_value::<RolloutLine>(v.clone()) {
@@ -885,11 +891,6 @@ impl RolloutRecorder {
                     }
                 },
                 Err(e) => {
-                    if thread_id.is_none() {
-                        // The first SessionMeta defines this rollout. Later SessionMeta lines may
-                        // be copied fork history, so unknown modes only fail the canonical prefix.
-                        reject_unknown_thread_history_mode(&v)?;
-                    }
                     trace!("failed to parse rollout line: {e}");
                     parse_errors = parse_errors.saturating_add(1);
                 }
