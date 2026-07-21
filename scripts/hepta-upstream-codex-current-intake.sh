@@ -135,7 +135,7 @@ jq -e \
       and .local_receipts == [$proc_preflight_local_receipt]
       and .absorption_kind == "semantic_port"
     )] | length) == 1
-    and (.deferred_decisions | length) == 3
+    and (.deferred_decisions | length) == 4
     and (.deferred_decisions | all(
       .state == "deferred"
       and (.classification | type == "string" and length > 0)
@@ -146,6 +146,11 @@ jq -e \
       .classification == "mcp_endpoint_ownership"
       or .upstream_commit == $apps_mcp_upstream_commit
     )] | length) == 0
+    and ([.deferred_decisions[] | select(
+      .classification == "r2_remaining_observed_delta"
+      and .upstream_commit == $cutoff
+      and (.reason | contains("seventeen r2 commits"))
+    )] | length) == 1
     and (([.selected_absorptions[].upstream_commit] - [.deferred_decisions[].upstream_commit]) | length == 12)
     and .historical_absorption_receipt.state == "historical_receipt"
     and .historical_absorption_receipt.current_intake_freshness_proof == false

@@ -58,8 +58,10 @@ The r2 frozen range contains 1,821 commits, 3,389 changed repository paths, and
 provider/security paths, 1,316 runtime/app-server paths, 655 compatibility
 paths, and 53 product/governance paths. Those are **observed** values, not a
 claim that the whole range has been absorbed. The ledger separately records
-twelve **classified and selectively absorbed** upstream changes and three explicitly
-**deferred** decisions. It also records the local split used for upstream
+twelve **classified and selectively absorbed** upstream changes and four
+explicitly **deferred** decisions. The additional r2 decision keeps the
+seventeen newly observed commits other than `44481a1c…` deferred for separate,
+bounded review lanes. It also records the local split used for upstream
 `9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7`; that upstream commit must not be
 mechanically cherry-picked again. The Apps MCP endpoint absorption for upstream
 `6bf4845b60e0abccd0c64690e9c7591e0efb85d8` is a bounded semantic port: it

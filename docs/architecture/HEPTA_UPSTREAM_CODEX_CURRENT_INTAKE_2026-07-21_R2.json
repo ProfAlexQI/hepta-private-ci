@@ -43,7 +43,7 @@
     "whole_tree_replacement_allowed": false,
     "cargo_lock_replacement_allowed": false,
     "selected_absorption_count": 12,
-    "deferred_decision_count": 3
+    "deferred_decision_count": 4
   },
   "selected_absorptions": [
     {
@@ -174,6 +174,12 @@
     }
   ],
   "deferred_decisions": [
+    {
+      "state": "deferred",
+      "classification": "r2_remaining_observed_delta",
+      "upstream_commit": "88fac6fe108237a105d3203e3508b0d531054312",
+      "reason": "the seventeen r2 commits other than the selected proc-preflight port require separate bounded review lanes"
+    },
     {
       "state": "deferred",
       "classification": "audio_history_and_tool_output",

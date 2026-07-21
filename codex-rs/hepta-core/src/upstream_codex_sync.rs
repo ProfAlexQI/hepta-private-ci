@@ -2791,6 +2791,11 @@ fn default_upstream_codex_current_intake_decisions() -> Vec<HeptaUpstreamCodexCu
             "route host-owned Apps MCP through the plugin service while constraining ChatGPT session auth to the first-party HTTPS origin",
         ),
         current_intake_deferred(
+            "r2_remaining_observed_delta",
+            Some("88fac6fe108237a105d3203e3508b0d531054312"),
+            "the seventeen r2 commits other than the selected proc-preflight port require separate bounded review lanes",
+        ),
+        current_intake_deferred(
             "audio_history_and_tool_output",
             Some("6f785632b000f7d8e85100506b88b3bab5b8d8a0"),
             "requires a separately reviewed audio capability and dependency lane",
@@ -2852,7 +2857,7 @@ impl HeptaUpstreamCodexCurrentIntakeReport {
                 }
         });
         let current_intake_ready = selected_absorption_count == 12
-            && deferred_decision_count == 3
+            && deferred_decision_count == 4
             && selected_commits_are_unique
             && decisions_are_bounded;
 
@@ -9503,7 +9508,7 @@ mod tests {
         assert_eq!(report.observed_changed_file_count, 3389);
         assert_eq!(report.observed_codex_rs_changed_file_count, 3127);
         assert_eq!(report.selected_absorption_count, 12);
-        assert_eq!(report.deferred_decision_count, 3);
+        assert_eq!(report.deferred_decision_count, 4);
         assert!(report.current_intake_ready);
         assert!(!report.full_range_absorption_claimed);
         assert!(!report.upstream_fetch_performed);
@@ -9534,7 +9539,7 @@ mod tests {
             .collect();
 
         assert_eq!(absorbed.len(), 12);
-        assert_eq!(deferred.len(), 3);
+        assert_eq!(deferred.len(), 4);
         assert!(absorbed.iter().all(|decision| {
             decision.upstream_commit.is_some()
                 && !decision.local_receipts.is_empty()
@@ -9542,6 +9547,11 @@ mod tests {
         }));
         assert!(deferred.iter().all(|decision| {
             decision.local_receipts.is_empty() && decision.absorption_kind.is_none()
+        }));
+        assert!(deferred.iter().any(|decision| {
+            decision.classification == "r2_remaining_observed_delta"
+                && decision.upstream_commit.as_deref()
+                    == Some("88fac6fe108237a105d3203e3508b0d531054312")
         }));
         assert!(absorbed.iter().any(|decision| {
             decision.upstream_commit.as_deref() == Some("9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7")
