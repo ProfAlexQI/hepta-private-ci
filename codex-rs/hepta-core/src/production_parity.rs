@@ -286,13 +286,35 @@ fn control_ui_dimension(control_ui: &ControlUiReport) -> ProductionParityDimensi
         "Local Control UI, JSON API surfaces, static fallback and command bindings",
         bool_score(&checks),
         "mature agents expose operator dashboards and stable machine-readable status",
-        "ahead",
+        if control_ui.complete() {
+            "ahead"
+        } else {
+            "behind"
+        },
         vec![
             format!(
                 "screens={}/{}",
                 control_ui.implemented_screen_count, control_ui.screen_count
             ),
             format!("bindings={}", control_ui.command_binding_count),
+            format!(
+                "static_contract={}%, unit_state={}%, browser_behavior={}%, backend_mutation_readback={}%, live_adapter={}%, live_operator_surface={}%",
+                control_ui
+                    .evidence_coverage
+                    .static_contract
+                    .coverage_percent,
+                control_ui.evidence_coverage.unit_state.coverage_percent,
+                control_ui
+                    .evidence_coverage
+                    .browser_behavior
+                    .coverage_percent,
+                control_ui
+                    .evidence_coverage
+                    .backend_mutation_readback
+                    .coverage_percent,
+                control_ui.evidence_coverage.live_adapter.coverage_percent,
+                control_ui.live_operator_surface_percent,
+            ),
         ],
     )
 }
@@ -314,7 +336,11 @@ fn release_benchmark_dimension(
         "Deterministic benchmark/report surface, preflight package, rollback and release governance",
         bool_score(&checks),
         "mature agents need repeatable release gates and regression evidence",
-        "equal",
+        if control_ui.complete() {
+            "equal"
+        } else {
+            "behind"
+        },
         vec![
             "production parity report is deterministic JSON/text".into(),
             "preflight and backup/restore gates are evidence-backed".into(),
@@ -370,7 +396,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn production_parity_reaches_complete_when_all_runtime_evidence_is_present() {
+    fn production_parity_stays_in_progress_without_control_ui_behavior_evidence() {
         let tmp = std::env::temp_dir().join(format!(
             "hepta-production-parity-{}.json",
             std::process::id()
@@ -413,11 +439,24 @@ mod tests {
             &control_ui_report(),
         );
 
-        assert_eq!(report.overall_completion_percent, 100);
-        assert_eq!(report.complete_dimension_count, report.dimension_count);
-        assert!(report.local_evidence_gated_ready);
-        assert!(report.complete());
+        assert_eq!(report.status, "in_progress");
+        assert_eq!(report.overall_completion_percent, 94);
+        assert_eq!(report.complete_dimension_count, report.dimension_count - 2);
+        assert!(!report.local_evidence_gated_ready);
+        assert!(!report.complete());
         assert!(!report.public_ga_ready);
+        assert!(
+            report
+                .remaining_gaps
+                .iter()
+                .any(|gap| gap == "operator-ui-api: 75%")
+        );
+        assert!(
+            report
+                .remaining_gaps
+                .iter()
+                .any(|gap| gap == "release-benchmark-governance: 80%")
+        );
 
         let _ = fs::remove_file(tmp);
     }

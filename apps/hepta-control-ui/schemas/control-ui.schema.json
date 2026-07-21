@@ -1,14 +1,86 @@
 {
   "type": "object",
-  "required": ["product", "ui_name", "status", "screen_count", "implemented_screen_count", "assets", "screens"],
+  "required": [
+    "product",
+    "ui_name",
+    "status",
+    "screen_count",
+    "implemented_screen_count",
+    "static_interaction_contract_percent",
+    "live_operator_surface_percent",
+    "developer_interaction_percent_basis",
+    "evidence_coverage",
+    "assets",
+    "screens"
+  ],
   "properties": {
     "product": { "const": "Hepta" },
     "ui_name": { "const": "Hepta Control UI" },
-    "status": { "const": "complete" },
+    "status": {
+      "enum": ["incomplete", "static_contract_complete", "complete"]
+    },
     "screen_count": { "type": "number", "minimum": 25 },
     "implemented_screen_count": { "type": "number", "minimum": 25 },
     "command_binding_count": { "type": "number", "minimum": 51 },
+    "static_interaction_contract_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "live_operator_surface_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "developer_interaction_percent_basis": {
+      "const": "compatibility alias for static_interaction_contract_percent; not browser or live execution evidence"
+    },
+    "evidence_coverage": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "static_contract",
+        "unit_state",
+        "browser_behavior",
+        "backend_mutation_readback",
+        "live_adapter",
+        "overall_evidence_percent",
+        "all_required_layers_verified",
+        "boundary"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "static_contract": { "$ref": "#/$defs/evidenceLayer" },
+        "unit_state": { "$ref": "#/$defs/evidenceLayer" },
+        "browser_behavior": { "$ref": "#/$defs/evidenceLayer" },
+        "backend_mutation_readback": { "$ref": "#/$defs/evidenceLayer" },
+        "live_adapter": { "$ref": "#/$defs/evidenceLayer" },
+        "overall_evidence_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "all_required_layers_verified": { "type": "boolean" },
+        "boundary": { "type": "string", "minLength": 1 }
+      }
+    },
     "assets": { "type": "array", "minItems": 4 },
     "screens": { "type": "array", "minItems": 25 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "complete" } } },
+      "then": {
+        "properties": {
+          "live_operator_surface_percent": { "const": 100 },
+          "evidence_coverage": {
+            "properties": {
+              "overall_evidence_percent": { "const": 100 },
+              "all_required_layers_verified": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "evidenceLayer": {
+      "type": "object",
+      "required": ["status", "coverage_percent", "verified", "evidence_ref"],
+      "properties": {
+        "status": { "type": "string" },
+        "coverage_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "verified": { "type": "boolean" },
+        "evidence_ref": { "type": ["string", "null"] }
+      }
+    }
   }
 }

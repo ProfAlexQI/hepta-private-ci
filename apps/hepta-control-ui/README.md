@@ -1,6 +1,7 @@
 # Hepta Control UI v0
 
-Status: complete for the local v0 UI scope; the browser UI is now Rust-rendered HTML/CSS with no served JavaScript artifacts.
+Status: static contract complete for local v0; browser, mutation/readback, and
+live-adapter completion are not claimed.
 
 ## Overview
 

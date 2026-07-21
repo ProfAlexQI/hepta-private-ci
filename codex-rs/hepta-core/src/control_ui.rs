@@ -667,7 +667,61 @@ pub struct ControlUiInteractionCapability {
     pub id: &'static str,
     pub title: &'static str,
     pub implemented: bool,
+    pub evidence_kind: &'static str,
     pub evidence: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ControlUiEvidenceLayer {
+    pub status: &'static str,
+    pub coverage_percent: u8,
+    pub verified: bool,
+    pub evidence_ref: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ControlUiEvidenceCoverage {
+    pub schema_version: u8,
+    pub static_contract: ControlUiEvidenceLayer,
+    pub unit_state: ControlUiEvidenceLayer,
+    pub browser_behavior: ControlUiEvidenceLayer,
+    pub backend_mutation_readback: ControlUiEvidenceLayer,
+    pub live_adapter: ControlUiEvidenceLayer,
+    pub overall_evidence_percent: u8,
+    pub all_required_layers_verified: bool,
+    pub boundary: &'static str,
+}
+
+impl ControlUiEvidenceLayer {
+    fn complete(&self) -> bool {
+        self.status == "verified"
+            && self.coverage_percent == 100
+            && self.verified
+            && self.evidence_ref.is_some()
+    }
+}
+
+impl ControlUiEvidenceCoverage {
+    pub fn complete(&self) -> bool {
+        self.all_required_layers_verified
+            && self.overall_evidence_percent == 100
+            && self.static_contract.complete()
+            && self.unit_state.complete()
+            && self.browser_behavior.complete()
+            && self.backend_mutation_readback.complete()
+            && self.live_adapter.complete()
+    }
+
+    pub fn live_operator_surface_percent(&self) -> u8 {
+        [
+            self.browser_behavior.coverage_percent,
+            self.backend_mutation_readback.coverage_percent,
+            self.live_adapter.coverage_percent,
+        ]
+        .into_iter()
+        .min()
+        .unwrap_or(0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -709,10 +763,13 @@ pub struct ControlUiReport {
     pub command_binding_count: usize,
     pub interaction_capability_count: usize,
     pub implemented_interaction_capability_count: usize,
+    pub static_interaction_contract_percent: u8,
     pub live_operator_surface_percent: u8,
     pub developer_interaction_percent: u8,
+    pub developer_interaction_percent_basis: &'static str,
     pub ref_agent_alignment_percent: u8,
     pub local_preview_ready: bool,
+    pub evidence_coverage: ControlUiEvidenceCoverage,
     pub rust_frontend_ownership: ControlUiRustFrontendOwnership,
     pub serve_command: &'static str,
     pub smoke_gate: &'static str,
@@ -728,6 +785,8 @@ pub struct ControlUiReport {
 pub struct ControlUiContractAuditReport {
     pub product: &'static str,
     pub status: &'static str,
+    pub evidence_scope: &'static str,
+    pub live_product_complete: bool,
     pub core_screen_count: usize,
     pub app_screen_count: usize,
     pub readme_screen_count: usize,
@@ -836,7 +895,7 @@ pub struct ControlUiContractAuditReport {
 }
 
 impl ControlUiReport {
-    pub fn complete(&self) -> bool {
+    pub fn static_contract_complete(&self) -> bool {
         self.screen_count > 0
             && self.screen_count == self.implemented_screen_count
             && self.required_asset_count == self.present_asset_count
@@ -847,10 +906,16 @@ impl ControlUiReport {
                 .rust_embedded_static_asset_coverage_percent
                 == 100
             && self.rust_frontend_ownership.rust_view_model_ready
-            && self.live_operator_surface_percent == 100
             && self.developer_interaction_percent == 100
             && self.ref_agent_alignment_percent == 100
             && self.local_preview_ready
+    }
+
+    pub fn complete(&self) -> bool {
+        self.status == "complete"
+            && self.static_contract_complete()
+            && self.evidence_coverage.complete()
+            && self.live_operator_surface_percent == 100
     }
 }
 
@@ -880,7 +945,7 @@ pub fn control_ui_report() -> ControlUiReport {
         implemented_interaction_capability_count,
         interaction_capability_count,
     );
-    let live_operator_surface_percent = developer_interaction_percent;
+    let static_interaction_contract_percent = developer_interaction_percent;
     let ref_agent_alignment_percent = percent(
         implemented_screen_count + implemented_interaction_capability_count,
         screen_count + interaction_capability_count,
@@ -899,12 +964,28 @@ pub fn control_ui_report() -> ControlUiReport {
         && CONTROL_UI_RUST_RENDERER_MARKERS.contains("rust-no-js-frontend");
     let frontend_manifest = control_ui_frontend_manifest();
     let rust_frontend_ownership = control_ui_rust_frontend_ownership(&assets, &frontend_manifest);
+    let static_contract_percent = [
+        screen_coverage_percent,
+        asset_coverage_percent,
+        static_interaction_contract_percent,
+        ref_agent_alignment_percent,
+        rust_frontend_ownership.rust_embedded_static_asset_coverage_percent,
+    ]
+    .into_iter()
+    .min()
+    .unwrap_or(0);
+    let static_contract_verified = local_preview_ready && static_contract_percent == 100;
+    let evidence_coverage =
+        control_ui_evidence_coverage(static_contract_percent, static_contract_verified);
+    let live_operator_surface_percent = evidence_coverage.live_operator_surface_percent();
 
     ControlUiReport {
         product: "Hepta",
         ui_name: "Hepta Control UI",
-        status: if local_preview_ready {
+        status: if evidence_coverage.complete() {
             "complete"
+        } else if static_contract_verified {
+            "static_contract_complete"
         } else {
             "incomplete"
         },
@@ -919,10 +1000,13 @@ pub fn control_ui_report() -> ControlUiReport {
         command_binding_count: command_bindings.len(),
         interaction_capability_count,
         implemented_interaction_capability_count,
+        static_interaction_contract_percent,
         live_operator_surface_percent,
         developer_interaction_percent,
+        developer_interaction_percent_basis: "compatibility alias for static_interaction_contract_percent; not browser or live execution evidence",
         ref_agent_alignment_percent,
         local_preview_ready,
+        evidence_coverage,
         rust_frontend_ownership,
         serve_command: "cargo run --manifest-path codex-rs/Cargo.toml -p codex-cli --bin hepta -- --serve-ui 127.0.0.1:7373",
         smoke_gate: "./scripts/hepta-control-ui-smoke.sh",
@@ -2133,10 +2217,12 @@ pub fn control_ui_contract_audit_report() -> ControlUiContractAuditReport {
     ControlUiContractAuditReport {
         product: "Hepta",
         status: if audit_percent == 100 {
-            "complete"
+            "static_contract_complete"
         } else {
-            "incomplete"
+            "static_contract_incomplete"
         },
+        evidence_scope: "static marker, asset, schema, and declared smoke-contract coverage only",
+        live_product_complete: false,
         core_screen_count: core_ids.len(),
         app_screen_count: app_ids.len(),
         readme_screen_count: readme_ids.len(),
@@ -3982,6 +4068,7 @@ fn interaction(
         id,
         title,
         implemented: true,
+        evidence_kind: "static_contract_marker",
         evidence,
     }
 }
@@ -4003,6 +4090,64 @@ fn percent(numerator: usize, denominator: usize) -> u8 {
         return 0;
     }
     ((numerator * 100) / denominator) as u8
+}
+
+fn control_ui_evidence_coverage(
+    static_contract_percent: u8,
+    static_contract_verified: bool,
+) -> ControlUiEvidenceCoverage {
+    let static_contract = ControlUiEvidenceLayer {
+        status: if static_contract_verified {
+            "verified"
+        } else {
+            "incomplete"
+        },
+        coverage_percent: static_contract_percent,
+        verified: static_contract_verified,
+        evidence_ref: Some(
+            "hepta-core::control_ui static marker, asset, schema, and no-JS render contract",
+        ),
+    };
+    let unit_state = unevidenced_control_ui_layer();
+    let browser_behavior = unevidenced_control_ui_layer();
+    let backend_mutation_readback = unevidenced_control_ui_layer();
+    let live_adapter = unevidenced_control_ui_layer();
+    let layers = [
+        &static_contract,
+        &unit_state,
+        &browser_behavior,
+        &backend_mutation_readback,
+        &live_adapter,
+    ];
+    let all_required_layers_verified = layers.iter().all(|layer| layer.complete());
+    let overall_evidence_percent = percent(
+        layers
+            .iter()
+            .map(|layer| layer.coverage_percent as usize)
+            .sum(),
+        layers.len() * 100,
+    );
+
+    ControlUiEvidenceCoverage {
+        schema_version: 1,
+        static_contract,
+        unit_state,
+        browser_behavior,
+        backend_mutation_readback,
+        live_adapter,
+        overall_evidence_percent,
+        all_required_layers_verified,
+        boundary: "Source markers and declared smoke commands prove only the static contract. Unit/state runs, real browser behavior, backend mutation/readback, and live-adapter evidence must be bound explicitly before product completion or a 100% live operator surface may be claimed.",
+    }
+}
+
+fn unevidenced_control_ui_layer() -> ControlUiEvidenceLayer {
+    ControlUiEvidenceLayer {
+        status: "not_bound_to_report",
+        coverage_percent: 0,
+        verified: false,
+        evidence_ref: None,
+    }
 }
 
 fn convergence_lane(
@@ -4071,7 +4216,10 @@ mod tests {
         let report = control_ui_report();
         let rust_frontend_html = control_ui_index_html();
 
-        assert_eq!(report.status, "complete");
+        // Keep this historical test selector for smoke-script compatibility. The
+        // product report now distinguishes a complete static contract from
+        // unbound behavioral and live evidence.
+        assert_eq!(report.status, "static_contract_complete");
         assert_eq!(report.screen_count, 26);
         assert_eq!(report.implemented_screen_count, 26);
         assert_eq!(report.screen_coverage_percent, 100);
@@ -4080,11 +4228,69 @@ mod tests {
         assert_eq!(report.command_binding_count, 51);
         assert_eq!(report.interaction_capability_count, 30);
         assert_eq!(report.implemented_interaction_capability_count, 30);
-        assert_eq!(report.live_operator_surface_percent, 100);
+        assert_eq!(report.static_interaction_contract_percent, 100);
+        assert_eq!(report.live_operator_surface_percent, 0);
         assert_eq!(report.developer_interaction_percent, 100);
+        assert_eq!(
+            report.developer_interaction_percent_basis,
+            "compatibility alias for static_interaction_contract_percent; not browser or live execution evidence"
+        );
         assert_eq!(report.ref_agent_alignment_percent, 100);
         assert!(report.local_preview_ready);
-        assert!(report.complete());
+        assert!(report.static_contract_complete());
+        assert!(!report.complete());
+        assert_eq!(report.evidence_coverage.schema_version, 1);
+        assert!(report.evidence_coverage.static_contract.verified);
+        assert_eq!(
+            report.evidence_coverage.static_contract.coverage_percent,
+            100
+        );
+        assert_eq!(report.evidence_coverage.overall_evidence_percent, 20);
+        assert!(!report.evidence_coverage.all_required_layers_verified);
+        for layer in [
+            &report.evidence_coverage.unit_state,
+            &report.evidence_coverage.browser_behavior,
+            &report.evidence_coverage.backend_mutation_readback,
+            &report.evidence_coverage.live_adapter,
+        ] {
+            assert_eq!(layer.status, "not_bound_to_report");
+            assert_eq!(layer.coverage_percent, 0);
+            assert!(!layer.verified);
+            assert_eq!(layer.evidence_ref, None);
+        }
+        assert!(
+            report
+                .interaction_capabilities
+                .iter()
+                .all(|capability| capability.evidence_kind == "static_contract_marker")
+        );
+        let control_schema: serde_json::Value =
+            serde_json::from_str(CONTROL_UI_SCHEMA_CONTROL_JSON)
+                .expect("parse Control UI report schema");
+        assert_eq!(
+            control_schema
+                .pointer("/properties/live_operator_surface_percent/maximum")
+                .and_then(serde_json::Value::as_u64),
+            Some(100)
+        );
+        assert_eq!(
+            control_schema
+                .pointer(
+                    "/properties/evidence_coverage/properties/overall_evidence_percent/maximum"
+                )
+                .and_then(serde_json::Value::as_u64),
+            Some(100)
+        );
+        assert!(
+            control_schema
+                .pointer("/properties/status/enum")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|statuses| {
+                    statuses
+                        .iter()
+                        .any(|status| status.as_str() == Some("complete"))
+                })
+        );
         assert!(report.frontend_manifest.rust_view_model_ready);
         assert_eq!(report.frontend_manifest.source, "hepta-core::control_ui");
         assert_eq!(
@@ -4174,10 +4380,15 @@ mod tests {
         let audit = control_ui_contract_audit_report();
         assert_eq!(
             audit.status,
-            "complete",
+            "static_contract_complete",
             "{}",
             serde_json::to_string_pretty(&audit).expect("serialize control UI audit")
         );
+        assert_eq!(
+            audit.evidence_scope,
+            "static marker, asset, schema, and declared smoke-contract coverage only"
+        );
+        assert!(!audit.live_product_complete);
         assert_eq!(audit.audit_percent, 100);
         assert_eq!(audit.core_screen_count, 26);
         assert_eq!(audit.app_screen_count, 26);

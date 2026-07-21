@@ -1,14 +1,16 @@
 {
   "type": "object",
-  "required": ["product", "status", "audit_percent", "p0_p21_converged", "p0_p29_converged", "p0_p39_converged", "convergence_percent", "convergence_lanes"],
+  "required": ["product", "status", "evidence_scope", "live_product_complete", "audit_percent", "p0_p21_converged", "p0_p29_converged", "p0_p39_converged", "convergence_percent", "convergence_lanes"],
   "properties": {
     "product": { "const": "Hepta" },
-    "status": { "const": "complete" },
-    "audit_percent": { "type": "number", "minimum": 100 },
-    "p0_p21_converged": { "const": true },
-    "p0_p29_converged": { "const": true },
-    "p0_p39_converged": { "const": true },
-    "convergence_percent": { "type": "number", "minimum": 100 },
+    "status": { "enum": ["static_contract_incomplete", "static_contract_complete"] },
+    "evidence_scope": { "const": "static marker, asset, schema, and declared smoke-contract coverage only" },
+    "live_product_complete": { "const": false },
+    "audit_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "p0_p21_converged": { "type": "boolean" },
+    "p0_p29_converged": { "type": "boolean" },
+    "p0_p39_converged": { "type": "boolean" },
+    "convergence_percent": { "type": "number", "minimum": 0, "maximum": 100 },
     "convergence_lanes": { "type": "array", "minItems": 40 }
   }
 }
