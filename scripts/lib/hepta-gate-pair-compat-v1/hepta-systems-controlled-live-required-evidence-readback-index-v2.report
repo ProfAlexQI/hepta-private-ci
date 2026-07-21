@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+PLAN_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report"
+LEGACY_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report"
+RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/controlled_live_required_evidence_readback_index.rs"
+LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
+RUNTIME_SOURCE_SET="${HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET:-$ROOT/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh}"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_REQUIRED_EVIDENCE_READBACK_INDEX_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-required-evidence-readback-index-v2-report: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$PLAN_REPORT" ]] || fail "missing executable Phase 5d v2 plan report: $PLAN_REPORT"
+[[ -x "$LEGACY_REPORT" ]] || fail "missing executable legacy Phase 5e report: $LEGACY_REPORT"
+[[ -f "$RUST_SOURCE" ]] || fail "missing Phase 5e Rust source: $RUST_SOURCE"
+[[ -f "$LIB_SOURCE" ]] || fail "missing hepta-runtime lib source: $LIB_SOURCE"
+[[ -x "$RUNTIME_SOURCE_SET" ]] || fail "missing executable runtime crate-root source-set resolver: $RUNTIME_SOURCE_SET"
+[[ -f "$DOC" ]] || fail "missing Phase 5e architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required to render the Phase 5e v2 report"
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+lib_export_present=false
+if HEPTA_REPO_ROOT="$ROOT" "$RUNTIME_SOURCE_SET" grep -q \
+  'controlled_live_required_evidence_readback_index_report' "$LIB_SOURCE"; then
+  lib_export_present=true
+fi
+
+plan_json="${HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON:-}"
+if [[ -n "$plan_json" ]]; then
+  [[ -f "$plan_json" ]] || fail "missing cached Phase 5d v2 plan report: $plan_json"
+else
+  plan_json="$tmpdir/plan.json"
+  "$PLAN_REPORT" >"$plan_json" || fail "failed to render Phase 5d v2 plan report"
+fi
+
+legacy_json="$tmpdir/legacy.json"
+HEPTA_CONTROLLED_LIVE_REQUIRED_EVIDENCE_PLAN_JSON="$plan_json" \
+  "$LEGACY_REPORT" >"$legacy_json" || fail "failed to render legacy Phase 5e report"
+
+jq -n \
+  --slurpfile legacy "$legacy_json" \
+  --slurpfile plan "$plan_json" \
+  --argjson lib_export_present "$lib_export_present" \
+  --arg gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.gate" \
+  --arg legacy_gate "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.gate" \
+  --arg legacy_report "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report" \
+  '
+  def closed_side_effects($effects; $expected_keys):
+    ($effects | type) == "object"
+    and (($effects | keys | sort) == ($expected_keys | sort))
+    and ($effects | to_entries | all(.value == false));
+  def plan_side_effect_keys: [
+    "approval_accepted", "approval_recorded", "approval_requested", "blocker_waived",
+    "channel_send_performed", "credential_read", "evidence_persisted", "evidence_recorded",
+    "gateway_or_auth_mutated", "git_index_mutated", "ledger_written", "live_execution_started",
+    "model_invoked", "native_post_mutation_performed", "package_or_release_written", "packet_sent",
+    "provider_invoked", "public_ga_promoted", "readback_persisted", "replay_executed",
+    "report_written", "rollback_executed", "sqlite_written", "telegram_transport_mutated",
+    "workflow_event_log_written"
+  ];
+  def index_side_effect_keys: [
+    "approval_accepted", "approval_recorded", "approval_requested", "blocker_waived",
+    "channel_send_performed", "credential_read", "evidence_persisted", "evidence_recorded",
+    "gateway_or_auth_mutated", "git_index_mutated", "ledger_written", "live_execution_started",
+    "model_invoked", "native_post_mutation_performed", "package_or_release_written", "provider_invoked",
+    "public_ga_promoted", "readback_persisted", "replay_executed", "report_written",
+    "rollback_executed", "sqlite_written", "telegram_transport_mutated", "workflow_event_log_written"
+  ];
+  ($legacy[0]) as $legacy |
+  ($plan[0]) as $plan |
+  ($plan.entries | map({key:.source_blocker_id, value:.}) | from_entries) as $plan_by_id |
+  ($legacy.entries | map(
+    . as $entry |
+    ($plan_by_id[$entry.source_blocker_id]) as $source |
+    . + {
+      evidence_state:$source.current_state,
+      active_blocker:$source.active_blocker,
+      evidence_required:$source.evidence_required,
+      blocks_cutover:$source.blocks_cutover
+    }
+  )) as $entries |
+  ($entries | map(select(.active_blocker == true)) | length) as $active_blocker_count |
+  ($entries | map(select(.evidence_required == true and .evidence_state == "missing")) | length) as $missing_evidence_count |
+  ($entries | map(select(.evidence_state == "satisfied")) | length) as $satisfied_entry_count |
+  (($plan.source_worktree_boundary_state == "clean"
+      and $plan.source_dirty_worktree_boundary_tracked == false
+      and $plan.source_blocker_count == 6
+      and $active_blocker_count == 6
+      and $missing_evidence_count == 6
+      and $satisfied_entry_count == 1)
+    or ($plan.source_worktree_boundary_state == "dirty"
+      and $plan.source_dirty_worktree_boundary_tracked == true
+      and $plan.source_blocker_count == 7
+      and $active_blocker_count == 7
+      and $missing_evidence_count == 7
+      and $satisfied_entry_count == 0)) as $worktree_state_consistent |
+  ($plan.schema_version == "controlled_live_required_evidence_collection_plan_v2"
+    and $plan.compatibility_migration == "clean_worktree_boundary_v2_propagation"
+    and $plan.evidence_collection_plan_ready == true
+    and $plan.plan_entry_count == 7
+    and $plan.controlled_live_cutover_ready == false
+    and $plan.live_execution_allowed == false
+    and $plan.evidence_recorded_count == 0
+    and $plan.approval_accepted == false
+    and $plan.stable_blocker_slot_count == 7
+    and $plan.active_blocker_count == $active_blocker_count
+    and $plan.required_evidence_count == $active_blocker_count
+    and $plan.satisfied_entry_count == $satisfied_entry_count
+    and $plan.side_effect_free == true
+    and closed_side_effects($plan.side_effects; plan_side_effect_keys)
+    and $worktree_state_consistent
+    and $lib_export_present == true
+    and ($entries | length) == 7
+    and ($entries | map(select(.queryable == true)) | length) == 7
+    and ($entries | map(select(.operator_visible == true)) | length) == 7
+    and ($entries | map(select(.diffable == true)) | length) == 7
+    and ($entries | map(select((.fingerprint | length) > 0)) | length) == 7
+    and ($entries | map(select(.evidence_recorded == true)) | length) == 0
+    and ($entries | map(select(.blocker_waiver_allowed == true)) | length) == 0
+    and $legacy.side_effect_free == true
+    and closed_side_effects($legacy.side_effects; index_side_effect_keys)
+    and ($entries | all(
+      .evidence_recording_allowed == false
+      and .credential_read_allowed == false
+      and .approval_acceptance_allowed == false
+      and .persistence_allowed == false
+      and .live_mutation_allowed == false
+      and ((.active_blocker == true and .evidence_required == true and .evidence_state == "missing" and .blocks_cutover == true)
+        or (.active_blocker == false and .evidence_required == false and .evidence_state == "satisfied" and .blocks_cutover == false))
+    ))) as $index_ready |
+  $legacy
+  | .status = (if $index_ready then "ready_blocked" else "blocked" end)
+  | .schema_version = "controlled_live_required_evidence_readback_index_v2"
+  | .compatibility_migration = "clean_worktree_boundary_v2_propagation"
+  | .legacy_report = $legacy_report
+  | .legacy_gate = $legacy_gate
+  | .source_worktree_boundary_state = $plan.source_worktree_boundary_state
+  | .source_dirty_worktree_boundary_tracked = $plan.source_dirty_worktree_boundary_tracked
+  | .source_blocker_count = $plan.source_blocker_count
+  | .source_active_blocker_count = $plan.active_blocker_count
+  | .source_plan_entry_count = $plan.plan_entry_count
+  | .stable_blocker_slot_count = ($entries | length)
+  | .active_blocker_count = $active_blocker_count
+  | .missing_evidence_count = $missing_evidence_count
+  | .satisfied_entry_count = $satisfied_entry_count
+  | .lib_export_present = $lib_export_present
+  | .readback_index_ready = $index_ready
+  | .controlled_live_cutover_ready = false
+  | .live_execution_allowed = false
+  | .entries = $entries
+  | .local_gate = $gate
+  '

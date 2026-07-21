@@ -2079,7 +2079,7 @@
       "capability": "hepta-systems-controlled-live-operator-packet-non-send-readback",
       "receipt_state": "precondition",
       "side_effect_boundary": "read-only precondition compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.report",
       "report_path": "scripts/hepta-systems-controlled-live-operator-packet-non-send-readback-report.sh",
       "attachment_surface": "hepta-systems-controlled-live-operator-packet-non-send-readback",
       "readback_surface": "hepta-systems-controlled-live-operator-packet-non-send-readback",
@@ -2090,12 +2090,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-controlled-live-operator-packet-non-send-readback",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.gate",
       "gate_source_sha256": "3076cdeaca370a0d246423d17552fd80916385f49c9159e2d6f5f2702697645e",
-      "gate_implementation_sha256": "d30ab2fbff2d4c7ca92c65fff2976b103368a2b6f10ea9f83f501c19085df293",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report",
+      "gate_implementation_sha256": "0dbdc263b08de1aab457b37eb6812fcd066939fb83ac76a4c49cb449abd3f30d",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.report",
       "report_source_sha256": "684182b5dc55b5dd5097bcf835e9fbd88093510ac94d451019ad53c020e895af",
-      "report_implementation_sha256": "0dad661716aeb858bac321ec94880d4f17866324a2d1f12b39f530fc1736bf07"
+      "report_implementation_sha256": "e3204f6319dace197d337eb494971e7e0596be04e87df8887d4a20451ab099e2"
     },
     {
       "id": "hepta-systems-controlled-live-operator-packet-preview",
@@ -2103,7 +2103,7 @@
       "capability": "hepta-systems-controlled-live-operator-packet-preview",
       "receipt_state": "precondition",
       "side_effect_boundary": "read-only precondition compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report",
       "report_path": "scripts/hepta-systems-controlled-live-operator-packet-preview-report.sh",
       "attachment_surface": "hepta-systems-controlled-live-operator-packet-preview",
       "readback_surface": "hepta-systems-controlled-live-operator-packet-preview",
@@ -2114,12 +2114,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-controlled-live-operator-packet-preview",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.gate",
       "gate_source_sha256": "2e0a386b4bfacce0e930a2a8c2802fb4c1534a4df5c4f26298d0bf9e22b08cea",
-      "gate_implementation_sha256": "673a3dfa145cabc9ba2e2868e7fe35beb2ad6d2f991a6ca402b3f008266c586d",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.report",
+      "gate_implementation_sha256": "377764a239033c751c5aa64b657d7e3015b056a690e570cc63f207bd59dc1faf",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report",
       "report_source_sha256": "1d3423e2796863ee7f9f40e6fc7c6b0b4bf150f7b77bfd370b318a8f3e37160c",
-      "report_implementation_sha256": "cae45ec1b7ea2d0c164a7de1d66b289bb5d659a40117dcc5efecb43415493b3b"
+      "report_implementation_sha256": "6d3ad73a9d28509deb8176fc5fb1c3e5b5916a70337643477c601ee16f16e170"
     },
     {
       "id": "hepta-systems-controlled-live-operator-readiness-dashboard",
@@ -2199,7 +2199,7 @@
       "capability": "hepta-systems-controlled-live-required-evidence-collection-plan",
       "receipt_state": "precondition",
       "side_effect_boundary": "read-only precondition compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report",
       "report_path": "scripts/hepta-systems-controlled-live-required-evidence-collection-plan-report.sh",
       "attachment_surface": "hepta-systems-controlled-live-required-evidence-collection-plan",
       "readback_surface": "hepta-systems-controlled-live-required-evidence-collection-plan",
@@ -2210,12 +2210,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-controlled-live-required-evidence-collection-plan",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.gate",
       "gate_source_sha256": "cb9253f47eadc688cb777799b716bc2a7dc4229e40459255ac12968bd5cc66a2",
-      "gate_implementation_sha256": "5fd760a6563451f8cc27d51990c4aa4f520bc5a984309efc40da950bbcb4d81f",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.report",
+      "gate_implementation_sha256": "91351c7160dc4179ab3edaf0bd9e6148c8fa518c73269c48a9163b2484d8c6be",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report",
       "report_source_sha256": "0cca575c02c1f32e595496c3423abb7b6b0fefe906c9c946ea288073ca42cd1d",
-      "report_implementation_sha256": "fd3e1311579fa6de359d0e13b3950cbca981ade59541360f4b1368344639f7f8"
+      "report_implementation_sha256": "39f27e8fe95076880bf8cb3ef65fd699fa3a780a8bf47c83fa2576785c7769af"
     },
     {
       "id": "hepta-systems-controlled-live-required-evidence-gap-diff-view",
@@ -2439,7 +2439,7 @@
       "capability": "hepta-systems-controlled-live-required-evidence-readback-index",
       "receipt_state": "precondition",
       "side_effect_boundary": "read-only precondition compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report",
+      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report",
       "report_path": "scripts/hepta-systems-controlled-live-required-evidence-readback-index-report.sh",
       "attachment_surface": "hepta-systems-controlled-live-required-evidence-readback-index",
       "readback_surface": "hepta-systems-controlled-live-required-evidence-readback-index",
@@ -2450,12 +2450,12 @@
       "missing_source_message": "missing captured compatibility report payload",
       "missing_report_message": "missing thin compatibility report wrapper",
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-controlled-live-required-evidence-readback-index",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.gate",
+      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.gate",
       "gate_source_sha256": "a2afa83331d470265b320701ccd6e5af67ee3a8403332fda4789a6c19e816799",
-      "gate_implementation_sha256": "d52c750ffa0e9af8429bdd4d97efc2578ce839f01a9c1570527fb9fc22987a73",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report",
+      "gate_implementation_sha256": "d4524d11e2f7996aa778f5f3c00670e955e5d56175209fdccf2ace567625c62f",
+      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report",
       "report_source_sha256": "d9c6d4ad49e64bb1cb32a5b2eac4df1313286255bff2c8d9072d8c2f022c4601",
-      "report_implementation_sha256": "dd75f86101af5cc13ca0dea8a65a26d75025a24ad15192c17a593b11bd6f1cdc"
+      "report_implementation_sha256": "ace88c8306a2d77717fe60e1567e2fbab2282e35b2098ec74c22ed5700b86d7c"
     },
     {
       "id": "hepta-systems-current-canonical-closure",

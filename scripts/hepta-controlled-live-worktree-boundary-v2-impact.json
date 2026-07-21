@@ -22,6 +22,34 @@
       "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix.gate",
       "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.report",
       "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-current-reality-capability-matrix-v2.gate"
+    },
+    {
+      "id": "hepta-systems-controlled-live-operator-packet-preview",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.gate"
+    },
+    {
+      "id": "hepta-systems-controlled-live-operator-packet-non-send-readback",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.gate"
+    },
+    {
+      "id": "hepta-systems-controlled-live-required-evidence-collection-plan",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.gate"
+    },
+    {
+      "id": "hepta-systems-controlled-live-required-evidence-readback-index",
+      "legacy_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.report",
+      "legacy_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index.gate",
+      "v2_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report",
+      "v2_gate": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.gate"
     }
   ],
   "readback_contract": {
@@ -33,13 +61,8 @@
     "controlled_live_cutover_ready": false,
     "live_execution_allowed": false
   },
-  "unmigrated_direct_consumers": [
-    "hepta-systems-controlled-live-operator-packet-preview",
-    "hepta-systems-controlled-live-required-evidence-collection-plan"
-  ],
+  "unmigrated_direct_consumers": [],
   "unmigrated_indirect_consumers": [
-    "hepta-systems-controlled-live-operator-packet-non-send-readback",
-    "hepta-systems-controlled-live-required-evidence-readback-index",
     "hepta-systems-controlled-live-required-evidence-gap-summary",
     "hepta-systems-controlled-live-required-evidence-gap-diff-view",
     "hepta-systems-controlled-live-required-evidence-gap-operator-readback",
@@ -50,7 +73,8 @@
     "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-rollback-rehearsal-boundary-readback",
     "hepta-systems-controlled-live-required-evidence-gap-operator-packet-attachment-kill-switch-rehearsal-boundary-readback"
   ],
-  "unmigrated_consumer_policy": "legacy consumers that require seven simultaneously missing blockers remain blocked on a clean tree; v2 never fabricates a dirty-worktree blocker to make them ready",
+  "unmigrated_consumer_policy": "the nine deeper gap and boundary consumers that require seven simultaneously missing blockers remain conservatively blocked on a clean tree; v2 never fabricates a dirty-worktree blocker to make them ready",
+  "downstream_propagation_ledger": "scripts/hepta-controlled-live-v2-propagation-ledger.json",
   "legacy_payloads_preserved_in_place": true,
   "service_or_external_mutation_allowed": false
 }

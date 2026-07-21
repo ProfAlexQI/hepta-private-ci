@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+export HEPTA_REPO_ROOT="$ROOT"
+REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report"
+DENIAL_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.gate"
+DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_CONTROLLED_LIVE_OPERATOR_PACKET_PREVIEW_2026-06-27.md"
+
+fail() {
+  printf 'hepta-systems-controlled-live-operator-packet-preview-v2-gate: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+[[ -x "$REPORT" ]] || fail "missing executable Phase 5b v2 report: $REPORT"
+[[ -x "$DENIAL_GATE" ]] || fail "missing executable Phase 5a v2 denial gate: $DENIAL_GATE"
+[[ -f "$DOC" ]] || fail "missing Phase 5b architecture note: $DOC"
+command -v jq >/dev/null 2>&1 || fail "jq is required to validate the Phase 5b v2 report"
+
+grep -q 'Controlled Live Operator Packet Preview' "$DOC" || fail "architecture note must document the operator packet preview"
+grep -q 'without sending an approval request' "$DOC" || fail "architecture note must document no approval request"
+
+"$REPORT" | jq -e '
+  .runtime == "hepta"
+  and .surface == "controlled_live_operator_packet_preview"
+  and .status == "ready_blocked"
+  and .schema_version == "controlled_live_operator_packet_preview_v2"
+  and .compatibility_migration == "clean_worktree_boundary_v2_propagation"
+  and .source_readback_index_ready == true
+  and .source_cutover_blocked == true
+  and .source_index_entry_count == 7
+  and .lib_export_present == true
+  and .packet_section_count == 6
+  and .blocker_readback_count == 7
+  and .stable_blocker_slot_count == 7
+  and .required_evidence_count == .active_blocker_count
+  and .operator_packet_preview_ready == true
+  and .approval_request_ready == false
+  and .approval_request_sent == false
+  and .approval_recorded == false
+  and .packet_persisted == false
+  and .controlled_live_cutover_ready == false
+  and .live_execution_allowed == false
+  and ((.source_worktree_boundary_state == "clean"
+      and .source_dirty_worktree_boundary_tracked == false
+      and .source_blocker_count == 6
+      and .active_blocker_count == 6
+      and .satisfied_entry_count == 1
+      and any(.blocker_readbacks[]; .source_blocker_id == "dirty_worktree_boundary" and .current_state == "satisfied" and .active_blocker == false and .evidence_required == false and .blocks_cutover == false))
+    or (.source_worktree_boundary_state == "dirty"
+      and .source_dirty_worktree_boundary_tracked == true
+      and .source_blocker_count == 7
+      and .active_blocker_count == 7
+      and .satisfied_entry_count == 0
+      and any(.blocker_readbacks[]; .source_blocker_id == "dirty_worktree_boundary" and .current_state == "missing" and .active_blocker == true and .evidence_required == true and .blocks_cutover == true)))
+  and (.sections | length) == 6
+  and (.sections | all(.preview_ready == true and .mutation_enabled == false))
+  and (.blocker_readbacks | length) == 7
+  and (.blocker_readbacks | all(.included_in_packet == true and .acceptance_allowed == false and .waiver_allowed == false and .live_mutation_allowed == false))
+  and .side_effect_free == true
+  and (.side_effects | to_entries | all(.value == false))
+' >/dev/null
+
+"$DENIAL_GATE" >/dev/null
+
+printf 'hepta-systems-controlled-live-operator-packet-preview-v2-gate: PASS: seven stable packet slots carry six or seven active blockers without approval, persistence, or live execution\n'
