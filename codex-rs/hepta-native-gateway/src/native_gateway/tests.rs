@@ -104,6 +104,40 @@
     }
 
     #[test]
+    fn overload_response_write_failure_is_connection_local() {
+        use std::net::Shutdown;
+
+        let (sender, _receiver) = mpsc::sync_channel(0);
+        let pool = NativeGatewayConnectionPool { sender };
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+        let (server, _) = listener.accept().expect("server");
+        server
+            .shutdown(Shutdown::Write)
+            .expect("disable server writes");
+
+        pool.dispatch(server)
+            .expect("one failed overload response must not terminate admission");
+        drop(client);
+    }
+
+    #[test]
+    fn disconnected_worker_pool_remains_gateway_fatal() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        drop(receiver);
+        let pool = NativeGatewayConnectionPool { sender };
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+        let (server, _) = listener.accept().expect("server");
+
+        let error = pool
+            .dispatch(server)
+            .expect_err("a disconnected worker pool is process-fatal");
+        assert!(error.to_string().contains("worker pool disconnected"));
+        drop(client);
+    }
+
+    #[test]
     fn gate_command_lists_the_declarative_registry_without_executing_reports() {
         let value: serde_json::Value = serde_json::from_str(
             &gate_command_json(&["--list".to_string()]).expect("gate registry json"),

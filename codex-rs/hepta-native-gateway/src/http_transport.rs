@@ -16,6 +16,7 @@ pub(crate) const MAX_HTTP_BODY_BYTES: usize = NATIVE_POST_MAX_BODY_BYTES;
 pub(crate) const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) const HTTP_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) const HTTP_REQUEST_DEADLINE: Duration = Duration::from_secs(10);
+pub(crate) const HTTP_RESPONSE_DEADLINE: Duration = Duration::from_secs(10);
 pub(crate) const HTTP_OVERLOAD_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,9 +204,12 @@ fn parse_content_length(header: &str) -> Result<usize, HttpRequestError> {
                     "duplicate content-length header",
                 ));
             }
+            let value = value.trim_matches([' ', '\t']);
+            if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err(HttpRequestError::BadRequest("invalid content-length"));
+            }
             content_length = Some(
                 value
-                    .trim()
                     .parse::<usize>()
                     .map_err(|_| HttpRequestError::BadRequest("invalid content-length"))?,
             );
@@ -273,16 +277,92 @@ pub(crate) fn write_http_response(
     content_type: &str,
     body: &[u8],
 ) -> Result<()> {
+    write_http_response_with_timeout(stream, status, content_type, body, HTTP_RESPONSE_DEADLINE)
+}
+
+pub(crate) fn write_http_response_with_timeout(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+    timeout: Duration,
+) -> Result<()> {
+    let deadline = Instant::now()
+        .checked_add(timeout)
+        .context("native gateway HTTP response deadline overflow")?;
+    write_http_response_before_deadline(stream, status, content_type, body, deadline)
+}
+
+fn write_http_response_before_deadline(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+    deadline: Instant,
+) -> Result<()> {
     let header = format!(
         "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\nContent-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\r\n",
         body.len()
     );
-    stream
-        .write_all(header.as_bytes())
+    write_http_bytes_before_deadline(stream, header.as_bytes(), deadline)
         .context("write header")?;
-    stream.write_all(body).context("write body")?;
-    stream.flush().context("flush response")?;
+    write_http_bytes_before_deadline(stream, body, deadline).context("write body")?;
+    flush_http_stream_before_deadline(stream, deadline).context("flush response")?;
     Ok(())
+}
+
+fn write_http_bytes_before_deadline(
+    stream: &mut TcpStream,
+    mut bytes: &[u8],
+    deadline: Instant,
+) -> Result<()> {
+    while !bytes.is_empty() {
+        apply_http_write_deadline(stream, deadline)?;
+        match stream.write(bytes) {
+            Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero).into()),
+            Ok(written) => bytes = &bytes[written..],
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                ) =>
+            {
+                anyhow::bail!("native gateway HTTP response timed out")
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
+fn flush_http_stream_before_deadline(stream: &mut TcpStream, deadline: Instant) -> Result<()> {
+    loop {
+        apply_http_write_deadline(stream, deadline)?;
+        match stream.flush() {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                ) =>
+            {
+                anyhow::bail!("native gateway HTTP response timed out")
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+fn apply_http_write_deadline(stream: &TcpStream, deadline: Instant) -> Result<()> {
+    let remaining = deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .context("native gateway HTTP response absolute deadline exceeded")?;
+    stream
+        .set_write_timeout(Some(remaining.min(HTTP_WRITE_TIMEOUT)))
+        .context("apply native gateway HTTP response deadline")
 }
 
 pub(crate) fn escape_html(value: &str) -> String {
@@ -355,6 +435,23 @@ mod tests {
     }
 
     #[test]
+    fn content_length_accepts_only_ascii_digits_with_http_ows() {
+        let mut accepted =
+            Cursor::new(b"POST / HTTP/1.1\r\ncontent-length: \t1 \t\r\n\r\na".as_slice());
+        assert!(read_http_request_from_reader(&mut accepted).is_ok());
+
+        for value in ["+1", "-1", "1 1", "\u{00a0}1", "1\u{000b}", ""] {
+            let request = format!("POST / HTTP/1.1\r\ncontent-length: {value}\r\n\r\na");
+            let error = read_http_request_from_reader(&mut Cursor::new(request.into_bytes()))
+                .expect_err("non-canonical content-length");
+            assert!(
+                matches!(error, HttpRequestError::BadRequest(_)),
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
     fn maps_socket_timeout_to_408() {
         struct TimeoutReader;
         impl Read for TimeoutReader {
@@ -403,6 +500,89 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(1));
         drop(server);
         writer.join().expect("writer");
+    }
+
+    #[test]
+    fn rejects_response_when_absolute_deadline_is_already_expired() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+        let (mut server, _) = listener.accept().expect("server");
+
+        let error = write_http_response_before_deadline(
+            &mut server,
+            "200 OK",
+            "text/plain",
+            b"payload",
+            Instant::now(),
+        )
+        .expect_err("expired response deadline");
+
+        assert!(format!("{error:#}").contains("absolute deadline exceeded"));
+        drop(client);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn absolute_response_deadline_stops_a_slow_reader_that_keeps_making_progress() {
+        use std::os::fd::AsRawFd;
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+        use std::sync::atomic::Ordering;
+
+        fn set_socket_buffer(stream: &TcpStream, option: libc::c_int) {
+            let bytes: libc::c_int = 4 * 1024;
+            // SAFETY: the socket descriptor and pointer/length pair are valid for
+            // the duration of this setsockopt call.
+            let result = unsafe {
+                libc::setsockopt(
+                    stream.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    option,
+                    std::ptr::from_ref(&bytes).cast(),
+                    std::mem::size_of_val(&bytes) as libc::socklen_t,
+                )
+            };
+            assert_eq!(result, 0, "set bounded test socket buffer");
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let mut client =
+            TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+        let (mut server, _) = listener.accept().expect("server");
+        set_socket_buffer(&client, libc::SO_RCVBUF);
+        set_socket_buffer(&server, libc::SO_SNDBUF);
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("client read timeout");
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let reader_stop = Arc::clone(&stop);
+        let reader = thread::spawn(move || {
+            let mut byte = [0_u8; 1];
+            while !reader_stop.load(Ordering::Relaxed) {
+                match client.read(&mut byte) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => thread::sleep(Duration::from_millis(10)),
+                }
+            }
+        });
+
+        let body = vec![b'x'; 4 * 1024 * 1024];
+        let started = Instant::now();
+        let error = write_http_response_before_deadline(
+            &mut server,
+            "200 OK",
+            "application/octet-stream",
+            &body,
+            started + Duration::from_millis(150),
+        )
+        .expect_err("slow reader must hit the absolute response deadline");
+        stop.store(true, Ordering::Relaxed);
+        drop(server);
+        reader.join().expect("slow reader");
+
+        assert!(format!("{error:#}").contains("response"));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[test]

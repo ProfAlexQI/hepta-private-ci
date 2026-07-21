@@ -218,7 +218,7 @@ pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
         NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY,
     )?;
     println!(
-        "Native gateway HTTP admission: {} workers, {} queued connections, {} byte headers, {} byte bodies, {}s idle read timeout, {}s absolute request deadline, {}s write timeout.",
+        "Native gateway HTTP admission: {} workers, {} queued connections, {} byte headers, {} byte bodies, {}s idle read timeout, {}s absolute request deadline, {}s idle write timeout, {}s absolute response deadline.",
         NATIVE_GATEWAY_WORKER_COUNT,
         NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY,
         MAX_HTTP_HEADER_BYTES,
@@ -226,6 +226,7 @@ pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
         HTTP_READ_TIMEOUT.as_secs(),
         HTTP_REQUEST_DEADLINE.as_secs(),
         HTTP_WRITE_TIMEOUT.as_secs(),
+        HTTP_RESPONSE_DEADLINE.as_secs(),
     );
     println!("Press Ctrl-C to stop.");
 
@@ -280,18 +281,22 @@ impl NativeGatewayConnectionPool {
         match self.sender.try_send(connection) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(mut connection)) => {
-                configure_http_stream(&connection.stream)?;
-                connection
-                    .stream
-                    .set_write_timeout(Some(HTTP_OVERLOAD_WRITE_TIMEOUT))
-                    .context("set native gateway overload response timeout")?;
-                write_http_response(
-                    &mut connection.stream,
-                    "503 Service Unavailable",
-                    "application/json; charset=utf-8",
-                    br#"{"error":"native gateway connection capacity exhausted"}"#,
-                )
-                .context("write native gateway capacity response")
+                let rejection = configure_http_stream(&connection.stream).and_then(|()| {
+                    write_http_response_with_timeout(
+                        &mut connection.stream,
+                        "503 Service Unavailable",
+                        "application/json; charset=utf-8",
+                        br#"{"error":"native gateway connection capacity exhausted"}"#,
+                        HTTP_OVERLOAD_WRITE_TIMEOUT,
+                    )
+                    .context("write native gateway capacity response")
+                });
+                if let Err(error) = rejection {
+                    eprintln!(
+                        "native gateway overloaded connection rejection failed; closing connection: {error:#}"
+                    );
+                }
+                Ok(())
             }
             Err(TrySendError::Disconnected(_)) => {
                 anyhow::bail!("native gateway HTTP worker pool disconnected")
