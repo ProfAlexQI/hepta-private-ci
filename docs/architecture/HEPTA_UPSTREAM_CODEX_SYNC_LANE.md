@@ -58,10 +58,13 @@ The r2 frozen range contains 1,821 commits, 3,389 changed repository paths, and
 provider/security paths, 1,316 runtime/app-server paths, 655 compatibility
 paths, and 53 product/governance paths. Those are **observed** values, not a
 claim that the whole range has been absorbed. The ledger separately records
-twelve **classified and selectively absorbed** upstream changes and four
-explicitly **deferred** decisions. The additional r2 decision keeps the
-seventeen newly observed commits other than `44481a1c…` deferred for separate,
-bounded review lanes. It also records the local split used for upstream
+twelve **classified and selectively absorbed** upstream changes and twenty
+explicitly **deferred** decisions. Seventeen r2 decisions bind every newly
+observed commit other than `44481a1c…` to its exact SHA and a distinct deferred
+classification; the other three preserve the predecessor intake's broader
+deferments. The freshness gate computes the actual `45ac251e…88fac6fe` commit
+set and requires `observed - selected == deferred`, with no duplicates or
+selected/deferred overlap. It also records the local split used for upstream
 `9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7`; that upstream commit must not be
 mechanically cherry-picked again. The Apps MCP endpoint absorption for upstream
 `6bf4845b60e0abccd0c64690e9c7591e0efb85d8` is a bounded semantic port: it
@@ -76,6 +79,15 @@ Its frozen ref `refs/remotes/upstream/hepta-intake-20260721` remains pinned to
 `45ac251e178416ff5c3022457ad8d2778c0d4549`; r2 does not move or reinterpret
 that evidence. In particular, the `history_storage_efficiency` receipt remains
 bound to that literal upstream commit instead of inheriting the current cutoff.
+
+Manual full-preflight CI materializes both frozen refs through
+`scripts/hepta-ci-materialize-upstream-intake materialize`. The
+`.github/hepta-ci-contract-v1.json` contract binds the predecessor and r2 refs
+to their exact SHAs. A clean checkout fetches only a missing exact commit and
+creates only its missing ref; an already-correct predecessor is left untouched,
+while any existing misdirected predecessor or r2 ref is rejected rather than
+moved. `scripts/hepta-ci-baseline contract-self-test` covers missing r2,
+misdirected r2, exact r2 materialization, and predecessor preservation.
 
 The r2-only selected absorption for upstream
 `44481a1c4548d1cc0cc3c95aa03b59ec4cba074a` is a bounded semantic port. The

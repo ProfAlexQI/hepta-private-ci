@@ -24,6 +24,7 @@ CUTOFF_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD:-$PINNED_CUTOFF_H
 APPS_MCP_LOCAL_RECEIPT="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_APPS_MCP_LOCAL_RECEIPT:-$PINNED_APPS_MCP_LOCAL_RECEIPT}"
 PROC_PREFLIGHT_LOCAL_RECEIPT="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_PROC_PREFLIGHT_LOCAL_RECEIPT:-$PINNED_PROC_PREFLIGHT_LOCAL_RECEIPT}"
 SKIP_RUST_TESTS="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_SKIP_RUST_TESTS:-0}"
+ALLOW_FIXTURE_MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST:-0}"
 CODEX_MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 
 fail() {
@@ -45,7 +46,34 @@ count_matching_paths() {
   } | sed '/^$/d' | wc -l | tr -d '[:space:]'
 }
 
-[[ "$MANIFEST" == "$PINNED_MANIFEST" ]] || fail "manifest override is not allowed for the canonical gate: $MANIFEST"
+pinned_r2_deferred_pairs() {
+  printf '%s\n' \
+    'bd92b056ddd91bd7c2ecfea3d8773f7eb5a879a6|r2_windows_write_root_acl_integrity' \
+    'e4836f998da166aba456f60d2e74eb79d6e2542b|r2_hook_context_spill_limits' \
+    '8c41ed33ce3e39460e7b13b14c35e0c39bb5980d|r2_session_start_hook_ordering' \
+    'e52c35b0001ea3e4a1744b99c4250a5b1a09e44d|r2_approval_rejection_reason_propagation' \
+    'ec3140db1297f3acebec7d6916b329cad3b12693|r2_history_hook_api_test_alignment' \
+    'b7e39aa31608b6eaba4f317538a8f82985a9e854|r2_paginated_rollout_lineage_resolution' \
+    '19940967bdb5ac04aec5d08ebd465481f1ac964d|r2_threadless_mcp_connection_events' \
+    '81e89fa5af13012c8313f032a17b11b9a5170d33|r2_sqlite_test_path_validation' \
+    '687f05cb946d10c96f90dd7ce82e11465c6e20a7|r2_agent_job_storage_migration' \
+    'cf821e8ec850c6d8380feea0e84859dd8ff54cd0|r2_hook_warning_tui_presentation' \
+    '60272096bc125ad7bd8ec26508b19d1e0db2874b|r2_connector_metadata_enrichment' \
+    '35c2278dd5c49daf8a4e44468038aed9be9e866e|r2_windows_exec_server_sandboxing' \
+    '56c11cf6586c0579e4e3eca14eefb0916b14c78c|r2_shared_skill_model_migration' \
+    'fd3c1dc13d0a0941af406e1bc1f697c9d14110ea|r2_remote_compaction_history_optimization' \
+    '2be7d3bcd9d1aec2780f0a71fe79cbb5afd877a1|r2_approval_catalog_policy_compatibility' \
+    'c9ef7eff005c3299a5a5f0004c34c6a3eedf2564|r2_outbound_proxy_route_resolution' \
+    '88fac6fe108237a105d3203e3508b0d531054312|r2_managed_permission_proxy_resolution'
+}
+
+count_nonempty_lines() {
+  sed '/^$/d' | wc -l | tr -d '[:space:]'
+}
+
+if [[ "$MANIFEST" != "$PINNED_MANIFEST" ]]; then
+  [[ "$ALLOW_FIXTURE_MANIFEST" == "1" && "$SKIP_RUST_TESTS" == "1" ]] || fail "manifest override is not allowed for the canonical gate: $MANIFEST"
+fi
 [[ -f "$MANIFEST" ]] || fail "missing intake manifest: $MANIFEST"
 [[ -f "$PINNED_PREDECESSOR_MANIFEST" ]] || fail "missing predecessor intake manifest: $PINNED_PREDECESSOR_MANIFEST"
 [[ "$BASE_HEAD" == "$PINNED_BASE_HEAD" ]] || fail "baseline does not match pinned baseline: expected $PINNED_BASE_HEAD got $BASE_HEAD"
@@ -135,7 +163,6 @@ jq -e \
       and .local_receipts == [$proc_preflight_local_receipt]
       and .absorption_kind == "semantic_port"
     )] | length) == 1
-    and (.deferred_decisions | length) == 4
     and (.deferred_decisions | all(
       .state == "deferred"
       and (.classification | type == "string" and length > 0)
@@ -146,12 +173,6 @@ jq -e \
       .classification == "mcp_endpoint_ownership"
       or .upstream_commit == $apps_mcp_upstream_commit
     )] | length) == 0
-    and ([.deferred_decisions[] | select(
-      .classification == "r2_remaining_observed_delta"
-      and .upstream_commit == $cutoff
-      and (.reason | contains("seventeen r2 commits"))
-    )] | length) == 1
-    and (([.selected_absorptions[].upstream_commit] - [.deferred_decisions[].upstream_commit]) | length == 12)
     and .historical_absorption_receipt.state == "historical_receipt"
     and .historical_absorption_receipt.current_intake_freshness_proof == false
     and .boundaries.offline_only == true
@@ -206,6 +227,52 @@ expected_governance_count="$(jq -r '.observation.bucket_observations.product_doc
 [[ "$compat_count" == "$expected_compat_count" ]] || fail "CLI/TUI compatibility bucket drifted: expected $expected_compat_count got $compat_count"
 [[ "$governance_count" == "$expected_governance_count" ]] || fail "product/governance bucket drifted: expected $expected_governance_count got $governance_count"
 
+r2_observed_commits="$(git rev-list "${PINNED_PREDECESSOR_CUTOFF_HEAD}..${CUTOFF_HEAD}" | LC_ALL=C sort)"
+r2_all_selected_commits="$(jq -r '.selected_absorptions[].upstream_commit' "$MANIFEST" | LC_ALL=C sort -u)"
+r2_selected_commits="$(
+  comm -12 \
+    <(printf '%s\n' "$r2_observed_commits" | sed '/^$/d') \
+    <(printf '%s\n' "$r2_all_selected_commits" | sed '/^$/d')
+)"
+r2_deferred_pairs="$(
+  jq -r '
+    .deferred_decisions[]
+    | select(.classification | startswith("r2_"))
+    | "\(.upstream_commit)|\(.classification)"
+  ' "$MANIFEST"
+)"
+r2_deferred_commits="$(
+  printf '%s\n' "$r2_deferred_pairs" \
+    | sed '/^$/d' \
+    | cut -d '|' -f 1 \
+    | LC_ALL=C sort
+)"
+r2_unique_deferred_commits="$(printf '%s\n' "$r2_deferred_commits" | sed '/^$/d' | LC_ALL=C sort -u)"
+r2_overlap="$(
+  comm -12 \
+    <(printf '%s\n' "$r2_selected_commits" | sed '/^$/d') \
+    <(printf '%s\n' "$r2_unique_deferred_commits" | sed '/^$/d')
+)"
+r2_expected_deferred_commits="$(
+  comm -23 \
+    <(printf '%s\n' "$r2_observed_commits" | sed '/^$/d') \
+    <(printf '%s\n' "$r2_selected_commits" | sed '/^$/d')
+)"
+r2_expected_deferred_pairs="$(pinned_r2_deferred_pairs | LC_ALL=C sort)"
+r2_actual_deferred_pairs="$(printf '%s\n' "$r2_deferred_pairs" | sed '/^$/d' | LC_ALL=C sort)"
+
+r2_observed_commit_count="$(printf '%s\n' "$r2_observed_commits" | count_nonempty_lines)"
+r2_selected_commit_count="$(printf '%s\n' "$r2_selected_commits" | count_nonempty_lines)"
+r2_deferred_commit_count="$(printf '%s\n' "$r2_deferred_commits" | count_nonempty_lines)"
+r2_unique_deferred_commit_count="$(printf '%s\n' "$r2_unique_deferred_commits" | count_nonempty_lines)"
+
+[[ "$r2_observed_commit_count" == "18" ]] || fail "r2 observed delta count drifted: expected 18 got $r2_observed_commit_count"
+[[ "$r2_selected_commit_count" == "1" && "$r2_selected_commits" == "$PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT" ]] || fail "r2 selected commit set must contain only $PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT"
+[[ "$r2_deferred_commit_count" == "$r2_unique_deferred_commit_count" ]] || fail "r2 deferred commit list contains duplicate SHAs"
+[[ -z "$r2_overlap" ]] || fail "r2 selected and deferred commit sets overlap: $r2_overlap"
+[[ "$r2_deferred_commits" == "$r2_expected_deferred_commits" ]] || fail "r2 deferred commit set does not equal observed delta minus selected"
+[[ "$r2_actual_deferred_pairs" == "$r2_expected_deferred_pairs" ]] || fail "r2 deferred classification mapping drifted"
+
 while IFS= read -r decision; do
   upstream_commit="$(jq -r '.upstream_commit' <<<"$decision")"
   git cat-file -e "${upstream_commit}^{commit}" || fail "selected upstream commit is unavailable: $upstream_commit"
@@ -251,6 +318,9 @@ jq -n \
   --argjson governance_count "$governance_count" \
   --argjson selected_absorption_count "$selected_absorption_count" \
   --argjson deferred_decision_count "$deferred_decision_count" \
+  --argjson r2_observed_commit_count "$r2_observed_commit_count" \
+  --argjson r2_selected_commit_count "$r2_selected_commit_count" \
+  --argjson r2_deferred_commit_count "$r2_deferred_commit_count" \
   '{
     product:$product,
     status:"ready",
@@ -282,6 +352,15 @@ jq -n \
     decisions:{
       selected_absorption_count:$selected_absorption_count,
       deferred_decision_count:$deferred_decision_count,
+      r2_delta:{
+        observed_commit_count:$r2_observed_commit_count,
+        selected_commit_count:$r2_selected_commit_count,
+        deferred_commit_count:$r2_deferred_commit_count,
+        observed_minus_selected_equals_deferred:true,
+        duplicate_deferred_commits:false,
+        selected_deferred_overlap:false,
+        classification_mapping_pinned:true
+      },
       full_range_absorption_claimed:false
     },
     policy:{

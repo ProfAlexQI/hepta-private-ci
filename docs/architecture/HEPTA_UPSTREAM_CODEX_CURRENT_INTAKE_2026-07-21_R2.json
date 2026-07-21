@@ -43,7 +43,7 @@
     "whole_tree_replacement_allowed": false,
     "cargo_lock_replacement_allowed": false,
     "selected_absorption_count": 12,
-    "deferred_decision_count": 4
+    "deferred_decision_count": 20
   },
   "selected_absorptions": [
     {
@@ -176,9 +176,105 @@
   "deferred_decisions": [
     {
       "state": "deferred",
-      "classification": "r2_remaining_observed_delta",
+      "classification": "r2_windows_write_root_acl_integrity",
+      "upstream_commit": "bd92b056ddd91bd7c2ecfea3d8773f7eb5a879a6",
+      "reason": "requires a separately reviewed Windows sandbox write-root lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_hook_context_spill_limits",
+      "upstream_commit": "e4836f998da166aba456f60d2e74eb79d6e2542b",
+      "reason": "requires a separately reviewed hook resource-governance lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_session_start_hook_ordering",
+      "upstream_commit": "8c41ed33ce3e39460e7b13b14c35e0c39bb5980d",
+      "reason": "requires a separately reviewed session and hook-ordering lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_approval_rejection_reason_propagation",
+      "upstream_commit": "e52c35b0001ea3e4a1744b99c4250a5b1a09e44d",
+      "reason": "requires a separately reviewed approval protocol lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_history_hook_api_test_alignment",
+      "upstream_commit": "ec3140db1297f3acebec7d6916b329cad3b12693",
+      "reason": "requires the history and hook API changes it tests to be reviewed first"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_paginated_rollout_lineage_resolution",
+      "upstream_commit": "b7e39aa31608b6eaba4f317538a8f82985a9e854",
+      "reason": "requires a separately reviewed rollout lineage lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_threadless_mcp_connection_events",
+      "upstream_commit": "19940967bdb5ac04aec5d08ebd465481f1ac964d",
+      "reason": "requires a separately reviewed MCP lifecycle lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_sqlite_test_path_validation",
+      "upstream_commit": "81e89fa5af13012c8313f032a17b11b9a5170d33",
+      "reason": "requires a separately reviewed SQLite test configuration lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_agent_job_storage_migration",
+      "upstream_commit": "687f05cb946d10c96f90dd7ce82e11465c6e20a7",
+      "reason": "requires a separately reviewed agent job persistence lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_hook_warning_tui_presentation",
+      "upstream_commit": "cf821e8ec850c6d8380feea0e84859dd8ff54cd0",
+      "reason": "requires a separately reviewed compatibility UI lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_connector_metadata_enrichment",
+      "upstream_commit": "60272096bc125ad7bd8ec26508b19d1e0db2874b",
+      "reason": "requires a separately reviewed connector metadata lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_windows_exec_server_sandboxing",
+      "upstream_commit": "35c2278dd5c49daf8a4e44468038aed9be9e866e",
+      "reason": "requires a separately reviewed Windows exec-server sandbox lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_shared_skill_model_migration",
+      "upstream_commit": "56c11cf6586c0579e4e3eca14eefb0916b14c78c",
+      "reason": "requires a separately reviewed skill model and dependency lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_remote_compaction_history_optimization",
+      "upstream_commit": "fd3c1dc13d0a0941af406e1bc1f697c9d14110ea",
+      "reason": "requires a separately reviewed compaction history lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_approval_catalog_policy_compatibility",
+      "upstream_commit": "2be7d3bcd9d1aec2780f0a71fe79cbb5afd877a1",
+      "reason": "requires a separately reviewed approval catalog compatibility lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_outbound_proxy_route_resolution",
+      "upstream_commit": "c9ef7eff005c3299a5a5f0004c34c6a3eedf2564",
+      "reason": "requires a separately reviewed outbound proxy route lane"
+    },
+    {
+      "state": "deferred",
+      "classification": "r2_managed_permission_proxy_resolution",
       "upstream_commit": "88fac6fe108237a105d3203e3508b0d531054312",
-      "reason": "the seventeen r2 commits other than the selected proc-preflight port require separate bounded review lanes"
+      "reason": "requires a separately reviewed managed permission and proxy policy lane"
     },
     {
       "state": "deferred",
