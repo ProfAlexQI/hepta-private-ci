@@ -2,22 +2,20 @@
 set -euo pipefail
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+
+source "$REPO_ROOT/scripts/lib/hepta-public-ga-blockers-v1.sh"
+
+EXPECTED_PUBLIC_GA_BLOCKERS_JSON="$(hepta_expected_public_ga_blockers_json)"
 
 PACKET_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-operator-approval-packet")"
 GA_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-readiness")"
 
-jq -e '
+jq -e \
+  --argjson expected_public_ga_blockers "$EXPECTED_PUBLIC_GA_BLOCKERS_JSON" \
+  '
   def expected_public_ga_blocker($blocker):
-    [
-      "gateway_replacement_not_ready",
-      "telegram_owner_handoff_not_operator_approved",
-      "telegram_live_poll_model_send_soak_not_complete",
-      "native_post_real_activation_not_operator_approved",
-      "credentialed_provider_live_smoke_not_operator_approved",
-      "channel_live_delivery_not_operator_approved",
-      "release_artifact_pack_not_operator_approved",
-      "external_public_release_not_operator_approved"
-    ] | index($blocker) != null;
+    $expected_public_ga_blockers | index($blocker) != null;
 
   .runtime == "hepta"
   and .status == "ready"
@@ -62,7 +60,7 @@ jq -e '
   and .side_effects.gateway_mutation_performed == false
   and .side_effects.external_network_read == false
   and .side_effects.external_send_performed == false
-' <<<"$PACKET_JSON" >/dev/null
+  ' <<<"$PACKET_JSON" >/dev/null
 
 report="$(jq -n \
   --arg product "Hepta" \

@@ -6,7 +6,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
+source "$REPO_ROOT/scripts/lib/hepta-public-ga-blockers-v1.sh"
 cd "$REPO_ROOT"
+
+EXPECTED_PUBLIC_GA_BLOCKERS_JSON="$(hepta_expected_public_ga_blockers_json)"
 
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
@@ -50,19 +53,11 @@ jq -n -e \
   --argjson release "$RELEASE_ARTIFACT_LOCK_JSON" \
   --argjson public_ga "$PUBLIC_GA_READINESS_JSON" \
   --argjson operator "$OPERATOR_PACKET_JSON" \
+  --argjson expected_public_ga_blockers "$EXPECTED_PUBLIC_GA_BLOCKERS_JSON" \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   '
     def expected_public_ga_blocker($blocker):
-      [
-        "gateway_replacement_not_ready",
-        "telegram_owner_handoff_not_operator_approved",
-        "telegram_live_poll_model_send_soak_not_complete",
-        "native_post_real_activation_not_operator_approved",
-        "credentialed_provider_live_smoke_not_operator_approved",
-        "channel_live_delivery_not_operator_approved",
-        "release_artifact_pack_not_operator_approved",
-        "external_public_release_not_operator_approved"
-      ] | index($blocker) != null;
+      $expected_public_ga_blockers | index($blocker) != null;
 
     $release.runtime == "hepta"
     and $release.status == "ready"

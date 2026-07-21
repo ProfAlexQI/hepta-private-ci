@@ -3,6 +3,15 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib/hepta-live-control-ui-truth-v1.sh"
+source "$REPO_ROOT/scripts/lib/hepta-public-ga-blockers-v1.sh"
+
+expected_public_ga_blockers="$(hepta_expected_public_ga_blockers_json)"
+jq -e '
+  length == 9
+  and index("gateway_replacement_not_ready") != null
+  and index("control_ui_live_truth_not_available_on_active_legacy_schema") != null
+  and (unique | length) == length
+' >/dev/null <<<"$expected_public_ga_blockers"
 
 assert_rejected() {
   local ga_json="$1"
