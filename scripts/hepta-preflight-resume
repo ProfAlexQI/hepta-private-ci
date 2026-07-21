@@ -45,29 +45,55 @@ process_start_token() {
     | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
 }
 
+initialize_resume_home_identity() {
+  RESUME_EFFECTIVE_HOME_SOURCE="unresolved_default"
+  RESUME_EFFECTIVE_HOME_LEXICAL=""
+  RESUME_EFFECTIVE_HOME_CANONICAL=""
+  RESUME_EFFECTIVE_HOME_STATUS="unresolved"
+  RESUME_ARG0_ROOT_LEXICAL=""
+  RESUME_ARG0_ROOT_CANONICAL=""
+
+  # Keep this precedence aligned with
+  # codex_utils_home_dir::find_codex_home(). Empty overrides are absent.
+  if [[ -n "${HEPTA_HOME:-}" ]]; then
+    RESUME_EFFECTIVE_HOME_SOURCE="HEPTA_HOME"
+    RESUME_EFFECTIVE_HOME_LEXICAL="$HEPTA_HOME"
+  elif [[ -n "${CODEX_HOME:-}" ]]; then
+    RESUME_EFFECTIVE_HOME_SOURCE="CODEX_HOME"
+    RESUME_EFFECTIVE_HOME_LEXICAL="$CODEX_HOME"
+  elif [[ -n "${HOME:-}" ]]; then
+    RESUME_EFFECTIVE_HOME_SOURCE="HOME_default"
+    RESUME_EFFECTIVE_HOME_LEXICAL="${HOME%/}/.hepta"
+  fi
+
+  if [[ -z "$RESUME_EFFECTIVE_HOME_LEXICAL" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$RESUME_EFFECTIVE_HOME_LEXICAL" ]]; then
+    RESUME_EFFECTIVE_HOME_STATUS="missing"
+    return 0
+  fi
+  if ! RESUME_EFFECTIVE_HOME_CANONICAL="$(
+    cd "$RESUME_EFFECTIVE_HOME_LEXICAL" && pwd -P
+  )"; then
+    RESUME_EFFECTIVE_HOME_STATUS="unresolvable"
+    RESUME_EFFECTIVE_HOME_CANONICAL=""
+    return 0
+  fi
+
+  RESUME_EFFECTIVE_HOME_STATUS="directory"
+  RESUME_ARG0_ROOT_LEXICAL="${RESUME_EFFECTIVE_HOME_LEXICAL%/}/tmp/arg0"
+  RESUME_ARG0_ROOT_CANONICAL="${RESUME_EFFECTIVE_HOME_CANONICAL%/}/tmp/arg0"
+}
+
 resume_relevant_path() {
   local raw_path="${1-}"
   local remaining="$raw_path"
   local entry
   local last_entry=0
   local emitted=0
-  local home_name resume_home resolved_resume_home arg0_root
   local transient_arg0_entry
-  local -a arg0_roots=()
-
-  # Preserve both lexical and physical spellings. On macOS, for example,
-  # /tmp PATH entries may live below a /private/tmp physical home.
-  for home_name in HEPTA_HOME CODEX_HOME; do
-    resume_home="${!home_name-}"
-    [[ -n "$resume_home" ]] || continue
-    arg0_roots+=("${resume_home%/}/tmp/arg0")
-    if [[ -d "$resume_home" ]]; then
-      resolved_resume_home="$(cd "$resume_home" && pwd -P)"
-      if [[ "$resolved_resume_home" != "$resume_home" ]]; then
-        arg0_roots+=("${resolved_resume_home%/}/tmp/arg0")
-      fi
-    fi
-  done
+  RESUME_RELEVANT_PATH=""
 
   while :; do
     if [[ "$remaining" == *:* ]]; then
@@ -83,21 +109,19 @@ resume_relevant_path() {
     # helpers do not select preflight inputs. Preserve every other PATH entry
     # byte-for-byte; Cargo/Rust identities are bound separately below.
     transient_arg0_entry=0
-    if [[ "${entry##*/}" == codex-arg0* ]]; then
-      for arg0_root in "${arg0_roots[@]}"; do
-        if [[ "${entry%/*}" == "$arg0_root" ]]; then
-          transient_arg0_entry=1
-          break
-        fi
-      done
+    if [[ "${entry##*/}" == codex-arg0* \
+      && -n "$RESUME_ARG0_ROOT_LEXICAL" \
+      && ( "${entry%/*}" == "$RESUME_ARG0_ROOT_LEXICAL" \
+        || "${entry%/*}" == "$RESUME_ARG0_ROOT_CANONICAL" ) ]]; then
+      transient_arg0_entry=1
     fi
     if [[ "$transient_arg0_entry" == "1" ]]; then
       :
     else
       if [[ "$emitted" == "1" ]]; then
-        printf ':'
+        RESUME_RELEVANT_PATH+=":"
       fi
-      printf '%s' "$entry"
+      RESUME_RELEVANT_PATH+="$entry"
       emitted=1
     fi
 
@@ -114,9 +138,7 @@ relevant_environment_sha256() {
         # the same preflight evidence under the same semantic environment.
         ;;
       PATH)
-        printf '%s\0' "$env_name"
-        resume_relevant_path "${!env_name-}"
-        printf '\0'
+        printf '%s\0%s\0' "$env_name" "$RESUME_RELEVANT_PATH"
         ;;
       HEPTA_*|HEPTA_CODEX_*|CODEX_*|CARGO_*|RUST*|RUSTUP_*|GITHUB_*|BAZEL_*|CI|HOME|CC|CXX|SDKROOT|MACOSX_DEPLOYMENT_TARGET|TMPDIR|LANG|LC_*|OPENSSL_*|PKG_CONFIG_*)
         # Environment values cannot contain NUL. NUL-framed, sorted names make
@@ -125,6 +147,14 @@ relevant_environment_sha256() {
         ;;
     esac
   done < <(compgen -e | LC_ALL=C sort -u)
+  # A stable lexical symlink can be retargeted between sessions. Bind the
+  # injector's canonical home identity so stripping each session's arg0 path
+  # cannot hide a real config/auth/cache boundary change.
+  printf '%s\0%s\0' \
+    '__HEPTA_PREFLIGHT_EFFECTIVE_HOME_SOURCE' "$RESUME_EFFECTIVE_HOME_SOURCE" \
+    '__HEPTA_PREFLIGHT_EFFECTIVE_HOME_LEXICAL' "$RESUME_EFFECTIVE_HOME_LEXICAL" \
+    '__HEPTA_PREFLIGHT_EFFECTIVE_HOME_CANONICAL' "$RESUME_EFFECTIVE_HOME_CANONICAL" \
+    '__HEPTA_PREFLIGHT_EFFECTIVE_HOME_STATUS' "$RESUME_EFFECTIVE_HOME_STATUS"
 }
 
 log_binding() {
@@ -187,13 +217,19 @@ require_positive_integer() {
 
 require_positive_integer "HEPTA_PREFLIGHT_RESUME_MAX_SAME_FAILURES" "$MAX_SAME_FAILURES"
 
+initialize_resume_home_identity
+resume_relevant_path "${PATH:-}"
 PREFLIGHT_SHA256="$(sha256_file "$PREFLIGHT")"
-CARGO_IDENTITY_SHA256="$(command_identity_sha256 cargo --version --verbose)"
-RUSTC_IDENTITY_SHA256="$(command_identity_sha256 rustc -vV)"
+CARGO_IDENTITY_SHA256="$(
+  PATH="$RESUME_RELEVANT_PATH" command_identity_sha256 cargo --version --verbose
+)"
+RUSTC_IDENTITY_SHA256="$(
+  PATH="$RESUME_RELEVANT_PATH" command_identity_sha256 rustc -vV
+)"
 TOOLCHAIN_IDENTITY_SHA256="$({
   printf 'rustc=%s\n' "$RUSTC_IDENTITY_SHA256"
-  if command -v rustup >/dev/null 2>&1; then
-    rustup show active-toolchain 2>&1 || true
+  if PATH="$RESUME_RELEVANT_PATH" command -v rustup >/dev/null 2>&1; then
+    PATH="$RESUME_RELEVANT_PATH" rustup show active-toolchain 2>&1 || true
   else
     printf 'rustup=missing\n'
   fi
@@ -244,9 +280,7 @@ ENVIRONMENT_SHA256="$({
   printf 'RUSTFLAGS=%s\n' "${RUSTFLAGS:-}"
   printf 'RUSTC_WRAPPER=%s\n' "${RUSTC_WRAPPER:-}"
   printf 'HOME=%s\n' "${HOME:-}"
-  printf 'PATH='
-  resume_relevant_path "${PATH:-}"
-  printf '\n'
+  printf 'PATH=%s\n' "$RESUME_RELEVANT_PATH"
   printf 'CARGO_IDENTITY_SHA256=%s\n' "$CARGO_IDENTITY_SHA256"
   printf 'RUSTC_IDENTITY_SHA256=%s\n' "$RUSTC_IDENTITY_SHA256"
   printf 'TOOLCHAIN_IDENTITY_SHA256=%s\n' "$TOOLCHAIN_IDENTITY_SHA256"
@@ -486,7 +520,10 @@ write_state() {
     } | sha256_text)"
   fi
 
-  state_tmp="$STATE_FILE.tmp.$$.$BASHPID"
+  # BASHPID is unavailable in macOS system Bash 3.2. The state lock already
+  # serializes writers, so $$ is a safe fallback for its sequential subshell
+  # checkpoint writes on that runtime.
+  state_tmp="$STATE_FILE.tmp.$$.${BASHPID:-$$}"
   if ! jq -n \
     --arg schema_version "$STATE_SCHEMA" \
     --arg status "$state_status" \
@@ -1003,7 +1040,9 @@ if [[ -n "$resume_marker" && "$start_line" == "$terminal_branch_start" ]]; then
 fi
 
 set +e
-"$generated" 2>&1 \
+# CODEX_THREAD_ID is runtime correlation, not a preflight input. Keep that
+# semantic true at execution time as well as in the resume digest.
+env -u CODEX_THREAD_ID PATH="$RESUME_RELEVANT_PATH" "$generated" 2>&1 \
   | tee -a "$LOG_FILE" "$attempt_log" \
   | while IFS= read -r line; do
       printf '%s\n' "$line"

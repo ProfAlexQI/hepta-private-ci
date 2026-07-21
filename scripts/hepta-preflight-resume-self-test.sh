@@ -29,6 +29,16 @@ if [[ "${HEPTA_RESUME_TEST_BREAK_STATE:-0}" == "1" ]]; then
 fi
 echo "[hepta-preflight] fixture deterministic gate"
 [[ "$PREFLIGHT_RELEASE_TARGET_DIR" == "${HEPTA_RESUME_TEST_EXPECTED_TARGET:?}" ]] || exit 44
+[[ -z "${CODEX_THREAD_ID+x}" ]] || exit 45
+if [[ -n "${HEPTA_RESUME_TEST_EXPECTED_PATH+x}" \
+  && "${PATH:-}" != "$HEPTA_RESUME_TEST_EXPECTED_PATH" ]]; then
+  exit 47
+fi
+if [[ -n "${RESUME_TEST_FORBIDDEN_ARG0_ROOT:-}" ]]; then
+  case ":${PATH:-}:" in
+    *":${RESUME_TEST_FORBIDDEN_ARG0_ROOT%/}/codex-arg0"*) exit 46 ;;
+  esac
+fi
 if [[ "${HEPTA_RESUME_TEST_SLEEP_SECONDS:-0}" != "0" ]]; then
   sleep "$HEPTA_RESUME_TEST_SLEEP_SECONDS"
 fi
@@ -229,15 +239,16 @@ jq -e '
 # thread remains resumable. All non-arg0 PATH entries stay fail-closed.
 session_state="$tmp/session.state"
 session_log="$tmp/session.log"
-session_home="$tmp/session-home"
+session_codex_home="$tmp/session-codex-home"
 session_hepta_home="$tmp/session-hepta-home"
-session_arg0_one="$session_home/tmp/arg0/codex-arg0-first"
-session_arg0_two="$session_home/tmp/arg0/codex-arg0-second"
+session_arg0_one="$session_hepta_home/tmp/arg0/codex-arg0-first"
+session_arg0_two="$session_hepta_home/tmp/arg0/codex-arg0-second"
+session_non_effective_arg0="$session_codex_home/tmp/arg0/codex-arg0-non-effective"
 semantic_path_entry="$tmp/semantic-path-entry"
 mkdir -p \
   "$session_arg0_one" \
   "$session_arg0_two" \
-  "$session_hepta_home" \
+  "$session_non_effective_arg0" \
   "$semantic_path_entry"
 session_env=(
   HEPTA_PREFLIGHT_RESUME_STATE="$session_state"
@@ -247,8 +258,10 @@ session_env=(
   HEPTA_RESUME_TEST_FAIL=1
   CARGO_TARGET_DIR="$target"
   HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
+  HEPTA_RESUME_TEST_EXPECTED_PATH="$PATH"
+  RESUME_TEST_FORBIDDEN_ARG0_ROOT="$session_hepta_home/tmp/arg0"
   HEPTA_HOME="$session_hepta_home"
-  CODEX_HOME="$session_home"
+  CODEX_HOME="$session_codex_home"
 )
 session_rc=0
 env "${session_env[@]}" \
@@ -277,6 +290,28 @@ env "${session_env[@]}" \
 [[ "$new_thread_rc" == "42" ]]
 [[ "$(jq -r '.attempt' "$session_state")" == "2" ]]
 
+# HEPTA_HOME overrides CODEX_HOME in the arg0 injector. A codex-arg0-looking
+# directory under the non-effective legacy home remains semantic PATH input.
+non_effective_home_show_json="$(
+  env "${session_env[@]}" \
+    CODEX_THREAD_ID=fixture-thread-two \
+    PATH="$session_non_effective_arg0:$PATH" \
+    "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "blocked"
+  and .resumable == false
+  and .environment_matches == false
+  and .relevant_environment_matches == false
+' >/dev/null <<<"$non_effective_home_show_json"
+non_effective_home_rc=0
+env "${session_env[@]}" \
+  CODEX_THREAD_ID=fixture-thread-two \
+  PATH="$session_non_effective_arg0:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 \
+  || non_effective_home_rc=$?
+[[ "$non_effective_home_rc" == "1" ]]
+
 semantic_path_show_json="$(
   env "${session_env[@]}" \
     CODEX_THREAD_ID=fixture-thread-two \
@@ -301,6 +336,199 @@ env "${session_env[@]}" \
   PATH="$session_arg0_two:$PATH" \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
 [[ ! -e "$session_state" ]]
+
+# Empty HEPTA_HOME has the same meaning as an absent override and falls back to
+# CODEX_HOME, matching codex_utils_home_dir::non_empty_env.
+codex_fallback_state="$tmp/codex-fallback.state"
+codex_fallback_log="$tmp/codex-fallback.log"
+codex_fallback_arg0_one="$session_codex_home/tmp/arg0/codex-arg0-fallback-one"
+codex_fallback_arg0_two="$session_codex_home/tmp/arg0/codex-arg0-fallback-two"
+mkdir -p "$codex_fallback_arg0_one" "$codex_fallback_arg0_two"
+codex_fallback_env=(
+  HEPTA_PREFLIGHT_RESUME_STATE="$codex_fallback_state"
+  HEPTA_PREFLIGHT_RESUME_LOG="$codex_fallback_log"
+  HEPTA_PREFLIGHT_NATIVE=0
+  HEPTA_PREFLIGHT_RELEASE=1
+  HEPTA_RESUME_TEST_FAIL=1
+  CARGO_TARGET_DIR="$target"
+  HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
+  HEPTA_RESUME_TEST_EXPECTED_PATH="$PATH"
+  RESUME_TEST_FORBIDDEN_ARG0_ROOT="$session_codex_home/tmp/arg0"
+  HEPTA_HOME=
+  CODEX_HOME="$session_codex_home"
+)
+codex_fallback_rc=0
+env "${codex_fallback_env[@]}" \
+  CODEX_THREAD_ID=fixture-fallback-thread-one \
+  PATH="$codex_fallback_arg0_one:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 \
+  || codex_fallback_rc=$?
+[[ "$codex_fallback_rc" == "42" ]]
+codex_fallback_show_json="$(
+  env "${codex_fallback_env[@]}" \
+    CODEX_THREAD_ID=fixture-fallback-thread-two \
+    PATH="$codex_fallback_arg0_two:$PATH" \
+    "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "blocked"
+  and .resumable == true
+  and .environment_matches == true
+  and .relevant_environment_matches == true
+' >/dev/null <<<"$codex_fallback_show_json"
+codex_fallback_resume_rc=0
+env "${codex_fallback_env[@]}" \
+  CODEX_THREAD_ID=fixture-fallback-thread-two \
+  PATH="$codex_fallback_arg0_two:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 \
+  || codex_fallback_resume_rc=$?
+[[ "$codex_fallback_resume_rc" == "42" ]]
+env "${codex_fallback_env[@]}" \
+  HEPTA_RESUME_TEST_FAIL=0 \
+  CODEX_THREAD_ID=fixture-fallback-thread-two \
+  PATH="$codex_fallback_arg0_two:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
+[[ ! -e "$codex_fallback_state" ]]
+
+# With both explicit homes absent, the injector defaults to $HOME/.hepta. Run
+# this boundary under macOS system Bash 3.2 so a codex-arg0 PATH cannot regress
+# to the empty-array nounset failure found by independent review.
+default_state="$tmp/default-home.state"
+default_log="$tmp/default-home.log"
+default_output="$tmp/default-home.output"
+default_user_home="$tmp/default-user-home"
+default_runtime_home="$default_user_home/.hepta"
+default_arg0_one="$default_runtime_home/tmp/arg0/codex-arg0-default-one"
+default_arg0_two="$default_runtime_home/tmp/arg0/codex-arg0-default-two"
+mkdir -p "$default_arg0_one" "$default_arg0_two"
+default_env=(
+  HEPTA_PREFLIGHT_RESUME_STATE="$default_state"
+  HEPTA_PREFLIGHT_RESUME_LOG="$default_log"
+  HEPTA_PREFLIGHT_NATIVE=0
+  HEPTA_PREFLIGHT_RELEASE=1
+  HEPTA_RESUME_TEST_FAIL=1
+  CARGO_TARGET_DIR="$target"
+  HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
+  HEPTA_RESUME_TEST_EXPECTED_PATH="$PATH"
+  RESUME_TEST_FORBIDDEN_ARG0_ROOT="$default_runtime_home/tmp/arg0"
+  HOME="$default_user_home"
+)
+default_rc=0
+env -u HEPTA_HOME -u CODEX_HOME "${default_env[@]}" \
+  CODEX_THREAD_ID=fixture-default-thread-one \
+  PATH="$default_arg0_one:$PATH" \
+  /bin/bash "$fixture/scripts/hepta-preflight-resume" >"$default_output" 2>&1 \
+  || default_rc=$?
+[[ "$default_rc" == "42" ]] || {
+  cat "$default_output" >&2
+  echo "default-home resume fixture returned $default_rc; expected 42" >&2
+  exit 1
+}
+default_show_json="$(
+  env -u HEPTA_HOME -u CODEX_HOME "${default_env[@]}" \
+    CODEX_THREAD_ID=fixture-default-thread-two \
+    PATH="$default_arg0_two:$PATH" \
+    /bin/bash "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "blocked"
+  and .resumable == true
+  and .environment_matches == true
+  and .relevant_environment_matches == true
+' >/dev/null <<<"$default_show_json"
+default_resume_rc=0
+env -u HEPTA_HOME -u CODEX_HOME "${default_env[@]}" \
+  CODEX_THREAD_ID=fixture-default-thread-two \
+  PATH="$default_arg0_two:$PATH" \
+  /bin/bash "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 \
+  || default_resume_rc=$?
+[[ "$default_resume_rc" == "42" ]]
+env -u HEPTA_HOME -u CODEX_HOME "${default_env[@]}" \
+  HEPTA_RESUME_TEST_FAIL=0 \
+  CODEX_THREAD_ID=fixture-default-thread-two \
+  PATH="$default_arg0_two:$PATH" \
+  /bin/bash "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
+[[ ! -e "$default_state" ]]
+
+# Even when no shell home can be resolved, a codex-arg0-looking PATH entry must
+# be preserved without triggering Bash 3.2's empty-array nounset behavior.
+unresolved_home_state="$tmp/unresolved-home.state"
+unresolved_home_log="$tmp/unresolved-home.log"
+unresolved_arg0="$tmp/unresolved-root/codex-arg0-unowned"
+mkdir -p "$unresolved_arg0"
+unresolved_home_show_json="$(
+  env -u HEPTA_HOME -u CODEX_HOME -u HOME \
+    HEPTA_PREFLIGHT_RESUME_STATE="$unresolved_home_state" \
+    HEPTA_PREFLIGHT_RESUME_LOG="$unresolved_home_log" \
+    HEPTA_PREFLIGHT_NATIVE=0 \
+    HEPTA_PREFLIGHT_RELEASE=0 \
+    CARGO_TARGET_DIR="$target" \
+    HEPTA_RESUME_TEST_EXPECTED_TARGET="$target" \
+    PATH="$unresolved_arg0:$PATH" \
+    /bin/bash "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "fresh"
+  and .resumable == true
+  and .environment_matches == true
+' >/dev/null <<<"$unresolved_home_show_json"
+
+# Bind the canonical identity of an effective-home symlink. Retargeting the
+# stable lexical path changes config/auth/cache semantics even though each
+# session's physical arg0 directory is transient and normalized.
+symlink_state="$tmp/symlink-home.state"
+symlink_log="$tmp/symlink-home.log"
+symlink_home="$tmp/stable-hepta-home"
+symlink_real_a="$tmp/hepta-home-real-a"
+symlink_real_b="$tmp/hepta-home-real-b"
+mkdir -p \
+  "$symlink_real_a/tmp/arg0/codex-arg0-symlink-one" \
+  "$symlink_real_b/tmp/arg0/codex-arg0-symlink-two"
+symlink_real_a_physical="$(cd "$symlink_real_a" && pwd -P)"
+symlink_real_b_physical="$(cd "$symlink_real_b" && pwd -P)"
+symlink_arg0_one="$symlink_real_a_physical/tmp/arg0/codex-arg0-symlink-one"
+symlink_arg0_two="$symlink_real_b_physical/tmp/arg0/codex-arg0-symlink-two"
+ln -s "$symlink_real_a" "$symlink_home"
+symlink_env=(
+  HEPTA_PREFLIGHT_RESUME_STATE="$symlink_state"
+  HEPTA_PREFLIGHT_RESUME_LOG="$symlink_log"
+  HEPTA_PREFLIGHT_NATIVE=0
+  HEPTA_PREFLIGHT_RELEASE=1
+  HEPTA_RESUME_TEST_FAIL=1
+  CARGO_TARGET_DIR="$target"
+  HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
+  HEPTA_HOME="$symlink_home"
+  CODEX_HOME="$session_codex_home"
+)
+symlink_rc=0
+env "${symlink_env[@]}" \
+  PATH="$symlink_arg0_one:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || symlink_rc=$?
+[[ "$symlink_rc" == "42" ]]
+rm -f "$symlink_home"
+ln -s "$symlink_real_b" "$symlink_home"
+symlink_show_json="$(
+  env "${symlink_env[@]}" \
+    PATH="$symlink_arg0_two:$PATH" \
+    "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "blocked"
+  and .resumable == false
+  and .environment_matches == false
+  and .relevant_environment_matches == false
+' >/dev/null <<<"$symlink_show_json"
+symlink_resume_rc=0
+env "${symlink_env[@]}" \
+  PATH="$symlink_arg0_two:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 \
+  || symlink_resume_rc=$?
+[[ "$symlink_resume_rc" == "1" ]]
+env "${symlink_env[@]}" \
+  HEPTA_RESUME_TEST_FAIL=0 \
+  PATH="$symlink_arg0_two:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
+[[ ! -e "$symlink_state" ]]
 
 # The state is bound to this worktree, not merely to a shared HEAD and clean
 # porcelain digest.
