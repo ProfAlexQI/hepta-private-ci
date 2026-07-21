@@ -378,6 +378,7 @@ fn hepta_cli_command_inventory_report() -> HeptaCliCommandInventoryResponse {
 
 fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCompletionResponse {
     let route_matrix = control_ui_route_parity_report();
+    let control_ui = hepta_core::control_ui_report();
     let owner_handoff = telegram_owner_handoff_status(options);
     let telegram_readiness = native_telegram::telegram_production_readiness_status(
         options.with_telegram_plugin,
@@ -398,6 +399,8 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         || (env_truthy(HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV)
             && env_truthy(HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV));
     let external_public_release_approved = env_truthy("HEPTA_PUBLIC_GA_RELEASE_APPROVED");
+    let control_ui_product_complete = control_ui.complete();
+    let browser_visual_smoke_ready = control_ui.evidence_coverage.browser_behavior.complete();
 
     let mut blockers = Vec::new();
     if !telegram_owner_or_parallel_ready {
@@ -418,7 +421,25 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
     if !external_public_release_approved {
         blockers.push("external_public_release_not_operator_approved");
     }
+    if !control_ui_product_complete {
+        blockers.push("control_ui_product_behavior_evidence_not_bound");
+    }
     let production_tracks_ready = blockers.is_empty();
+    let production_replacement_checks = [
+        telegram_owner_or_parallel_ready,
+        telegram_live_poll_model_send_ready,
+        native_post_real_activation_ready,
+        credentialed_provider_smoke_ready,
+        channel_live_delivery_ready,
+        external_public_release_approved,
+        control_ui_product_complete,
+    ];
+    let production_replacement_percent = ((production_replacement_checks
+        .iter()
+        .filter(|ready| **ready)
+        .count()
+        * 100)
+        / production_replacement_checks.len()) as u8;
 
     HeptaMergeCompletionResponse {
         product: "Hepta",
@@ -437,11 +458,21 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         migration_matrix_doc: "docs/release/HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md",
         audit_commit: "252a109 docs: audit Hepta merge completion",
         migration_gates_commit: "01c7477 ops: add Hepta Codex migration gates",
-        readiness_class: "active_production_replacement_ready",
+        readiness_class: if production_tracks_ready {
+            "active_production_replacement_ready"
+        } else if control_ui.static_contract_complete() {
+            "static_contract_ready_production_in_progress"
+        } else {
+            "static_contract_incomplete"
+        },
         source_package_merge_percent: 100,
         local_deterministic_function_percent: 100,
         active_service_coexistence_percent: 100,
-        production_replacement_percent: 100,
+        production_replacement_percent,
+        control_ui_product_status: control_ui.status,
+        control_ui_product_complete,
+        control_ui_live_operator_surface_percent: control_ui.live_operator_surface_percent,
+        control_ui_evidence: control_ui.evidence_coverage,
         old_hepta_script_total: 20,
         current_hepta_codex_script_total: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
         carried_or_adapted_script_count: CURRENT_HEPTA_CODEX_SCRIPT_TOTAL,
@@ -455,7 +486,7 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         old_cli_script_migration_matrix_ready: true,
         merge_completion_control_ui_surfaced: true,
         merge_completion_gateway_index_surfaced: true,
-        browser_visual_smoke_ready: true,
+        browser_visual_smoke_ready,
         browser_visual_smoke_command: "scripts/hepta-browser-visual-smoke.sh",
         production_owner_handoff_required: !telegram_owner_or_parallel_ready,
         telegram_live_send_enabled: telegram_live_poll_model_send_ready,
@@ -790,6 +821,9 @@ fn hepta_public_ga_readiness_report(
     if !hepta_native_release_packaging_ready {
         blockers.push("hepta_native_release_packaging_not_complete");
     }
+    if !merge.control_ui_product_complete {
+        blockers.push("control_ui_product_behavior_evidence_not_bound");
+    }
     if !external_public_release_approved {
         blockers.push("external_public_release_not_operator_approved");
     }
@@ -815,6 +849,10 @@ fn hepta_public_ga_readiness_report(
         local_deterministic_function_percent: merge.local_deterministic_function_percent,
         active_service_coexistence_percent: merge.active_service_coexistence_percent,
         production_replacement_percent: merge.production_replacement_percent,
+        control_ui_product_status: merge.control_ui_product_status,
+        control_ui_product_complete: merge.control_ui_product_complete,
+        control_ui_live_operator_surface_percent: merge.control_ui_live_operator_surface_percent,
+        control_ui_overall_evidence_percent: merge.control_ui_evidence.overall_evidence_percent,
         local_gate_matrix_ready,
         local_reports_synchronized,
         public_ga_ready,
@@ -1440,6 +1478,10 @@ impl NativeControlUiAuditSurface {
     fn read_only(self) -> bool {
         !self.dry_run_only()
     }
+
+    fn reports_control_ui_evidence(self) -> bool {
+        matches!(self, Self::ControlUi | Self::UiContractAudit)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -1590,6 +1632,10 @@ struct NativeControlUiAuditResponse {
     plan_target: Option<&'static str>,
     dry_run_only: bool,
     read_only: bool,
+    control_ui_product_status: &'static str,
+    control_ui_product_complete: bool,
+    control_ui_live_operator_surface_percent: u8,
+    control_ui_evidence: hepta_core::ControlUiEvidenceCoverage,
     confirmation_required_for_real_mutation: bool,
     route_matrix_ready: bool,
     route_count: usize,
@@ -2028,6 +2074,8 @@ struct ControlUiRouteParityReport {
     missing_route_count: usize,
     missing_routes: Vec<String>,
     side_effect_free: bool,
+    evidence_scope: &'static str,
+    live_product_complete: bool,
     legacy_source: &'static str,
     routes: &'static [ControlUiRouteSpec],
 }
@@ -2076,7 +2124,9 @@ fn control_ui_route_parity_report() -> ControlUiRouteParityReport {
                 missing_route_count: missing_routes.len(),
                 missing_routes,
                 side_effect_free: true,
-                legacy_source: "Hepta Control UI live operator DevEx 100 route matrix and hepta-core::control_ui markers",
+                evidence_scope: "static route registration and handler parity only",
+                live_product_complete: false,
+                legacy_source: "Hepta Control UI static route-parity matrix and hepta-core::control_ui markers; not browser behavior, mutation/readback, or live-adapter evidence",
                 routes: CONTROL_UI_ROUTE_SPECS,
             }
         })

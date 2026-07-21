@@ -39,6 +39,6 @@
   "endpointHealth": [
     { "path": "/api/tasks", "ok": true, "status": 200, "detail": "golden ready", "latency_ms": 42 },
     { "path": "/api/events-report", "ok": true, "status": 200, "detail": "golden events", "latency_ms": 24 },
-    { "path": "/api/hepta-merge-completion", "ok": true, "status": 200, "detail": "merge completion ready", "latency_ms": 18 }
+    { "path": "/api/hepta-merge-completion", "ok": true, "status": 200, "detail": "merge static contract ready; production in progress", "latency_ms": 18 }
   ]
 }

@@ -162,6 +162,14 @@ fn integrity_check_metadata(name: &str) -> IntegrityCheckMetadata {
                 "run scripts/hepta-local-import.sh and keep the generated .hepta/local-import/private tree untracked",
             ),
         },
+        integrity::PRODUCTION_PARITY_READY => IntegrityCheckMetadata {
+            id: "readiness.production_parity",
+            area: DoctorArea::Gateway,
+            responsibility: "production parity evidence",
+            remediation: Some(
+                "bind fresh Control UI unit/state, browser behavior, backend mutation/readback, and live-adapter evidence before claiming production parity",
+            ),
+        },
         integrity::RUNTIME_SNAPSHOT_ROUNDTRIP => IntegrityCheckMetadata {
             id: "runtime_snapshot.roundtrip",
             area: DoctorArea::RuntimeSnapshot,
@@ -282,6 +290,26 @@ mod tests {
                 .as_deref()
                 .expect("warn checks should keep remediation")
                 .contains("linked_transcript_spans")
+        );
+    }
+
+    #[test]
+    fn integrity_catalog_keeps_incomplete_production_parity_visible() {
+        let outcome = adapt_integrity_check(DoctorCheck {
+            name: integrity::PRODUCTION_PARITY_READY.into(),
+            status: DoctorStatus::Warn,
+            detail: "control_ui_status=static_contract_complete control_ui_live=0".into(),
+        });
+
+        assert_eq!(outcome.id, "readiness.production_parity");
+        assert_eq!(outcome.area, DoctorArea::Gateway);
+        assert_eq!(outcome.status, CoreDoctorStatus::Warn);
+        assert!(
+            outcome
+                .remediation
+                .as_deref()
+                .expect("incomplete parity should carry remediation")
+                .contains("browser behavior")
         );
     }
 

@@ -130,6 +130,12 @@ jq -n -e \
     and $ga.reports_synchronized == true
     and $ga.local_gate_matrix_ready == true
     and $ga.local_reports_synchronized == true
+    and $ga.control_ui_product_status == "static_contract_complete"
+    and $ga.control_ui_product_complete == false
+    and $ga.control_ui_live_operator_surface_percent == 0
+    and $ga.control_ui_overall_evidence_percent == 20
+    and $ga.production_replacement_percent < 100
+    and ($ga.blockers | index("control_ui_product_behavior_evidence_not_bound")) != null
     and $ga.native_gateway_source_command_count >= 69
     and $ga.missing_route_count == 0
     and $ga.side_effects.public_release_published == false

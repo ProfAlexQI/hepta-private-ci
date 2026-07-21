@@ -4205,6 +4205,7 @@ fn native_control_ui_audit_report(
     telegram_plugin: &NativeTelegramPluginStatus,
 ) -> NativeControlUiAuditResponse {
     let route_matrix = control_ui_route_parity_report();
+    let control_ui = hepta_core::control_ui_report();
     let approvals = native_approvals_report();
     let gateway_replacement = gateway_replacement_readiness(options, telegram_plugin);
     let get_route_count = CONTROL_UI_ROUTE_SPECS
@@ -4231,11 +4232,18 @@ fn native_control_ui_audit_report(
     let ready = route_matrix.ready
         && approvals.status == "ready"
         && guarded_post_route_count == post_route_count;
+    let control_ui_product_complete = control_ui.complete();
 
     NativeControlUiAuditResponse {
         product: "Hepta",
         runtime: "hepta",
-        status: if ready { "ready" } else { "attention" },
+        status: if !ready {
+            "attention"
+        } else if surface.reports_control_ui_evidence() && !control_ui_product_complete {
+            "static_contract_ready"
+        } else {
+            "ready"
+        },
         source_command: surface.source_command(),
         native_route: true,
         compatibility_mode: surface.compatibility_mode(),
@@ -4244,6 +4252,10 @@ fn native_control_ui_audit_report(
         plan_target: surface.plan_target(),
         dry_run_only: surface.dry_run_only(),
         read_only: surface.read_only(),
+        control_ui_product_status: control_ui.status,
+        control_ui_product_complete,
+        control_ui_live_operator_surface_percent: control_ui.live_operator_surface_percent,
+        control_ui_evidence: control_ui.evidence_coverage,
         confirmation_required_for_real_mutation: false,
         route_matrix_ready: route_matrix.ready,
         route_count: route_matrix.route_count,

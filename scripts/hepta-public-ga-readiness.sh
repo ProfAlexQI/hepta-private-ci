@@ -23,6 +23,12 @@ jq -e '
   and .missing_route_count == 0
   and .local_reports_synchronized == true
   and .local_gate_matrix_ready == true
+  and .control_ui_product_status == "static_contract_complete"
+  and .control_ui_product_complete == false
+  and .control_ui_live_operator_surface_percent == 0
+  and .control_ui_overall_evidence_percent == 20
+  and .production_replacement_percent < 100
+  and (.blockers | index("control_ui_product_behavior_evidence_not_bound")) != null
   and (.public_ga_ready == false or .public_ga_ready == true)
   and .public_ga_claimed == false
   and .external_public_release_performed == false
@@ -74,6 +80,11 @@ report="$(jq -n \
     blockers:$ga.blockers,
     local_gate_matrix_ready:$ga.local_gate_matrix_ready,
     local_reports_synchronized:$ga.local_reports_synchronized,
+    control_ui_product_status:$ga.control_ui_product_status,
+    control_ui_product_complete:$ga.control_ui_product_complete,
+    control_ui_live_operator_surface_percent:$ga.control_ui_live_operator_surface_percent,
+    control_ui_overall_evidence_percent:$ga.control_ui_overall_evidence_percent,
+    production_replacement_percent:$ga.production_replacement_percent,
     current_hepta_codex_script_total:$ga.current_hepta_codex_script_total,
     native_gateway_source_command_count:$ga.native_gateway_source_command_count,
     route_count:$ga.route_count,
@@ -92,6 +103,11 @@ report="$(jq -n \
       and $ga.current_hepta_codex_script_total == $legacy_closure.current_hepta_codex_script_total
       and $ga.native_gateway_source_command_count == $legacy_closure.native_gateway_source_command_count
       and $ga.missing_route_count == $merge.missing_route_count
+      and $ga.control_ui_product_status == $merge.control_ui_product_status
+      and $ga.control_ui_product_complete == $merge.control_ui_product_complete
+      and $ga.control_ui_live_operator_surface_percent == $merge.control_ui_live_operator_surface_percent
+      and $ga.control_ui_overall_evidence_percent == $merge.control_ui_evidence.overall_evidence_percent
+      and $ga.production_replacement_percent == $merge.production_replacement_percent
       and $ga.missing_route_count == $plan.missing_route_count
       and $ga.missing_route_count == $release.missing_route_count
       and $ga.missing_route_count == $cli.missing_route_count

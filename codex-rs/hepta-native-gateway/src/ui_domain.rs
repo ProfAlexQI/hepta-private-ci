@@ -23,6 +23,7 @@ pub(crate) fn index_html(
     telegram_plugin: &NativeTelegramPluginStatus,
 ) -> String {
     let readiness = native_gateway_json(options, telegram_plugin);
+    let control_ui = hepta_core::control_ui_report();
     format!(
         r#"<!doctype html>
 <html lang="en" data-runtime="hepta-native-gateway">
@@ -53,7 +54,7 @@ pub(crate) fn index_html(
         <div class="metric"><div class="label">Runtime</div><div class="value">hepta</div></div>
         <div class="metric"><div class="label">Gateway</div><div class="value">ready</div></div>
         <div class="metric"><div class="label">Telegram</div><div class="value">{telegram_status}</div></div>
-        <div class="metric"><div class="label">Merge completion</div><div class="value">100 / 100 / 100 / 100</div></div>
+        <div class="metric"><div class="label">Control UI evidence</div><div class="value">{control_ui_status} · static {control_ui_static_percent}% · live {control_ui_live_percent}%</div></div>
       </section>
       <section class="panel">
         <p><code>/api/hepta-merge-completion</code> exposes the current merge/function completion audit, route parity, and production-replacement closure without reading Telegram, sending messages, or performing native POST real mutations.</p>
@@ -96,6 +97,12 @@ pub(crate) fn index_html(
 </html>
 "#,
         telegram_status = telegram_plugin.status.replace('_', " "),
+        control_ui_status = control_ui.status,
+        control_ui_static_percent = control_ui
+            .evidence_coverage
+            .static_contract
+            .coverage_percent,
+        control_ui_live_percent = control_ui.live_operator_surface_percent,
         readiness = escape_html(&readiness),
     )
 }

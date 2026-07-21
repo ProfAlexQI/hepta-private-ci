@@ -693,7 +693,7 @@ pub struct ControlUiEvidenceCoverage {
 }
 
 impl ControlUiEvidenceLayer {
-    fn complete(&self) -> bool {
+    pub fn complete(&self) -> bool {
         self.status == "verified"
             && self.coverage_percent == 100
             && self.verified

@@ -92,7 +92,10 @@ mod tests {
             runtime_metrics.active_session_intuition_foreground_topic_sessions,
             1
         );
-        assert_eq!(report.overall_status, CoreDoctorStatus::Ok);
+        assert_eq!(report.overall_status, CoreDoctorStatus::Warn);
+        assert!(report.checks.iter().any(|check| {
+            check.id == "readiness.production_parity" && check.status == CoreDoctorStatus::Warn
+        }));
         assert!(report.checks.iter().any(|check| {
             check.id == "provider_probe.demo.demo-chat"
                 && check.area == DoctorArea::ProviderProbe

@@ -599,6 +599,11 @@
     fn control_ui_route_parity_report_covers_old_hepta_routes() {
         let report = control_ui_route_parity_report();
         assert!(report.ready);
+        assert_eq!(
+            report.evidence_scope,
+            "static route registration and handler parity only"
+        );
+        assert!(!report.live_product_complete);
         assert_eq!(report.missing_route_count, 0);
         assert!(report.route_count >= 40);
         let routes = report
@@ -669,12 +674,49 @@
         assert_eq!(value["compatibility_mode"], "native_merge_completion_audit");
         assert_eq!(
             value["readiness_class"],
-            "active_production_replacement_ready"
+            "static_contract_ready_production_in_progress"
         );
         assert_eq!(value["source_package_merge_percent"], 100);
         assert_eq!(value["local_deterministic_function_percent"], 100);
         assert_eq!(value["active_service_coexistence_percent"], 100);
-        assert_eq!(value["production_replacement_percent"], 100);
+        assert!(value["production_replacement_percent"]
+            .as_u64()
+            .expect("production replacement percent")
+            < 100);
+        assert_eq!(value["control_ui_product_status"], "static_contract_complete");
+        assert_eq!(value["control_ui_product_complete"], false);
+        assert_eq!(value["control_ui_live_operator_surface_percent"], 0);
+        assert_eq!(value["control_ui_evidence"]["schema_version"], 1);
+        assert_eq!(
+            value["control_ui_evidence"]["static_contract"]["status"],
+            "verified"
+        );
+        assert_eq!(
+            value["control_ui_evidence"]["static_contract"]["coverage_percent"],
+            100
+        );
+        for layer in [
+            "unit_state",
+            "browser_behavior",
+            "backend_mutation_readback",
+            "live_adapter",
+        ] {
+            assert_eq!(
+                value["control_ui_evidence"][layer]["status"],
+                "not_bound_to_report",
+                "{layer}"
+            );
+            assert_eq!(
+                value["control_ui_evidence"][layer]["coverage_percent"],
+                0,
+                "{layer}"
+            );
+        }
+        assert_eq!(value["control_ui_evidence"]["overall_evidence_percent"], 20);
+        assert_eq!(
+            value["control_ui_evidence"]["all_required_layers_verified"],
+            false
+        );
         assert_eq!(value["old_hepta_script_total"], 20);
         assert_eq!(
             value["current_hepta_codex_script_total"],
@@ -690,7 +732,7 @@
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["merge_completion_control_ui_surfaced"], true);
         assert_eq!(value["merge_completion_gateway_index_surfaced"], true);
-        assert_eq!(value["browser_visual_smoke_ready"], true);
+        assert_eq!(value["browser_visual_smoke_ready"], false);
         assert_eq!(
             value["browser_visual_smoke_command"],
             "scripts/hepta-browser-visual-smoke.sh"
@@ -714,6 +756,7 @@
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>();
         assert!(blockers.contains(&"telegram_owner_handoff_not_requested"));
+        assert!(blockers.contains(&"control_ui_product_behavior_evidence_not_bound"));
         assert!(!blockers.contains(&"old_hepta_cli_command_breadth_not_fully_migrated"));
         assert!(!blockers.contains(&"browser_visual_e2e_not_run_in_this_audit"));
         let mut next_actions = value["next_actions"]
@@ -886,6 +929,14 @@
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(value["local_reports_synchronized"], true);
         assert_eq!(value["local_gate_matrix_ready"], true);
+        assert_eq!(value["control_ui_product_status"], "static_contract_complete");
+        assert_eq!(value["control_ui_product_complete"], false);
+        assert_eq!(value["control_ui_live_operator_surface_percent"], 0);
+        assert_eq!(value["control_ui_overall_evidence_percent"], 20);
+        assert!(value["production_replacement_percent"]
+            .as_u64()
+            .expect("production replacement percent")
+            < 100);
         assert_eq!(value["native_post_dry_run_evidence_ready"], true);
         assert_eq!(value["native_post_real_activation_ready"], false);
         assert_eq!(value["credentialed_provider_smoke_ready"], false);
@@ -913,6 +964,7 @@
             !blockers.contains(&"old_release_hardening_script_execution_compatibility_not_claimed")
         );
         assert!(blockers.contains(&"native_post_real_activation_not_operator_approved"));
+        assert!(blockers.contains(&"control_ui_product_behavior_evidence_not_bound"));
         assert!(!blockers.contains(&"hepta_native_release_packaging_not_complete"));
         assert_eq!(value["side_effects"]["public_release_published"], false);
         assert_eq!(value["side_effects"]["credential_read"], false);
@@ -56126,9 +56178,14 @@
             &telegram_plugin,
         );
 
-        assert_eq!(report.status, "ready");
+        assert_eq!(report.status, "static_contract_ready");
         assert!(report.native_route);
         assert_eq!(report.compatibility_mode, "native_ui_contract_audit");
+        assert_eq!(report.control_ui_product_status, "static_contract_complete");
+        assert!(!report.control_ui_product_complete);
+        assert_eq!(report.control_ui_live_operator_surface_percent, 0);
+        assert_eq!(report.control_ui_evidence.overall_evidence_percent, 20);
+        assert!(!report.control_ui_evidence.all_required_layers_verified);
         assert_eq!(report.route_count, CONTROL_UI_ROUTE_SPECS.len());
         assert_eq!(
             report.get_route_count + report.post_route_count,
@@ -56168,6 +56225,11 @@
         assert_eq!(content_type, "text/html; charset=utf-8");
         assert!(legacy_body.contains("Hepta Control UI"));
         assert!(legacy_body.contains("/api/hepta-merge-completion"));
+        assert!(legacy_body.contains("Control UI evidence"));
+        assert!(legacy_body.contains("static_contract_complete"));
+        assert!(legacy_body.contains("static 100%"));
+        assert!(legacy_body.contains("live 0%"));
+        assert!(!legacy_body.contains("100 / 100 / 100 / 100"));
 
         let (status, content_type, css) =
             route_native_gateway_request("GET", "/styles.css", &options);
@@ -56196,11 +56258,12 @@
             with_telegram_plugin: true,
             telegram_plugin_poll_ms: 1500,
         };
-        for (path, mode, surface, dry_run_only, read_only, plan_target) in [
+        for (path, mode, surface, report_status, dry_run_only, read_only, plan_target) in [
             (
                 "/api/control-ui",
                 "native_control_ui_shell_snapshot",
                 "control_ui",
+                "static_contract_ready",
                 false,
                 true,
                 None,
@@ -56209,6 +56272,7 @@
                 "/api/ui-contract-audit",
                 "native_ui_contract_audit",
                 "ui_contract_audit",
+                "static_contract_ready",
                 false,
                 true,
                 None,
@@ -56217,6 +56281,7 @@
                 "/api/gateway-dispatch",
                 "native_gateway_dispatch_dry_run",
                 "gateway_dispatch",
+                "ready",
                 true,
                 false,
                 Some("gateway-dispatch"),
@@ -56225,6 +56290,7 @@
                 "/api/ui-action-plan/gateway-dispatch",
                 "native_ui_action_plan_gateway_dispatch",
                 "ui_action_plan_gateway_dispatch",
+                "ready",
                 true,
                 false,
                 Some("gateway-dispatch"),
@@ -56233,6 +56299,7 @@
                 "/api/external-agent-benchmark",
                 "native_external_agent_benchmark_redacted",
                 "external_agent_benchmark",
+                "ready",
                 true,
                 false,
                 Some("external-agent-benchmark"),
@@ -56245,12 +56312,21 @@
                 serde_json::from_str(&body).expect("control ui audit route json");
 
             assert_eq!(value["runtime"], "hepta");
+            assert_eq!(value["status"], report_status);
             assert_eq!(value["native_route"], true);
             assert_eq!(value["compatibility_mode"], mode);
             assert_eq!(value["control_surface"], surface);
             assert_eq!(value["side_effect_free"], true);
             assert_eq!(value["dry_run_only"], dry_run_only);
             assert_eq!(value["read_only"], read_only);
+            assert_eq!(value["control_ui_product_status"], "static_contract_complete");
+            assert_eq!(value["control_ui_product_complete"], false);
+            assert_eq!(value["control_ui_live_operator_surface_percent"], 0);
+            assert_eq!(value["control_ui_evidence"]["overall_evidence_percent"], 20);
+            assert_eq!(
+                value["control_ui_evidence"]["all_required_layers_verified"],
+                false
+            );
             assert_eq!(value["confirmation_required_for_real_mutation"], false);
             assert_eq!(value["action_dispatched"], false);
             assert_eq!(value["external_agent_spawned"], false);
@@ -58080,6 +58156,15 @@
         assert_eq!(value["runtime"], "hepta");
         assert_eq!(value["ready"], true);
         assert_eq!(value["missing_route_count"], 0);
+        assert_eq!(
+            value["evidence_scope"],
+            "static route registration and handler parity only"
+        );
+        assert_eq!(value["live_product_complete"], false);
+        assert!(value["legacy_source"]
+            .as_str()
+            .expect("legacy source")
+            .contains("not browser behavior"));
     }
 
     #[test]

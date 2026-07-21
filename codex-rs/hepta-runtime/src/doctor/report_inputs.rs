@@ -329,11 +329,8 @@ fn production_parity_check() -> DoctorCheck {
     let report =
         hepta_core::production_parity_report(&native, &local_import, &external, &control_ui);
     let require_external = std::env::var("HEPTA_REQUIRE_EXTERNAL_PRODUCTION").as_deref() == Ok("1");
-    let status = if report.local_evidence_gated_ready || !require_external {
-        DoctorStatus::Ok
-    } else {
-        DoctorStatus::Fail
-    };
+    let status =
+        production_parity_doctor_status(report.local_evidence_gated_ready, require_external);
     let first_gap = report
         .remaining_gaps
         .first()
@@ -343,7 +340,7 @@ fn production_parity_check() -> DoctorCheck {
         name: integrity::PRODUCTION_PARITY_READY.into(),
         status,
         detail: format!(
-            "status={} overall={} complete_dimensions={}/{} baseline_completion={} ahead_dimensions={} local_evidence_ready={} public_ga_ready={} first_gap={}",
+            "status={} overall={} complete_dimensions={}/{} baseline_completion={} ahead_dimensions={} local_evidence_ready={} public_ga_ready={} control_ui_status={} control_ui_evidence={} control_ui_live={} first_gap={}",
             report.status,
             report.overall_completion_percent,
             report.complete_dimension_count,
@@ -352,8 +349,24 @@ fn production_parity_check() -> DoctorCheck {
             report.baseline_surpass_count,
             report.local_evidence_gated_ready,
             report.public_ga_ready,
+            control_ui.status,
+            control_ui.evidence_coverage.overall_evidence_percent,
+            control_ui.live_operator_surface_percent,
             first_gap,
         ),
+    }
+}
+
+fn production_parity_doctor_status(
+    local_evidence_gated_ready: bool,
+    require_external: bool,
+) -> DoctorStatus {
+    if local_evidence_gated_ready {
+        DoctorStatus::Ok
+    } else if require_external {
+        DoctorStatus::Fail
+    } else {
+        DoctorStatus::Warn
     }
 }
 
@@ -385,9 +398,33 @@ mod tests {
         let check = production_parity_check();
 
         assert_eq!(check.name, integrity::PRODUCTION_PARITY_READY);
+        assert_ne!(check.status, DoctorStatus::Ok);
         assert!(check.detail.contains("overall="));
         assert!(check.detail.contains("baseline_completion="));
+        assert!(
+            check
+                .detail
+                .contains("control_ui_status=static_contract_complete")
+        );
+        assert!(check.detail.contains("control_ui_evidence=20"));
+        assert!(check.detail.contains("control_ui_live=0"));
         assert!(!check.detail.contains("token"));
         assert!(!check.detail.contains("secret"));
+    }
+
+    #[test]
+    fn production_parity_doctor_status_is_never_ok_for_incomplete_evidence() {
+        assert_eq!(
+            production_parity_doctor_status(false, false),
+            DoctorStatus::Warn
+        );
+        assert_eq!(
+            production_parity_doctor_status(false, true),
+            DoctorStatus::Fail
+        );
+        assert_eq!(
+            production_parity_doctor_status(true, false),
+            DoctorStatus::Ok
+        );
     }
 }
