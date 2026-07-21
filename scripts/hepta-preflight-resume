@@ -6,7 +6,9 @@ PREFLIGHT="$ROOT/scripts/hepta-preflight.sh"
 STATE_FILE="${HEPTA_PREFLIGHT_RESUME_STATE:-$(git -C "$ROOT" rev-parse --git-path hepta-preflight-resume.state)}"
 HEAD_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 HEAD_SHORT="$(git -C "$ROOT" rev-parse --short=10 HEAD)"
-LOG_FILE="${HEPTA_PREFLIGHT_RESUME_LOG:-/tmp/hepta-preflight-resume-$HEAD_SHORT.log}"
+GIT_DIR="$(git -C "$ROOT" rev-parse --absolute-git-dir)"
+WORKTREE_ID="$({ printf '%s\n' "$ROOT" "$GIT_DIR"; } | shasum -a 256 | awk '{print substr($1, 1, 12)}')"
+LOG_FILE="${HEPTA_PREFLIGHT_RESUME_LOG:-/tmp/hepta-preflight-resume-$HEAD_SHORT-$WORKTREE_ID.log}"
 STATE_SCHEMA="hepta_preflight_resume_state_v2"
 MAX_SAME_FAILURES="${HEPTA_PREFLIGHT_RESUME_MAX_SAME_FAILURES:-3}"
 LOCK_FILES=(
@@ -21,6 +23,82 @@ sha256_file() {
 
 sha256_text() {
   shasum -a 256 | awk '{print $1}'
+}
+
+command_identity_sha256() {
+  local command_name="$1"
+  shift
+  {
+    if command -v "$command_name" >/dev/null 2>&1; then
+      command -v "$command_name"
+      "$command_name" "$@" 2>&1 || true
+    else
+      printf 'missing:%s\n' "$command_name"
+    fi
+  } | sha256_text
+}
+
+process_start_token() {
+  # Normalize locale and timezone so the same live process cannot look stale
+  # merely because two invocations inherited different presentation settings.
+  LC_ALL=C TZ=UTC ps -o lstart= -p "$1" 2>/dev/null \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
+relevant_environment_sha256() {
+  local env_name
+  while IFS= read -r env_name; do
+    case "$env_name" in
+      HEPTA_*|HEPTA_CODEX_*|CODEX_*|CARGO_*|RUST*|RUSTUP_*|GITHUB_*|BAZEL_*|CI|HOME|PATH|CC|CXX|SDKROOT|MACOSX_DEPLOYMENT_TARGET|TMPDIR|LANG|LC_*|OPENSSL_*|PKG_CONFIG_*)
+        # Environment values cannot contain NUL. NUL-framed, sorted names make
+        # the digest canonical even when a value contains spaces or newlines.
+        printf '%s\0%s\0' "$env_name" "${!env_name-}"
+        ;;
+    esac
+  done < <(compgen -e | LC_ALL=C sort -u)
+}
+
+log_binding() {
+  local log_file="$1"
+  local bytes=0
+  local digest
+
+  [[ ! -e "$log_file" || -f "$log_file" ]] || return 1
+  if [[ -f "$log_file" ]]; then
+    bytes="$(wc -c <"$log_file" | tr -d '[:space:]')"
+    if (( bytes == 0 )); then
+      digest="$(printf '' | sha256_text)"
+    else
+      # The tee process may still be appending. Bind exactly the byte prefix
+      # whose length was observed instead of hashing a later whole-file view.
+      digest="$(head -c "$bytes" "$log_file" | sha256_text)"
+    fi
+  else
+    digest="$(printf '' | sha256_text)"
+  fi
+  printf '%s\t%s\n' "$bytes" "$digest"
+}
+
+log_prefix_matches() {
+  local log_file="$1"
+  local expected_bytes="$2"
+  local expected_sha256="$3"
+  local actual_size=0
+  local actual_sha256
+
+  [[ "$expected_bytes" =~ ^[0-9]+$ ]] || return 1
+  [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ ! -e "$log_file" || -f "$log_file" ]] || return 1
+  if [[ -f "$log_file" ]]; then
+    actual_size="$(wc -c <"$log_file" | tr -d '[:space:]')"
+  fi
+  (( actual_size >= expected_bytes )) || return 1
+  if (( expected_bytes == 0 )); then
+    actual_sha256="$(printf '' | sha256_text)"
+  else
+    actual_sha256="$(head -c "$expected_bytes" "$log_file" | sha256_text)"
+  fi
+  [[ "$actual_sha256" == "$expected_sha256" ]]
 }
 
 require_positive_integer() {
@@ -41,6 +119,21 @@ require_positive_integer() {
 require_positive_integer "HEPTA_PREFLIGHT_RESUME_MAX_SAME_FAILURES" "$MAX_SAME_FAILURES"
 
 PREFLIGHT_SHA256="$(sha256_file "$PREFLIGHT")"
+CARGO_IDENTITY_SHA256="$(command_identity_sha256 cargo --version --verbose)"
+RUSTC_IDENTITY_SHA256="$(command_identity_sha256 rustc -vV)"
+TOOLCHAIN_IDENTITY_SHA256="$({
+  printf 'rustc=%s\n' "$RUSTC_IDENTITY_SHA256"
+  if command -v rustup >/dev/null 2>&1; then
+    rustup show active-toolchain 2>&1 || true
+  else
+    printf 'rustup=missing\n'
+  fi
+} | sha256_text)"
+RELEVANT_ENVIRONMENT_SHA256="$(relevant_environment_sha256 | sha256_text)"
+WORKTREE_PORCELAIN="$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all)"
+WORKTREE_CLEAN=true
+[[ -z "$WORKTREE_PORCELAIN" ]] || WORKTREE_CLEAN=false
+WORKTREE_STATE_SHA256="$(printf '%s' "$WORKTREE_PORCELAIN" | sha256_text)"
 ENVIRONMENT_SHA256="$({
   printf 'HEPTA_MANIFEST=%s\n' "${HEPTA_MANIFEST:-${HEPTA_CODEX_MANIFEST:-}}"
   printf 'HEPTA_NATIVE_MANIFEST=%s\n' "${HEPTA_NATIVE_MANIFEST:-}"
@@ -61,6 +154,17 @@ ENVIRONMENT_SHA256="$({
   printf 'HEPTA_CODEX_INSTALLED_MANIFEST=%s\n' "${HEPTA_CODEX_INSTALLED_MANIFEST:-}"
   printf 'HEPTA_EXPECTED_SOURCE_COMMIT=%s\n' "${HEPTA_EXPECTED_SOURCE_COMMIT:-}"
   printf 'HEPTA_LIVE_URL=%s\n' "${HEPTA_LIVE_URL:-}"
+  printf 'HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES=%s\n' "${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
+  printf 'HEPTA_FOCUSED_TEST_MAX_SECONDS=%s\n' "${HEPTA_FOCUSED_TEST_MAX_SECONDS:-600}"
+  printf 'HEPTA_FULL_TEST_MAX_SECONDS=%s\n' "${HEPTA_FULL_TEST_MAX_SECONDS:-1800}"
+  printf 'HEPTA_TEST_MAX_DIRTY_DELTA=%s\n' "${HEPTA_TEST_MAX_DIRTY_DELTA:-0}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_CACHE=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT:-}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_DIAGNOSTIC_LINES=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_DIAGNOSTIC_LINES:-60}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_MAX_ENTRIES:-2048}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728}"
+  printf 'HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES=%s\n' "${HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152}"
   printf 'HEPTA_PREFLIGHT_RESUME_LOG=%s\n' "$LOG_FILE"
   printf 'HEPTA_PREFLIGHT_RESUME_MAX_SAME_FAILURES=%s\n' "$MAX_SAME_FAILURES"
   printf 'CARGO_TARGET_DIR=%s\n' "${CARGO_TARGET_DIR:-}"
@@ -72,18 +176,208 @@ ENVIRONMENT_SHA256="$({
   printf 'RUSTC_WRAPPER=%s\n' "${RUSTC_WRAPPER:-}"
   printf 'HOME=%s\n' "${HOME:-}"
   printf 'PATH=%s\n' "${PATH:-}"
+  printf 'CARGO_IDENTITY_SHA256=%s\n' "$CARGO_IDENTITY_SHA256"
+  printf 'RUSTC_IDENTITY_SHA256=%s\n' "$RUSTC_IDENTITY_SHA256"
+  printf 'TOOLCHAIN_IDENTITY_SHA256=%s\n' "$TOOLCHAIN_IDENTITY_SHA256"
+  printf 'RELEVANT_ENVIRONMENT_SHA256=%s\n' "$RELEVANT_ENVIRONMENT_SHA256"
 } | sha256_text)"
+
+LOCK_HOST="$(hostname 2>/dev/null || uname -n)"
+LOCK_UID="$(id -u)"
+LOCK_PROCESS_START="$(process_start_token $$ || true)"
+RUN_ID="$({ printf '%s\n' "$HEAD_COMMIT" "$WORKTREE_ID" "$$" "$LOCK_PROCESS_START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } | sha256_text)"
 
 state_tmp=""
 generated=""
 attempt_log=""
 state_lock=""
+state_reclaim_lock=""
+state_quarantine=""
+lock_owner_tmp=""
+
+lock_owner_state() {
+  local lock_dir="$1"
+  local owner_file="$lock_dir/owner.json"
+  local owner_host owner_uid owner_pid owner_start current_start
+
+  [[ -d "$lock_dir" && -f "$owner_file" ]] || {
+    printf '%s\n' "unknown"
+    return 0
+  }
+  jq -e '
+    .schema_version == "hepta_preflight_resume_lock_v1"
+    and (.pid | type) == "number"
+    and .pid >= 1
+    and (.host | type) == "string"
+    and (.uid | type) == "number"
+    and .uid >= 0
+    and (.process_start | type) == "string"
+    and (.process_start | length) > 0
+    and (.run_id | type) == "string"
+    and (.run_id | length) > 0
+    and (.head | type) == "string"
+    and (.head | length) > 0
+    and (.worktree | type) == "string"
+    and (.worktree | length) > 0
+    and (.worktree_id | type) == "string"
+    and (.worktree_id | length) > 0
+  ' "$owner_file" >/dev/null 2>&1 || {
+    printf '%s\n' "unknown"
+    return 0
+  }
+
+  owner_host="$(jq -r '.host' "$owner_file")"
+  owner_uid="$(jq -r '.uid' "$owner_file")"
+  owner_pid="$(jq -r '.pid' "$owner_file")"
+  owner_start="$(jq -r '.process_start' "$owner_file")"
+  [[ "$owner_host" == "$LOCK_HOST" && "$owner_uid" == "$LOCK_UID" ]] || {
+    printf '%s\n' "unknown"
+    return 0
+  }
+
+  current_start="$(process_start_token "$owner_pid" || true)"
+  if [[ -n "$current_start" && "$current_start" == "$owner_start" ]]; then
+    printf '%s\n' "live"
+  elif [[ -z "$current_start" ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+    printf '%s\n' "dead"
+  elif [[ -n "$current_start" && "$current_start" != "$owner_start" ]]; then
+    # The PID has been reused; the recorded owner is conclusively gone.
+    printf '%s\n' "dead"
+  else
+    printf '%s\n' "unknown"
+  fi
+}
+
+write_lock_owner() {
+  local lock_dir="$1"
+  lock_owner_tmp="$lock_dir/owner.json.tmp.$$"
+  if ! jq -n \
+    --arg schema_version "hepta_preflight_resume_lock_v1" \
+    --arg run_id "$RUN_ID" \
+    --arg host "$LOCK_HOST" \
+    --arg process_start "$LOCK_PROCESS_START" \
+    --arg head "$HEAD_COMMIT" \
+    --arg worktree "$ROOT" \
+    --arg worktree_id "$WORKTREE_ID" \
+    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson pid "$$" \
+    --argjson uid "$LOCK_UID" \
+    '{
+      schema_version:$schema_version,
+      run_id:$run_id,
+      pid:$pid,
+      uid:$uid,
+      host:$host,
+      process_start:$process_start,
+      head:$head,
+      worktree:$worktree,
+      worktree_id:$worktree_id,
+      created_at:$created_at
+    }' >"$lock_owner_tmp"; then
+    rm -f "$lock_owner_tmp" 2>/dev/null || true
+    lock_owner_tmp=""
+    return 1
+  fi
+  if ! mv "$lock_owner_tmp" "$lock_dir/owner.json"; then
+    rm -f "$lock_owner_tmp" 2>/dev/null || true
+    lock_owner_tmp=""
+    return 1
+  fi
+  lock_owner_tmp=""
+}
+
+release_state_lock() {
+  local owner_file
+  [[ -n "$state_lock" && -d "$state_lock" ]] || return 0
+  owner_file="$state_lock/owner.json"
+  if [[ -f "$owner_file" ]] \
+    && jq -e --arg run_id "$RUN_ID" --argjson pid "$$" \
+      '.run_id == $run_id and .pid == $pid' "$owner_file" >/dev/null 2>&1; then
+    rm -f "$owner_file"
+    rmdir "$state_lock" 2>/dev/null || true
+  fi
+}
+
+acquire_state_lock() {
+  local reclaim_lock
+  state_lock="$STATE_FILE.lock"
+  # Every acquisition path takes the short-lived guard first. In particular,
+  # a fresh contender must not recreate state_lock during the quarantine
+  # window of a stale-owner recovery.
+  reclaim_lock="$state_lock.reclaim"
+  if ! mkdir "$reclaim_lock" 2>/dev/null; then
+    echo "Hepta preflight resume state is locked or being recovered: $state_lock" >&2
+    exit 75
+  fi
+  # Publish cleanup ownership only after this process actually created the
+  # guard. A losing contender must never remove another recovery in progress.
+  state_reclaim_lock="$reclaim_lock"
+
+  # Recheck only while holding the acquisition/reclaim guard. Never recover an
+  # unknown or live owner; automatic recovery is limited to a same-host,
+  # conclusively dead PID (including a PID whose start token proves reuse).
+  if [[ ! -d "$state_lock" ]]; then
+    [[ ! -e "$state_lock" ]] || {
+      echo "Hepta preflight resume state lock path is not a directory: $state_lock" >&2
+      exit 75
+    }
+    if ! mkdir "$state_lock" 2>/dev/null; then
+      echo "could not acquire Hepta preflight resume state lock: $state_lock" >&2
+      exit 75
+    fi
+    if ! write_lock_owner "$state_lock"; then
+      rmdir "$state_lock" 2>/dev/null || true
+      echo "could not persist Hepta preflight resume lock owner: $state_lock" >&2
+      exit 75
+    fi
+  elif [[ "$(lock_owner_state "$state_lock")" == "dead" ]]; then
+    state_quarantine="$state_lock.stale.$RUN_ID"
+    if ! mv "$state_lock" "$state_quarantine"; then
+      echo "could not safely recover stale Hepta preflight resume state lock: $state_lock" >&2
+      exit 75
+    fi
+    if ! mkdir "$state_lock" 2>/dev/null; then
+      if [[ ! -e "$state_lock" ]]; then
+        mv "$state_quarantine" "$state_lock" 2>/dev/null || true
+      fi
+      echo "could not safely recover stale Hepta preflight resume state lock: $state_lock" >&2
+      exit 75
+    fi
+    if ! write_lock_owner "$state_lock"; then
+      # This process created the replacement directory but never published an
+      # owner. Do not touch any directory unless ownership is absent exactly as
+      # expected under the still-held guard.
+      if [[ ! -e "$state_lock/owner.json" ]]; then
+        rmdir "$state_lock" 2>/dev/null || true
+      fi
+      if [[ ! -e "$state_lock" ]]; then
+        mv "$state_quarantine" "$state_lock" 2>/dev/null || true
+      fi
+      echo "could not persist recovered Hepta preflight resume lock owner: $state_lock" >&2
+      exit 75
+    fi
+    rm -f "$state_quarantine/owner.json"
+    rmdir "$state_quarantine" 2>/dev/null || true
+    state_quarantine=""
+  else
+    echo "Hepta preflight resume state lock owner is live or cannot be proven dead: $state_lock" >&2
+    exit 75
+  fi
+
+  if ! rmdir "$state_reclaim_lock" 2>/dev/null; then
+    echo "could not release Hepta preflight acquisition guard: $state_reclaim_lock" >&2
+    exit 75
+  fi
+  state_reclaim_lock=""
+}
 
 cleanup() {
   [[ -z "$generated" ]] || rm -f "$generated"
   [[ -z "$attempt_log" ]] || rm -f "$attempt_log"
   [[ -z "$state_tmp" ]] || rm -f "$state_tmp"
-  [[ -z "$state_lock" ]] || rmdir "$state_lock" 2>/dev/null || true
+  [[ -z "$lock_owner_tmp" ]] || rm -f "$lock_owner_tmp"
+  [[ -z "$state_reclaim_lock" ]] || rmdir "$state_reclaim_lock" 2>/dev/null || true
+  release_state_lock
 }
 trap cleanup EXIT
 
@@ -98,14 +392,26 @@ write_state() {
   local checkpoint_exit="${8:-}"
   local combined_exit="${9:-}"
   local log_sha256="${10:-}"
-  local imported_log_sha256="${11:-}"
+  local log_prefix_sha256="${11:-}"
+  local log_prefix_bytes="${12:-0}"
+  local attempt_log_sha256="${13:-}"
   local failure_fingerprint=""
   local updated_at
+
+  [[ "$start_line" =~ ^[1-9][0-9]*$ ]] || return 1
+  [[ "$attempt" =~ ^[0-9]+$ ]] || return 1
+  [[ "$failure_streak" =~ ^[0-9]+$ ]] || return 1
+  [[ "$log_prefix_bytes" =~ ^[0-9]+$ ]] || return 1
+  [[ -z "$log_prefix_sha256" || "$log_prefix_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ -z "$log_sha256" || "$log_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ -z "$attempt_log_sha256" || "$attempt_log_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
 
   updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   if [[ "$state_status" == "blocked" ]]; then
     failure_fingerprint="$({
-      printf '%s\n' "$HEAD_COMMIT" "$marker" "$PREFLIGHT_SHA256"
+      printf '%s\n' \
+        "$HEAD_COMMIT" "$marker" "$PREFLIGHT_SHA256" "$ENVIRONMENT_SHA256" \
+        "$WORKTREE_STATE_SHA256" "$combined_exit" "$attempt_log_sha256"
     } | sha256_text)"
   fi
 
@@ -117,18 +423,27 @@ write_state() {
     --arg marker "$marker" \
     --arg preflight_sha256 "$PREFLIGHT_SHA256" \
     --arg environment_sha256 "$ENVIRONMENT_SHA256" \
+    --arg cargo_identity_sha256 "$CARGO_IDENTITY_SHA256" \
+    --arg rustc_identity_sha256 "$RUSTC_IDENTITY_SHA256" \
+    --arg toolchain_identity_sha256 "$TOOLCHAIN_IDENTITY_SHA256" \
+    --arg relevant_environment_sha256 "$RELEVANT_ENVIRONMENT_SHA256" \
+    --arg worktree_state_sha256 "$WORKTREE_STATE_SHA256" \
+    --arg worktree_id "$WORKTREE_ID" \
+    --arg run_id "$RUN_ID" \
     --arg updated_at "$updated_at" \
     --arg preflight_exit "$preflight_exit" \
     --arg tee_exit "$tee_exit" \
     --arg checkpoint_exit "$checkpoint_exit" \
     --arg combined_exit "$combined_exit" \
     --arg log_sha256 "$log_sha256" \
-    --arg imported_log_sha256 "$imported_log_sha256" \
+    --arg log_prefix_sha256 "$log_prefix_sha256" \
+    --arg attempt_log_sha256 "$attempt_log_sha256" \
     --arg failure_fingerprint_sha256 "$failure_fingerprint" \
     --argjson start_line "$start_line" \
     --argjson attempt "$attempt" \
     --argjson failure_streak "$failure_streak" \
     --argjson fuse_threshold "$MAX_SAME_FAILURES" \
+    --argjson log_prefix_bytes "$log_prefix_bytes" \
     '{
       schema_version:$schema_version,
       status:$status,
@@ -138,14 +453,24 @@ write_state() {
         start_line:$start_line
       },
       attempt:$attempt,
+      run_id:$run_id,
       failure_streak:$failure_streak,
       fuse_threshold:$fuse_threshold,
       fuse_armed:($status == "blocked" and $failure_streak >= $fuse_threshold),
       evidence:{
         preflight_sha256:$preflight_sha256,
         environment_sha256:$environment_sha256,
+        cargo_identity_sha256:$cargo_identity_sha256,
+        rustc_identity_sha256:$rustc_identity_sha256,
+        toolchain_identity_sha256:$toolchain_identity_sha256,
+        relevant_environment_sha256:$relevant_environment_sha256,
+        worktree_state_sha256:$worktree_state_sha256,
+        worktree_id:$worktree_id,
+        worktree_clean:true,
         log_sha256:($log_sha256 | if length > 0 then . else null end),
-        imported_log_sha256:($imported_log_sha256 | if length > 0 then . else null end),
+        log_prefix_sha256:($log_prefix_sha256 | if length > 0 then . else null end),
+        log_prefix_bytes:$log_prefix_bytes,
+        attempt_log_sha256:($attempt_log_sha256 | if length > 0 then . else null end),
         failure_fingerprint_sha256:($failure_fingerprint_sha256 | if length > 0 then . else null end)
       },
       last_exit:(
@@ -170,6 +495,17 @@ write_state() {
     return 1
   fi
   state_tmp=""
+}
+
+assert_worktree_clean() {
+  local phase="$1"
+  local dirty
+  dirty="$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all)"
+  if [[ -n "$dirty" ]]; then
+    echo "[hepta-preflight-resume] blocked $phase: full worktree must be clean (including untracked files)" >&2
+    printf '%s\n' "$dirty" >&2
+    exit 1
+  fi
 }
 
 assert_lockfiles_clean() {
@@ -237,6 +573,15 @@ resume_failure_streak=0
 resume_preflight_sha256=""
 resume_environment_sha256=""
 resume_log_sha256=""
+resume_log_prefix_sha256=""
+resume_log_prefix_bytes=0
+resume_attempt_log_sha256=""
+resume_cargo_identity_sha256=""
+resume_rustc_identity_sha256=""
+resume_toolchain_identity_sha256=""
+resume_relevant_environment_sha256=""
+resume_worktree_state_sha256=""
+resume_worktree_id=""
 resume_last_exit=""
 resume_log_matches=true
 legacy_state=0
@@ -253,6 +598,15 @@ load_state() {
     resume_preflight_sha256="$(jq -r '.evidence.preflight_sha256 // ""' "$STATE_FILE")"
     resume_environment_sha256="$(jq -r '.evidence.environment_sha256 // ""' "$STATE_FILE")"
     resume_log_sha256="$(jq -r '.evidence.log_sha256 // ""' "$STATE_FILE")"
+    resume_log_prefix_sha256="$(jq -r '.evidence.log_prefix_sha256 // ""' "$STATE_FILE")"
+    resume_log_prefix_bytes="$(jq -r '.evidence.log_prefix_bytes // 0' "$STATE_FILE")"
+    resume_attempt_log_sha256="$(jq -r '.evidence.attempt_log_sha256 // ""' "$STATE_FILE")"
+    resume_cargo_identity_sha256="$(jq -r '.evidence.cargo_identity_sha256 // ""' "$STATE_FILE")"
+    resume_rustc_identity_sha256="$(jq -r '.evidence.rustc_identity_sha256 // ""' "$STATE_FILE")"
+    resume_toolchain_identity_sha256="$(jq -r '.evidence.toolchain_identity_sha256 // ""' "$STATE_FILE")"
+    resume_relevant_environment_sha256="$(jq -r '.evidence.relevant_environment_sha256 // ""' "$STATE_FILE")"
+    resume_worktree_state_sha256="$(jq -r '.evidence.worktree_state_sha256 // ""' "$STATE_FILE")"
+    resume_worktree_id="$(jq -r '.evidence.worktree_id // ""' "$STATE_FILE")"
     resume_last_exit="$(jq -c '.last_exit // null' "$STATE_FILE")"
     case "$resume_status" in
       running|blocked) ;;
@@ -261,9 +615,14 @@ load_state() {
         exit 1
         ;;
     esac
+    [[ "$resume_attempt" =~ ^[0-9]+$ && "$resume_failure_streak" =~ ^[0-9]+$ \
+      && "$resume_log_prefix_bytes" =~ ^[0-9]+$ ]] || {
+      echo "invalid numeric fields in Hepta preflight resume state: $STATE_FILE" >&2
+      exit 1
+    }
   elif IFS=$'\t' read -r resume_commit resume_marker <"$STATE_FILE" \
     && [[ -n "$resume_commit" && -n "$resume_marker" ]]; then
-    resume_status="legacy_checkpoint"
+    resume_status="legacy_untrusted"
     legacy_state=1
   else
     echo "invalid Hepta preflight resume state: $STATE_FILE" >&2
@@ -281,11 +640,9 @@ load_state() {
 }
 
 if [[ "$show_only" != "1" ]]; then
+  acquire_state_lock
+else
   state_lock="$STATE_FILE.lock"
-  if ! mkdir "$state_lock" 2>/dev/null; then
-    echo "Hepta preflight resume state is locked by another runner: $state_lock" >&2
-    exit 75
-  fi
 fi
 
 if [[ "$reset" == "1" ]]; then
@@ -294,8 +651,21 @@ fi
 
 load_state
 
-if [[ -f "$STATE_FILE" && "$legacy_state" != "1" && -n "$resume_log_sha256" ]]; then
-  if [[ ! -f "$LOG_FILE" || "$(sha256_file "$LOG_FILE")" != "$resume_log_sha256" ]]; then
+if [[ "$legacy_state" == "1" && "$show_only" != "1" ]]; then
+  echo "legacy Hepta preflight resume state is untrusted and cannot be resumed; use --reset to run from line 1" >&2
+  exit 1
+fi
+
+if [[ -f "$STATE_FILE" && "$legacy_state" != "1" ]]; then
+  if [[ -n "$resume_log_sha256" ]]; then
+    if [[ ! -f "$LOG_FILE" || "$(sha256_file "$LOG_FILE")" != "$resume_log_sha256" ]]; then
+      resume_log_matches=false
+    fi
+  elif [[ "$resume_status" == "running" && -n "$resume_log_prefix_sha256" ]]; then
+    if ! log_prefix_matches "$LOG_FILE" "$resume_log_prefix_bytes" "$resume_log_prefix_sha256"; then
+      resume_log_matches=false
+    fi
+  else
     resume_log_matches=false
   fi
 fi
@@ -309,10 +679,33 @@ if [[ -f "$STATE_FILE" && "$show_only" != "1" ]]; then
     echo "Hepta preflight environment changed since the checkpoint; use --reset to run from line 1" >&2
     exit 1
   fi
+  if [[ "$legacy_state" != "1" \
+    && ( "$resume_cargo_identity_sha256" != "$CARGO_IDENTITY_SHA256" \
+      || "$resume_rustc_identity_sha256" != "$RUSTC_IDENTITY_SHA256" \
+      || "$resume_toolchain_identity_sha256" != "$TOOLCHAIN_IDENTITY_SHA256" ) ]]; then
+    echo "Hepta preflight Cargo/Rust/toolchain identity changed since the checkpoint; use --reset to run from line 1" >&2
+    exit 1
+  fi
+  if [[ "$legacy_state" != "1" && "$resume_relevant_environment_sha256" != "$RELEVANT_ENVIRONMENT_SHA256" ]]; then
+    echo "Hepta preflight relevant environment changed since the checkpoint; use --reset to run from line 1" >&2
+    exit 1
+  fi
+  if [[ "$legacy_state" != "1" && "$resume_worktree_state_sha256" != "$WORKTREE_STATE_SHA256" ]]; then
+    echo "Hepta preflight worktree state changed since the checkpoint; use --reset to run from line 1" >&2
+    exit 1
+  fi
+  if [[ "$legacy_state" != "1" && "$resume_worktree_id" != "$WORKTREE_ID" ]]; then
+    echo "Hepta preflight checkpoint belongs to a different worktree; use --reset to run from line 1" >&2
+    exit 1
+  fi
   if [[ "$resume_log_matches" != "true" ]]; then
     echo "Hepta preflight evidence log changed or is missing since the checkpoint; use --reset to run from line 1" >&2
     exit 1
   fi
+fi
+
+if [[ "$show_only" != "1" ]]; then
+  assert_worktree_clean "before preflight or resume"
 fi
 
 prelude_end_line="$({
@@ -332,7 +725,7 @@ if [[ -z "$terminal_branch_start" ]]; then
 fi
 
 start_line=1
-if [[ -n "$resume_marker" ]]; then
+if [[ -n "$resume_marker" && "$legacy_state" != "1" ]]; then
   if [[ "$resume_marker" == "native app gates skipped (HEPTA_PREFLIGHT_NATIVE="* ]]; then
     start_line="$terminal_branch_start"
   else
@@ -368,16 +761,62 @@ if [[ "$show_only" == "1" ]]; then
   fuse_armed=false
   environment_matches=true
   preflight_matches=true
+  toolchain_matches=true
+  relevant_environment_matches=true
+  worktree_state_matches=true
+  worktree_identity_matches=true
+  worktree_clean="$WORKTREE_CLEAN"
   log_matches="$resume_log_matches"
+  lock_state="none"
+  if [[ -d "$state_lock" ]]; then
+    lock_state="$(lock_owner_state "$state_lock")"
+  elif [[ -d "$state_lock.reclaim" ]]; then
+    lock_state="recovering"
+  fi
+  if [[ "$worktree_clean" != "true" ]]; then
+    resumable=false
+  fi
   if [[ -f "$STATE_FILE" ]]; then
     display_status="$resume_status"
-    [[ "$resume_status" != "running" ]] || display_status="interrupted"
+    if [[ "$legacy_state" == "1" ]]; then
+      resumable=false
+      start_line=1
+    elif [[ "$resume_status" == "running" ]]; then
+      if [[ "$lock_state" == "live" ]]; then
+        display_status="running"
+        resumable=false
+      elif [[ "$lock_state" == "unknown" ]]; then
+        display_status="locked_unknown"
+        resumable=false
+      else
+        display_status="interrupted"
+      fi
+    fi
     if [[ "$legacy_state" != "1" && "$resume_environment_sha256" != "$ENVIRONMENT_SHA256" ]]; then
       environment_matches=false
       resumable=false
     fi
     if [[ "$legacy_state" != "1" && "$resume_preflight_sha256" != "$PREFLIGHT_SHA256" ]]; then
       preflight_matches=false
+      resumable=false
+    fi
+    if [[ "$legacy_state" != "1" \
+      && ( "$resume_cargo_identity_sha256" != "$CARGO_IDENTITY_SHA256" \
+        || "$resume_rustc_identity_sha256" != "$RUSTC_IDENTITY_SHA256" \
+        || "$resume_toolchain_identity_sha256" != "$TOOLCHAIN_IDENTITY_SHA256" ) ]]; then
+      toolchain_matches=false
+      resumable=false
+    fi
+    if [[ "$legacy_state" != "1" && "$resume_relevant_environment_sha256" != "$RELEVANT_ENVIRONMENT_SHA256" ]]; then
+      relevant_environment_matches=false
+      resumable=false
+    fi
+    if [[ "$legacy_state" != "1" && "$resume_worktree_state_sha256" != "$WORKTREE_STATE_SHA256" ]]; then
+      worktree_state_matches=false
+      resumable=false
+    fi
+    if [[ "$legacy_state" != "1" && "$resume_worktree_id" != "$WORKTREE_ID" ]]; then
+      worktree_identity_matches=false
       resumable=false
     fi
     if [[ "$log_matches" != "true" ]]; then
@@ -388,11 +827,18 @@ if [[ "$show_only" == "1" ]]; then
       resumable=false
     fi
   fi
+  # A runner can own the receipt before its first running-state write. Keep
+  # even that short no-state window fail-closed in operator-facing status.
+  if [[ "$lock_state" == "live" || "$lock_state" == "unknown" || "$lock_state" == "recovering" ]]; then
+    resumable=false
+  fi
   jq -n \
     --arg status "$display_status" \
     --arg head "$HEAD_COMMIT" \
     --arg state_file "$STATE_FILE" \
     --arg log_file "$LOG_FILE" \
+    --arg worktree_id "$WORKTREE_ID" \
+    --arg lock_state "$lock_state" \
     --arg marker "$resume_marker" \
     --argjson attempt "$resume_attempt" \
     --argjson failure_streak "$resume_failure_streak" \
@@ -401,6 +847,11 @@ if [[ "$show_only" == "1" ]]; then
     --argjson resumable "$resumable" \
     --argjson environment_matches "$environment_matches" \
     --argjson preflight_matches "$preflight_matches" \
+    --argjson toolchain_matches "$toolchain_matches" \
+    --argjson relevant_environment_matches "$relevant_environment_matches" \
+    --argjson worktree_state_matches "$worktree_state_matches" \
+    --argjson worktree_identity_matches "$worktree_identity_matches" \
+    --argjson worktree_clean "$worktree_clean" \
     --argjson log_matches "$log_matches" \
     --argjson last_exit "${resume_last_exit:-null}" \
     --argjson start_line "$start_line" \
@@ -410,6 +861,8 @@ if [[ "$show_only" == "1" ]]; then
       head:$head,
       state_file:$state_file,
       log_file:$log_file,
+      worktree_id:$worktree_id,
+      lock_state:$lock_state,
       resume_marker:($marker | if length > 0 then . else null end),
       start_line:$start_line,
       attempt:$attempt,
@@ -418,6 +871,11 @@ if [[ "$show_only" == "1" ]]; then
       fuse_armed:$fuse_armed,
       environment_matches:$environment_matches,
       preflight_matches:$preflight_matches,
+      toolchain_matches:$toolchain_matches,
+      relevant_environment_matches:$relevant_environment_matches,
+      worktree_state_matches:$worktree_state_matches,
+      worktree_identity_matches:$worktree_identity_matches,
+      worktree_clean:$worktree_clean,
       log_matches:$log_matches,
       last_exit:$last_exit
     }'
@@ -451,9 +909,27 @@ fi
 chmod +x "$generated"
 
 attempt=$((resume_attempt + 1))
-write_state "running" "$resume_marker" "$start_line" "$attempt" "$resume_failure_streak"
+IFS=$'\t' read -r log_prefix_bytes log_prefix_sha256 < <(log_binding "$LOG_FILE")
+write_state \
+  "running" "$resume_marker" "$start_line" "$attempt" "$resume_failure_streak" \
+  "" "" "" "" "" "$log_prefix_sha256" "$log_prefix_bytes" ""
 run_banner="[hepta-preflight-resume] head=$HEAD_SHORT attempt=$attempt start_line=$start_line marker=${resume_marker:-<start>} log=$LOG_FILE"
-printf '%s\n' "$run_banner" | tee -a "$LOG_FILE"
+if ! printf '%s\n' "$run_banner" | tee -a "$LOG_FILE"; then
+  write_state \
+    "blocked" "$resume_marker" "$start_line" "$attempt" "$((resume_failure_streak + 1))" \
+    "0" "1" "0" "1" "" "$log_prefix_sha256" "$log_prefix_bytes" ""
+  echo "[hepta-preflight-resume] blocked before execution: cumulative log is not writable: $LOG_FILE" >&2
+  exit 1
+fi
+
+# Native/release suffixes must be regenerated from the opening `if` to remain
+# syntactically balanced. Until that structural replay reaches the original
+# checkpoint, keep publishing the original marker and streak: an interruption
+# in the replay prefix must not silently disarm the same-checkpoint fuse.
+terminal_replay_target_pending=0
+if [[ -n "$resume_marker" && "$start_line" == "$terminal_branch_start" ]]; then
+  terminal_replay_target_pending=1
+fi
 
 set +e
 "$generated" 2>&1 \
@@ -463,7 +939,23 @@ set +e
       case "$line" in
         '[hepta-preflight] '*)
           marker="${line#'[hepta-preflight] '}"
-          write_state "running" "$marker" "$start_line" "$attempt" 0 || exit 1
+          checkpoint_marker="$marker"
+          marker_failure_streak=0
+          if [[ "$terminal_replay_target_pending" == "1" ]]; then
+            checkpoint_marker="$resume_marker"
+            marker_failure_streak="$resume_failure_streak"
+            if [[ "$marker" == "$resume_marker" ]]; then
+              terminal_replay_target_pending=0
+            fi
+          elif [[ "${resume_marker:-<prelude>}" == "${marker:-<prelude>}" ]]; then
+            marker_failure_streak="$resume_failure_streak"
+          fi
+          IFS=$'\t' read -r marker_log_prefix_bytes marker_log_prefix_sha256 \
+            < <(log_binding "$LOG_FILE")
+          write_state \
+            "running" "$checkpoint_marker" "$start_line" "$attempt" "$marker_failure_streak" \
+            "" "" "" "" "" "$marker_log_prefix_sha256" "$marker_log_prefix_bytes" "" \
+            || exit 1
           ;;
       esac
     done
@@ -480,16 +972,54 @@ if [[ "$preflight_status" != "0" || "$tee_status" != "0" || "$checkpoint_status"
   failed_marker="$(sed -n 's/^\[hepta-preflight\] //p' "$attempt_log" | tail -n 1)"
   [[ -n "$failed_marker" ]] || failed_marker="$resume_marker"
   failure_streak=1
-  if [[ "$resume_status" == "blocked" \
-    && "${resume_marker:-<prelude>}" == "${failed_marker:-<prelude>}" ]]; then
+  if [[ "${resume_marker:-<prelude>}" == "${failed_marker:-<prelude>}" ]]; then
     failure_streak=$((resume_failure_streak + 1))
   fi
   blocked_line="[hepta-preflight-resume] blocked attempt=$attempt failure_streak=$failure_streak preflight=$preflight_status tee=$tee_status checkpoint=$checkpoint_status state=$STATE_FILE log=$LOG_FILE"
-  printf '%s\n' "$blocked_line" | tee -a "$LOG_FILE" >&2
-  log_sha256="$(sha256_file "$LOG_FILE")"
+  trusted_log_prefix_bytes="$log_prefix_bytes"
+  trusted_log_prefix_sha256="$log_prefix_sha256"
+  if [[ -f "$STATE_FILE" ]] && jq -e --arg schema "$STATE_SCHEMA" '
+    .schema_version == $schema
+    and .status == "running"
+    and (.evidence.log_prefix_bytes | type) == "number"
+    and .evidence.log_prefix_bytes >= 0
+    and (.evidence.log_prefix_sha256 | type) == "string"
+    and (.evidence.log_prefix_sha256 | test("^[0-9a-f]{64}$"))
+  ' "$STATE_FILE" >/dev/null 2>&1; then
+    trusted_log_prefix_bytes="$(jq -r '.evidence.log_prefix_bytes' "$STATE_FILE")"
+    trusted_log_prefix_sha256="$(jq -r '.evidence.log_prefix_sha256' "$STATE_FILE")"
+  fi
+  blocked_log_prefix_bytes="$trusted_log_prefix_bytes"
+  blocked_log_prefix_sha256="$trusted_log_prefix_sha256"
+  log_integrity_preserved=false
+  if log_prefix_matches "$LOG_FILE" "$trusted_log_prefix_bytes" "$trusted_log_prefix_sha256"; then
+    IFS=$'\t' read -r blocked_log_prefix_bytes blocked_log_prefix_sha256 \
+      < <(log_binding "$LOG_FILE")
+    log_integrity_preserved=true
+  fi
+  attempt_log_sha256="$(sha256_file "$attempt_log")"
+  # Persist the fail-closed state and fuse evidence before attempting the
+  # cumulative diagnostic append. If the log path is full or unwritable, the
+  # state still records the complete per-attempt transcript hash and prefix.
   write_state \
     "blocked" "$failed_marker" "$start_line" "$attempt" "$failure_streak" \
-    "$preflight_status" "$tee_status" "$checkpoint_status" "$exit_code" "$log_sha256"
+    "$preflight_status" "$tee_status" "$checkpoint_status" "$exit_code" \
+    "" "$blocked_log_prefix_sha256" "$blocked_log_prefix_bytes" "$attempt_log_sha256"
+  if printf '%s\n' "$blocked_line" | tee -a "$LOG_FILE" >&2; then
+    if [[ "$log_integrity_preserved" == "true" ]] \
+      && log_prefix_matches "$LOG_FILE" "$blocked_log_prefix_bytes" "$blocked_log_prefix_sha256"; then
+      final_log_sha256="$(sha256_file "$LOG_FILE")"
+      write_state \
+        "blocked" "$failed_marker" "$start_line" "$attempt" "$failure_streak" \
+        "$preflight_status" "$tee_status" "$checkpoint_status" "$exit_code" \
+        "$final_log_sha256" "$blocked_log_prefix_sha256" "$blocked_log_prefix_bytes" "$attempt_log_sha256"
+    else
+      echo "[hepta-preflight-resume] cumulative log lost its last trusted prefix; blocked state is non-resumable" >&2
+    fi
+  else
+    printf '%s\n' "$blocked_line" >&2
+    echo "[hepta-preflight-resume] cumulative log append failed after blocked state was persisted" >&2
+  fi
   if (( failure_streak >= MAX_SAME_FAILURES )); then
     echo "[hepta-preflight-resume] retry fuse armed for HEAD $HEAD_SHORT checkpoint ${failed_marker:-<prelude>}" >&2
   fi
@@ -497,5 +1027,6 @@ if [[ "$preflight_status" != "0" || "$tee_status" != "0" || "$checkpoint_status"
 fi
 
 assert_lockfiles_clean "after preflight"
+assert_worktree_clean "after preflight"
 rm -f "$STATE_FILE"
 echo "[hepta-preflight-resume] ready head=$HEAD_SHORT checkpoint_cleared=true log=$LOG_FILE"

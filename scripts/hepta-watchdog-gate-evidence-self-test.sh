@@ -14,8 +14,8 @@ base_report='{
 active_report="$(
   jq -c '. + {
     watchdog_mode:"active-health",
-    candidate_artifact:{required:false,evidence:{status:"not_checked",ready:null}},
-    deployed_receipt:{required:false,evidence:{status:"not_checked",ready:null}},
+    candidate_artifact:{required:false,evidence:{status:"not_checked",ready:null,failure_reasons:[]}},
+    deployed_receipt:{required:false,evidence:{status:"not_checked",ready:null,failure_reasons:[]}},
     deployment_consistency_required:false,
     binary_sha_match:false,
     release_sha256:"",
@@ -35,8 +35,8 @@ sha='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 deployment_report="$(
   jq -c --arg sha "$sha" '. + {
     watchdog_mode:"deployment-consistency",
-    candidate_artifact:{required:true,evidence:{status:"ready",ready:true}},
-    deployed_receipt:{required:true,evidence:{status:"ready",ready:true}},
+    candidate_artifact:{required:true,evidence:{status:"ready",ready:true,failure_reasons:[]}},
+    deployed_receipt:{required:true,evidence:{status:"ready",ready:true,failure_reasons:[]}},
     deployment_consistency_required:true,
     binary_sha_match:true,
     release_sha256:$sha,
@@ -58,11 +58,135 @@ mismatch_report="$(jq -c '.installed_sha256 = ("b" * 64)' <<<"$deployment_report
 jq -e '.ready == false and .artifact_evidence_ready == false' >/dev/null \
   <<<"$(hepta_watchdog_gate_evidence_contract_json "$mismatch_report" deployment-consistency)"
 
+assert_not_ready() {
+  local label="$1"
+  local mode="$2"
+  local fixture="$3"
+  local contract
+  contract="$(hepta_watchdog_gate_evidence_contract_json "$fixture" "$mode")"
+  jq -e '.ready == false' >/dev/null <<<"$contract" || {
+    echo "watchdog evidence negative fixture unexpectedly ready: $label" >&2
+    exit 1
+  }
+}
+
+# Every member of the active-health not-checked/ready=null triple is binding.
+while IFS=$'\t' read -r label filter; do
+  [[ -n "$label" ]] || continue
+  assert_not_ready \
+    "$label" active-health "$(jq -c "$filter" <<<"$active_report")"
+done <<'EOF'
+active-candidate-required	.candidate_artifact.required = true
+active-candidate-status	.candidate_artifact.evidence.status = "failed"
+active-candidate-ready	.candidate_artifact.evidence.ready = true
+active-candidate-failure	.candidate_artifact.evidence.failure_reasons = ["contradiction"]
+active-candidate-failure-missing	del(.candidate_artifact.evidence.failure_reasons)
+active-candidate-failure-type	.candidate_artifact.evidence.failure_reasons = "none"
+active-deployed-required	.deployed_receipt.required = true
+active-deployed-status	.deployed_receipt.evidence.status = "failed"
+active-deployed-ready	.deployed_receipt.evidence.ready = false
+active-deployed-failure	.deployed_receipt.evidence.failure_reasons = ["contradiction"]
+active-deployed-failure-missing	del(.deployed_receipt.evidence.failure_reasons)
+active-deployed-failure-type	.deployed_receipt.evidence.failure_reasons = "none"
+active-deployment-required	.deployment_consistency_required = true
+active-binary-match	.binary_sha_match = true
+active-release-sha	.release_sha256 = ("a" * 64)
+active-installed-sha	.installed_sha256 = ("a" * 64)
+EOF
+
+# Every member of the deployment ready/status/failure-free triple is binding.
+while IFS=$'\t' read -r label filter; do
+  [[ -n "$label" ]] || continue
+  assert_not_ready \
+    "$label" deployment-consistency "$(jq -c "$filter" <<<"$deployment_report")"
+done <<'EOF'
+deployment-candidate-required	.candidate_artifact.required = false
+deployment-candidate-status	.candidate_artifact.evidence.status = "failed"
+deployment-candidate-ready	.candidate_artifact.evidence.ready = false
+deployment-candidate-failure	.candidate_artifact.evidence.failure_reasons = ["contradiction"]
+deployment-candidate-failure-missing	del(.candidate_artifact.evidence.failure_reasons)
+deployment-candidate-failure-type	.candidate_artifact.evidence.failure_reasons = "none"
+deployment-deployed-required	.deployed_receipt.required = false
+deployment-deployed-status	.deployed_receipt.evidence.status = "failed"
+deployment-deployed-ready	.deployed_receipt.evidence.ready = null
+deployment-deployed-failure	.deployed_receipt.evidence.failure_reasons = ["contradiction"]
+deployment-deployed-failure-missing	del(.deployed_receipt.evidence.failure_reasons)
+deployment-deployed-failure-type	.deployed_receipt.evidence.failure_reasons = "none"
+deployment-required	.deployment_consistency_required = false
+deployment-binary-match	.binary_sha_match = false
+deployment-release-sha	.release_sha256 = ""
+deployment-installed-sha	.installed_sha256 = ""
+EOF
+
+unknown_attention_report="$(
+  jq -c '. + {
+    status:"ok",
+    operator_security_status:"attention",
+    operator_security_attention_state_known:false
+  }' <<<"$active_report"
+)"
+assert_not_ready "unknown-operator-attention" active-health "$unknown_attention_report"
+
+known_attention_report="$(
+  jq -c '. + {
+    status:"failed",
+    operator_security_status:"attention",
+    operator_security_attention_state_known:true,
+    operator_security_attention_budget_known:false,
+    telegram_production_readiness_state_known:false,
+    telegram_production_readiness_classification:"unknown"
+  }' <<<"$active_report"
+)"
+assert_not_ready "failed-known-operator-attention" active-health "$known_attention_report"
+
+ok_known_attention_report="$(jq -c '.status = "ok"' <<<"$known_attention_report")"
+jq -e '.ready == true and .status_known == true' >/dev/null \
+  <<<"$(hepta_watchdog_gate_evidence_contract_json "$ok_known_attention_report" active-health)"
+
+known_budget_attention_report="$(
+  jq -c '. + {
+    status:"failed",
+    operator_security_status:"attention",
+    operator_security_attention_state_known:true,
+    operator_security_attention_budget_known:true,
+    telegram_production_readiness_state_known:true,
+    telegram_production_readiness_classification:"attention_budget_exceeded",
+    telegram_production_attention_budget_ok:false
+  }' <<<"$active_report"
+)"
+assert_not_ready "failed-known-budget-attention" active-health "$known_budget_attention_report"
+
+ok_known_budget_attention_report="$(jq -c '.status = "ok"' <<<"$known_budget_attention_report")"
+jq -e '.ready == true and .status_known == true' >/dev/null \
+  <<<"$(hepta_watchdog_gate_evidence_contract_json "$ok_known_budget_attention_report" active-health)"
+assert_not_ready \
+  "budget-attention-unknown-readiness" active-health \
+  "$(jq -c '.telegram_production_readiness_state_known = false' <<<"$ok_known_budget_attention_report")"
+assert_not_ready \
+  "budget-attention-inconsistent-budget" active-health \
+  "$(jq -c '.telegram_production_attention_budget_ok = true' <<<"$ok_known_budget_attention_report")"
+assert_not_ready \
+  "budget-attention-unknown-classification" active-health \
+  "$(jq -c '.telegram_production_readiness_classification = "unknown"' <<<"$ok_known_budget_attention_report")"
+assert_not_ready \
+  "non-budget-attention-contradictory-readiness" active-health \
+  "$(jq -c '.telegram_production_readiness_state_known = true' <<<"$ok_known_attention_report")"
+
 wrong_mode_contract="$(
   hepta_watchdog_gate_evidence_contract_json "$active_report" deployment-consistency
 )"
 jq -e '.ready == false and .observed_mode == "active-health"' >/dev/null \
   <<<"$wrong_mode_contract"
+
+unknown_expected_report="$(jq -c '.watchdog_mode = "unknown-mode"' <<<"$active_report")"
+unknown_expected_contract="$(
+  hepta_watchdog_gate_evidence_contract_json "$unknown_expected_report" unknown-mode
+)"
+jq -e '
+  .ready == false
+  and .artifact_evidence_ready == false
+  and .observed_mode == "unknown-mode"
+' >/dev/null <<<"$unknown_expected_contract"
 
 unsupported_rc=0
 HEPTA_WATCHDOG_GATE_MODE=candidate-artifact hepta_watchdog_gate_mode >/dev/null 2>&1 \
