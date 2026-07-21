@@ -23,11 +23,13 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use serde_json::json;
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::path::PathBuf;
 
 use codex_app_server_protocol::CommandExecutionSource as ExecCommandSource;
 use codex_protocol::mcp::CallToolResult;
 use codex_protocol::mcp::Tool;
+use image::ImageFormat;
 use rmcp::model::Content;
 
 const SMALL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
@@ -1237,6 +1239,81 @@ fn completed_mcp_tool_call_accepts_data_url_image_blocks() {
 
     let rendered = render_lines(&extra_cell.display_lines(/*width*/ 80));
     assert_eq!(rendered, vec!["tool result (image output)"]);
+}
+
+#[test]
+fn completed_mcp_tool_call_image_marker_retains_no_decoded_pixels() {
+    let encoded_png = {
+        let image = DynamicImage::new_rgba8(1024, 1024);
+        let mut png = Vec::new();
+        image
+            .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+            .expect("large test image should encode");
+        base64::engine::general_purpose::STANDARD.encode(png)
+    };
+    let result = CallToolResult {
+        content: vec![image_block(&encoded_png)],
+        is_error: None,
+        structured_content: None,
+        meta: None,
+    };
+    let mut cell = new_active_mcp_tool_call(
+        "call-image-memory-boundary".into(),
+        McpInvocation {
+            server: "image".into(),
+            tool: "generate".into(),
+            arguments: None,
+        },
+        /*animations_enabled*/ false,
+    );
+
+    let extra_cell = cell
+        .complete(Duration::from_millis(25), Ok(result))
+        .expect("expected image marker cell");
+
+    assert_eq!(
+        std::mem::size_of_val(extra_cell.as_ref()),
+        0,
+        "the history marker must not retain the decoded image allocation"
+    );
+    assert_eq!(
+        render_lines(&extra_cell.display_lines(/*width*/ 80)),
+        vec!["tool result (image output)"]
+    );
+    assert_eq!(
+        render_lines(&extra_cell.raw_lines()),
+        vec!["tool result (image output)"]
+    );
+}
+
+#[test]
+fn completed_mcp_tool_call_rejects_only_invalid_image_blocks() {
+    let invalid_image_bytes = base64::engine::general_purpose::STANDARD.encode(b"not an image");
+    let result = CallToolResult {
+        content: vec![
+            text_block("No valid image follows"),
+            image_block("not-base64"),
+            image_block(&invalid_image_bytes),
+        ],
+        is_error: None,
+        structured_content: None,
+        meta: None,
+    };
+    let mut cell = new_active_mcp_tool_call(
+        "call-image-invalid-only".into(),
+        McpInvocation {
+            server: "image".into(),
+            tool: "generate".into(),
+            arguments: None,
+        },
+        /*animations_enabled*/ false,
+    );
+
+    assert!(
+        cell.complete(Duration::from_millis(25), Ok(result))
+            .is_none(),
+        "invalid image blocks must not create an image marker"
+    );
 }
 
 #[test]
