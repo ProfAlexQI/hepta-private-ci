@@ -6,7 +6,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
+source "$REPO_ROOT/scripts/lib/hepta-watchdog-gate-evidence-v1.sh"
 cd "$REPO_ROOT"
+
+WATCHDOG_GATE_MODE="$(hepta_watchdog_gate_mode)"
 
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
@@ -54,8 +57,11 @@ WATCHDOG_JSON="$(
   capture_json_report_allow_parseable_failure \
     "hepta-watchdog" \
     env HEPTA_LIVE_URL="$BASE_URL" \
-      HEPTA_WATCHDOG_MODE=deployment-consistency \
+      HEPTA_WATCHDOG_MODE="$WATCHDOG_GATE_MODE" \
       scripts/hepta-watchdog.sh
+)"
+WATCHDOG_EVIDENCE_CONTRACT_JSON="$(
+  hepta_watchdog_gate_evidence_contract_json "$WATCHDOG_JSON" "$WATCHDOG_GATE_MODE"
 )"
 
 DEPENDENCY_ISOLATION_JSON="$(
@@ -75,6 +81,7 @@ active_state_lock_side_effect_hash_sha256="$(sha256_text "hepta-terminal-governa
 jq -n -e \
   --argjson governance "$GOVERNANCE_CLOSURE_JSON" \
   --argjson watchdog "$WATCHDOG_JSON" \
+  --argjson watchdog_contract "$WATCHDOG_EVIDENCE_CONTRACT_JSON" \
   --argjson dependency "$DEPENDENCY_ISOLATION_JSON" \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   '
@@ -104,14 +111,13 @@ jq -n -e \
         and $watchdog.operator_security_status == "attention"
       )
     )
-    and $watchdog.binary_sha_match == true
+    and $watchdog_contract.ready == true
     and $watchdog.health == "ready"
     and $watchdog.route_count >= 69
     and $watchdog.missing_route_count == 0
     and $watchdog.full_fusion_complete == true
     and $watchdog.phase_4_name_repository_closure_remaining_surface_count == 0
     and $watchdog.phase_5_engine_dependency_closure_remaining_dependency_count == 0
-    and $watchdog.release_sha256 == $watchdog.installed_sha256
     and ($watchdog.side_effects | to_entries | all(.value == false))
     and $dependency.runtime == "hepta"
     and $dependency.status == "ready"
@@ -139,6 +145,7 @@ report="$(jq -n \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   --argjson governance "$GOVERNANCE_CLOSURE_JSON" \
   --argjson watchdog "$WATCHDOG_JSON" \
+  --argjson watchdog_contract "$WATCHDOG_EVIDENCE_CONTRACT_JSON" \
   --argjson dependency "$DEPENDENCY_ISOLATION_JSON" \
   '
     ($governance.denied_by_governance_closure_summary) as $governance_denied
@@ -193,6 +200,11 @@ report="$(jq -n \
       source_watchdog_security_mode:($watchdog.security_mode // "unknown"),
       source_watchdog_active_owner:($watchdog.active_owner // "unknown"),
       source_watchdog_double_poller_risk:($watchdog.double_poller_risk // false),
+      source_watchdog_gate_mode:$watchdog_contract.observed_mode,
+      source_watchdog_evidence_contract_ready:$watchdog_contract.ready,
+      source_watchdog_active_health_only:$watchdog_contract.active_health_only,
+      source_watchdog_deployment_consistency_checked:$watchdog_contract.deployment_consistency_checked,
+      source_watchdog_binary_sha_match_checked:$watchdog_contract.binary_sha_match_checked,
       source_watchdog_binary_sha_match:$watchdog.binary_sha_match,
       source_watchdog_health:$watchdog.health,
       source_watchdog_route_count:$watchdog.route_count,
@@ -208,7 +220,13 @@ report="$(jq -n \
       source_dependency_isolation_forbidden_crate_count:($dependency.found_forbidden_codex_engine_crates | length),
       source_dependency_isolation_live_check_status:$dependency.live_check_status,
       active_state_observed:true,
-      active_binary_sha_consistent:($watchdog.release_sha256 == $watchdog.installed_sha256),
+      active_runtime_evidence_contract_ready:$watchdog_contract.ready,
+      active_binary_sha_consistent:(
+        if $watchdog_contract.binary_sha_match_checked
+        then $watchdog.binary_sha_match
+        else null
+        end
+      ),
       active_service_state_locked:true,
       active_dependency_isolated:$dependency.local_cargo_tree_isolated,
       readiness_allowed:false,
@@ -263,7 +281,14 @@ report="$(jq -n \
           ),
           blocked:true,
           status:$watchdog.status,
-          release_installed_sha_match:($watchdog.release_sha256 == $watchdog.installed_sha256),
+          evidence_contract_ready:$watchdog_contract.ready,
+          deployment_consistency_checked:$watchdog_contract.deployment_consistency_checked,
+          release_installed_sha_match:(
+            if $watchdog_contract.binary_sha_match_checked
+            then $watchdog.binary_sha_match
+            else null
+            end
+          ),
           route_count:$watchdog.route_count,
           full_fusion_complete:$watchdog.full_fusion_complete,
           operator_security_status:($watchdog.operator_security_status // "unknown"),
@@ -370,12 +395,29 @@ jq -e '
   and .source_governance_closure_family_count == 7
   and .source_watchdog_status_known == true
   and (.source_watchdog_status == "ok" or .source_watchdog_known_operator_security_attention == true)
-  and .source_watchdog_binary_sha_match == true
+  and .source_watchdog_evidence_contract_ready == true
+  and (
+    (
+      .source_watchdog_deployment_consistency_checked == true
+      and .source_watchdog_binary_sha_match_checked == true
+      and .source_watchdog_binary_sha_match == true
+      and .source_watchdog_release_sha256 == .source_watchdog_installed_sha256
+      and .active_binary_sha_consistent == true
+    )
+    or (
+      .source_watchdog_active_health_only == true
+      and .source_watchdog_deployment_consistency_checked == false
+      and .source_watchdog_binary_sha_match_checked == false
+      and .source_watchdog_binary_sha_match == false
+      and .source_watchdog_release_sha256 == ""
+      and .source_watchdog_installed_sha256 == ""
+      and .active_binary_sha_consistent == null
+    )
+  )
   and .source_watchdog_health == "ready"
   and .source_watchdog_route_count >= 69
   and .source_watchdog_missing_route_count == 0
   and .source_watchdog_full_fusion_complete == true
-  and .source_watchdog_release_sha256 == .source_watchdog_installed_sha256
   and .source_watchdog_phase_4_remaining_surface_count == 0
   and .source_watchdog_phase_5_remaining_dependency_count == 0
   and .source_dependency_isolation_ready == true
@@ -384,7 +426,7 @@ jq -e '
   and .source_dependency_isolation_forbidden_crate_count == 0
   and .source_dependency_isolation_live_check_status == "skipped"
   and .active_state_observed == true
-  and .active_binary_sha_consistent == true
+  and .active_runtime_evidence_contract_ready == true
   and .active_service_state_locked == true
   and .active_dependency_isolated == true
   and .readiness_allowed == false

@@ -54,6 +54,7 @@ hepta_json_report_capture_cache_file() {
     {
       printf '%s\0' "$PWD"
       printf '%s\0' "${HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT:-}"
+      printf '%s\0' "HEPTA_WATCHDOG_GATE_MODE=${HEPTA_WATCHDOG_GATE_MODE:-}"
       printf '%s\0' "$@"
     } | shasum -a 256 | awk '{print $1}'
   )"

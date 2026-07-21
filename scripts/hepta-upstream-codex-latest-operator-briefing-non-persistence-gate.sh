@@ -57,6 +57,8 @@ jq -n -e \
     and $latest.latest_release_governance_denied_by_count == 165
     and $latest.active_dependency_isolated == true
     and $latest.forbidden_codex_engine_crate_count == 0
+    and $latest.active_runtime_evidence_contract_ready == true
+    and $latest.watchdog_evidence_contract_ready == true
     and $latest.full_fusion_operational_evidence_observed == true
     and $latest.public_release_claim_allowed == false
     and $latest.public_ga_claim_allowed == false
@@ -159,6 +161,8 @@ report="$(jq -n \
       source_operator_packet_missing_route_count:$operator_packet.missing_route_count,
       active_dependency_isolated:$latest.active_dependency_isolated,
       forbidden_codex_engine_crate_count:$latest.forbidden_codex_engine_crate_count,
+      active_runtime_evidence_contract_ready:$latest.active_runtime_evidence_contract_ready,
+      watchdog_evidence_contract_ready:$latest.watchdog_evidence_contract_ready,
       active_binary_sha_consistent:$latest.active_binary_sha_consistent,
       full_fusion_operational_evidence_observed:$latest.full_fusion_operational_evidence_observed,
       public_claim_denial_enforced:$latest.public_claim_denial_enforced,
@@ -305,6 +309,8 @@ jq -e '
   and .latest_changed_file_count == 57
   and .active_dependency_isolated == true
   and .forbidden_codex_engine_crate_count == 0
+  and .active_runtime_evidence_contract_ready == true
+  and .watchdog_evidence_contract_ready == true
   and .source_operator_packet_ready == true
   and .source_required_operator_approval_count == 8
   and .operator_approval_recorded == false

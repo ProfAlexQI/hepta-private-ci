@@ -59,6 +59,7 @@ jq -n -e \
     and $active.active_state_lock_mode == "schema_only_active_state_locked_no_runtime_mutation"
     and $active.active_state_lock_decision == "active_service_state_observed_without_install_restart_or_dependency_mutation"
     and $active.active_state_lock_denied_by_count == 73
+    and $active.active_runtime_evidence_contract_ready == true
     and $active.install_execution_allowed == false
     and $active.release_build_required == false
     and $active.active_binary_mutation_allowed == false
@@ -156,6 +157,8 @@ report="$(jq -n \
       source_active_state_lock_ready:$active.active_state_lock_ready,
       source_active_state_lock_denied_by_count:$active.active_state_lock_denied_by_count,
       source_active_state_lock_family_count:($active.active_state_lock_families | length),
+      source_active_runtime_evidence_contract_ready:$active.active_runtime_evidence_contract_ready,
+      source_active_binary_sha_consistency_checked:$active.source_watchdog_binary_sha_match_checked,
       source_active_state_installed_sha256:$active.source_watchdog_installed_sha256,
       source_active_state_release_sha256:$active.source_watchdog_release_sha256,
       source_native_packaging_ready:$native.local_packaging_gate_ready,
@@ -175,7 +178,8 @@ report="$(jq -n \
       source_release_hardening_enabled_surface_count:$release_hardening_enabled_surface_count,
       source_reports_synchronized:($native.reports_synchronized and $release.reports_synchronized),
       active_state_observed:true,
-      active_binary_sha_consistent:($active.source_watchdog_release_sha256 == $active.source_watchdog_installed_sha256),
+      active_runtime_evidence_contract_ready:$active.active_runtime_evidence_contract_ready,
+      active_binary_sha_consistent:$active.active_binary_sha_consistent,
       native_packaging_state_observed:true,
       release_hardening_state_observed:true,
       release_artifact_write_lock_enforced:true,
@@ -333,7 +337,12 @@ jq -e '
   and .status == "ready"
   and .release_artifact_non_write_lock_ready == true
   and .source_reports_synchronized == true
-  and .active_binary_sha_consistent == true
+  and .source_active_runtime_evidence_contract_ready == true
+  and .active_runtime_evidence_contract_ready == true
+  and (
+    (.source_active_binary_sha_consistency_checked == true and .active_binary_sha_consistent == true)
+    or (.source_active_binary_sha_consistency_checked == false and .active_binary_sha_consistent == null)
+  )
   and .source_native_packaging_ready == true
   and .source_native_release_packaging_ready == true
   and .source_native_public_distribution_artifact_written == false

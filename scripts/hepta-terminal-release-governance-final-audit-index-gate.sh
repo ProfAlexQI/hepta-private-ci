@@ -59,7 +59,7 @@ jq -n -e \
     and $publication.public_distribution_denial_enforced == true
     and $publication.publication_claim_denial_enforced == true
     and $publication.operator_approval_non_recording_enforced == true
-    and $publication.active_binary_sha_consistent == true
+    and $publication.active_runtime_evidence_contract_ready == true
     and $publication.public_release_claim_allowed == false
     and $publication.public_ga_claim_allowed == false
     and $publication.public_distribution_publication_allowed == false
@@ -162,6 +162,7 @@ report="$(jq -n \
       source_memory_intelligence_live_mutation_enabled_count:$memory.live_mutation_enabled_count,
       final_release_governance_audit_ready:true,
       full_fusion_operational_evidence_observed:$publication.source_watchdog_full_fusion_complete,
+      active_runtime_evidence_contract_ready:$publication.active_runtime_evidence_contract_ready,
       active_binary_sha_consistent:$publication.active_binary_sha_consistent,
       active_dependency_isolated:true,
       memory_intelligence_absorbed_or_represented:true,
@@ -349,7 +350,7 @@ jq -e '
   and .source_memory_intelligence_absorbed_or_represented_count == 14
   and .source_memory_intelligence_live_mutation_enabled_count == 0
   and .source_memory_intelligence_gap_only_surface_count == 0
-  and .active_binary_sha_consistent == true
+  and .active_runtime_evidence_contract_ready == true
   and .active_dependency_isolated == true
   and .memory_intelligence_absorbed_or_represented == true
   and .publication_evidence_non_persistence_enforced == true

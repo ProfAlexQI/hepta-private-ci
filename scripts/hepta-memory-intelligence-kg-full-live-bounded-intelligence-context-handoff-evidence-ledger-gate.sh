@@ -216,7 +216,7 @@ jq -n -e \
     and $watchdog.watchdog_soak_regression_ready == true
     and $watchdog.watchdog_route_count == $truth.expected_route_count
     and $watchdog.watchdog_missing_route_count == 0
-    and $watchdog.watchdog_binary_sha_match == true
+    and $watchdog.watchdog_evidence_contract_ready == true
     and $watchdog.soak_passed == true
     and $watchdog.soak_ok == $watchdog.soak_samples
     and ($watchdog.side_effects | to_entries | all(.value == false))
@@ -343,6 +343,7 @@ jq -n \
       remaining_direct_dependency_count: $dependency.live_engine_dependency_closure.remaining_direct_dependency_count,
       watchdog_route_count: $watchdog.watchdog_route_count,
       watchdog_missing_route_count: $watchdog.watchdog_missing_route_count,
+      watchdog_evidence_contract_ready: $watchdog.watchdog_evidence_contract_ready,
       watchdog_binary_sha_match: $watchdog.watchdog_binary_sha_match,
       short_soak_ok: $watchdog.soak_ok,
       short_soak_samples: $watchdog.soak_samples

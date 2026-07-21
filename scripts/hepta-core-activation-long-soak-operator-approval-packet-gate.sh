@@ -107,7 +107,7 @@ jq -n -e \
     and $core.watchdog_status_known == true
     and ($core.watchdog_status == "ok" or $core.watchdog_known_operator_security_attention == true)
     and $core.watchdog_missing_route_count == 0
-    and $core.watchdog_binary_sha_match == true
+    and $core.watchdog_evidence_contract_ready == true
     and $core.watchdog_full_fusion_complete == true
     and $core.short_soak_status_known == true
     and ($core.short_soak_status == "ready" or $core.short_soak_known_operator_security_attention == true)
@@ -320,6 +320,7 @@ report="$(jq -n \
       watchdog_status_known:$core.watchdog_status_known,
       watchdog_known_operator_security_attention:$core.watchdog_known_operator_security_attention,
       watchdog_missing_route_count:$core.watchdog_missing_route_count,
+      watchdog_evidence_contract_ready:$core.watchdog_evidence_contract_ready,
       watchdog_binary_sha_match:$core.watchdog_binary_sha_match,
       watchdog_full_fusion_complete:$core.watchdog_full_fusion_complete,
       short_soak_status:$core.short_soak_status,
@@ -418,7 +419,7 @@ jq -e '
   and .watchdog_status_known == true
   and (.watchdog_status == "ok" or .watchdog_known_operator_security_attention == true)
   and .watchdog_missing_route_count == 0
-  and .watchdog_binary_sha_match == true
+  and .watchdog_evidence_contract_ready == true
   and .watchdog_full_fusion_complete == true
   and .short_soak_status_known == true
   and (.short_soak_status == "ready" or .short_soak_known_operator_security_attention == true)

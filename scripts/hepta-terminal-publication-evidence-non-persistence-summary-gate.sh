@@ -6,7 +6,10 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
+source "$REPO_ROOT/scripts/lib/hepta-watchdog-gate-evidence-v1.sh"
 cd "$REPO_ROOT"
+
+WATCHDOG_GATE_MODE="$(hepta_watchdog_gate_mode)"
 
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
@@ -54,8 +57,11 @@ WATCHDOG_JSON="$(
   capture_json_report_allow_parseable_failure \
     "hepta-watchdog" \
     env HEPTA_LIVE_URL="$BASE_URL" \
-      HEPTA_WATCHDOG_MODE=deployment-consistency \
+      HEPTA_WATCHDOG_MODE="$WATCHDOG_GATE_MODE" \
       scripts/hepta-watchdog.sh
+)"
+WATCHDOG_EVIDENCE_CONTRACT_JSON="$(
+  hepta_watchdog_gate_evidence_contract_json "$WATCHDOG_JSON" "$WATCHDOG_GATE_MODE"
 )"
 
 public_distribution_lock_report_sha256="$(sha256_text "$PUBLIC_DISTRIBUTION_LOCK_JSON")"
@@ -67,6 +73,7 @@ publication_evidence_side_effect_hash_sha256="$(sha256_text "hepta-terminal-publ
 jq -n -e \
   --argjson public_distribution "$PUBLIC_DISTRIBUTION_LOCK_JSON" \
   --argjson watchdog "$WATCHDOG_JSON" \
+  --argjson watchdog_contract "$WATCHDOG_EVIDENCE_CONTRACT_JSON" \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   '
     $public_distribution.runtime == "hepta"
@@ -99,7 +106,7 @@ jq -n -e \
         and $watchdog.operator_security_status == "attention"
       )
     )
-    and $watchdog.binary_sha_match == true
+    and $watchdog_contract.ready == true
     and $watchdog.health == "ready"
     and $watchdog.route_count >= 69
     and $watchdog.missing_route_count == 0
@@ -123,6 +130,7 @@ report="$(jq -n \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   --argjson public_distribution "$PUBLIC_DISTRIBUTION_LOCK_JSON" \
   --argjson watchdog "$WATCHDOG_JSON" \
+  --argjson watchdog_contract "$WATCHDOG_EVIDENCE_CONTRACT_JSON" \
   '
     ([
       "publication_evidence_summary_recording_denied",
@@ -186,6 +194,11 @@ report="$(jq -n \
       source_watchdog_security_mode:($watchdog.security_mode // "unknown"),
       source_watchdog_active_owner:($watchdog.active_owner // "unknown"),
       source_watchdog_double_poller_risk:($watchdog.double_poller_risk // false),
+      source_watchdog_gate_mode:$watchdog_contract.observed_mode,
+      source_watchdog_evidence_contract_ready:$watchdog_contract.ready,
+      source_watchdog_active_health_only:$watchdog_contract.active_health_only,
+      source_watchdog_deployment_consistency_checked:$watchdog_contract.deployment_consistency_checked,
+      source_watchdog_binary_sha_match_checked:$watchdog_contract.binary_sha_match_checked,
       source_watchdog_health:$watchdog.health,
       source_watchdog_binary_sha_match:$watchdog.binary_sha_match,
       source_watchdog_route_count:$watchdog.route_count,
@@ -195,7 +208,13 @@ report="$(jq -n \
       source_watchdog_installed_sha256:$watchdog.installed_sha256,
       source_watchdog_phase_4_remaining_surface_count:$watchdog.phase_4_name_repository_closure_remaining_surface_count,
       source_watchdog_phase_5_remaining_dependency_count:$watchdog.phase_5_engine_dependency_closure_remaining_dependency_count,
-      active_binary_sha_consistent:($watchdog.release_sha256 == $watchdog.installed_sha256),
+      active_runtime_evidence_contract_ready:$watchdog_contract.ready,
+      active_binary_sha_consistent:(
+        if $watchdog_contract.binary_sha_match_checked
+        then $watchdog.binary_sha_match
+        else null
+        end
+      ),
       active_route_health_observed:true,
       publication_evidence_non_persistence_enforced:true,
       publication_claim_denial_enforced:true,
@@ -374,10 +393,25 @@ jq -e '
   and .source_public_distribution_denied_by_count == 99
   and .source_watchdog_status_known == true
   and (.source_watchdog_status == "ok" or .source_watchdog_known_operator_security_attention == true)
-  and .source_watchdog_binary_sha_match == true
+  and .source_watchdog_evidence_contract_ready == true
+  and (
+    (
+      .source_watchdog_deployment_consistency_checked == true
+      and .source_watchdog_binary_sha_match_checked == true
+      and .source_watchdog_binary_sha_match == true
+      and .active_binary_sha_consistent == true
+    )
+    or (
+      .source_watchdog_active_health_only == true
+      and .source_watchdog_deployment_consistency_checked == false
+      and .source_watchdog_binary_sha_match_checked == false
+      and .source_watchdog_binary_sha_match == false
+      and .active_binary_sha_consistent == null
+    )
+  )
   and .source_watchdog_route_count >= 69
   and .source_watchdog_full_fusion_complete == true
-  and .active_binary_sha_consistent == true
+  and .active_runtime_evidence_contract_ready == true
   and .publication_evidence_non_persistence_enforced == true
   and .publication_claim_denial_enforced == true
   and .public_distribution_denial_enforced == true

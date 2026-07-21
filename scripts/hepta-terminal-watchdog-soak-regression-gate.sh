@@ -8,7 +8,10 @@ TERMINAL_SOAK_INTERVAL_SECONDS="${HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS:-1}"
 MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
+source "$REPO_ROOT/scripts/lib/hepta-watchdog-gate-evidence-v1.sh"
 cd "$REPO_ROOT"
+
+WATCHDOG_GATE_MODE="$(hepta_watchdog_gate_mode)"
 
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
@@ -69,8 +72,11 @@ WATCHDOG_JSON="$(
   capture_json_report_allow_parseable_failure \
     "hepta-watchdog" \
     env HEPTA_LIVE_URL="$BASE_URL" \
-      HEPTA_WATCHDOG_MODE=deployment-consistency \
+      HEPTA_WATCHDOG_MODE="$WATCHDOG_GATE_MODE" \
       scripts/hepta-watchdog.sh
+)"
+WATCHDOG_EVIDENCE_CONTRACT_JSON="$(
+  hepta_watchdog_gate_evidence_contract_json "$WATCHDOG_JSON" "$WATCHDOG_GATE_MODE"
 )"
 
 SOAK_JSON="$(
@@ -90,6 +96,7 @@ regression_side_effect_hash_sha256="$(sha256_text "hepta-terminal-watchdog-soak-
 
 jq -n -e \
   --argjson watchdog "$WATCHDOG_JSON" \
+  --argjson watchdog_contract "$WATCHDOG_EVIDENCE_CONTRACT_JSON" \
   --argjson soak "$SOAK_JSON" \
   --argjson terminal_soak_samples "$TERMINAL_SOAK_SAMPLES" \
   --argjson terminal_soak_interval_seconds "$TERMINAL_SOAK_INTERVAL_SECONDS" \
@@ -103,7 +110,7 @@ jq -n -e \
         and $watchdog.operator_security_status == "attention"
       )
     )
-    and $watchdog.binary_sha_match == true
+    and $watchdog_contract.ready == true
     and $watchdog.health == "ready"
     and $watchdog.route_count >= 69
     and $watchdog.missing_route_count == 0
@@ -163,6 +170,7 @@ report="$(jq -n \
   --argjson terminal_soak_interval_seconds "$TERMINAL_SOAK_INTERVAL_SECONDS" \
   --argjson min_long_soak_samples "$MIN_LONG_SOAK_SAMPLES" \
   --argjson watchdog "$WATCHDOG_JSON" \
+  --argjson watchdog_contract "$WATCHDOG_EVIDENCE_CONTRACT_JSON" \
   --argjson soak "$SOAK_JSON" \
   '
     ([
@@ -222,6 +230,11 @@ report="$(jq -n \
         $watchdog.status == "failed"
         and $watchdog.operator_security_status == "attention"
       ),
+      watchdog_gate_mode:$watchdog_contract.observed_mode,
+      watchdog_evidence_contract_ready:$watchdog_contract.ready,
+      watchdog_active_health_only:$watchdog_contract.active_health_only,
+      watchdog_deployment_consistency_checked:$watchdog_contract.deployment_consistency_checked,
+      watchdog_binary_sha_match_checked:$watchdog_contract.binary_sha_match_checked,
       watchdog_status:$watchdog.status,
       watchdog_health:$watchdog.health,
       watchdog_route_count:$watchdog.route_count,
@@ -526,7 +539,20 @@ jq -e '
   and .watchdog_health == "ready"
   and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
-  and .watchdog_binary_sha_match == true
+  and .watchdog_evidence_contract_ready == true
+  and (
+    (
+      .watchdog_deployment_consistency_checked == true
+      and .watchdog_binary_sha_match_checked == true
+      and .watchdog_binary_sha_match == true
+    )
+    or (
+      .watchdog_active_health_only == true
+      and .watchdog_deployment_consistency_checked == false
+      and .watchdog_binary_sha_match_checked == false
+      and .watchdog_binary_sha_match == false
+    )
+  )
   and .watchdog_full_fusion_complete == true
   and .watchdog_phase_4_name_repository_closure_ready == true
   and .watchdog_phase_4_name_repository_closure_remaining_surface_count == 0

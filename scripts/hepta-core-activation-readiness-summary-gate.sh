@@ -92,7 +92,7 @@ jq -n -e \
     and $final.final_audit_index_ready == true
     and $final.final_release_governance_audit_ready == true
     and $final.full_fusion_operational_evidence_observed == true
-    and $final.active_binary_sha_consistent == true
+    and $final.active_runtime_evidence_contract_ready == true
     and $final.active_dependency_isolated == true
     and $final.memory_intelligence_absorbed_or_represented == true
     and $final.publication_evidence_non_persistence_enforced == true
@@ -158,7 +158,7 @@ jq -n -e \
     and $watchdog.watchdog_health == "ready"
     and $watchdog.watchdog_route_count >= 69
     and $watchdog.watchdog_missing_route_count == 0
-    and $watchdog.watchdog_binary_sha_match == true
+    and $watchdog.watchdog_evidence_contract_ready == true
     and $watchdog.watchdog_full_fusion_complete == true
     and $watchdog.soak_status_known == true
     and ($watchdog.soak_status == "ready" or $watchdog.soak_known_operator_security_attention == true)
@@ -284,6 +284,7 @@ report="$(jq -n \
       watchdog_status_known:$watchdog.watchdog_status_known,
       watchdog_known_operator_security_attention:$watchdog.watchdog_known_operator_security_attention,
       watchdog_missing_route_count:$watchdog.watchdog_missing_route_count,
+      watchdog_evidence_contract_ready:$watchdog.watchdog_evidence_contract_ready,
       watchdog_binary_sha_match:$watchdog.watchdog_binary_sha_match,
       watchdog_full_fusion_complete:$watchdog.watchdog_full_fusion_complete,
       watchdog_release_sha256:$watchdog.watchdog_release_sha256,
@@ -468,7 +469,7 @@ jq -e '
   and (.watchdog_status == "ok" or .watchdog_known_operator_security_attention == true)
   and .watchdog_route_count >= 69
   and .watchdog_missing_route_count == 0
-  and .watchdog_binary_sha_match == true
+  and .watchdog_evidence_contract_ready == true
   and .watchdog_full_fusion_complete == true
   and .short_soak_status_known == true
   and (.short_soak_status == "ready" or .short_soak_known_operator_security_attention == true)

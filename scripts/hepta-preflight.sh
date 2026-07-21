@@ -11,6 +11,12 @@ NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
 NATIVE_TARGET_DIR="${HEPTA_NATIVE_TARGET_DIR:-apps/hepta-native/target}"
 RUN_NATIVE="${HEPTA_PREFLIGHT_NATIVE:-${HEPTA_CODEX_PREFLIGHT_NATIVE:-1}}"
 RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-${HEPTA_CODEX_PREFLIGHT_RELEASE:-0}}"
+# Candidate preflight runs the read-only terminal gates before a source-bound
+# release artifact/receipt can exist. Those gates therefore verify active
+# health only. The release artifact receives source/toolchain/dependency
+# provenance after the release build below; deployment consistency remains a
+# separate, fail-closed post-install watchdog mode.
+export HEPTA_WATCHDOG_GATE_MODE="${HEPTA_PREFLIGHT_WATCHDOG_GATE_MODE:-active-health}"
 HEPTA_FOCUSED_TEST_MAX_SECONDS="${HEPTA_FOCUSED_TEST_MAX_SECONDS:-600}"
 HEPTA_FULL_TEST_MAX_SECONDS="${HEPTA_FULL_TEST_MAX_SECONDS:-1800}"
 HEPTA_TEST_MAX_DIRTY_DELTA="${HEPTA_TEST_MAX_DIRTY_DELTA:-0}"
@@ -34,7 +40,7 @@ HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=0
 if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
   && -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
   export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$(mktemp -d /tmp/hepta-json-report-capture.XXXXXX)"
-  export HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT="hepta-preflight:$$:${HEPTA_RELEASE_BIN:-}:${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-}:${RUN_NATIVE}:${RUN_RELEASE}"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_SALT="hepta-preflight:$$:${HEPTA_RELEASE_BIN:-}:${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-}:${RUN_NATIVE}:${RUN_RELEASE}:${HEPTA_WATCHDOG_GATE_MODE}"
   HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=1
   trap 'if [[ "${HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR:-0}" == "1" ]]; then rm -rf "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}"; fi' EXIT
 fi
@@ -45,6 +51,7 @@ PREFLIGHT_RELEASE_TARGET_DIR="$(
     | tee /tmp/hepta-preflight-metadata.json \
     | jq -r '.target_directory'
 )"
+# hepta-preflight-resume: prelude-end
 
 echo "[hepta-preflight] fmt"
 cargo fmt --all --manifest-path "$MANIFEST" -- --check
@@ -1781,6 +1788,12 @@ scripts/hepta-upstream-codex-latest-release-governance-non-activation-gate.sh
 echo "[hepta-preflight] upstream Codex latest operator briefing non-persistence gate"
 scripts/hepta-upstream-codex-latest-operator-briefing-non-persistence-gate.sh
 
+echo "[hepta-preflight] resume state/fuse self-test"
+scripts/hepta-preflight-resume-self-test.sh
+
+echo "[hepta-preflight] watchdog gate evidence mode self-test"
+scripts/hepta-watchdog-gate-evidence-self-test.sh
+
 echo "[hepta-preflight] immutable release tree self-test"
 scripts/hepta-immutable-release-tree self-test
 
@@ -1862,7 +1875,15 @@ if [[ "$RUN_RELEASE" == "1" ]]; then
   release_build_provenance="$(
     jq -c \
       --argjson native "$RUN_NATIVE" \
-      '. + {preflight_profiles:{backend:true,native:($native == 1),release:true}}' \
+      --arg watchdog_gate_mode "$HEPTA_WATCHDOG_GATE_MODE" \
+      '. + {
+        preflight_profiles:{backend:true,native:($native == 1),release:true},
+        watchdog_gate_mode:$watchdog_gate_mode,
+        deployment_consistency:{
+          checked_during_candidate_preflight:false,
+          required_before_activation:true
+        }
+      }' \
       <<<"$release_build_provenance"
   )"
   printf '[hepta-preflight-provenance] %s\n' "$release_build_provenance"

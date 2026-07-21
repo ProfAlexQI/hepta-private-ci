@@ -55,7 +55,7 @@ jq -n -e \
     and $safety.latest_activation_blocking_family_count == 5
     and $safety.active_dependency_isolated == true
     and $safety.forbidden_codex_engine_crate_count == 0
-    and $safety.watchdog_binary_sha_match == true
+    and $safety.watchdog_evidence_contract_ready == true
     and $safety.watchdog_full_fusion_complete == true
     and $safety.watchdog_status_known == true
     and ($safety.watchdog_status == "ok" or $safety.watchdog_known_operator_security_attention == true)
@@ -77,7 +77,7 @@ jq -n -e \
     and $final.final_audit_index_ready == true
     and $final.final_audit_denied_by_count == 127
     and $final.full_fusion_operational_evidence_observed == true
-    and $final.active_binary_sha_consistent == true
+    and $final.active_runtime_evidence_contract_ready == true
     and $final.active_dependency_isolated == true
     and $final.memory_intelligence_absorbed_or_represented == true
     and $final.public_claim_denial_enforced == true
@@ -171,10 +171,12 @@ report="$(jq -n \
       source_final_audit_memory_surface_count:$final.source_memory_intelligence_surface_count,
       source_final_audit_memory_absorbed_or_represented_count:$final.source_memory_intelligence_absorbed_or_represented_count,
       source_final_audit_memory_live_mutation_enabled_count:$final.source_memory_intelligence_live_mutation_enabled_count,
+      active_runtime_evidence_contract_ready:$final.active_runtime_evidence_contract_ready,
       active_binary_sha_consistent:$final.active_binary_sha_consistent,
       active_dependency_isolated:$final.active_dependency_isolated,
       forbidden_codex_engine_crate_count:$safety.forbidden_codex_engine_crate_count,
       full_fusion_operational_evidence_observed:$final.full_fusion_operational_evidence_observed,
+      watchdog_evidence_contract_ready:$safety.watchdog_evidence_contract_ready,
       watchdog_binary_sha_match:$safety.watchdog_binary_sha_match,
       watchdog_full_fusion_complete:$safety.watchdog_full_fusion_complete,
       watchdog_route_count:$safety.watchdog_route_count,
@@ -335,6 +337,8 @@ jq -e '
   and .latest_changed_file_count == 57
   and .active_dependency_isolated == true
   and .forbidden_codex_engine_crate_count == 0
+  and .active_runtime_evidence_contract_ready == true
+  and .watchdog_evidence_contract_ready == true
   and .public_release_claim_allowed == false
   and .release_artifact_write_allowed == false
   and .evidence_persistence_allowed == false

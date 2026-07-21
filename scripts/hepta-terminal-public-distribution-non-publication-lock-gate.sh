@@ -68,6 +68,7 @@ jq -n -e \
     and $release.status == "ready"
     and $release.gate == "hepta_terminal_release_artifact_non_write_lock_gate"
     and $release.release_artifact_non_write_lock_ready == true
+    and $release.active_runtime_evidence_contract_ready == true
     and $release.release_artifact_non_write_denied_by_count == 87
     and $release.release_build_executed == false
     and $release.native_signing_allowed == false
@@ -169,6 +170,8 @@ report="$(jq -n \
       source_release_artifact_non_write_lock_ready:$release.release_artifact_non_write_lock_ready,
       source_release_artifact_non_write_denied_by_count:$release.release_artifact_non_write_denied_by_count,
       source_release_artifact_lock_family_count:($release.release_artifact_lock_families | length),
+      source_active_runtime_evidence_contract_ready:$release.active_runtime_evidence_contract_ready,
+      source_active_binary_sha_consistency_checked:$release.source_active_binary_sha_consistency_checked,
       source_active_state_installed_sha256:$release.source_active_state_installed_sha256,
       source_active_state_release_sha256:$release.source_active_state_release_sha256,
       source_native_signing_notarization_deferred:$release.source_native_signing_notarization_deferred,
@@ -186,7 +189,8 @@ report="$(jq -n \
       source_operator_packet_public_ga_ready:$operator.public_ga_ready,
       source_operator_packet_public_ga_blocker_count:$operator.public_ga_blocker_count,
       source_operator_packet_reports_synchronized:$operator.reports_synchronized,
-      active_binary_sha_consistent:($release.source_active_state_installed_sha256 == $release.source_active_state_release_sha256),
+      active_runtime_evidence_contract_ready:$release.active_runtime_evidence_contract_ready,
+      active_binary_sha_consistent:$release.active_binary_sha_consistent,
       release_artifact_write_lock_enforced:true,
       public_distribution_non_publication_enforced:true,
       public_ga_non_claim_enforced:true,
@@ -363,7 +367,12 @@ jq -e '
   and .source_public_ga_claimed == false
   and .source_operator_packet_ready == true
   and .operator_approval_recorded == false
-  and .active_binary_sha_consistent == true
+  and .source_active_runtime_evidence_contract_ready == true
+  and .active_runtime_evidence_contract_ready == true
+  and (
+    (.source_active_binary_sha_consistency_checked == true and .active_binary_sha_consistent == true)
+    or (.source_active_binary_sha_consistency_checked == false and .active_binary_sha_consistent == null)
+  )
   and .release_artifact_write_lock_enforced == true
   and .public_distribution_non_publication_enforced == true
   and .public_ga_non_claim_enforced == true
