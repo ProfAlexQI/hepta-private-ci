@@ -14,33 +14,121 @@ validate_registry() {
     .schema_version == "hepta_route_gate_specs_v1"
     and .executor == "scripts/hepta-route-gate-runner"
     and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
-    and (.families | length) == 1
-    and (.families[0].id == "first_model_invocation_result_receipt_transition_v1")
-    and (.families[0].common_report_fields | type == "object")
-    and (.families[0].common_live_false_fields | type == "array")
-    and (.families[0].common_live_zero_fields | type == "array")
-    and (.families[0].common_live_array_lengths | type == "object")
-    and (.families[0].specs | length) == 3
-    and ((.families[0].specs | map(.id) | unique | length) == 3)
-    and (.families[0].specs | all(
-      (.id | test("^[a-z0-9-]+$"))
-      and (.gate_spec.method == "GET")
-      and (.gate_spec.pattern == ("/api/" + .id))
-      and (.gate_spec.source_command == ("/" + .id + " --json"))
-      and (.gate_spec.capability == .id)
-      and (.gate_spec.receipt_state | IN("precondition", "denial", "receipt", "persistence", "retention", "terminal"))
-      and (.route_constant | test("^[A-Z0-9_]+_ENDPOINT$"))
-      and (.report_function | test("^[a-z0-9_]+_report$"))
-      and (.execution_mode | length > 0)
-      and (.focused_test | test("^[a-z0-9_]+$"))
-      and (.test_log_stem | test("^[a-z0-9-]+$"))
-      and (.next_action | test("^[a-z0-9_]+$"))
-      and (.report_fields | type == "object")
-      and (.live_validation | type == "object")
-      and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
-      and (.pass_message | length > 0)
+    and (.families | type == "array" and length >= 1)
+    and ((.families | map(.id) | unique | length) == (.families | length))
+    and (.families | all(
+      (.id | test("^[a-z0-9_]+_v1$"))
+      and (.side_effect_boundary | type == "string" and length > 40)
+      and (
+        if .execution_profile == "first_model_invocation_transition_v1" then
+          (.common_report_fields | type == "object")
+          and (.common_live_false_fields | type == "array")
+          and (.common_live_zero_fields | type == "array")
+          and (.common_live_array_lengths | type == "object")
+          and (.specs | length) == 3
+          and ((.specs | map(.id) | unique | length) == 3)
+          and (.specs | all(
+            (.id | test("^[a-z0-9-]+$"))
+            and (.gate_spec.method == "GET")
+            and (.gate_spec.pattern == ("/api/" + .id))
+            and (.gate_spec.source_command == ("/" + .id + " --json"))
+            and (.gate_spec.capability == .id)
+            and (.gate_spec.receipt_state | IN("precondition", "denial", "receipt", "persistence", "retention", "terminal"))
+            and (.route_constant | test("^[A-Z0-9_]+_ENDPOINT$"))
+            and (.report_function | test("^[a-z0-9_]+_report$"))
+            and (.execution_mode | length > 0)
+            and (.focused_test | test("^[a-z0-9_]+$"))
+            and (.test_log_stem | test("^[a-z0-9-]+$"))
+            and (.next_action | test("^[a-z0-9_]+$"))
+            and (.report_fields | type == "object")
+            and (.live_validation | type == "object")
+            and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+            and (.pass_message | length > 0)
+          ))
+        elif .execution_profile == "native_requirements_report_v1" then
+          (.spec_registry | test("^scripts/[a-z0-9-]+-route-gate-specs-v1\\.json$"))
+          and (.spec_schema_version | test("^[a-z0-9_]+_v1$"))
+          and (.compatibility_executor | test("^scripts/[a-z0-9-]+-route-gate-runner$"))
+          and (.compatibility_validation_schema | test("^[a-z0-9_]+_v1$"))
+          and (.compatibility_error_label | type == "string" and length > 10)
+          and (.source_capture_mode | IN("none", "live_url_min_soak_v1"))
+          and (.minimum_long_soak_samples | type == "number" and . >= 0 and floor == .)
+          and (.live_expected_arg | IN("expected", "expected_route_count"))
+          and (.terminal_coverage_required | type == "boolean")
+          and (.include_route_gate_ready | type == "boolean")
+          and (.output_mode | IN("pretty_json", "pretty_json_with_message"))
+          and (.native_requirement_min | type == "number" and . >= 1 and floor == .)
+          and (.requires_source_contract | type == "boolean")
+          and (.requires_pass_message | type == "boolean")
+          and (.normalization_remove_fields | type == "array" and length >= 5)
+          and ((.normalization_remove_fields | unique | length) == (.normalization_remove_fields | length))
+        else false
+        end
+      )
     ))
   ' "$SPEC_FILE" >/dev/null
+
+  local all_ids embedded_ids external_registry external_schema compatibility_executor
+  local native_requirement_min requires_source_contract requires_pass_message
+  embedded_ids="$(jq -r '.families[].specs[]?.id' "$SPEC_FILE")"
+  all_ids="$embedded_ids"
+  while IFS= read -r family; do
+    external_registry="$(jq -r '.spec_registry' <<<"$family")"
+    external_schema="$(jq -r '.spec_schema_version' <<<"$family")"
+    compatibility_executor="$(jq -r '.compatibility_executor' <<<"$family")"
+    native_requirement_min="$(jq -r '.native_requirement_min' <<<"$family")"
+    requires_source_contract="$(jq -r '.requires_source_contract' <<<"$family")"
+    requires_pass_message="$(jq -r '.requires_pass_message' <<<"$family")"
+    [[ -f "$ROOT/$external_registry" ]] || {
+      echo "missing Hepta route gate family registry: $ROOT/$external_registry" >&2
+      return 1
+    }
+    jq -e \
+      --arg schema "$external_schema" \
+      --arg executor "$compatibility_executor" \
+      --argjson native_requirement_min "$native_requirement_min" \
+      --argjson requires_source_contract "$requires_source_contract" \
+      --argjson requires_pass_message "$requires_pass_message" '
+        .schema_version == $schema
+        and .executor == $executor
+        and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
+        and (.specs | length) == 3
+        and ((.specs | map(.id) | unique | length) == 3)
+        and (.specs | all(
+          (.id | test("^[a-z0-9-]+$"))
+          and .gate_spec.method == "GET"
+          and .gate_spec.pattern == ("/api/" + .id)
+          and .gate_spec.source_command == ("/" + .id + " --json")
+          and .gate_spec.capability == .id
+          and (.gate_spec.receipt_state | IN("precondition", "denial", "receipt", "persistence", "retention", "terminal"))
+          and (.gate_spec.side_effect_boundary | contains("read-only"))
+          and (.wrapper | test("^scripts/[a-z0-9-]+-route-gate\\.sh$"))
+          and (.native_requirements | type == "array" and length >= $native_requirement_min)
+          and (.focused_test | test("^[a-z0-9_]+$"))
+          and (.test_log_stem | test("^[a-z0-9-]+$"))
+          and (.live_validation_filter | type == "string" and length > 100)
+          and (.report_fields | type == "object")
+          and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
+          and (
+            if $requires_source_contract then
+              (.source.capture_label | test("^[a-z0-9-]+-gate$"))
+              and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+              and (.source.validation_filter | type == "string" and length > 100)
+            else true end
+          )
+          and (
+            if $requires_pass_message then
+              (.pass_message | type == "string" and length > 20)
+            else true end
+          )
+        ))
+      ' "$ROOT/$external_registry" >/dev/null
+    external_ids="$(jq -r '.specs[].id' "$ROOT/$external_registry")"
+    all_ids="${all_ids}${all_ids:+$'\n'}${external_ids}"
+  done < <(jq -c '.families[] | select(.execution_profile == "native_requirements_report_v1")' "$SPEC_FILE")
+
+  [[ "$(printf '%s\n' "$all_ids" | awk 'NF' | wc -l | tr -d ' ')" == \
+    "$(printf '%s\n' "$all_ids" | awk 'NF' | LC_ALL=C sort -u | wc -l | tr -d ' ')" ]]
 }
 
 [[ -f "$SPEC_FILE" ]] || {
@@ -55,7 +143,16 @@ command -v jq >/dev/null 2>&1 || {
 [[ $# == 1 ]] || usage
 if [[ "$1" == "--validate" ]]; then
   validate_registry
-  echo '{"schema":"hepta_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+  family_count="$(jq -r '.families | length' "$SPEC_FILE")"
+  spec_count="$(
+    jq -r '[.families[].specs[]?] | length' "$SPEC_FILE"
+    while IFS= read -r external_registry; do
+      jq -r '.specs | length' "$ROOT/$external_registry"
+    done < <(jq -r '.families[] | select(.spec_registry != null) | .spec_registry' "$SPEC_FILE")
+  )"
+  spec_count="$(printf '%s\n' "$spec_count" | awk '{ total += $1 } END { print total + 0 }')"
+  printf '{"schema":"hepta_route_gate_specs_validation_v1","status":"ready","family_count":%s,"spec_count":%s}\n' \
+    "$family_count" "$spec_count"
   exit 0
 fi
 
@@ -63,11 +160,27 @@ id="$1"
 [[ "$id" =~ ^[a-z0-9-]+$ ]] || usage
 validate_registry
 
-family="$(jq -cer --arg id "$id" '.families[] | select(any(.specs[]; .id == $id))' "$SPEC_FILE")" || {
+family=""
+spec=""
+while IFS= read -r candidate_family; do
+  execution_profile="$(jq -r '.execution_profile' <<<"$candidate_family")"
+  if [[ "$execution_profile" == "first_model_invocation_transition_v1" ]]; then
+    candidate_spec="$(jq -c --arg id "$id" '.specs[] | select(.id == $id)' <<<"$candidate_family")"
+  else
+    external_registry="$(jq -r '.spec_registry' <<<"$candidate_family")"
+    candidate_spec="$(jq -c --arg id "$id" '.specs[] | select(.id == $id)' "$ROOT/$external_registry")"
+  fi
+  if [[ -n "$candidate_spec" ]]; then
+    family="$candidate_family"
+    spec="$candidate_spec"
+    break
+  fi
+done < <(jq -c '.families[]' "$SPEC_FILE")
+[[ -n "$family" ]] || {
   echo "unknown Hepta route gate spec id: $id" >&2
   exit 1
 }
-spec="$(jq -cer --arg id "$id" '.specs[] | select(.id == $id)' <<<"$family")"
+execution_profile="$(jq -r '.execution_profile' <<<"$family")"
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
@@ -75,145 +188,250 @@ REQUIRE_LIVE_ENDPOINT="${HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT:-0}"
 EXPECTED_ROUTE_COUNT="${HEPTA_EXPECTED_ROUTE_COUNT:-$(bash "$ROOT/scripts/lib/hepta-native-route-count.sh")}"
 NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
+minimum_long_soak_samples="$(jq -r '.minimum_long_soak_samples // 0' <<<"$family")"
+MIN_LONG_SOAK_SAMPLES="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-$minimum_long_soak_samples}"
+
+if [[ "$minimum_long_soak_samples" -gt 0 ]]; then
+  case "$MIN_LONG_SOAK_SAMPLES" in
+    ''|*[!0-9]*)
+      echo "HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES must be an unsigned integer" >&2
+      exit 2
+      ;;
+  esac
+  [[ "$MIN_LONG_SOAK_SAMPLES" -ge "$minimum_long_soak_samples" ]] || {
+    echo "minimum long-soak samples must be at least $minimum_long_soak_samples" >&2
+    exit 1
+  }
+fi
 
 cd "$ROOT"
 source "$ROOT/scripts/lib/hepta-source-set.sh"
-
-route_constant="$(jq -r '.route_constant' <<<"$spec")"
-report_function="$(jq -r '.report_function' <<<"$spec")"
-execution_mode="$(jq -r '.execution_mode' <<<"$spec")"
-focused_test="$(jq -r '.focused_test' <<<"$spec")"
-test_log_stem="$(jq -r '.test_log_stem' <<<"$spec")"
-next_action="$(jq -r '.next_action' <<<"$spec")"
+source "$ROOT/scripts/lib/hepta-json-report-capture.sh"
 endpoint="$(jq -r '.gate_spec.pattern' <<<"$spec")"
 source_command="$(jq -r '.gate_spec.source_command' <<<"$spec")"
+focused_test="$(jq -r '.focused_test' <<<"$spec")"
+test_log_stem="$(jq -r '.test_log_stem' <<<"$spec")"
+terminal_report_fields='{}'
 
-require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  "const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();" \
-  "$id route/source count"
-require_source_text "$ROUTE_REGISTRY_SOURCE" "$route_constant" "$id endpoint constant"
-require_source_text "$ROUTE_REGISTRY_SOURCE" "$endpoint" "$id endpoint path"
-require_source_text "$ROUTE_REGISTRY_SOURCE" "$source_command" "$id source command"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$report_function" "$id report function"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$execution_mode" "$id execution mode"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "$focused_test" "$id focused test"
-require_source_text "$NATIVE_GATEWAY_SOURCE" "\"action\": \"$next_action\"" "$id next action"
+if [[ "$execution_profile" == "first_model_invocation_transition_v1" ]]; then
+  route_constant="$(jq -r '.route_constant' <<<"$spec")"
+  report_function="$(jq -r '.report_function' <<<"$spec")"
+  execution_mode="$(jq -r '.execution_mode' <<<"$spec")"
+  next_action="$(jq -r '.next_action' <<<"$spec")"
+  native_requirements="$(
+    jq -cn \
+      --arg native_source "$NATIVE_GATEWAY_SOURCE" \
+      --arg registry_source "$ROUTE_REGISTRY_SOURCE" \
+      --arg route_constant "$route_constant" \
+      --arg endpoint "$endpoint" \
+      --arg source_command "$source_command" \
+      --arg report_function "$report_function" \
+      --arg execution_mode "$execution_mode" \
+      --arg focused_test "$focused_test" \
+      --arg id "$id" \
+      --arg next_action "$next_action" '
+      [
+        {file:$native_source,text:"const NATIVE_GATEWAY_SOURCE_COMMAND_COUNT: usize = CONTROL_UI_ROUTE_SPECS.len();",label:($id + " route/source count")},
+        {file:$registry_source,text:$route_constant,label:($id + " endpoint constant")},
+        {file:$registry_source,text:$endpoint,label:($id + " endpoint path")},
+        {file:$registry_source,text:$source_command,label:($id + " source command")},
+        {file:$native_source,text:$report_function,label:($id + " report function")},
+        {file:$native_source,text:$execution_mode,label:($id + " execution mode")},
+        {file:$native_source,text:$focused_test,label:($id + " focused test")},
+        {file:$native_source,text:("\"action\": \"" + $next_action + "\""),label:($id + " next action")}
+      ]
+    '
+  )"
+  report_fields="$(
+    jq -cn \
+      --argjson common "$(jq -c '.common_report_fields' <<<"$family")" \
+      --argjson specific "$(jq -c '.report_fields' <<<"$spec")" \
+      '$common + $specific'
+  )"
+  volatile_report_fields='[
+    "base_url","native_gateway_sha256","focused_test_log","live_endpoint_checked",
+    "live_route_status","live_route_count","live_missing_route_count","expected_route_count"
+  ]'
+  output_mode="compact_with_message"
+  error_prefix="Hepta route gate"
+  terminal_coverage_required=false
+  include_route_gate_ready=true
+  source_capture_mode="none"
+  live_expected_arg="expected"
+else
+  native_requirements="$(jq -c '.native_requirements' <<<"$spec")"
+  report_fields="$(jq -c '.report_fields' <<<"$spec")"
+  volatile_report_fields="$(jq -c '.normalization_remove_fields' <<<"$family")"
+  output_mode="$(jq -r '.output_mode' <<<"$family")"
+  error_prefix="$(jq -r '.compatibility_error_label' <<<"$family") route"
+  terminal_coverage_required="$(jq -r '.terminal_coverage_required' <<<"$family")"
+  include_route_gate_ready="$(jq -r '.include_route_gate_ready' <<<"$family")"
+  source_capture_mode="$(jq -r '.source_capture_mode' <<<"$family")"
+  live_expected_arg="$(jq -r '.live_expected_arg' <<<"$family")"
+fi
+
+if [[ "$source_capture_mode" == "live_url_min_soak_v1" ]]; then
+  source_json="$(
+    HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+      capture_json_report \
+        "$(jq -r '.source.capture_label' <<<"$spec")" \
+        "$(jq -r '.source.script' <<<"$spec")"
+  )"
+  jq -e "$(jq -r '.source.validation_filter' <<<"$spec")" >/dev/null <<<"$source_json"
+fi
+
+while IFS= read -r requirement; do
+  require_source_text \
+    "$(jq -r '.file' <<<"$requirement")" \
+    "$(jq -r '.text' <<<"$requirement")" \
+    "$(jq -r --arg fallback "$id native route invariant" '.label // $fallback' <<<"$requirement")"
+done < <(jq -c '.[]' <<<"$native_requirements")
 
 TEST_LOG="$(mktemp "/tmp/${test_log_stem}.XXXXXX")"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
   "$focused_test" -- --nocapture >"$TEST_LOG"
 
-live_route_status="skipped"
-live_route_count=0
-live_missing_route_count=0
-
+live_json='{}'
 if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
-  LIVE_JSON="$(curl -fsS "$BASE_URL$endpoint")"
-  validation="$(
-    jq -cn \
-      --argjson common_false "$(jq -c '.common_live_false_fields' <<<"$family")" \
-      --argjson common_zero "$(jq -c '.common_live_zero_fields' <<<"$family")" \
-      --argjson common_lengths "$(jq -c '.common_live_array_lengths' <<<"$family")" \
-      --argjson specific "$(jq -c '.live_validation' <<<"$spec")" \
-      '$specific
-        | .false_fields = ($common_false + .false_fields)
-        | .zero_fields = ($common_zero + .zero_fields)
-        | .array_lengths = ($common_lengths + .array_lengths)'
-  )"
-  jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" --argjson validation "$validation" '
-    . as $actual
-    | .status == "ready"
-      and .route_count == $expected
-      and .implemented_route_count == $expected
-      and .missing_route_count == 0
-      and .route_count_source_command_accepted == true
-      and ($validation.true_fields | all(. as $key | $actual[$key] == true))
-      and ($validation.false_fields | all(. as $key | $actual[$key] == false))
-      and ($validation.zero_fields | all(. as $key | $actual[$key] == 0))
-      and ($validation.eight_fields | all(. as $key | $actual[$key] == 8))
-      and ($validation.string_fields | to_entries | all(. as $item | $actual[$item.key] == $item.value))
-      and ($validation.array_lengths | to_entries | all(. as $item | ($actual[$item.key] | length) == $item.value))
-      and (
-        $validation.fixture as $fixture
-        | ($actual[$fixture.collection] | length) == $fixture.length
-          and ($actual[$fixture.collection] | all(
-            . as $row
-            | ($row[$fixture.status_field] | startswith($fixture.status_prefix))
-              and ($fixture.true_fields | all(. as $key | $row[$key] == true))
-              and ($fixture.false_fields | all(. as $key | $row[$key] == false))
-          ))
-      )
-      and (
-        $actual.allowed_next_actions[0] as $next
-        | ($validation.next_action_fields | to_entries | all(. as $item | $next[$item.key] == $item.value))
-      )
-      and (.side_effects | to_entries | all(.value == false))
-  ' >/dev/null <<<"$LIVE_JSON"
-  live_route_status="$(jq -r '.status' <<<"$LIVE_JSON")"
-  live_route_count="$(jq -r '.route_count' <<<"$LIVE_JSON")"
-  live_missing_route_count="$(jq -r '.missing_route_count' <<<"$LIVE_JSON")"
+  live_json="$(curl -fsS "$BASE_URL$endpoint")"
+  if [[ "$execution_profile" == "first_model_invocation_transition_v1" ]]; then
+    validation="$(
+      jq -cn \
+        --argjson common_false "$(jq -c '.common_live_false_fields' <<<"$family")" \
+        --argjson common_zero "$(jq -c '.common_live_zero_fields' <<<"$family")" \
+        --argjson common_lengths "$(jq -c '.common_live_array_lengths' <<<"$family")" \
+        --argjson specific "$(jq -c '.live_validation' <<<"$spec")" \
+        '$specific
+          | .false_fields = ($common_false + .false_fields)
+          | .zero_fields = ($common_zero + .zero_fields)
+          | .array_lengths = ($common_lengths + .array_lengths)'
+    )"
+    jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" --argjson validation "$validation" '
+      . as $actual
+      | .status == "ready"
+        and .route_count == $expected
+        and .implemented_route_count == $expected
+        and .missing_route_count == 0
+        and .route_count_source_command_accepted == true
+        and ($validation.true_fields | all(. as $key | $actual[$key] == true))
+        and ($validation.false_fields | all(. as $key | $actual[$key] == false))
+        and ($validation.zero_fields | all(. as $key | $actual[$key] == 0))
+        and ($validation.eight_fields | all(. as $key | $actual[$key] == 8))
+        and ($validation.string_fields | to_entries | all(. as $item | $actual[$item.key] == $item.value))
+        and ($validation.array_lengths | to_entries | all(. as $item | ($actual[$item.key] | length) == $item.value))
+        and (
+          $validation.fixture as $fixture
+          | ($actual[$fixture.collection] | length) == $fixture.length
+            and ($actual[$fixture.collection] | all(
+              . as $row
+              | ($row[$fixture.status_field] | startswith($fixture.status_prefix))
+                and ($fixture.true_fields | all(. as $key | $row[$key] == true))
+                and ($fixture.false_fields | all(. as $key | $row[$key] == false))
+            ))
+        )
+        and (
+          $actual.allowed_next_actions[0] as $next
+          | ($validation.next_action_fields | to_entries | all(. as $item | $next[$item.key] == $item.value))
+        )
+        and (.side_effects | to_entries | all(.value == false))
+    ' >/dev/null <<<"$live_json"
+  else
+    live_filter="$(jq -r '.live_validation_filter' <<<"$spec")"
+    jq -e --argjson "$live_expected_arg" "$EXPECTED_ROUTE_COUNT" \
+      "$live_filter" >/dev/null <<<"$live_json"
+  fi
 fi
 
-report_fields="$(
-  jq -cn \
-    --argjson common "$(jq -c '.common_report_fields' <<<"$family")" \
-    --argjson specific "$(jq -c '.report_fields' <<<"$spec")" \
-    '$common + $specific'
-)"
+if [[ "$terminal_coverage_required" == "true" ]]; then
+  terminal_json="$(
+    capture_json_report \
+      "hepta-preflight-terminal-coverage-inventory-gate" \
+      scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
+  )"
+  jq -e '
+    .status == "ready"
+    and .preflight_terminal_coverage_inventory_ready == true
+    and .present_required_marker_count == .required_marker_count
+    and .missing_required_marker_count == 0
+    and .duplicate_required_marker_count == 0
+    and .out_of_order_required_marker_count == 0
+  ' >/dev/null <<<"$terminal_json"
+  terminal_report_fields="$(
+    jq -cn \
+      --arg sha "$(printf '%s' "$terminal_json" | shasum -a 256 | awk '{print $1}')" \
+      --argjson required "$(jq -r '.required_marker_count' <<<"$terminal_json")" \
+      --argjson present "$(jq -r '.present_required_marker_count' <<<"$terminal_json")" \
+      --argjson missing "$(jq -r '.missing_required_marker_count' <<<"$terminal_json")" '
+      {
+        terminal_coverage_sha256:$sha,
+        terminal_required_marker_count:$required,
+        terminal_present_required_marker_count:$present,
+        terminal_missing_required_marker_count:$missing
+      }
+    '
+  )"
+fi
+
+live_route_status="$(jq -r '.status // "skipped"' <<<"$live_json")"
+live_route_count="$(jq -r '.route_count // 0' <<<"$live_json")"
+live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$live_json")"
 report="$(
   jq -n \
-    --arg product "Hepta" \
-    --arg runtime "hepta" \
     --arg base_url "$BASE_URL" \
     --arg gate "${id//-/_}_route_gate" \
     --arg endpoint "$endpoint" \
     --arg source_command "$source_command" \
     --arg native_gateway_sha256 "$(sha256_file "$NATIVE_GATEWAY_SOURCE")" \
-    --arg test_log "$TEST_LOG" \
+    --arg focused_test_log "$TEST_LOG" \
     --arg live_route_status "$live_route_status" \
+    --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
     --argjson live_route_count "$live_route_count" \
     --argjson live_missing_route_count "$live_missing_route_count" \
     --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
-    --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
-    --argjson fields "$report_fields" \
-    '{
-      product:$product,
-      runtime:$runtime,
+    --argjson include_route_gate_ready "$include_route_gate_ready" \
+    --argjson report_fields "$report_fields" \
+    --argjson terminal_report_fields "$terminal_report_fields" '
+    {
+      product:"Hepta",
+      runtime:"hepta",
       status:"ready",
       base_url:$base_url,
       gate:$gate,
       endpoint:$endpoint,
       source_command:$source_command,
       native_gateway_sha256:$native_gateway_sha256,
-      focused_test_log:$test_log,
+      focused_test_log:$focused_test_log,
       live_endpoint_checked:$live_endpoint_checked,
       live_route_status:$live_route_status,
       live_route_count:$live_route_count,
       live_missing_route_count:$live_missing_route_count,
       expected_route_count:$expected_route_count,
       route_gate_ready:true
-    } + $fields'
+    }
+    | if $include_route_gate_ready then . else del(.route_gate_ready) end
+    + $report_fields
+    + $terminal_report_fields
+  '
 )"
 
-expected_output_sha="$(jq -r '.baseline_normalized_output_sha256' <<<"$spec")"
 actual_output_sha="$(
-  jq -S '
-    del(
-      .base_url,
-      .native_gateway_sha256,
-      .focused_test_log,
-      .live_endpoint_checked,
-      .live_route_status,
-      .live_route_count,
-      .live_missing_route_count,
-      .expected_route_count
-    )
-  ' <<<"$report" | shasum -a 256 | cut -d ' ' -f1
+  jq -S --argjson volatile "$volatile_report_fields" \
+    'delpaths($volatile | map([.]))' <<<"$report" \
+    | shasum -a 256 | cut -d ' ' -f1
 )"
+expected_output_sha="$(jq -r '.baseline_normalized_output_sha256' <<<"$spec")"
 [[ "$actual_output_sha" == "$expected_output_sha" ]] || {
-  echo "Hepta route gate normalized output parity mismatch for $id: $actual_output_sha != $expected_output_sha" >&2
+  echo "$error_prefix normalized output parity mismatch for $id: $actual_output_sha != $expected_output_sha" >&2
   exit 1
 }
 
-printf '%s\n' "$report"
-jq -r '.pass_message' <<<"$spec"
+if [[ "$output_mode" == "compact_with_message" ]]; then
+  printf '%s\n' "$report"
+  jq -r '.pass_message' <<<"$spec"
+else
+  jq . <<<"$report"
+  if [[ "$output_mode" == "pretty_json_with_message" ]]; then
+    echo "$(jq -r '.pass_message' <<<"$spec")"
+  fi
+fi
