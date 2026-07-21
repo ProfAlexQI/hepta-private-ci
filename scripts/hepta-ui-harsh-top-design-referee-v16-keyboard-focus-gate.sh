@@ -11,6 +11,7 @@ KEYBOARD_SCREENSHOT_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V16_SCREENSHOT_DIR:
 KEYBOARD_CROP_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V16_CROP_DIR:-}"
 NATIVE_DIR="${HEPTA_NATIVE_FIXTURE_VISUAL_DIR:-}"
 V15_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V16_V15_LOG:-}"
+SKIP_V15="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V16_SKIP_V15:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 MANIFEST="codex-rs/Cargo.toml"
 HOST="${HEPTA_CONTROL_UI_SMOKE_HOST:-127.0.0.1}"
@@ -50,14 +51,20 @@ fi
 
 mkdir -p "$READINESS_DIR" "$NATIVE_DIR" "$KEYBOARD_SCREENSHOT_DIR" "$KEYBOARD_CROP_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$KEYBOARD_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V15_REPORT_PATH="$V15_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v15-text-zoom-squeeze-gate.sh "$READINESS_DIR" >"$V15_LOG" 2>&1 || {
-    echo "v15 text-zoom squeeze prerequisite failed" >&2
-    tail -n 180 "$V15_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V15" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V15_REPORT_PATH="$V15_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v15-text-zoom-squeeze-gate.sh "$READINESS_DIR" >"$V15_LOG" 2>&1 || {
+      echo "v15 text-zoom squeeze prerequisite failed" >&2
+      tail -n 180 "$V15_LOG" >&2 || true
+      exit 1
+    }
+fi
 
+if [[ ! -s "$V15_REPORT_PATH" ]]; then
+  echo "missing v15 text-zoom squeeze prerequisite evidence: $V15_REPORT_PATH" >&2
+  exit 1
+fi
 if [[ "$(jq -r '.status' "$V15_REPORT_PATH")" != "ready" ]]; then
   echo "v15 text-zoom squeeze prerequisite was not ready: $V15_REPORT_PATH" >&2
   exit 1

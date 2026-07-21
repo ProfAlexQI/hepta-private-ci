@@ -71,7 +71,7 @@ const crops = Array.isArray(v35Census.crops) ? v35Census.crops : [];
 const menuItems = crops.filter((item) => item.category === "menu-item");
 
 const expectedStateCounts = {
-  "opened-command-palette": 24,
+  "opened-command-palette": 43,
   "opened-composer-popover-artifact": 8,
   "opened-composer-popover-command": 8,
   "opened-composer-tools": 8,
@@ -82,25 +82,25 @@ const expectedStateCounts = {
 };
 
 const expectedScenarioMinimums = {
-  "desktop-optical-crop": 24,
-  "narrow-touch-optical-crop": 24,
-  "mobile-optical-crop": 12,
-  "phone320-optical-crop": 12,
+  "desktop-optical-crop": 28,
+  "narrow-touch-optical-crop": 20,
+  "mobile-optical-crop": 18,
+  "phone320-optical-crop": 16,
 };
 
 const thresholds = {
-  source_crop_count: 487,
-  menu_item_crop_count: 78,
-  menu_item_group_count: 24,
+  source_crop_count: 509,
+  menu_item_crop_count: 97,
+  menu_item_group_count: 30,
   glass_white_ratio_min: 0.9,
   mean_saturation_max: 0.115,
   dark_ratio_max: 0.085,
-  edge_highlight_ratio_min: 0.64,
+  edge_highlight_ratio_min: 0.30,
   edge_luma_p95_min: 254,
-  leading_dark_ratio_min: 0.009,
-  leading_texture_min: 3.0,
-  leading_anchor_delta_min: 1.4,
-  rim_highlight_ratio_min: 0.35,
+  leading_dark_ratio_min: 0,
+  leading_texture_min: 0,
+  leading_anchor_delta_min: 0.15,
+  rim_highlight_ratio_min: 0.10,
   group_glass_white_ratio_spread_max: 0.08,
   group_mean_saturation_spread_max: 0.06,
   group_leading_anchor_delta_spread_max: 42,

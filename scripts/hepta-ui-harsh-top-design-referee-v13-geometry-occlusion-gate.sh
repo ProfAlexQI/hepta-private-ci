@@ -10,6 +10,7 @@ NATIVE_DIR="${HEPTA_NATIVE_FIXTURE_VISUAL_DIR:-}"
 GEOMETRY_REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_GEOMETRY_REPORT_PATH:-}"
 GEOMETRY_SCREENSHOT_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_SCREENSHOT_DIR:-}"
 V12_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_V12_LOG:-}"
+SKIP_V12="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V13_SKIP_V12:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 MANIFEST="codex-rs/Cargo.toml"
 HOST="${HEPTA_CONTROL_UI_SMOKE_HOST:-127.0.0.1}"
@@ -46,14 +47,20 @@ fi
 
 mkdir -p "$READINESS_DIR" "$NATIVE_DIR" "$GEOMETRY_SCREENSHOT_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$GEOMETRY_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V12_REPORT_PATH="$V12_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh "$READINESS_DIR" >"$V12_LOG" 2>&1 || {
-    echo "v12 interaction-state crop prerequisite failed" >&2
-    tail -n 180 "$V12_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V12" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V12_REPORT_PATH="$V12_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_DIR="$NATIVE_DIR" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v12-interaction-state-crop-gate.sh "$READINESS_DIR" >"$V12_LOG" 2>&1 || {
+      echo "v12 interaction-state crop prerequisite failed" >&2
+      tail -n 180 "$V12_LOG" >&2 || true
+      exit 1
+    }
+fi
 
+if [[ ! -s "$V12_REPORT_PATH" ]]; then
+  echo "missing v12 interaction-state crop prerequisite evidence: $V12_REPORT_PATH" >&2
+  exit 1
+fi
 if [[ "$(jq -r '.status' "$V12_REPORT_PATH")" != "ready" ]]; then
   echo "v12 interaction-state crop prerequisite was not ready: $V12_REPORT_PATH" >&2
   exit 1

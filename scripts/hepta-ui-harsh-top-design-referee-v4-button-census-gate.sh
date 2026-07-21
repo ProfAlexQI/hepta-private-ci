@@ -533,6 +533,7 @@ async function openState(page, openSpec) {
       document.body.removeAttribute("data-control-ui-submenu-audit-open");
       document.querySelectorAll(".tg-thread-command-menu").forEach((node) => { node.open = false; });
       document.querySelectorAll(".tg-chat-item").forEach((row) => { row.classList.remove("tg-chat-item--menu-open"); });
+      document.querySelectorAll("[popover]:popover-open").forEach((node) => { node.hidePopover(); });
       document.querySelectorAll(".tg-composer-popover").forEach((node) => { node.style.display = ""; });
       document.querySelectorAll(".tg-composer-picker").forEach((node) => { node.open = false; });
       if (window.location.hash === "#command-palette") window.location.hash = "chat";
@@ -546,34 +547,20 @@ async function openState(page, openSpec) {
           scroller.scrollTop = Math.max(0, row.offsetTop - ((scroller.clientHeight - row.getBoundingClientRect().height) / 2));
         }
         row.scrollIntoView({ block: "center", inline: "nearest" });
-        row.classList.add("tg-chat-item--menu-open");
-        const toggle = row.querySelector("[data-chat-row-menu-toggle]");
-        if (toggle) {
-          toggle.style.opacity = "1";
-          toggle.style.pointerEvents = "auto";
-          toggle.style.transform = "translateX(0)";
-          toggle.style.transition = "none";
-        }
       }
-    } else if (spec.type === "thread-tools") {
-      const node = document.querySelector('[data-thread-command-menu="true"]');
-      if (node) node.open = true;
-    } else if (spec.type === "composer-tools") {
-      const node = document.querySelector("[data-control-ui-composer-more]");
-      if (node) node.open = true;
-    } else if (spec.type === "composer-popover") {
-      document.body.setAttribute("data-control-ui-submenu-audit-open", "true");
-      document.querySelectorAll(".tg-composer-popover").forEach((node) => { node.style.display = "none"; });
-      const node = document.querySelector(`[data-chat-composer-popover="${spec.key}"]`);
-      if (node) {
-        const details = node.closest(".tg-composer-picker");
-        if (details) details.open = true;
-        node.style.display = "grid";
-      }
-    } else if (spec.type === "command-palette") {
-      window.location.hash = "command-palette";
     }
   }, openSpec);
+  if (openSpec.type === "row-menu") {
+    await page.locator(`[data-chat-row-menu-toggle="${openSpec.key}"]`).click();
+  } else if (openSpec.type === "thread-tools") {
+    await page.locator('[data-thread-command-menu="true"] > button[popovertarget]').click();
+  } else if (openSpec.type === "composer-tools") {
+    await page.locator("[data-control-ui-composer-more] > button[popovertarget]").click();
+  } else if (openSpec.type === "composer-popover") {
+    await page.locator(`[data-chat-composer-popover-toggle="${openSpec.key}"]`).click();
+  } else if (openSpec.type === "command-palette") {
+    await page.locator(".tg-command-palette-trigger[data-open-command-palette]").click();
+  }
 }
 
 async function capture(page, viewport, key, censusDir) {

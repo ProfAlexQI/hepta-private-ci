@@ -244,7 +244,9 @@ script_mod! {
                     fit: ImageFit.Stretch
                     src: (mod.widgets.IMG_TEMPERED_GLASS_BG)
                     draw_bg +: {
-                        opacity: 1.0
+                        // Texture stays environmental; readable content surfaces carry
+                        // the stronger glass material.
+                        opacity: 0.24
                         pixel: fn() {
                             let color = self.get_color()
                             return Pal.premul(vec4(color.xyz, color.w * self.opacity))
@@ -355,7 +357,7 @@ script_mod! {
                     fit: ImageFit.Stretch
                     src: (mod.widgets.IMG_TEMPERED_GLASS_BG)
                     draw_bg +: {
-                        opacity: 0.98
+                        opacity: 0.20
                         pixel: fn() {
                             let color = self.get_color()
                             return Pal.premul(vec4(color.xyz, color.w * self.opacity))

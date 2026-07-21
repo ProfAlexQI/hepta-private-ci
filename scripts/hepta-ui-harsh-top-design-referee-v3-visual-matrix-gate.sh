@@ -265,6 +265,9 @@ async function main() {
           document.querySelectorAll(".tg-chat-item").forEach((row) => {
             row.classList.remove("tg-chat-item--menu-open");
           });
+          document.querySelectorAll("[popover]:popover-open").forEach((node) => {
+            node.hidePopover();
+          });
           document.querySelectorAll(".tg-composer-popover").forEach((node) => {
             node.style.display = "";
           });
@@ -290,64 +293,17 @@ async function main() {
       await page.waitForTimeout(80);
       const closedBaseline = await capture(page, viewport, `${target.key}-closed-baseline`, matrixDir);
       screenshots.push(closedBaseline);
-      await page.evaluate((openSpec) => {
-        const closeAll = () => {
-          document.body.removeAttribute("data-control-ui-submenu-audit-open");
-          document.querySelectorAll(".tg-thread-command-menu").forEach((node) => {
-            node.open = false;
-          });
-          document.querySelectorAll(".tg-chat-item").forEach((row) => {
-            row.classList.remove("tg-chat-item--menu-open");
-          });
-          document.querySelectorAll(".tg-composer-popover").forEach((node) => {
-            node.style.display = "";
-          });
-          document.querySelectorAll(".tg-composer-picker").forEach((node) => {
-            node.open = false;
-          });
-          if (window.location.hash === "#command-palette") {
-            window.location.hash = "chat";
-          }
-        };
-        closeAll();
-        if (openSpec.type === "row-menu") {
-          const row = document.querySelector(`[data-chat-conversation="${openSpec.key}"]`);
-          if (row) {
-            const scroller = row.closest(".tg-room-rail, .tg-conversation-list, .tg-sidebar, .tg-room-list");
-            if (scroller && scroller.scrollHeight > scroller.clientHeight) {
-              scroller.scrollTop = Math.max(0, row.offsetTop - ((scroller.clientHeight - row.getBoundingClientRect().height) / 2));
-            }
-            row.scrollIntoView({ block: "center", inline: "nearest" });
-            row.classList.add("tg-chat-item--menu-open");
-            const toggle = row.querySelector("[data-chat-row-menu-toggle]");
-            if (toggle) {
-              toggle.style.opacity = "1";
-              toggle.style.pointerEvents = "auto";
-              toggle.style.transform = "translateX(0)";
-              toggle.style.transition = "none";
-            }
-          }
-        } else if (openSpec.type === "thread-tools") {
-          const node = document.querySelector('[data-thread-command-menu="true"]');
-          if (node) node.open = true;
-        } else if (openSpec.type === "composer-tools") {
-          const node = document.querySelector("[data-control-ui-composer-more]");
-          if (node) node.open = true;
-        } else if (openSpec.type === "composer-popover") {
-          document.body.setAttribute("data-control-ui-submenu-audit-open", "true");
-          document.querySelectorAll(".tg-composer-popover").forEach((node) => {
-            node.style.display = "none";
-          });
-          const node = document.querySelector(`[data-chat-composer-popover="${openSpec.key}"]`);
-          if (node) {
-            const details = node.closest(".tg-composer-picker");
-            if (details) details.open = true;
-            node.style.display = "grid";
-          }
-        } else if (openSpec.type === "command-palette") {
-          window.location.hash = "command-palette";
-        }
-      }, target.open);
+      if (target.open.type === "row-menu") {
+        await page.locator(`[data-chat-row-menu-toggle="${target.open.key}"]`).click();
+      } else if (target.open.type === "thread-tools") {
+        await page.locator('[data-thread-command-menu="true"] > button[popovertarget]').click();
+      } else if (target.open.type === "composer-tools") {
+        await page.locator("[data-control-ui-composer-more] > button[popovertarget]").click();
+      } else if (target.open.type === "composer-popover") {
+        await page.locator(`[data-chat-composer-popover-toggle="${target.open.key}"]`).click();
+      } else if (target.open.type === "command-palette") {
+        await page.locator(".tg-command-palette-trigger[data-open-command-palette]").click();
+      }
       await page.waitForTimeout(120);
 
       const audit = await page.evaluate((target) => {

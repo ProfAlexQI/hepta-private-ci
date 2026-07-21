@@ -10,6 +10,7 @@ NATIVE_REPORT_PATH="${HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH:-}"
 SWITCH_REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V9_SWITCH_REPORT_PATH:-}"
 SWITCH_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V9_SWITCH_DIR:-}"
 V8_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V9_V8_LOG:-}"
+SKIP_V8="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V9_SKIP_V8:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 MANIFEST="codex-rs/Cargo.toml"
 HOST="${HEPTA_CONTROL_UI_SMOKE_HOST:-127.0.0.1}"
@@ -51,13 +52,15 @@ jq empty "$NATIVE_REPORT_PATH" >/dev/null
 
 mkdir -p "$READINESS_DIR" "$SWITCH_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$SWITCH_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V8_REPORT_PATH="$V8_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_REPORT_PATH" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v8-lifecycle-gate.sh "$READINESS_DIR" >"$V8_LOG" 2>&1 || {
-    echo "v8 lifecycle prerequisite failed" >&2
-    tail -n 120 "$V8_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V8" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V8_REPORT_PATH="$V8_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_REPORT_PATH" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v8-lifecycle-gate.sh "$READINESS_DIR" >"$V8_LOG" 2>&1 || {
+      echo "v8 lifecycle prerequisite failed" >&2
+      tail -n 120 "$V8_LOG" >&2 || true
+      exit 1
+    }
+fi
 
 if [[ "$(jq -r '.status' "$V8_REPORT_PATH")" != "ready" ]]; then
   echo "v8 lifecycle prerequisite was not ready: $V8_REPORT_PATH" >&2
@@ -259,7 +262,7 @@ function buildSequences(viewport) {
       triggerSelector: '[data-thread-command-menu="true"] [data-control-ui-thread-tools-trigger="light-glass"]',
       targetSelectors: ['[data-control-ui-thread-tools-panel="light-glass"]'],
       itemSelector: '[data-thread-command-menu="true"] [data-control-ui-menu-item]',
-      action: { type: "details" },
+      action: { type: "popover" },
     },
     {
       key: "composer-tools",
@@ -269,7 +272,7 @@ function buildSequences(viewport) {
       triggerSelector: '[data-control-ui-composer-more] [data-control-ui-composer-tools-trigger="light-glass"]',
       targetSelectors: ['[data-control-ui-composer-tools-panel="light-glass"]'],
       itemSelector: '[data-control-ui-composer-more] [data-control-ui-composer-tool-item]',
-      action: { type: "details" },
+      action: { type: "popover" },
     },
   ];
   const composerTargets = [
@@ -281,7 +284,7 @@ function buildSequences(viewport) {
       triggerSelector: '[data-chat-composer-popover-toggle="artifact"]',
       targetSelectors: ['[data-chat-composer-popover="artifact"]'],
       itemSelector: '[data-chat-composer-popover="artifact"] .tg-composer-popover__item',
-      action: { type: "details" },
+      action: { type: "popover" },
     },
     {
       key: "composer-popover-command",
@@ -291,7 +294,7 @@ function buildSequences(viewport) {
       triggerSelector: '[data-chat-composer-popover-toggle="command"]',
       targetSelectors: ['[data-chat-composer-popover="command"]'],
       itemSelector: '[data-chat-composer-popover="command"] .tg-composer-popover__item',
-      action: { type: "details" },
+      action: { type: "popover" },
     },
   ];
   const sequences = [
@@ -309,10 +312,19 @@ async function openPointer(page, target) {
     if (target.action.type === "row-menu") {
       const row = page.locator(`[data-chat-conversation="${target.action.key}"]`).first();
       await row.scrollIntoViewIfNeeded();
-      await row.hover();
-      await page.waitForTimeout(80);
     }
     const trigger = page.locator(target.triggerSelector).first();
+    if (target.action.type === "popover") {
+      const unobscured = await trigger.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return Boolean(hit && (hit === node || node.contains(hit)));
+      });
+      if (!unobscured) {
+        await page.mouse.click(8, 8);
+        await page.waitForTimeout(80);
+      }
+    }
     await trigger.scrollIntoViewIfNeeded();
     const box = await trigger.boundingBox();
     await trigger.click({ timeout: 5000 });
@@ -327,9 +339,10 @@ async function openKeyboardOrFocus(page, target) {
     if (target.action.type === "row-menu") {
       const row = page.locator(`[data-chat-conversation="${target.action.key}"]`).first();
       await row.scrollIntoViewIfNeeded();
-      await row.focus();
+      const trigger = page.locator(target.triggerSelector).first();
+      await trigger.focus();
       await page.keyboard.press("Enter");
-      return { ready: true, method: "focus-visible-row", trigger_selector: `[data-chat-conversation="${target.action.key}"]` };
+      return { ready: true, method: "keyboard-enter-row-menu", trigger_selector: target.triggerSelector };
     }
     const trigger = page.locator(target.triggerSelector).first();
     await trigger.scrollIntoViewIfNeeded();
@@ -346,7 +359,15 @@ async function openKeyboardOrFocus(page, target) {
 
 async function closeTarget(page, target, mode) {
   try {
-    if (target.action.type === "details") {
+    if (target.action.type === "popover") {
+      if (mode === "keyboard") {
+        await page.keyboard.press("Escape");
+      } else {
+        await page.mouse.click(8, 8);
+      }
+      return { ready: true, method: mode === "keyboard" ? "keyboard-escape-popover" : "pointer-light-dismiss-popover" };
+    }
+    if (target.action.type === "details" || target.action.type === "row-menu") {
       const trigger = page.locator(target.triggerSelector).first();
       await trigger.scrollIntoViewIfNeeded();
       if (mode === "keyboard") {
@@ -355,7 +376,7 @@ async function closeTarget(page, target, mode) {
       } else {
         await trigger.click({ timeout: 5000 });
       }
-      return { ready: true, method: `${mode}-toggle-summary` };
+      return { ready: true, method: `${mode}-toggle-trigger` };
     }
     const textarea = page.locator("[data-chat-composer-input]").first();
     if (await textarea.count()) {

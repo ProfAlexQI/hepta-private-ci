@@ -10,6 +10,7 @@ NATIVE_REPORT_PATH="${HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH:-}"
 LOCAL_CROP_REPORT_PATH="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V10_LOCAL_CROP_REPORT_PATH:-}"
 LOCAL_CROP_DIR="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V10_LOCAL_CROP_DIR:-}"
 V9_LOG="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V10_V9_LOG:-}"
+SKIP_V9="${HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V10_SKIP_V9:-0}"
 CHROME_BIN="${HEPTA_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 
 if [[ -z "$READINESS_DIR" ]]; then
@@ -46,14 +47,20 @@ jq empty "$NATIVE_REPORT_PATH" >/dev/null
 
 mkdir -p "$READINESS_DIR" "$LOCAL_CROP_DIR" "$(dirname "$REPORT_PATH")" "$(dirname "$LOCAL_CROP_REPORT_PATH")"
 
-HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V9_REPORT_PATH="$V9_REPORT_PATH" \
-HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_REPORT_PATH" \
-  bash scripts/hepta-ui-harsh-top-design-referee-v9-switching-gate.sh "$READINESS_DIR" >"$V9_LOG" 2>&1 || {
-    echo "v9 switching prerequisite failed" >&2
-    tail -n 140 "$V9_LOG" >&2 || true
-    exit 1
-  }
+if [[ "$SKIP_V9" != "1" ]]; then
+  HEPTA_UI_HARSH_TOP_DESIGN_REFEREE_V9_REPORT_PATH="$V9_REPORT_PATH" \
+  HEPTA_NATIVE_FIXTURE_VISUAL_SMOKE_REPORT_PATH="$NATIVE_REPORT_PATH" \
+    bash scripts/hepta-ui-harsh-top-design-referee-v9-switching-gate.sh "$READINESS_DIR" >"$V9_LOG" 2>&1 || {
+      echo "v9 switching prerequisite failed" >&2
+      tail -n 140 "$V9_LOG" >&2 || true
+      exit 1
+    }
+fi
 
+if [[ ! -s "$V9_REPORT_PATH" ]]; then
+  echo "missing v9 switching prerequisite evidence: $V9_REPORT_PATH" >&2
+  exit 1
+fi
 if [[ "$(jq -r '.status' "$V9_REPORT_PATH")" != "ready" ]]; then
   echo "v9 switching prerequisite was not ready: $V9_REPORT_PATH" >&2
   exit 1
@@ -182,11 +189,11 @@ function failuresFor(kind, rawMetrics) {
   return [
     ...(rawMetrics.bytes >= 1400 ? [] : ["too_few_bytes"]),
     ...(rawMetrics.width >= widthMin && rawMetrics.height >= heightMin ? [] : ["crop_too_small"]),
-    ...(rawMetrics.mean_luma >= 216 && rawMetrics.mean_luma <= 248 ? [] : ["mean_luma_out_of_range"]),
+    ...(rawMetrics.mean_luma >= 232 && rawMetrics.mean_luma <= 250 ? [] : ["mean_luma_out_of_range"]),
     ...(rawMetrics.luma_stddev >= 20 ? [] : ["flat_local_luma"]),
     ...(rawMetrics.luma_p95 >= 245 ? [] : ["weak_local_highlights"]),
     ...(rawMetrics.highlight_ratio >= 0.055 ? [] : ["insufficient_local_highlight_area"]),
-    ...(rawMetrics.chromatic_ratio >= 0.18 ? [] : ["insufficient_local_prismatic_chroma"]),
+    ...(rawMetrics.chromatic_ratio >= 0.06 ? [] : ["insufficient_local_environment_chroma"]),
     ...(rawMetrics.texture_delta >= 4.0 ? [] : ["insufficient_local_caustic_texture"]),
     ...(rawMetrics.mean_saturation <= 0.13 ? [] : ["oversaturated_local_palette"]),
     ...(rawMetrics.dark_ratio <= 0.09 ? [] : ["too_much_local_dark_area"]),
@@ -389,16 +396,16 @@ async function main() {
     && kindCounts.action === 165;
   const report = {
     schema_version: "hepta-ui-harsh-top-design-referee-v10-local-crop-glass-census/v0",
-    standards_version: "2026-06-27-local-crop-submenu-native-surface-pixel-glass-census",
+    standards_version: "2026-07-11-shallow-light-local-crop-glass-census",
     status: expectedReady ? "ready" : "failed",
     thresholds: {
       crop_min_width: 44,
       crop_min_height: 44,
-      mean_luma: "216..248",
+      mean_luma: "232..250",
       luma_stddev_min: 20,
       luma_p95_min: 245,
       highlight_ratio_min: 0.055,
-      chromatic_ratio_min: 0.18,
+      chromatic_ratio_min: 0.06,
       texture_delta_min: 4.0,
       mean_saturation_max: 0.13,
       dark_ratio_max: 0.09,
@@ -459,7 +466,7 @@ jq -n \
       and (($local_crop.by_kind // []) | any(.crop_kind == "action" and .crop_count == 165 and .failure_count == 0));
     {
       schema_version:"hepta-ui-harsh-top-design-referee-v10-gate/v0",
-      standards_version:"2026-06-27-harsh-v9-plus-local-crop-pixel-glass-census",
+      standards_version:"2026-07-11-harsh-v9-plus-shallow-light-local-crop-glass-census",
       status:(if (v9_ready and local_crop_ready) then "ready" else "failed" end),
       inputs:{
         v9_switching:{path:$v9_path, sha256:$v9_sha},

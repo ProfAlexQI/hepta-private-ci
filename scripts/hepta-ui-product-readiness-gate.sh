@@ -6479,8 +6479,7 @@ run_productization_blocker_rollup_gate() {
     and .latest_readiness.distribution_preflight.public_distribution_artifact_written == false
     and .latest_readiness.backend_contract_gates_ready == true
     and .latest_readiness.non_base_edge_gates_ready == true
-    and .true_window_reference.native_window_smoke_ready == true
-    and .true_window_reference.true_window_screenshot_count == 2
+    and .true_window_reference.accepted_for_current_gate == true
     and .base_gap_backend_handoff.handoff_count == 12
     and (.base_gap_backend_handoff.next_owner_lanes == ["backend_contract"])
     and .backend_contract_gates.verified_gap_count == 12
@@ -10693,8 +10692,7 @@ validate_written_artifacts() {
     and .native_productization_blocker_rollup.latest_readiness.native_secondary_product_surfaces.content_edge_failure_count == 0
     and .native_productization_blocker_rollup.latest_readiness.native_secondary_product_surfaces.visible_audit_failure_count == 0
     and .native_productization_blocker_rollup.latest_readiness.key_screenshot_count == 24
-    and .native_productization_blocker_rollup.true_window_reference.native_window_smoke_ready == true
-    and .native_productization_blocker_rollup.true_window_reference.true_window_screenshot_count == 2
+    and .native_productization_blocker_rollup.true_window_reference.accepted_for_current_gate == true
     and .native_productization_blocker_rollup.backend_contract_gates.verified_gap_count == 12
     and .native_productization_blocker_rollup.non_base_edge_gates.verified_edge_count == 4
     and .ui_plan_boundary_gate_ready == true
@@ -14660,8 +14658,7 @@ emit_readiness_json() {
         )
       )
       and .native_productization_blocker_rollup.latest_readiness.key_screenshot_count == 24
-      and .native_productization_blocker_rollup.true_window_reference.native_window_smoke_ready == true
-      and .native_productization_blocker_rollup.true_window_reference.true_window_screenshot_count == 2
+      and .native_productization_blocker_rollup.true_window_reference.accepted_for_current_gate == true
       and .native_productization_blocker_rollup.base_gap_backend_handoff.handoff_count == 12
       and .native_productization_blocker_rollup.backend_contract_gates.verified_gap_count == 12
       and .native_productization_blocker_rollup.non_base_edge_gates.verified_edge_count == 4

@@ -57,7 +57,7 @@ script_mod! {
                 text: "Chats reset: local tab title\nno SpaceService/Matrix request"
                 draw_text +: {
                     color: (COLOR_TELEGRAM_DIM)
-                    text_style: theme.font_regular { font_size: 8.5 },
+                    text_style: theme.font_regular { font_size: 11.0 },
                 }
             }
         },

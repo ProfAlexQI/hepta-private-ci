@@ -191,11 +191,11 @@ function failuresFor(shot, metrics) {
   return [
     ...(metrics.bytes >= minBytes ? [] : ["too_few_bytes"]),
     ...(metrics.width >= 300 && metrics.height >= 760 ? [] : ["unexpected_dimensions"]),
-    ...(metrics.mean_luma >= 216 && metrics.mean_luma <= 246 ? [] : ["mean_luma_out_of_range"]),
+    ...(metrics.mean_luma >= 230 && metrics.mean_luma <= 250 ? [] : ["mean_luma_out_of_range"]),
     ...(metrics.luma_stddev >= 16 ? [] : ["flat_luma"]),
     ...(metrics.luma_p95 >= 246 ? [] : ["weak_highlights"]),
     ...(metrics.highlight_ratio >= 0.1 ? [] : ["insufficient_bright_highlight_area"]),
-    ...(metrics.chromatic_ratio >= 0.14 ? [] : ["insufficient_prismatic_chroma"]),
+    ...(metrics.chromatic_ratio >= 0.075 ? [] : ["insufficient_environment_chroma"]),
     ...(metrics.texture_delta >= 4.5 ? [] : ["insufficient_caustic_texture"]),
     ...(metrics.mean_saturation <= 0.12 ? [] : ["oversaturated_one_note_palette"]),
     ...(metrics.dark_ratio <= 0.03 ? [] : ["too_much_dark_area"]),
@@ -248,14 +248,14 @@ async function main() {
 
   const report = {
     schema_version: "hepta-ui-harsh-top-design-referee-v6-pixel-glass-census/v0",
-    standards_version: "2026-06-27-pixel-level-light-tempered-glass-screenshot-census",
+    standards_version: "2026-07-11-shallow-light-tempered-glass-screenshot-census",
     status,
     thresholds: {
-      mean_luma: "216..246",
+      mean_luma: "230..250",
       luma_stddev_min: 16,
       luma_p95_min: 246,
       highlight_ratio_min: 0.1,
-      chromatic_ratio_min: 0.14,
+      chromatic_ratio_min: 0.075,
       texture_delta_min: 4.5,
       mean_saturation_max: 0.12,
       dark_ratio_max: 0.03,

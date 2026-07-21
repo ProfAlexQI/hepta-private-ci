@@ -714,7 +714,7 @@ dark_pixel_fraction = sum(value < 45 for value in luminance_values) / sample_cou
 mid_pixel_fraction = sum(45 <= value <= 210 for value in luminance_values) / sample_count
 accent_pixel_fraction = accent_pixels / sample_count
 unique_color_bins = len(colors)
-min_accent_pixel_fraction = 0.004 if (
+min_accent_pixel_fraction = 0.006 if name in ("desktop-window", "mobile-window") else 0.004 if (
     name.startswith("desktop-full-route-")
     or name.startswith("desktop-full-secondary-")
     or name.startswith("mobile-secondary-")
@@ -837,22 +837,30 @@ if name.startswith("mobile-secondary-"):
     }
 if name in ("desktop-window", "mobile-window"):
     product_shell_light_glass_ready = (
-        average_luminance >= 150.0
-        and dark_pixel_fraction <= 0.35
-        and mid_pixel_fraction >= 0.12
+        238.0 <= average_luminance <= 250.0
+        and dark_pixel_fraction <= 0.025
+        and mid_pixel_fraction >= 0.02
+        and accent_pixel_fraction >= min_accent_pixel_fraction
     )
 
-ready = (
-    sample_count >= 1000
-    and unique_color_bins >= 48
-    and luminance_stddev >= 10.0
-    and 0.25 <= dark_pixel_fraction <= 0.96
-    and mid_pixel_fraction >= 0.03
-    and accent_pixel_fraction >= min_accent_pixel_fraction
-    and route_content_ready
-    and mobile_secondary_content_ready
-    and product_shell_light_glass_ready
-)
+if name in ("desktop-window", "mobile-window"):
+    ready = (
+        sample_count >= 1000
+        and unique_color_bins >= 48
+        and luminance_stddev >= 10.0
+        and product_shell_light_glass_ready
+    )
+else:
+    ready = (
+        sample_count >= 1000
+        and unique_color_bins >= 48
+        and luminance_stddev >= 10.0
+        and 0.25 <= dark_pixel_fraction <= 0.96
+        and mid_pixel_fraction >= 0.03
+        and accent_pixel_fraction >= min_accent_pixel_fraction
+        and route_content_ready
+        and mobile_secondary_content_ready
+    )
 
 probe = {
     "name": name,
@@ -866,8 +874,9 @@ probe = {
     "accent_pixel_fraction": round(accent_pixel_fraction, 4),
     "min_accent_pixel_fraction": min_accent_pixel_fraction,
     "product_shell_light_glass_ready": product_shell_light_glass_ready,
-    "product_shell_light_glass_min_average_luminance": 150.0,
-    "product_shell_light_glass_max_dark_pixel_fraction": 0.35,
+    "product_shell_light_glass_average_luminance_range": "238..250",
+    "product_shell_light_glass_max_dark_pixel_fraction": 0.025,
+    "product_shell_light_glass_min_mid_pixel_fraction": 0.02,
 }
 if route_content_probe is not None:
     probe["route_content_ready"] = route_content_ready

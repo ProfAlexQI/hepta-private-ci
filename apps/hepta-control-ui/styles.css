@@ -1,26 +1,26 @@
 :root{
-color-scheme:dark;
---bg:#080808;
---bg-elevated:#141416;
---bg-hover:#1a1a1e;
---card:#111113;
---card-foreground:#f0f0f2;
---popover:#141416;
---panel:#080808;
---panel-strong:#141416;
---panel-hover:#1a1a1e;
---chrome:#080808f5;
---chrome-strong:#080808fa;
---text:#e0e0e2;
---text-strong:#f5f5f7;
---chat-text:#e0e0e2;
---muted:#7a7a80;
---muted-strong:#9a9aa1;
---muted-foreground:#7a7a80;
---border:#1a1a1e;
---border-strong:#2a2a30;
---border-hover:#3a3a42;
---input:#1a1a1e;
+color-scheme:light;
+--bg:#eef5f7;
+--bg-elevated:#f7fbfc;
+--bg-hover:#e8f2f5;
+--card:#ffffffe8;
+--card-foreground:#142a32;
+--popover:#fffffff0;
+--panel:#f4f9fce8;
+--panel-strong:#ffffffe8;
+--panel-hover:#edf7f9;
+--chrome:#f7fbfcf2;
+--chrome-strong:#fffffff5;
+--text:#142a32;
+--text-strong:#071a21;
+--chat-text:#142a32;
+--muted:#506575;
+--muted-strong:#344f59;
+--muted-foreground:#506575;
+--border:#b9dce6cc;
+--border-strong:#8ec8d7;
+--border-hover:#69b7c9;
+--input:#fffffff0;
 --ring:#e5243b;
 --x:0 1px #fff6,1px 0 #7df3;
 --accent: #e5243b;
@@ -45,14 +45,14 @@ color-scheme:dark;
 --focus:#e5243b33;
 --focus-ring:0 0 0 2px var(--bg),0 0 0 3px color-mix(in srgb,var(--ring) 70%,transparent);
 --focus-glow:0 0 0 2px var(--bg),0 0 0 3px var(--ring),0 0 16px var(--accent-glow);
---grid-line:#ffffff08;
+--grid-line:#1730470a;
 --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,Monaco,Consolas,monospace;
 --font-body:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 --font-display:var(--font-body);
---shadow-sm:0 1px 2px #0004;
---shadow-md:0 4px 16px #0005;
---shadow-lg:0 12px 32px #0006;
---shadow-xl:0 24px 48px #0008;
+--shadow-sm:0 1px 2px #17304712;
+--shadow-md:0 4px 16px #17304718;
+--shadow-lg:0 12px 32px #17304722;
+--shadow-xl:0 24px 48px #1730472b;
 --radius-sm:6px;
 --radius-md:10px;
 --radius-lg:14px;
@@ -89,7 +89,7 @@ color:var(--text);
 background:
 linear-gradient(135deg,#e5243b14,transparent 34%),
 linear-gradient(225deg,#14b8a612,transparent 36%),
-linear-gradient(var(--bg) 0%,#0a0a0c 100%);
+linear-gradient(var(--bg) 0%,#e7f1f4 100%);
 overflow:hidden;
 }
 body::before{
@@ -1431,6 +1431,7 @@ padding-top:2px;
 }
 .tg-row-action-popover{position:absolute;top:54px;right:10px;z-index:8;min-width:180px;display:none;gap:6px;margin:0;padding:8px;border-radius:18px;border:1px solid #1031422e;background:#f2fbff;box-shadow:0 18px 42px #00192740;backdrop-filter:blur(18px)}
 .tg-chat-item--menu-open .tg-row-action-popover{display:grid}
+.tg-row-action-popover[popover]:popover-open{display:grid}
 .tg-row-action-popover::before{content:"";position:absolute;top:-5px;right:14px;width:10px;height:10px;transform:rotate(45deg);border-left:1px solid #10314226;border-top:1px solid #10314226;background:#f2fbff}
 .tg-row-action{display:inline-flex;align-items:center;min-height:44px;margin-left:auto;padding:0 12px;border-radius:99px;font-size:11px;font-weight:760;text-align:left}
 .tg-row-action-popover .tg-row-action{justify-content:flex-start;width:100%;border-radius:14px;gap:8px;color:#123;border:1px solid #10314226;background:#fff9}
@@ -2747,6 +2748,7 @@ body[data-view=chat] .tg-compose-bar{position:fixed!important;left:36px!importan
 body[data-view=chat] .tg-compose-footer{position:fixed!important;right:36px!important;bottom:18px!important;min-height:44px!important;margin:0!important;transform:none!important;z-index:320!important}
 body[data-view=chat] [data-control-ui-composer-more]{position:fixed!important;right:36px!important;bottom:18px!important;z-index:330!important}
 }
+
 @media(max-height:680px) and (max-width:360px){
 body[data-view=chat] [data-control-ui-thread-tools-trigger=light-glass]{position:fixed!important;right:8px!important;top:22px!important;z-index:430!important}
 body[data-view=chat] [data-control-ui-command-palette-trigger=light-glass]{position:fixed!important;right:60px!important;top:22px!important;z-index:430!important}
@@ -6364,7 +6366,7 @@ filter:brightness(1.01) saturate(.96) contrast(1.06) drop-shadow(0 1px rgba(255,
 body[data-view=chat] :is(button[data-control-ui-icon-button],summary[data-control-ui-icon-button],a[data-control-ui-icon-button],summary[data-control-ui-menu-trigger="icon"],.tg-icon-action[data-control-ui-command-palette-trigger="light-glass"],.tg-compose-icon[data-chat-composer-popover-toggle],.tg-send-button[data-agent-chat-send],.tg-compose-plan[data-agent-chat-plan],.tg-row-menu-toggle[data-control-ui-row-menu-trigger="light-glass"]) .hepta-svg-icon{
 filter:drop-shadow(0 1px rgba(255,255,255,.82)) drop-shadow(1px 0 rgba(119,221,255,.38))!important;
 }
-body[data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
+body[data-control-ui-submenu-audit-open="true"] details.tg-composer-picker[open]>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
 display:grid!important;
 visibility:visible!important;
 opacity:1!important;
@@ -6387,7 +6389,7 @@ left:auto!important;
 right:24px!important;
 }
 @media(max-width:700px){
-body[data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
+body[data-control-ui-submenu-audit-open="true"] details.tg-composer-picker[open]>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
 left:14px!important;
 right:14px!important;
 width:calc(100vw - 28px)!important;
@@ -6439,262 +6441,386 @@ body[data-view=chat] .tg-composer-popover__item small,
 body[data-view=chat] .tg-composer-popover__header span{
 color:#25444e!important;
 }
-/*r436bc-v42-browser-smoke-specificity-closure*/
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
-display:grid!important;
-visibility:visible!important;
-opacity:1!important;
-pointer-events:auto!important;
+/* r437-current-source-popover-and-accessibility-closure */
+body[data-view="chat"] .tg-row-action-popover[popover]{
 position:fixed!important;
-top:auto!important;
-bottom:104px!important;
-width:320px!important;
-max-width:min(320px,calc(50vw - 36px))!important;
-height:auto!important;
-min-height:156px!important;
-max-height:248px!important;
-overflow:auto!important;
-z-index:920!important;
+inset:84px auto auto calc(clamp(300px,24vw,340px) + 12px)!important;
+width:180px!important;
+min-width:180px!important;
+margin:0!important;
+z-index:1400!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) .tg-composer-popover[data-chat-composer-popover="artifact"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]{
-left:24px!important;
+#row-menu-ui-chat-agent:popover-open,
+#row-menu-task-queue:popover-open,
+#row-menu-operator-plane:popover-open{
+position:fixed!important;
+top:84px!important;
 right:auto!important;
-}
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) .tg-composer-popover[data-chat-composer-popover="command"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]{
-left:auto!important;
-right:24px!important;
-}
-@media(max-width:700px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
-left:14px!important;
-right:14px!important;
-width:calc(100vw - 28px)!important;
-max-width:calc(100vw - 28px)!important;
-max-height:214px!important;
-}
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]{
-top:76px!important;
 bottom:auto!important;
+left:calc(clamp(300px,24vw,340px) + 12px)!important;
+transform:none!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]{
-top:auto!important;
-bottom:84px!important;
-}
-body[data-view=chat] .tg-thread-panel{
-background-color:rgba(244,248,249,.40)!important;
-}
-}
-body[data-view=chat] .tg-compose-footer .tg-compose-plan[data-control-ui-icon-button="plan"][data-agent-chat-plan],
-body[data-view=chat] .tg-compose-footer [data-control-ui-composer-more]>summary[data-control-ui-menu-trigger="icon"][data-control-ui-composer-tools-trigger="light-glass"]{
-filter:brightness(1.01) saturate(.98) contrast(1.06) drop-shadow(0 1px rgba(255,255,255,.82)) drop-shadow(1px 0 rgba(119,221,255,.38))!important;
-}
-body[data-view=chat] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__item[data-chat-composer-picker-item]>span>b,
-body[data-view=chat] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__item[data-chat-composer-picker-item]>span>small,
-body[data-view=chat] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__header>strong,
-body[data-view=chat] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__header>span{
-text-shadow:rgb(255,255,255) 0 1px 0,rgb(119,221,255) 1px 0 0!important;
-white-space:nowrap!important;
-overflow:hidden!important;
-text-overflow:ellipsis!important;
-}
-body[data-view=chat] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__item[data-chat-composer-picker-item]>span>small,
-body[data-view=chat] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__header>span{
-color:#25444e!important;
-}
-/*r436bd-v43-composer-popover-audit-isolation*/
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"][style*="display: none"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"][style*="display:none"]{
+#row-menu-ui-chat-agent:not(:popover-open),
+#row-menu-task-queue:not(:popover-open),
+#row-menu-operator-plane:not(:popover-open){
 display:none!important;
 visibility:hidden!important;
 opacity:0!important;
 pointer-events:none!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]:not([style*="display: none"]):not([style*="display:none"]),
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]:not([style*="display: none"]):not([style*="display:none"]){
+body[data-view="chat"] .tg-row-action-popover[popover]:popover-open{
 display:grid!important;
 visibility:visible!important;
 opacity:1!important;
 pointer-events:auto!important;
-position:fixed!important;
-top:auto!important;
-bottom:104px!important;
-width:320px!important;
-max-width:min(320px,calc(50vw - 36px))!important;
-height:auto!important;
-min-height:156px!important;
-max-height:248px!important;
-overflow:auto!important;
-z-index:930!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]:not([style*="display: none"]):not([style*="display:none"]){
-left:24px!important;
-right:auto!important;
+body[data-view="chat"] .tg-chat-item:focus-within:not(.tg-chat-item--menu-open) .tg-row-action-popover[popover]:popover-open{
+display:grid!important;
+visibility:visible!important;
+opacity:1!important;
+pointer-events:auto!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]:not([style*="display: none"]):not([style*="display:none"]){
+body[data-view="chat"] .tg-row-action-popover[popover]::backdrop{
+background:transparent;
+}
+body[data-view="chat"][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker:not([open])>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
+display:none!important;
+visibility:hidden!important;
+opacity:0!important;
+pointer-events:none!important;
+}
+body[data-view="chat"][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker[open]>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
+display:grid!important;
+visibility:visible!important;
+opacity:1!important;
+pointer-events:auto!important;
+}
+@media(max-width:980px) and (min-width:701px){
+body[data-view="chat"] .tg-row-action-popover[popover]{
+inset:108px 24px auto auto!important;
+}
+#row-menu-ui-chat-agent:popover-open,
+#row-menu-task-queue:popover-open,
+#row-menu-operator-plane:popover-open{
+top:108px!important;
+right:220px!important;
+bottom:auto!important;
 left:auto!important;
-right:24px!important;
+transform:none!important;
 }
-@media(max-width:900px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]:not([style*="display: none"]):not([style*="display:none"]),
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]:not([style*="display: none"]):not([style*="display:none"]){
-left:24px!important;
-right:24px!important;
+}
+@media(max-width:360px){
+body[data-view="chat"] [data-thread-command-menu="true"][open] [data-control-ui-thread-tools-panel="light-glass"]{
+top:132px!important;
+}
+}
+@media(prefers-contrast:more){
+:root{--border:#45616c;--text:#071a21;--muted:#29444e}
+body[data-view="chat"] :is(button,a[href],summary,input,textarea,select):focus-visible{
+outline:3px solid #006f86!important;
+outline-offset:3px!important;
+}
+}
+@media(forced-colors:active){
+*{background-image:none!important;box-shadow:none!important;text-shadow:none!important}
+body[data-view="chat"] :is(button,a[href],summary,input,textarea,select):focus-visible{
+outline:3px solid Highlight!important;
+outline-offset:3px!important;
+}
+}
+@media(prefers-reduced-transparency:reduce){
+body[data-view="chat"] :is(.tg-conversation-rail,.tg-thread-panel,.tg-compose-bar,.tg-bubble,.tg-row-action-popover,.tg-composer-popover,.tg-thread-command-menu__panel,.command-palette){
+backdrop-filter:none!important;
+background-image:none!important;
+background-color:#f7fbfc!important;
+}
+}
+/* r438: keep the short/zoomed narrow composer below the thread header. */
+@media(max-height:680px) and (min-width:701px) and (max-width:980px){
+body[data-view="chat"] .telegram-chat-shell .focus-main{
+display:grid!important;
+grid-template-columns:minmax(0,1fr)!important;
+grid-template-rows:126px minmax(0,1fr)!important;
+height:calc(100dvh - 48px)!important;
+max-height:calc(100dvh - 48px)!important;
+gap:6px!important;
+overflow:hidden!important;
+}
+body[data-view="chat"] .tg-conversation-rail{height:126px!important;max-height:126px!important}
+body[data-view="chat"] .tg-conversation-list,
+body[data-view="chat"] .tg-conversation-list:has(.tg-chat-item:hover),
+body[data-view="chat"] .tg-conversation-list:has(.tg-chat-item:focus-within){
+overflow-x:hidden!important;
+overflow-y:auto!important;
+}
+body[data-view="chat"] .telegram-chat-shell .focus-main .tg-conversation-rail .tg-conversation-list[role="listbox"],
+body[data-view="chat"] .telegram-chat-shell .focus-main .tg-conversation-rail .tg-conversation-list[role="listbox"]:has(.tg-chat-item:hover),
+body[data-view="chat"] .telegram-chat-shell .focus-main .tg-conversation-rail .tg-conversation-list[role="listbox"]:has(.tg-chat-item:focus-within){
+overflow-x:hidden!important;
+overflow-y:auto!important;
+}
+body[data-view="chat"] .tg-thread-panel{height:100%!important;max-height:100%!important;min-height:0!important;padding-bottom:0!important}
+body[data-view="chat"] .tg-compose-wrap{
+position:relative!important;
+inset:auto!important;
 width:auto!important;
-max-width:calc(100vw - 48px)!important;
-max-height:236px!important;
+max-height:116px!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]:not([style*="display: none"]):not([style*="display:none"]){
-top:86px!important;
-bottom:auto!important;
+body[data-view="chat"] .tg-compose-bar{
+position:relative!important;
+inset:auto!important;
+width:100%!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]:not([style*="display: none"]):not([style*="display:none"]){
-top:auto!important;
-bottom:84px!important;
+body[data-view="chat"] .tg-composer-picker>[data-chat-composer-popover-toggle]{
+position:relative!important;
+inset:auto!important;
+}
+body[data-view="chat"] [data-control-ui-composer-more][open] [data-control-ui-composer-tools-panel="light-glass"]{
+transform:translateY(-20px)!important;
+}
+body[data-view="chat"] .tg-context-chip-row{display:none!important}
+body[data-view="chat"] .tg-chat-item:hover .tg-row-action-popover[popover]:popover-open,
+body[data-view="chat"] .tg-chat-item:focus-within .tg-row-action-popover[popover]:popover-open{
+display:grid!important;
+visibility:visible!important;
+opacity:1!important;
+pointer-events:auto!important;
 }
 }
-/*r436bh-v47-terminal-audit-popover-viewport*/
-@media(max-width:980px){body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass]{position:fixed!important;left:24px!important;right:24px!important;width:calc(100vw - 48px)!important;min-width:0!important;max-width:calc(100vw - 48px)!important;box-sizing:border-box!important;margin:0!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=artifact][data-control-ui-composer-popover-panel=light-glass]{left:24px!important;right:24px!important;top:86px!important;bottom:auto!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=command][data-control-ui-composer-popover-panel=light-glass]{left:24px!important;right:24px!important;top:auto!important;bottom:84px!important}}
-@media(max-width:700px){body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;width:calc(100vw - 28px)!important;max-width:calc(100vw - 28px)!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=artifact][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;top:76px!important;bottom:auto!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=command][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;top:auto!important;bottom:84px!important}}
-/*r436bg-v46-final-audit-popover-viewport*/
-@media(max-width:980px){
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],
-body[data-view=chat][data-control-ui-submenu-audit-open=true] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass]{position:fixed!important;left:24px!important;right:24px!important;width:calc(100vw - 48px)!important;min-width:0!important;max-width:calc(100vw - 48px)!important;box-sizing:border-box!important;margin:0!important}
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=artifact][data-control-ui-composer-popover-panel=light-glass]{left:24px!important;right:24px!important;top:86px!important;bottom:auto!important}
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=command][data-control-ui-composer-popover-panel=light-glass]{left:24px!important;right:24px!important;top:auto!important;bottom:84px!important}
+
+/* r439: native keyboard-dismissable transient panels, without client script. */
+#thread-tools-popover:not(:popover-open),
+#composer-tools-popover:not(:popover-open),
+#composer-popover-artifact:not(:popover-open),
+#composer-popover-command:not(:popover-open),
+#command-palette:not(:popover-open){
+display:none!important;
+visibility:hidden!important;
+opacity:0!important;
+pointer-events:none!important;
 }
-@media(max-width:700px){
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],
-body[data-view=chat][data-control-ui-submenu-audit-open=true] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;width:calc(100vw - 28px)!important;max-width:calc(100vw - 28px)!important}
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=artifact][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;top:76px!important;bottom:auto!important}
-body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=command][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;top:auto!important;bottom:84px!important}
+#thread-tools-popover:popover-open,
+#composer-tools-popover:popover-open,
+#composer-popover-artifact:popover-open,
+#composer-popover-command:popover-open{
+display:grid!important;
+visibility:visible!important;
+opacity:1!important;
+pointer-events:auto!important;
 }
-/*r436bf-v45-composer-popover-viewport-override*/
-@media(max-width:980px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap [data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"]{
+#command-palette:popover-open{
+display:block!important;
+visibility:visible!important;
+opacity:1!important;
+pointer-events:auto!important;
 position:fixed!important;
-left:24px!important;
-right:24px!important;
-width:calc(100vw - 48px)!important;
-min-width:0!important;
-max-width:calc(100vw - 48px)!important;
-box-sizing:border-box!important;
+inset:16px auto auto 50%!important;
+width:min(720px,calc(100vw - 32px))!important;
+height:auto!important;
+max-width:calc(100vw - 32px)!important;
+max-height:calc(100dvh - 32px)!important;
 margin:0!important;
+padding:0!important;
+transform:translateX(-50%)!important;
+overflow:auto!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-popover="artifact"][data-control-ui-composer-popover-panel="light-glass"]{
-left:24px!important;
-right:24px!important;
-top:86px!important;
-bottom:auto!important;
+#thread-tools-popover::backdrop,
+#composer-tools-popover::backdrop,
+#composer-popover-artifact::backdrop,
+#composer-popover-command::backdrop,
+#command-palette::backdrop{background:transparent}
+#command-palette::backdrop{
+background:rgba(240,244,246,.36)!important;
+backdrop-filter:blur(8px)!important;
+-webkit-backdrop-filter:blur(8px)!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-popover="command"][data-control-ui-composer-popover-panel="light-glass"]{
-left:24px!important;
-right:24px!important;
-top:auto!important;
-bottom:84px!important;
-}
-}
-@media(max-width:700px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap [data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-popover][data-control-ui-composer-popover-panel="light-glass"]{
-left:14px!important;
-right:14px!important;
-width:calc(100vw - 28px)!important;
-max-width:calc(100vw - 28px)!important;
-}
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-popover="artifact"][data-control-ui-composer-popover-panel="light-glass"]{
-left:14px!important;
-right:14px!important;
-top:76px!important;
-bottom:auto!important;
-}
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] [data-chat-composer-popover="command"][data-control-ui-composer-popover-panel="light-glass"]{
-left:14px!important;
-right:14px!important;
-top:auto!important;
-bottom:84px!important;
-}
-}
-/*r436be-v44-composer-popover-responsive-audit-sheet*/
-@media(max-width:900px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
-left:24px!important;
-right:24px!important;
-width:calc(100vw - 48px)!important;
-min-width:calc(100vw - 48px)!important;
-max-width:calc(100vw - 48px)!important;
+#command-palette:popover-open>.command-palette{
 box-sizing:border-box!important;
-max-height:236px!important;
+width:100%!important;
+max-width:100%!important;
+max-height:calc(100dvh - 32px)!important;
+margin:0!important;
+overflow:hidden!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) .tg-composer-popover[data-chat-composer-popover="artifact"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]{
-left:24px!important;
-right:24px!important;
-top:86px!important;
-bottom:auto!important;
+#command-palette:popover-open .command-palette__results{
+max-height:calc(100dvh - 122px)!important;
+overflow:auto!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) .tg-composer-popover[data-chat-composer-popover="command"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]{
-left:24px!important;
-right:24px!important;
+
+#thread-tools-popover:popover-open{
+position:fixed!important;
+inset:84px 24px auto auto!important;
+width:min(384px,calc(100vw - 48px))!important;
+max-width:calc(100vw - 48px)!important;
+margin:0!important;
+transform:none!important;
+}
+#composer-tools-popover:popover-open{
+position:fixed!important;
+inset:auto 24px 84px auto!important;
+width:min(380px,calc(100vw - 48px))!important;
+max-width:calc(100vw - 48px)!important;
+margin:0!important;
+transform:none!important;
+}
+#composer-popover-artifact:popover-open,
+#composer-popover-command:popover-open{
+position:fixed!important;
 top:auto!important;
 bottom:84px!important;
+width:min(320px,calc(50vw - 32px))!important;
+max-width:calc(100vw - 48px)!important;
+margin:0!important;
+transform:none!important;
 }
-}
+#composer-popover-artifact:popover-open{left:24px!important;right:auto!important}
+#composer-popover-command:popover-open{left:auto!important;right:24px!important}
 @media(max-width:700px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]{
-left:14px!important;
-right:14px!important;
-width:calc(100vw - 28px)!important;
-min-width:calc(100vw - 28px)!important;
-max-width:calc(100vw - 28px)!important;
-max-height:214px!important;
+#thread-tools-popover:popover-open{inset:84px 8px auto auto!important;width:min(384px,calc(100vw - 16px))!important;max-width:calc(100vw - 16px)!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
+#composer-tools-popover:popover-open{inset:auto 8px 84px auto!important;width:min(380px,calc(100vw - 16px))!important;max-width:calc(100vw - 16px)!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
+#composer-popover-artifact:popover-open,
+#composer-popover-command:popover-open{left:8px!important;right:8px!important;bottom:84px!important;width:auto!important;max-width:calc(100vw - 16px)!important}
+body[data-view="chat"] .tg-thread-header__main p,
+body[data-view="chat"] .tg-thread-status-summary{display:none!important}
+body[data-view="chat"] .telegram-chat-shell .focus-main .tg-thread-panel .tg-thread-header .tg-thread-header__main>div>p{display:none!important}
+body[data-view="chat"] .telegram-chat-shell .focus-main .tg-thread-panel .tg-thread-header .tg-thread-header__main>div:last-child{
+min-width:0!important;
+max-width:calc(100% - 64px)!important;
+overflow:hidden!important;
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) .tg-composer-popover[data-chat-composer-popover="artifact"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]{
-left:14px!important;
-right:14px!important;
-top:76px!important;
-bottom:auto!important;
-}
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) .tg-composer-popover[data-chat-composer-popover="command"],
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]{
-left:14px!important;
-right:14px!important;
-top:auto!important;
-bottom:84px!important;
+body[data-view="chat"] .telegram-chat-shell .focus-main .tg-thread-panel .tg-thread-header .tg-thread-header__main h2{
+max-width:100%!important;
+overflow:hidden!important;
+text-overflow:ellipsis!important;
+white-space:nowrap!important;
 }
 }
-@media(max-width:700px){
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-compose-wrap:not(:has(.tg-composer-picker[open])) details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]:not([style*="display: none"]):not([style*="display:none"]),
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] details.tg-composer-picker>.tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"]:not([style*="display: none"]):not([style*="display:none"]){
-left:14px!important;
-right:14px!important;
-width:auto!important;
-max-width:calc(100vw - 28px)!important;
-max-height:214px!important;
+@media(max-width:360px){
+body[data-view="chat"] .tg-thread>.tg-message:last-of-type>small{display:none!important}
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="artifact"]:not([style*="display: none"]):not([style*="display:none"]){
-top:76px!important;
-bottom:auto!important;
+/* r440: end the initial palette viewport on a complete result card. */
+#command-palette:popover-open .command-palette__results{max-height:calc(100dvh - 139px)!important}
+@media(max-height:879px){
+#command-palette:popover-open .command-palette__results{max-height:calc(100dvh - 146px)!important}
 }
-body[data-view=chat][data-control-ui-submenu-audit-open="true"] .tg-composer-popover[data-chat-composer-popover="command"]:not([style*="display: none"]):not([style*="display:none"]){
-top:auto!important;
-bottom:84px!important;
+@media(max-height:719px){
+#command-palette:popover-open .command-palette__results{max-height:calc(100dvh - 159px)!important}
+}
+/* r441: Native Popover triggers fully opt out of motion. The legacy global
+   fallback uses 0.01ms, which browsers still report as a non-zero transition. */
+@media (prefers-reduced-motion: reduce){
+body[data-view="chat"] button[data-control-ui-thread-tools-trigger="light-glass"],
+body[data-view="chat"] button[data-control-ui-composer-tools-trigger="light-glass"]{
+transition:none!important;
+animation:none!important;
+transform:none!important;
+}
+body[data-view="chat"] button[data-control-ui-thread-tools-trigger="light-glass"]:is(:hover,:focus,:focus-visible,:active),
+body[data-view="chat"] button[data-control-ui-composer-tools-trigger="light-glass"]:is(:hover,:focus,:focus-visible,:active){
+transform:none!important;
 }
 }
-/*r436bi-v48-tail-audit-popover-viewport*/
-@media(max-width:980px){body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass]{position:fixed!important;left:24px!important;right:24px!important;width:calc(100vw - 48px)!important;min-width:0!important;max-width:calc(100vw - 48px)!important;box-sizing:border-box!important;margin:0!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=artifact][data-control-ui-composer-popover-panel=light-glass]{left:24px!important;right:24px!important;top:86px!important;bottom:auto!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=command][data-control-ui-composer-popover-panel=light-glass]{left:24px!important;right:24px!important;top:auto!important;bottom:84px!important}}
-@media(max-width:700px){body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-shell][data-chat-composer-popover-open] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] .tg-compose-bar .tg-composer-picker[open]>[data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass],body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;width:calc(100vw - 28px)!important;max-width:calc(100vw - 28px)!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=artifact][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;top:76px!important;bottom:auto!important}body[data-view=chat][data-control-ui-submenu-audit-open=true] [data-chat-composer-popover=command][data-control-ui-composer-popover-panel=light-glass]{left:14px!important;right:14px!important;top:auto!important;bottom:84px!important}}
+
+/* r442: 2026 shallow light-tempered-glass closure.
+   Content stays solid and readable; glass is reserved for controls and the
+   top layer. Cool neutral depth replaces the former overexposed prism wash. */
+body[data-view="chat"]{
+background:
+radial-gradient(circle at 12% 0,rgba(255,255,255,.9),transparent 36%),
+linear-gradient(145deg,#edf3f4 0%,#e5edef 58%,#eef3f3 100%)!important;
+}
+body[data-view="chat"] :is(.tg-conversation-rail,.tg-thread-panel){
+background:linear-gradient(155deg,rgba(248,250,250,.96),rgba(238,244,245,.94))!important;
+backdrop-filter:blur(16px) saturate(1.08)!important;
+box-shadow:inset 0 1px rgba(255,255,255,.9),inset 0 -1px rgba(177,204,211,.68),0 16px 40px rgba(53,82,91,.12),0 0 0 1px rgba(190,213,219,.62)!important;
+filter:none!important;
+outline:0!important;
+}
+body[data-view="chat"] :is(.tg-bubble,.tg-compose-bar){
+background:linear-gradient(155deg,rgba(250,252,252,.97),rgba(235,242,243,.95))!important;
+backdrop-filter:blur(14px) saturate(1.06)!important;
+box-shadow:inset 0 1px rgba(255,255,255,.94),inset 0 -1px rgba(181,207,213,.66),0 10px 28px rgba(53,82,91,.1),0 0 0 1px rgba(197,218,223,.58)!important;
+filter:none!important;
+outline:0!important;
+}
+body[data-view="chat"] :is(.tg-conversation-rail,.tg-thread-panel,.tg-bubble,.tg-compose-bar)::before{
+opacity:.08!important;
+filter:saturate(.55) contrast(1.05)!important;
+mix-blend-mode:multiply!important;
+}
+body[data-view="chat"] :is(.tg-icon-action,.tg-compose-icon,.tg-send-button,.tg-compose-plan,.tg-row-menu-toggle,[data-control-ui-icon-button],[data-control-ui-menu-trigger="icon"],[data-control-ui-command-palette-trigger="light-glass"],[data-control-ui-row-menu-trigger="light-glass"],[data-control-ui-thread-tools-trigger="light-glass"],[data-control-ui-composer-tools-trigger="light-glass"]){
+background:linear-gradient(145deg,rgba(244,249,249,.96),rgba(211,227,231,.94))!important;
+border-color:rgba(171,203,211,.78)!important;
+backdrop-filter:blur(18px) saturate(1.12)!important;
+box-shadow:inset 0 1px rgba(255,255,255,.94),inset 0 -1px rgba(149,190,200,.66),0 7px 18px rgba(48,83,92,.13),0 0 0 1px rgba(255,255,255,.46)!important;
+filter:none!important;
+color:#17343d!important;
+text-shadow:none!important;
+}
+body[data-view="chat"] :is(.tg-search-shell input[data-control-ui-rail-search-input="light-glass"],[data-chat-search][data-control-ui-rail-search-input="light-glass"],[data-chat-composer-input],textarea[data-chat-composer-input],[data-control-ui-composer-popover-search="light-glass"],[data-control-ui-command-palette-input="light-glass"],select){
+background:linear-gradient(180deg,rgba(239,245,246,.98),rgba(225,236,238,.97))!important;
+background-image:linear-gradient(180deg,rgba(239,245,246,.98),rgba(225,236,238,.97))!important;
+border-color:rgba(171,201,208,.78)!important;
+box-shadow:inset 0 1px rgba(255,255,255,.86),inset 0 -1px rgba(155,190,198,.52),0 5px 14px rgba(50,82,90,.09)!important;
+backdrop-filter:blur(14px) saturate(1.06)!important;
+filter:none!important;
+color:#17343d!important;
+-webkit-text-fill-color:#17343d!important;
+text-shadow:none!important;
+}
+body[data-view="chat"] :is([data-chat-search],[data-chat-composer-input],[data-control-ui-composer-popover-search="light-glass"],[data-control-ui-command-palette-input="light-glass"])::placeholder{
+color:#46616a!important;
+opacity:1!important;
+text-shadow:none!important;
+}
+body[data-view="chat"] :is(.tg-row-action-popover[popover],.tg-composer-popover[popover],[data-control-ui-thread-tools-panel="light-glass"][popover],[data-control-ui-composer-tools-panel="light-glass"][popover],#command-palette:popover-open .command-palette){
+background:linear-gradient(155deg,rgba(246,249,249,.98),rgba(226,237,239,.97))!important;
+background-image:linear-gradient(155deg,rgba(246,249,249,.98),rgba(226,237,239,.97))!important;
+border:1px solid rgba(224,238,241,.94)!important;
+backdrop-filter:blur(24px) saturate(1.12)!important;
+box-shadow:inset 0 0 0 2px rgba(232,244,246,.78),inset 0 1px rgba(255,255,255,.96),inset 0 -1px rgba(183,211,217,.64),0 20px 48px rgba(40,70,78,.17),0 0 0 1px rgba(255,255,255,.52)!important;
+filter:none!important;
+outline:0!important;
+}
+body[data-view="chat"] :is(.tg-row-action,.tg-menu-item,.tg-composer-popover__item,[data-control-ui-command-palette-result="light-glass"]){
+background:linear-gradient(150deg,rgba(239,246,247,.97),rgba(218,232,235,.95))!important;
+background-image:linear-gradient(150deg,rgba(239,246,247,.97),rgba(218,232,235,.95))!important;
+border-color:rgba(174,204,211,.72)!important;
+box-shadow:inset 0 1px rgba(255,255,255,.9),inset 0 -1px rgba(151,188,197,.52),0 6px 15px rgba(48,79,87,.1)!important;
+backdrop-filter:blur(14px) saturate(1.06)!important;
+filter:none!important;
+color:#17343d!important;
+}
+body[data-view="chat"] :is(.tg-row-action,.tg-menu-item,.tg-composer-popover__item,[data-control-ui-command-palette-result="light-glass"])::before{
+content:none!important;
+display:none!important;
+background:none!important;
+opacity:0!important;
+}
+body[data-view="chat"] :is(.tg-icon-action,.tg-compose-icon,.tg-send-button,.tg-compose-plan,.tg-row-menu-toggle,.tg-row-action,.tg-menu-item,.tg-composer-popover__item,[data-control-ui-command-palette-result="light-glass"]):is(:hover,:focus-visible,:active){
+background:linear-gradient(145deg,rgba(234,246,247,.99),rgba(196,221,227,.97))!important;
+border-color:rgba(87,159,175,.74)!important;
+box-shadow:inset 0 1px #fff,inset 0 -1px rgba(87,159,175,.48),0 9px 22px rgba(33,101,116,.15),0 0 0 2px rgba(96,184,202,.2)!important;
+filter:none!important;
+}
+body[data-view="chat"] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__item{
+background-color:#dce9eb!important;
+background-image:none!important;
+background-blend-mode:normal!important;
+filter:none!important;
+}
+body[data-view="chat"] .tg-composer-popover[data-control-ui-composer-popover-panel="light-glass"] .tg-composer-popover__item:is(:hover,:focus,:focus-visible,:active){
+background-color:#d2e4e7!important;
+background-image:none!important;
+background-blend-mode:normal!important;
+filter:none!important;
+}
+/* r443: native Popover stays visible after a coarse-pointer tap. */
+@media (hover:none){
+body[data-view="chat"][data-view="chat"] .telegram-chat-shell .focus-main .tg-conversation-rail .tg-conversation-list .tg-chat-item .tg-row-action-popover[popover]:popover-open{
+display:grid!important;
+visibility:visible!important;
+opacity:1!important;
+pointer-events:auto!important;
+}
+}

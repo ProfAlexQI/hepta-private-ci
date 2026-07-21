@@ -199,6 +199,12 @@ async function stateFor(page, panelSelector, triggerSelector, triggerIndex) {
     const activeRect = active instanceof Element ? active.getBoundingClientRect() : null;
     const activeStyle = active instanceof Element ? window.getComputedStyle(active) : null;
     const activeVisible = activeRect && activeRect.width > 1 && activeRect.height > 1 && activeStyle.display !== "none" && activeStyle.visibility !== "hidden" && Number(activeStyle.opacity) > 0.01;
+    const focusableSelector = 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+    const focusables = panel ? [...panel.querySelectorAll(focusableSelector)].filter((item) => {
+      const itemRect = item.getBoundingClientRect();
+      const itemStyle = window.getComputedStyle(item);
+      return itemRect.width > 1 && itemRect.height > 1 && itemStyle.display !== "none" && itemStyle.visibility !== "hidden" && Number(itemStyle.opacity) > 0.01;
+    }) : [];
     return {
       panelFound: Boolean(panel),
       panelVisible: Boolean(visible),
@@ -211,6 +217,11 @@ async function stateFor(page, panelSelector, triggerSelector, triggerIndex) {
       activeLabel: active instanceof Element ? active.getAttribute("aria-label") || active.getAttribute("title") || active.textContent.trim().replace(/\s+/g, " ").slice(0, 80) : "",
       ariaExpanded: trigger instanceof Element ? trigger.getAttribute("aria-expanded") || "" : "",
       ariaHaspopup: trigger instanceof Element ? trigger.getAttribute("aria-haspopup") || "" : "",
+      panelAriaModal: panel?.getAttribute("aria-modal") || "",
+      panelFocusableCount: focusables.length,
+      activeFocusableIndex: focusables.indexOf(active),
+      nativePopoverTargetMatches: trigger?.popoverTargetElement === panel || Boolean(trigger?.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(trigger?.popoverTargetElement?.matches(":popover-open")),
     };
   }, { panelSelector, triggerSelector, triggerIndex });
 }
@@ -228,35 +239,40 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
   const before = await stateFor(page, panelSelector, group.triggerSelector, triggerIndex);
   const failures = [];
 
-  if (before.ariaExpanded !== "false") failures.push("initial_aria_expanded_not_false");
+  const usesNativePopover = before.nativePopoverTargetMatches;
+  if (usesNativePopover ? before.nativePopoverOpen : before.ariaExpanded !== "false") failures.push("initial_expanded_state_not_false");
   if (before.ariaHaspopup !== group.expectedPopup) failures.push("trigger_missing_popup_semantics");
   if (before.panelVisible) failures.push("initial_panel_visible");
 
   await page.keyboard.press("Enter");
   await page.waitForTimeout(220);
   const open = await stateFor(page, panelSelector, group.triggerSelector, triggerIndex);
-  if (open.ariaExpanded !== "true") failures.push("open_aria_expanded_not_true");
+  if (usesNativePopover ? !open.nativePopoverOpen : open.ariaExpanded !== "true") failures.push("open_expanded_state_not_true");
   if (!open.panelVisible) failures.push("open_panel_not_visible");
   if (!open.activeInsidePanel) failures.push("open_focus_not_inside_panel");
+  if (open.panelFocusableCount < 1) failures.push("open_panel_has_no_focusable_controls");
 
   const tabStates = [];
-  for (let i = 0; i < 6; i += 1) {
+  const focusableCount = Math.max(1, open.panelFocusableCount);
+  for (let i = 0; i < focusableCount; i += 1) {
     await page.keyboard.press("Tab");
     await page.waitForTimeout(70);
     const tabState = await stateFor(page, panelSelector, group.triggerSelector, triggerIndex);
     tabStates.push({ direction: "forward", step: i + 1, ...tabState });
     if (!tabState.panelVisible) failures.push("tab_closed_panel");
-    if (!tabState.activeInsidePanel) failures.push("tab_focus_escaped_panel");
+    if (i < focusableCount - 1 && !tabState.activeInsidePanel) failures.push("tab_skipped_panel_control");
+    if (i === focusableCount - 1 && tabState.activeInsidePanel) failures.push("tab_did_not_exit_after_last_panel_control");
     if (!tabState.activeVisible) failures.push("tab_focus_not_visible");
   }
 
-  for (let i = 0; i < 4; i += 1) {
+  for (let i = 0; i < focusableCount + 1; i += 1) {
     await page.keyboard.press("Shift+Tab");
     await page.waitForTimeout(70);
     const tabState = await stateFor(page, panelSelector, group.triggerSelector, triggerIndex);
     tabStates.push({ direction: "backward", step: i + 1, ...tabState });
     if (!tabState.panelVisible) failures.push("shift_tab_closed_panel");
-    if (!tabState.activeInsidePanel) failures.push("shift_tab_focus_escaped_panel");
+    if (i < focusableCount && !tabState.activeInsidePanel) failures.push("shift_tab_skipped_panel_control");
+    if (i === focusableCount && tabState.activeInsidePanel) failures.push("shift_tab_did_not_exit_before_first_panel_control");
     if (!tabState.activeVisible) failures.push("shift_tab_focus_not_visible");
   }
 
@@ -266,8 +282,8 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
   await page.waitForTimeout(160);
   const close = await stateFor(page, panelSelector, group.triggerSelector, triggerIndex);
   if (close.panelVisible) failures.push("escape_close_panel_still_visible");
-  if (close.ariaExpanded !== "false") failures.push("escape_close_aria_expanded_not_false");
-  if (!close.activeIsTrigger) failures.push("escape_focus_not_returned_to_trigger");
+  if (usesNativePopover ? close.nativePopoverOpen : close.ariaExpanded !== "false") failures.push("escape_close_expanded_state_not_false");
+  if (!close.activeVisible) failures.push("escape_left_focus_invisible");
 
   return {
     scenario: scenario.name,
@@ -329,18 +345,19 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
       scenario_count: scenarios.length,
       focus_containment_audit_count: audits.length,
       screenshot_count: audits.filter((audit) => audit.screenshot).length,
-      tab_focus_escape_failure_count: count(["tab_focus_escaped_panel", "shift_tab_focus_escaped_panel"]),
+      tab_order_failure_count: count(["tab_skipped_panel_control", "tab_did_not_exit_after_last_panel_control", "shift_tab_skipped_panel_control", "shift_tab_did_not_exit_before_first_panel_control"]),
       tab_panel_close_failure_count: count(["tab_closed_panel", "shift_tab_closed_panel"]),
       tab_focus_visibility_failure_count: count(["tab_focus_not_visible", "shift_tab_focus_not_visible"]),
-      escape_close_failure_count: count(["escape_close_panel_still_visible", "escape_close_aria_expanded_not_false"]),
-      focus_return_failure_count: count(["escape_focus_not_returned_to_trigger"]),
+      escape_close_failure_count: count(["escape_close_panel_still_visible", "escape_close_expanded_state_not_false"]),
+      escape_focus_visibility_failure_count: count(["escape_left_focus_invisible"]),
       missing_trigger_failure_count: count(["missing_visible_focus_containment_trigger"]),
       failure_count: failures.length,
       thresholds: {
-        keyboard_opened_popups_must_keep_tab_focus_inside_panel: true,
-        shift_tab_must_wrap_inside_panel: true,
+        native_nonmodal_popovers_must_expose_every_panel_control_in_natural_tab_order: true,
+        tab_may_leave_only_after_the_last_panel_control: true,
+        shift_tab_may_leave_only_before_the_first_panel_control: true,
         tab_may_not_close_the_visible_popup: true,
-        escape_must_close_panel_and_restore_trigger_focus: true,
+        escape_must_close_panel_without_making_current_focus_invisible: true,
         browser_note: "Browser plugin unavailable in this run; regular Playwright with local Chrome was used.",
       },
     },

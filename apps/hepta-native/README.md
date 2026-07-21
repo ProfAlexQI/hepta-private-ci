@@ -23,7 +23,9 @@ packaging metadata, visible app copy, and release commands now target
   confirmation, bridge policy gates, and readback evidence are enabled.
 - Android packaging smoke: passed with Java-safe package name
   `ai.hepta.nativeapp`.
-- iOS packaging gate: pending the matching Xcode iOS 26.5 simulator runtime.
+- iOS packaging gate: the checked-in productization snapshot records an iOS
+  26.5 Simulator release-build smoke as complete. Re-run the commands below
+  whenever the local Xcode/runtime installation changes.
 
 The UI status/productization panes are reporting surfaces only. They must not run
 installs, `adb`, simulators, signing, Gateway calls, Matrix sends, approvals,

@@ -49,18 +49,18 @@ script_mod! {
     mod.widgets.IMG_TEMPERED_GLASS_BG = crate_resource("self://resources/img/hepta-glass-k.png")
 
     mod.widgets.TITLE_TEXT = theme.font_regular {
-        font_size: (13),
+        font_size: (15),
     }
 
     mod.widgets.REGULAR_TEXT = theme.font_regular {
-        font_size: (10),
+        font_size: (13),
     }
 
     mod.widgets.TEXT_SUB = theme.font_regular {
-        font_size: (10),
+        font_size: (12),
     }
 
-    mod.widgets.USERNAME_FONT_SIZE = 11
+    mod.widgets.USERNAME_FONT_SIZE = 13
 
     mod.widgets.USERNAME_TEXT_COLOR = #x2
     mod.widgets.USERNAME_TEXT_STYLE = theme.font_bold {
@@ -74,8 +74,8 @@ script_mod! {
     mod.widgets.TYPING_NOTICE_TEXT_COLOR = #121570
 
 
-    mod.widgets.MESSAGE_FONT_SIZE = 11
-    mod.widgets.REDACTED_MESSAGE_FONT_SIZE = 10
+    mod.widgets.MESSAGE_FONT_SIZE = 14
+    mod.widgets.REDACTED_MESSAGE_FONT_SIZE = 13
 
     mod.widgets.MESSAGE_TEXT_COLOR = #x333
     // notices (automated messages from bots) use a lighter color
@@ -88,11 +88,11 @@ script_mod! {
         line_spacing: (mod.widgets.MESSAGE_TEXT_LINE_SPACING),
     }
 
-    mod.widgets.MESSAGE_REPLY_PREVIEW_FONT_SIZE = 9.5
+    mod.widgets.MESSAGE_REPLY_PREVIEW_FONT_SIZE = 12
 
 
 
-    mod.widgets.SMALL_STATE_FONT_SIZE = 9.0
+    mod.widgets.SMALL_STATE_FONT_SIZE = 12.0
 
 
     mod.widgets.SMALL_STATE_TEXT_COLOR = #x888
@@ -100,7 +100,7 @@ script_mod! {
         font_size: (mod.widgets.SMALL_STATE_FONT_SIZE),
     }
 
-    mod.widgets.TIMESTAMP_FONT_SIZE = 8.5
+    mod.widgets.TIMESTAMP_FONT_SIZE = 11
 
     mod.widgets.TIMESTAMP_TEXT_COLOR = #x999
     mod.widgets.TIMESTAMP_TEXT_STYLE = theme.font_regular {
@@ -172,18 +172,18 @@ script_mod! {
     // These constants intentionally keep the legacy Telegram names because the
     // RoomsList/RoomScreen/RoomInputBar skin is shared across desktop and
     // mobile without changing room/timeline behavior.
-    mod.widgets.COLOR_TELEGRAM_BG = #xFBFCFE60
-    mod.widgets.COLOR_TELEGRAM_PANEL = #xFFFFFF3E
-    mod.widgets.COLOR_TELEGRAM_INPUT = #xFFFFFF48
-    mod.widgets.COLOR_TELEGRAM_BORDER = #xFFFFFFD8
+    mod.widgets.COLOR_TELEGRAM_BG = #xF4F9FCE8
+    mod.widgets.COLOR_TELEGRAM_PANEL = #xFFFFFFE8
+    mod.widgets.COLOR_TELEGRAM_INPUT = #xFFFFFFF0
+    mod.widgets.COLOR_TELEGRAM_BORDER = #xB9DCE6CC
     mod.widgets.COLOR_TELEGRAM_TEXT = #132332
     mod.widgets.COLOR_TELEGRAM_MUTED = #506575
     mod.widgets.COLOR_TELEGRAM_DIM = #6F8190
     mod.widgets.COLOR_TELEGRAM_BLUE = #13799A
-    mod.widgets.COLOR_TELEGRAM_DIALOG_ACTIVE = #xFFFFFF54
+    mod.widgets.COLOR_TELEGRAM_DIALOG_ACTIVE = #xEAF7FCEE
     mod.widgets.COLOR_TELEGRAM_GREEN = #128A61
-    mod.widgets.COLOR_TELEGRAM_GLASS_HAIRLINE = #xFFFFFFD4
-    mod.widgets.COLOR_TELEGRAM_GLASS_SHADOW = #x1730470E
+    mod.widgets.COLOR_TELEGRAM_GLASS_HAIRLINE = #xB9DCE6CC
+    mod.widgets.COLOR_TELEGRAM_GLASS_SHADOW = #x17304718
 
     mod.widgets.COLOR_WARNING = #fcdb03
 
@@ -209,12 +209,12 @@ script_mod! {
     mod.widgets.COLOR_IMAGE_VIEWER_META_BACKGROUND = #E8E8E8
 
     // Ensure all settings buttons have a consistent height
-    mod.widgets.SETTINGS_BUTTON_HEIGHT = 40
+    mod.widgets.SETTINGS_BUTTON_HEIGHT = 44
 
     // The font size used for regular (non-title, non-subsection) text
     // within any settings screen (e.g., dropdown labels, radio/toggle
     // labels, inline helper text inside a control).
-    mod.widgets.SETTINGS_REGULAR_FONT_SIZE = 11
+    mod.widgets.SETTINGS_REGULAR_FONT_SIZE = 13
     mod.widgets.SETTINGS_REGULAR_TEXT_STYLE = theme.font_regular {
         font_size: (mod.widgets.SETTINGS_REGULAR_FONT_SIZE),
     }

@@ -182,6 +182,7 @@ const targetGroups = [
     panelSelector: "[data-control-ui-command-palette-surface='light-glass']",
     expectedPopup: "dialog",
     expectedPanelRole: "dialog",
+    expectedAriaModal: "false",
   },
 ];
 
@@ -221,6 +222,16 @@ async function visibleTriggerIndexes(page, selector) {
 
 async function auditTrigger(page, scenario, group, triggerIndex) {
   const trigger = page.locator(group.triggerSelector).nth(triggerIndex);
+  if (group.key === "row-menu") {
+    await trigger.evaluate((node) => {
+      const row = node.closest(".tg-chat-item");
+      const scroller = row?.closest(".tg-room-rail, .tg-conversation-list, .tg-sidebar, .tg-room-list");
+      if (row && scroller && scroller.scrollHeight > scroller.clientHeight) {
+        scroller.scrollTop = Math.max(0, row.offsetTop - ((scroller.clientHeight - row.getBoundingClientRect().height) / 2));
+      }
+      row?.scrollIntoView({ block: "center", inline: "nearest" });
+    }).catch(() => {});
+  }
   await trigger.scrollIntoViewIfNeeded().catch(() => {});
   await page.waitForTimeout(50);
   const panelSelectorForTrigger = group.panelSelector || await trigger.evaluate((node) => {
@@ -249,6 +260,8 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
       ariaHaspopup: node.getAttribute("aria-haspopup") || "",
       ariaControls: node.getAttribute("aria-controls") || "",
       ariaExpanded: node.getAttribute("aria-expanded") || "",
+      nativePopoverTargetMatches: node.popoverTargetElement === panel || Boolean(node.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(node.popoverTargetElement?.matches(":popover-open")),
       panelSelector,
       panelFound: Boolean(panel),
       panelId: panel?.id || "",
@@ -266,8 +279,9 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
   if (!initial.panelFound) failures.push("aria_controlled_panel_missing");
   if (initial.panelFound && initial.panelRole !== group.expectedPanelRole) failures.push("controlled_panel_wrong_role");
   if (initial.panelFound && String(initial.panelAriaLabel || "").trim().length < 2) failures.push("controlled_panel_missing_accessible_name");
-  if (group.expectedPanelRole === "dialog" && initial.panelAriaModal !== "true") failures.push("dialog_missing_aria_modal");
-  if (initial.ariaExpanded !== "false") failures.push("initial_aria_expanded_not_false");
+  if (group.expectedPanelRole === "dialog" && initial.panelAriaModal !== group.expectedAriaModal) failures.push("dialog_wrong_aria_modal_state");
+  const usesNativePopover = initial.nativePopoverTargetMatches;
+  if (usesNativePopover ? initial.nativePopoverOpen : initial.ariaExpanded !== "false") failures.push("initial_expanded_state_not_false");
   if (initial.panelVisible) failures.push("initial_controlled_panel_visible");
 
   await trigger.click({ force: true });
@@ -280,12 +294,14 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
     const panelVisible = panel && panelRect.width > 1 && panelRect.height > 1 && panelStyle.display !== "none" && panelStyle.visibility !== "hidden" && Number(panelStyle.opacity) > 0.01;
     return {
       ariaExpanded: node.getAttribute("aria-expanded") || "",
+      nativePopoverTargetMatches: node.popoverTargetElement === panel || Boolean(node.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(node.popoverTargetElement?.matches(":popover-open")),
       panelVisible: Boolean(panelVisible),
       panelRole: panel?.getAttribute("role") || "",
       panelAriaLabel: panel?.getAttribute("aria-label") || "",
     };
   }, wireGroup);
-  if (openState.ariaExpanded !== "true") failures.push("open_aria_expanded_not_true");
+  if (usesNativePopover ? !openState.nativePopoverOpen : openState.ariaExpanded !== "true") failures.push("open_expanded_state_not_true");
   if (!openState.panelVisible) failures.push("open_controlled_panel_not_visible");
   if (openState.panelRole !== group.expectedPanelRole) failures.push("open_controlled_panel_wrong_role");
   if (String(openState.panelAriaLabel || "").trim().length < 2) failures.push("open_controlled_panel_missing_accessible_name");
@@ -300,10 +316,12 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
     const panelVisible = panel && panelRect.width > 1 && panelRect.height > 1 && panelStyle.display !== "none" && panelStyle.visibility !== "hidden" && Number(panelStyle.opacity) > 0.01;
     return {
       ariaExpanded: node.getAttribute("aria-expanded") || "",
+      nativePopoverTargetMatches: node.popoverTargetElement === panel || Boolean(node.popoverTargetElement?.contains(panel)),
+      nativePopoverOpen: Boolean(node.popoverTargetElement?.matches(":popover-open")),
       panelVisible: Boolean(panelVisible),
     };
   }, wireGroup);
-  if (closeState.ariaExpanded !== "false") failures.push("closed_aria_expanded_not_false");
+  if (usesNativePopover ? closeState.nativePopoverOpen : closeState.ariaExpanded !== "false") failures.push("closed_expanded_state_not_false");
   if (closeState.panelVisible) failures.push("closed_controlled_panel_still_visible");
 
   return {
@@ -367,16 +385,16 @@ async function auditTrigger(page, scenario, group, triggerIndex) {
       screenshot_count: triggerAudits.filter((audit) => audit.screenshot).length,
       aria_haspopup_failure_count: countFailures(["aria_haspopup"]),
       aria_controls_failure_count: countFailures(["aria_controls", "aria_controlled"]),
-      aria_expanded_failure_count: countFailures(["aria_expanded"]),
-      controlled_panel_semantics_failure_count: countFailures(["controlled_panel_wrong_role", "controlled_panel_missing_accessible_name", "dialog_missing_aria_modal"]),
+      expanded_state_failure_count: countFailures(["expanded_state"]),
+      controlled_panel_semantics_failure_count: countFailures(["controlled_panel_wrong_role", "controlled_panel_missing_accessible_name", "dialog_wrong_aria_modal_state"]),
       controlled_panel_visibility_failure_count: countFailures(["controlled_panel_not_visible", "controlled_panel_still_visible", "controlled_panel_visible"]),
       failure_count: failures.length,
       thresholds: {
         popup_triggers_require_aria_haspopup: true,
         popup_triggers_require_aria_controls_to_existing_panel_id: true,
-        popup_triggers_require_aria_expanded_state_sync: true,
+      popup_triggers_require_expanded_state_sync: "explicit aria-expanded or native popover implicit state",
         controlled_menus_require_role_menu_and_name: true,
-        controlled_dialogs_require_role_dialog_aria_modal_and_name: true,
+      controlled_dialogs_require_role_name_and_truthful_aria_modal_state: true,
         browser_note: "Browser plugin unavailable in this run; regular Playwright with local Chrome was used.",
       },
     },

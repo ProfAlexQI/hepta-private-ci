@@ -495,7 +495,7 @@ async function imageMetrics(page, file) {
 function nativeScreenshotFailures(metrics) {
   const failures = [];
   if (metrics.width < 300 || metrics.height < 500) failures.push("native_screenshot_too_small");
-  if (metrics.mean_luma < 208 || metrics.mean_luma > 240) failures.push("native_global_luma_outside_bright_glass_band");
+  if (metrics.mean_luma < 238 || metrics.mean_luma > 250) failures.push("native_global_luma_outside_shallow_light_glass_band");
   if (metrics.luma_p95 < 248) failures.push("native_missing_bright_tempered_highlights");
   if (metrics.dark_ratio > 0.025) failures.push("native_dark_area_too_high_for_light_surface");
   if (metrics.glass_white_ratio < 0.88) failures.push("native_light_glass_area_too_low");
@@ -611,7 +611,7 @@ function nativeScreenshotFailures(metrics) {
       depth_requires_shadow_or_backdrop: true,
       non_input_surface_requires_inner_highlight_edge: true,
       text_contrast_min: 4.5,
-      native_global_mean_luma: "208..240",
+      native_global_mean_luma: "238..250",
       native_luma_p95_min: 248,
       native_dark_ratio_max: 0.025,
       native_glass_white_ratio_min: 0.88,
