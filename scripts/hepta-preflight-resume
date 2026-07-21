@@ -45,11 +45,80 @@ process_start_token() {
     | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
 }
 
+resume_relevant_path() {
+  local raw_path="${1-}"
+  local remaining="$raw_path"
+  local entry
+  local last_entry=0
+  local emitted=0
+  local home_name resume_home resolved_resume_home arg0_root
+  local transient_arg0_entry
+  local -a arg0_roots=()
+
+  # Preserve both lexical and physical spellings. On macOS, for example,
+  # /tmp PATH entries may live below a /private/tmp physical home.
+  for home_name in HEPTA_HOME CODEX_HOME; do
+    resume_home="${!home_name-}"
+    [[ -n "$resume_home" ]] || continue
+    arg0_roots+=("${resume_home%/}/tmp/arg0")
+    if [[ -d "$resume_home" ]]; then
+      resolved_resume_home="$(cd "$resume_home" && pwd -P)"
+      if [[ "$resolved_resume_home" != "$resume_home" ]]; then
+        arg0_roots+=("${resolved_resume_home%/}/tmp/arg0")
+      fi
+    fi
+  done
+
+  while :; do
+    if [[ "$remaining" == *:* ]]; then
+      entry="${remaining%%:*}"
+      remaining="${remaining#*:}"
+    else
+      entry="$remaining"
+      last_entry=1
+    fi
+
+    # codex-arg0 injects a per-process alias directory below the resolved
+    # HEPTA_HOME/CODEX_HOME. Its random suffix changes across threads, but its
+    # helpers do not select preflight inputs. Preserve every other PATH entry
+    # byte-for-byte; Cargo/Rust identities are bound separately below.
+    transient_arg0_entry=0
+    if [[ "${entry##*/}" == codex-arg0* ]]; then
+      for arg0_root in "${arg0_roots[@]}"; do
+        if [[ "${entry%/*}" == "$arg0_root" ]]; then
+          transient_arg0_entry=1
+          break
+        fi
+      done
+    fi
+    if [[ "$transient_arg0_entry" == "1" ]]; then
+      :
+    else
+      if [[ "$emitted" == "1" ]]; then
+        printf ':'
+      fi
+      printf '%s' "$entry"
+      emitted=1
+    fi
+
+    [[ "$last_entry" == "0" ]] || break
+  done
+}
+
 relevant_environment_sha256() {
   local env_name
   while IFS= read -r env_name; do
     case "$env_name" in
-      HEPTA_*|HEPTA_CODEX_*|CODEX_*|CARGO_*|RUST*|RUSTUP_*|GITHUB_*|BAZEL_*|CI|HOME|PATH|CC|CXX|SDKROOT|MACOSX_DEPLOYMENT_TARGET|TMPDIR|LANG|LC_*|OPENSSL_*|PKG_CONFIG_*)
+      CODEX_THREAD_ID)
+        # Runtime correlation only. A new Codex thread must be able to resume
+        # the same preflight evidence under the same semantic environment.
+        ;;
+      PATH)
+        printf '%s\0' "$env_name"
+        resume_relevant_path "${!env_name-}"
+        printf '\0'
+        ;;
+      HEPTA_*|HEPTA_CODEX_*|CODEX_*|CARGO_*|RUST*|RUSTUP_*|GITHUB_*|BAZEL_*|CI|HOME|CC|CXX|SDKROOT|MACOSX_DEPLOYMENT_TARGET|TMPDIR|LANG|LC_*|OPENSSL_*|PKG_CONFIG_*)
         # Environment values cannot contain NUL. NUL-framed, sorted names make
         # the digest canonical even when a value contains spaces or newlines.
         printf '%s\0%s\0' "$env_name" "${!env_name-}"
@@ -175,7 +244,9 @@ ENVIRONMENT_SHA256="$({
   printf 'RUSTFLAGS=%s\n' "${RUSTFLAGS:-}"
   printf 'RUSTC_WRAPPER=%s\n' "${RUSTC_WRAPPER:-}"
   printf 'HOME=%s\n' "${HOME:-}"
-  printf 'PATH=%s\n' "${PATH:-}"
+  printf 'PATH='
+  resume_relevant_path "${PATH:-}"
+  printf '\n'
   printf 'CARGO_IDENTITY_SHA256=%s\n' "$CARGO_IDENTITY_SHA256"
   printf 'RUSTC_IDENTITY_SHA256=%s\n' "$RUSTC_IDENTITY_SHA256"
   printf 'TOOLCHAIN_IDENTITY_SHA256=%s\n' "$TOOLCHAIN_IDENTITY_SHA256"

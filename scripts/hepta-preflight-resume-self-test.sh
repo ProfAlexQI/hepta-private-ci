@@ -224,6 +224,84 @@ jq -e '
   and .relevant_environment_matches == false
 ' >/dev/null <<<"$unlisted_policy_show_json"
 
+# Codex injects a thread correlation id and a random per-process arg0 alias
+# directory. Neither selects preflight inputs, so an exact relaunch from a new
+# thread remains resumable. All non-arg0 PATH entries stay fail-closed.
+session_state="$tmp/session.state"
+session_log="$tmp/session.log"
+session_home="$tmp/session-home"
+session_hepta_home="$tmp/session-hepta-home"
+session_arg0_one="$session_home/tmp/arg0/codex-arg0-first"
+session_arg0_two="$session_home/tmp/arg0/codex-arg0-second"
+semantic_path_entry="$tmp/semantic-path-entry"
+mkdir -p \
+  "$session_arg0_one" \
+  "$session_arg0_two" \
+  "$session_hepta_home" \
+  "$semantic_path_entry"
+session_env=(
+  HEPTA_PREFLIGHT_RESUME_STATE="$session_state"
+  HEPTA_PREFLIGHT_RESUME_LOG="$session_log"
+  HEPTA_PREFLIGHT_NATIVE=0
+  HEPTA_PREFLIGHT_RELEASE=1
+  HEPTA_RESUME_TEST_FAIL=1
+  CARGO_TARGET_DIR="$target"
+  HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
+  HEPTA_HOME="$session_hepta_home"
+  CODEX_HOME="$session_home"
+)
+session_rc=0
+env "${session_env[@]}" \
+  CODEX_THREAD_ID=fixture-thread-one \
+  PATH="$session_arg0_one:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || session_rc=$?
+[[ "$session_rc" == "42" ]]
+
+new_thread_show_json="$(
+  env "${session_env[@]}" \
+    CODEX_THREAD_ID=fixture-thread-two \
+    PATH="$session_arg0_two:$PATH" \
+    "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "blocked"
+  and .resumable == true
+  and .environment_matches == true
+  and .relevant_environment_matches == true
+' >/dev/null <<<"$new_thread_show_json"
+new_thread_rc=0
+env "${session_env[@]}" \
+  CODEX_THREAD_ID=fixture-thread-two \
+  PATH="$session_arg0_two:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || new_thread_rc=$?
+[[ "$new_thread_rc" == "42" ]]
+[[ "$(jq -r '.attempt' "$session_state")" == "2" ]]
+
+semantic_path_show_json="$(
+  env "${session_env[@]}" \
+    CODEX_THREAD_ID=fixture-thread-two \
+    PATH="$session_arg0_two:$semantic_path_entry:$PATH" \
+    "$fixture/scripts/hepta-preflight-resume" --show
+)"
+jq -e '
+  .status == "blocked"
+  and .resumable == false
+  and .environment_matches == false
+  and .relevant_environment_matches == false
+' >/dev/null <<<"$semantic_path_show_json"
+semantic_path_rc=0
+env "${session_env[@]}" \
+  CODEX_THREAD_ID=fixture-thread-two \
+  PATH="$session_arg0_two:$semantic_path_entry:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || semantic_path_rc=$?
+[[ "$semantic_path_rc" == "1" ]]
+env "${session_env[@]}" \
+  HEPTA_RESUME_TEST_FAIL=0 \
+  CODEX_THREAD_ID=fixture-thread-two \
+  PATH="$session_arg0_two:$PATH" \
+  "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
+[[ ! -e "$session_state" ]]
+
 # The state is bound to this worktree, not merely to a shared HEAD and clean
 # porcelain digest.
 cp "$state" "$state.worktree-id.saved"
