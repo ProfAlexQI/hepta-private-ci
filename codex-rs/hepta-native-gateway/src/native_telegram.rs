@@ -1,5 +1,8 @@
 use std::env;
 use std::fs;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -157,6 +160,9 @@ const TELEGRAM_MODEL_FAILURE_FALLBACK_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_F
 const TELEGRAM_SOAK_MIN_POLLS_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MIN_POLLS";
 const TELEGRAM_SOAK_MAX_ATTENTION_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_ATTENTION";
 const TELEGRAM_SOAK_MAX_OBSERVED_AGE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MAX_OBSERVED_AGE_MS";
+const TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN_ENV: &str =
+    "HEPTA_NATIVE_TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN";
+const TELEGRAM_SECRET_FILE_MAX_BYTES: u64 = 4096;
 static TELEGRAM_LIVE_SOAK_OBSERVATION: OnceLock<Mutex<NativeTelegramLiveSoakObservationState>> =
     OnceLock::new();
 
@@ -768,41 +774,68 @@ fn load_telegram_config_status_from_path(
         .pointer("/channels/telegram")
         .ok_or_else(|| "channels.telegram config is missing".to_string())?;
     let bot_token_ref = telegram.get("botToken");
-    let token_file_present = metadata
+    let token_file_security = metadata
         .token_secret_path
         .as_ref()
-        .map(|path| path.is_file())
-        .unwrap_or(false);
-    let token_file_mode_0600 = metadata
-        .token_secret_path
-        .as_ref()
-        .map(file_mode_is_0600)
-        .unwrap_or(false);
-    let inline_token = bot_token_ref
-        .and_then(Value::as_str)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+        .map(|path| inspect_telegram_secret_file(path))
+        .unwrap_or_default();
     let env_token = env::var("HEPTA_TELEGRAM_BOT_TOKEN")
         .ok()
         .or_else(|| env::var("TELEGRAM_BOT_TOKEN").ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    let file_token = metadata
-        .token_secret_path
+    let file_token_result = if env_token.is_none() {
+        metadata
+            .token_secret_path
+            .as_ref()
+            .map(|path| read_secure_telegram_secret_file(path))
+    } else {
+        None
+    };
+    let file_token = file_token_result
         .as_ref()
-        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|result| result.as_ref().ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
+    let inline_token = bot_token_ref
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let legacy_inline_allowed = env_truthy(TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN_ENV);
+    let inline_token_selected = env_token.is_none()
+        && file_token.is_none()
+        && inline_token.is_some()
+        && legacy_inline_allowed;
+    let inline_token_rejected = env_token.is_none()
+        && file_token.is_none()
+        && inline_token.is_some()
+        && !legacy_inline_allowed;
     let token_observation =
         resolve_native_telegram_token_observation(NativeTelegramTokenObservationInput {
             env_token_present: env_token.is_some(),
             env_token_shape_ok: env_token.as_deref().map(token_shape_ok).unwrap_or(false),
             file_token_present: file_token.is_some(),
             file_token_shape_ok: file_token.as_deref().map(token_shape_ok).unwrap_or(false),
-            inline_token_present: metadata.inline_token_present,
+            inline_token_present: inline_token_selected,
             inline_token_shape_ok: inline_token.as_deref().map(token_shape_ok).unwrap_or(false),
             token_secret_ref_present: metadata.token_secret_ref_present,
         });
+    let token_source = if inline_token_rejected {
+        "inline_config_rejected"
+    } else if token_observation.token_source == "inline_config" {
+        "inline_config_legacy_override"
+    } else {
+        token_observation.token_source
+    };
+    let error = if inline_token_rejected {
+        Some(format!(
+            "inline Telegram bot token is rejected; migrate to an environment variable or a secure secret file (temporary compatibility requires {TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN_ENV}=1)"
+        ))
+    } else if env_token.is_some() {
+        None
+    } else {
+        file_token_result.and_then(Result::err)
+    };
     Ok(build_native_telegram_config_status(
         NativeTelegramConfigStatusInput {
             config_path: Some(path.display().to_string()),
@@ -812,14 +845,15 @@ fn load_telegram_config_status_from_path(
             group_policy: metadata.group_policy,
             allow_from_count: metadata.allow_from_count,
             group_count: metadata.group_count,
-            token_source: token_observation.token_source,
+            token_source,
             token_secret_ref_present: metadata.token_secret_ref_present,
             token_secret_provider: metadata.token_secret_provider,
             token_secret_id_present: metadata.token_secret_id_present,
-            token_file_present,
-            token_file_mode_0600,
-            token_shape_ok: token_observation.token_shape_ok,
-            error: None,
+            token_file_present: token_file_security.present,
+            token_file_mode_0600: token_file_security.mode_0600,
+            token_file_security_ready: token_file_security.ready,
+            token_shape_ok: token_observation.token_shape_ok && !inline_token_rejected,
+            error,
         },
     ))
 }
@@ -845,16 +879,24 @@ fn load_effective_telegram_token() -> Result<String, String> {
         .or_else(|| env::var("TELEGRAM_BOT_TOKEN").ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    let file_token = metadata
-        .token_secret_path
-        .as_ref()
-        .and_then(|path| fs::read_to_string(path).ok())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let token = env_token
-        .or(file_token)
-        .or(inline_token)
-        .ok_or_else(|| "Telegram bot token is not configured".to_string())?;
+    if let Some(token) = env_token {
+        return validate_effective_telegram_token(token);
+    }
+    if let Some(path) = metadata.token_secret_path.as_ref() {
+        return validate_effective_telegram_token(read_secure_telegram_secret_file(path)?);
+    }
+    if let Some(token) = inline_token {
+        if env_truthy(TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN_ENV) {
+            return validate_effective_telegram_token(token);
+        }
+        return Err(format!(
+            "inline Telegram bot token is rejected; migrate to an environment variable or a secure secret file (temporary compatibility requires {TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN_ENV}=1)"
+        ));
+    }
+    Err("Telegram bot token is not configured".to_string())
+}
+
+fn validate_effective_telegram_token(token: String) -> Result<String, String> {
     if token_shape_ok(&token) {
         Ok(token)
     } else {
@@ -971,17 +1013,137 @@ fn env_u64(name: &str) -> Option<u64> {
         .and_then(|value| parse_telegram_env_u64_value(&value))
 }
 
+#[derive(Debug, Default)]
+struct TelegramSecretFileSecurity {
+    present: bool,
+    mode_0600: bool,
+    ready: bool,
+}
+
+fn inspect_telegram_secret_file(path: &Path) -> TelegramSecretFileSecurity {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return TelegramSecretFileSecurity::default();
+    };
+    let present = true;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        use std::os::unix::fs::PermissionsExt;
+
+        let symlink_safe = !metadata.file_type().is_symlink();
+        let regular_file = metadata.file_type().is_file();
+        let mode_0600 = metadata.permissions().mode() & 0o7777 == 0o600;
+        // SAFETY: geteuid has no preconditions and does not dereference pointers.
+        let effective_uid = unsafe { libc::geteuid() };
+        let owner_current_user = metadata.uid() == effective_uid;
+        TelegramSecretFileSecurity {
+            present,
+            mode_0600,
+            ready: symlink_safe && regular_file && mode_0600 && owner_current_user,
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        // Fail closed until an ACL-specific owner/private-access verifier is
+        // available. Environment-backed tokens remain supported cross-platform.
+        TelegramSecretFileSecurity {
+            present,
+            mode_0600: false,
+            ready: false,
+        }
+    }
+}
+
+fn read_secure_telegram_secret_file(path: &Path) -> Result<String, String> {
+    let mut file = open_telegram_secret_file_no_follow(path)?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("failed to inspect Telegram token secret file: {error}"))?;
+    validate_open_telegram_secret_file(&metadata)?;
+
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(TELEGRAM_SECRET_FILE_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read Telegram token secret file: {error}"))?;
+    if bytes.len() as u64 > TELEGRAM_SECRET_FILE_MAX_BYTES {
+        return Err(format!(
+            "Telegram token secret file exceeds {TELEGRAM_SECRET_FILE_MAX_BYTES} bytes"
+        ));
+    }
+    String::from_utf8(bytes)
+        .map(|value| value.trim().to_string())
+        .map_err(|_| "Telegram token secret file is not valid UTF-8".to_string())
+}
+
 #[cfg(unix)]
-fn file_mode_is_0600(path: &PathBuf) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    fs::metadata(path)
-        .map(|metadata| metadata.permissions().mode() & 0o777 == 0o600)
-        .unwrap_or(false)
+fn open_telegram_secret_file_no_follow(path: &Path) -> Result<File, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| {
+            format!("failed to open Telegram token secret file without following symlinks: {error}")
+        })
 }
 
 #[cfg(not(unix))]
-fn file_mode_is_0600(path: &PathBuf) -> bool {
-    path.is_file()
+fn open_telegram_secret_file_no_follow(path: &Path) -> Result<File, String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("failed to inspect Telegram token secret file: {error}"))?;
+    if metadata.file_type().is_symlink() {
+        return Err("Telegram token secret file must not be a symlink".to_string());
+    }
+    if !metadata.file_type().is_file() {
+        return Err("Telegram token secret path must be a regular file".to_string());
+    }
+    OpenOptions::new()
+        .read(true)
+        .open(path)
+        .map_err(|error| format!("failed to open Telegram token secret file: {error}"))
+}
+
+#[cfg(unix)]
+fn validate_open_telegram_secret_file(metadata: &fs::Metadata) -> Result<(), String> {
+    // SAFETY: geteuid has no preconditions and does not dereference pointers.
+    let effective_uid = unsafe { libc::geteuid() };
+    validate_unix_telegram_secret_file(metadata, effective_uid)
+}
+
+#[cfg(unix)]
+fn validate_unix_telegram_secret_file(
+    metadata: &fs::Metadata,
+    expected_uid: libc::uid_t,
+) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::fs::PermissionsExt;
+
+    if !metadata.file_type().is_file() {
+        return Err("Telegram token secret path must be a regular file".to_string());
+    }
+    if metadata.uid() != expected_uid {
+        return Err("Telegram token secret file must be owned by the current user".to_string());
+    }
+    if metadata.permissions().mode() & 0o7777 != 0o600 {
+        return Err("Telegram token secret file permissions must be 0600".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn validate_open_telegram_secret_file(metadata: &fs::Metadata) -> Result<(), String> {
+    if !metadata.file_type().is_file() {
+        return Err("Telegram token secret path must be a regular file".to_string());
+    }
+    Err(
+        "Telegram token secret files require platform ACL owner/private-access verification; use an environment-backed token on this platform"
+            .to_string(),
+    )
 }
 
 fn run_hepta_model_turn_with_plan(
@@ -1253,6 +1415,7 @@ fn telegram_send_retry_backoff() -> Duration {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn telegram_config_status_reads_secret_file_without_exposing_token() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -1292,12 +1455,108 @@ mod tests {
         assert!(status.enabled);
         assert_eq!(status.token_source, "secret_file");
         assert!(status.token_shape_ok);
+        assert!(status.token_file_security_ready);
+        assert!(status.config_ready());
         assert!(status.binding_ready);
         assert!(!status.raw_token_exposed);
 
         let serialized = serde_json::to_string(&status).expect("serialize");
         assert!(!serialized.contains("abcdefghijklmnopqrstuvwxyz"));
         assert!(serialized.contains("\"raw_token_exposed\":false"));
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn telegram_secret_file_fails_closed_without_acl_owner_verification() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let secret_path = temp.path().join("telegram-token.txt");
+        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
+
+        let error = read_secure_telegram_secret_file(&secret_path)
+            .expect_err("platform ACL verification required");
+        assert!(error.contains("platform ACL owner/private-access verification"));
+        assert!(!inspect_telegram_secret_file(&secret_path).ready);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn telegram_secret_file_rejects_group_or_world_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let secret_path = temp.path().join("telegram-token.txt");
+        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
+        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o640)).expect("set mode");
+
+        let security = inspect_telegram_secret_file(&secret_path);
+        assert!(security.present);
+        assert!(!security.mode_0600);
+        assert!(!security.ready);
+        let error = read_secure_telegram_secret_file(&secret_path).expect_err("unsafe mode");
+        assert!(error.contains("permissions must be 0600"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn telegram_secret_file_rejects_an_unexpected_owner() {
+        use std::os::unix::fs::MetadataExt;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let secret_path = temp.path().join("telegram-token.txt");
+        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
+        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
+        let metadata = fs::metadata(&secret_path).expect("metadata");
+        let unexpected_uid = metadata.uid().wrapping_add(1);
+
+        let error = validate_unix_telegram_secret_file(&metadata, unexpected_uid)
+            .expect_err("unexpected owner");
+        assert!(error.contains("owned by the current user"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn telegram_secret_file_rejects_symlinks_even_to_secure_files() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let secret_path = temp.path().join("telegram-token.txt");
+        let link_path = temp.path().join("telegram-token-link.txt");
+        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
+        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
+        symlink(&secret_path, &link_path).expect("symlink");
+
+        let security = inspect_telegram_secret_file(&link_path);
+        assert!(security.present);
+        assert!(!security.ready);
+        let error = read_secure_telegram_secret_file(&link_path).expect_err("symlink rejected");
+        assert!(error.contains("without following symlinks"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn telegram_secret_file_rejects_oversized_material() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let secret_path = temp.path().join("telegram-token.txt");
+        fs::write(
+            &secret_path,
+            vec![b'a'; TELEGRAM_SECRET_FILE_MAX_BYTES as usize + 1],
+        )
+        .expect("write token");
+        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
+
+        let error = read_secure_telegram_secret_file(&secret_path).expect_err("oversized token");
+        assert!(error.contains("exceeds 4096 bytes"));
+    }
+
+    #[test]
+    fn telegram_secret_path_must_be_a_regular_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let error = read_secure_telegram_secret_file(temp.path()).expect_err("directory rejected");
+        assert!(error.contains("regular file"));
     }
 
     #[test]

@@ -1551,6 +1551,7 @@ mod tests {
             token_secret_id_present: true,
             token_file_present: true,
             token_file_mode_0600: true,
+            token_file_security_ready: true,
             token_shape_ok: true,
             error: None,
         });
@@ -1799,6 +1800,7 @@ mod tests {
             token_secret_id_present: true,
             token_file_present: true,
             token_file_mode_0600: true,
+            token_file_security_ready: true,
             token_shape_ok: observation.token_shape_ok,
             error: None,
         });

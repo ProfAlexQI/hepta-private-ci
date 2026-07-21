@@ -277,6 +277,7 @@ mod tests {
             token_secret_id_present: true,
             token_file_present: true,
             token_file_mode_0600: true,
+            token_file_security_ready: true,
             token_shape_ok: true,
             raw_token_exposed: false,
             binding_ready: true,

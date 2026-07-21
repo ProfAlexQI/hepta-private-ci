@@ -6,9 +6,17 @@ use std::fs;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::net::TcpListener;
+use std::net::TcpStream;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::sync::mpsc;
+use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::TrySendError;
+use std::thread;
+use std::time::Instant;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
@@ -128,6 +136,8 @@ const MAX_NATIVE_TRANSCRIPT_LINES_PER_FILE: usize = 2_000;
 const MAX_NATIVE_TRANSCRIPT_EVENT_PREVIEWS_PER_FILE: usize = 40;
 const MAX_NATIVE_EVENT_FILES: usize = 20;
 const MAX_NATIVE_EVENT_PREVIEWS: usize = 80;
+const NATIVE_GATEWAY_WORKER_COUNT: usize = 8;
+const NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY: usize = 64;
 const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     NativeTaskArtifactRouteSpec {
         prefix: "/api/task/",
@@ -180,7 +190,8 @@ pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
             native_telegram::telegram_plugin_status(true, options.telegram_plugin_poll_ms);
         eprintln!(
             "hepta-codex native gateway accepted --with-telegram-plugin; native Telegram supervisor status={} config_ready={} reply_loop_ready=false",
-            telegram_plugin.status, telegram_plugin.config.binding_ready
+            telegram_plugin.status,
+            telegram_plugin.config.config_ready()
         );
         if native_telegram::spawn_telegram_poll_loop_if_enabled(
             true,
@@ -201,24 +212,150 @@ pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
         "Hepta native gateway listening on http://{}/",
         options.bind_addr
     );
+    let connection_pool = NativeGatewayConnectionPool::new(
+        options,
+        NATIVE_GATEWAY_WORKER_COUNT,
+        NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY,
+    )?;
+    println!(
+        "Native gateway HTTP admission: {} workers, {} queued connections, {} byte headers, {} byte bodies, {}s idle read timeout, {}s absolute request deadline, {}s write timeout.",
+        NATIVE_GATEWAY_WORKER_COUNT,
+        NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY,
+        MAX_HTTP_HEADER_BYTES,
+        MAX_HTTP_BODY_BYTES,
+        HTTP_READ_TIMEOUT.as_secs(),
+        HTTP_REQUEST_DEADLINE.as_secs(),
+        HTTP_WRITE_TIMEOUT.as_secs(),
+    );
     println!("Press Ctrl-C to stop.");
 
     for stream in listener.incoming() {
-        let mut stream = stream.context("failed to accept native gateway connection")?;
-        let request = read_http_request(&mut stream)?;
-        let (method, path) = request_method_and_path(&request).unwrap_or(("GET", "/"));
-        if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path)
-        {
-            write_http_response(&mut stream, status, content_type, body)?;
-            continue;
+        match stream {
+            Ok(stream) => connection_pool.dispatch(stream)?,
+            Err(error) => {
+                eprintln!("native gateway connection accept failed: {error}");
+            }
         }
-        let request_body = request_body_text(&request);
-        let (status, content_type, body) =
-            route_native_gateway_request_with_body(method, path, &options, request_body);
-        write_http_response(&mut stream, status, content_type, body.as_bytes())?;
     }
 
     Ok(())
+}
+
+struct NativeGatewayConnectionPool {
+    sender: SyncSender<NativeGatewayConnection>,
+}
+
+struct NativeGatewayConnection {
+    stream: TcpStream,
+    deadline: Instant,
+}
+
+impl NativeGatewayConnectionPool {
+    fn new(
+        options: NativeGatewayOptions,
+        worker_count: usize,
+        queue_capacity: usize,
+    ) -> Result<Self> {
+        if worker_count == 0 || queue_capacity == 0 {
+            anyhow::bail!("native gateway worker and queue capacity must be positive");
+        }
+        let (sender, receiver) = mpsc::sync_channel::<NativeGatewayConnection>(queue_capacity);
+        let receiver = Arc::new(Mutex::new(receiver));
+        for index in 0..worker_count {
+            let receiver = Arc::clone(&receiver);
+            let options = options.clone();
+            thread::Builder::new()
+                .name(format!("hepta-native-http-{index}"))
+                .spawn(move || native_gateway_worker_loop(receiver, options))
+                .with_context(|| format!("spawn native gateway HTTP worker {index}"))?;
+        }
+        Ok(Self { sender })
+    }
+
+    fn dispatch(&self, stream: TcpStream) -> Result<()> {
+        let connection = NativeGatewayConnection {
+            stream,
+            deadline: Instant::now() + HTTP_REQUEST_DEADLINE,
+        };
+        match self.sender.try_send(connection) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Full(mut connection)) => {
+                configure_http_stream(&connection.stream)?;
+                connection
+                    .stream
+                    .set_write_timeout(Some(HTTP_OVERLOAD_WRITE_TIMEOUT))
+                    .context("set native gateway overload response timeout")?;
+                write_http_response(
+                    &mut connection.stream,
+                    "503 Service Unavailable",
+                    "application/json; charset=utf-8",
+                    br#"{"error":"native gateway connection capacity exhausted"}"#,
+                )
+                .context("write native gateway capacity response")
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                anyhow::bail!("native gateway HTTP worker pool disconnected")
+            }
+        }
+    }
+}
+
+fn native_gateway_worker_loop(
+    receiver: Arc<Mutex<mpsc::Receiver<NativeGatewayConnection>>>,
+    options: NativeGatewayOptions,
+) {
+    loop {
+        let connection = match receiver.lock() {
+            Ok(receiver) => receiver.recv(),
+            Err(_) => {
+                eprintln!("native gateway HTTP worker queue lock was poisoned");
+                return;
+            }
+        };
+        let Ok(mut connection) = connection else {
+            return;
+        };
+        if let Err(error) =
+            handle_native_gateway_connection(&mut connection.stream, connection.deadline, &options)
+        {
+            eprintln!("native gateway HTTP connection failed: {error:#}");
+        }
+    }
+}
+
+fn handle_native_gateway_connection(
+    stream: &mut TcpStream,
+    deadline: Instant,
+    options: &NativeGatewayOptions,
+) -> Result<()> {
+    configure_http_stream(stream)?;
+    let request = match read_http_request_with_deadline(stream, deadline) {
+        Ok(request) => request,
+        Err(error) => {
+            return write_http_response(
+                stream,
+                error.status(),
+                "application/json; charset=utf-8",
+                error.response_body(),
+            )
+            .with_context(|| format!("write bounded HTTP rejection for {error}"));
+        }
+    };
+    let Some((method, path)) = request_method_and_path(&request) else {
+        return write_http_response(
+            stream,
+            "400 Bad Request",
+            "application/json; charset=utf-8",
+            br#"{"error":"bad request"}"#,
+        );
+    };
+    if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path) {
+        return write_http_response(stream, status, content_type, body);
+    }
+    let request_body = request_body_text(&request);
+    let (status, content_type, body) =
+        route_native_gateway_request_with_body(method, path, options, request_body);
+    write_http_response(stream, status, content_type, body.as_bytes())
 }
 
 #[cfg(test)]
@@ -5086,8 +5223,8 @@ fn gateway_replacement_readiness(
         },
         NativeGatewayReplacementCheck {
             name: "telegram_config_binding_ready",
-            ready: telegram_plugin.config.binding_ready,
-            detail: "Telegram config and secret binding are redacted and resolvable",
+            ready: telegram_plugin.config.config_ready(),
+            detail: "Telegram config, secure token source, and binding are redacted and resolvable",
         },
         NativeGatewayReplacementCheck {
             name: "telegram_native_supervisor_ready",

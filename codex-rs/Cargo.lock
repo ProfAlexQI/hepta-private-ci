@@ -7231,6 +7231,7 @@ dependencies = [
  "hepta-core",
  "hepta-gateway",
  "hepta-memory",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

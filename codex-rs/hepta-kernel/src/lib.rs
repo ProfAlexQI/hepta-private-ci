@@ -4048,6 +4048,7 @@ pub struct HeptaKernelTelegramConfigStatus {
     pub token_secret_id_present: bool,
     pub token_file_present: bool,
     pub token_file_mode_0600: bool,
+    pub token_file_security_ready: bool,
     pub token_shape_ok: bool,
     pub raw_token_exposed: bool,
     pub binding_ready: bool,
@@ -4069,6 +4070,7 @@ pub struct HeptaKernelTelegramConfigStatusInput {
     pub token_secret_id_present: bool,
     pub token_file_present: bool,
     pub token_file_mode_0600: bool,
+    pub token_file_security_ready: bool,
     pub token_shape_ok: bool,
     pub error: Option<String>,
 }
@@ -4227,6 +4229,7 @@ impl HeptaKernelTelegramConfigStatus {
             token_secret_id_present: false,
             token_file_present: false,
             token_file_mode_0600: false,
+            token_file_security_ready: false,
             token_shape_ok: false,
             raw_token_exposed: false,
             binding_ready: false,
@@ -4249,6 +4252,7 @@ impl HeptaKernelTelegramConfigStatus {
             token_secret_id_present: false,
             token_file_present: false,
             token_file_mode_0600: false,
+            token_file_security_ready: false,
             token_shape_ok: false,
             raw_token_exposed: false,
             binding_ready: false,
@@ -4271,6 +4275,7 @@ impl HeptaKernelTelegramConfigStatus {
             token_secret_id_present: false,
             token_file_present: false,
             token_file_mode_0600: false,
+            token_file_security_ready: false,
             token_shape_ok: false,
             raw_token_exposed: false,
             binding_ready: false,
@@ -4279,7 +4284,13 @@ impl HeptaKernelTelegramConfigStatus {
     }
 
     pub fn config_ready(&self) -> bool {
-        self.enabled && self.token_shape_ok && self.binding_ready
+        let token_source_ready = match self.token_source {
+            "env" => true,
+            "secret_file" => self.token_file_security_ready,
+            "inline_config_legacy_override" => true,
+            _ => false,
+        };
+        self.enabled && self.token_shape_ok && self.binding_ready && token_source_ready
     }
 }
 
@@ -5056,11 +5067,8 @@ impl HeptaKernelTelegramTransportPlan {
 pub fn hepta_kernel_telegram_transport_plan_for_config_status(
     config: &HeptaKernelTelegramConfigStatus,
 ) -> HeptaKernelTelegramTransportPlan {
-    HeptaKernelTelegramTransportPlan::for_config_state(
-        config.enabled,
-        config.token_shape_ok,
-        config.binding_ready,
-    )
+    let config_ready = config.config_ready();
+    HeptaKernelTelegramTransportPlan::for_config_state(config_ready, config_ready, config_ready)
 }
 
 impl HeptaKernelTelegramSendPlan {
@@ -6000,11 +6008,7 @@ pub fn build_hepta_kernel_telegram_model_turn_plan_status(
 pub fn build_hepta_kernel_telegram_send_plan_status(
     input: HeptaKernelTelegramSendPlanStatusInput,
 ) -> HeptaKernelTelegramSendPlanStatus {
-    let transport_plan = HeptaKernelTelegramTransportPlan::for_config_state(
-        input.config.enabled,
-        input.config.token_shape_ok,
-        input.config.binding_ready,
-    );
+    let transport_plan = hepta_kernel_telegram_transport_plan_for_config_status(&input.config);
     let send_plan = if input.requested {
         HeptaKernelTelegramSendPlan::ready()
     } else {
@@ -6375,6 +6379,7 @@ pub fn build_hepta_kernel_telegram_config_status(
         token_secret_id_present: input.token_secret_id_present,
         token_file_present: input.token_file_present,
         token_file_mode_0600: input.token_file_mode_0600,
+        token_file_security_ready: input.token_file_security_ready,
         token_shape_ok: input.token_shape_ok,
         raw_token_exposed: false,
         binding_ready,
@@ -6444,9 +6449,13 @@ pub fn extract_hepta_kernel_telegram_config_metadata(
         .and_then(Value::as_str)
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
-    let token_secret_path = token_secret_provider.as_deref().and_then(|provider| {
-        resolve_hepta_kernel_telegram_secret_provider_path(config_path, config, provider)
-    });
+    let token_secret_path = if token_secret_ref_present {
+        token_secret_provider.as_deref().and_then(|provider| {
+            resolve_hepta_kernel_telegram_secret_provider_path(config_path, config, provider)
+        })
+    } else {
+        None
+    };
     let inline_token_present = bot_token_ref
         .and_then(Value::as_str)
         .map(|value| !value.trim().is_empty())
@@ -9550,6 +9559,7 @@ not-json
             token_secret_id_present: true,
             token_file_present: true,
             token_file_mode_0600: true,
+            token_file_security_ready: true,
             token_shape_ok: true,
             raw_token_exposed: false,
             binding_ready: true,
@@ -11236,6 +11246,7 @@ not-json
                 token_secret_id_present: true,
                 token_file_present: true,
                 token_file_mode_0600: true,
+                token_file_security_ready: true,
                 token_shape_ok: true,
                 error: None,
             });
@@ -12637,6 +12648,7 @@ not-json
                 token_secret_id_present: true,
                 token_file_present: true,
                 token_file_mode_0600: true,
+                token_file_security_ready: true,
                 token_shape_ok: true,
                 error: None,
             });
@@ -12670,12 +12682,80 @@ not-json
                 token_secret_id_present: false,
                 token_file_present: false,
                 token_file_mode_0600: false,
+                token_file_security_ready: false,
                 token_shape_ok: true,
                 error: None,
             });
 
         assert!(!status.binding_ready);
         assert!(!status.config_ready());
+    }
+
+    #[test]
+    fn kernel_telegram_config_status_requires_secure_file_admission() {
+        let insecure =
+            build_hepta_kernel_telegram_config_status(HeptaKernelTelegramConfigStatusInput {
+                config_path: Some("private/config/openclaw.json".to_string()),
+                config_found: true,
+                enabled: true,
+                dm_policy: "trusted".to_string(),
+                group_policy: "deny".to_string(),
+                allow_from_count: 1,
+                group_count: 0,
+                token_source: "secret_file",
+                token_secret_ref_present: true,
+                token_secret_provider: Some("telegram_bot".to_string()),
+                token_secret_id_present: true,
+                token_file_present: true,
+                token_file_mode_0600: true,
+                token_file_security_ready: false,
+                token_shape_ok: true,
+                error: Some("unsafe secret file".to_string()),
+            });
+        assert!(insecure.binding_ready);
+        assert!(!insecure.config_ready());
+        assert!(
+            !hepta_kernel_telegram_transport_plan_for_config_status(&insecure)
+                .bot_api_transport_plan_ready
+        );
+
+        let mut secure = insecure;
+        secure.token_file_security_ready = true;
+        secure.error = None;
+        assert!(secure.config_ready());
+        assert!(
+            hepta_kernel_telegram_transport_plan_for_config_status(&secure)
+                .bot_api_transport_plan_ready
+        );
+    }
+
+    #[test]
+    fn kernel_telegram_config_status_rejects_inline_token_without_legacy_override() {
+        let mut status =
+            build_hepta_kernel_telegram_config_status(HeptaKernelTelegramConfigStatusInput {
+                config_path: Some("private/config/openclaw.json".to_string()),
+                config_found: true,
+                enabled: true,
+                dm_policy: "trusted".to_string(),
+                group_policy: "deny".to_string(),
+                allow_from_count: 1,
+                group_count: 0,
+                token_source: "inline_config_rejected",
+                token_secret_ref_present: false,
+                token_secret_provider: None,
+                token_secret_id_present: false,
+                token_file_present: false,
+                token_file_mode_0600: false,
+                token_file_security_ready: false,
+                token_shape_ok: true,
+                error: Some("inline token rejected".to_string()),
+            });
+        assert!(status.binding_ready);
+        assert!(!status.config_ready());
+
+        status.token_source = "inline_config_legacy_override";
+        status.error = None;
+        assert!(status.config_ready());
     }
 
     #[test]
@@ -12773,6 +12853,35 @@ not-json
             ))
         );
         assert!(!metadata.inline_token_present);
+    }
+
+    #[test]
+    fn kernel_telegram_config_metadata_does_not_resolve_provider_without_file_source() {
+        let config = json!({
+            "secrets": {
+                "providers": {
+                    "telegram_bot": { "path": "../secrets/telegram-token" }
+                }
+            },
+            "channels": {
+                "telegram": {
+                    "enabled": true,
+                    "botToken": {
+                        "source": "unsupported",
+                        "provider": "telegram_bot",
+                        "id": "bot-token"
+                    }
+                }
+            }
+        });
+
+        let metadata = extract_hepta_kernel_telegram_config_metadata(
+            Path::new("/tmp/hepta/private/config/openclaw.json"),
+            &config,
+        )
+        .expect("metadata");
+        assert!(!metadata.token_secret_ref_present);
+        assert!(metadata.token_secret_path.is_none());
     }
 
     #[test]

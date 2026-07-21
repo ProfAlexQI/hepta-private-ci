@@ -36,6 +36,74 @@
     }
 
     #[test]
+    fn bounded_worker_pool_keeps_a_fast_rejection_responsive_during_a_slow_read() {
+        use std::io::Read;
+        use std::io::Write;
+        use std::time::Duration;
+
+        let options = NativeGatewayOptions {
+            bind_addr: DEFAULT_BIND_ADDR.to_string(),
+            with_telegram_plugin: false,
+            telegram_plugin_poll_ms: DEFAULT_TELEGRAM_POLL_MS,
+        };
+        let pool = NativeGatewayConnectionPool::new(options, 2, 2).expect("worker pool");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let address = listener.local_addr().expect("address");
+
+        let slow_client = TcpStream::connect(address).expect("slow client");
+        let (slow_server, _) = listener.accept().expect("slow server");
+        pool.dispatch(slow_server).expect("dispatch slow connection");
+
+        let mut fast_client = TcpStream::connect(address).expect("fast client");
+        fast_client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("fast read timeout");
+        let (fast_server, _) = listener.accept().expect("fast server");
+        pool.dispatch(fast_server).expect("dispatch fast connection");
+        write!(
+            fast_client,
+            "POST / HTTP/1.1\r\ncontent-length: {}\r\n\r\n",
+            MAX_HTTP_BODY_BYTES + 1
+        )
+        .expect("write oversized request");
+
+        let mut response = String::new();
+        fast_client
+            .read_to_string(&mut response)
+            .expect("fast response");
+        assert!(response.starts_with("HTTP/1.1 413 Payload Too Large"));
+
+        drop(slow_client);
+        drop(pool);
+    }
+
+    #[test]
+    fn full_connection_queue_returns_503_under_the_short_overload_write_budget() {
+        use std::io::Read;
+        use std::time::Duration;
+        use std::time::Instant;
+
+        let (sender, _receiver) = mpsc::sync_channel(0);
+        let pool = NativeGatewayConnectionPool { sender };
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let mut client = TcpStream::connect(listener.local_addr().expect("address"))
+            .expect("overload client");
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("client read timeout");
+        let (server, _) = listener.accept().expect("overload server");
+        let started = Instant::now();
+
+        pool.dispatch(server).expect("overload response");
+        let mut response = String::new();
+        client.read_to_string(&mut response).expect("503 response");
+
+        assert!(response.starts_with("HTTP/1.1 503 Service Unavailable"));
+        assert!(HTTP_OVERLOAD_WRITE_TIMEOUT <= Duration::from_millis(250));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
     fn gate_command_lists_the_declarative_registry_without_executing_reports() {
         let value: serde_json::Value = serde_json::from_str(
             &gate_command_json(&["--list".to_string()]).expect("gate registry json"),

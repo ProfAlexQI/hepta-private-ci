@@ -690,6 +690,7 @@ mod tests {
     fn transport_plan_for_config_status_requires_enabled_token_and_binding() {
         let mut config = NativeTelegramConfigStatus::disabled();
         config.enabled = true;
+        config.token_source = "env";
         config.token_shape_ok = true;
         config.binding_ready = true;
 
