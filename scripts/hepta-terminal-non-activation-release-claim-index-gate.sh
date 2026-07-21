@@ -68,6 +68,7 @@ PUBLIC_GA_JSON="$(
   capture_json_report \
     "hepta-public-ga-readiness" \
     env HEPTA_LIVE_URL="$BASE_URL" \
+      HEPTA_WATCHDOG_GATE_MODE="$WATCHDOG_GATE_MODE" \
       scripts/hepta-public-ga-readiness.sh
 )"
 
@@ -134,15 +135,62 @@ jq -n -e \
     and $ga.status == "ready"
     and $ga.endpoint == "/api/hepta-public-ga-readiness"
     and $ga.public_ga_claimed == false
+    and $ga.public_ga_ready == false
     and $ga.reports_synchronized == true
     and $ga.local_gate_matrix_ready == true
     and $ga.local_reports_synchronized == true
-    and $ga.control_ui_product_status == "static_contract_complete"
-    and $ga.control_ui_product_complete == false
-    and $ga.control_ui_live_operator_surface_percent == 0
-    and $ga.control_ui_overall_evidence_percent == 20
-    and $ga.production_replacement_percent < 100
-    and ($ga.blockers | index("control_ui_product_behavior_evidence_not_bound")) != null
+    and $ga.watchdog_gate_mode == $watchdog_contract.observed_mode
+    and $ga.schema_checked == true
+    and $ga.product_completion_claim_allowed == false
+    and (
+      if $watchdog_contract.active_health_only
+      then (
+        (
+          $ga.schema_mode == "current_truth_v1"
+          and $ga.legacy_accepted == false
+          and $ga.control_ui_truth_checked == true
+          and $ga.production_semantics_checked == true
+          and $ga.reports_sync_scope == "full_including_control_ui_truth"
+          and $ga.control_ui_product_status == "static_contract_complete"
+          and $ga.control_ui_product_complete == false
+          and $ga.control_ui_live_operator_surface_percent == 0
+          and $ga.control_ui_overall_evidence_percent == 20
+          and ($ga.production_replacement_percent | type) == "number"
+          and $ga.production_replacement_percent < 100
+          and ($ga.blockers | index("control_ui_product_behavior_evidence_not_bound")) != null
+        )
+        or (
+          $ga.schema_mode == "legacy_active_only"
+          and $ga.legacy_accepted == true
+          and $ga.control_ui_truth_checked == false
+          and $ga.production_semantics_checked == false
+          and $ga.reports_sync_scope == "legacy_base_reports_only"
+          and $ga.control_ui_product_status == "legacy_unverified"
+          and $ga.control_ui_product_complete == false
+          and $ga.control_ui_live_operator_surface_percent == null
+          and $ga.control_ui_overall_evidence_percent == null
+          and $ga.production_replacement_percent == null
+          and $ga.raw_live_production_replacement_percent == 100
+          and $ga.raw_live_merge_readiness_class == "active_production_replacement_ready"
+          and ($ga.blockers | index("control_ui_live_truth_not_available_on_active_legacy_schema")) != null
+        )
+      )
+      else (
+        $ga.schema_mode == "current_truth_v1"
+        and $ga.legacy_accepted == false
+        and $ga.control_ui_truth_checked == true
+        and $ga.production_semantics_checked == true
+        and $ga.reports_sync_scope == "full_including_control_ui_truth"
+        and $ga.control_ui_product_status == "static_contract_complete"
+        and $ga.control_ui_product_complete == false
+        and $ga.control_ui_live_operator_surface_percent == 0
+        and $ga.control_ui_overall_evidence_percent == 20
+        and ($ga.production_replacement_percent | type) == "number"
+        and $ga.production_replacement_percent < 100
+        and ($ga.blockers | index("control_ui_product_behavior_evidence_not_bound")) != null
+      )
+      end
+    )
     and $ga.native_gateway_source_command_count >= 69
     and $ga.missing_route_count == 0
     and $ga.side_effects.public_release_published == false
@@ -246,6 +294,18 @@ report="$(jq -n \
       source_public_ga_claimed:$ga.public_ga_claimed,
       source_public_ga_reports_synchronized:$ga.reports_synchronized,
       source_public_ga_missing_route_count:$ga.missing_route_count,
+      source_public_ga_schema_mode:$ga.schema_mode,
+      source_public_ga_schema_checked:$ga.schema_checked,
+      source_public_ga_legacy_accepted:$ga.legacy_accepted,
+      source_public_ga_control_ui_truth_checked:$ga.control_ui_truth_checked,
+      source_public_ga_production_semantics_checked:$ga.production_semantics_checked,
+      source_public_ga_product_completion_claim_allowed:$ga.product_completion_claim_allowed,
+      source_public_ga_reports_sync_scope:$ga.reports_sync_scope,
+      source_public_ga_control_ui_product_status:$ga.control_ui_product_status,
+      source_public_ga_control_ui_product_complete:$ga.control_ui_product_complete,
+      source_public_ga_production_replacement_percent:$ga.production_replacement_percent,
+      source_public_ga_raw_live_production_replacement_percent:$ga.raw_live_production_replacement_percent,
+      source_public_ga_raw_live_merge_readiness_class:$ga.raw_live_merge_readiness_class,
       readiness_allowed:false,
       activation_allowed:false,
       active_wiring_allowed:false,
@@ -402,8 +462,53 @@ jq -e '
   and .source_watchdog_phase_4_remaining_surface_count == 0
   and .source_watchdog_phase_5_remaining_dependency_count == 0
   and .source_public_ga_claimed == false
+  and .source_public_ga_ready == false
   and .source_public_ga_reports_synchronized == true
   and .source_public_ga_missing_route_count == 0
+  and .source_public_ga_schema_checked == true
+  and .source_public_ga_product_completion_claim_allowed == false
+  and (
+    (
+      .source_watchdog_active_health_only == true
+      and (
+        (
+          .source_public_ga_schema_mode == "current_truth_v1"
+          and .source_public_ga_legacy_accepted == false
+          and .source_public_ga_control_ui_truth_checked == true
+          and .source_public_ga_production_semantics_checked == true
+          and .source_public_ga_reports_sync_scope == "full_including_control_ui_truth"
+          and .source_public_ga_control_ui_product_status == "static_contract_complete"
+          and .source_public_ga_control_ui_product_complete == false
+          and (.source_public_ga_production_replacement_percent | type) == "number"
+          and .source_public_ga_production_replacement_percent < 100
+        )
+        or (
+          .source_public_ga_schema_mode == "legacy_active_only"
+          and .source_public_ga_legacy_accepted == true
+          and .source_public_ga_control_ui_truth_checked == false
+          and .source_public_ga_production_semantics_checked == false
+          and .source_public_ga_reports_sync_scope == "legacy_base_reports_only"
+          and .source_public_ga_control_ui_product_status == "legacy_unverified"
+          and .source_public_ga_control_ui_product_complete == false
+          and .source_public_ga_production_replacement_percent == null
+          and .source_public_ga_raw_live_production_replacement_percent == 100
+          and .source_public_ga_raw_live_merge_readiness_class == "active_production_replacement_ready"
+        )
+      )
+    )
+    or (
+      .source_watchdog_deployment_consistency_checked == true
+      and .source_public_ga_schema_mode == "current_truth_v1"
+      and .source_public_ga_legacy_accepted == false
+      and .source_public_ga_control_ui_truth_checked == true
+      and .source_public_ga_production_semantics_checked == true
+      and .source_public_ga_reports_sync_scope == "full_including_control_ui_truth"
+      and .source_public_ga_control_ui_product_status == "static_contract_complete"
+      and .source_public_ga_control_ui_product_complete == false
+      and (.source_public_ga_production_replacement_percent | type) == "number"
+      and .source_public_ga_production_replacement_percent < 100
+    )
+  )
   and .readiness_allowed == false
   and .activation_allowed == false
   and .active_wiring_allowed == false

@@ -1794,6 +1794,9 @@ scripts/hepta-preflight-resume-self-test.sh
 echo "[hepta-preflight] watchdog gate evidence mode self-test"
 scripts/hepta-watchdog-gate-evidence-self-test.sh
 
+echo "[hepta-preflight] live Control UI truth mode self-test"
+scripts/hepta-live-control-ui-truth-self-test.sh
+
 echo "[hepta-preflight] immutable release tree self-test"
 scripts/hepta-immutable-release-tree self-test
 
