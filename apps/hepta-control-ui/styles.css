@@ -6725,9 +6725,7 @@ transform:none!important;
    Content stays solid and readable; glass is reserved for controls and the
    top layer. Cool neutral depth replaces the former overexposed prism wash. */
 body[data-view="chat"]{
-background:
-radial-gradient(circle at 12% 0,rgba(255,255,255,.9),transparent 36%),
-linear-gradient(145deg,#edf3f4 0%,#e5edef 58%,#eef3f3 100%)!important;
+background:linear-gradient(145deg,#edf3f4 0%,#e5edef 58%,#eef3f3 100%)!important;
 }
 body[data-view="chat"] :is(.tg-conversation-rail,.tg-thread-panel){
 background:linear-gradient(155deg,rgba(248,250,250,.96),rgba(238,244,245,.94))!important;
