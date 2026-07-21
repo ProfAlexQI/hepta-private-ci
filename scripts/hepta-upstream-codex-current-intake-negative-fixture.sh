@@ -77,7 +77,7 @@ jq --arg sha "$FORGED_R2_SHA" '
 ' "$CANONICAL_MANIFEST" >"$fixture_dir/forged-r2-sha.json"
 expect_denied \
   "forged_extra_r2_deferred_sha" \
-  "r2 deferred commit set does not equal observed delta minus selected" \
+  "r2 deferred classification set is not closed" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/forged-r2-sha.json"
 
@@ -92,7 +92,7 @@ jq --arg sha "$SELECTED_R2_SHA" '
 ' "$CANONICAL_MANIFEST" >"$fixture_dir/selected-r2-overlap.json"
 expect_denied \
   "selected_r2_also_deferred" \
-  "r2 selected and deferred commit sets overlap" \
+  "selected and deferred upstream commit sets overlap" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/selected-r2-overlap.json"
 
@@ -106,6 +106,46 @@ expect_denied \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/wrong-r2-classification.json"
 
+jq --arg sha "$SELECTED_R2_SHA" '
+  .deferred_decisions += [{
+    state:"deferred",
+    classification:"hidden_selected_overlap",
+    upstream_commit:$sha,
+    reason:"negative fixture"
+  }]
+  | .classification.deferred_decision_count = (.deferred_decisions | length)
+' "$CANONICAL_MANIFEST" >"$fixture_dir/hidden-selected-overlap.json"
+expect_denied \
+  "hidden_non_r2_selected_overlap" \
+  "selected and deferred upstream commit sets overlap" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/hidden-selected-overlap.json"
+
+jq --arg sha "$MISSING_R2_SHA" '
+  .deferred_decisions += [{
+    state:"deferred",
+    classification:"hidden_deferred_duplicate",
+    upstream_commit:$sha,
+    reason:"negative fixture"
+  }]
+  | .classification.deferred_decision_count = (.deferred_decisions | length)
+' "$CANONICAL_MANIFEST" >"$fixture_dir/hidden-deferred-duplicate.json"
+expect_denied \
+  "hidden_non_r2_deferred_duplicate" \
+  "deferred upstream commit list contains duplicate SHAs" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/hidden-deferred-duplicate.json"
+
+jq --arg sha "$WRONG_CLASS_R2_SHA" '
+  (.deferred_decisions[] | select(.upstream_commit == $sha) | .classification) =
+    "history_integrity"
+' "$CANONICAL_MANIFEST" >"$fixture_dir/observed-r2-disguised-as-old.json"
+expect_denied \
+  "observed_r2_sha_disguised_as_old_classification" \
+  "r2 deferred classification mapping drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/observed-r2-disguised-as-old.json"
+
 jq -n '{
   product:"Hepta",
   status:"ready",
@@ -118,6 +158,9 @@ jq -n '{
   forged_extra_r2_deferred_sha_denied:true,
   selected_r2_also_deferred_denied:true,
   wrong_r2_deferred_classification_denied:true,
+  hidden_non_r2_selected_overlap_denied:true,
+  hidden_non_r2_deferred_duplicate_denied:true,
+  observed_r2_sha_disguised_as_old_classification_denied:true,
   network_access_performed:false,
   ref_mutation_performed:false,
   workspace_mutation_performed:false

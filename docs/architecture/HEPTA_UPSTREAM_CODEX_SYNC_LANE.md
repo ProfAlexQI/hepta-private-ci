@@ -86,8 +86,12 @@ Manual full-preflight CI materializes both frozen refs through
 to their exact SHAs. A clean checkout fetches only a missing exact commit and
 creates only its missing ref; an already-correct predecessor is left untouched,
 while any existing misdirected predecessor or r2 ref is rejected rather than
-moved. `scripts/hepta-ci-baseline contract-self-test` covers missing r2,
-misdirected r2, exact r2 materialization, and predecessor preservation.
+moved. Both refs must be direct refs whose raw object IDs equal the pinned SHAs
+and whose raw objects are commits; annotated tags and symbolic refs are rejected
+without peeling or writing their targets. `scripts/hepta-ci-baseline-contract
+self-test` covers missing r2, misdirected r2, exact r2 materialization,
+predecessor preservation, annotated-tag refs, and both correct-target and
+dangling symbolic refs for each frozen ref.
 
 The r2-only selected absorption for upstream
 `44481a1c4548d1cc0cc3c95aa03b59ec4cba074a` is a bounded semantic port. The

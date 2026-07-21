@@ -71,6 +71,21 @@ count_nonempty_lines() {
   sed '/^$/d' | wc -l | tr -d '[:space:]'
 }
 
+resolve_direct_commit_ref() {
+  local label="$1"
+  local ref="$2"
+  local expected="$3"
+  local symbolic_target raw object_type
+
+  symbolic_target="$(git symbolic-ref -q "$ref" 2>/dev/null || true)"
+  [[ -z "$symbolic_target" ]] || fail "$label must be a direct ref, found symref to $symbolic_target"
+  raw="$(git rev-parse --verify "$ref" 2>/dev/null)" || fail "$label is missing: $ref"
+  [[ "$raw" == "$expected" ]] || fail "$label raw OID drifted: expected $expected got $raw"
+  object_type="$(git cat-file -t "$raw" 2>/dev/null)" || fail "$label object is unavailable: $raw"
+  [[ "$object_type" == "commit" ]] || fail "$label must directly reference a commit object, found $object_type"
+  printf '%s\n' "$raw"
+}
+
 if [[ "$MANIFEST" != "$PINNED_MANIFEST" ]]; then
   [[ "$ALLOW_FIXTURE_MANIFEST" == "1" && "$SKIP_RUST_TESTS" == "1" ]] || fail "manifest override is not allowed for the canonical gate: $MANIFEST"
 fi
@@ -189,14 +204,14 @@ if [[ "$SKIP_RUST_TESTS" != "1" ]]; then
     upstream_codex_current_intake -- --nocapture
 fi
 
-resolved_base="$(git rev-parse --verify "${BASE_HEAD}^{commit}")" || fail "pinned baseline commit is unavailable"
-resolved_ref="$(git rev-parse --verify "${CUTOFF_REF}^{commit}")" || fail "pinned local cutoff ref is unavailable"
-resolved_cutoff="$(git rev-parse --verify "${CUTOFF_HEAD}^{commit}")" || fail "pinned cutoff commit is unavailable"
-resolved_predecessor_ref="$(git rev-parse --verify "${PINNED_PREDECESSOR_CUTOFF_REF}^{commit}")" || fail "pinned predecessor cutoff ref is unavailable"
+resolved_base="$(git rev-parse --verify "$BASE_HEAD")" || fail "pinned baseline commit is unavailable"
+resolved_ref="$(resolve_direct_commit_ref "pinned local cutoff ref" "$CUTOFF_REF" "$CUTOFF_HEAD")"
+resolved_cutoff="$(git rev-parse --verify "$CUTOFF_HEAD")" || fail "pinned cutoff commit is unavailable"
+resolved_predecessor_ref="$(resolve_direct_commit_ref "predecessor cutoff ref" "$PINNED_PREDECESSOR_CUTOFF_REF" "$PINNED_PREDECESSOR_CUTOFF_HEAD")"
 [[ "$resolved_base" == "$BASE_HEAD" ]] || fail "baseline object resolves to $resolved_base instead of $BASE_HEAD"
-[[ "$resolved_ref" == "$CUTOFF_HEAD" ]] || fail "local cutoff ref drifted: expected $CUTOFF_HEAD got $resolved_ref"
+[[ "$(git cat-file -t "$resolved_base")" == "commit" ]] || fail "baseline must be a commit object"
 [[ "$resolved_cutoff" == "$CUTOFF_HEAD" ]] || fail "cutoff object resolves to $resolved_cutoff instead of $CUTOFF_HEAD"
-[[ "$resolved_predecessor_ref" == "$PINNED_PREDECESSOR_CUTOFF_HEAD" ]] || fail "predecessor cutoff ref drifted: expected $PINNED_PREDECESSOR_CUTOFF_HEAD got $resolved_predecessor_ref"
+[[ "$(git cat-file -t "$resolved_cutoff")" == "commit" ]] || fail "cutoff must be a commit object"
 git merge-base --is-ancestor "$BASE_HEAD" "$CUTOFF_HEAD" || fail "cutoff is not descended from the pinned baseline"
 git merge-base --is-ancestor "$PINNED_PREDECESSOR_CUTOFF_HEAD" "$CUTOFF_HEAD" || fail "r2 cutoff does not descend from the preserved predecessor cutoff"
 
@@ -228,30 +243,34 @@ expected_governance_count="$(jq -r '.observation.bucket_observations.product_doc
 [[ "$governance_count" == "$expected_governance_count" ]] || fail "product/governance bucket drifted: expected $expected_governance_count got $governance_count"
 
 r2_observed_commits="$(git rev-list "${PINNED_PREDECESSOR_CUTOFF_HEAD}..${CUTOFF_HEAD}" | LC_ALL=C sort)"
-r2_all_selected_commits="$(jq -r '.selected_absorptions[].upstream_commit' "$MANIFEST" | LC_ALL=C sort -u)"
+r2_observed_commits_json="$(printf '%s\n' "$r2_observed_commits" | jq -Rsc 'split("\n") | map(select(length > 0))')"
+all_selected_commits="$(jq -r '.selected_absorptions[].upstream_commit' "$MANIFEST" | LC_ALL=C sort)"
+all_unique_selected_commits="$(printf '%s\n' "$all_selected_commits" | sed '/^$/d' | LC_ALL=C sort -u)"
+all_deferred_commits="$(
+  jq -r '.deferred_decisions[] | select(.upstream_commit != null) | .upstream_commit' "$MANIFEST" \
+    | LC_ALL=C sort
+)"
+all_unique_deferred_commits="$(printf '%s\n' "$all_deferred_commits" | sed '/^$/d' | LC_ALL=C sort -u)"
+all_deferred_commit_count="$(printf '%s\n' "$all_deferred_commits" | count_nonempty_lines)"
+all_unique_deferred_commit_count="$(printf '%s\n' "$all_unique_deferred_commits" | count_nonempty_lines)"
+selected_deferred_overlap="$(
+  comm -12 \
+    <(printf '%s\n' "$all_unique_selected_commits" | sed '/^$/d') \
+    <(printf '%s\n' "$all_unique_deferred_commits" | sed '/^$/d')
+)"
+
+[[ "$all_deferred_commit_count" == "$all_unique_deferred_commit_count" ]] || fail "deferred upstream commit list contains duplicate SHAs"
+[[ -z "$selected_deferred_overlap" ]] || fail "selected and deferred upstream commit sets overlap: $selected_deferred_overlap"
+
 r2_selected_commits="$(
   comm -12 \
     <(printf '%s\n' "$r2_observed_commits" | sed '/^$/d') \
-    <(printf '%s\n' "$r2_all_selected_commits" | sed '/^$/d')
-)"
-r2_deferred_pairs="$(
-  jq -r '
-    .deferred_decisions[]
-    | select(.classification | startswith("r2_"))
-    | "\(.upstream_commit)|\(.classification)"
-  ' "$MANIFEST"
+    <(printf '%s\n' "$all_unique_selected_commits" | sed '/^$/d')
 )"
 r2_deferred_commits="$(
-  printf '%s\n' "$r2_deferred_pairs" \
-    | sed '/^$/d' \
-    | cut -d '|' -f 1 \
-    | LC_ALL=C sort
-)"
-r2_unique_deferred_commits="$(printf '%s\n' "$r2_deferred_commits" | sed '/^$/d' | LC_ALL=C sort -u)"
-r2_overlap="$(
   comm -12 \
-    <(printf '%s\n' "$r2_selected_commits" | sed '/^$/d') \
-    <(printf '%s\n' "$r2_unique_deferred_commits" | sed '/^$/d')
+    <(printf '%s\n' "$r2_observed_commits" | sed '/^$/d') \
+    <(printf '%s\n' "$all_unique_deferred_commits" | sed '/^$/d')
 )"
 r2_expected_deferred_commits="$(
   comm -23 \
@@ -259,19 +278,33 @@ r2_expected_deferred_commits="$(
     <(printf '%s\n' "$r2_selected_commits" | sed '/^$/d')
 )"
 r2_expected_deferred_pairs="$(pinned_r2_deferred_pairs | LC_ALL=C sort)"
-r2_actual_deferred_pairs="$(printf '%s\n' "$r2_deferred_pairs" | sed '/^$/d' | LC_ALL=C sort)"
+r2_actual_deferred_pairs="$(
+  jq -r --argjson observed "$r2_observed_commits_json" '
+    .deferred_decisions[] as $decision
+    | select(
+        $decision.upstream_commit != null
+        and ($observed | index($decision.upstream_commit)) != null
+      )
+    | "\($decision.upstream_commit)|\($decision.classification)"
+  ' "$MANIFEST" | LC_ALL=C sort
+)"
+r2_named_deferred_pairs="$(
+  jq -r '
+    .deferred_decisions[]
+    | select(.classification | startswith("r2_"))
+    | "\(.upstream_commit)|\(.classification)"
+  ' "$MANIFEST" | LC_ALL=C sort
+)"
 
 r2_observed_commit_count="$(printf '%s\n' "$r2_observed_commits" | count_nonempty_lines)"
 r2_selected_commit_count="$(printf '%s\n' "$r2_selected_commits" | count_nonempty_lines)"
 r2_deferred_commit_count="$(printf '%s\n' "$r2_deferred_commits" | count_nonempty_lines)"
-r2_unique_deferred_commit_count="$(printf '%s\n' "$r2_unique_deferred_commits" | count_nonempty_lines)"
 
 [[ "$r2_observed_commit_count" == "18" ]] || fail "r2 observed delta count drifted: expected 18 got $r2_observed_commit_count"
 [[ "$r2_selected_commit_count" == "1" && "$r2_selected_commits" == "$PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT" ]] || fail "r2 selected commit set must contain only $PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT"
-[[ "$r2_deferred_commit_count" == "$r2_unique_deferred_commit_count" ]] || fail "r2 deferred commit list contains duplicate SHAs"
-[[ -z "$r2_overlap" ]] || fail "r2 selected and deferred commit sets overlap: $r2_overlap"
 [[ "$r2_deferred_commits" == "$r2_expected_deferred_commits" ]] || fail "r2 deferred commit set does not equal observed delta minus selected"
 [[ "$r2_actual_deferred_pairs" == "$r2_expected_deferred_pairs" ]] || fail "r2 deferred classification mapping drifted"
+[[ "$r2_named_deferred_pairs" == "$r2_expected_deferred_pairs" ]] || fail "r2 deferred classification set is not closed"
 
 while IFS= read -r decision; do
   upstream_commit="$(jq -r '.upstream_commit' <<<"$decision")"

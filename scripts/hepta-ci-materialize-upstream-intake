@@ -46,13 +46,26 @@ verify_ref() {
   local role="$1"
   local ref="$2"
   local sha="$3"
-  local actual
-  actual="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null)" || {
+  local symbolic_target raw object_type
+  symbolic_target="$(git -C "$ROOT" symbolic-ref -q "$ref" 2>/dev/null || true)"
+  if [[ -n "$symbolic_target" ]]; then
+    echo "Hepta frozen upstream intake ref must be direct for $role: $ref points to $symbolic_target" >&2
+    return 1
+  fi
+  raw="$(git -C "$ROOT" rev-parse --verify "$ref" 2>/dev/null)" || {
     echo "Hepta frozen upstream intake ref is missing for $role: $ref" >&2
     return 1
   }
-  if [[ "$actual" != "$sha" ]]; then
-    echo "Hepta frozen upstream intake ref mismatch for $role: expected $sha, found $actual" >&2
+  if [[ "$raw" != "$sha" ]]; then
+    echo "Hepta frozen upstream intake ref raw OID mismatch for $role: expected $sha, found $raw" >&2
+    return 1
+  fi
+  object_type="$(git -C "$ROOT" cat-file -t "$raw" 2>/dev/null)" || {
+    echo "Hepta frozen upstream intake object is unavailable for $role: $raw" >&2
+    return 1
+  }
+  if [[ "$object_type" != "commit" ]]; then
+    echo "Hepta frozen upstream intake ref must directly reference a commit for $role: found $object_type" >&2
     return 1
   fi
 }
@@ -61,25 +74,43 @@ materialize_ref() {
   local role="$1"
   local ref="$2"
   local sha="$3"
-  local existing fetched
-  existing="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null || true)"
+  local symbolic_target existing existing_type fetched fetched_type
+  symbolic_target="$(git -C "$ROOT" symbolic-ref -q "$ref" 2>/dev/null || true)"
+  if [[ -n "$symbolic_target" ]]; then
+    echo "Hepta frozen upstream intake materializer refuses symbolic ref for $role: $ref points to $symbolic_target" >&2
+    return 1
+  fi
+  existing="$(git -C "$ROOT" rev-parse --verify "$ref" 2>/dev/null || true)"
   if [[ -n "$existing" ]]; then
     if [[ "$existing" != "$sha" ]]; then
-      echo "Hepta frozen upstream intake ref for $role already exists at unexpected commit: $existing" >&2
+      echo "Hepta frozen upstream intake ref for $role already exists at unexpected raw OID: $existing" >&2
       return 1
     fi
-    return 0
+    existing_type="$(git -C "$ROOT" cat-file -t "$existing" 2>/dev/null || true)"
+    if [[ "$existing_type" != "commit" ]]; then
+      echo "Hepta frozen upstream intake ref for $role must directly reference a commit, found ${existing_type:-missing}" >&2
+      return 1
+    fi
+    verify_ref "$role" "$ref" "$sha"
+    return
   fi
 
-  if ! git -C "$ROOT" cat-file -e "$sha^{commit}" 2>/dev/null; then
+  existing_type="$(git -C "$ROOT" cat-file -t "$sha" 2>/dev/null || true)"
+  if [[ "$existing_type" != "commit" ]]; then
     git -C "$ROOT" fetch --no-tags --filter=blob:none "$url" "$sha"
-    fetched="$(git -C "$ROOT" rev-parse --verify 'FETCH_HEAD^{commit}')"
-    if [[ "$fetched" != "$sha" ]]; then
+    fetched="$(git -C "$ROOT" rev-parse --verify FETCH_HEAD)"
+    fetched_type="$(git -C "$ROOT" cat-file -t "$fetched" 2>/dev/null || true)"
+    if [[ "$fetched" != "$sha" || "$fetched_type" != "commit" ]]; then
       echo "Hepta frozen upstream intake fetch mismatch for $role: expected $sha, found $fetched" >&2
       return 1
     fi
   fi
 
+  symbolic_target="$(git -C "$ROOT" symbolic-ref -q "$ref" 2>/dev/null || true)"
+  if [[ -n "$symbolic_target" ]]; then
+    echo "Hepta frozen upstream intake materializer refuses symbolic ref before update for $role: $ref points to $symbolic_target" >&2
+    return 1
+  fi
   git -C "$ROOT" update-ref "$ref" "$sha" 0000000000000000000000000000000000000000
   verify_ref "$role" "$ref" "$sha"
 }
