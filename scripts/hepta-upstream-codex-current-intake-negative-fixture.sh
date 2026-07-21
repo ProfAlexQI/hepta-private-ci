@@ -8,6 +8,7 @@ GATE="scripts/hepta-upstream-codex-current-intake.sh"
 OLD_REF="refs/remotes/openai-codex/main"
 OLD_HEAD="7d47056ea42636271ac020b86347fbbef49490aa"
 OLD_APPS_MCP_RECEIPT="0000000000000000000000000000000000000000"
+OLD_PROC_PREFLIGHT_RECEIPT="0000000000000000000000000000000000000000"
 
 expect_denied() {
   local fixture_id="$1"
@@ -42,6 +43,11 @@ expect_denied \
   "Apps MCP receipt does not match pinned receipt" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_APPS_MCP_LOCAL_RECEIPT="$OLD_APPS_MCP_RECEIPT"
 
+expect_denied \
+  "proc_preflight_receipt_drift" \
+  "proc preflight receipt does not match pinned receipt" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_PROC_PREFLIGHT_LOCAL_RECEIPT="$OLD_PROC_PREFLIGHT_RECEIPT"
+
 jq -n '{
   product:"Hepta",
   status:"ready",
@@ -49,6 +55,7 @@ jq -n '{
   stale_ref_denied:true,
   cutoff_drift_denied:true,
   apps_mcp_receipt_drift_denied:true,
+  proc_preflight_receipt_drift_denied:true,
   network_access_performed:false,
   ref_mutation_performed:false,
   workspace_mutation_performed:false

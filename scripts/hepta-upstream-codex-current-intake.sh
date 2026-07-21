@@ -5,17 +5,24 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$REPO_ROOT"
 
 PINNED_BASE_HEAD="108234b5ebe6941764a6b8edbb37b2aa04369f07"
-PINNED_CUTOFF_REF="refs/remotes/upstream/hepta-intake-20260721"
-PINNED_CUTOFF_HEAD="45ac251e178416ff5c3022457ad8d2778c0d4549"
-PINNED_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json"
+PINNED_CUTOFF_REF="refs/remotes/upstream/hepta-intake-20260721-r2"
+PINNED_CUTOFF_HEAD="88fac6fe108237a105d3203e3508b0d531054312"
+PINNED_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json"
+PINNED_PREDECESSOR_CUTOFF_REF="refs/remotes/upstream/hepta-intake-20260721"
+PINNED_PREDECESSOR_CUTOFF_HEAD="45ac251e178416ff5c3022457ad8d2778c0d4549"
+PINNED_PREDECESSOR_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json"
+PINNED_PREDECESSOR_MANIFEST_SHA256="157274d564f6e4274ad7ce50d9038670ce99b277e9ed481d879243c3404e6882"
 PINNED_APPS_MCP_UPSTREAM_COMMIT="6bf4845b60e0abccd0c64690e9c7591e0efb85d8"
 PINNED_APPS_MCP_LOCAL_RECEIPT="f983f4ae7fc7e4b224272990106049f30ee472d7"
+PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT="44481a1c4548d1cc0cc3c95aa03b59ec4cba074a"
+PINNED_PROC_PREFLIGHT_LOCAL_RECEIPT="c62ce9e2d4ee0ccaa85b50098f41198b44ae17e7"
 
 MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST:-$PINNED_MANIFEST}"
 BASE_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_BASE_HEAD:-$PINNED_BASE_HEAD}"
 CUTOFF_REF="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_REF:-$PINNED_CUTOFF_REF}"
 CUTOFF_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD:-$PINNED_CUTOFF_HEAD}"
 APPS_MCP_LOCAL_RECEIPT="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_APPS_MCP_LOCAL_RECEIPT:-$PINNED_APPS_MCP_LOCAL_RECEIPT}"
+PROC_PREFLIGHT_LOCAL_RECEIPT="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_PROC_PREFLIGHT_LOCAL_RECEIPT:-$PINNED_PROC_PREFLIGHT_LOCAL_RECEIPT}"
 SKIP_RUST_TESTS="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_SKIP_RUST_TESTS:-0}"
 CODEX_MANIFEST="${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}"
 
@@ -40,25 +47,43 @@ count_matching_paths() {
 
 [[ "$MANIFEST" == "$PINNED_MANIFEST" ]] || fail "manifest override is not allowed for the canonical gate: $MANIFEST"
 [[ -f "$MANIFEST" ]] || fail "missing intake manifest: $MANIFEST"
+[[ -f "$PINNED_PREDECESSOR_MANIFEST" ]] || fail "missing predecessor intake manifest: $PINNED_PREDECESSOR_MANIFEST"
 [[ "$BASE_HEAD" == "$PINNED_BASE_HEAD" ]] || fail "baseline does not match pinned baseline: expected $PINNED_BASE_HEAD got $BASE_HEAD"
 [[ "$CUTOFF_REF" == "$PINNED_CUTOFF_REF" ]] || fail "cutoff ref does not match pinned ref: expected $PINNED_CUTOFF_REF got $CUTOFF_REF"
 [[ "$CUTOFF_HEAD" == "$PINNED_CUTOFF_HEAD" ]] || fail "cutoff head does not match pinned cutoff: expected $PINNED_CUTOFF_HEAD got $CUTOFF_HEAD"
 [[ "$APPS_MCP_LOCAL_RECEIPT" == "$PINNED_APPS_MCP_LOCAL_RECEIPT" ]] || fail "Apps MCP receipt does not match pinned receipt: expected $PINNED_APPS_MCP_LOCAL_RECEIPT got $APPS_MCP_LOCAL_RECEIPT"
+[[ "$PROC_PREFLIGHT_LOCAL_RECEIPT" == "$PINNED_PROC_PREFLIGHT_LOCAL_RECEIPT" ]] || fail "proc preflight receipt does not match pinned receipt: expected $PINNED_PROC_PREFLIGHT_LOCAL_RECEIPT got $PROC_PREFLIGHT_LOCAL_RECEIPT"
 validate_sha "baseline" "$BASE_HEAD"
 validate_sha "cutoff" "$CUTOFF_HEAD"
 validate_sha "Apps MCP upstream commit" "$PINNED_APPS_MCP_UPSTREAM_COMMIT"
 validate_sha "Apps MCP local receipt" "$APPS_MCP_LOCAL_RECEIPT"
+validate_sha "proc preflight upstream commit" "$PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT"
+validate_sha "proc preflight local receipt" "$PROC_PREFLIGHT_LOCAL_RECEIPT"
+
+predecessor_manifest_sha256="$(shasum -a 256 "$PINNED_PREDECESSOR_MANIFEST" | awk '{print $1}')"
+[[ "$predecessor_manifest_sha256" == "$PINNED_PREDECESSOR_MANIFEST_SHA256" ]] || fail "predecessor intake manifest drifted: expected $PINNED_PREDECESSOR_MANIFEST_SHA256 got $predecessor_manifest_sha256"
 
 jq -e \
   --arg base "$PINNED_BASE_HEAD" \
   --arg cutoff_ref "$PINNED_CUTOFF_REF" \
   --arg cutoff "$PINNED_CUTOFF_HEAD" \
+  --arg predecessor_manifest "$PINNED_PREDECESSOR_MANIFEST" \
+  --arg predecessor_manifest_sha256 "$PINNED_PREDECESSOR_MANIFEST_SHA256" \
+  --arg predecessor_cutoff_ref "$PINNED_PREDECESSOR_CUTOFF_REF" \
+  --arg predecessor_cutoff_head "$PINNED_PREDECESSOR_CUTOFF_HEAD" \
   --arg apps_mcp_upstream_commit "$PINNED_APPS_MCP_UPSTREAM_COMMIT" \
   --arg apps_mcp_local_receipt "$PINNED_APPS_MCP_LOCAL_RECEIPT" \
+  --arg proc_preflight_upstream_commit "$PINNED_PROC_PREFLIGHT_UPSTREAM_COMMIT" \
+  --arg proc_preflight_local_receipt "$PINNED_PROC_PREFLIGHT_LOCAL_RECEIPT" \
   '
-    .schema_version == "hepta_upstream_codex_current_intake_v1"
-    and .intake_id == "upstream-codex-intake-2026-07-21"
+    .schema_version == "hepta_upstream_codex_current_intake_v2"
+    and .intake_id == "upstream-codex-intake-2026-07-21-r2"
     and .state_model == ["observed", "classified", "absorbed", "deferred"]
+    and .predecessor_intake.manifest_path == $predecessor_manifest
+    and .predecessor_intake.manifest_sha256 == $predecessor_manifest_sha256
+    and .predecessor_intake.cutoff_ref == $predecessor_cutoff_ref
+    and .predecessor_intake.cutoff_head == $predecessor_cutoff_head
+    and .predecessor_intake.preserved == true
     and .observation.state == "observed"
     and .observation.baseline_head == $base
     and .observation.cutoff_ref == $cutoff_ref
@@ -79,7 +104,7 @@ jq -e \
     and .classification.cargo_lock_replacement_allowed == false
     and .classification.selected_absorption_count == (.selected_absorptions | length)
     and .classification.deferred_decision_count == (.deferred_decisions | length)
-    and (.selected_absorptions | length) == 11
+    and (.selected_absorptions | length) == 12
     and (.selected_absorptions | all(
       .state == "absorbed"
       and (.classification | type == "string" and length > 0)
@@ -96,6 +121,20 @@ jq -e \
       and .local_receipts == [$apps_mcp_local_receipt]
       and .absorption_kind == "semantic_port"
     )] | length) == 1
+    and ([.selected_absorptions[] | select(
+      .state == "absorbed"
+      and .classification == "history_storage_efficiency"
+      and .upstream_commit == $predecessor_cutoff_head
+      and .local_receipts == ["31c6065061185de711aa36ee6e9cf7c4a4795821"]
+      and .absorption_kind == "semantic_port"
+    )] | length) == 1
+    and ([.selected_absorptions[] | select(
+      .state == "absorbed"
+      and .classification == "linux_proc_preflight_filesystem_isolation"
+      and .upstream_commit == $proc_preflight_upstream_commit
+      and .local_receipts == [$proc_preflight_local_receipt]
+      and .absorption_kind == "semantic_port"
+    )] | length) == 1
     and (.deferred_decisions | length) == 3
     and (.deferred_decisions | all(
       .state == "deferred"
@@ -107,7 +146,7 @@ jq -e \
       .classification == "mcp_endpoint_ownership"
       or .upstream_commit == $apps_mcp_upstream_commit
     )] | length) == 0
-    and (([.selected_absorptions[].upstream_commit] - [.deferred_decisions[].upstream_commit]) | length == 11)
+    and (([.selected_absorptions[].upstream_commit] - [.deferred_decisions[].upstream_commit]) | length == 12)
     and .historical_absorption_receipt.state == "historical_receipt"
     and .historical_absorption_receipt.current_intake_freshness_proof == false
     and .boundaries.offline_only == true
@@ -127,10 +166,13 @@ fi
 resolved_base="$(git rev-parse --verify "${BASE_HEAD}^{commit}")" || fail "pinned baseline commit is unavailable"
 resolved_ref="$(git rev-parse --verify "${CUTOFF_REF}^{commit}")" || fail "pinned local cutoff ref is unavailable"
 resolved_cutoff="$(git rev-parse --verify "${CUTOFF_HEAD}^{commit}")" || fail "pinned cutoff commit is unavailable"
+resolved_predecessor_ref="$(git rev-parse --verify "${PINNED_PREDECESSOR_CUTOFF_REF}^{commit}")" || fail "pinned predecessor cutoff ref is unavailable"
 [[ "$resolved_base" == "$BASE_HEAD" ]] || fail "baseline object resolves to $resolved_base instead of $BASE_HEAD"
 [[ "$resolved_ref" == "$CUTOFF_HEAD" ]] || fail "local cutoff ref drifted: expected $CUTOFF_HEAD got $resolved_ref"
 [[ "$resolved_cutoff" == "$CUTOFF_HEAD" ]] || fail "cutoff object resolves to $resolved_cutoff instead of $CUTOFF_HEAD"
+[[ "$resolved_predecessor_ref" == "$PINNED_PREDECESSOR_CUTOFF_HEAD" ]] || fail "predecessor cutoff ref drifted: expected $PINNED_PREDECESSOR_CUTOFF_HEAD got $resolved_predecessor_ref"
 git merge-base --is-ancestor "$BASE_HEAD" "$CUTOFF_HEAD" || fail "cutoff is not descended from the pinned baseline"
+git merge-base --is-ancestor "$PINNED_PREDECESSOR_CUTOFF_HEAD" "$CUTOFF_HEAD" || fail "r2 cutoff does not descend from the preserved predecessor cutoff"
 
 diff_range="${BASE_HEAD}..${CUTOFF_HEAD}"
 commit_count="$(git rev-list --count "$diff_range")"
@@ -191,6 +233,10 @@ jq -n \
   --arg cutoff_ref "$CUTOFF_REF" \
   --arg cutoff_head "$CUTOFF_HEAD" \
   --arg diff_range "$diff_range" \
+  --arg predecessor_manifest "$PINNED_PREDECESSOR_MANIFEST" \
+  --arg predecessor_manifest_sha256 "$PINNED_PREDECESSOR_MANIFEST_SHA256" \
+  --arg predecessor_cutoff_ref "$PINNED_PREDECESSOR_CUTOFF_REF" \
+  --arg predecessor_cutoff_head "$PINNED_PREDECESSOR_CUTOFF_HEAD" \
   --argjson commit_count "$commit_count" \
   --argjson changed_file_count "$changed_file_count" \
   --argjson codex_rs_changed_file_count "$codex_rs_changed_file_count" \
@@ -211,6 +257,13 @@ jq -n \
     cutoff_ref:$cutoff_ref,
     cutoff_head:$cutoff_head,
     diff_range:$diff_range,
+    predecessor_intake:{
+      manifest:$predecessor_manifest,
+      manifest_sha256:$predecessor_manifest_sha256,
+      cutoff_ref:$predecessor_cutoff_ref,
+      cutoff_head:$predecessor_cutoff_head,
+      preserved:true
+    },
     inventory:{
       commit_count:$commit_count,
       changed_file_count:$changed_file_count,
