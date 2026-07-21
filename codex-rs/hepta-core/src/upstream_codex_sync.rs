@@ -3,8 +3,18 @@ use serde::Serialize;
 
 pub const HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD: &str = "108234b5ebe6941764a6b8edbb37b2aa04369f07";
 pub const HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF: &str =
-    "refs/remotes/upstream/hepta-intake-20260721";
+    "refs/remotes/upstream/hepta-intake-20260721-r2";
 pub const HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD: &str =
+    "88fac6fe108237a105d3203e3508b0d531054312";
+const HEPTA_UPSTREAM_CODEX_INTAKE_MANIFEST_PATH: &str =
+    "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json";
+const HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_MANIFEST_PATH: &str =
+    "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json";
+const HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_MANIFEST_SHA256: &str =
+    "157274d564f6e4274ad7ce50d9038670ce99b277e9ed481d879243c3404e6882";
+const HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_CUTOFF_REF: &str =
+    "refs/remotes/upstream/hepta-intake-20260721";
+const HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_CUTOFF_HEAD: &str =
     "45ac251e178416ff5c3022457ad8d2778c0d4549";
 
 // This older range is retained as provenance for the bucket-level absorption
@@ -206,6 +216,11 @@ pub struct HeptaUpstreamCodexCurrentIntakeReport {
     pub cutoff_ref: String,
     pub cutoff_head: String,
     pub candidate_diff_range: String,
+    pub predecessor_manifest_path: String,
+    pub predecessor_manifest_sha256: String,
+    pub predecessor_cutoff_ref: String,
+    pub predecessor_cutoff_head: String,
+    pub predecessor_cutoff_preserved: bool,
     pub observed_commit_count: usize,
     pub observed_changed_file_count: usize,
     pub observed_codex_rs_changed_file_count: usize,
@@ -2741,10 +2756,17 @@ fn default_upstream_codex_current_intake_decisions() -> Vec<HeptaUpstreamCodexCu
         ),
         current_intake_absorbed(
             "history_storage_efficiency",
-            HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD,
+            "45ac251e178416ff5c3022457ad8d2778c0d4549",
             &["31c6065061185de711aa36ee6e9cf7c4a4795821"],
             "semantic_port",
             "share history snapshots copy-on-write",
+        ),
+        current_intake_absorbed(
+            "linux_proc_preflight_filesystem_isolation",
+            "44481a1c4548d1cc0cc3c95aa03b59ec4cba074a",
+            &["c62ce9e2d4ee0ccaa85b50098f41198b44ae17e7"],
+            "semantic_port",
+            "probe proc-mount support through a minimal read-only filesystem view while preserving the requested network namespace mode",
         ),
         current_intake_absorbed(
             "plugin_marketplace_trust",
@@ -2767,6 +2789,91 @@ fn default_upstream_codex_current_intake_decisions() -> Vec<HeptaUpstreamCodexCu
             &["f983f4ae7fc7e4b224272990106049f30ee472d7"],
             "semantic_port",
             "route host-owned Apps MCP through the plugin service while constraining ChatGPT session auth to the first-party HTTPS origin",
+        ),
+        current_intake_deferred(
+            "r2_windows_write_root_acl_integrity",
+            Some("bd92b056ddd91bd7c2ecfea3d8773f7eb5a879a6"),
+            "requires a separately reviewed Windows sandbox write-root lane",
+        ),
+        current_intake_deferred(
+            "r2_hook_context_spill_limits",
+            Some("e4836f998da166aba456f60d2e74eb79d6e2542b"),
+            "requires a separately reviewed hook resource-governance lane",
+        ),
+        current_intake_deferred(
+            "r2_session_start_hook_ordering",
+            Some("8c41ed33ce3e39460e7b13b14c35e0c39bb5980d"),
+            "requires a separately reviewed session and hook-ordering lane",
+        ),
+        current_intake_deferred(
+            "r2_approval_rejection_reason_propagation",
+            Some("e52c35b0001ea3e4a1744b99c4250a5b1a09e44d"),
+            "requires a separately reviewed approval protocol lane",
+        ),
+        current_intake_deferred(
+            "r2_history_hook_api_test_alignment",
+            Some("ec3140db1297f3acebec7d6916b329cad3b12693"),
+            "requires the history and hook API changes it tests to be reviewed first",
+        ),
+        current_intake_deferred(
+            "r2_paginated_rollout_lineage_resolution",
+            Some("b7e39aa31608b6eaba4f317538a8f82985a9e854"),
+            "requires a separately reviewed rollout lineage lane",
+        ),
+        current_intake_deferred(
+            "r2_threadless_mcp_connection_events",
+            Some("19940967bdb5ac04aec5d08ebd465481f1ac964d"),
+            "requires a separately reviewed MCP lifecycle lane",
+        ),
+        current_intake_deferred(
+            "r2_sqlite_test_path_validation",
+            Some("81e89fa5af13012c8313f032a17b11b9a5170d33"),
+            "requires a separately reviewed SQLite test configuration lane",
+        ),
+        current_intake_deferred(
+            "r2_agent_job_storage_migration",
+            Some("687f05cb946d10c96f90dd7ce82e11465c6e20a7"),
+            "requires a separately reviewed agent job persistence lane",
+        ),
+        current_intake_deferred(
+            "r2_hook_warning_tui_presentation",
+            Some("cf821e8ec850c6d8380feea0e84859dd8ff54cd0"),
+            "requires a separately reviewed compatibility UI lane",
+        ),
+        current_intake_deferred(
+            "r2_connector_metadata_enrichment",
+            Some("60272096bc125ad7bd8ec26508b19d1e0db2874b"),
+            "requires a separately reviewed connector metadata lane",
+        ),
+        current_intake_deferred(
+            "r2_windows_exec_server_sandboxing",
+            Some("35c2278dd5c49daf8a4e44468038aed9be9e866e"),
+            "requires a separately reviewed Windows exec-server sandbox lane",
+        ),
+        current_intake_deferred(
+            "r2_shared_skill_model_migration",
+            Some("56c11cf6586c0579e4e3eca14eefb0916b14c78c"),
+            "requires a separately reviewed skill model and dependency lane",
+        ),
+        current_intake_deferred(
+            "r2_remote_compaction_history_optimization",
+            Some("fd3c1dc13d0a0941af406e1bc1f697c9d14110ea"),
+            "requires a separately reviewed compaction history lane",
+        ),
+        current_intake_deferred(
+            "r2_approval_catalog_policy_compatibility",
+            Some("2be7d3bcd9d1aec2780f0a71fe79cbb5afd877a1"),
+            "requires a separately reviewed approval catalog compatibility lane",
+        ),
+        current_intake_deferred(
+            "r2_outbound_proxy_route_resolution",
+            Some("c9ef7eff005c3299a5a5f0004c34c6a3eedf2564"),
+            "requires a separately reviewed outbound proxy route lane",
+        ),
+        current_intake_deferred(
+            "r2_managed_permission_proxy_resolution",
+            Some("88fac6fe108237a105d3203e3508b0d531054312"),
+            "requires a separately reviewed managed permission and proxy policy lane",
         ),
         current_intake_deferred(
             "audio_history_and_tool_output",
@@ -2829,8 +2936,8 @@ impl HeptaUpstreamCodexCurrentIntakeReport {
                     }
                 }
         });
-        let current_intake_ready = selected_absorption_count == 11
-            && deferred_decision_count == 3
+        let current_intake_ready = selected_absorption_count == 12
+            && deferred_decision_count == 20
             && selected_commits_are_unique
             && decisions_are_bounded;
 
@@ -2842,9 +2949,8 @@ impl HeptaUpstreamCodexCurrentIntakeReport {
                 "attention"
             }
             .into(),
-            intake_id: "upstream-codex-intake-2026-07-21".into(),
-            manifest_path: "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json"
-                .into(),
+            intake_id: "upstream-codex-intake-2026-07-21-r2".into(),
+            manifest_path: HEPTA_UPSTREAM_CODEX_INTAKE_MANIFEST_PATH.into(),
             observation_state: "observed".into(),
             classification_state: "classified".into(),
             selected_state: "absorbed".into(),
@@ -2856,9 +2962,15 @@ impl HeptaUpstreamCodexCurrentIntakeReport {
                 "{}..{}",
                 HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD
             ),
-            observed_commit_count: 1803,
-            observed_changed_file_count: 3359,
-            observed_codex_rs_changed_file_count: 3097,
+            predecessor_manifest_path: HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_MANIFEST_PATH.into(),
+            predecessor_manifest_sha256: HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_MANIFEST_SHA256
+                .into(),
+            predecessor_cutoff_ref: HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_CUTOFF_REF.into(),
+            predecessor_cutoff_head: HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_CUTOFF_HEAD.into(),
+            predecessor_cutoff_preserved: true,
+            observed_commit_count: 1821,
+            observed_changed_file_count: 3389,
+            observed_codex_rs_changed_file_count: 3127,
             selected_absorption_count,
             deferred_decision_count,
             historical_receipt_target_head: HEPTA_UPSTREAM_CODEX_HISTORICAL_RECEIPT_TARGET_HEAD
@@ -9472,11 +9584,11 @@ mod tests {
         assert_eq!(report.baseline_head, HEPTA_UPSTREAM_CODEX_INTAKE_BASE_HEAD);
         assert_eq!(report.cutoff_ref, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_REF);
         assert_eq!(report.cutoff_head, HEPTA_UPSTREAM_CODEX_INTAKE_CUTOFF_HEAD);
-        assert_eq!(report.observed_commit_count, 1803);
-        assert_eq!(report.observed_changed_file_count, 3359);
-        assert_eq!(report.observed_codex_rs_changed_file_count, 3097);
-        assert_eq!(report.selected_absorption_count, 11);
-        assert_eq!(report.deferred_decision_count, 3);
+        assert_eq!(report.observed_commit_count, 1821);
+        assert_eq!(report.observed_changed_file_count, 3389);
+        assert_eq!(report.observed_codex_rs_changed_file_count, 3127);
+        assert_eq!(report.selected_absorption_count, 12);
+        assert_eq!(report.deferred_decision_count, 20);
         assert!(report.current_intake_ready);
         assert!(!report.full_range_absorption_claimed);
         assert!(!report.upstream_fetch_performed);
@@ -9506,8 +9618,8 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(absorbed.len(), 11);
-        assert_eq!(deferred.len(), 3);
+        assert_eq!(absorbed.len(), 12);
+        assert_eq!(deferred.len(), 20);
         assert!(absorbed.iter().all(|decision| {
             decision.upstream_commit.is_some()
                 && !decision.local_receipts.is_empty()
@@ -9516,6 +9628,92 @@ mod tests {
         assert!(deferred.iter().all(|decision| {
             decision.local_receipts.is_empty() && decision.absorption_kind.is_none()
         }));
+        let actual_r2_deferred: Vec<(&str, &str)> = deferred
+            .iter()
+            .filter(|decision| decision.classification.starts_with("r2_"))
+            .map(|decision| {
+                (
+                    decision.classification.as_str(),
+                    decision
+                        .upstream_commit
+                        .as_deref()
+                        .expect("r2 deferred commit"),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual_r2_deferred,
+            vec![
+                (
+                    "r2_windows_write_root_acl_integrity",
+                    "bd92b056ddd91bd7c2ecfea3d8773f7eb5a879a6",
+                ),
+                (
+                    "r2_hook_context_spill_limits",
+                    "e4836f998da166aba456f60d2e74eb79d6e2542b",
+                ),
+                (
+                    "r2_session_start_hook_ordering",
+                    "8c41ed33ce3e39460e7b13b14c35e0c39bb5980d",
+                ),
+                (
+                    "r2_approval_rejection_reason_propagation",
+                    "e52c35b0001ea3e4a1744b99c4250a5b1a09e44d",
+                ),
+                (
+                    "r2_history_hook_api_test_alignment",
+                    "ec3140db1297f3acebec7d6916b329cad3b12693",
+                ),
+                (
+                    "r2_paginated_rollout_lineage_resolution",
+                    "b7e39aa31608b6eaba4f317538a8f82985a9e854",
+                ),
+                (
+                    "r2_threadless_mcp_connection_events",
+                    "19940967bdb5ac04aec5d08ebd465481f1ac964d",
+                ),
+                (
+                    "r2_sqlite_test_path_validation",
+                    "81e89fa5af13012c8313f032a17b11b9a5170d33",
+                ),
+                (
+                    "r2_agent_job_storage_migration",
+                    "687f05cb946d10c96f90dd7ce82e11465c6e20a7",
+                ),
+                (
+                    "r2_hook_warning_tui_presentation",
+                    "cf821e8ec850c6d8380feea0e84859dd8ff54cd0",
+                ),
+                (
+                    "r2_connector_metadata_enrichment",
+                    "60272096bc125ad7bd8ec26508b19d1e0db2874b",
+                ),
+                (
+                    "r2_windows_exec_server_sandboxing",
+                    "35c2278dd5c49daf8a4e44468038aed9be9e866e",
+                ),
+                (
+                    "r2_shared_skill_model_migration",
+                    "56c11cf6586c0579e4e3eca14eefb0916b14c78c",
+                ),
+                (
+                    "r2_remote_compaction_history_optimization",
+                    "fd3c1dc13d0a0941af406e1bc1f697c9d14110ea",
+                ),
+                (
+                    "r2_approval_catalog_policy_compatibility",
+                    "2be7d3bcd9d1aec2780f0a71fe79cbb5afd877a1",
+                ),
+                (
+                    "r2_outbound_proxy_route_resolution",
+                    "c9ef7eff005c3299a5a5f0004c34c6a3eedf2564",
+                ),
+                (
+                    "r2_managed_permission_proxy_resolution",
+                    "88fac6fe108237a105d3203e3508b0d531054312",
+                ),
+            ]
+        );
         assert!(absorbed.iter().any(|decision| {
             decision.upstream_commit.as_deref() == Some("9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7")
                 && decision.absorption_kind.as_deref() == Some("local_split")
@@ -9528,6 +9726,52 @@ mod tests {
                 && decision.absorption_kind.as_deref() == Some("semantic_port")
                 && decision.local_receipts == ["f983f4ae7fc7e4b224272990106049f30ee472d7"]
         }));
+        assert!(absorbed.iter().any(|decision| {
+            decision.classification == "linux_proc_preflight_filesystem_isolation"
+                && decision.upstream_commit.as_deref()
+                    == Some("44481a1c4548d1cc0cc3c95aa03b59ec4cba074a")
+                && decision.absorption_kind.as_deref() == Some("semantic_port")
+                && decision.local_receipts == ["c62ce9e2d4ee0ccaa85b50098f41198b44ae17e7"]
+        }));
+    }
+
+    #[test]
+    fn upstream_codex_current_intake_preserves_predecessor_cutoff_evidence() {
+        let report = hepta_upstream_codex_current_intake_report();
+
+        assert_eq!(
+            report.predecessor_manifest_path,
+            HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_MANIFEST_PATH
+        );
+        assert_eq!(
+            report.predecessor_manifest_sha256,
+            HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_MANIFEST_SHA256
+        );
+        assert_eq!(
+            report.predecessor_cutoff_ref,
+            HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_CUTOFF_REF
+        );
+        assert_eq!(
+            report.predecessor_cutoff_head,
+            HEPTA_UPSTREAM_CODEX_PREDECESSOR_INTAKE_CUTOFF_HEAD
+        );
+        assert!(report.predecessor_cutoff_preserved);
+        assert_ne!(report.cutoff_ref, report.predecessor_cutoff_ref);
+        assert_ne!(report.cutoff_head, report.predecessor_cutoff_head);
+
+        let history_storage = report
+            .decisions
+            .iter()
+            .find(|decision| decision.classification == "history_storage_efficiency")
+            .expect("history storage decision");
+        assert_eq!(
+            history_storage.upstream_commit.as_deref(),
+            Some("45ac251e178416ff5c3022457ad8d2778c0d4549")
+        );
+        assert_ne!(
+            history_storage.upstream_commit.as_deref(),
+            Some(report.cutoff_head.as_str())
+        );
     }
 
     #[test]

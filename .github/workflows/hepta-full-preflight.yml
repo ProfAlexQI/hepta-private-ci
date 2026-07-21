@@ -58,7 +58,7 @@ jobs:
         run: brew install jq ripgrep
       - name: Verify workflow contract
         run: scripts/hepta-ci-baseline contract
-      - name: Materialize frozen upstream intake ref
+      - name: Materialize frozen upstream intake refs
         run: scripts/hepta-ci-materialize-upstream-intake materialize
       - name: Select explicit verification profile
         env:

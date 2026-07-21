@@ -40,28 +40,79 @@ scripts/hepta-upstream-codex-current-intake.sh
 ```
 
 It is offline and fail-closed. Its machine-readable ledger is
-`docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json`. The
-ledger pins the import baseline
+`docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json`.
+The r2 ledger pins the import baseline
 `108234b5ebe6941764a6b8edbb37b2aa04369f07`, the local-only ref
-`refs/remotes/upstream/hepta-intake-20260721`, and the exact cutoff
-`45ac251e178416ff5c3022457ad8d2778c0d4549`. The gate rejects a missing or
+`refs/remotes/upstream/hepta-intake-20260721-r2`, and the exact observed cutoff
+`88fac6fe108237a105d3203e3508b0d531054312`. The gate rejects a missing or
 different ref, cutoff drift, inventory drift, missing selected upstream
-commits, or missing Hepta absorption receipts. Its negative fixture is:
+commits, missing Hepta absorption receipts, or drift in the preserved
+predecessor evidence. Its negative fixture is:
 
 ```bash
 scripts/hepta-upstream-codex-current-intake-negative-fixture.sh
 ```
 
-The frozen range contains 1,803 commits, 3,359 changed repository paths, and
-3,097 changed `codex-rs` paths. Those are **observed** values, not a claim that
-the whole range has been absorbed. The ledger separately records eleven
-**classified and selectively absorbed** upstream changes and three explicitly
-**deferred** decisions. It also records the local split used for upstream
+The r2 frozen range contains 1,821 commits, 3,389 changed repository paths, and
+3,127 changed `codex-rs` paths. Its non-exclusive bucket counts are 386
+provider/security paths, 1,316 runtime/app-server paths, 655 compatibility
+paths, and 53 product/governance paths. Those are **observed** values, not a
+claim that the whole range has been absorbed. The ledger separately records
+twelve **classified and selectively absorbed** upstream changes and twenty
+explicitly **deferred** decisions. Seventeen r2 decisions bind every newly
+observed commit other than `44481a1c…` to its exact SHA and a distinct deferred
+classification; the other three preserve the predecessor intake's broader
+deferments. The freshness gate computes the actual `45ac251e…88fac6fe` commit
+set and requires `observed - selected == deferred`, with no duplicates or
+selected/deferred overlap. It also records the local split used for upstream
 `9dbdb4e2c08723e8fc9c18f64d7ccad3dadc03a7`; that upstream commit must not be
 mechanically cherry-picked again. The Apps MCP endpoint absorption for upstream
 `6bf4845b60e0abccd0c64690e9c7591e0efb85d8` is a bounded semantic port: it
 routes the host-owned endpoint through `ps/mcp` while constraining implicit
 ChatGPT session authentication to the official first-party HTTPS origin.
+
+The predecessor manifest
+`docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21.json` remains
+unchanged with SHA-256
+`157274d564f6e4274ad7ce50d9038670ce99b277e9ed481d879243c3404e6882`.
+Its frozen ref `refs/remotes/upstream/hepta-intake-20260721` remains pinned to
+`45ac251e178416ff5c3022457ad8d2778c0d4549`; r2 does not move or reinterpret
+that evidence. In particular, the `history_storage_efficiency` receipt remains
+bound to that literal upstream commit instead of inheriting the current cutoff.
+
+Manual full-preflight CI materializes both frozen refs through
+`scripts/hepta-ci-materialize-upstream-intake materialize`. The
+`.github/hepta-ci-contract-v1.json` contract binds the predecessor and r2 refs
+to their exact SHAs. A clean checkout fetches only a missing exact commit and
+creates only its missing ref; an already-correct predecessor is left untouched,
+while any existing misdirected predecessor or r2 ref is rejected rather than
+moved. Both refs must be direct refs whose raw object IDs equal the pinned SHAs
+and whose raw objects are commits; annotated tags and symbolic refs are rejected
+without peeling or writing their targets. `scripts/hepta-ci-baseline-contract
+self-test` covers missing r2, misdirected r2, exact r2 materialization,
+predecessor preservation, annotated-tag refs, and both correct-target and
+dangling symbolic refs for each frozen ref.
+
+The r2-only selected absorption for upstream
+`44481a1c4548d1cc0cc3c95aa03b59ec4cba074a` is a bounded semantic port. The
+Linux `/proc` mount probe uses a minimal read-only filesystem policy rooted at
+`/`, preserves the requested network namespace mode, and must not inherit the
+actual command working directory or filesystem policy. Promotion remains
+blocked until these checks run on a real Linux host with bubblewrap available:
+
+```bash
+cargo test --offline -p codex-linux-sandbox \
+  managed_proxy_preflight_argv_unshares_network
+cargo test --offline -p codex-linux-sandbox \
+  proc_mount_preflight_does_not_bind_the_full_filesystem
+cargo test --offline -p codex-linux-sandbox
+cargo clippy -p codex-linux-sandbox --all-targets -- -D warnings
+```
+
+macOS does not satisfy this evidence requirement because the core test module
+is compiled only for Linux. The Linux run must also confirm that the resolved
+`true` command remains reachable in the minimal view and that proxy-only mode
+still emits `--unshare-net`.
 
 The generic local diff-range ledger gate is:
 
@@ -71,8 +122,8 @@ scripts/hepta-upstream-codex-diff-ledger.sh
 
 This gate is also offline by default. It uses the local upstream import baseline
 `108234b5ebe6941764a6b8edbb37b2aa04369f07` and the local
-`refs/remotes/upstream/hepta-intake-20260721` target, pinned by the current
-intake gate to `45ac251e178416ff5c3022457ad8d2778c0d4549`, to classify the
+`refs/remotes/upstream/hepta-intake-20260721-r2` target, pinned by the current
+intake gate to `88fac6fe108237a105d3203e3508b0d531054312`, to classify the
 `codex-rs` diff range into provider/security, runtime/session/tool,
 legacy CLI/TUI compatibility, and product/release-governance buckets. Set
 `HEPTA_UPSTREAM_CODEX_DIFF_BASE_HEAD`, `HEPTA_UPSTREAM_CODEX_DIFF_TARGET_HEAD`,

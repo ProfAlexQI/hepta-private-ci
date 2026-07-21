@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT="${HEPTA_CI_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
 CONTRACT="${HEPTA_CI_CONTRACT:-$ROOT/.github/hepta-ci-contract-v1.json}"
 EXPECTED_URL="https://github.com/openai/codex.git"
-EXPECTED_REF="refs/remotes/upstream/hepta-intake-20260721"
-EXPECTED_SHA="45ac251e178416ff5c3022457ad8d2778c0d4549"
+EXPECTED_PREDECESSOR_REF="refs/remotes/upstream/hepta-intake-20260721"
+EXPECTED_PREDECESSOR_SHA="45ac251e178416ff5c3022457ad8d2778c0d4549"
+EXPECTED_R2_REF="refs/remotes/upstream/hepta-intake-20260721-r2"
+EXPECTED_R2_SHA="88fac6fe108237a105d3203e3508b0d531054312"
 
 usage() {
   echo "usage: scripts/hepta-ci-materialize-upstream-intake <verify|materialize>" >&2
@@ -17,59 +19,125 @@ load_contract() {
     echo "missing Hepta upstream intake tool: jq" >&2
     return 1
   }
-  url="$(jq -er '.upstream_intake.url' "$CONTRACT")"
-  ref="$(jq -er '.upstream_intake.ref' "$CONTRACT")"
-  sha="$(jq -er '.upstream_intake.sha' "$CONTRACT")"
-  if [[ "$url" != "$EXPECTED_URL" || "$ref" != "$EXPECTED_REF" || "$sha" != "$EXPECTED_SHA" ]]; then
-    echo "Hepta upstream intake contract does not match the frozen cutoff" >&2
+  if ! jq -e \
+    --arg url "$EXPECTED_URL" \
+    --arg predecessor_ref "$EXPECTED_PREDECESSOR_REF" \
+    --arg predecessor_sha "$EXPECTED_PREDECESSOR_SHA" \
+    --arg r2_ref "$EXPECTED_R2_REF" \
+    --arg r2_sha "$EXPECTED_R2_SHA" \
+    '
+      .upstream_intake == {
+        url:$url,
+        materialize_command:"scripts/hepta-ci-materialize-upstream-intake materialize",
+        refs:[
+          {role:"predecessor",ref:$predecessor_ref,sha:$predecessor_sha},
+          {role:"current_r2",ref:$r2_ref,sha:$r2_sha}
+        ]
+      }
+    ' "$CONTRACT" >/dev/null; then
+    echo "Hepta upstream intake contract does not match the frozen cutoff set" >&2
     return 1
   fi
+  url="$(jq -er '.upstream_intake.url' "$CONTRACT")"
+  refs_tsv="$(jq -er '.upstream_intake.refs[] | [.role,.ref,.sha] | @tsv' "$CONTRACT")"
 }
 
 verify_ref() {
-  local actual
-  actual="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null)" || {
-    echo "Hepta frozen upstream intake ref is missing: $ref" >&2
+  local role="$1"
+  local ref="$2"
+  local sha="$3"
+  local symbolic_target raw object_type
+  symbolic_target="$(git -C "$ROOT" symbolic-ref -q "$ref" 2>/dev/null || true)"
+  if [[ -n "$symbolic_target" ]]; then
+    echo "Hepta frozen upstream intake ref must be direct for $role: $ref points to $symbolic_target" >&2
+    return 1
+  fi
+  raw="$(git -C "$ROOT" rev-parse --verify "$ref" 2>/dev/null)" || {
+    echo "Hepta frozen upstream intake ref is missing for $role: $ref" >&2
     return 1
   }
-  if [[ "$actual" != "$sha" ]]; then
-    echo "Hepta frozen upstream intake ref mismatch: expected $sha, found $actual" >&2
+  if [[ "$raw" != "$sha" ]]; then
+    echo "Hepta frozen upstream intake ref raw OID mismatch for $role: expected $sha, found $raw" >&2
+    return 1
+  fi
+  object_type="$(git -C "$ROOT" cat-file -t "$raw" 2>/dev/null)" || {
+    echo "Hepta frozen upstream intake object is unavailable for $role: $raw" >&2
+    return 1
+  }
+  if [[ "$object_type" != "commit" ]]; then
+    echo "Hepta frozen upstream intake ref must directly reference a commit for $role: found $object_type" >&2
     return 1
   fi
 }
 
 materialize_ref() {
-  local existing fetched
-  existing="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null || true)"
+  local role="$1"
+  local ref="$2"
+  local sha="$3"
+  local symbolic_target existing existing_type fetched fetched_type
+  symbolic_target="$(git -C "$ROOT" symbolic-ref -q "$ref" 2>/dev/null || true)"
+  if [[ -n "$symbolic_target" ]]; then
+    echo "Hepta frozen upstream intake materializer refuses symbolic ref for $role: $ref points to $symbolic_target" >&2
+    return 1
+  fi
+  existing="$(git -C "$ROOT" rev-parse --verify "$ref" 2>/dev/null || true)"
   if [[ -n "$existing" ]]; then
     if [[ "$existing" != "$sha" ]]; then
-      echo "Hepta frozen upstream intake ref already exists at unexpected commit: $existing" >&2
+      echo "Hepta frozen upstream intake ref for $role already exists at unexpected raw OID: $existing" >&2
       return 1
     fi
-    return 0
+    existing_type="$(git -C "$ROOT" cat-file -t "$existing" 2>/dev/null || true)"
+    if [[ "$existing_type" != "commit" ]]; then
+      echo "Hepta frozen upstream intake ref for $role must directly reference a commit, found ${existing_type:-missing}" >&2
+      return 1
+    fi
+    verify_ref "$role" "$ref" "$sha"
+    return
   fi
 
-  if ! git -C "$ROOT" cat-file -e "$sha^{commit}" 2>/dev/null; then
+  existing_type="$(git -C "$ROOT" cat-file -t "$sha" 2>/dev/null || true)"
+  if [[ "$existing_type" != "commit" ]]; then
     git -C "$ROOT" fetch --no-tags --filter=blob:none "$url" "$sha"
-    fetched="$(git -C "$ROOT" rev-parse --verify 'FETCH_HEAD^{commit}')"
-    if [[ "$fetched" != "$sha" ]]; then
-      echo "Hepta frozen upstream intake fetch mismatch: expected $sha, found $fetched" >&2
+    fetched="$(git -C "$ROOT" rev-parse --verify FETCH_HEAD)"
+    fetched_type="$(git -C "$ROOT" cat-file -t "$fetched" 2>/dev/null || true)"
+    if [[ "$fetched" != "$sha" || "$fetched_type" != "commit" ]]; then
+      echo "Hepta frozen upstream intake fetch mismatch for $role: expected $sha, found $fetched" >&2
       return 1
     fi
   fi
 
-  git -C "$ROOT" update-ref "$ref" "$sha" ""
-  verify_ref
+  symbolic_target="$(git -C "$ROOT" symbolic-ref -q "$ref" 2>/dev/null || true)"
+  if [[ -n "$symbolic_target" ]]; then
+    echo "Hepta frozen upstream intake materializer refuses symbolic ref before update for $role: $ref points to $symbolic_target" >&2
+    return 1
+  fi
+  git -C "$ROOT" update-ref "$ref" "$sha" 0000000000000000000000000000000000000000
+  verify_ref "$role" "$ref" "$sha"
+}
+
+verify_refs() {
+  local role ref sha
+  while IFS=$'\t' read -r role ref sha; do
+    verify_ref "$role" "$ref" "$sha"
+  done <<<"$refs_tsv"
+}
+
+materialize_refs() {
+  local role ref sha
+  while IFS=$'\t' read -r role ref sha; do
+    materialize_ref "$role" "$ref" "$sha"
+  done <<<"$refs_tsv"
+  verify_refs
 }
 
 [[ $# -eq 1 ]] || usage
 load_contract
 case "$1" in
   verify)
-    verify_ref
+    verify_refs
     ;;
   materialize)
-    materialize_ref
+    materialize_refs
     ;;
   *)
     usage
@@ -77,9 +145,8 @@ case "$1" in
 esac
 
 jq -n \
-  --arg schema hepta_ci_upstream_intake_v1 \
+  --arg schema hepta_ci_upstream_intake_v2 \
   --arg status ready \
   --arg url "$url" \
-  --arg ref "$ref" \
-  --arg sha "$sha" \
-  '{schema:$schema,status:$status,url:$url,ref:$ref,sha:$sha,exact_fetch_only:true,merge_performed:false,checkout_performed:false,push_performed:false}'
+  --argjson refs "$(jq -c '.upstream_intake.refs' "$CONTRACT")" \
+  '{schema:$schema,status:$status,url:$url,refs:$refs,exact_fetch_only:true,predecessor_ref_preserved:true,current_r2_ref_materialized:true,merge_performed:false,checkout_performed:false,push_performed:false}'

@@ -35,9 +35,19 @@
   },
   "upstream_intake": {
     "url": "https://github.com/openai/codex.git",
-    "ref": "refs/remotes/upstream/hepta-intake-20260721",
-    "sha": "45ac251e178416ff5c3022457ad8d2778c0d4549",
-    "materialize_command": "scripts/hepta-ci-materialize-upstream-intake materialize"
+    "materialize_command": "scripts/hepta-ci-materialize-upstream-intake materialize",
+    "refs": [
+      {
+        "role": "predecessor",
+        "ref": "refs/remotes/upstream/hepta-intake-20260721",
+        "sha": "45ac251e178416ff5c3022457ad8d2778c0d4549"
+      },
+      {
+        "role": "current_r2",
+        "ref": "refs/remotes/upstream/hepta-intake-20260721-r2",
+        "sha": "88fac6fe108237a105d3203e3508b0d531054312"
+      }
+    ]
   },
   "permissions": {
     "contents": "read"
