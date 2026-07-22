@@ -1,0 +1,648 @@
+#!/usr/bin/env python3
+"""Verify the classified panic-style debt inventory for Hepta Rust backends."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+from typing import Any
+
+
+SCHEMA = "hepta_panic_debt_inventory_v1"
+SCANNER_VERSION = 1
+DEFAULT_ROOTS = [
+    "codex-rs/hepta-cli",
+    "codex-rs/hepta-core",
+    "codex-rs/hepta-gateway",
+    "codex-rs/hepta-intelligence",
+    "codex-rs/hepta-kernel",
+    "codex-rs/hepta-kg",
+    "codex-rs/hepta-memory",
+    "codex-rs/hepta-native-gateway",
+    "codex-rs/hepta-plugins",
+    "codex-rs/hepta-runtime",
+]
+KINDS = {"panic", "unwrap", "expect", "todo", "unimplemented", "unreachable"}
+SOURCE_CLASSES = {"production", "test", "generated_build", "fixture"}
+PRODUCTION_BOUNDARIES = {
+    "startup_config_fatal",
+    "trusted_static_invariant",
+    "request_runtime_path",
+    "persistence_serialization",
+    "concurrency_task",
+}
+PRODUCTION_RISKS = {"accepted", "low", "medium", "high"}
+ROOT = Path(os.environ.get("HEPTA_PANIC_DEBT_ROOT", Path(__file__).resolve().parent.parent))
+LEDGER = Path(
+    os.environ.get(
+        "HEPTA_PANIC_DEBT_LEDGER",
+        ROOT / "scripts" / "hepta-panic-debt-baseline-v1.json",
+    )
+)
+
+
+class VerificationError(RuntimeError):
+    pass
+
+
+def digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def expected_scope() -> dict[str, Any]:
+    return {
+        "roots": DEFAULT_ROOTS,
+        "rust_files": "all *.rs recursively under each root",
+        "only_ignored_path_component": "target",
+        "production": "src Rust except test files and items requiring cfg(test)",
+        "test": "tests paths, *_tests.rs/tests.rs files, and items requiring cfg(test)",
+        "generated_build": "build.rs",
+        "fixture": "paths with a fixtures or generated component",
+    }
+
+
+def lex_rust(source: str) -> list[dict[str, Any]]:
+    tokens: list[dict[str, Any]] = []
+    index = 0
+    line = 1
+    column = 1
+
+    def advance(text: str) -> None:
+        nonlocal line, column
+        newline_count = text.count("\n")
+        if newline_count:
+            line += newline_count
+            column = len(text.rsplit("\n", 1)[1]) + 1
+        else:
+            column += len(text)
+
+    while index < len(source):
+        start = index
+        character = source[index]
+        if character.isspace():
+            index += 1
+            while index < len(source) and source[index].isspace():
+                index += 1
+            advance(source[start:index])
+            continue
+        if source.startswith("//", index):
+            newline = source.find("\n", index + 2)
+            index = len(source) if newline == -1 else newline
+            advance(source[start:index])
+            continue
+        if source.startswith("/*", index):
+            depth = 1
+            index += 2
+            while index < len(source) and depth:
+                if source.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif source.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            advance(source[start:index])
+            continue
+
+        raw_prefix_end = index
+        if source.startswith("br", index):
+            raw_prefix_end += 2
+        elif character == "r":
+            raw_prefix_end += 1
+        if raw_prefix_end > index:
+            hash_end = raw_prefix_end
+            while hash_end < len(source) and source[hash_end] == "#":
+                hash_end += 1
+            if hash_end < len(source) and source[hash_end] == '"':
+                terminator = '"' + "#" * (hash_end - raw_prefix_end)
+                end = source.find(terminator, hash_end + 1)
+                index = len(source) if end == -1 else end + len(terminator)
+                tokens.append({"value": source[start:index], "line": line, "column": column})
+                advance(source[start:index])
+                continue
+
+        quote_index = index + 1 if character == "b" and index + 1 < len(source) else index
+        quote = source[quote_index] if quote_index < len(source) else ""
+        if quote == '"' or (quote == "'" and source.find("'", quote_index + 1, quote_index + 8) != -1):
+            index = quote_index + 1
+            escaped = False
+            while index < len(source):
+                current = source[index]
+                index += 1
+                if escaped:
+                    escaped = False
+                elif current == "\\":
+                    escaped = True
+                elif current == quote:
+                    break
+            tokens.append({"value": source[start:index], "line": line, "column": column})
+            advance(source[start:index])
+            continue
+
+        if character.isalpha() or character == "_":
+            index += 1
+            while index < len(source) and (source[index].isalnum() or source[index] == "_"):
+                index += 1
+        elif character.isdigit():
+            index += 1
+            while index < len(source) and (source[index].isalnum() or source[index] in "_."):
+                index += 1
+        else:
+            index += 1
+        tokens.append({"value": source[start:index], "line": line, "column": column})
+        advance(source[start:index])
+    return tokens
+
+
+def matching_token(tokens: list[dict[str, Any]], start: int, opening: str, closing: str) -> int:
+    depth = 0
+    for position in range(start, len(tokens)):
+        value = tokens[position]["value"]
+        if value == opening:
+            depth += 1
+        elif value == closing:
+            depth -= 1
+            if depth == 0:
+                return position
+    raise VerificationError(f"unclosed {opening} token")
+
+
+def cfg_requires_test(values: list[str]) -> bool:
+    position = 0
+
+    def parse() -> bool:
+        nonlocal position
+        if position >= len(values):
+            return False
+        name = values[position]
+        position += 1
+        if name == "test":
+            return True
+        if position >= len(values) or values[position] != "(":
+            while position < len(values) and values[position] not in {",", ")"}:
+                position += 1
+            return False
+        position += 1
+        children: list[bool] = []
+        while position < len(values) and values[position] != ")":
+            children.append(parse())
+            if position < len(values) and values[position] == ",":
+                position += 1
+        if position < len(values):
+            position += 1
+        if name == "all":
+            return any(children)
+        if name == "any":
+            return bool(children) and all(children)
+        return False
+
+    return parse()
+
+
+def cfg_test_regions(tokens: list[dict[str, Any]]) -> list[tuple[int, int]]:
+    regions: list[tuple[int, int]] = []
+    values = [token["value"] for token in tokens]
+    position = 0
+    while position + 4 < len(tokens):
+        if values[position : position + 4] != ["#", "[", "cfg", "("]:
+            position += 1
+            continue
+        paren_end = matching_token(tokens, position + 3, "(", ")")
+        if paren_end + 1 >= len(tokens) or values[paren_end + 1] != "]":
+            position += 1
+            continue
+        if not cfg_requires_test(values[position + 4 : paren_end]):
+            position = paren_end + 2
+            continue
+        item_start = paren_end + 2
+        while item_start + 1 < len(tokens) and values[item_start : item_start + 2] == ["#", "["]:
+            item_start = matching_token(tokens, item_start + 1, "[", "]") + 1
+        brace_depth = paren_depth = bracket_depth = 0
+        item_end = item_start
+        while item_end < len(tokens):
+            value = values[item_end]
+            if value == "{" and brace_depth == paren_depth == bracket_depth == 0:
+                item_end = matching_token(tokens, item_end, "{", "}")
+                break
+            if value in {";", ","} and brace_depth == paren_depth == bracket_depth == 0:
+                break
+            if value == "(":
+                paren_depth += 1
+            elif value == ")":
+                paren_depth = max(0, paren_depth - 1)
+            elif value == "[":
+                bracket_depth += 1
+            elif value == "]":
+                bracket_depth = max(0, bracket_depth - 1)
+            item_end += 1
+        regions.append((item_start, min(item_end, len(tokens) - 1)))
+        position = paren_end + 2
+    return regions
+
+
+def path_source_class(relative_path: str) -> str:
+    path = Path(relative_path)
+    parts = set(path.parts)
+    if path.name == "build.rs":
+        return "generated_build"
+    if "fixtures" in parts or "generated" in parts:
+        return "fixture"
+    if "tests" in parts or path.name == "tests.rs" or path.name.endswith("_tests.rs"):
+        return "test"
+    if "src" in parts:
+        return "production"
+    raise VerificationError(f"unclassified Rust source path: {relative_path}")
+
+
+def source_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    for relative_root in DEFAULT_ROOTS:
+        crate_root = root / relative_root
+        if not crate_root.is_dir():
+            raise VerificationError(f"missing scoped crate root: {relative_root}")
+        for candidate in crate_root.rglob("*.rs"):
+            relative = candidate.relative_to(root)
+            if "target" in relative.parts:
+                continue
+            files.append(candidate)
+    return sorted(files, key=lambda path: path.relative_to(root).as_posix())
+
+
+def scan(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    occurrences: list[dict[str, Any]] = []
+    files = source_files(root)
+    file_bindings: list[str] = []
+    duplicate_counts: dict[str, int] = {}
+    for source_path in files:
+        relative_path = source_path.relative_to(root).as_posix()
+        base_source_class = path_source_class(relative_path)
+        file_bindings.append(f"{relative_path}\0{base_source_class}")
+        source = source_path.read_text(encoding="utf-8")
+        tokens = lex_rust(source)
+        values = [token["value"] for token in tokens]
+        test_regions = cfg_test_regions(tokens) if base_source_class == "production" else []
+        for position, token in enumerate(tokens):
+            kind: str | None = None
+            value = token["value"]
+            if value in {"panic", "todo", "unimplemented", "unreachable"} and position + 1 < len(tokens) and values[position + 1] == "!":
+                kind = value
+            elif value == "." and position + 2 < len(tokens) and values[position + 1] in {"unwrap", "expect"} and values[position + 2] == "(":
+                kind = values[position + 1]
+                position += 1
+                token = tokens[position]
+            if kind is None:
+                continue
+            source_class = base_source_class
+            if source_class == "production" and any(start <= position <= end for start, end in test_regions):
+                source_class = "test"
+            start = max(0, position - 10)
+            end = min(len(tokens), position + 11)
+            anchor = " ".join(values[start:end])
+            content_sha256 = digest(anchor)
+            base = canonical_json(
+                {
+                    "path": relative_path,
+                    "source_class": source_class,
+                    "kind": kind,
+                    "content_sha256": content_sha256,
+                }
+            )
+            duplicate_ordinal = duplicate_counts.get(base, 0) + 1
+            duplicate_counts[base] = duplicate_ordinal
+            fingerprint = digest(f"{base}\0{duplicate_ordinal}")
+            occurrences.append(
+                {
+                    "fingerprint": fingerprint,
+                    "path": relative_path,
+                    "source_class": source_class,
+                    "kind": kind,
+                    "content_sha256": content_sha256,
+                    "duplicate_ordinal": duplicate_ordinal,
+                    "line": token["line"],
+                }
+            )
+    occurrences.sort(key=lambda item: item["fingerprint"])
+    source_set = {
+        "file_count": len(files),
+        "paths_and_classes_sha256": digest("\n".join(file_bindings) + "\n"),
+    }
+    return occurrences, source_set
+
+
+def occurrence_summary(occurrences: list[dict[str, Any]]) -> dict[str, Any]:
+    def counts(field: str) -> dict[str, int]:
+        seeds = {
+            "kind": sorted(KINDS),
+            "source_class": sorted(SOURCE_CLASSES),
+            "risk": [
+                "accepted",
+                "excluded_nonproduction",
+                "high",
+                "low",
+                "medium",
+                "test_only",
+            ],
+        }
+        result = {key: 0 for key in seeds[field]}
+        for occurrence in occurrences:
+            key = occurrence[field]
+            result[key] = result.get(key, 0) + 1
+        return dict(sorted(result.items()))
+
+    actionable = [
+        occurrence["fingerprint"]
+        for occurrence in occurrences
+        if occurrence.get("source_class") == "production"
+        and occurrence.get("risk") == "high"
+        and occurrence.get("disposition") == "actionable"
+    ]
+    classifications = [
+        {
+            "fingerprint": occurrence["fingerprint"],
+            "boundary": occurrence["boundary"],
+            "risk": occurrence["risk"],
+            "disposition": occurrence["disposition"],
+            "rationale": occurrence["rationale"],
+        }
+        for occurrence in sorted(occurrences, key=lambda item: item["fingerprint"])
+    ]
+    return {
+        "total": len(occurrences),
+        "by_kind": counts("kind"),
+        "by_source_class": counts("source_class"),
+        "by_risk": counts("risk"),
+        "actionable_high_risk_production_fingerprints": sorted(actionable),
+        "classification_sha256": digest(canonical_json(classifications)),
+    }
+
+
+def default_classification(source_class: str) -> dict[str, str]:
+    if source_class == "test":
+        return {
+            "boundary": "test_assertion_setup",
+            "risk": "test_only",
+            "disposition": "accepted_test_only",
+            "rationale": "Test-only assertion or setup; not compiled into the normal production path.",
+        }
+    if source_class in {"generated_build", "fixture"}:
+        return {
+            "boundary": "generated_build_or_fixture",
+            "risk": "excluded_nonproduction",
+            "disposition": "accepted_nonproduction",
+            "rationale": "Build, generated, or fixture source outside the production runtime class.",
+        }
+    return {
+        "boundary": "request_runtime_path",
+        "risk": "unclassified",
+        "disposition": "unclassified",
+        "rationale": "Requires explicit production risk review.",
+    }
+
+
+def snapshot(root: Path) -> dict[str, Any]:
+    scanned, source_set = scan(root)
+    classified = []
+    for occurrence in scanned:
+        entry = {key: value for key, value in occurrence.items() if key != "line"}
+        entry.update(default_classification(entry["source_class"]))
+        classified.append(entry)
+    return {
+        "schema": SCHEMA,
+        "scanner_version": SCANNER_VERSION,
+        "scope": expected_scope(),
+        "source_set": source_set,
+        "limitations": [
+            "Lexical occurrence inventory does not prove runtime reachability, exploitability, or user impact.",
+            "Risk and boundary values are reviewed classifications, not dynamic execution evidence.",
+        ],
+        "occurrences": classified,
+        "summary": occurrence_summary(classified),
+    }
+
+
+def validate_classification(entry: dict[str, Any]) -> None:
+    expected_keys = {
+        "fingerprint",
+        "path",
+        "source_class",
+        "kind",
+        "content_sha256",
+        "duplicate_ordinal",
+        "boundary",
+        "risk",
+        "disposition",
+        "rationale",
+    }
+    if set(entry) != expected_keys:
+        raise VerificationError(f"occurrence has unexpected keys: {entry.get('fingerprint', '<missing>')}")
+    if entry["kind"] not in KINDS or entry["source_class"] not in SOURCE_CLASSES:
+        raise VerificationError(f"invalid occurrence kind/source class: {entry['fingerprint']}")
+    if not isinstance(entry["rationale"], str) or not entry["rationale"].strip():
+        raise VerificationError(f"missing occurrence rationale: {entry['fingerprint']}")
+    if entry["source_class"] == "production":
+        if entry["boundary"] not in PRODUCTION_BOUNDARIES or entry["risk"] not in PRODUCTION_RISKS:
+            raise VerificationError(f"unclassified production occurrence: {entry['fingerprint']}")
+        if entry["risk"] == "high" and entry["disposition"] != "actionable":
+            raise VerificationError(f"high-risk production occurrence is not actionable: {entry['fingerprint']}")
+        if entry["disposition"] not in {"actionable", "accepted_invariant", "planned_debt"}:
+            raise VerificationError(f"invalid production disposition: {entry['fingerprint']}")
+    elif entry["source_class"] == "test":
+        if (entry["boundary"], entry["risk"], entry["disposition"]) != (
+            "test_assertion_setup",
+            "test_only",
+            "accepted_test_only",
+        ):
+            raise VerificationError(f"test occurrence classification drift: {entry['fingerprint']}")
+    elif (entry["boundary"], entry["risk"], entry["disposition"]) != (
+        "generated_build_or_fixture",
+        "excluded_nonproduction",
+        "accepted_nonproduction",
+    ):
+        raise VerificationError(f"nonproduction occurrence classification drift: {entry['fingerprint']}")
+
+
+def verify(root: Path, ledger_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    try:
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise VerificationError(f"cannot read ledger: {error}") from error
+    expected_top_keys = {
+        "schema",
+        "scanner_version",
+        "scope",
+        "source_set",
+        "limitations",
+        "occurrences",
+        "summary",
+    }
+    if set(ledger) != expected_top_keys or ledger["schema"] != SCHEMA or ledger["scanner_version"] != SCANNER_VERSION:
+        raise VerificationError("ledger schema or scanner version drift")
+    if ledger["scope"] != expected_scope():
+        raise VerificationError("ledger source scope drift or broad exclusion")
+    if not isinstance(ledger["limitations"], list) or len(ledger["limitations"]) < 2:
+        raise VerificationError("ledger limitations must preserve evidence qualifications")
+    for occurrence in ledger["occurrences"]:
+        validate_classification(occurrence)
+    fingerprints = [occurrence["fingerprint"] for occurrence in ledger["occurrences"]]
+    if len(fingerprints) != len(set(fingerprints)):
+        raise VerificationError("duplicate occurrence fingerprint in ledger")
+    scanned, source_set = scan(root)
+    if ledger["source_set"] != source_set:
+        raise VerificationError("scoped Rust source file-set drift")
+    scanned_by_fingerprint = {item["fingerprint"]: item for item in scanned}
+    ledger_by_fingerprint = {item["fingerprint"]: item for item in ledger["occurrences"]}
+    if set(scanned_by_fingerprint) != set(ledger_by_fingerprint):
+        new = sorted(set(scanned_by_fingerprint) - set(ledger_by_fingerprint))
+        stale = sorted(set(ledger_by_fingerprint) - set(scanned_by_fingerprint))
+        raise VerificationError(f"occurrence fingerprint drift: new={new} stale={stale}")
+    identity_fields = {"fingerprint", "path", "source_class", "kind", "content_sha256", "duplicate_ordinal"}
+    for fingerprint, scanned_entry in scanned_by_fingerprint.items():
+        ledger_identity = {key: ledger_by_fingerprint[fingerprint][key] for key in identity_fields}
+        scanned_identity = {key: value for key, value in scanned_entry.items() if key != "line"}
+        if ledger_identity != scanned_identity:
+            raise VerificationError(f"occurrence identity drift: {fingerprint}")
+    expected_summary = occurrence_summary(ledger["occurrences"])
+    if ledger["summary"] != expected_summary:
+        raise VerificationError("ledger count, risk, actionable list, or classification fingerprint drift")
+    return ledger, scanned
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def self_test() -> None:
+    with tempfile.TemporaryDirectory(prefix="hepta-panic-debt-") as directory:
+        fixture_root = Path(directory)
+        for relative_root in DEFAULT_ROOTS:
+            (fixture_root / relative_root / "src").mkdir(parents=True)
+        (fixture_root / "codex-rs/hepta-core/src/lib.rs").write_text(
+            """
+// panic!(\"comment decoy\");
+const DECOY: &str = \"todo!() and .unwrap()\";
+fn runtime(value: Option<u8>) -> u8 { value.expect(\"runtime value\") }
+#[cfg(test)]
+mod tests { #[test] fn assertion() { Some(1).unwrap(); panic!(\"test sentinel\"); } }
+""".strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        (fixture_root / "codex-rs/hepta-core/src/helper_tests.rs").write_text(
+            "fn setup() { todo!(\"test setup\"); }\n", encoding="utf-8"
+        )
+        (fixture_root / "codex-rs/hepta-core/build.rs").write_text(
+            "fn main() { std::env::var(\"OUT_DIR\").expect(\"cargo sets OUT_DIR\"); }\n",
+            encoding="utf-8",
+        )
+        ledger_path = fixture_root / "ledger.json"
+        ledger = snapshot(fixture_root)
+        for entry in ledger["occurrences"]:
+            if entry["source_class"] == "production":
+                entry.update(
+                    boundary="request_runtime_path",
+                    risk="high",
+                    disposition="actionable",
+                    rationale="Synthetic request-path debt for verifier coverage.",
+                )
+        ledger["summary"] = occurrence_summary(ledger["occurrences"])
+        write_json(ledger_path, ledger)
+        verify(fixture_root, ledger_path)
+
+        def denied(name: str, mutate: Any) -> None:
+            case_root = fixture_root / "cases" / name
+            shutil.copytree(fixture_root / "codex-rs", case_root / "codex-rs")
+            case_ledger = json.loads(json.dumps(ledger))
+            mutate(case_root, case_ledger)
+            case_ledger_path = case_root / "ledger.json"
+            write_json(case_ledger_path, case_ledger)
+            try:
+                verify(case_root, case_ledger_path)
+            except VerificationError:
+                return
+            raise VerificationError(f"negative fixture accepted: {name}")
+
+        denied(
+            "production-test-misclassification",
+            lambda _root, value: value["occurrences"][next(
+                index for index, item in enumerate(value["occurrences"]) if item["source_class"] == "production"
+            )].update(source_class="test"),
+        )
+        denied(
+            "hidden-new-production-debt",
+            lambda case_root, _value: (case_root / "codex-rs/hepta-core/src/lib.rs").write_text(
+                (case_root / "codex-rs/hepta-core/src/lib.rs").read_text(encoding="utf-8")
+                + "fn hidden() { unimplemented!(\"new production debt\"); }\n",
+                encoding="utf-8",
+            ),
+        )
+        denied(
+            "content-fingerprint-drift",
+            lambda case_root, _value: (case_root / "codex-rs/hepta-core/src/lib.rs").write_text(
+                (case_root / "codex-rs/hepta-core/src/lib.rs")
+                .read_text(encoding="utf-8")
+                .replace("runtime value", "changed runtime value"),
+                encoding="utf-8",
+            ),
+        )
+        denied("count-drift", lambda _root, value: value["occurrences"].pop())
+        denied(
+            "false-risk-promotion",
+            lambda _root, value: next(
+                item for item in value["occurrences"] if item["source_class"] == "production"
+            ).update(risk="accepted", disposition="accepted_invariant"),
+        )
+        denied(
+            "false-risk-demotion",
+            lambda _root, value: next(
+                item for item in value["occurrences"] if item["source_class"] == "production"
+            ).update(risk="low", disposition="planned_debt"),
+        )
+        denied("broad-root-exclude", lambda _root, value: value["scope"]["roots"].pop())
+        denied(
+            "invented-broad-exclude",
+            lambda _root, value: value["scope"].update(excluded_globs=["**/tests/**"]),
+        )
+
+
+def usage() -> None:
+    print("usage: scripts/hepta-panic-debt-baseline <report|verify|self-test|snapshot FILE>", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        usage()
+    command = sys.argv[1]
+    try:
+        if command == "verify" and len(sys.argv) == 2:
+            verify(ROOT, LEDGER)
+        elif command == "report" and len(sys.argv) == 2:
+            ledger, scanned = verify(ROOT, LEDGER)
+            lines = {item["fingerprint"]: item["line"] for item in scanned}
+            report = json.loads(json.dumps(ledger))
+            for occurrence in report["occurrences"]:
+                occurrence["line"] = lines[occurrence["fingerprint"]]
+            print(json.dumps(report, indent=2, sort_keys=True))
+        elif command == "self-test" and len(sys.argv) == 2:
+            self_test()
+        elif command == "snapshot" and len(sys.argv) == 3:
+            write_json(Path(sys.argv[2]), snapshot(ROOT))
+        else:
+            usage()
+    except VerificationError as error:
+        print(f"Hepta panic debt baseline verification failed: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
+
+
+if __name__ == "__main__":
+    main()

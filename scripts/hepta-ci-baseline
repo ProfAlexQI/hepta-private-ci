@@ -30,12 +30,14 @@ assert_lockfiles_clean() {
 }
 
 run_static() {
-  require_tools bash git jq perl rg shasum
+  require_tools bash git jq perl python3 rg shasum
   cd "$ROOT"
   run_static_gate architecture-budget-verify scripts/hepta-architecture-budget verify
   run_static_gate architecture-budget-self-test scripts/hepta-architecture-budget self-test
   run_static_gate safe-lint-security-verify scripts/hepta-safe-lint-security-baseline verify
   run_static_gate safe-lint-security-self-test scripts/hepta-safe-lint-security-baseline self-test
+  run_static_gate panic-debt-verify scripts/hepta-panic-debt-baseline verify
+  run_static_gate panic-debt-self-test scripts/hepta-panic-debt-baseline self-test
   run_static_gate suffix-ladder-freeze scripts/check-hepta-suffix-ladder-freeze.sh
   run_static_gate test-evidence-matrix scripts/hepta-test-evidence-matrix verify
   run_static_gate test-evidence-matrix-self-test scripts/hepta-test-evidence-matrix self-test
