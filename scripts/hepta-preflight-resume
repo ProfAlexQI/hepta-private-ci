@@ -632,6 +632,7 @@ usage() {
     '' \
     'Runs scripts/hepta-preflight.sh with a durable per-worktree checkpoint.' \
     'A resumed run repeats the interrupted marker, then continues forward.' \
+    'A successful run persists a bound completion receipt; only --reset starts a new candidate.' \
     'Three failures at the same HEAD/checkpoint arm a fail-closed retry fuse by default.' \
     '--import-log is fail-closed disabled until logs carry a verifiable gate-receipt chain.'
 }
@@ -717,7 +718,7 @@ load_state() {
     resume_worktree_id="$(jq -r '.evidence.worktree_id // ""' "$STATE_FILE")"
     resume_last_exit="$(jq -c '.last_exit // null' "$STATE_FILE")"
     case "$resume_status" in
-      running|blocked) ;;
+      running|blocked|complete) ;;
       *)
         echo "invalid Hepta preflight resume state status: $resume_status" >&2
         exit 1
@@ -816,6 +817,11 @@ if [[ "$show_only" != "1" ]]; then
   assert_worktree_clean "before preflight or resume"
 fi
 
+if [[ "$show_only" != "1" && "$resume_status" == "complete" ]]; then
+  echo "[hepta-preflight-resume] already complete for head=$HEAD_SHORT; use --reset to start a new candidate run"
+  exit 0
+fi
+
 prelude_end_line="$({
   awk '$0 == "# hepta-preflight-resume: prelude-end" { print NR; exit }' "$PREFLIGHT"
 })"
@@ -875,6 +881,7 @@ if [[ "$show_only" == "1" ]]; then
   worktree_identity_matches=true
   worktree_clean="$WORKTREE_CLEAN"
   log_matches="$resume_log_matches"
+  completion_evidence_valid=true
   lock_state="none"
   if [[ -d "$state_lock" ]]; then
     lock_state="$(lock_owner_state "$state_lock")"
@@ -934,11 +941,47 @@ if [[ "$show_only" == "1" ]]; then
       fuse_armed=true
       resumable=false
     fi
+    if [[ "$resume_status" == "complete" ]]; then
+      resumable=false
+      if ! jq -e --arg schema "$STATE_SCHEMA" '
+        .schema_version == $schema
+        and .status == "complete"
+        and .attempt >= 1
+        and .failure_streak == 0
+        and .fuse_armed == false
+        and .evidence.worktree_clean == true
+        and (.evidence.log_sha256 | type) == "string"
+        and (.evidence.log_sha256 | test("^[0-9a-f]{64}$"))
+        and (.evidence.log_prefix_sha256 | type) == "string"
+        and .evidence.log_prefix_sha256 == .evidence.log_sha256
+        and (.evidence.log_prefix_bytes | type) == "number"
+        and .evidence.log_prefix_bytes > 0
+        and (.evidence.attempt_log_sha256 | type) == "string"
+        and (.evidence.attempt_log_sha256 | test("^[0-9a-f]{64}$"))
+        and .evidence.failure_fingerprint_sha256 == null
+        and .last_exit == {preflight:0, tee:0, checkpoint:0, combined:0}
+      ' "$STATE_FILE" >/dev/null 2>&1; then
+        completion_evidence_valid=false
+      fi
+    fi
   fi
   # A runner can own the receipt before its first running-state write. Keep
   # even that short no-state window fail-closed in operator-facing status.
   if [[ "$lock_state" == "live" || "$lock_state" == "unknown" || "$lock_state" == "recovering" ]]; then
     resumable=false
+  fi
+  if [[ "$resume_status" == "complete" \
+    && ( "$completion_evidence_valid" != "true" \
+      || "$environment_matches" != "true" \
+      || "$preflight_matches" != "true" \
+      || "$toolchain_matches" != "true" \
+      || "$relevant_environment_matches" != "true" \
+      || "$worktree_state_matches" != "true" \
+      || "$worktree_identity_matches" != "true" \
+      || "$worktree_clean" != "true" \
+      || "$log_matches" != "true" \
+      || "$lock_state" != "none" ) ]]; then
+    display_status="complete_invalid"
   fi
   jq -n \
     --arg status "$display_status" \
@@ -961,6 +1004,7 @@ if [[ "$show_only" == "1" ]]; then
     --argjson worktree_identity_matches "$worktree_identity_matches" \
     --argjson worktree_clean "$worktree_clean" \
     --argjson log_matches "$log_matches" \
+    --argjson completion_evidence_valid "$completion_evidence_valid" \
     --argjson last_exit "${resume_last_exit:-null}" \
     --argjson start_line "$start_line" \
     '{
@@ -985,6 +1029,7 @@ if [[ "$show_only" == "1" ]]; then
       worktree_identity_matches:$worktree_identity_matches,
       worktree_clean:$worktree_clean,
       log_matches:$log_matches,
+      completion_evidence_valid:$completion_evidence_valid,
       last_exit:$last_exit
     }'
   exit 0
@@ -1138,5 +1183,11 @@ fi
 
 assert_lockfiles_clean "after preflight"
 assert_worktree_clean "after preflight"
-rm -f "$STATE_FILE"
-echo "[hepta-preflight-resume] ready head=$HEAD_SHORT checkpoint_cleared=true log=$LOG_FILE"
+complete_marker="$(sed -n 's/^\[hepta-preflight\] //p' "$attempt_log" | tail -n 1)"
+attempt_log_sha256="$(sha256_file "$attempt_log")"
+IFS=$'\t' read -r complete_log_bytes complete_log_sha256 < <(log_binding "$LOG_FILE")
+write_state \
+  "complete" "$complete_marker" "$start_line" "$attempt" "0" \
+  "0" "0" "0" "0" "$complete_log_sha256" "$complete_log_sha256" \
+  "$complete_log_bytes" "$attempt_log_sha256"
+echo "[hepta-preflight-resume] ready head=$HEAD_SHORT status=complete log=$LOG_FILE"

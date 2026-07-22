@@ -36,8 +36,26 @@ while :; do
   fuse_armed="$(jq -r '.fuse_armed' <<<"$show_json")"
 
   if [[ "$status" == "complete" ]]; then
-    echo "[hepta-preflight-supervisor] complete"
-    exit 0
+    if jq -e '
+      .resumable == false
+      and .fuse_armed == false
+      and .lock_state == "none"
+      and .environment_matches == true
+      and .preflight_matches == true
+      and .toolchain_matches == true
+      and .relevant_environment_matches == true
+      and .worktree_state_matches == true
+      and .worktree_identity_matches == true
+      and .worktree_clean == true
+      and .log_matches == true
+      and .completion_evidence_valid == true
+      and .last_exit == {preflight:0, tee:0, checkpoint:0, combined:0}
+    ' >/dev/null <<<"$show_json"; then
+      echo "[hepta-preflight-supervisor] complete"
+      exit 0
+    fi
+    echo "[hepta-preflight-supervisor] invalid completion receipt; refusing automatic retry" >&2
+    exit 22
   fi
 
   if [[ "$fuse_armed" == "true" ]] \

@@ -30,18 +30,29 @@ if [[ "${1:-}" == "--show" ]]; then
     retry)
       attempt_count="$(grep -c '^run$' "$calls" 2>/dev/null || true)"
       if (( attempt_count >= 2 )); then
-        jq -n '{status:"complete",resumable:false,failure_streak:0,fuse_threshold:3,fuse_armed:false,environment_matches:true,relevant_environment_matches:true,worktree_state_matches:true,log_matches:true}'
+        jq -n '{status:"complete",resumable:false,failure_streak:0,fuse_threshold:3,fuse_armed:false,lock_state:"none",environment_matches:true,preflight_matches:true,toolchain_matches:true,relevant_environment_matches:true,worktree_state_matches:true,worktree_identity_matches:true,worktree_clean:true,log_matches:true,completion_evidence_valid:true,last_exit:{preflight:0,tee:0,checkpoint:0,combined:0}}'
       else
         jq -n --argjson streak "$attempt_count" '{status:"blocked",resumable:true,failure_streak:$streak,fuse_threshold:3,fuse_armed:false,environment_matches:true,relevant_environment_matches:true,worktree_state_matches:true,log_matches:true}'
       fi
+      ;;
+    success_once)
+      attempt_count="$(grep -c '^run$' "$calls" 2>/dev/null || true)"
+      if (( attempt_count >= 1 )); then
+        jq -n '{status:"complete",resumable:false,failure_streak:0,fuse_threshold:3,fuse_armed:false,lock_state:"none",environment_matches:true,preflight_matches:true,toolchain_matches:true,relevant_environment_matches:true,worktree_state_matches:true,worktree_identity_matches:true,worktree_clean:true,log_matches:true,completion_evidence_valid:true,last_exit:{preflight:0,tee:0,checkpoint:0,combined:0}}'
+      else
+        jq -n '{status:"fresh",resumable:true,failure_streak:0,fuse_threshold:3,fuse_armed:false,environment_matches:true,relevant_environment_matches:true,worktree_state_matches:true,log_matches:true}'
+      fi
+      ;;
+    invalid_complete)
+      jq -n '{status:"complete",resumable:false,failure_streak:0,fuse_threshold:3,fuse_armed:false,lock_state:"none",environment_matches:false,preflight_matches:true,toolchain_matches:true,relevant_environment_matches:true,worktree_state_matches:true,worktree_identity_matches:true,worktree_clean:true,log_matches:true,completion_evidence_valid:true,last_exit:{preflight:0,tee:0,checkpoint:0,combined:0}}'
       ;;
   esac
   exit 0
 fi
 
-[[ "$mode" == "retry" ]] || exit 70
+[[ "$mode" == "retry" || "$mode" == "success_once" ]] || exit 70
 attempt_count="$(grep -c '^run$' "$calls" 2>/dev/null || true)"
-if (( attempt_count >= 2 )); then
+if [[ "$mode" == "success_once" ]] || (( attempt_count >= 2 )); then
   exit 0
 fi
 exit 42
@@ -74,5 +85,19 @@ env "${supervisor_env[@]}" "$SUPERVISOR" >/dev/null 2>&1 || fused_rc=$?
 printf 'retry\n' >"$mode"
 env "${supervisor_env[@]}" "$SUPERVISOR" >/dev/null
 [[ "$(grep -c '^run$' "$calls")" == "2" ]]
+
+: >"$calls"
+printf 'success_once\n' >"$mode"
+env "${supervisor_env[@]}" "$SUPERVISOR" >/dev/null
+[[ "$(grep -c '^run$' "$calls")" == "1" ]]
+[[ "$(grep -c '^--show$' "$calls")" == "2" ]]
+
+: >"$calls"
+printf 'invalid_complete\n' >"$mode"
+invalid_complete_rc=0
+env "${supervisor_env[@]}" "$SUPERVISOR" >/dev/null 2>&1 || invalid_complete_rc=$?
+[[ "$invalid_complete_rc" == "22" ]]
+[[ "$(grep -c '^--show$' "$calls")" == "1" ]]
+[[ "$(grep -c '^run$' "$calls" 2>/dev/null || true)" == "0" ]]
 
 echo "hepta preflight supervisor self-test passed"
