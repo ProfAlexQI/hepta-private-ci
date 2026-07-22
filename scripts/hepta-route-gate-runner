@@ -51,7 +51,7 @@ validate_registry() {
           and (.compatibility_executor | test("^scripts/[a-z0-9-]+-route-gate-runner$"))
           and (.compatibility_validation_schema | test("^[a-z0-9_]+_v1$"))
           and (.compatibility_error_label | type == "string" and length > 10)
-          and (.source_capture_mode | IN("none", "live_url_min_soak_v1", "live_url_release_bin_min_soak_v1"))
+          and (.source_capture_mode | IN("none", "live_url_min_soak_v1", "live_url_release_bin_min_soak_v1", "spec_source_v1"))
           and (.minimum_long_soak_samples | type == "number" and . >= 0 and floor == .)
           and (.live_expected_arg | IN("expected", "expected_route_count"))
           and (.terminal_coverage_required | type == "boolean")
@@ -64,10 +64,18 @@ validate_registry() {
           else true end)
           and ((.terminal_report_mode // "full_v1") | IN("full_v1", "sha_only_v1"))
           and ((.include_live_route_side_effects // false) | type == "boolean")
-          and (.output_mode | IN("pretty_json", "pretty_json_with_message"))
+          and ((.live_validation_mode // "filter_v1") | IN("filter_v1", "structured_fields_v1"))
+          and (.output_mode | IN("pretty_json", "pretty_json_with_message", "pretty_json_with_stderr_message"))
           and (.native_requirement_min | type == "number" and . >= 1 and floor == .)
           and (.requires_source_contract | type == "boolean")
           and (.requires_pass_message | type == "boolean")
+          and ((.required_receipt_state // "") | IN("", "precondition", "denial", "receipt", "persistence", "retention", "terminal"))
+          and ((.require_report_side_effects_all_false // false) | type == "boolean")
+          and ((.profile_suffix_ladder // []) as $ladder
+            | ($ladder | type) == "array"
+              and (($ladder | length) == 0 or ($ladder | length) == 3)
+              and (($ladder | unique | length) == ($ladder | length))
+              and ($ladder | all(test("^[a-z0-9-]+$"))))
           and (.normalization_remove_fields | type == "array" and length >= 5)
           and ((.normalization_remove_fields | unique | length) == (.normalization_remove_fields | length))
         else false
@@ -78,7 +86,9 @@ validate_registry() {
 
   local all_ids embedded_ids external_registry external_schema compatibility_executor
   local native_requirement_min requires_source_contract requires_pass_message
-  local requires_source_report_sha_field
+  local requires_source_report_sha_field source_capture_mode live_validation_mode
+  local profile_suffix_ladder
+  local required_receipt_state require_report_side_effects_all_false
   embedded_ids="$(jq -r '.families[].specs[]?.id' "$SPEC_FILE")"
   all_ids="$embedded_ids"
   while IFS= read -r family; do
@@ -89,6 +99,11 @@ validate_registry() {
     requires_source_contract="$(jq -r '.requires_source_contract' <<<"$family")"
     requires_pass_message="$(jq -r '.requires_pass_message' <<<"$family")"
     requires_source_report_sha_field="$(jq -r '.include_source_report_sha_field // false' <<<"$family")"
+    source_capture_mode="$(jq -r '.source_capture_mode' <<<"$family")"
+    live_validation_mode="$(jq -r '.live_validation_mode // "filter_v1"' <<<"$family")"
+    profile_suffix_ladder="$(jq -c '.profile_suffix_ladder // []' <<<"$family")"
+    required_receipt_state="$(jq -r '.required_receipt_state // ""' <<<"$family")"
+    require_report_side_effects_all_false="$(jq -r '.require_report_side_effects_all_false // false' <<<"$family")"
     [[ -f "$ROOT/$external_registry" ]] || {
       echo "missing Hepta route gate family registry: $ROOT/$external_registry" >&2
       return 1
@@ -99,29 +114,67 @@ validate_registry() {
       --argjson native_requirement_min "$native_requirement_min" \
       --argjson requires_source_contract "$requires_source_contract" \
       --argjson requires_pass_message "$requires_pass_message" \
-      --argjson requires_source_report_sha_field "$requires_source_report_sha_field" '
+      --argjson requires_source_report_sha_field "$requires_source_report_sha_field" \
+      --arg source_capture_mode "$source_capture_mode" \
+      --arg live_validation_mode "$live_validation_mode" \
+      --argjson profile_suffix_ladder "$profile_suffix_ladder" \
+      --arg required_receipt_state "$required_receipt_state" \
+      --argjson require_report_side_effects_all_false "$require_report_side_effects_all_false" '
         .schema_version == $schema
         and .executor == $executor
         and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
         and (.specs | length) == 3
         and ((.specs | map(.id) | unique | length) == 3)
+        and (if ($profile_suffix_ladder | length) > 0 then
+          (.specs | to_entries | all(
+            . as $entry | $entry.value.id | endswith($profile_suffix_ladder[$entry.key])
+          ))
+        else true end)
         and (.specs | all(
           (.id | test("^[a-z0-9-]+$"))
           and .gate_spec.method == "GET"
           and .gate_spec.pattern == ("/api/" + .id)
           and .gate_spec.source_command == ("/" + .id + " --json")
           and .gate_spec.capability == .id
-          and (.gate_spec.receipt_state | IN("precondition", "denial", "receipt", "persistence", "retention", "terminal"))
+          and (if $required_receipt_state == "" then
+            (.gate_spec.receipt_state | IN("precondition", "denial", "receipt", "persistence", "retention", "terminal"))
+          else .gate_spec.receipt_state == $required_receipt_state end)
           and (.gate_spec.side_effect_boundary | contains("read-only"))
           and (.wrapper | test("^scripts/[a-z0-9-]+-route-gate\\.sh$"))
           and (.native_requirements | type == "array" and length >= $native_requirement_min)
           and (.focused_test | test("^[a-z0-9_]+$"))
           and (.test_log_stem | test("^[a-z0-9-]+$"))
-          and (.live_validation_filter | type == "string" and length > 100)
+          and (
+            if $live_validation_mode == "structured_fields_v1" then
+              (.live_validation.true_fields | type == "array")
+              and (.live_validation.false_fields | type == "array")
+              and (.live_validation.zero_fields | type == "array")
+              and (.live_validation.number_fields | type == "object")
+              and (.live_validation.array_lengths | type == "object")
+            else
+              (.live_validation_filter | type == "string" and length > 100)
+            end
+          )
           and (.report_fields | type == "object")
+          and (if $require_report_side_effects_all_false then
+            (.report_fields.side_effects | type == "object")
+            and (.report_fields.side_effects | to_entries | all(.value == false))
+          else true end)
           and (.baseline_normalized_output_sha256 | test("^[0-9a-f]{64}$"))
           and (
-            if $requires_source_contract then
+            if $requires_source_contract and $source_capture_mode == "spec_source_v1" then
+              (.source.mode | IN("file", "report"))
+              and (.source.path | test("^scripts/[a-z0-9-]+(-gate-specs-v1\\.json|-gate\\.sh)$"))
+              and (.source.hash_field | test("^[a-z0-9_]+_sha256$"))
+              and (.source.requirements | type == "array")
+              and (
+                if .source.mode == "report" then
+                  (.source.capture_label | test("^[a-z0-9-]+-gate$"))
+                  and (.source.expected_gate | test("^[a-z0-9_]+_gate$"))
+                  and (.source.ready_field | test("^[a-z0-9_]+_ready$"))
+                else true end
+              )
+            elif $requires_source_contract then
               (.source.capture_label | test("^[a-z0-9-]+-gate$"))
               and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
               and (.source.validation_filter | type == "string" and length > 100)
@@ -134,7 +187,7 @@ validate_registry() {
           )
           and (
             if $requires_source_report_sha_field then
-              (.source_sha_field | test("^source_[a-z_]+_gate_sha256$"))
+              ((.source_sha_field // .source.hash_field) | test("^source_[a-z_]+_gate_sha256$"))
             else true end
           )
         ))
@@ -299,8 +352,10 @@ else
   include_live_route_side_effects="$(jq -r '.include_live_route_side_effects // false' <<<"$family")"
   source_capture_mode="$(jq -r '.source_capture_mode' <<<"$family")"
   live_expected_arg="$(jq -r '.live_expected_arg' <<<"$family")"
+  live_validation_mode="$(jq -r '.live_validation_mode // "filter_v1"' <<<"$family")"
 fi
 
+source_content_sha256=""
 case "$source_capture_mode" in
   live_url_min_soak_v1)
     source_json="$(
@@ -321,8 +376,43 @@ case "$source_capture_mode" in
           "$(jq -r '.source.script' <<<"$spec")"
     )"
     ;;
+  spec_source_v1)
+    source_spec="$(jq -c '.source' <<<"$spec")"
+    source_path="$(jq -r '.path' <<<"$source_spec")"
+    if [[ "$(jq -r '.mode' <<<"$source_spec")" == "file" ]]; then
+      while IFS= read -r needle; do
+        require_source_text "$source_path" "$needle" "$id source invariant"
+      done < <(jq -r '.requirements[]' <<<"$source_spec")
+      source_content_sha256="$(sha256_file "$source_path")"
+    else
+      source_min_samples="${HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES:-24}"
+      [[ "$source_min_samples" =~ ^[0-9]+$ && "$source_min_samples" -ge 24 ]] || {
+        echo "HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES must be an unsigned integer of at least 24" >&2
+        exit 2
+      }
+      source_json="$(
+        capture_json_report "$(jq -r '.capture_label' <<<"$source_spec")" \
+          env HEPTA_LIVE_URL="$BASE_URL" HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$source_min_samples" \
+            HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS="${HEPTA_TERMINAL_SOAK_INTERVAL_SECONDS:-0}" \
+            HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_OBSERVATION_INTERVAL_SECONDS:-0}" \
+            HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS="${HEPTA_LONG_SOAK_FRESHNESS_OBSERVATION_INTERVAL_SECONDS:-0}" \
+            "$source_path"
+      )"
+      jq -e --argjson source_spec "$source_spec" '
+        . as $source
+        | .runtime == "hepta"
+          and .status == "ready"
+          and .gate == $source_spec.expected_gate
+          and .[$source_spec.ready_field] == true
+          and (.side_effects | type) == "object"
+          and (.side_effects | to_entries | all(.value == false))
+      ' >/dev/null <<<"$source_json"
+      source_content_sha256="$(printf '%s' "$source_json" | shasum -a 256 | awk '{print $1}')"
+    fi
+    ;;
 esac
-if [[ "$source_capture_mode" != "none" ]]; then
+if [[ "$source_capture_mode" == "live_url_min_soak_v1" || \
+  "$source_capture_mode" == "live_url_release_bin_min_soak_v1" ]]; then
   jq -e "$(jq -r '.source.validation_filter' <<<"$spec")" >/dev/null <<<"$source_json"
 fi
 
@@ -379,6 +469,23 @@ if [[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]]; then
           $actual.allowed_next_actions[0] as $next
           | ($validation.next_action_fields | to_entries | all(. as $item | $next[$item.key] == $item.value))
         )
+        and (.side_effects | to_entries | all(.value == false))
+    ' >/dev/null <<<"$live_json"
+  elif [[ "$live_validation_mode" == "structured_fields_v1" ]]; then
+    validation="$(jq -c '.live_validation' <<<"$spec")"
+    jq -e --argjson expected "$EXPECTED_ROUTE_COUNT" --argjson validation "$validation" '
+      . as $actual
+      | .status == "ready"
+        and .route_count == $expected
+        and .implemented_route_count == $expected
+        and .missing_route_count == 0
+        and .route_count_source_command_accepted == true
+        and ($validation.true_fields | all(. as $key | $actual[$key] == true))
+        and ($validation.false_fields | all(. as $key | $actual[$key] == false))
+        and ($validation.zero_fields | all(. as $key | $actual[$key] == 0))
+        and ($validation.number_fields | to_entries | all(. as $item | $actual[$item.key] == $item.value))
+        and ($validation.array_lengths | to_entries | all(. as $item | ($actual[$item.key] | length) == $item.value))
+        and (.side_effects | type == "object")
         and (.side_effects | to_entries | all(.value == false))
     ' >/dev/null <<<"$live_json"
   else
@@ -440,8 +547,12 @@ fi
 source_report_sha_field=""
 source_report_sha256=""
 if [[ "$include_source_report_sha_field" == "true" ]]; then
-  source_report_sha_field="$(jq -r '.source_sha_field' <<<"$spec")"
-  source_report_sha256="$(printf '%s' "$source_json" | shasum -a 256 | awk '{print $1}')"
+  source_report_sha_field="$(jq -r '.source_sha_field // .source.hash_field' <<<"$spec")"
+  if [[ "$source_capture_mode" == "spec_source_v1" ]]; then
+    source_report_sha256="$source_content_sha256"
+  else
+    source_report_sha256="$(printf '%s' "$source_json" | shasum -a 256 | awk '{print $1}')"
+  fi
   volatile_report_fields="$(
     jq -cn \
       --argjson volatile "$volatile_report_fields" \
@@ -461,6 +572,7 @@ report="$(
     --arg source_report_sha_field "$source_report_sha_field" \
     --arg source_report_sha256 "$source_report_sha256" \
     --arg live_route_status "$live_route_status" \
+    --arg source_capture_mode "$source_capture_mode" \
     --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
     --argjson live_route_count "$live_route_count" \
     --argjson live_missing_route_count "$live_missing_route_count" \
@@ -505,6 +617,14 @@ report="$(
       else . end
     + $report_fields
     + $terminal_report_fields
+    | if $source_capture_mode == "spec_source_v1" then
+        .native_gateway_sha256 = $native_gateway_sha256
+        | .focused_test_log = $focused_test_log
+        | .live_endpoint_checked = $live_endpoint_checked
+        | .live_route_status = (if $live_report_nulls then $live_route_status_json else $live_route_status end)
+        | .live_route_count = (if $live_report_nulls then $live_route_count_json else $live_route_count end)
+        | .live_missing_route_count = (if $live_report_nulls then $live_missing_route_count_json else $live_missing_route_count end)
+      else . end
     | if $include_source_report_sha_field then
         .[$source_report_sha_field] = $source_report_sha256
       else . end
@@ -532,5 +652,7 @@ else
   jq . <<<"$report"
   if [[ "$output_mode" == "pretty_json_with_message" ]]; then
     echo "$(jq -r '.pass_message' <<<"$spec")"
+  elif [[ "$output_mode" == "pretty_json_with_stderr_message" ]]; then
+    jq -r '.pass_message' <<<"$spec" >&2
   fi
 fi

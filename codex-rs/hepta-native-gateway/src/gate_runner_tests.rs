@@ -699,6 +699,40 @@ fn parameterized_artifact_download_install_affordance_result_receipt_route_fixtu
         .expect("parameterized artifact-download/install-affordance result-receipt route family");
     assert_eq!(fixtures.len(), 3);
 
+    let unified_fixture_path = repo_root().join("scripts/hepta-route-gate-specs-v1.json");
+    let unified_manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&unified_fixture_path)
+            .with_context(|| format!("failed to read {}", unified_fixture_path.display()))
+            .expect("unified route gate family registry"),
+    )
+    .expect("unified route gate family registry value");
+    let unified_family = unified_manifest["families"]
+        .as_array()
+        .expect("unified route gate families")
+        .iter()
+        .find(|family| family["id"] == "artifact_download_install_affordance_result_receipt_v1")
+        .expect("artifact download/install affordance family projected into unified registry");
+    assert_eq!(
+        unified_family["execution_profile"],
+        "native_requirements_report_v1"
+    );
+    assert_eq!(unified_family["source_capture_mode"], "spec_source_v1");
+    assert_eq!(
+        unified_family["live_validation_mode"],
+        "structured_fields_v1"
+    );
+    assert_eq!(unified_family["include_source_report_sha_field"], true);
+    assert_eq!(unified_family["include_expected_route_count"], false);
+
+    let compatibility_runner_path = repo_root().join(
+        "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+    );
+    let compatibility_runner = fs::read_to_string(&compatibility_runner_path)
+        .with_context(|| format!("failed to read {}", compatibility_runner_path.display()))
+        .expect("artifact download/install affordance compatibility route runner");
+    assert!(compatibility_runner.lines().count() <= 40);
+    assert!(compatibility_runner.contains("scripts/hepta-route-gate-runner"));
+
     for fixture in fixtures {
         let id = fixture["id"]
             .as_str()

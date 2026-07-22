@@ -540,6 +540,46 @@
         "live_missing_route_count"
       ],
       "side_effect_boundary": "validated release-publication result-receipt source report plus static native route verification, focused offline tests, and terminal coverage; optional live GET validation; never publishes, installs, restarts, mutates active binaries, or derives activation authority"
+    },
+    {
+      "id": "artifact_download_install_affordance_result_receipt_v1",
+      "execution_profile": "native_requirements_report_v1",
+      "spec_registry": "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json",
+      "spec_schema_version": "hepta_artifact_download_install_affordance_result_receipt_route_gate_specs_v1",
+      "compatibility_executor": "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner",
+      "compatibility_validation_schema": "hepta_artifact_download_install_affordance_result_receipt_route_gate_specs_validation_v1",
+      "compatibility_error_label": "artifact download/install affordance result-receipt",
+      "profile_suffix_ladder": [
+        "replay-idempotency-denial",
+        "ordering-monotonicity-denial",
+        "cancellation-supersession-denial"
+      ],
+      "source_capture_mode": "spec_source_v1",
+      "minimum_long_soak_samples": 0,
+      "live_expected_arg": "expected",
+      "live_validation_mode": "structured_fields_v1",
+      "terminal_coverage_required": true,
+      "include_route_gate_ready": false,
+      "include_source_report_sha_field": true,
+      "include_expected_route_count": false,
+      "terminal_report_mode": "sha_only_v1",
+      "output_mode": "pretty_json_with_stderr_message",
+      "native_requirement_min": 7,
+      "requires_source_contract": true,
+      "requires_pass_message": true,
+      "required_receipt_state": "terminal",
+      "require_report_side_effects_all_false": true,
+      "normalization_remove_fields": [
+        "base_url",
+        "native_gateway_sha256",
+        "focused_test_log",
+        "terminal_coverage_sha256",
+        "live_endpoint_checked",
+        "live_route_status",
+        "live_route_count",
+        "live_missing_route_count"
+      ],
+      "side_effect_boundary": "validated static or report-only artifact download/install affordance result-receipt source evidence plus static native route verification, focused offline tests, and terminal coverage; optional live GET validation; never downloads, installs, restarts, mutates active binaries, publishes, or derives activation authority"
     }
   ]
 }

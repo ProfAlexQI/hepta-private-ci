@@ -96,12 +96,12 @@ verify() {
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_TOTAL_BYTES:-134217728' scripts/lib/hepta-json-report-capture.sh
   rg -q 'HEPTA_JSON_REPORT_CAPTURE_MAX_REPORT_BYTES:-2097152' scripts/lib/hepta-json-report-capture.sh
   [[ -x scripts/hepta-route-gate-runner ]]
-  verify_file_max scripts/hepta-route-gate-runner 550
+  verify_file_max scripts/hepta-route-gate-runner 670
   verify_file_max scripts/hepta-route-gate-specs-v1.json 1000
   scripts/hepta-route-gate-runner --validate >/dev/null
   route_gate_family_count="$(jq '.families | length' scripts/hepta-route-gate-specs-v1.json)"
-  if [[ "$route_gate_family_count" != 5 ]]; then
-    echo "architecture route-gate family budget mismatch: expected 5, got $route_gate_family_count" >&2
+  if [[ "$route_gate_family_count" != 6 ]]; then
+    echo "architecture route-gate family budget mismatch: expected 6, got $route_gate_family_count" >&2
     return 1
   fi
   [[ "$(jq '.families[0].specs | length' scripts/hepta-route-gate-specs-v1.json)" == 3 ]]
@@ -122,7 +122,7 @@ verify() {
     )
   ' scripts/hepta-route-gate-specs-v1.json >/dev/null
   [[ -x scripts/hepta-route-gate-family-registry-self-test ]]
-  verify_file_max scripts/hepta-route-gate-family-registry-self-test 220
+  verify_file_max scripts/hepta-route-gate-family-registry-self-test 270
   scripts/hepta-route-gate-family-registry-self-test --schema >/dev/null
   for route_gate_id in \
     hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-replay-idempotency-denial \
@@ -201,9 +201,25 @@ verify() {
       "scripts/${artifact_download_install_affordance_result_receipt_gate_id}-gate.sh"
   done
   [[ -x scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner ]]
-  verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner 240
+  verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner 40
   verify_file_max scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json 1200
   scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner --validate >/dev/null
+  rg -Fq 'scripts/hepta-route-gate-runner' \
+    scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner
+  jq -e '
+    any(.families[];
+      .id == "artifact_download_install_affordance_result_receipt_v1"
+      and .execution_profile == "native_requirements_report_v1"
+      and .spec_registry == "scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json"
+      and .profile_suffix_ladder == ["replay-idempotency-denial", "ordering-monotonicity-denial", "cancellation-supersession-denial"]
+      and .source_capture_mode == "spec_source_v1"
+      and .live_validation_mode == "structured_fields_v1"
+      and .include_source_report_sha_field == true
+      and .include_expected_route_count == false
+      and .required_receipt_state == "terminal"
+      and .require_report_side_effects_all_false == true
+    )
+  ' scripts/hepta-route-gate-specs-v1.json >/dev/null
   [[ "$(jq '.specs | length' scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json)" == 3 ]]
   while IFS= read -r artifact_download_install_affordance_result_receipt_route_gate_wrapper
   do
