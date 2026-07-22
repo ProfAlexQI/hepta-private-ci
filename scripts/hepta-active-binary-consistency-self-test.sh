@@ -48,16 +48,25 @@ fixture_pid=$!
 report="$($ROOT/scripts/hepta-active-binary-consistency-gate --pid "$fixture_pid" --installed-bin "$installed_bin" --manifest "$manifest" --expected-source-commit "$source_commit")"
 jq -e '
   .status == "ready"
+  and .status_scope == "deployment_consistency_gate"
+  and .ready == true
   and .contract_valid == true
   and .locally_executable == true
   and .integration_verified == true
-  and .live_enabled == true
-  and .production_ready == true
+  and .active_binary_consistent == true
+  and .deployment_consistent == true
+  and .controlled_live == false
+  and .live_enabled == false
+  and .production_ready == false
   and .manifest_source_preflight_bound == true
   and .source_commit_matches == true
   and .installed_manifest_sha_match == true
   and .active_installed_sha_match == true
   and .active_installed_manifest_sha_match == true
+  and .truth_semantics.highest_verified_level == "deployment_consistent"
+  and .truth_semantics.ready_is_gate_scoped == true
+  and .truth_semantics.active_process_is_not_controlled_live_evidence == true
+  and .truth_semantics.deployment_consistency_is_not_production_readiness == true
   and (.failure_reasons | length) == 0
 ' >/dev/null <<<"$report"
 
@@ -71,9 +80,13 @@ jq -e '
   .contract_valid == true
   and .locally_executable == true
   and .integration_verified == false
-  and .live_enabled == true
+  and .active_binary_consistent == true
+  and .deployment_consistent == false
+  and .controlled_live == false
+  and .live_enabled == false
   and .production_ready == false
   and .active_installed_manifest_sha_match == true
+  and .truth_semantics.highest_verified_level == "active_binary_consistent"
   and (.failure_reasons | index("active_manifest_not_source_preflight_bound")) != null
   and (.failure_reasons | index("active_source_commit_mismatch")) != null
 ' >/dev/null <<<"$legacy_report"
@@ -103,6 +116,8 @@ if installed_drift_report="$($ROOT/scripts/hepta-active-binary-consistency-gate 
 fi
 jq -e '
   .production_ready == false
+  and .active_binary_consistent == false
+  and .deployment_consistent == false
   and .installed_manifest_sha_match == false
   and (.failure_reasons | index("installed_manifest_sha_mismatch")) != null
 ' >/dev/null <<<"$installed_drift_report"
@@ -120,6 +135,9 @@ fi
 jq -e '
   .production_ready == false
   and .integration_verified == true
+  and .active_binary_consistent == false
+  and .deployment_consistent == false
+  and .truth_semantics.highest_verified_level == "integration_verified"
   and .active_installed_sha_match == false
   and (.failure_reasons | index("active_installed_sha_mismatch")) != null
 ' >/dev/null <<<"$active_drift_report"

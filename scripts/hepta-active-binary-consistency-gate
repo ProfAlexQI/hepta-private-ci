@@ -123,16 +123,25 @@ integration_verified=false
 if [[ "$contract_valid" == "true" && "$manifest_bound" == "true" && "$source_commit_matches" == "true" && "$installed_manifest_sha_match" == "true" ]]; then
   integration_verified=true
 fi
-live_enabled=true
-production_ready=false
-if [[ "$(jq 'length' <<<"$failure_reasons")" == "0" ]]; then
-  production_ready=true
+active_binary_consistent=false
+if [[ "$installed_manifest_sha_match" == "true" && "$active_installed_sha_match" == "true" ]]; then
+  active_binary_consistent=true
 fi
+deployment_consistent=false
+if [[ "$integration_verified" == "true" && "$active_binary_consistent" == "true" ]]; then
+  deployment_consistent=true
+fi
+controlled_live=false
+live_enabled=false
+production_ready=false
 
 jq -cn \
   --argjson contract_valid "$contract_valid" \
   --argjson locally_executable "$locally_executable" \
   --argjson integration_verified "$integration_verified" \
+  --argjson active_binary_consistent "$active_binary_consistent" \
+  --argjson deployment_consistent "$deployment_consistent" \
+  --argjson controlled_live "$controlled_live" \
   --argjson live_enabled "$live_enabled" \
   --argjson production_ready "$production_ready" \
   --arg pid "$pid" \
@@ -151,11 +160,15 @@ jq -cn \
   --argjson active_installed_sha_match "$active_installed_sha_match" \
   --argjson failure_reasons "$failure_reasons" \
   '{
-    status:(if $production_ready then "ready" else "blocked" end),
-    ready:$production_ready,
+    status:(if $deployment_consistent then "ready" else "blocked" end),
+    status_scope:"deployment_consistency_gate",
+    ready:$deployment_consistent,
     contract_valid:$contract_valid,
     locally_executable:$locally_executable,
     integration_verified:$integration_verified,
+    active_binary_consistent:$active_binary_consistent,
+    deployment_consistent:$deployment_consistent,
+    controlled_live:$controlled_live,
     live_enabled:$live_enabled,
     production_ready:$production_ready,
     pid:($pid | tonumber),
@@ -173,7 +186,21 @@ jq -cn \
     installed_manifest_sha_match:$installed_manifest_sha_match,
     active_installed_sha_match:$active_installed_sha_match,
     active_installed_manifest_sha_match:($installed_manifest_sha_match and $active_installed_sha_match),
+    truth_semantics:{
+      highest_verified_level:(
+        if $deployment_consistent then "deployment_consistent"
+        elif $active_binary_consistent then "active_binary_consistent"
+        elif $integration_verified then "integration_verified"
+        elif $locally_executable then "locally_executed"
+        elif $contract_valid then "static_contract"
+        else "configured_or_capable"
+        end
+      ),
+      ready_is_gate_scoped:true,
+      active_process_is_not_controlled_live_evidence:true,
+      deployment_consistency_is_not_production_readiness:true
+    },
     failure_reasons:$failure_reasons
   }'
 
-[[ "$production_ready" == "true" ]]
+[[ "$deployment_consistent" == "true" ]]
