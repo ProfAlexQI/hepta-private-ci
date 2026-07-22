@@ -340,7 +340,7 @@ jq -n \
       blocked_fixture_count:$script_gate.blocked_scoped_production_durable_memory_write_dry_run_execution_result_receipt_fixture_count,
       denied_count:$script_gate.denied_by_scoped_production_durable_memory_write_dry_run_execution_result_receipt_boundary_count
     },
-    live_route_summary:if $require_live_endpoint == 1 then {
+    live_route_summary:(if $require_live_endpoint == 1 then {
       status:$live_route.status,
       route_count:$live_route.route_count,
       implemented_route_count:$live_route.implemented_route_count,
@@ -348,7 +348,7 @@ jq -n \
       dry_run_execution_result_receipt_persisted:$live_route.dry_run_execution_result_receipt_persisted,
       dry_run_execution_executed:$live_route.dry_run_execution_executed,
       production_durable_write:$live_route.production_durable_memory_store_write_performed
-    } else null end,
+    } else null end),
     terminal_coverage_summary:{
       required_marker_count:$terminal_coverage.required_marker_count,
       present_required_marker_count:$terminal_coverage.present_required_marker_count,

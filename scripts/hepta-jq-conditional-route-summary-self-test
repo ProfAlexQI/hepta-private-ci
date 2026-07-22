@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+fail() {
+  printf 'hepta-jq-conditional-route-summary-self-test: FAIL: %s\n' "$1" >&2
+  exit 1
+}
+
+command -v jq >/dev/null 2>&1 || fail 'jq is required'
+command -v rg >/dev/null 2>&1 || fail 'rg is required'
+
+sources=(
+  scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-boundary-route-gate.sh
+  scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-receipt-boundary-route-gate.sh
+  scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-envelope-boundary-route-gate.sh
+  scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary-route-gate.sh
+)
+ready_fields=(
+  scoped_production_durable_memory_write_operator_packet_acceptance_route_gate_ready
+  scoped_production_durable_memory_write_operator_packet_acceptance_receipt_route_gate_ready
+  scoped_production_durable_memory_write_dry_run_execution_envelope_route_gate_ready
+  scoped_production_durable_memory_write_dry_run_execution_result_receipt_route_gate_ready
+)
+
+extract_report_filter() {
+  awk '
+    index($0, "--argjson terminal_coverage ") == 3 {
+      found_terminal_coverage = 1
+      next
+    }
+    found_terminal_coverage && !found_filter {
+      if ($0 != "  \047{") {
+        exit 2
+      }
+      print "{"
+      found_filter = 1
+      next
+    }
+    found_filter && $0 == "  }\047" {
+      print "}"
+      found_end = 1
+      exit
+    }
+    found_filter {
+      print
+    }
+    END {
+      if (!found_end) {
+        exit 3
+      }
+    }
+  ' "$1"
+}
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-jq-conditional-route-summary.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+
+unparenthesized="$({
+  rg -n \
+    --glob '*.sh' \
+    --glob '*.jq' \
+    '^[[:space:]]*[[:alnum:]_]+:[[:space:]]*if[[:space:]]' \
+    "$ROOT/scripts" || true
+})"
+[[ -z "$unparenthesized" ]] \
+  || fail "unparenthesized jq object conditional found: $unparenthesized"
+
+terminal_coverage_fixture='{"required_marker_count":4,"present_required_marker_count":4,"missing_required_marker_count":0}'
+zero_hash='0000000000000000000000000000000000000000000000000000000000000000'
+
+for index in "${!sources[@]}"; do
+  source_path="$ROOT/${sources[$index]}"
+  filter_path="$tmp/report-$index.jq"
+  output_path="$tmp/report-$index.json"
+
+  [[ -f "$source_path" ]] || fail "missing route gate: ${sources[$index]}"
+  extract_report_filter "$source_path" >"$filter_path" \
+    || fail "could not extract final jq report filter: ${sources[$index]}"
+
+  jq -n \
+    --arg product Hepta \
+    --arg runtime hepta \
+    --arg gate fixture_gate \
+    --arg endpoint /fixture \
+    --arg source_command '/fixture --json' \
+    --arg test_log_sha256 "$zero_hash" \
+    --arg script_gate_sha256 "$zero_hash" \
+    --arg live_route_sha256 "$zero_hash" \
+    --arg terminal_coverage_sha256 "$zero_hash" \
+    --argjson require_live_endpoint 0 \
+    --argjson expected_route_count 1 \
+    --argjson script_gate '{"status":"ready"}' \
+    --argjson live_route '{}' \
+    --argjson terminal_coverage "$terminal_coverage_fixture" \
+    -f "$filter_path" >"$output_path" \
+    || fail "jq rejected final report filter: ${sources[$index]}"
+
+  jq -e --arg ready_field "${ready_fields[$index]}" '
+    .product == "Hepta"
+    and .runtime == "hepta"
+    and .status == "ready"
+    and .gate == "fixture_gate"
+    and .expected_route_count == 1
+    and .require_live_endpoint == 0
+    and .source_text_verified == true
+    and .focused_rust_test_verified == true
+    and .script_gate_verified == true
+    and .live_endpoint_verified == false
+    and .terminal_coverage_verified == true
+    and .[$ready_field] == true
+    and .live_route_summary == null
+    and .terminal_coverage_summary == {
+      required_marker_count:4,
+      present_required_marker_count:4,
+      missing_required_marker_count:0
+    }
+  ' "$output_path" >/dev/null \
+    || fail "non-live report shape drifted: ${sources[$index]}"
+done
+
+negative_fixture="$tmp/unparenthesized-object-conditional.jq"
+printf '%s\n' '{live_route_summary:if true then {} else null end}' >"$negative_fixture"
+if jq -n -f "$negative_fixture" >/dev/null 2>&1; then
+  fail 'jq accepted the unparenthesized object conditional negative fixture'
+fi
+
+printf '{"schema_version":"hepta_jq_conditional_route_summary_self_test_v1","status":"ready","compiled_report_filter_count":%d,"non_live_shape_fixture_count":%d,"negative_fixture_count":1,"unparenthesized_object_conditional_count":0}\n' \
+  "${#sources[@]}" "${#sources[@]}"
+echo 'hepta jq conditional route summary self-test passed'

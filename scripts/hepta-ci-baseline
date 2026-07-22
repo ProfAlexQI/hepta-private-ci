@@ -39,6 +39,7 @@ run_static() {
   run_static_gate test-evidence-matrix-self-test scripts/hepta-test-evidence-matrix self-test
   run_static_gate terminal-coverage-inventory scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
   run_static_gate terminal-coverage-diagnostic scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
+  run_static_gate jq-conditional-route-summary scripts/hepta-jq-conditional-route-summary-self-test
   run_static_gate runtime-export-source-set scripts/hepta-runtime-crate-root-source-set-self-test
   run_static_gate immutable-release-provenance scripts/hepta-immutable-release-tree self-test
   run_static_gate active-binary-consistency scripts/hepta-active-binary-consistency-self-test.sh
