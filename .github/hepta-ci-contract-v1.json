@@ -58,6 +58,16 @@
       "cross_platform_promotion": false
     }
   },
+  "safe_lint_security_baseline": {
+    "capability_version": 1,
+    "contract": "scripts/hepta-safe-lint-security-baseline-v1.json",
+    "configured_capability": "supported",
+    "local_execution_evidence": "configured_not_verified",
+    "ci_execution_evidence": "configured_not_verified",
+    "security_findings": "not_assessed",
+    "ci_job": "rust-backend",
+    "entrypoint": "scripts/hepta-safe-lint-security-baseline run"
+  },
   "full_workflow": {
     "path": ".github/workflows/hepta-full-preflight.yml",
     "allowed_events": [

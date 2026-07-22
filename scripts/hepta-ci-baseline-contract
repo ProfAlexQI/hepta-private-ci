@@ -84,6 +84,16 @@ verify_contract() {
         cross_platform_promotion:false
       }
     }
+    and .safe_lint_security_baseline == {
+      capability_version:1,
+      contract:"scripts/hepta-safe-lint-security-baseline-v1.json",
+      configured_capability:"supported",
+      local_execution_evidence:"configured_not_verified",
+      ci_execution_evidence:"configured_not_verified",
+      security_findings:"not_assessed",
+      ci_job:"rust-backend",
+      entrypoint:"scripts/hepta-safe-lint-security-baseline run"
+    }
     and .upstream_intake == {
       url:"https://github.com/openai/codex.git",
       materialize_command:"scripts/hepta-ci-materialize-upstream-intake materialize",
@@ -146,6 +156,8 @@ verify_contract() {
     require_literal "$baseline" "run: $command_name" "baseline command $command_name"
   done < <(jq -er '.baseline_workflow.required_commands[]' "$CONTRACT")
   require_literal "$baseline" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
+  require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-safe-lint-security-baseline" run' "safe lint/security baseline execution"
   require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
   require_literal_count "$baseline" "          persist-credentials: false" 5 "checkout credential isolation"
   require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
@@ -204,6 +216,7 @@ self_test() (
   cp "$CONTRACT" "$tmp/contract.json"
   cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
+  cp "$ROOT/scripts/hepta-ci-baseline" "$tmp/scripts/hepta-ci-baseline"
   cp "$ROOT/scripts/hepta-ci-baseline-contract" "$tmp/scripts/hepta-ci-baseline-contract"
   cp "$ROOT/scripts/hepta-ci-materialize-upstream-intake" "$tmp/scripts/hepta-ci-materialize-upstream-intake"
 
@@ -239,6 +252,12 @@ self_test() (
     "$tmp/contract.json" >"$tmp/contract-mutated.json"
   if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted a different upstream intake SHA" >&2
+    return 1
+  fi
+  jq '.safe_lint_security_baseline.ci_execution_evidence = "verified"' \
+    "$tmp/contract.json" >"$tmp/contract-mutated.json"
+  if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted false safe lint CI evidence promotion" >&2
     return 1
   fi
 
@@ -324,7 +343,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,different_upstream_url_ref_sha_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 
 [[ $# -eq 1 ]] || usage

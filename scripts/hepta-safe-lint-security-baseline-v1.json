@@ -1,0 +1,102 @@
+{
+  "schema": "hepta_safe_lint_security_baseline_capability_v1",
+  "capability": {
+    "id": "hepta_main_backend_safe_lint_security_baseline",
+    "version": 1,
+    "status": "ready"
+  },
+  "configured_capability": {
+    "status": "supported",
+    "is_execution_evidence": false
+  },
+  "lint": {
+    "status": "supported",
+    "tool": "cargo-clippy",
+    "selected_packages": [
+      "hepta-cli"
+    ],
+    "dependency_mode": "compiled_not_linted",
+    "command": [
+      "rustup",
+      "run",
+      "1.93.0",
+      "cargo",
+      "clippy",
+      "--locked",
+      "--offline",
+      "--manifest-path",
+      "codex-rs/Cargo.toml",
+      "--all-targets",
+      "--no-deps",
+      "-p",
+      "hepta-cli",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "safety": {
+      "locked": true,
+      "offline": true,
+      "no_live": true,
+      "no_source_or_lockfile_write": true,
+      "build_artifact_write": true,
+      "no_dependency_install": true
+    }
+  },
+  "bindings": {
+    "rust_toolchain_path": "codex-rs/rust-toolchain.toml",
+    "rust_toolchain_sha256": "3e0fa7308a423309995753182d075dfff3e4bd6b891871c3f3b947f3e97699be",
+    "cargo_lock_path": "codex-rs/Cargo.lock",
+    "cargo_lock_sha256": "0cbf16c0668168a51c4fc9b083a0d39d3e898b0dea5c91f5c00eda04f334e098",
+    "workspace_manifest_path": "codex-rs/Cargo.toml",
+    "workspace_manifest_sha256": "fb922c1e9c5a172505213f8040b82e6f927d01a3974104581e74538a0da7ea3a",
+    "package_manifest_path": "codex-rs/hepta-cli/Cargo.toml",
+    "package_manifest_sha256": "7b3c9883e60a335070273fb3a653aebb4c3e7aba7be9bc224bdc52a66f5300d3"
+  },
+  "toolchain": {
+    "channel": "1.93.0",
+    "required_components": [
+      "clippy"
+    ]
+  },
+  "evidence": {
+    "receipt_schema": "hepta_safe_lint_security_execution_receipt_v1",
+    "receipt_verifier": "scripts/hepta-safe-lint-security-baseline verify-receipt",
+    "local_execution": {
+      "status": "configured_not_verified",
+      "requires_clean_source": true,
+      "requires_main_backend_lane_lock": true
+    },
+    "ci_execution": {
+      "status": "configured_not_verified",
+      "workflow": ".github/workflows/hepta-ci.yml",
+      "job": "rust-backend",
+      "entrypoint": "scripts/hepta-safe-lint-security-baseline run"
+    },
+    "promotion": {
+      "configured_capability_is_execution_evidence": false,
+      "successful_bound_receipt_required": true,
+      "lint_success_is_security_findings_evidence": false
+    }
+  },
+  "security": {
+    "dependency_vulnerability_scan": {
+      "status": "unsupported",
+      "tools": [
+        {
+          "id": "cargo-audit",
+          "status": "unavailable_not_pinned"
+        },
+        {
+          "id": "cargo-deny",
+          "status": "unavailable_not_pinned"
+        }
+      ],
+      "reason": "no pinned repository-native vulnerability scanner or offline advisory database is available"
+    },
+    "findings": {
+      "status": "not_assessed",
+      "count": null
+    }
+  }
+}

@@ -34,6 +34,8 @@ run_static() {
   cd "$ROOT"
   run_static_gate architecture-budget-verify scripts/hepta-architecture-budget verify
   run_static_gate architecture-budget-self-test scripts/hepta-architecture-budget self-test
+  run_static_gate safe-lint-security-verify scripts/hepta-safe-lint-security-baseline verify
+  run_static_gate safe-lint-security-self-test scripts/hepta-safe-lint-security-baseline self-test
   run_static_gate suffix-ladder-freeze scripts/check-hepta-suffix-ladder-freeze.sh
   run_static_gate test-evidence-matrix scripts/hepta-test-evidence-matrix verify
   run_static_gate test-evidence-matrix-self-test scripts/hepta-test-evidence-matrix self-test
@@ -71,6 +73,8 @@ run_rust_backend() {
   assert_lockfiles_clean
   budgeted_cargo ci-rustfmt 300 \
     cargo fmt --all --manifest-path "$MANIFEST" -- --check
+  budgeted_cargo ci-safe-lint-security-baseline 1200 \
+    "$ROOT/scripts/hepta-safe-lint-security-baseline" run
   budgeted_cargo ci-backend-check 2400 \
     cargo check --locked --manifest-path "$MANIFEST" -q \
       -p hepta-core \

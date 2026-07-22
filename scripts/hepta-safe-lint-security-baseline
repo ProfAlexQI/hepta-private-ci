@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_SAFE_LINT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+CONTRACT="${HEPTA_SAFE_LINT_CONTRACT:-$ROOT/scripts/hepta-safe-lint-security-baseline-v1.json}"
+
+usage() {
+  echo "usage: scripts/hepta-safe-lint-security-baseline <report|verify|self-test|run|verify-receipt RECEIPT>" >&2
+  exit 2
+}
+
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+require_tool() {
+  command -v "$1" >/dev/null || {
+    echo "missing Hepta safe lint/security baseline tool: $1" >&2
+    return 1
+  }
+}
+
+verify_contract() {
+  require_tool git
+  require_tool jq
+  require_tool shasum
+  [[ -f "$CONTRACT" ]]
+
+  jq -e '
+    .schema == "hepta_safe_lint_security_baseline_capability_v1"
+    and .capability == {id:"hepta_main_backend_safe_lint_security_baseline",version:1,status:"ready"}
+    and .configured_capability == {status:"supported",is_execution_evidence:false}
+    and .lint == {
+      status:"supported",
+      tool:"cargo-clippy",
+      selected_packages:["hepta-cli"],
+      dependency_mode:"compiled_not_linted",
+      command:["rustup","run","1.93.0","cargo","clippy","--locked","--offline","--manifest-path","codex-rs/Cargo.toml","--all-targets","--no-deps","-p","hepta-cli","--","-D","warnings"],
+      safety:{locked:true,offline:true,no_live:true,no_source_or_lockfile_write:true,build_artifact_write:true,no_dependency_install:true}
+    }
+    and .toolchain == {channel:"1.93.0",required_components:["clippy"]}
+    and .evidence.receipt_schema == "hepta_safe_lint_security_execution_receipt_v1"
+    and .evidence.receipt_verifier == "scripts/hepta-safe-lint-security-baseline verify-receipt"
+    and .evidence.local_execution == {status:"configured_not_verified",requires_clean_source:true,requires_main_backend_lane_lock:true}
+    and .evidence.ci_execution == {status:"configured_not_verified",workflow:".github/workflows/hepta-ci.yml",job:"rust-backend",entrypoint:"scripts/hepta-safe-lint-security-baseline run"}
+    and .evidence.promotion == {configured_capability_is_execution_evidence:false,successful_bound_receipt_required:true,lint_success_is_security_findings_evidence:false}
+    and .security.dependency_vulnerability_scan.status == "unsupported"
+    and .security.dependency_vulnerability_scan.tools == [{id:"cargo-audit",status:"unavailable_not_pinned"},{id:"cargo-deny",status:"unavailable_not_pinned"}]
+    and (.security.dependency_vulnerability_scan.reason | type == "string" and length > 0)
+    and .security.findings == {status:"not_assessed",count:null}
+  ' "$CONTRACT" >/dev/null
+
+  local key path_key expected_key relative_path expected actual
+  for key in rust_toolchain cargo_lock workspace_manifest package_manifest; do
+    path_key="${key}_path"
+    expected_key="${key}_sha256"
+    relative_path="$(jq -er --arg key "$path_key" '.bindings[$key]' "$CONTRACT")"
+    expected="$(jq -er --arg key "$expected_key" '.bindings[$key]' "$CONTRACT")"
+    [[ "$relative_path" != /* && "$relative_path" != *".."* && -f "$ROOT/$relative_path" ]]
+    [[ "$expected" =~ ^[0-9a-f]{64}$ ]]
+    actual="$(sha256_file "$ROOT/$relative_path")"
+    if [[ "$actual" != "$expected" ]]; then
+      echo "Hepta safe lint/security baseline binding drift: $relative_path" >&2
+      return 1
+    fi
+  done
+
+  grep -Fq 'scripts/hepta-safe-lint-security-baseline" run' "$ROOT/scripts/hepta-ci-baseline"
+  grep -Fq 'components: rustfmt, clippy' "$ROOT/.github/workflows/hepta-ci.yml"
+  grep -Fq 'run: scripts/hepta-ci-baseline rust-backend' "$ROOT/.github/workflows/hepta-ci.yml"
+}
+
+report_contract() {
+  verify_contract
+  jq -c . "$CONTRACT"
+}
+
+expect_fixture_denied() {
+  local fixture="$1"
+  if HEPTA_SAFE_LINT_ROOT="$fixture" HEPTA_SAFE_LINT_CONTRACT="$fixture/contract.json" \
+    "$fixture/scripts/hepta-safe-lint-security-baseline" verify >/dev/null 2>&1; then
+    echo "safe lint/security baseline accepted drifted fixture: $fixture" >&2
+    return 1
+  fi
+}
+
+self_test() (
+  local tmp fixture
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-safe-lint-security.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
+
+  make_fixture() {
+    fixture="$tmp/$1"
+    mkdir -p "$fixture/scripts" "$fixture/.github/workflows" "$fixture/codex-rs/hepta-cli"
+    cp "$ROOT/scripts/hepta-safe-lint-security-baseline" "$fixture/scripts/"
+    cp "$ROOT/scripts/hepta-safe-lint-security-baseline-v1.json" "$fixture/contract.json"
+    cp "$ROOT/scripts/hepta-ci-baseline" "$fixture/scripts/"
+    cp "$ROOT/.github/workflows/hepta-ci.yml" "$fixture/.github/workflows/"
+    cp "$ROOT/codex-rs/rust-toolchain.toml" "$fixture/codex-rs/"
+    cp "$ROOT/codex-rs/Cargo.lock" "$fixture/codex-rs/"
+    cp "$ROOT/codex-rs/Cargo.toml" "$fixture/codex-rs/"
+    cp "$ROOT/codex-rs/hepta-cli/Cargo.toml" "$fixture/codex-rs/hepta-cli/"
+  }
+
+  make_fixture valid
+  HEPTA_SAFE_LINT_ROOT="$fixture" HEPTA_SAFE_LINT_CONTRACT="$fixture/contract.json" \
+    "$fixture/scripts/hepta-safe-lint-security-baseline" verify >/dev/null
+
+  make_fixture command-drift
+  jq '.lint.command[9] = "--lib"' "$fixture/contract.json" >"$fixture/mutated.json"
+  mv "$fixture/mutated.json" "$fixture/contract.json"
+  expect_fixture_denied "$fixture"
+
+  make_fixture scope-drift
+  jq '.lint.selected_packages = ["hepta-core"]' "$fixture/contract.json" >"$fixture/mutated.json"
+  mv "$fixture/mutated.json" "$fixture/contract.json"
+  expect_fixture_denied "$fixture"
+
+  make_fixture lock-drift
+  printf '\n# fixture drift\n' >>"$fixture/codex-rs/Cargo.lock"
+  expect_fixture_denied "$fixture"
+
+  make_fixture toolchain-drift
+  jq '.toolchain.channel = "stable"' "$fixture/contract.json" >"$fixture/mutated.json"
+  mv "$fixture/mutated.json" "$fixture/contract.json"
+  expect_fixture_denied "$fixture"
+
+  make_fixture false-ci-promotion
+  jq '.evidence.ci_execution.status = "verified"' "$fixture/contract.json" >"$fixture/mutated.json"
+  mv "$fixture/mutated.json" "$fixture/contract.json"
+  expect_fixture_denied "$fixture"
+
+  make_fixture false-security-promotion
+  jq '.security.findings = {status:"none",count:0}' "$fixture/contract.json" >"$fixture/mutated.json"
+  mv "$fixture/mutated.json" "$fixture/contract.json"
+  expect_fixture_denied "$fixture"
+
+  make_fixture missing-ci-entrypoint
+  perl -0pi -e 's/scripts\/hepta-safe-lint-security-baseline" run/scripts\/removed-safe-lint" run/' \
+    "$fixture/scripts/hepta-ci-baseline"
+  expect_fixture_denied "$fixture"
+
+  echo '{"schema":"hepta_safe_lint_security_baseline_self_test_v1","status":"ready","command_drift_denied":true,"scope_drift_denied":true,"lock_drift_denied":true,"toolchain_drift_denied":true,"false_ci_promotion_denied":true,"false_security_promotion_denied":true,"missing_ci_entrypoint_denied":true}'
+)
+
+validate_local_lane() {
+  [[ "${HEPTA_AGENT_ID:-}" == "main" && "${HEPTA_LANE:-}" == "main-backend" ]] || {
+    echo "local safe lint execution requires HEPTA_AGENT_ID=main HEPTA_LANE=main-backend" >&2
+    return 1
+  }
+  [[ -n "${CARGO_TARGET_DIR:-}" && "$CARGO_TARGET_DIR" == /* && "$CARGO_TARGET_DIR" != "$ROOT"* ]] || {
+    echo "local safe lint execution requires an absolute external CARGO_TARGET_DIR" >&2
+    return 1
+  }
+  local owner_file expected_owner
+  owner_file="${HEPTA_HEAVY_LOCK_ROOT:-$HOME/.openclaw/run}/hepta-lane-main-backend.lock/owner"
+  expected_owner="main:main-backend:$PPID"
+  [[ -f "$owner_file" && "$(head -n 1 "$owner_file")" == "$expected_owner" ]] || {
+    echo "local safe lint execution requires the main-backend hepta-heavy-lock" >&2
+    return 1
+  }
+}
+
+run_lint() {
+  verify_contract
+  require_tool cargo
+  require_tool rustup
+  [[ "${CARGO_NET_OFFLINE:-}" == "true" ]] || {
+    echo "safe lint execution requires CARGO_NET_OFFLINE=true" >&2
+    return 1
+  }
+  if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
+    validate_local_lane
+  fi
+  [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ]] || {
+    echo "safe lint execution receipt requires a clean source tree and index" >&2
+    return 1
+  }
+
+  local source_sha contract_sha exit_code success evidence_kind
+  source_sha="$(git -C "$ROOT" rev-parse HEAD)"
+  contract_sha="$(sha256_file "$CONTRACT")"
+  evidence_kind=local_execution
+  [[ "${GITHUB_ACTIONS:-}" == "true" ]] && evidence_kind=ci_execution
+
+  set +e
+  cd "$ROOT"
+  rustup run 1.93.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml \
+    --all-targets --no-deps -p hepta-cli -- -D warnings
+  exit_code=$?
+  set -e
+  success=false
+  [[ "$exit_code" == "0" ]] && success=true
+
+  jq -n \
+    --arg schema hepta_safe_lint_security_execution_receipt_v1 \
+    --arg evidence_kind "$evidence_kind" \
+    --arg source_sha "$source_sha" \
+    --arg contract_sha256 "$contract_sha" \
+    --arg rustc "$(rustup run 1.93.0 rustc -Vv)" \
+    --arg cargo "$(rustup run 1.93.0 cargo -V)" \
+    --arg clippy "$(rustup run 1.93.0 cargo clippy -V)" \
+    --arg rust_toolchain_sha256 "$(sha256_file "$ROOT/codex-rs/rust-toolchain.toml")" \
+    --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
+    --arg workspace_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.toml")" \
+    --arg package_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/hepta-cli/Cargo.toml")" \
+    --arg command "rustup run 1.93.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml --all-targets --no-deps -p hepta-cli -- -D warnings" \
+    --argjson exit_code "$exit_code" \
+    --argjson success "$success" '
+      {
+        schema:$schema,
+        capability:{id:"hepta_main_backend_safe_lint_security_baseline",version:1},
+        evidence:{kind:$evidence_kind,configured_capability_only:false},
+        source:{sha:$source_sha,clean:true,contract_sha256:$contract_sha256},
+        toolchain:{rustc:$rustc,cargo:$cargo,clippy:$clippy,rust_toolchain_sha256:$rust_toolchain_sha256},
+        bindings:{cargo_lock_sha256:$cargo_lock_sha256,workspace_manifest_sha256:$workspace_manifest_sha256,package_manifest_sha256:$package_manifest_sha256},
+        execution:{command:$command,locked:true,offline:true,no_live:true,no_source_or_lockfile_write:true,build_artifact_write:true,exit_code:$exit_code,success:$success},
+        scope:{selected_packages:["hepta-cli"],all_targets:true,dependencies_linted:false},
+        lint_findings:{status:(if $success then "no_denied_warnings" else "lint_failed" end),count:(if $success then 0 else null end)},
+        security_findings:{status:"not_assessed",count:null,reason:"no pinned repository-native vulnerability scanner or offline advisory database is available"},
+        promotion:{lint_execution_evidence:$success,security_findings_evidence:false}
+      }
+    '
+  return "$exit_code"
+}
+
+verify_receipt() {
+  local receipt="$1" evidence_kind
+  verify_contract
+  require_tool cargo
+  require_tool rustup
+  [[ -f "$receipt" ]]
+  [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ]] || {
+    echo "safe lint receipt verification requires a clean source tree and index" >&2
+    return 1
+  }
+  evidence_kind=local_execution
+  [[ "${GITHUB_ACTIONS:-}" == "true" ]] && evidence_kind=ci_execution
+  jq -e \
+    --arg evidence_kind "$evidence_kind" \
+    --arg source_sha "$(git -C "$ROOT" rev-parse HEAD)" \
+    --arg contract_sha256 "$(sha256_file "$CONTRACT")" \
+    --arg rustc "$(rustup run 1.93.0 rustc -Vv)" \
+    --arg cargo "$(rustup run 1.93.0 cargo -V)" \
+    --arg clippy "$(rustup run 1.93.0 cargo clippy -V)" \
+    --arg rust_toolchain_sha256 "$(sha256_file "$ROOT/codex-rs/rust-toolchain.toml")" \
+    --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
+    --arg workspace_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.toml")" \
+    --arg package_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/hepta-cli/Cargo.toml")" \
+    --arg command "rustup run 1.93.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml --all-targets --no-deps -p hepta-cli -- -D warnings" '
+      .schema == "hepta_safe_lint_security_execution_receipt_v1"
+      and .capability == {id:"hepta_main_backend_safe_lint_security_baseline",version:1}
+      and .evidence.kind == $evidence_kind
+      and .evidence.configured_capability_only == false
+      and .source == {sha:$source_sha,clean:true,contract_sha256:$contract_sha256}
+      and .toolchain == {rustc:$rustc,cargo:$cargo,clippy:$clippy,rust_toolchain_sha256:$rust_toolchain_sha256}
+      and .bindings == {cargo_lock_sha256:$cargo_lock_sha256,workspace_manifest_sha256:$workspace_manifest_sha256,package_manifest_sha256:$package_manifest_sha256}
+      and .execution.command == $command
+      and .execution.locked == true
+      and .execution.offline == true
+      and .execution.no_live == true
+      and .execution.no_source_or_lockfile_write == true
+      and .execution.build_artifact_write == true
+      and (.execution.exit_code | type == "number")
+      and (.execution.success == (.execution.exit_code == 0))
+      and .scope == {selected_packages:["hepta-cli"],all_targets:true,dependencies_linted:false}
+      and (.lint_findings.status == (if .execution.success then "no_denied_warnings" else "lint_failed" end))
+      and (.lint_findings.count == (if .execution.success then 0 else null end))
+      and .security_findings.status == "not_assessed"
+      and .security_findings.count == null
+      and (.security_findings.reason | type == "string" and length > 0)
+      and .promotion.lint_execution_evidence == .execution.success
+      and .promotion.security_findings_evidence == false
+    ' "$receipt" >/dev/null
+}
+
+[[ $# -ge 1 ]] || usage
+case "$1" in
+  report) [[ $# -eq 1 ]] || usage; report_contract ;;
+  verify) [[ $# -eq 1 ]] || usage; verify_contract ;;
+  self-test) [[ $# -eq 1 ]] || usage; self_test ;;
+  run) [[ $# -eq 1 ]] || usage; run_lint ;;
+  verify-receipt) [[ $# -eq 2 ]] || usage; verify_receipt "$2" ;;
+  *) usage ;;
+esac
