@@ -49,10 +49,12 @@ reject_workflow_live_or_write() {
 
 matrix_json() {
   local baseline="scripts/hepta-ci-baseline"
+  local platform_evidence="scripts/hepta-full-workspace-evidence"
   local baseline_workflow=".github/workflows/hepta-ci.yml"
   local full_workflow=".github/workflows/hepta-full-preflight.yml"
   local preflight="scripts/hepta-preflight.sh"
   require_file "$baseline"
+  require_file "$platform_evidence"
   require_file "$baseline_workflow"
   require_file "$full_workflow"
   require_file "$preflight"
@@ -61,7 +63,7 @@ matrix_json() {
   local local_execution_capability=false full_workspace_capability=false
   local nightly_static_capability=false manual_full_boundary=false
   local baseline_no_live_no_write=false full_no_live_no_write=false
-  local preflight_matrix_bound=false
+  local preflight_matrix_bound=false platform_evidence_capability=false
 
   if has_literal "$baseline" 'run_static_gate suffix-ladder-freeze' \
     && has_literal "$baseline" 'run_static_gate immutable-release-provenance' \
@@ -76,8 +78,25 @@ matrix_json() {
     && has_literal "$baseline" 'cargo test --locked --manifest-path "$MANIFEST" --workspace' \
     && has_literal "$baseline_workflow" '  full-workspace:' \
     && has_literal "$baseline_workflow" "if: github.event_name == 'workflow_dispatch' && inputs.confirm_full_workspace == 'RUN_FULL_WORKSPACE_NO_LIVE'" \
-    && has_literal "$baseline_workflow" 'run: scripts/hepta-ci-baseline full-workspace'; then
+    && has_literal "$baseline_workflow" '          - platform: linux' \
+    && has_literal "$baseline_workflow" '            runner: ubuntu-24.04' \
+    && has_literal "$baseline_workflow" '          - platform: macos' \
+    && has_literal "$baseline_workflow" '            runner: macos-15' \
+    && ! has_literal "$baseline_workflow" '          - platform: windows' \
+    && has_literal "$baseline_workflow" 'HEPTA_CI_CONFIRM_FULL_WORKSPACE: ${{ inputs.confirm_full_workspace }}' \
+    && has_literal "$baseline_workflow" 'run: scripts/hepta-full-workspace-evidence run ${{ matrix.platform }} ${{ matrix.runner }}' \
+    && has_literal "$baseline_workflow" 'run: scripts/hepta-full-workspace-evidence verify-receipt ${{ matrix.platform }} ${{ matrix.runner }}' \
+    && has_literal "$baseline_workflow" 'run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }}'; then
     full_workspace_capability=true
+  fi
+  if has_literal "$platform_evidence" 'COMMAND="scripts/hepta-ci-baseline full-workspace"' \
+    && has_literal "$platform_evidence" 'CONFIRMATION="RUN_FULL_WORKSPACE_NO_LIVE"' \
+    && has_literal "$platform_evidence" '[[ "${GITHUB_ACTIONS:-}" == "true" ]]' \
+    && has_literal "$platform_evidence" '[[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]' \
+    && has_literal "$platform_evidence" 'hepta_full_workspace_platform_receipt_v1' \
+    && has_literal "$platform_evidence" 'cross_platform_promotion:false' \
+    && has_literal "$platform_evidence" '(.execution.success == (.execution.exit_code == 0))'; then
+    platform_evidence_capability=true
   fi
   if has_literal "$baseline_workflow" '  schedule:' \
     && has_literal "$baseline_workflow" '  nightly-static:' \
@@ -128,10 +147,13 @@ matrix_json() {
     --argjson manual_full_boundary "$manual_full_boundary" \
     --argjson baseline_no_live_no_write "$baseline_no_live_no_write" \
     --argjson full_no_live_no_write "$full_no_live_no_write" \
-    --argjson preflight_matrix_bound "$preflight_matrix_bound" '
+    --argjson preflight_matrix_bound "$preflight_matrix_bound" \
+    --argjson platform_evidence_capability "$platform_evidence_capability" '
     {
       schema:"hepta_test_evidence_matrix_v2",
-      status:(if $static_contract_capability and $denial_noop_capability and $local_execution_capability and $full_workspace_capability and $nightly_static_capability and $manual_full_boundary and $baseline_no_live_no_write and $full_no_live_no_write and $preflight_matrix_bound then "attention" else "blocked" end),
+      capability_contract_version:3,
+      v2_consumer_compatible:true,
+      status:(if $static_contract_capability and $denial_noop_capability and $local_execution_capability and $full_workspace_capability and $nightly_static_capability and $manual_full_boundary and $baseline_no_live_no_write and $full_no_live_no_write and $preflight_matrix_bound and $platform_evidence_capability then "attention" else "blocked" end),
       classifications:[
         {id:"static_contract",meaning:"schema, route, hash, source, workflow, and policy shape validation; no test execution or release claim"},
         {id:"denial_noop",meaning:"observed rejection and no-side-effect behavior; never a live capability or release claim"},
@@ -144,7 +166,18 @@ matrix_json() {
         full_workspace:{configured:$full_workspace_capability,manual_confirmation_bound:$full_workspace_capability,no_live_no_write:$baseline_no_live_no_write},
         nightly_static:{configured:$nightly_static_capability,static_only:true,no_live_no_write:$baseline_no_live_no_write},
         manual_full:{configured:$manual_full_boundary,workflow_dispatch_only:$manual_full_boundary,verify_only_no_deploy:$full_no_live_no_write},
-        preflight_matrix_bound:$preflight_matrix_bound
+        preflight_matrix_bound:$preflight_matrix_bound,
+        platform_evidence:{
+          configured:$platform_evidence_capability,
+          trigger:"workflow_dispatch",
+          confirmation:"RUN_FULL_WORKSPACE_NO_LIVE",
+          platforms:[
+            {id:"linux",runner:"ubuntu-24.04",status:"configured_not_verified"},
+            {id:"macos",runner:"macos-15",status:"configured_not_verified"}
+          ],
+          unsupported:[{id:"windows",status:"unsupported",reason:"no repository-proven full-workspace toolchain and shell contract"}],
+          receipt:{schema:"hepta_full_workspace_platform_receipt_v1",source_sha_bound:true,runner_bound:true,toolchain_bound:true,lockfiles_bound:true,cache_identity_bound:true,command_bound:true,exit_truth_bound:true}
+        }
       },
       evidence:{
         static_contract:{verified:true,source:"current matrix verification"},
@@ -158,6 +191,9 @@ matrix_json() {
         test_count_is_not_release_evidence:true,
         route_presence_is_not_release_evidence:true,
         configured_job_is_not_execution_evidence:true,
+        configured_platform_is_not_verified_platform:true,
+        successful_receipt_is_required_for_promotion:true,
+        platform_receipts_do_not_promote_other_platforms:true,
         denial_tests_are_not_live_evidence:true,
         nightly_static_cannot_invoke_full_preflight:true,
         full_preflight_is_manual_only:true,
@@ -171,10 +207,16 @@ verify_matrix() {
   matrix="$(matrix_json)"
   jq -e '
     .schema == "hepta_test_evidence_matrix_v2"
+    and .capability_contract_version == 3
+    and .v2_consumer_compatible == true
     and .status == "attention"
     and .configured_capabilities.pr.static_contract == true
     and .configured_capabilities.full_workspace.configured == true
     and .configured_capabilities.full_workspace.no_live_no_write == true
+    and .configured_capabilities.platform_evidence.configured == true
+    and .configured_capabilities.platform_evidence.platforms == [{id:"linux",runner:"ubuntu-24.04",status:"configured_not_verified"},{id:"macos",runner:"macos-15",status:"configured_not_verified"}]
+    and .configured_capabilities.platform_evidence.unsupported[0].id == "windows"
+    and .configured_capabilities.platform_evidence.receipt.exit_truth_bound == true
     and .configured_capabilities.nightly_static.configured == true
     and .configured_capabilities.nightly_static.static_only == true
     and .configured_capabilities.manual_full.workflow_dispatch_only == true
@@ -185,6 +227,9 @@ verify_matrix() {
     and .evidence.controlled_live.verified == false
     and .readiness.production_ready == false
     and .policy.configured_job_is_not_execution_evidence == true
+    and .policy.configured_platform_is_not_verified_platform == true
+    and .policy.successful_receipt_is_required_for_promotion == true
+    and .policy.platform_receipts_do_not_promote_other_platforms == true
     and .policy.deployment_install_restart_sign_notarize_or_publication_authorized == false
   ' >/dev/null <<<"$matrix"
   printf '%s\n' "$matrix"
@@ -208,6 +253,7 @@ self_test() {
     mkdir -p "$fixture/scripts" "$fixture/.github/workflows"
     cp "$SCRIPT_ROOT/scripts/hepta-test-evidence-matrix" "$fixture/scripts/"
     cp "$SCRIPT_ROOT/scripts/hepta-ci-baseline" "$fixture/scripts/"
+    cp "$SCRIPT_ROOT/scripts/hepta-full-workspace-evidence" "$fixture/scripts/"
     cp "$SCRIPT_ROOT/scripts/hepta-preflight.sh" "$fixture/scripts/"
     cp "$SCRIPT_ROOT/.github/workflows/hepta-ci.yml" "$fixture/.github/workflows/"
     cp "$SCRIPT_ROOT/.github/workflows/hepta-full-preflight.yml" "$fixture/.github/workflows/"
@@ -218,6 +264,18 @@ self_test() {
 
   make_fixture missing-full-workspace
   perl -0pi -e 's/ci-full-workspace-tests/ci-workspace-removed/' "$fixture/scripts/hepta-ci-baseline"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture missing-platform
+  perl -0pi -e 's/          - platform: macos\n            runner: macos-15\n//' "$fixture/.github/workflows/hepta-ci.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture wrong-runner
+  perl -0pi -e 's/runner: ubuntu-24\.04/runner: ubuntu-latest/' "$fixture/.github/workflows/hepta-ci.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture missing-confirmation
+  perl -0pi -e 's/HEPTA_CI_CONFIRM_FULL_WORKSPACE: \$\{\{ inputs\.confirm_full_workspace \}\}/HEPTA_CI_CONFIRM_FULL_WORKSPACE: MISSING/' "$fixture/.github/workflows/hepta-ci.yml"
   expect_fixture_denied "$fixture" || return 1
 
   make_fixture nightly-drift
@@ -232,11 +290,59 @@ self_test() {
   perl -0pi -e 's/HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "0"/HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "1"/' "$fixture/.github/workflows/hepta-ci.yml"
   expect_fixture_denied "$fixture" || return 1
 
+  make_fixture write-permissions
+  printf '\n  contents: write\n' >>"$fixture/.github/workflows/hepta-ci.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture command-drift
+  perl -0pi -e 's/COMMAND="scripts\/hepta-ci-baseline full-workspace"/COMMAND="cargo test --workspace"/' "$fixture/scripts/hepta-full-workspace-evidence"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture cross-platform-pseudo-promotion
+  perl -0pi -e 's/cross_platform_promotion:false/cross_platform_promotion:true/g' "$fixture/scripts/hepta-test-evidence-matrix"
+  expect_fixture_denied "$fixture" || return 1
+
   make_fixture scheduled-full-preflight
   perl -0pi -e 's/  workflow_dispatch:/  schedule:\n    - cron: "0 0 * * *"\n  workflow_dispatch:/' "$fixture/.github/workflows/hepta-full-preflight.yml"
   expect_fixture_denied "$fixture" || return 1
 
-  echo '{"schema":"hepta_test_evidence_matrix_self_test_v2","status":"ready","missing_full_workspace_denied":true,"nightly_drift_denied":true,"manual_boundary_drift_denied":true,"dangerous_live_denied":true,"scheduled_full_preflight_denied":true}'
+  local receipt source_sha rust_toolchain_sha cargo_lock_sha native_cargo_lock_sha bazel_lock_sha
+  receipt="$tmp/forged-success-receipt.json"
+  source_sha="$(git -C "$SCRIPT_ROOT" rev-parse HEAD)"
+  rust_toolchain_sha="$(shasum -a 256 "$SCRIPT_ROOT/codex-rs/rust-toolchain.toml" | awk '{print $1}')"
+  cargo_lock_sha="$(shasum -a 256 "$SCRIPT_ROOT/codex-rs/Cargo.lock" | awk '{print $1}')"
+  native_cargo_lock_sha="$(shasum -a 256 "$SCRIPT_ROOT/apps/hepta-native/Cargo.lock" | awk '{print $1}')"
+  bazel_lock_sha="$(shasum -a 256 "$SCRIPT_ROOT/MODULE.bazel.lock" | awk '{print $1}')"
+  jq -n \
+    --arg source_sha "$source_sha" \
+    --arg rust_toolchain_sha "$rust_toolchain_sha" \
+    --arg cargo_lock_sha "$cargo_lock_sha" \
+    --arg native_cargo_lock_sha "$native_cargo_lock_sha" \
+    --arg bazel_lock_sha "$bazel_lock_sha" '
+      {
+        schema:"hepta_full_workspace_platform_receipt_v1",
+        provenance:{provider:"github_actions",repository:"forged/repository",workflow:"forged",run_id:"123",run_attempt:"1",event_name:"workflow_dispatch"},
+        source:{sha:$source_sha},
+        platform:{id:"linux",runner:"ubuntu-24.04",runner_os:"Linux",runner_arch:"X64"},
+        toolchain:{rustc:"forged",cargo:"forged",rust_toolchain_sha256:$rust_toolchain_sha},
+        locks:{cargo_lock_sha256:$cargo_lock_sha,native_cargo_lock_sha256:$native_cargo_lock_sha,bazel_lock_sha256:$bazel_lock_sha},
+        cache:{identity:("Linux-hepta-ci-v2-full-workspace-" + ("0" * 64))},
+        execution:{command:"scripts/hepta-ci-baseline full-workspace",confirmation:"RUN_FULL_WORKSPACE_NO_LIVE",no_live:true,exit_code:0,success:true},
+        scope:{platform_only:"linux",cross_platform_promotion:false,configured_capability_only:false,promotion_eligible:true}
+      }
+    ' >"$receipt"
+  if "$SCRIPT_ROOT/scripts/hepta-full-workspace-evidence" verify-success-receipt linux ubuntu-24.04 "$receipt" >/dev/null 2>&1; then
+    echo "test evidence matrix accepted a forged success receipt outside its GitHub Actions run" >&2
+    return 1
+  fi
+
+  if GITHUB_ACTIONS=true GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REPOSITORY=forged/repository GITHUB_WORKFLOW=forged GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=1 \
+    "$SCRIPT_ROOT/scripts/hepta-full-workspace-evidence" verify-success-receipt macos macos-15 "$receipt" >/dev/null 2>&1; then
+    echo "test evidence matrix promoted a Linux receipt to macOS" >&2
+    return 1
+  fi
+
+  echo '{"schema":"hepta_test_evidence_matrix_self_test_v3","status":"ready","missing_full_workspace_denied":true,"missing_platform_denied":true,"wrong_runner_denied":true,"missing_confirmation_denied":true,"nightly_drift_denied":true,"manual_boundary_drift_denied":true,"dangerous_live_denied":true,"write_permissions_denied":true,"command_drift_denied":true,"cross_platform_pseudo_promotion_denied":true,"forged_success_receipt_denied":true,"scheduled_full_preflight_denied":true}'
 }
 
 case "$MODE" in

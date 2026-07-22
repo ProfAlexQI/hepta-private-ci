@@ -64,6 +64,26 @@ verify_contract() {
     and .permissions == {contents:"read"}
     and (.baseline_workflow.allowed_events | sort == ["pull_request","push","schedule","workflow_dispatch"])
     and (.full_workflow.allowed_events == ["workflow_dispatch"])
+    and .full_workspace_platform_evidence == {
+      capability_version:3,
+      trigger:"workflow_dispatch",
+      required_confirmation:"RUN_FULL_WORKSPACE_NO_LIVE",
+      command:"scripts/hepta-ci-baseline full-workspace",
+      receipt_schema:"hepta_full_workspace_platform_receipt_v1",
+      platforms:[
+        {id:"linux",runner:"ubuntu-24.04",status:"configured_not_verified"},
+        {id:"macos",runner:"macos-15",status:"configured_not_verified"}
+      ],
+      unsupported_platforms:[
+        {id:"windows",reason:"no repository-proven full-workspace toolchain and shell contract"}
+      ],
+      promotion:{
+        configured_capability_is_execution_evidence:false,
+        requires_successful_github_actions_receipt:true,
+        platform_scoped:true,
+        cross_platform_promotion:false
+      }
+    }
     and .upstream_intake == {
       url:"https://github.com/openai/codex.git",
       materialize_command:"scripts/hepta-ci-materialize-upstream-intake materialize",
@@ -132,6 +152,16 @@ verify_contract() {
   while IFS= read -r binding; do
     require_literal "$baseline" "'$binding'" "Cargo cache binding $binding"
   done < <(jq -er '.cache_bindings[]' "$CONTRACT")
+  require_literal "$baseline" '          - platform: linux' "Linux full-workspace platform"
+  require_literal "$baseline" '            runner: ubuntu-24.04' "Linux full-workspace runner"
+  require_literal "$baseline" '          - platform: macos' "macOS full-workspace platform"
+  require_literal "$baseline" '            runner: macos-15' "macOS full-workspace runner"
+  reject_literal "$baseline" '          - platform: windows' "unsupported Windows full-workspace platform"
+  require_literal "$baseline" "if: github.event_name == 'workflow_dispatch' && inputs.confirm_full_workspace == 'RUN_FULL_WORKSPACE_NO_LIVE'" "full-workspace dispatch confirmation"
+  require_literal "$baseline" 'HEPTA_CI_CONFIRM_FULL_WORKSPACE: ${{ inputs.confirm_full_workspace }}' "receipt confirmation binding"
+  require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence run ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt execution"
+  require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt verification"
+  require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "successful platform receipt promotion eligibility"
 
   require_literal "$full" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
   require_literal "$full" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned full preflight Cargo cache action"
@@ -161,7 +191,7 @@ verify_contract() {
     --arg status ready \
     --arg baseline_workflow "$baseline_rel" \
     --arg full_workflow "$full_rel" \
-    '{schema:$schema,status:$status,baseline_workflow:$baseline_workflow,full_workflow:$full_workflow,permissions_read_only:true,ordinary_pr_full_preflight_denied:true,deploy_install_sign_publish_denied:true,cache_lock_toolchain_bound:true,frozen_upstream_intake_bound:true}'
+    '{schema:$schema,status:$status,baseline_workflow:$baseline_workflow,full_workflow:$full_workflow,permissions_read_only:true,ordinary_pr_full_preflight_denied:true,deploy_install_sign_publish_denied:true,cache_lock_toolchain_bound:true,frozen_upstream_intake_bound:true,full_workspace_platforms:["linux","macos"],windows_unsupported:true,receipt_promotion_requires_real_run:true,cross_platform_promotion_denied:true}'
 }
 
 self_test() (

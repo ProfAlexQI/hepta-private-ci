@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+COMMAND="scripts/hepta-ci-baseline full-workspace"
+CONFIRMATION="RUN_FULL_WORKSPACE_NO_LIVE"
+
+usage() {
+  echo "usage: scripts/hepta-full-workspace-evidence <run|verify-receipt|verify-success-receipt> <platform> <runner> <receipt-path>" >&2
+  exit 2
+}
+
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+expected_runner() {
+  case "$1" in
+    linux) echo ubuntu-24.04 ;;
+    macos) echo macos-15 ;;
+    *) return 1 ;;
+  esac
+}
+
+validate_context() {
+  local platform="$1"
+  local runner="$2"
+  [[ "$runner" == "$(expected_runner "$platform")" ]]
+  [[ "${GITHUB_ACTIONS:-}" == "true" ]]
+  [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+  [[ "${HEPTA_CI_CONFIRM_FULL_WORKSPACE:-}" == "$CONFIRMATION" ]]
+  [[ "${HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE:-}" == "0" ]]
+  [[ "${HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE:-}" == "0" ]]
+  [[ "${RUNNER_OS:-}" == "${platform/linux/Linux}" || "$platform" != "linux" ]]
+  [[ "${RUNNER_OS:-}" == "${platform/macos/macOS}" || "$platform" != "macos" ]]
+  [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+  [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]]
+  [[ "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]
+  [[ -n "${GITHUB_REPOSITORY:-}" ]]
+  [[ -n "${GITHUB_WORKFLOW:-}" ]]
+  [[ "${HEPTA_CI_CACHE_IDENTITY:-}" == "${RUNNER_OS}-hepta-ci-v2-full-workspace-"* ]]
+  [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$GITHUB_SHA" ]]
+}
+
+write_receipt() {
+  local platform="$1"
+  local runner="$2"
+  local receipt_path="$3"
+  local exit_code="$4"
+  local success=false
+  [[ "$exit_code" == "0" ]] && success=true
+  mkdir -p "$(dirname "$receipt_path")"
+  jq -n \
+    --arg schema hepta_full_workspace_platform_receipt_v1 \
+    --arg source_sha "$GITHUB_SHA" \
+    --arg repository "$GITHUB_REPOSITORY" \
+    --arg workflow "$GITHUB_WORKFLOW" \
+    --arg run_id "$GITHUB_RUN_ID" \
+    --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+    --arg event_name "$GITHUB_EVENT_NAME" \
+    --arg platform "$platform" \
+    --arg runner "$runner" \
+    --arg runner_os "$RUNNER_OS" \
+    --arg runner_arch "$RUNNER_ARCH" \
+    --arg rustc "$(rustc -Vv)" \
+    --arg cargo "$(cargo -V)" \
+    --arg rust_toolchain_sha256 "$(sha256_file "$ROOT/codex-rs/rust-toolchain.toml")" \
+    --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
+    --arg native_cargo_lock_sha256 "$(sha256_file "$ROOT/apps/hepta-native/Cargo.lock")" \
+    --arg bazel_lock_sha256 "$(sha256_file "$ROOT/MODULE.bazel.lock")" \
+    --arg cache_identity "$HEPTA_CI_CACHE_IDENTITY" \
+    --arg command "$COMMAND" \
+    --arg confirmation "$CONFIRMATION" \
+    --argjson exit_code "$exit_code" \
+    --argjson success "$success" \
+    '{
+      schema:$schema,
+      provenance:{provider:"github_actions",repository:$repository,workflow:$workflow,run_id:$run_id,run_attempt:$run_attempt,event_name:$event_name},
+      source:{sha:$source_sha},
+      platform:{id:$platform,runner:$runner,runner_os:$runner_os,runner_arch:$runner_arch},
+      toolchain:{rustc:$rustc,cargo:$cargo,rust_toolchain_sha256:$rust_toolchain_sha256},
+      locks:{cargo_lock_sha256:$cargo_lock_sha256,native_cargo_lock_sha256:$native_cargo_lock_sha256,bazel_lock_sha256:$bazel_lock_sha256},
+      cache:{identity:$cache_identity},
+      execution:{command:$command,confirmation:$confirmation,no_live:true,exit_code:$exit_code,success:$success},
+      scope:{platform_only:$platform,cross_platform_promotion:false,configured_capability_only:false,promotion_eligible:$success}
+    }' >"$receipt_path"
+  jq -c . "$receipt_path"
+}
+
+verify_receipt() {
+  local platform="$1"
+  local runner="$2"
+  local receipt_path="$3"
+  local require_success="$4"
+  [[ -f "$receipt_path" ]]
+  [[ "$runner" == "$(expected_runner "$platform")" ]]
+  [[ "${GITHUB_ACTIONS:-}" == "true" ]]
+  [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]
+  [[ "${HEPTA_CI_CONFIRM_FULL_WORKSPACE:-}" == "$CONFIRMATION" ]]
+  [[ "${HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE:-}" == "0" ]]
+  [[ "${HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE:-}" == "0" ]]
+  [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]]
+  [[ "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]
+  [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+  [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$GITHUB_SHA" ]]
+  [[ "${RUNNER_OS:-}" == "${platform/linux/Linux}" || "$platform" != "linux" ]]
+  [[ "${RUNNER_OS:-}" == "${platform/macos/macOS}" || "$platform" != "macos" ]]
+  [[ "${HEPTA_CI_CACHE_IDENTITY:-}" == "${RUNNER_OS}-hepta-ci-v2-full-workspace-"* ]]
+  jq -e \
+    --arg platform "$platform" \
+    --arg runner "$runner" \
+    --arg source_sha "$(git -C "$ROOT" rev-parse HEAD)" \
+    --arg command "$COMMAND" \
+    --arg confirmation "$CONFIRMATION" \
+    --arg runner_os "$RUNNER_OS" \
+    --arg rustc "$(rustc -Vv)" \
+    --arg cargo "$(cargo -V)" \
+    --arg cache_identity "$HEPTA_CI_CACHE_IDENTITY" \
+    --arg repository "$GITHUB_REPOSITORY" \
+    --arg workflow "$GITHUB_WORKFLOW" \
+    --arg run_id "$GITHUB_RUN_ID" \
+    --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+    --arg rust_toolchain_sha256 "$(sha256_file "$ROOT/codex-rs/rust-toolchain.toml")" \
+    --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
+    --arg native_cargo_lock_sha256 "$(sha256_file "$ROOT/apps/hepta-native/Cargo.lock")" \
+    --arg bazel_lock_sha256 "$(sha256_file "$ROOT/MODULE.bazel.lock")" \
+    --argjson require_success "$require_success" '
+      .schema == "hepta_full_workspace_platform_receipt_v1"
+      and .provenance.provider == "github_actions"
+      and .provenance.repository == $repository
+      and .provenance.workflow == $workflow
+      and .provenance.run_id == $run_id
+      and .provenance.run_attempt == $run_attempt
+      and .provenance.event_name == "workflow_dispatch"
+      and (.provenance.run_id | test("^[0-9]+$"))
+      and (.provenance.run_attempt | test("^[0-9]+$"))
+      and .source.sha == $source_sha
+      and .platform.id == $platform
+      and .platform.runner == $runner
+      and .platform.runner_os == $runner_os
+      and .toolchain.rustc == $rustc
+      and .toolchain.cargo == $cargo
+      and .toolchain.rust_toolchain_sha256 == $rust_toolchain_sha256
+      and .locks == {cargo_lock_sha256:$cargo_lock_sha256,native_cargo_lock_sha256:$native_cargo_lock_sha256,bazel_lock_sha256:$bazel_lock_sha256}
+      and .cache.identity == $cache_identity
+      and (.cache.identity | test("^(Linux|macOS)-hepta-ci-v2-full-workspace-[0-9a-f]{64}$"))
+      and .execution.command == $command
+      and .execution.confirmation == $confirmation
+      and .execution.no_live == true
+      and (.execution.exit_code | type == "number")
+      and (.execution.success == (.execution.exit_code == 0))
+      and (.scope.platform_only == $platform)
+      and .scope.cross_platform_promotion == false
+      and .scope.configured_capability_only == false
+      and (.scope.promotion_eligible == .execution.success)
+      and (($require_success | not) or .execution.success == true)
+    ' "$receipt_path" >/dev/null
+}
+
+[[ $# -eq 4 ]] || usage
+mode="$1"
+platform="$2"
+runner="$3"
+receipt_path="$4"
+
+case "$mode" in
+  run)
+    command -v jq >/dev/null
+    command -v shasum >/dev/null
+    validate_context "$platform" "$runner"
+    set +e
+    "$ROOT/scripts/hepta-ci-baseline" full-workspace
+    exit_code=$?
+    set -e
+    write_receipt "$platform" "$runner" "$receipt_path" "$exit_code"
+    exit "$exit_code"
+    ;;
+  verify-receipt)
+    verify_receipt "$platform" "$runner" "$receipt_path" false
+    ;;
+  verify-success-receipt)
+    verify_receipt "$platform" "$runner" "$receipt_path" true
+    ;;
+  *) usage ;;
+esac

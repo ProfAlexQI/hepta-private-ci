@@ -21,9 +21,42 @@
       "scripts/hepta-ci-baseline contract-self-test",
       "scripts/hepta-ci-baseline static",
       "scripts/hepta-ci-baseline rust-backend",
-      "scripts/hepta-ci-baseline full-workspace",
+      "scripts/hepta-full-workspace-evidence run",
+      "scripts/hepta-full-workspace-evidence verify-receipt",
+      "scripts/hepta-full-workspace-evidence verify-success-receipt",
       "scripts/hepta-ci-baseline nightly-static"
     ]
+  },
+  "full_workspace_platform_evidence": {
+    "capability_version": 3,
+    "trigger": "workflow_dispatch",
+    "required_confirmation": "RUN_FULL_WORKSPACE_NO_LIVE",
+    "command": "scripts/hepta-ci-baseline full-workspace",
+    "receipt_schema": "hepta_full_workspace_platform_receipt_v1",
+    "platforms": [
+      {
+        "id": "linux",
+        "runner": "ubuntu-24.04",
+        "status": "configured_not_verified"
+      },
+      {
+        "id": "macos",
+        "runner": "macos-15",
+        "status": "configured_not_verified"
+      }
+    ],
+    "unsupported_platforms": [
+      {
+        "id": "windows",
+        "reason": "no repository-proven full-workspace toolchain and shell contract"
+      }
+    ],
+    "promotion": {
+      "configured_capability_is_execution_evidence": false,
+      "requires_successful_github_actions_receipt": true,
+      "platform_scoped": true,
+      "cross_platform_promotion": false
+    }
   },
   "full_workflow": {
     "path": ".github/workflows/hepta-full-preflight.yml",
@@ -64,7 +97,9 @@
   },
   "cache_bindings": [
     "codex-rs/rust-toolchain.toml",
-    "codex-rs/Cargo.lock"
+    "codex-rs/Cargo.lock",
+    "apps/hepta-native/Cargo.lock",
+    "MODULE.bazel.lock"
   ],
   "forbidden_workflow_tokens": [
     "secrets.",
