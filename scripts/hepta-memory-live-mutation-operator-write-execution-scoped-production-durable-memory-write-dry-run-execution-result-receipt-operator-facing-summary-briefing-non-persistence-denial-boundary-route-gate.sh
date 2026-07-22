@@ -280,7 +280,7 @@ jq -n \
     live_route_status: $live_route_status,
     live_route_count: $live_route_count,
     live_missing_route_count: $live_missing_route_count,
-    route_gate_require_live_endpoint: env.HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT == "1",
+    route_gate_require_live_endpoint: (env.HEPTA_ROUTE_GATE_REQUIRE_LIVE_ENDPOINT == "1"),
     script_gate_ready: true,
     focused_test_ready: true,
     focused_test_log: $test_log,
