@@ -45,7 +45,17 @@ installed_bin="$(dirname "$manifest")/bin/hepta"
 "$installed_bin" 30 &
 fixture_pid=$!
 
-report="$($ROOT/scripts/hepta-active-binary-consistency-gate --pid "$fixture_pid" --installed-bin "$installed_bin" --manifest "$manifest" --expected-source-commit "$source_commit")"
+fixture_now=2000000000
+report="$(
+  HEPTA_CURRENT_REALITY_NOW_EPOCH="$fixture_now" \
+  HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH="$fixture_now" \
+  HEPTA_CURRENT_REALITY_MAX_AGE_SECONDS=60 \
+  "$ROOT/scripts/hepta-active-binary-consistency-gate" \
+    --pid "$fixture_pid" \
+    --installed-bin "$installed_bin" \
+    --manifest "$manifest" \
+    --expected-source-commit "$source_commit"
+)"
 jq -e '
   .status == "ready"
   and .status_scope == "deployment_consistency_gate"
@@ -54,6 +64,8 @@ jq -e '
   and .locally_executable == true
   and .integration_verified == true
   and .active_binary_consistent == true
+  and .observation_fresh == true
+  and .current_runtime_ready == true
   and .deployment_consistent == true
   and .controlled_live == false
   and .live_enabled == false
@@ -63,12 +75,102 @@ jq -e '
   and .installed_manifest_sha_match == true
   and .active_installed_sha_match == true
   and .active_installed_manifest_sha_match == true
+  and .repo_head == .expected_source_commit
+  and .current_reality.schema_version == "hepta_current_reality_observation_v1"
+  and .current_reality.source == "active_process_readback"
+  and .current_reality.clock_source == "fixture"
+  and .current_reality.generated_at == 2000000000
+  and .current_reality.observed_at == 2000000000
+  and .current_reality.age_seconds == 0
+  and .current_reality.max_age_seconds == 60
+  and .current_reality.max_future_skew_seconds == 0
+  and .current_reality.timestamp_present == true
+  and .current_reality.timestamp_valid == true
+  and .current_reality.fresh == true
+  and .current_reality.stale == false
+  and .current_reality.source_verified == true
+  and .current_reality.source_head_matches == true
+  and .current_reality.manifest_source_matches == true
+  and .current_reality.manifest_readback_verified == true
+  and .current_reality.readback_verifiable == true
+  and .current_reality.current == true
   and .truth_semantics.highest_verified_level == "deployment_consistent"
   and .truth_semantics.ready_is_gate_scoped == true
+  and .truth_semantics.contract_readiness_is_not_observation_freshness == true
+  and .truth_semantics.observation_freshness_is_not_current_runtime_readiness == true
+  and .truth_semantics.current_runtime_readiness_is_not_deployment_consistency == true
   and .truth_semantics.active_process_is_not_controlled_live_evidence == true
   and .truth_semantics.deployment_consistency_is_not_production_readiness == true
   and (.failure_reasons | length) == 0
 ' >/dev/null <<<"$report"
+
+assert_current_reality_not_ready() {
+  local label="$1"
+  local expected_reason="$2"
+  local expected_fresh="$3"
+  shift 3
+  local negative_report=""
+  if negative_report="$(
+    env \
+      HEPTA_CURRENT_REALITY_NOW_EPOCH="$fixture_now" \
+      HEPTA_CURRENT_REALITY_MAX_AGE_SECONDS=60 \
+      "$@" \
+      "$ROOT/scripts/hepta-active-binary-consistency-gate" \
+        --pid "$fixture_pid" \
+        --installed-bin "$installed_bin" \
+        --manifest "$manifest" \
+        --expected-source-commit "$source_commit" \
+        2>/dev/null
+  )"; then
+    echo "active binary gate accepted $label current-reality evidence" >&2
+    exit 1
+  fi
+  jq -e \
+    --arg expected_reason "$expected_reason" \
+    --argjson expected_fresh "$expected_fresh" \
+    '
+      .ready == false
+      and .observation_fresh == $expected_fresh
+      and .current_runtime_ready == false
+      and .deployment_consistent == false
+      and .controlled_live == false
+      and .production_ready == false
+      and .current_reality.stale == ($expected_fresh | not)
+      and .current_reality.current == false
+      and (.failure_reasons | index($expected_reason)) != null
+    ' >/dev/null <<<"$negative_report" || {
+      echo "active binary gate did not fail closed for $label" >&2
+      exit 1
+    }
+}
+
+assert_current_reality_not_ready \
+  "missing timestamp" \
+  current_reality_observed_at_missing \
+  false \
+  HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH=
+assert_current_reality_not_ready \
+  "future timestamp" \
+  current_reality_observation_from_future \
+  false \
+  HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH=2000000001
+assert_current_reality_not_ready \
+  "expired timestamp" \
+  current_reality_observation_stale \
+  false \
+  HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH=1999999939
+assert_current_reality_not_ready \
+  "source mismatch" \
+  current_reality_source_unverified \
+  true \
+  HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH=2000000000 \
+  HEPTA_CURRENT_REALITY_SOURCE=historical_receipt
+assert_current_reality_not_ready \
+  "manifest mismatch" \
+  current_reality_manifest_readback_unverified \
+  true \
+  HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH=2000000000 \
+  HEPTA_CURRENT_REALITY_MANIFEST_SHA256=0000000000000000000000000000000000000000000000000000000000000000
 
 legacy_manifest="$($ROOT/scripts/hepta-immutable-release-tree materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/legacy-releases")"
 legacy_report=""
@@ -96,7 +198,14 @@ if source_mismatch_report="$($ROOT/scripts/hepta-active-binary-consistency-gate 
   echo "active binary gate accepted an unexpected source commit" >&2
   exit 1
 fi
-jq -e '.production_ready == false and (.failure_reasons | index("active_source_commit_mismatch")) != null' >/dev/null <<<"$source_mismatch_report"
+jq -e '
+  .production_ready == false
+  and .current_runtime_ready == false
+  and .deployment_consistent == false
+  and .current_reality.source_head_matches == false
+  and (.failure_reasons | index("active_source_commit_mismatch")) != null
+  and (.failure_reasons | index("current_reality_source_head_mismatch")) != null
+' >/dev/null <<<"$source_mismatch_report"
 
 missing_expected_rc=0
 "$ROOT/scripts/hepta-active-binary-consistency-gate" --pid "$fixture_pid" --installed-bin "$installed_bin" --manifest "$manifest" >/dev/null 2>&1 || missing_expected_rc=$?

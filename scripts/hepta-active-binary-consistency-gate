@@ -69,6 +69,7 @@ sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 
 active_sha256="$(sha256_file "$active_executable")"
 installed_sha256="$(sha256_file "$installed_bin")"
+manifest_file_sha256="$(sha256_file "$manifest")"
 manifest_sha256="$(jq -r '.artifact.sha256 // ""' "$manifest" 2>/dev/null || true)"
 manifest_source_commit="$(jq -r '.source.commit // "unknown"' "$manifest" 2>/dev/null || true)"
 manifest_bound="$(jq -r '
@@ -97,6 +98,105 @@ if [[ "$active_sha256" == "$installed_sha256" ]]; then
   active_installed_sha_match=true
 fi
 
+# Current-reality readiness is a direct readback contract, not a replay of the
+# candidate manifest's historical preflight status. Tests may inject the clock
+# and observation envelope without sleeping or depending on wall-clock timing.
+current_reality_source="${HEPTA_CURRENT_REALITY_SOURCE-active_process_readback}"
+current_reality_max_age_seconds="${HEPTA_CURRENT_REALITY_MAX_AGE_SECONDS:-60}"
+current_reality_max_future_skew_seconds="${HEPTA_CURRENT_REALITY_MAX_FUTURE_SKEW_SECONDS:-0}"
+if [[ ${HEPTA_CURRENT_REALITY_NOW_EPOCH+x} ]]; then
+  current_reality_now_epoch="$HEPTA_CURRENT_REALITY_NOW_EPOCH"
+  current_reality_clock_source="fixture"
+else
+  current_reality_now_epoch="$(date -u +%s)"
+  current_reality_clock_source="system_utc"
+fi
+if [[ ${HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH+x} ]]; then
+  current_reality_observed_at_epoch="$HEPTA_CURRENT_REALITY_OBSERVED_AT_EPOCH"
+else
+  current_reality_observed_at_epoch="$current_reality_now_epoch"
+fi
+current_reality_manifest_sha256="${HEPTA_CURRENT_REALITY_MANIFEST_SHA256-$manifest_file_sha256}"
+repo_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+
+current_reality="$({
+  jq -cn \
+    --arg schema_version "hepta_current_reality_observation_v1" \
+    --arg source "$current_reality_source" \
+    --arg clock_source "$current_reality_clock_source" \
+    --arg now "$current_reality_now_epoch" \
+    --arg observed_at "$current_reality_observed_at_epoch" \
+    --arg max_age "$current_reality_max_age_seconds" \
+    --arg max_future_skew "$current_reality_max_future_skew_seconds" \
+    --arg repo_head "$repo_head" \
+    --arg expected_source_commit "$expected_source_commit" \
+    --arg manifest_source_commit "$manifest_source_commit" \
+    --arg manifest_sha256 "$manifest_file_sha256" \
+    --arg observed_manifest_sha256 "$current_reality_manifest_sha256" \
+    '
+      def unsigned_integer: test("^(0|[1-9][0-9]{0,17})$");
+      ($now | unsigned_integer) as $now_valid
+      | ($observed_at | unsigned_integer) as $observed_at_valid
+      | ($max_age | unsigned_integer) as $max_age_valid
+      | ($max_future_skew | unsigned_integer) as $max_future_skew_valid
+      | ($max_age_valid and (($max_age | tonumber) > 0)
+          and $max_future_skew_valid
+          and (($max_future_skew | tonumber) == 0)) as $freshness_policy_valid
+      | (if $now_valid and $observed_at_valid
+          then (($now | tonumber) - ($observed_at | tonumber))
+          else null
+          end) as $age_seconds
+      | ($source == "active_process_readback") as $source_verified
+      | ($repo_head | test("^[0-9a-f]{40}$")) as $repo_head_valid
+      | ($repo_head_valid and $repo_head == $expected_source_commit) as $source_head_matches
+      | ($manifest_source_commit == $expected_source_commit) as $manifest_source_matches
+      | (($manifest_sha256 | test("^[0-9a-f]{64}$"))
+          and $observed_manifest_sha256 == $manifest_sha256) as $manifest_readback_verified
+      | ($now_valid and $observed_at_valid and $freshness_policy_valid
+          and $age_seconds >= 0
+          and $age_seconds <= ($max_age | tonumber)) as $fresh
+      | {
+          schema_version:$schema_version,
+          source:$source,
+          clock_source:$clock_source,
+          generated_at:(if $now_valid then ($now | tonumber) else null end),
+          observed_at:(if $observed_at_valid then ($observed_at | tonumber) else null end),
+          age_seconds:$age_seconds,
+          max_age_seconds:(if $max_age_valid then ($max_age | tonumber) else null end),
+          max_future_skew_seconds:(if $max_future_skew_valid
+            then ($max_future_skew | tonumber) else null end),
+          timestamp_present:($observed_at != ""),
+          timestamp_valid:($now_valid and $observed_at_valid),
+          freshness_policy_valid:$freshness_policy_valid,
+          future_observation:($age_seconds != null and $age_seconds < 0),
+          expired:($age_seconds != null and $max_age_valid
+            and $age_seconds > ($max_age | tonumber)),
+          fresh:$fresh,
+          stale:($fresh | not),
+          source_verified:$source_verified,
+          repo_head:(if $repo_head_valid then $repo_head else null end),
+          expected_source_commit:$expected_source_commit,
+          source_head_matches:$source_head_matches,
+          manifest_source_commit:$manifest_source_commit,
+          manifest_source_matches:$manifest_source_matches,
+          manifest_sha256:$manifest_sha256,
+          observed_manifest_sha256:$observed_manifest_sha256,
+          manifest_readback_verified:$manifest_readback_verified,
+          readback_verifiable:($source_verified
+            and $source_head_matches
+            and $manifest_source_matches
+            and $manifest_readback_verified),
+          current:($fresh
+            and $source_verified
+            and $source_head_matches
+            and $manifest_source_matches
+            and $manifest_readback_verified)
+        }
+    '
+})"
+observation_fresh="$(jq -r '.fresh' <<<"$current_reality")"
+current_reality_current="$(jq -r '.current' <<<"$current_reality")"
+
 failure_reasons='[]'
 if [[ "$manifest_contract_valid" != "true" ]]; then
   failure_reasons="$(jq -cn '$ARGS.positional' --args active_manifest_contract_invalid)"
@@ -113,6 +213,30 @@ fi
 if [[ "$source_commit_matches" != "true" ]]; then
   failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args active_source_commit_mismatch)"
 fi
+if [[ "$(jq -r '.freshness_policy_valid' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_freshness_policy_invalid)"
+fi
+if [[ "$(jq -r '.timestamp_present' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_observed_at_missing)"
+elif [[ "$(jq -r '.timestamp_valid' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_timestamp_invalid)"
+elif [[ "$(jq -r '.future_observation' <<<"$current_reality")" == "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_observation_from_future)"
+elif [[ "$(jq -r '.expired' <<<"$current_reality")" == "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_observation_stale)"
+fi
+if [[ "$(jq -r '.source_verified' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_source_unverified)"
+fi
+if [[ "$(jq -r '.source_head_matches' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_source_head_mismatch)"
+fi
+if [[ "$(jq -r '.manifest_source_matches' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_manifest_source_mismatch)"
+fi
+if [[ "$(jq -r '.manifest_readback_verified' <<<"$current_reality")" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args current_reality_manifest_readback_unverified)"
+fi
 
 contract_valid=false
 if [[ "$manifest_contract_valid" == "true" ]]; then
@@ -127,8 +251,12 @@ active_binary_consistent=false
 if [[ "$installed_manifest_sha_match" == "true" && "$active_installed_sha_match" == "true" ]]; then
   active_binary_consistent=true
 fi
+current_runtime_ready=false
+if [[ "$active_binary_consistent" == "true" && "$current_reality_current" == "true" ]]; then
+  current_runtime_ready=true
+fi
 deployment_consistent=false
-if [[ "$integration_verified" == "true" && "$active_binary_consistent" == "true" ]]; then
+if [[ "$integration_verified" == "true" && "$current_runtime_ready" == "true" ]]; then
   deployment_consistent=true
 fi
 controlled_live=false
@@ -140,6 +268,8 @@ jq -cn \
   --argjson locally_executable "$locally_executable" \
   --argjson integration_verified "$integration_verified" \
   --argjson active_binary_consistent "$active_binary_consistent" \
+  --argjson observation_fresh "$observation_fresh" \
+  --argjson current_runtime_ready "$current_runtime_ready" \
   --argjson deployment_consistent "$deployment_consistent" \
   --argjson controlled_live "$controlled_live" \
   --argjson live_enabled "$live_enabled" \
@@ -147,6 +277,7 @@ jq -cn \
   --arg pid "$pid" \
   --arg active_executable "$active_executable" \
   --arg active_sha256 "$active_sha256" \
+  --arg repo_head "$repo_head" \
   --arg installed_bin "$(realpath "$installed_bin")" \
   --arg installed_sha256 "$installed_sha256" \
   --arg manifest "$(realpath "$manifest")" \
@@ -158,6 +289,7 @@ jq -cn \
   --argjson source_commit_matches "$source_commit_matches" \
   --argjson installed_manifest_sha_match "$installed_manifest_sha_match" \
   --argjson active_installed_sha_match "$active_installed_sha_match" \
+  --argjson current_reality "$current_reality" \
   --argjson failure_reasons "$failure_reasons" \
   '{
     status:(if $deployment_consistent then "ready" else "blocked" end),
@@ -167,6 +299,8 @@ jq -cn \
     locally_executable:$locally_executable,
     integration_verified:$integration_verified,
     active_binary_consistent:$active_binary_consistent,
+    observation_fresh:$observation_fresh,
+    current_runtime_ready:$current_runtime_ready,
     deployment_consistent:$deployment_consistent,
     controlled_live:$controlled_live,
     live_enabled:$live_enabled,
@@ -174,6 +308,7 @@ jq -cn \
     pid:($pid | tonumber),
     active_executable:$active_executable,
     active_sha256:$active_sha256,
+    repo_head:$repo_head,
     installed_binary:$installed_bin,
     installed_sha256:$installed_sha256,
     manifest:$manifest,
@@ -186,9 +321,11 @@ jq -cn \
     installed_manifest_sha_match:$installed_manifest_sha_match,
     active_installed_sha_match:$active_installed_sha_match,
     active_installed_manifest_sha_match:($installed_manifest_sha_match and $active_installed_sha_match),
+    current_reality:$current_reality,
     truth_semantics:{
       highest_verified_level:(
         if $deployment_consistent then "deployment_consistent"
+        elif $current_runtime_ready then "current_runtime_ready"
         elif $active_binary_consistent then "active_binary_consistent"
         elif $integration_verified then "integration_verified"
         elif $locally_executable then "locally_executed"
@@ -197,6 +334,9 @@ jq -cn \
         end
       ),
       ready_is_gate_scoped:true,
+      contract_readiness_is_not_observation_freshness:true,
+      observation_freshness_is_not_current_runtime_readiness:true,
+      current_runtime_readiness_is_not_deployment_consistency:true,
       active_process_is_not_controlled_live_evidence:true,
       deployment_consistency_is_not_production_readiness:true
     },
