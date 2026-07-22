@@ -77,6 +77,11 @@ verify_contract() {
           role:"current_r2",
           ref:"refs/remotes/upstream/hepta-intake-20260721-r2",
           sha:"88fac6fe108237a105d3203e3508b0d531054312"
+        },
+        {
+          role:"current_r3",
+          ref:"refs/remotes/upstream/hepta-intake-20260722-r3",
+          sha:"9fc715c0861c956c894a91890b78dc05b304ba29"
         }
       ]
     }
@@ -200,7 +205,7 @@ self_test() (
     echo "Hepta CI contract self-test accepted a different upstream intake ref" >&2
     return 1
   fi
-  jq '.upstream_intake.refs[1].sha = "0000000000000000000000000000000000000000"' \
+  jq '.upstream_intake.refs[2].sha = "0000000000000000000000000000000000000000"' \
     "$tmp/contract.json" >"$tmp/contract-mutated.json"
   if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted a different upstream intake SHA" >&2
@@ -214,44 +219,52 @@ self_test() (
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
 
-  local ref_fixture predecessor_ref predecessor_sha r2_ref r2_sha old_before wrong_r2_after
+  local ref_fixture predecessor_ref predecessor_sha r2_ref r2_sha r3_ref r3_sha predecessor_before r2_before wrong_r3_after
   ref_fixture="$tmp/ref-fixture"
   predecessor_ref="refs/remotes/upstream/hepta-intake-20260721"
   predecessor_sha="45ac251e178416ff5c3022457ad8d2778c0d4549"
   r2_ref="refs/remotes/upstream/hepta-intake-20260721-r2"
   r2_sha="88fac6fe108237a105d3203e3508b0d531054312"
+  r3_ref="refs/remotes/upstream/hepta-intake-20260722-r3"
+  r3_sha="9fc715c0861c956c894a91890b78dc05b304ba29"
   git clone -q --shared --no-checkout "$ROOT" "$ref_fixture"
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$predecessor_sha"
-  git -C "$ref_fixture" update-ref -d "$r2_ref"
+  git -C "$ref_fixture" update-ref "$r2_ref" "$r2_sha"
+  git -C "$ref_fixture" update-ref -d "$r3_ref"
 
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" verify >/dev/null 2>&1; then
-    echo "Hepta CI contract self-test accepted a missing r2 upstream intake ref" >&2
+    echo "Hepta CI contract self-test accepted a missing r3 upstream intake ref" >&2
     return 1
   fi
 
-  git -C "$ref_fixture" update-ref "$r2_ref" "$predecessor_sha"
+  git -C "$ref_fixture" update-ref "$r3_ref" "$r2_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null 2>&1; then
-    echo "Hepta CI contract self-test overwrote a misdirected r2 upstream intake ref" >&2
+    echo "Hepta CI contract self-test overwrote a misdirected r3 upstream intake ref" >&2
     return 1
   fi
-  wrong_r2_after="$(git -C "$ref_fixture" rev-parse "$r2_ref")"
-  [[ "$wrong_r2_after" == "$predecessor_sha" ]] || {
-    echo "Hepta CI contract self-test mutated a misdirected r2 upstream intake ref" >&2
+  wrong_r3_after="$(git -C "$ref_fixture" rev-parse "$r3_ref")"
+  [[ "$wrong_r3_after" == "$r2_sha" ]] || {
+    echo "Hepta CI contract self-test mutated a misdirected r3 upstream intake ref" >&2
     return 1
   }
 
-  git -C "$ref_fixture" update-ref -d "$r2_ref"
-  old_before="$(git -C "$ref_fixture" rev-parse "$predecessor_ref")"
+  git -C "$ref_fixture" update-ref -d "$r3_ref"
+  predecessor_before="$(git -C "$ref_fixture" rev-parse "$predecessor_ref")"
+  r2_before="$(git -C "$ref_fixture" rev-parse "$r2_ref")"
   HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null
-  [[ "$(git -C "$ref_fixture" rev-parse "$predecessor_ref")" == "$old_before" ]] || {
+  [[ "$(git -C "$ref_fixture" rev-parse "$predecessor_ref")" == "$predecessor_before" ]] || {
     echo "Hepta CI contract self-test moved the predecessor upstream intake ref" >&2
     return 1
   }
-  [[ "$(git -C "$ref_fixture" rev-parse "$r2_ref")" == "$r2_sha" ]] || {
-    echo "Hepta CI contract self-test failed to materialize the exact r2 upstream intake ref" >&2
+  [[ "$(git -C "$ref_fixture" rev-parse "$r2_ref")" == "$r2_before" ]] || {
+    echo "Hepta CI contract self-test moved the r2 predecessor upstream intake ref" >&2
+    return 1
+  }
+  [[ "$(git -C "$ref_fixture" rev-parse "$r3_ref")" == "$r3_sha" ]] || {
+    echo "Hepta CI contract self-test failed to materialize the exact r3 upstream intake ref" >&2
     return 1
   }
   HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -281,7 +294,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,different_upstream_url_ref_sha_denied:true,floating_upstream_fetch_denied:true,missing_r2_ref_denied:true,misdirected_r2_ref_denied:true,misdirected_r2_ref_not_overwritten:true,clean_checkout_r2_materialized:true,predecessor_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,different_upstream_url_ref_sha_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 
 [[ $# -eq 1 ]] || usage

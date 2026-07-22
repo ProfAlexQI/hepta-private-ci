@@ -1,0 +1,3384 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v3",
+  "intake_id": "upstream-codex-intake-2026-07-22-r3",
+  "schema_evolution": {
+    "mode": "additive_versioned",
+    "predecessor_schema": "hepta_upstream_codex_current_intake_v2",
+    "compatibility": "v2 predecessor remains immutable and hash-bound"
+  },
+  "state_model": [
+    "observed",
+    "classified",
+    "deferred",
+    "rejected",
+    "imported"
+  ],
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json",
+    "manifest_sha256": "41d9f73fe2d3339d1912578be7628a76f546cea2aaa54f1477964cbad2c1c9ca",
+    "cutoff_ref": "refs/remotes/upstream/hepta-intake-20260721-r2",
+    "cutoff_head": "88fac6fe108237a105d3203e3508b0d531054312",
+    "preserved": true
+  },
+  "observation": {
+    "state": "observed",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_source_ref": "refs/heads/main",
+    "observed_at": "2026-07-22T10:42:16Z",
+    "discovery_command": "git ls-remote https://github.com/openai/codex refs/heads/main",
+    "discovered_remote_head": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "exact_sha_fetch_performed": true,
+    "fetch_source": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "temporary_intake_ref": "refs/hepta/intake/tmp/upstream-codex-20260722-9fc715c0",
+    "cutoff_ref": "refs/remotes/upstream/hepta-intake-20260722-r3",
+    "cutoff_head": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "range_start": "88fac6fe108237a105d3203e3508b0d531054312",
+    "range_end": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "commit_count": 83,
+    "merge_commit_count": 0,
+    "changed_file_count": 522,
+    "codex_rs_changed_file_count": 508,
+    "insertions": 23276,
+    "deletions": 3793,
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "c56a557f74a6299f0300b1dc65a69b99d7a42027e0c832984e6ee67f98bc9a45"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "388e77f541fb5752993b6287b69ed97cca7faa57e68c479190c573f48bfcb837"
+    },
+    "remote_configuration_modified": false,
+    "prune_performed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "normalized_commit_inventory_sha256": "765ba2e7eaac8d94e936ac4b17289a0ac945bb05469499204a8dfb15f63d24e2",
+    "normalized_file_surface_sha256": "8b6858172f5ba38a968d791caef26ac354d23ecef66f0a95d72810abdb8ae220"
+  },
+  "classification": {
+    "state": "classified",
+    "policy": "inventory_only_selective_semantic_follow_up",
+    "commit_count": 83,
+    "disposition_counts": {
+      "deferred": 74,
+      "rejected": 9,
+      "imported": 0
+    },
+    "topics": [
+      {
+        "topic": "network_proxy_auth_security",
+        "commit_count": 21,
+        "risk": "high",
+        "hepta_applicability": "potentially applicable; requires bounded routing/auth review",
+        "disposition_counts": {
+          "deferred": 21,
+          "rejected": 0,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "sandbox_exec_process_security",
+        "commit_count": 13,
+        "risk": "critical",
+        "hepta_applicability": "potentially applicable; requires platform-specific sandbox review",
+        "disposition_counts": {
+          "deferred": 13,
+          "rejected": 0,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "mcp_plugin_skill_catalog",
+        "commit_count": 14,
+        "risk": "high",
+        "hepta_applicability": "potentially applicable; requires MCP/plugin compatibility review",
+        "disposition_counts": {
+          "deferred": 14,
+          "rejected": 0,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "thread_history_rollout_integrity",
+        "commit_count": 11,
+        "risk": "high",
+        "hepta_applicability": "potentially applicable; requires persistence and lineage review",
+        "disposition_counts": {
+          "deferred": 11,
+          "rejected": 0,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "runtime_protocol_configuration",
+        "commit_count": 8,
+        "risk": "high",
+        "hepta_applicability": "potentially applicable; requires API/config compatibility review",
+        "disposition_counts": {
+          "deferred": 8,
+          "rejected": 0,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "tui_cross_platform_compatibility",
+        "commit_count": 7,
+        "risk": "medium",
+        "hepta_applicability": "potentially applicable only in bounded TUI slice",
+        "disposition_counts": {
+          "deferred": 7,
+          "rejected": 0,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "release_ci_distribution_governance",
+        "commit_count": 5,
+        "risk": "low",
+        "hepta_applicability": "rejected for current intake; Hepta release governance diverges",
+        "disposition_counts": {
+          "deferred": 0,
+          "rejected": 5,
+          "imported": 0
+        }
+      },
+      {
+        "topic": "test_maintenance_only",
+        "commit_count": 4,
+        "risk": "low",
+        "hepta_applicability": "rejected as standalone intake; no product value without owning change",
+        "disposition_counts": {
+          "deferred": 0,
+          "rejected": 4,
+          "imported": 0
+        }
+      }
+    ]
+  },
+  "candidate_follow_up_slices": [
+    {
+      "id": "r3-sandbox-exec-process-security",
+      "priority": "P0-review",
+      "topic": "sandbox_exec_process_security",
+      "status": "candidate_only_not_started"
+    },
+    {
+      "id": "r3-network-proxy-auth-routing",
+      "priority": "P0-review",
+      "topic": "network_proxy_auth_security",
+      "status": "candidate_only_not_started"
+    },
+    {
+      "id": "r3-thread-history-rollout-integrity",
+      "priority": "P1-review",
+      "topic": "thread_history_rollout_integrity",
+      "status": "candidate_only_not_started"
+    },
+    {
+      "id": "r3-mcp-plugin-skill-catalog",
+      "priority": "P1-review",
+      "topic": "mcp_plugin_skill_catalog",
+      "status": "candidate_only_not_started"
+    },
+    {
+      "id": "r3-runtime-protocol-configuration",
+      "priority": "P1-review",
+      "topic": "runtime_protocol_configuration",
+      "status": "candidate_only_not_started"
+    },
+    {
+      "id": "r3-tui-cross-platform-compatibility",
+      "priority": "P2-review",
+      "topic": "tui_cross_platform_compatibility",
+      "status": "candidate_only_not_started"
+    }
+  ],
+  "commit_inventory": [
+    {
+      "upstream_commit": "c0cd337766ff27a75623c5baba199389f94f2ab3",
+      "authored_at": "2026-07-21T01:10:54Z",
+      "title": "Increase the patch approval test timeout (#34438)",
+      "topic": "test_maintenance_only",
+      "risk": "low",
+      "hepta_applicability": "no_standalone_product_value",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "99efeef6506cd7f6512404d0ad8755a87ff5a011",
+      "authored_at": "2026-07-21T02:02:15Z",
+      "title": "Add buffered code-mode exec yields (#34441)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "9078e3237165a5378cfbf7637223222774a22a30",
+      "authored_at": "2026-07-21T02:32:13Z",
+      "title": "Add a route-aware HTTP client pool (#34447)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "3bc49e1721ef0453d695950dc67bd2f0616c4883",
+      "authored_at": "2026-07-21T02:50:37Z",
+      "title": "Make external session detection limits configurable (#34449)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "a30aee8d906c2ec4dfa07c794504d4ee7099f98a",
+      "authored_at": "2026-07-21T02:51:36Z",
+      "title": "Attribute external agent imports by provider (#34451)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "9970cd706fc4f25bbb97b42f4b68d993dabe91e2",
+      "authored_at": "2026-07-21T03:54:37Z",
+      "title": "Support alpha hotfix release versions (#34463)",
+      "topic": "release_ci_distribution_governance",
+      "risk": "low",
+      "hepta_applicability": "not_directly_applicable_hepta_release_governance_diverges",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "1836ae0612052137d0cabaff7807ff8314cee940",
+      "authored_at": "2026-07-21T05:12:52Z",
+      "title": "Preserve thread settings for goal-first and forked threads (#34469)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "9e5625d9cf636f4ef35aac7ca321a8be96f561ec",
+      "authored_at": "2026-07-21T07:03:12Z",
+      "title": "Separate HTTP execution from request logging (#34476)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "c04452a240a13dbd0ede548fd1842d433d18419e",
+      "authored_at": "2026-07-21T07:05:39Z",
+      "title": "Honor `CARGO_HTTP_CAINFO` in managed proxy environments (#34478)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "841e47b8fb113a201b68e0f1f5790ba22836a241",
+      "authored_at": "2026-07-21T07:13:08Z",
+      "title": "Re-resolve system proxy routes across redirects (#34479)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "b8c2d29cc23b41fa7c7f5f5483e92fc71099635a",
+      "authored_at": "2026-07-21T07:44:22Z",
+      "title": "Add route-aware redirect test coverage (#34481)",
+      "topic": "test_maintenance_only",
+      "risk": "low",
+      "hepta_applicability": "no_standalone_product_value",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "d5998e74522245ce6e7b746dab6c5f0ed428a8d1",
+      "authored_at": "2026-07-21T07:55:56Z",
+      "title": "Expand route-aware proxy redirect coverage (#34483)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "dc21b46aea67947c3ab1b574cabcd79ff7084c73",
+      "authored_at": "2026-07-21T08:23:24Z",
+      "title": "Route backend requests through the HTTP client factory (#34490)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "0e15c31d91bb4b1dc714957e4697bba40318eb5d",
+      "authored_at": "2026-07-21T08:31:40Z",
+      "title": "Route cloud environment discovery through the HTTP client pool (#34491)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "99eb575649888646df3bb13f01bb78f115f894ab",
+      "authored_at": "2026-07-21T08:45:16Z",
+      "title": "Honor system proxy settings in the daemon updater (#34495)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "4f1992732c832fe125608980a03ec2b66710c4e4",
+      "authored_at": "2026-07-21T08:54:47Z",
+      "title": "Preserve custom arg0 for sandboxed exec-server processes (#34497)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "cc875d61ce4be88a05371e185fb2f5530220315c",
+      "authored_at": "2026-07-21T09:36:17Z",
+      "title": "Mirror Rust release artifacts to Cloudflare R2 (#34505)",
+      "topic": "release_ci_distribution_governance",
+      "risk": "low",
+      "hepta_applicability": "not_directly_applicable_hepta_release_governance_diverges",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "94bb6a09a66cbf6a70b854cfc9276eefc2c621ed",
+      "authored_at": "2026-07-21T09:40:43Z",
+      "title": "Respect system proxies during plugin startup sync (#34506)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "a148e0b50a5cfa642512dca77c367bde5194f882",
+      "authored_at": "2026-07-21T09:49:58Z",
+      "title": "Publish release metadata to R2 channels (#34508)",
+      "topic": "release_ci_distribution_governance",
+      "risk": "low",
+      "hepta_applicability": "not_directly_applicable_hepta_release_governance_diverges",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "d937bfac84786b453ddb2d3fdb2712c1eca830ea",
+      "authored_at": "2026-07-21T10:00:18Z",
+      "title": "Honor system proxy settings for remote plugins (#34509)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "765675a122c9d1d4add7ce53d48c2d416fae39e9",
+      "authored_at": "2026-07-21T10:34:10Z",
+      "title": "Add an optional releases.openai.com installer source (#34514)",
+      "topic": "release_ci_distribution_governance",
+      "risk": "low",
+      "hepta_applicability": "not_directly_applicable_hepta_release_governance_diverges",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "7982aa27ff7b5438121af6ec0e229b6b67ae810f",
+      "authored_at": "2026-07-21T10:51:51Z",
+      "title": "Allow `numer` in codespell checks (#34516)",
+      "topic": "release_ci_distribution_governance",
+      "risk": "low",
+      "hepta_applicability": "not_directly_applicable_hepta_release_governance_diverges",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "b9800de4867e500a92add3cde795cf4790306d0f",
+      "authored_at": "2026-07-21T10:52:14Z",
+      "title": "Pass empty inherited FDs in the Wine PTY test (#34517)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "2d85e6d3a616dc1fac258a5320c7a00a5e5bceb2",
+      "authored_at": "2026-07-21T11:41:22Z",
+      "title": "Split MCP connection manager into focused modules (#34522)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "c44c4de7b410993dacb2e88c7084c9c968bc963a",
+      "authored_at": "2026-07-21T11:47:24Z",
+      "title": "Add step-scoped data to extension contributors (#34525)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "f69f88f8116f541daddada3a056de5772a891f15",
+      "authored_at": "2026-07-21T12:48:27Z",
+      "title": "Centralize compacted rollout item construction (#34533)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "0c01a18ede9ed48608f8869b18603c45f0116df4",
+      "authored_at": "2026-07-21T13:29:42Z",
+      "title": "Detach Git metadata commands from stdin (#34540)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "2d5c25920271743de70e73ac077423dbf04aff6f",
+      "authored_at": "2026-07-21T13:31:53Z",
+      "title": "Size Noise handshake buffers to their messages (#34544)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "6915bac7ba2753277cfb6679b547c03e4fe567ed",
+      "authored_at": "2026-07-21T13:44:31Z",
+      "title": "Add reciprocal rank fusion skill selection (#34547)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "27a9c4d6bd1f6875127a2f0f6c2c10d95b5e5b09",
+      "authored_at": "2026-07-21T14:06:35Z",
+      "title": "Test thread-scoped MCP refresh behavior (#34550)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "b5b8a63fea2b24ffe94e7b3bfb51b4c9d5b5fd20",
+      "authored_at": "2026-07-21T14:10:49Z",
+      "title": "Simplify TUI restoration for the external editor (#34551)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "4c2dc5d2858822a9db82091cc17e06d34880df48",
+      "authored_at": "2026-07-21T14:11:01Z",
+      "title": "Remove unused RtOptions setters (#34552)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "40a719238cbcd2c5428ff5c3c7687e86b3d47fae",
+      "authored_at": "2026-07-21T14:11:10Z",
+      "title": "Remove the unused TUI shutdown app command (#34553)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "268288ad6dc0ee4a80e1bff38354efbb71b13ac6",
+      "authored_at": "2026-07-21T14:11:55Z",
+      "title": "Remove obsolete ignored tests (#34558)",
+      "topic": "test_maintenance_only",
+      "risk": "low",
+      "hepta_applicability": "no_standalone_product_value",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "98c3bbdc798a9d9b301db3a92d7118c5281d5b3e",
+      "authored_at": "2026-07-21T14:21:18Z",
+      "title": "Add backend client support for Codex user settings (#34559)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "f6aad1f3631455477a4f129e6b997ab511e38cf5",
+      "authored_at": "2026-07-21T14:50:35Z",
+      "title": "Extract MCP binding clients from the connection manager (#34561)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "175f82147f4989d714d6899261b6c2c391f28b0b",
+      "authored_at": "2026-07-21T15:05:49Z",
+      "title": "Record rollout boundaries for materialized turns (#34562)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "7bb13ab846a36341129bc431bbe277ded748a444",
+      "authored_at": "2026-07-21T15:06:51Z",
+      "title": "Page through inherited thread history (#34563)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "0b175e6439a8608ba7726ee153fd8590619e8f34",
+      "authored_at": "2026-07-21T15:10:14Z",
+      "title": "Protect fork history references during rollout cleanup (#34566)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "726689564aa7ab938f40bfd94479d5b66c48c91b",
+      "authored_at": "2026-07-21T15:48:39Z",
+      "title": "Highlight CUDA files as C++ in the TUI (#34570)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "6ac68be6fef048b579f0a4413ae107409b476b30",
+      "authored_at": "2026-07-21T16:25:49Z",
+      "title": "Accept `forceRefetch` in plugin list requests (#34573)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "af71774d2645ec900cccf2a40d186a56c7a42f71",
+      "authored_at": "2026-07-21T16:52:50Z",
+      "title": "Gate the TUI suspend restore helper on Unix (#34578)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "51200321eb7b862a29ffceaba8b19db1934a9b38",
+      "authored_at": "2026-07-21T17:13:03Z",
+      "title": "Add routing-card lexical skill selection (#34581)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "65f8bf68533332628b7fc213eade2a91d18d36ee",
+      "authored_at": "2026-07-21T18:09:06Z",
+      "title": "Bind MCP calls to captured catalog revisions (#34588)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "7442f5f9323d116755dfe630e22c931a8aeaa5c7",
+      "authored_at": "2026-07-21T18:18:16Z",
+      "title": "Add keyed shell environment policy filters (#34590)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "ee71c4a90f49ce52a8c8801681111e9b5a19d7aa",
+      "authored_at": "2026-07-21T19:03:58Z",
+      "title": "Enforce exact values from managed config requirements (#34597)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "87f71e35b86cc4d2da4d81728004adac45a9dd3a",
+      "authored_at": "2026-07-21T19:11:29Z",
+      "title": "Skip missing paths in filesystem sandbox entries (#34598)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "6c00dc087e4c01312017389483573500001e9fe9",
+      "authored_at": "2026-07-21T19:20:58Z",
+      "title": "Sanitize skill names in injection metrics (#34601)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "2497972808e7a5fc2c4db50a140bbd1559fc1d75",
+      "authored_at": "2026-07-21T19:45:13Z",
+      "title": "Allow explicitly permitted loopback proxy targets (#34603)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "25d2dfcad010386610867a4635e0874296b468f1",
+      "authored_at": "2026-07-21T20:08:50Z",
+      "title": "Allow naming sessions with `/new` and `/clear` (#34605)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "c7e3838987f56dd180cd6c8e77c012ebd2bb6088",
+      "authored_at": "2026-07-21T20:46:34Z",
+      "title": "Add compatibility policies for skill catalog rendering (#34611)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "dfd2d8133c516778f72fea24e3d47c9a5f34e49b",
+      "authored_at": "2026-07-21T20:47:57Z",
+      "title": "Detach non-interactive subprocesses from stdin (#34612)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "999a715089a697e8d205e7d7d725ea532664dd95",
+      "authored_at": "2026-07-21T21:01:25Z",
+      "title": "Route Windows sandbox proxy traffic by restricting SID (#34613)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "ad020f29aeda36ceac4f7c75fc6b5c7e00ab6f7b",
+      "authored_at": "2026-07-21T21:03:46Z",
+      "title": "Initialize missing-path behavior in exec-server sandbox test (#34615)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "d838ea0f64e44e99b87438b2b58c9ccf0bca6289",
+      "authored_at": "2026-07-21T21:49:59Z",
+      "title": "Add exec-server network policy callback types (#34620)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "5bfd74d36cb1c019f50c747ad52fd652dc6741a3",
+      "authored_at": "2026-07-21T21:50:34Z",
+      "title": "Load paginated model context across rollout lineages (#34621)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "ded4eacdbd4df4e001a1f072ed3e2b27797f2345",
+      "authored_at": "2026-07-21T21:58:08Z",
+      "title": "Increase the auto-review model override test timeout (#34622)",
+      "topic": "test_maintenance_only",
+      "risk": "low",
+      "hepta_applicability": "no_standalone_product_value",
+      "disposition": "rejected",
+      "candidate_follow_up_slice": null,
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "9b33613db62526359686349bf717f93532807849",
+      "authored_at": "2026-07-21T22:01:40Z",
+      "title": "Terminate Windows process trees with job objects (#34624)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "bbad09a83b1fd9d7e507d688fcd266a7889d7df6",
+      "authored_at": "2026-07-21T22:01:54Z",
+      "title": "Fix Windows TUI navigation key handling (#34625)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "37eef7baccebaeb00e42a88b323054cdbfe418c5",
+      "authored_at": "2026-07-21T22:03:50Z",
+      "title": "Scale skill metadata budgets with model context windows (#34626)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "a26f219f6788c951dcb3bf435fab4c6d0f4d2f40",
+      "authored_at": "2026-07-21T22:30:33Z",
+      "title": "Harden Windows elevated sandbox startup (#34629)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "adb143a2919ae77eaba55c2150685e489168be38",
+      "authored_at": "2026-07-21T22:31:03Z",
+      "title": "Add a policy-aware HTTP client builder (#34630)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "1b77da35cc5d8cd358148a5ae4f6be128850c85b",
+      "authored_at": "2026-07-21T22:38:14Z",
+      "title": "Migrate agent identity to the shared HTTP client (#34631)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "0a39ff138e7ed816a756169a36ce09cecd047aa6",
+      "authored_at": "2026-07-21T23:08:37Z",
+      "title": "Keep the TUI open when starting a turn fails (#34636)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "81de4f251cfdaf32ecb85e2160ebfc11a562d44b",
+      "authored_at": "2026-07-21T23:10:42Z",
+      "title": "Attribute review findings to repository rules (#34637)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "bdd3118c71a29f26b9df3a47f91efea38a0d58bd",
+      "authored_at": "2026-07-21T23:23:54Z",
+      "title": "Update Windows process-tree tests for inherited FDs (#34640)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "c5eb33aed12d4977dc38403ecf8b42d89939ea32",
+      "authored_at": "2026-07-22T00:26:03Z",
+      "title": "Harden managed proxy setup for sandboxed executions (#34641)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "539c0e1100512bbdaaeafdfa3dafc1c8954eb288",
+      "authored_at": "2026-07-22T00:45:41Z",
+      "title": "Migrate login HTTP construction to `HttpClient` (#34643)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "690995b7c1e8c8099c684402b5957535bada4e80",
+      "authored_at": "2026-07-22T01:13:59Z",
+      "title": "Verify Git plugin SHA checkouts (#34644)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "4a443994bd12f49f2f08b21a2f224d9d42b9e734",
+      "authored_at": "2026-07-22T01:16:05Z",
+      "title": "Always assign response item IDs (#34645)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "f899a79c030a1bb7814872fe1551cf3c2772a40e",
+      "authored_at": "2026-07-22T01:19:36Z",
+      "title": "Propagate resolved proxy policy through auth routing (#34649)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "a26bc337cf61cbca9cd9ac25b25c88c32186eb20",
+      "authored_at": "2026-07-22T01:20:48Z",
+      "title": "Require auth managers to receive routing configuration (#34650)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "9fce9e13fd649f8c4549079eb6ca5d697e2ce0e4",
+      "authored_at": "2026-07-22T01:21:32Z",
+      "title": "Migrate core test support to the shared HTTP client (#34651)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "1823c13771a07cf4ae98a971a06bb1b4ab7eda2d",
+      "authored_at": "2026-07-22T02:15:16Z",
+      "title": "Render turn diffs for foreign environment paths (#34654)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "d4fcb2873bf23464cfacd804a31d46529db943b0",
+      "authored_at": "2026-07-22T02:17:32Z",
+      "title": "Honor configured proxy routes for auth refreshes (#34655)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "cefcffd692a3d070e9341ffa756a04e56d086c19",
+      "authored_at": "2026-07-22T02:43:10Z",
+      "title": "Preserve approvals reviewer when forking threads (#34664)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "661339bb0941c055602688a83bcc8f72be21b54d",
+      "authored_at": "2026-07-22T02:45:54Z",
+      "title": "Document `PathUri` drive letter canonicalization (#34667)",
+      "topic": "tui_cross_platform_compatibility",
+      "risk": "medium",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-tui-cross-platform-compatibility",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "4f3852107e5eedeb4cb89b57a6d4a35b49f8a59a",
+      "authored_at": "2026-07-22T02:57:20Z",
+      "title": "Expand codex-http-client usage guidance (#34669)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "21db216db05d13713f09189fc44872d22cf47fc4",
+      "authored_at": "2026-07-22T04:12:23Z",
+      "title": "Route LM Studio requests through the shared HTTP client (#34678)",
+      "topic": "network_proxy_auth_security",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-network-proxy-auth-routing",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "963cda85aa2a4cfb85e52d771d22d9f3069951fa",
+      "authored_at": "2026-07-22T04:50:03Z",
+      "title": "Add session headers to realtime conversation starts (#34681)",
+      "topic": "thread_history_rollout_integrity",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-thread-history-rollout-integrity",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "6e5a2d6b8d148a5554fdceb6f399ca45bd1c78d9",
+      "authored_at": "2026-07-22T06:03:27Z",
+      "title": "Configure Codex Auto Review model metadata (#34687)",
+      "topic": "runtime_protocol_configuration",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-runtime-protocol-configuration",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "516f1e2aff62293f4fe09f14868082f3852d0930",
+      "authored_at": "2026-07-22T09:20:19Z",
+      "title": "Rename the MCP connection manager to `McpConnectionSet` (#34708)",
+      "topic": "mcp_plugin_skill_catalog",
+      "risk": "high",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-mcp-plugin-skill-catalog",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    },
+    {
+      "upstream_commit": "9fc715c0861c956c894a91890b78dc05b304ba29",
+      "authored_at": "2026-07-22T09:21:41Z",
+      "title": "Order unified exec lifecycle events reliably (#34713)",
+      "topic": "sandbox_exec_process_security",
+      "risk": "critical",
+      "hepta_applicability": "potentially_applicable_requires_bounded_semantic_review",
+      "disposition": "deferred",
+      "candidate_follow_up_slice": "r3-sandbox-exec-process-security",
+      "imported": false,
+      "integrated": false,
+      "tested": false
+    }
+  ],
+  "file_surface": [
+    {
+      "status": "M",
+      "path": ".codespellignore"
+    },
+    {
+      "status": "A",
+      "path": ".github/scripts/publish_r2_release.py"
+    },
+    {
+      "status": "M",
+      "path": ".github/workflows/python-runtime-build.yml"
+    },
+    {
+      "status": "M",
+      "path": ".github/workflows/python-runtime-release.yml"
+    },
+    {
+      "status": "A",
+      "path": ".github/workflows/r2-release.yml"
+    },
+    {
+      "status": "M",
+      "path": ".github/workflows/rust-release.yml"
+    },
+    {
+      "status": "M",
+      "path": "bazel/rules/testing/wine/src/lib_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/Cargo.lock"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/agent-identity/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/agent-identity/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/analytics_client_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/events.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/facts.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/reducer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-daemon/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-daemon/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-daemon/src/update_loop.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-daemon/src/update_loop_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigRequirementsReadResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigDetectParams.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportParams.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/PluginListParams.json"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/typescript/PathUri.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/index.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConfigRequirements.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigDetectParams.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportParams.ts"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/FeedbackRequirements.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/PluginListParams.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/export.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/permissions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/tests/schema_fixtures.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/clients.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/enroll.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/server_api.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/clients_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/pairing_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/websocket.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/README.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/bin/exec_server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/config_manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/config_manager_service.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/config_manager_service_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/external_agent_migration/processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/mcp_refresh.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/account_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/account_processor/rate_limit_resets.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/apps_processor/installed.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/config_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/feedback_doctor_report.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/plugins.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_delete.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_goal_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_share.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/skills_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_delete.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_fork.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_inject_items.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/web_search.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/apply-patch/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/arg0/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/backend-client/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/backend-client/src/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/backend-client/src/client/rate_limit_resets.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/backend-client/src/client/rate_limit_resets_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/backend-client/src/client_request_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/backend-client/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/backend-client/src/types.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/debug_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/doctor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/doctor/git.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/login.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/main.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/plugin_cmd.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/sandbox_setup.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/tests/sandbox_network_proxy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-config/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-config/src/backend.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-config/src/bundle_loader.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-config/src/service_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-tasks-client/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-tasks-client/src/http.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-tasks/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-tasks/src/env_detect.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/cloud-tasks/src/env_detect_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-tasks/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cloud-tasks/src/util.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-protocol/src/description.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/binding.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/binding_clients.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/binding_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/connection_manager/required.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/mcp/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/resource_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/rmcp_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/config_requirements.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/config_toml.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/diagnostics.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/loader/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/merge.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/merge_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/requirements_layers/layer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/requirements_layers/stack.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/requirements_layers/stack_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/schema.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/config/src/shell_environment_policy.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/config/src/shell_environment_policy_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/state_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/types.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/connectors/src/app_tool_policy_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/discoverable_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core-plugins/src/http_client_selector.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/loader.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/loader_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote/remote_installed_plugin_sync.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote/share.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote/share/checkout.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote/share/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote_bundle.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote_legacy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/startup_sync.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core-plugins/src/startup_sync/http_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/startup_sync_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/test_support.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-skills/src/injection.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-skills/src/remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/config.schema.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/client_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/codex_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_remote_v2.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_token_budget.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/config_loader_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/config_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/network_proxy_spec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/permissions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/permissions_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/src/config/requirements.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/schema_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/connectors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/context/world_state/environment_render_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/exec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/exec_policy_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/exec_policy_windows_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/exec_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/git_info_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/guardian/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/mcp_tool_call.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/mcp_tool_call_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/plugins/discoverable_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_conversation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/safety_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/sandbox_tags_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/config_lock.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/handlers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/mcp.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/mcp_runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/step_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/tests/guardian_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/turn.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/turn_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/skills.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/state/service.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/thread_manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/code_mode/execute_spec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/code_mode/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/extension_tools.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/request_plugin_install.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/unified_exec/write_stdin.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/router.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/router_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/sandboxing_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/spec_plan.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/turn_diff_tracker.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/turn_diff_tracker_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/async_watcher.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/async_watcher_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/mod_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/process.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/process_manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/process_manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/process_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/windows_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/windows_sandbox_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/context_snapshot.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/hooks.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/responses.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/streaming_sse.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/responses_headers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/agent_websocket.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/apply_patch_cli.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/approvals.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/auto_review.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/client_websockets.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/codex_delegate.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/compact.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/compact_remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/compact_remote_parity.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/extension_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/fork_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/image_rollout.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/items.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mcp_auth_elicitation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mcp_auth_refresh.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mcp_turn_metadata.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/model_switching.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/prompt_caching.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/prompt_debug_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/realtime_conversation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/remote_env.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/tests/suite/responses_system_proxy.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/tests/suite/skills_extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/subagent_notifications.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/tools.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/unified_exec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/unified_exec_process_events.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/unified_exec_zsh_fork_approvals.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/unstable_features_warning.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/view_image.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/windows_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/deny.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server-protocol/src/lib.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server-protocol/src/network_policy.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server-protocol/src/network_policy_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server-protocol/src/protocol.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/arg0_exec_helper.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/fs_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/local_process.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/noise_channel.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/process_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/process_sandbox_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/remote_file_system.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/remote_file_system_path_uri_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/testing/exec_server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/common/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/exec_process.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/file_stream.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/file_system/support.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/file_system_unix.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec/src/event_processor_with_human_output_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/examples/enabled_extensions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/examples/enabled_extensions/shared_state_extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors/context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/tests/registry.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/goal/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/goal/tests/goal_extension_backend.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/image-generation/src/backend.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/image-generation/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/memories/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/memories/src/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/character_ngram_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/fielded_bm25_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/multi_query_lexical_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/routing_card_lexical.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/routing_card_lexical_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/rrf_lexical_char.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/rrf_lexical_char_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/dynamic_skill_selector/weighted_lexical_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/render.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/skills/src/render_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/shadow_selection_experiment.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/web-search/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/web-search/src/tool.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/detect/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/detect/sessions/cla.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/detect/sessions/common.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/detect/sessions/cur.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/detect/sessions/cur_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/detect/sessions/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/migration_source.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/model.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/service.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/features/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/features/src/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/file-system/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/git-utils/src/info.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/git-utils/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/README.md"
+    },
+    {
+      "status": "R061",
+      "old_path": "codex-rs/http-client/src/default_client.rs",
+      "path": "codex-rs/http-client/src/client.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/client_builder.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/client_builder_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/outbound_proxy.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/outbound_proxy_redirect_coverage_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/outbound_proxy_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/route_aware_client_pool.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/route_aware_client_pool_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/route_aware_redirect.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/route_aware_redirect_integration_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/route_aware_redirect_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/transport.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/http-client/src/transport_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/src/bwrap.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/src/linux_run_main.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/src/linux_run_main_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/src/proxy_routing.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/tests/suite/landlock.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/tests/suite/managed_proxy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/lmstudio/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/lmstudio/src/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/agent_identity.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/auth_headers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/auth_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/bedrock_api_key_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/default_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/default_client_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/personal_access_token.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth/revoke.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/device_code_auth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/outbound_proxy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/server.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/login/src/test_support.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/tests/suite/auth_refresh.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/tests/suite/device_code_login.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/tests/suite/login_server_e2e.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/tests/suite/logout.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/memories/write/src/guard.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/memories/write/src/runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider/src/auth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider/src/models_endpoint.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/models-manager/models.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/models-manager/src/manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/README.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/certs.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/connect_policy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/http_proxy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/mitm.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/proxy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/remote_config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/remote_config_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/socks5.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/upstream.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/network-proxy/src/upstream_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/network-proxy/src/windows_proxy_ingress.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/network-proxy/src/windows_proxy_ingress_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/network-proxy/src/windows_tcp_attribution.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/network-proxy/src/windows_tcp_attribution_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/network-proxy/tests/windows_stable_ingress.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/prompts/src/permissions_instructions_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/prompts/templates/review/rubric.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/config_types.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/models.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/permissions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/protocol.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/compression.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/compression_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/reverse_jsonl_scanner.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/reverse_jsonl_scanner_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/rollout/src/rollout_reference_index.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/rollout/src/rollout_reference_index_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/search.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/policy_transforms.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/policy_transforms_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/seatbelt_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/spawn.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/sandboxing/src/windows.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/state/thread_history_migrations/0003_turn_rollout_positions.sql"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/delete_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/model_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/model_context_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/rollout_lineage.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history/read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history/read_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history/search.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/thread-store/src/local/thread_history/segment_paging.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history_materialization.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/store.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/types.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/additional_dirs.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/background_requests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/config_persistence.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/event_dispatch.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/input.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/pending_interactive_replay.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/session_lifecycle.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/tests/session_lifecycle_requests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/app/tests/turn_submission.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/thread_session_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app_command.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app_event.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app_server_session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/slash_dispatch.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/composer_submission.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/history_replay.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/permissions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/slash_commands.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/turn_runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/custom_terminal.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/debug_config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/diff_render.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/external_agent_config_migration_flow.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/onboarding/auth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/permission_compat.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/render/highlight.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/session_log.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/slash_command.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__debug_config__tests__debug_config_requirement_sources.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__diff_render__tests__cpp_module_extension_highlighting.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/status/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/tui.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/tui/event_stream.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/tui/windows_console.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/wrapping.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/path-uri/src/api_path_string_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/path-uri/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/path-uri/src/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/src/pipe.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/utils/pty/src/pipe_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/utils/pty/src/win/job.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/src/win/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/src/win/procthreadattr.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/src/win/psuedocon.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/utils/pty/src/windows_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/acl.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/bin/command_runner/win.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/bin/setup_main/win.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/conpty/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/deny_read_resolver.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/elevated/ipc_framed.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/elevated/runner_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/elevated_impl.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/proc_thread_attr.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/process.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/resolved_permissions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/setup.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/token.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/windows-sandbox-rs/src/token_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/unified_exec/backends/elevated.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/unified_exec/backends/elevated_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/unified_exec/backends/legacy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/unified_exec/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/wrapper.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/wrapper_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "scripts/install/install.ps1"
+    },
+    {
+      "status": "M",
+      "path": "scripts/install/install.sh"
+    },
+    {
+      "status": "M",
+      "path": "scripts/install/test_install_sh.py"
+    },
+    {
+      "status": "M",
+      "path": "sdk/python/_runtime_setup.py"
+    },
+    {
+      "status": "A",
+      "path": "sdk/python/release_version.py"
+    },
+    {
+      "status": "M",
+      "path": "sdk/python/scripts/update_sdk_artifacts.py"
+    },
+    {
+      "status": "M",
+      "path": "sdk/python/tests/test_artifact_workflow_and_binaries.py"
+    }
+  ],
+  "boundaries": {
+    "inventory_only": true,
+    "upstream_code_imported": false,
+    "upstream_code_integrated": false,
+    "upstream_code_tested": false,
+    "bulk_merge_performed": false,
+    "bulk_rebase_performed": false,
+    "cherry_pick_performed": false,
+    "whole_tree_copy_performed": false,
+    "cargo_lock_replaced": false,
+    "module_lock_replaced": false,
+    "product_code_modified": false,
+    "follow_up_started": false
+  }
+}

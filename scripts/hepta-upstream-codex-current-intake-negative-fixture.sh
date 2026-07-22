@@ -1,169 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-cd "$REPO_ROOT"
-
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+cd "$ROOT"
 GATE="scripts/hepta-upstream-codex-current-intake.sh"
-OLD_REF="refs/remotes/openai-codex/main"
-OLD_HEAD="7d47056ea42636271ac020b86347fbbef49490aa"
-OLD_APPS_MCP_RECEIPT="0000000000000000000000000000000000000000"
-OLD_PROC_PREFLIGHT_RECEIPT="0000000000000000000000000000000000000000"
-CANONICAL_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json"
-MISSING_R2_SHA="bd92b056ddd91bd7c2ecfea3d8773f7eb5a879a6"
-WRONG_CLASS_R2_SHA="e4836f998da166aba456f60d2e74eb79d6e2542b"
-SELECTED_R2_SHA="44481a1c4548d1cc0cc3c95aa03b59ec4cba074a"
-FORGED_R2_SHA="0000000000000000000000000000000000000000"
-
-fixture_dir="$(mktemp -d /tmp/hepta-current-intake-negative.XXXXXX)"
+MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json"
+fixture_dir="$(mktemp -d /tmp/hepta-current-intake-r3-negative.XXXXXX)"
 trap 'rm -rf "$fixture_dir"' EXIT
 
 expect_denied() {
-  local fixture_id="$1"
-  local expected_message="$2"
-  shift 2
-
-  local fixture_output
-  if fixture_output="$(env HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_SKIP_RUST_TESTS=1 "$@" "$GATE" 2>&1)"; then
-    echo "negative fixture unexpectedly passed: $fixture_id" >&2
-    exit 1
-  fi
-
-  if ! grep -Fq "$expected_message" <<<"$fixture_output"; then
-    echo "negative fixture failed for the wrong reason: $fixture_id" >&2
-    printf '%s\n' "$fixture_output" >&2
-    exit 1
+  local name="$1"
+  shift
+  if env "$@" "$GATE" >"$fixture_dir/$name.out" 2>"$fixture_dir/$name.err"; then
+    echo "Hepta current intake negative fixture unexpectedly accepted $name" >&2
+    return 1
   fi
 }
 
-expect_denied \
-  "stale_ref" \
-  "cutoff ref does not match pinned ref" \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_REF="$OLD_REF"
+expect_denied stale_ref \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_REF=refs/remotes/upstream/hepta-intake-20260721-r2
+expect_denied cutoff_sha_mismatch \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD=88fac6fe108237a105d3203e3508b0d531054312
 
-expect_denied \
-  "cutoff_drift" \
-  "cutoff head does not match pinned cutoff" \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD="$OLD_HEAD"
-
-expect_denied \
-  "apps_mcp_receipt_drift" \
-  "Apps MCP receipt does not match pinned receipt" \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_APPS_MCP_LOCAL_RECEIPT="$OLD_APPS_MCP_RECEIPT"
-
-expect_denied \
-  "proc_preflight_receipt_drift" \
-  "proc preflight receipt does not match pinned receipt" \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_PROC_PREFLIGHT_LOCAL_RECEIPT="$OLD_PROC_PREFLIGHT_RECEIPT"
-
-jq --arg sha "$MISSING_R2_SHA" '
-  .deferred_decisions |= map(select(.upstream_commit != $sha))
-  | .classification.deferred_decision_count = (.deferred_decisions | length)
-' "$CANONICAL_MANIFEST" >"$fixture_dir/missing-r2-sha.json"
-expect_denied \
-  "missing_r2_deferred_sha" \
-  "r2 deferred commit set does not equal observed delta minus selected" \
+jq '.observation.upstream_repository="https://example.invalid/codex.git"' "$MANIFEST" >"$fixture_dir/url.json"
+expect_denied url_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/missing-r2-sha.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/url.json"
 
-jq --arg sha "$FORGED_R2_SHA" '
-  .deferred_decisions += [{
-    state:"deferred",
-    classification:"r2_forged_extra_commit",
-    upstream_commit:$sha,
-    reason:"negative fixture"
-  }]
-  | .classification.deferred_decision_count = (.deferred_decisions | length)
-' "$CANONICAL_MANIFEST" >"$fixture_dir/forged-r2-sha.json"
-expect_denied \
-  "forged_extra_r2_deferred_sha" \
-  "r2 deferred classification set is not closed" \
+jq '.observation.target_source_ref="refs/heads/next"' "$MANIFEST" >"$fixture_dir/source-ref.json"
+expect_denied source_ref_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/forged-r2-sha.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/source-ref.json"
 
-jq --arg sha "$SELECTED_R2_SHA" '
-  .deferred_decisions += [{
-    state:"deferred",
-    classification:"r2_selected_proc_overlap",
-    upstream_commit:$sha,
-    reason:"negative fixture"
-  }]
-  | .classification.deferred_decision_count = (.deferred_decisions | length)
-' "$CANONICAL_MANIFEST" >"$fixture_dir/selected-r2-overlap.json"
-expect_denied \
-  "selected_r2_also_deferred" \
-  "selected and deferred upstream commit sets overlap" \
+jq '.observation.discovered_remote_head="0000000000000000000000000000000000000000"' "$MANIFEST" >"$fixture_dir/remote-head.json"
+expect_denied remote_head_sha_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/selected-r2-overlap.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/remote-head.json"
 
-jq --arg sha "$WRONG_CLASS_R2_SHA" '
-  (.deferred_decisions[] | select(.upstream_commit == $sha) | .classification) =
-    "r2_wrong_classification"
-' "$CANONICAL_MANIFEST" >"$fixture_dir/wrong-r2-classification.json"
-expect_denied \
-  "wrong_r2_deferred_classification" \
-  "r2 deferred classification mapping drifted" \
+jq '.observation.discovery_command="git fetch upstream main"' "$MANIFEST" >"$fixture_dir/floating-fetch.json"
+expect_denied floating_fetch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/wrong-r2-classification.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/floating-fetch.json"
 
-jq --arg sha "$SELECTED_R2_SHA" '
-  .deferred_decisions += [{
-    state:"deferred",
-    classification:"hidden_selected_overlap",
-    upstream_commit:$sha,
-    reason:"negative fixture"
-  }]
-  | .classification.deferred_decision_count = (.deferred_decisions | length)
-' "$CANONICAL_MANIFEST" >"$fixture_dir/hidden-selected-overlap.json"
-expect_denied \
-  "hidden_non_r2_selected_overlap" \
-  "selected and deferred upstream commit sets overlap" \
+jq '.predecessor_intake.manifest_sha256="0000000000000000000000000000000000000000000000000000000000000000"' "$MANIFEST" >"$fixture_dir/predecessor-hash.json"
+expect_denied predecessor_hash_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/hidden-selected-overlap.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/predecessor-hash.json"
 
-jq --arg sha "$MISSING_R2_SHA" '
-  .deferred_decisions += [{
-    state:"deferred",
-    classification:"hidden_deferred_duplicate",
-    upstream_commit:$sha,
-    reason:"negative fixture"
-  }]
-  | .classification.deferred_decision_count = (.deferred_decisions | length)
-' "$CANONICAL_MANIFEST" >"$fixture_dir/hidden-deferred-duplicate.json"
-expect_denied \
-  "hidden_non_r2_deferred_duplicate" \
-  "deferred upstream commit list contains duplicate SHAs" \
+jq '.commit_inventory[0].disposition="imported" | .commit_inventory[0].imported=true' "$MANIFEST" >"$fixture_dir/imported.json"
+expect_denied false_import_claim \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/hidden-deferred-duplicate.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/imported.json"
 
-jq --arg sha "$WRONG_CLASS_R2_SHA" '
-  (.deferred_decisions[] | select(.upstream_commit == $sha) | .classification) =
-    "history_integrity"
-' "$CANONICAL_MANIFEST" >"$fixture_dir/observed-r2-disguised-as-old.json"
-expect_denied \
-  "observed_r2_sha_disguised_as_old_classification" \
-  "r2 deferred classification mapping drifted" \
+jq 'del(.commit_inventory[0])' "$MANIFEST" >"$fixture_dir/incomplete-commits.json"
+expect_denied incomplete_commit_surface \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
-  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/observed-r2-disguised-as-old.json"
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/incomplete-commits.json"
 
-jq -n '{
-  product:"Hepta",
-  status:"ready",
-  gate:"hepta_upstream_codex_current_intake_negative_fixture",
-  stale_ref_denied:true,
-  cutoff_drift_denied:true,
-  apps_mcp_receipt_drift_denied:true,
-  proc_preflight_receipt_drift_denied:true,
-  missing_r2_deferred_sha_denied:true,
-  forged_extra_r2_deferred_sha_denied:true,
-  selected_r2_also_deferred_denied:true,
-  wrong_r2_deferred_classification_denied:true,
-  hidden_non_r2_selected_overlap_denied:true,
-  hidden_non_r2_deferred_duplicate_denied:true,
-  observed_r2_sha_disguised_as_old_classification_denied:true,
-  network_access_performed:false,
-  ref_mutation_performed:false,
-  workspace_mutation_performed:false
-}'
+jq 'del(.file_surface[0])' "$MANIFEST" >"$fixture_dir/incomplete-files.json"
+expect_denied incomplete_file_surface \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST="$fixture_dir/incomplete-files.json"
 
+jq -n '{schema:"hepta_upstream_codex_current_intake_negative_fixture_v3",status:"ready",stale_ref_denied:true,cutoff_sha_mismatch_denied:true,url_mismatch_denied:true,source_ref_mismatch_denied:true,remote_head_sha_mismatch_denied:true,floating_fetch_denied:true,predecessor_hash_mismatch_denied:true,false_import_claim_denied:true,incomplete_commit_surface_denied:true,incomplete_file_surface_denied:true,network_access_performed:false,ref_mutation_performed:false,workspace_mutation_performed:false}'
 echo "Hepta upstream Codex current intake negative fixture passed"
