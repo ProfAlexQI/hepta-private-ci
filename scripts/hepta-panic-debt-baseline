@@ -13,7 +13,7 @@ import tempfile
 from typing import Any
 
 
-SCHEMA = "hepta_panic_debt_inventory_v1"
+SCHEMA = "hepta_panic_debt_inventory_v2"
 SCANNER_VERSION = 1
 DEFAULT_ROOTS = [
     "codex-rs/hepta-cli",
@@ -41,7 +41,7 @@ ROOT = Path(os.environ.get("HEPTA_PANIC_DEBT_ROOT", Path(__file__).resolve().par
 LEDGER = Path(
     os.environ.get(
         "HEPTA_PANIC_DEBT_LEDGER",
-        ROOT / "scripts" / "hepta-panic-debt-baseline-v1.json",
+        ROOT / "scripts" / "hepta-panic-debt-baseline-v2.json",
     )
 )
 
@@ -339,32 +339,53 @@ def scan(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return occurrences, source_set
 
 
-def occurrence_summary(occurrences: list[dict[str, Any]]) -> dict[str, Any]:
-    def counts(field: str) -> dict[str, int]:
-        seeds = {
-            "kind": sorted(KINDS),
-            "source_class": sorted(SOURCE_CLASSES),
-            "risk": [
-                "accepted",
-                "excluded_nonproduction",
-                "high",
-                "low",
-                "medium",
-                "test_only",
-            ],
-        }
-        result = {key: 0 for key in seeds[field]}
-        for occurrence in occurrences:
-            key = occurrence[field]
-            result[key] = result.get(key, 0) + 1
-        return dict(sorted(result.items()))
+def kind_counts(occurrences: list[dict[str, Any]]) -> dict[str, int]:
+    result = {kind: 0 for kind in sorted(KINDS)}
+    for occurrence in occurrences:
+        result[occurrence["kind"]] += 1
+    return result
 
+
+def aggregate_occurrences(occurrences: list[dict[str, Any]], source_class: str) -> dict[str, Any]:
+    matching = [item for item in occurrences if item["source_class"] == source_class]
+    fingerprints = sorted(item["fingerprint"] for item in matching)
+    return {
+        "total": len(matching),
+        "by_kind": kind_counts(matching),
+        "fingerprints_sha256": digest("\n".join(fingerprints) + "\n"),
+    }
+
+
+def ledger_summary(
+    production_occurrences: list[dict[str, Any]],
+    aggregate_inventory: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    by_kind = kind_counts(production_occurrences)
+    for aggregate in aggregate_inventory.values():
+        for kind, count in aggregate["by_kind"].items():
+            by_kind[kind] += count
+    by_source_class = {source_class: 0 for source_class in sorted(SOURCE_CLASSES)}
+    by_source_class["production"] = len(production_occurrences)
+    for source_class, aggregate in aggregate_inventory.items():
+        by_source_class[source_class] = aggregate["total"]
+    by_risk = {
+        "accepted": 0,
+        "excluded_nonproduction": sum(
+            aggregate_inventory[source_class]["total"]
+            for source_class in ("fixture", "generated_build")
+        ),
+        "high": 0,
+        "low": 0,
+        "medium": 0,
+        "test_only": aggregate_inventory["test"]["total"],
+        "unclassified": 0,
+    }
+    for occurrence in production_occurrences:
+        by_risk[occurrence["risk"]] += 1
     actionable = [
         occurrence["fingerprint"]
-        for occurrence in occurrences
-        if occurrence.get("source_class") == "production"
-        and occurrence.get("risk") == "high"
-        and occurrence.get("disposition") == "actionable"
+        for occurrence in production_occurrences
+        if occurrence["risk"] == "high" and occurrence["disposition"] == "actionable"
     ]
     classifications = [
         {
@@ -374,13 +395,13 @@ def occurrence_summary(occurrences: list[dict[str, Any]]) -> dict[str, Any]:
             "disposition": occurrence["disposition"],
             "rationale": occurrence["rationale"],
         }
-        for occurrence in sorted(occurrences, key=lambda item: item["fingerprint"])
+        for occurrence in sorted(production_occurrences, key=lambda item: item["fingerprint"])
     ]
     return {
-        "total": len(occurrences),
-        "by_kind": counts("kind"),
-        "by_source_class": counts("source_class"),
-        "by_risk": counts("risk"),
+        "total": sum(by_source_class.values()),
+        "by_kind": by_kind,
+        "by_source_class": by_source_class,
+        "by_risk": by_risk,
         "actionable_high_risk_production_fingerprints": sorted(actionable),
         "classification_sha256": digest(canonical_json(classifications)),
     }
@@ -411,11 +432,17 @@ def default_classification(source_class: str) -> dict[str, str]:
 
 def snapshot(root: Path) -> dict[str, Any]:
     scanned, source_set = scan(root)
-    classified = []
+    production_occurrences = []
     for occurrence in scanned:
+        if occurrence["source_class"] != "production":
+            continue
         entry = {key: value for key, value in occurrence.items() if key != "line"}
         entry.update(default_classification(entry["source_class"]))
-        classified.append(entry)
+        production_occurrences.append(entry)
+    aggregate_inventory = {
+        source_class: aggregate_occurrences(scanned, source_class)
+        for source_class in ("test", "generated_build", "fixture")
+    }
     return {
         "schema": SCHEMA,
         "scanner_version": SCANNER_VERSION,
@@ -425,8 +452,9 @@ def snapshot(root: Path) -> dict[str, Any]:
             "Lexical occurrence inventory does not prove runtime reachability, exploitability, or user impact.",
             "Risk and boundary values are reviewed classifications, not dynamic execution evidence.",
         ],
-        "occurrences": classified,
-        "summary": occurrence_summary(classified),
+        "production_occurrences": production_occurrences,
+        "aggregate_inventory": aggregate_inventory,
+        "summary": ledger_summary(production_occurrences, aggregate_inventory),
     }
 
 
@@ -445,30 +473,16 @@ def validate_classification(entry: dict[str, Any]) -> None:
     }
     if set(entry) != expected_keys:
         raise VerificationError(f"occurrence has unexpected keys: {entry.get('fingerprint', '<missing>')}")
-    if entry["kind"] not in KINDS or entry["source_class"] not in SOURCE_CLASSES:
+    if entry["kind"] not in KINDS or entry["source_class"] != "production":
         raise VerificationError(f"invalid occurrence kind/source class: {entry['fingerprint']}")
     if not isinstance(entry["rationale"], str) or not entry["rationale"].strip():
         raise VerificationError(f"missing occurrence rationale: {entry['fingerprint']}")
-    if entry["source_class"] == "production":
-        if entry["boundary"] not in PRODUCTION_BOUNDARIES or entry["risk"] not in PRODUCTION_RISKS:
-            raise VerificationError(f"unclassified production occurrence: {entry['fingerprint']}")
-        if entry["risk"] == "high" and entry["disposition"] != "actionable":
-            raise VerificationError(f"high-risk production occurrence is not actionable: {entry['fingerprint']}")
-        if entry["disposition"] not in {"actionable", "accepted_invariant", "planned_debt"}:
-            raise VerificationError(f"invalid production disposition: {entry['fingerprint']}")
-    elif entry["source_class"] == "test":
-        if (entry["boundary"], entry["risk"], entry["disposition"]) != (
-            "test_assertion_setup",
-            "test_only",
-            "accepted_test_only",
-        ):
-            raise VerificationError(f"test occurrence classification drift: {entry['fingerprint']}")
-    elif (entry["boundary"], entry["risk"], entry["disposition"]) != (
-        "generated_build_or_fixture",
-        "excluded_nonproduction",
-        "accepted_nonproduction",
-    ):
-        raise VerificationError(f"nonproduction occurrence classification drift: {entry['fingerprint']}")
+    if entry["boundary"] not in PRODUCTION_BOUNDARIES or entry["risk"] not in PRODUCTION_RISKS:
+        raise VerificationError(f"unclassified production occurrence: {entry['fingerprint']}")
+    if entry["risk"] == "high" and entry["disposition"] != "actionable":
+        raise VerificationError(f"high-risk production occurrence is not actionable: {entry['fingerprint']}")
+    if entry["disposition"] not in {"actionable", "accepted_invariant", "planned_debt"}:
+        raise VerificationError(f"invalid production disposition: {entry['fingerprint']}")
 
 
 def verify(root: Path, ledger_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -482,7 +496,8 @@ def verify(root: Path, ledger_path: Path) -> tuple[dict[str, Any], list[dict[str
         "scope",
         "source_set",
         "limitations",
-        "occurrences",
+        "production_occurrences",
+        "aggregate_inventory",
         "summary",
     }
     if set(ledger) != expected_top_keys or ledger["schema"] != SCHEMA or ledger["scanner_version"] != SCANNER_VERSION:
@@ -491,27 +506,38 @@ def verify(root: Path, ledger_path: Path) -> tuple[dict[str, Any], list[dict[str
         raise VerificationError("ledger source scope drift or broad exclusion")
     if not isinstance(ledger["limitations"], list) or len(ledger["limitations"]) < 2:
         raise VerificationError("ledger limitations must preserve evidence qualifications")
-    for occurrence in ledger["occurrences"]:
+    if set(ledger["aggregate_inventory"]) != {"test", "generated_build", "fixture"}:
+        raise VerificationError("aggregate inventory source classes drift")
+    for occurrence in ledger["production_occurrences"]:
         validate_classification(occurrence)
-    fingerprints = [occurrence["fingerprint"] for occurrence in ledger["occurrences"]]
+    fingerprints = [occurrence["fingerprint"] for occurrence in ledger["production_occurrences"]]
     if len(fingerprints) != len(set(fingerprints)):
-        raise VerificationError("duplicate occurrence fingerprint in ledger")
+        raise VerificationError("duplicate production occurrence fingerprint in ledger")
     scanned, source_set = scan(root)
     if ledger["source_set"] != source_set:
         raise VerificationError("scoped Rust source file-set drift")
-    scanned_by_fingerprint = {item["fingerprint"]: item for item in scanned}
-    ledger_by_fingerprint = {item["fingerprint"]: item for item in ledger["occurrences"]}
+    scanned_production = [item for item in scanned if item["source_class"] == "production"]
+    scanned_by_fingerprint = {item["fingerprint"]: item for item in scanned_production}
+    ledger_by_fingerprint = {
+        item["fingerprint"]: item for item in ledger["production_occurrences"]
+    }
     if set(scanned_by_fingerprint) != set(ledger_by_fingerprint):
         new = sorted(set(scanned_by_fingerprint) - set(ledger_by_fingerprint))
         stale = sorted(set(ledger_by_fingerprint) - set(scanned_by_fingerprint))
-        raise VerificationError(f"occurrence fingerprint drift: new={new} stale={stale}")
+        raise VerificationError(f"production occurrence fingerprint drift: new={new} stale={stale}")
     identity_fields = {"fingerprint", "path", "source_class", "kind", "content_sha256", "duplicate_ordinal"}
     for fingerprint, scanned_entry in scanned_by_fingerprint.items():
         ledger_identity = {key: ledger_by_fingerprint[fingerprint][key] for key in identity_fields}
         scanned_identity = {key: value for key, value in scanned_entry.items() if key != "line"}
         if ledger_identity != scanned_identity:
-            raise VerificationError(f"occurrence identity drift: {fingerprint}")
-    expected_summary = occurrence_summary(ledger["occurrences"])
+            raise VerificationError(f"production occurrence identity drift: {fingerprint}")
+    expected_aggregates = {
+        source_class: aggregate_occurrences(scanned, source_class)
+        for source_class in ("test", "generated_build", "fixture")
+    }
+    if ledger["aggregate_inventory"] != expected_aggregates:
+        raise VerificationError("nonproduction count, kind, or fingerprint aggregate drift")
+    expected_summary = ledger_summary(ledger["production_occurrences"], expected_aggregates)
     if ledger["summary"] != expected_summary:
         raise VerificationError("ledger count, risk, actionable list, or classification fingerprint drift")
     return ledger, scanned
@@ -546,15 +572,16 @@ mod tests { #[test] fn assertion() { Some(1).unwrap(); panic!(\"test sentinel\")
         )
         ledger_path = fixture_root / "ledger.json"
         ledger = snapshot(fixture_root)
-        for entry in ledger["occurrences"]:
-            if entry["source_class"] == "production":
-                entry.update(
-                    boundary="request_runtime_path",
-                    risk="high",
-                    disposition="actionable",
-                    rationale="Synthetic request-path debt for verifier coverage.",
-                )
-        ledger["summary"] = occurrence_summary(ledger["occurrences"])
+        for entry in ledger["production_occurrences"]:
+            entry.update(
+                boundary="request_runtime_path",
+                risk="high",
+                disposition="actionable",
+                rationale="Synthetic request-path debt for verifier coverage.",
+            )
+        ledger["summary"] = ledger_summary(
+            ledger["production_occurrences"], ledger["aggregate_inventory"]
+        )
         write_json(ledger_path, ledger)
         verify(fixture_root, ledger_path)
 
@@ -573,9 +600,7 @@ mod tests { #[test] fn assertion() { Some(1).unwrap(); panic!(\"test sentinel\")
 
         denied(
             "production-test-misclassification",
-            lambda _root, value: value["occurrences"][next(
-                index for index, item in enumerate(value["occurrences"]) if item["source_class"] == "production"
-            )].update(source_class="test"),
+            lambda _root, value: value["production_occurrences"][0].update(source_class="test"),
         )
         denied(
             "hidden-new-production-debt",
@@ -594,18 +619,29 @@ mod tests { #[test] fn assertion() { Some(1).unwrap(); panic!(\"test sentinel\")
                 encoding="utf-8",
             ),
         )
-        denied("count-drift", lambda _root, value: value["occurrences"].pop())
+        denied(
+            "test-count-drift",
+            lambda _root, value: value["aggregate_inventory"]["test"].update(
+                total=value["aggregate_inventory"]["test"]["total"] - 1
+            ),
+        )
+        denied(
+            "test-fingerprint-drift",
+            lambda case_root, _value: (case_root / "codex-rs/hepta-core/src/helper_tests.rs").write_text(
+                "fn setup() { todo!(\"changed test setup\"); }\n", encoding="utf-8"
+            ),
+        )
         denied(
             "false-risk-promotion",
-            lambda _root, value: next(
-                item for item in value["occurrences"] if item["source_class"] == "production"
-            ).update(risk="accepted", disposition="accepted_invariant"),
+            lambda _root, value: value["production_occurrences"][0].update(
+                risk="accepted", disposition="accepted_invariant"
+            ),
         )
         denied(
             "false-risk-demotion",
-            lambda _root, value: next(
-                item for item in value["occurrences"] if item["source_class"] == "production"
-            ).update(risk="low", disposition="planned_debt"),
+            lambda _root, value: value["production_occurrences"][0].update(
+                risk="low", disposition="planned_debt"
+            ),
         )
         denied("broad-root-exclude", lambda _root, value: value["scope"]["roots"].pop())
         denied(
@@ -630,7 +666,7 @@ def main() -> None:
             ledger, scanned = verify(ROOT, LEDGER)
             lines = {item["fingerprint"]: item["line"] for item in scanned}
             report = json.loads(json.dumps(ledger))
-            for occurrence in report["occurrences"]:
+            for occurrence in report["production_occurrences"]:
                 occurrence["line"] = lines[occurrence["fingerprint"]]
             print(json.dumps(report, indent=2, sort_keys=True))
         elif command == "self-test" and len(sys.argv) == 2:
