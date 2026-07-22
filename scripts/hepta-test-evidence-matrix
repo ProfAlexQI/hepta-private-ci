@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+ROOT="${HEPTA_TEST_EVIDENCE_ROOT:-$SCRIPT_ROOT}"
+MODE="${1:-report}"
+
+usage() {
+  echo "usage: scripts/hepta-test-evidence-matrix [report|verify|self-test]" >&2
+  exit 2
+}
+
+require_file() {
+  [[ -f "$ROOT/$1" ]] || {
+    echo "missing Hepta test evidence input: $ROOT/$1" >&2
+    return 1
+  }
+}
+
+has_literal() {
+  rg -Fq -- "$2" "$ROOT/$1"
+}
+
+reject_workflow_live_or_write() {
+  local workflow="$1"
+  local token
+  for token in \
+    'secrets.' \
+    'contents: write' \
+    'id-token: write' \
+    'HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "1"' \
+    'HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "1"' \
+    'scripts/hepta-preflight-resume' \
+    'scripts/hepta-immutable-release-tree activate' \
+    'launchctl' \
+    'systemctl' \
+    'codesign' \
+    'notarytool' \
+    'gh release' \
+    'docker push' \
+    'npm publish' \
+    'cargo publish' \
+    'git push '; do
+    if has_literal "$workflow" "$token"; then
+      return 1
+    fi
+  done
+}
+
+matrix_json() {
+  local baseline="scripts/hepta-ci-baseline"
+  local baseline_workflow=".github/workflows/hepta-ci.yml"
+  local full_workflow=".github/workflows/hepta-full-preflight.yml"
+  local preflight="scripts/hepta-preflight.sh"
+  require_file "$baseline"
+  require_file "$baseline_workflow"
+  require_file "$full_workflow"
+  require_file "$preflight"
+
+  local static_contract_capability=false denial_noop_capability=false
+  local local_execution_capability=false full_workspace_capability=false
+  local nightly_static_capability=false manual_full_boundary=false
+  local baseline_no_live_no_write=false full_no_live_no_write=false
+  local preflight_matrix_bound=false
+
+  if has_literal "$baseline" 'run_static_gate suffix-ladder-freeze' \
+    && has_literal "$baseline" 'run_static_gate immutable-release-provenance' \
+    && has_literal "$baseline" 'run_static_gate test-evidence-matrix'; then
+    static_contract_capability=true
+  fi
+  if has_literal "$baseline" 'ci-hepta-native-gateway-tests'; then
+    denial_noop_capability=true
+    local_execution_capability=true
+  fi
+  if has_literal "$baseline" 'ci-full-workspace-tests' \
+    && has_literal "$baseline" 'cargo test --locked --manifest-path "$MANIFEST" --workspace' \
+    && has_literal "$baseline_workflow" '  full-workspace:' \
+    && has_literal "$baseline_workflow" "if: github.event_name == 'workflow_dispatch' && inputs.confirm_full_workspace == 'RUN_FULL_WORKSPACE_NO_LIVE'" \
+    && has_literal "$baseline_workflow" 'run: scripts/hepta-ci-baseline full-workspace'; then
+    full_workspace_capability=true
+  fi
+  if has_literal "$baseline_workflow" '  schedule:' \
+    && has_literal "$baseline_workflow" '  nightly-static:' \
+    && has_literal "$baseline_workflow" "if: github.event_name == 'schedule'" \
+    && has_literal "$baseline_workflow" 'run: scripts/hepta-ci-baseline nightly-static' \
+    && has_literal "$baseline" 'nightly-static)' \
+    && ! has_literal "$baseline_workflow" 'run: scripts/hepta-ci-baseline full-workspace # nightly'; then
+    nightly_static_capability=true
+  fi
+  if has_literal "$full_workflow" '  workflow_dispatch:' \
+    && ! has_literal "$full_workflow" '  schedule:' \
+    && ! has_literal "$full_workflow" '  pull_request:' \
+    && ! has_literal "$full_workflow" '  push:' \
+    && has_literal "$full_workflow" 'VERIFY_ONLY_NO_DEPLOY' \
+    && has_literal "$full_workflow" 'run: scripts/hepta-preflight-resume --reset'; then
+    manual_full_boundary=true
+  fi
+  if has_literal "$baseline_workflow" '  contents: read' \
+    && has_literal "$baseline_workflow" 'HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "0"' \
+    && has_literal "$baseline_workflow" 'HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "0"' \
+    && reject_workflow_live_or_write "$baseline_workflow"; then
+    baseline_no_live_no_write=true
+  fi
+  if has_literal "$full_workflow" '  contents: read' \
+    && has_literal "$full_workflow" 'HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "0"' \
+    && has_literal "$full_workflow" 'HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "0"' \
+    && ! has_literal "$full_workflow" 'secrets.' \
+    && ! has_literal "$full_workflow" 'contents: write' \
+    && ! has_literal "$full_workflow" 'id-token: write' \
+    && ! has_literal "$full_workflow" 'HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "1"' \
+    && ! has_literal "$full_workflow" 'HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "1"' \
+    && ! has_literal "$full_workflow" 'scripts/hepta-immutable-release-tree activate' \
+    && ! has_literal "$full_workflow" 'codesign' \
+    && ! has_literal "$full_workflow" 'notarytool'; then
+    full_no_live_no_write=true
+  fi
+  if has_literal "$preflight" 'scripts/hepta-test-evidence-matrix verify' \
+    && has_literal "$preflight" 'scripts/hepta-test-evidence-matrix self-test'; then
+    preflight_matrix_bound=true
+  fi
+
+  jq -cn \
+    --argjson static_contract_capability "$static_contract_capability" \
+    --argjson denial_noop_capability "$denial_noop_capability" \
+    --argjson local_execution_capability "$local_execution_capability" \
+    --argjson full_workspace_capability "$full_workspace_capability" \
+    --argjson nightly_static_capability "$nightly_static_capability" \
+    --argjson manual_full_boundary "$manual_full_boundary" \
+    --argjson baseline_no_live_no_write "$baseline_no_live_no_write" \
+    --argjson full_no_live_no_write "$full_no_live_no_write" \
+    --argjson preflight_matrix_bound "$preflight_matrix_bound" '
+    {
+      schema:"hepta_test_evidence_matrix_v2",
+      status:(if $static_contract_capability and $denial_noop_capability and $local_execution_capability and $full_workspace_capability and $nightly_static_capability and $manual_full_boundary and $baseline_no_live_no_write and $full_no_live_no_write and $preflight_matrix_bound then "attention" else "blocked" end),
+      classifications:[
+        {id:"static_contract",meaning:"schema, route, hash, source, workflow, and policy shape validation; no test execution or release claim"},
+        {id:"denial_noop",meaning:"observed rejection and no-side-effect behavior; never a live capability or release claim"},
+        {id:"local_execution",meaning:"observed local code execution with bounded local state and no external production mutation"},
+        {id:"integration_verified",meaning:"observed full-workspace or backend/Native/release integration execution from one source-bound candidate"},
+        {id:"controlled_live",meaning:"explicit operator-approved credentialed provider/channel write with readback plus rollback and kill-switch rehearsal"}
+      ],
+      configured_capabilities:{
+        pr:{static_contract:$static_contract_capability,denial_noop:$denial_noop_capability,local_execution:$local_execution_capability},
+        full_workspace:{configured:$full_workspace_capability,manual_confirmation_bound:$full_workspace_capability,no_live_no_write:$baseline_no_live_no_write},
+        nightly_static:{configured:$nightly_static_capability,static_only:true,no_live_no_write:$baseline_no_live_no_write},
+        manual_full:{configured:$manual_full_boundary,workflow_dispatch_only:$manual_full_boundary,verify_only_no_deploy:$full_no_live_no_write},
+        preflight_matrix_bound:$preflight_matrix_bound
+      },
+      evidence:{
+        static_contract:{verified:true,source:"current matrix verification"},
+        denial_noop:{verified:false,source:"configured test capability only; CI result not embedded"},
+        local_execution:{verified:false,source:"configured test capability only; CI result not embedded"},
+        integration_verified:{verified:false,source:"manual full-workspace/full-preflight result required"},
+        controlled_live:{verified:false,source:"operator-approved live run and readback required"}
+      },
+      readiness:{integration_verified:false,live_enabled:false,production_ready:false},
+      policy:{
+        test_count_is_not_release_evidence:true,
+        route_presence_is_not_release_evidence:true,
+        configured_job_is_not_execution_evidence:true,
+        denial_tests_are_not_live_evidence:true,
+        nightly_static_cannot_invoke_full_preflight:true,
+        full_preflight_is_manual_only:true,
+        deployment_install_restart_sign_notarize_or_publication_authorized:false
+      }
+    }'
+}
+
+verify_matrix() {
+  local matrix
+  matrix="$(matrix_json)"
+  jq -e '
+    .schema == "hepta_test_evidence_matrix_v2"
+    and .status == "attention"
+    and .configured_capabilities.pr.static_contract == true
+    and .configured_capabilities.full_workspace.configured == true
+    and .configured_capabilities.full_workspace.no_live_no_write == true
+    and .configured_capabilities.nightly_static.configured == true
+    and .configured_capabilities.nightly_static.static_only == true
+    and .configured_capabilities.manual_full.workflow_dispatch_only == true
+    and .evidence.static_contract.verified == true
+    and .evidence.denial_noop.verified == false
+    and .evidence.local_execution.verified == false
+    and .evidence.integration_verified.verified == false
+    and .evidence.controlled_live.verified == false
+    and .readiness.production_ready == false
+    and .policy.configured_job_is_not_execution_evidence == true
+    and .policy.deployment_install_restart_sign_notarize_or_publication_authorized == false
+  ' >/dev/null <<<"$matrix"
+  printf '%s\n' "$matrix"
+}
+
+expect_fixture_denied() {
+  local fixture="$1"
+  if HEPTA_TEST_EVIDENCE_ROOT="$fixture" "$fixture/scripts/hepta-test-evidence-matrix" verify >/dev/null 2>&1; then
+    echo "test evidence matrix accepted unsafe or drifted fixture: $fixture" >&2
+    return 1
+  fi
+}
+
+self_test() {
+  local tmp fixture
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-test-evidence-matrix.XXXXXX")"
+  trap 'rm -rf "$tmp"' RETURN
+
+  make_fixture() {
+    fixture="$tmp/$1"
+    mkdir -p "$fixture/scripts" "$fixture/.github/workflows"
+    cp "$SCRIPT_ROOT/scripts/hepta-test-evidence-matrix" "$fixture/scripts/"
+    cp "$SCRIPT_ROOT/scripts/hepta-ci-baseline" "$fixture/scripts/"
+    cp "$SCRIPT_ROOT/scripts/hepta-preflight.sh" "$fixture/scripts/"
+    cp "$SCRIPT_ROOT/.github/workflows/hepta-ci.yml" "$fixture/.github/workflows/"
+    cp "$SCRIPT_ROOT/.github/workflows/hepta-full-preflight.yml" "$fixture/.github/workflows/"
+  }
+
+  make_fixture valid
+  HEPTA_TEST_EVIDENCE_ROOT="$fixture" "$fixture/scripts/hepta-test-evidence-matrix" verify >/dev/null
+
+  make_fixture missing-full-workspace
+  perl -0pi -e 's/ci-full-workspace-tests/ci-workspace-removed/' "$fixture/scripts/hepta-ci-baseline"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture nightly-drift
+  perl -0pi -e 's/scripts\/hepta-ci-baseline nightly-static/scripts\/hepta-ci-baseline static/' "$fixture/.github/workflows/hepta-ci.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture manual-boundary-drift
+  perl -0pi -e 's/VERIFY_ONLY_NO_DEPLOY/VERIFY_LATER/g' "$fixture/.github/workflows/hepta-full-preflight.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture dangerous-live
+  perl -0pi -e 's/HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "0"/HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "1"/' "$fixture/.github/workflows/hepta-ci.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture scheduled-full-preflight
+  perl -0pi -e 's/  workflow_dispatch:/  schedule:\n    - cron: "0 0 * * *"\n  workflow_dispatch:/' "$fixture/.github/workflows/hepta-full-preflight.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  echo '{"schema":"hepta_test_evidence_matrix_self_test_v2","status":"ready","missing_full_workspace_denied":true,"nightly_drift_denied":true,"manual_boundary_drift_denied":true,"dangerous_live_denied":true,"scheduled_full_preflight_denied":true}'
+}
+
+case "$MODE" in
+  report) matrix_json ;;
+  verify) verify_matrix ;;
+  self-test) self_test ;;
+  *) usage ;;
+esac

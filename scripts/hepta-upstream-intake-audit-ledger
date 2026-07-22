@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+MANIFEST="${HEPTA_UPSTREAM_AUDIT_MANIFEST:-$ROOT/docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json}"
+MODE="${1:-report}"
+
+usage() {
+  echo "usage: scripts/hepta-upstream-intake-audit-ledger [report|verify|self-test]" >&2
+  exit 2
+}
+
+patch_id_json() {
+  local commit="$1"
+  local patch_id
+  patch_id="$(git -C "$ROOT" show --pretty=format: --no-ext-diff "$commit" \
+    | git patch-id --stable | awk 'NR == 1 { print $1 }')"
+  if [[ -n "$patch_id" ]]; then
+    jq -cn --arg value "$patch_id" '$value'
+  else
+    printf 'null\n'
+  fi
+}
+
+report() {
+  [[ -f "$MANIFEST" ]] || {
+    echo "missing upstream intake manifest: $MANIFEST" >&2
+    return 1
+  }
+  jq -e '.schema_version == "hepta_upstream_codex_current_intake_v2"' "$MANIFEST" >/dev/null
+
+  local cutoff selected_file deferred_file selected_valid=true deferred_valid=true
+  cutoff="$(jq -er '.observation.cutoff_head' "$MANIFEST")"
+  git -C "$ROOT" cat-file -e "$cutoff^{commit}"
+  selected_file="$(mktemp "${TMPDIR:-/tmp}/hepta-upstream-selected.XXXXXX")"
+  deferred_file="$(mktemp "${TMPDIR:-/tmp}/hepta-upstream-deferred.XXXXXX")"
+  trap 'rm -f "$selected_file" "$deferred_file"' RETURN
+
+  while IFS= read -r item; do
+    upstream_commit="$(jq -r '.upstream_commit' <<<"$item")"
+    if ! git -C "$ROOT" cat-file -e "$upstream_commit^{commit}" 2>/dev/null \
+      || ! git -C "$ROOT" merge-base --is-ancestor "$upstream_commit" "$cutoff"; then
+      selected_valid=false
+    fi
+    receipts='[]'
+    while IFS= read -r receipt; do
+      receipt_valid=false
+      if git -C "$ROOT" cat-file -e "$receipt^{commit}" 2>/dev/null; then
+        receipt_valid=true
+      else
+        selected_valid=false
+      fi
+      receipt_entry="$(jq -cn \
+        --arg commit "$receipt" \
+        --argjson commit_valid "$receipt_valid" \
+        --argjson patch_id "$(if [[ "$receipt_valid" == true ]]; then patch_id_json "$receipt"; else printf 'null\n'; fi)" \
+        '{commit:$commit,commit_valid:$commit_valid,patch_id:$patch_id}')"
+      receipts="$(jq -cn --argjson values "$receipts" --argjson value "$receipt_entry" '$values + [$value]')"
+    done < <(jq -r '.local_receipts[]' <<<"$item")
+    jq -cn \
+      --argjson item "$item" \
+      --argjson upstream_patch_id "$(patch_id_json "$upstream_commit")" \
+      --argjson receipts "$receipts" '
+      {
+        state:$item.state,
+        classification:$item.classification,
+        upstream_commit:$item.upstream_commit,
+        upstream_patch_id:$upstream_patch_id,
+        local_receipts:$receipts,
+        adoption_decision:$item.absorption_kind,
+        summary:$item.summary,
+        macos_validation_status:"local_receipt_present_validation_scope_unbound",
+        linux_validation_status:"not_verified",
+        security_boundary_change:($item.classification + "_semantic_boundary_reviewed"),
+        release_evidence_status:"not_source_artifact_preflight_bound"
+      }' >>"$selected_file"
+  done < <(jq -c '.selected_absorptions[]' "$MANIFEST")
+
+  while IFS= read -r item; do
+    upstream_commit="$(jq -r '.upstream_commit // empty' <<<"$item")"
+    upstream_valid=true
+    upstream_patch_id=null
+    if [[ -n "$upstream_commit" ]]; then
+      if ! git -C "$ROOT" cat-file -e "$upstream_commit^{commit}" 2>/dev/null \
+        || ! git -C "$ROOT" merge-base --is-ancestor "$upstream_commit" "$cutoff"; then
+        upstream_valid=false
+        deferred_valid=false
+      fi
+      upstream_patch_id="$(patch_id_json "$upstream_commit")"
+    fi
+    jq -cn \
+      --argjson item "$item" \
+      --argjson upstream_valid "$upstream_valid" \
+      --argjson upstream_patch_id "$upstream_patch_id" '
+      {
+        state:$item.state,
+        classification:$item.classification,
+        upstream_commit:$item.upstream_commit,
+        upstream_commit_valid:$upstream_valid,
+        upstream_patch_id:$upstream_patch_id,
+        adoption_decision:"deferred",
+        reason:$item.reason,
+        macos_validation_status:"not_verified",
+        linux_validation_status:"not_verified",
+        security_boundary_change:"not_adopted",
+        release_evidence_status:"not_applicable"
+      }' >>"$deferred_file"
+  done < <(jq -c '.deferred_decisions[]' "$MANIFEST")
+
+  selected_json="$(jq -s . "$selected_file")"
+  deferred_json="$(jq -s . "$deferred_file")"
+  manifest_sha256="$(shasum -a 256 "$MANIFEST" | awk '{print $1}')"
+  jq -cn \
+    --arg manifest "${MANIFEST#$ROOT/}" \
+    --arg manifest_sha256 "$manifest_sha256" \
+    --arg cutoff "$cutoff" \
+    --argjson selected_valid "$selected_valid" \
+    --argjson deferred_valid "$deferred_valid" \
+    --argjson selected "$selected_json" \
+    --argjson deferred "$deferred_json" '
+    {
+      schema:"hepta_upstream_intake_audit_ledger_v1",
+      status:(if $selected_valid and $deferred_valid then "attention" else "blocked" end),
+      source_manifest:$manifest,
+      source_manifest_sha256:$manifest_sha256,
+      cutoff_commit:$cutoff,
+      selected_absorption_count:($selected | length),
+      deferred_decision_count:($deferred | length),
+      selected_absorptions:$selected,
+      deferred_decisions:$deferred,
+      platform_evidence:{macos_fully_verified:false,linux_fully_verified:false,linux_proc_bubblewrap_sandbox_verified:false},
+      release_evidence:{source_bound:false,artifact_bound:false,preflight_bound:false,active_binary_bound:false},
+      policy:{bulk_merge_allowed:false,bulk_rebase_allowed:false,whole_tree_replacement_allowed:false,cargo_lock_replacement_allowed:false,production_ready:false}
+    }'
+}
+
+verify() {
+  local ledger
+  ledger="$(report)"
+  jq -e '
+    .schema == "hepta_upstream_intake_audit_ledger_v1"
+    and .status == "attention"
+    and .selected_absorption_count == 12
+    and .deferred_decision_count == 20
+    and (.selected_absorptions | all(
+      .state == "absorbed"
+      and (.upstream_commit | test("^[0-9a-f]{40}$"))
+      and (.local_receipts | length >= 1)
+      and (.local_receipts | all(.commit_valid == true))
+      and .linux_validation_status == "not_verified"
+      and .release_evidence_status == "not_source_artifact_preflight_bound"
+    ))
+    and (.deferred_decisions | all(.adoption_decision == "deferred"))
+    and .platform_evidence.linux_proc_bubblewrap_sandbox_verified == false
+    and .release_evidence.active_binary_bound == false
+    and .policy.production_ready == false
+  ' >/dev/null <<<"$ledger"
+  printf '%s\n' "$ledger"
+}
+
+self_test() {
+  local tmp_manifest
+  tmp_manifest="$(mktemp "${TMPDIR:-/tmp}/hepta-upstream-audit-manifest.XXXXXX")"
+  trap 'rm -f "$tmp_manifest"' RETURN
+  jq '.selected_absorptions[0].local_receipts[0] = "0000000000000000000000000000000000000000"' \
+    "$MANIFEST" >"$tmp_manifest"
+  if HEPTA_UPSTREAM_AUDIT_MANIFEST="$tmp_manifest" "$ROOT/scripts/hepta-upstream-intake-audit-ledger" verify >/dev/null 2>&1; then
+    echo "upstream audit ledger accepted a missing local receipt" >&2
+    return 1
+  fi
+  echo '{"schema":"hepta_upstream_intake_audit_ledger_self_test_v1","status":"ready","missing_local_receipt_denied":true,"linux_and_release_false_claims_preserved":true}'
+}
+
+case "$MODE" in
+  report) report ;;
+  verify) verify ;;
+  self-test) self_test ;;
+  *) usage ;;
+esac

@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MANIFEST="$ROOT/codex-rs/Cargo.toml"
 
 usage() {
-  echo "usage: scripts/hepta-ci-baseline <contract|contract-self-test|static|rust-backend>" >&2
+  echo "usage: scripts/hepta-ci-baseline <contract|contract-self-test|static|nightly-static|rust-backend|full-workspace>" >&2
   exit 2
 }
 
@@ -34,10 +34,14 @@ run_static() {
   cd "$ROOT"
   run_static_gate architecture-budget-verify scripts/hepta-architecture-budget verify
   run_static_gate architecture-budget-self-test scripts/hepta-architecture-budget self-test
+  run_static_gate suffix-ladder-freeze scripts/check-hepta-suffix-ladder-freeze.sh
+  run_static_gate test-evidence-matrix scripts/hepta-test-evidence-matrix verify
+  run_static_gate test-evidence-matrix-self-test scripts/hepta-test-evidence-matrix self-test
   run_static_gate terminal-coverage-inventory scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
   run_static_gate terminal-coverage-diagnostic scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
   run_static_gate runtime-export-source-set scripts/hepta-runtime-crate-root-source-set-self-test
   run_static_gate immutable-release-provenance scripts/hepta-immutable-release-tree self-test
+  run_static_gate active-binary-consistency scripts/hepta-active-binary-consistency-self-test.sh
   run_static_gate watchdog-provenance scripts/hepta-watchdog-provenance-self-test.sh
   git diff --check
   git diff --cached --check
@@ -73,7 +77,11 @@ run_rust_backend() {
       -p hepta-plugins \
       -p hepta-runtime \
       -p hepta-gateway \
+      -p hepta-native-gateway \
       -p hepta-cli --bin hepta
+  budgeted_cargo ci-hepta-native-gateway-tests 2400 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-native-gateway
   budgeted_cargo ci-model-catalog-tests 1800 \
     cargo test --locked --manifest-path "$MANIFEST" -q \
       -p codex-models-manager bundled_catalog_
@@ -94,6 +102,16 @@ run_rust_backend() {
   git -C "$ROOT" diff --cached --check
 }
 
+run_full_workspace() {
+  require_tools cargo git perl shasum
+  assert_lockfiles_clean
+  budgeted_cargo ci-full-workspace-tests 7200 \
+    cargo test --locked --manifest-path "$MANIFEST" --workspace
+  assert_lockfiles_clean
+  git -C "$ROOT" diff --check
+  git -C "$ROOT" diff --cached --check
+}
+
 [[ $# -eq 1 ]] || usage
 case "$1" in
   contract)
@@ -105,8 +123,14 @@ case "$1" in
   static)
     run_static
     ;;
+  nightly-static)
+    run_static
+    ;;
   rust-backend)
     run_rust_backend
+    ;;
+  full-workspace)
+    run_full_workspace
     ;;
   *)
     usage

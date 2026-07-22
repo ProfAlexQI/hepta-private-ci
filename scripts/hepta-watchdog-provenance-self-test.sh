@@ -28,7 +28,11 @@ materialize_bound_release() {
 
   provenance="$(hepta_release_build_provenance_json "$ROOT" "$source_commit" "$artifact")"
   provenance="$(
-    jq -c '. + {preflight_profiles:{backend:true,native:true,release:true}}' <<<"$provenance"
+    jq -c '. + {
+      preflight_profiles:{backend:true,native:true,release:true},
+      watchdog_gate_mode:"fixture",
+      deployment_consistency:{checked_during_candidate_preflight:false,required_before_activation:true}
+    }' <<<"$provenance"
   )"
   printf '%s\n' \
     "[hepta-preflight-resume] head=$source_commit fixture=true" \

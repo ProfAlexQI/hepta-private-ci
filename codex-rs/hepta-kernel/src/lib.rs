@@ -12,11 +12,73 @@ use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
 use std::collections::BTreeMap;
-use std::path::Path;
-use std::path::PathBuf;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+
+mod telegram_config;
+mod telegram_cursor;
+mod telegram_production_guard;
+mod telegram_transport;
+
+pub use telegram_config::HeptaKernelTelegramConfigMetadata;
+pub use telegram_config::HeptaKernelTelegramConfigStatus;
+pub use telegram_config::HeptaKernelTelegramConfigStatusInput;
+pub use telegram_config::HeptaKernelTelegramTokenObservation;
+pub use telegram_config::HeptaKernelTelegramTokenObservationInput;
+pub use telegram_config::build_hepta_kernel_telegram_config_status;
+pub use telegram_config::extract_hepta_kernel_telegram_config_metadata;
+pub use telegram_config::hepta_kernel_telegram_env_truthy_value;
+pub use telegram_config::hepta_kernel_telegram_env_u64_value;
+pub use telegram_config::hepta_kernel_telegram_normalize_binding_id;
+pub use telegram_config::hepta_kernel_telegram_token_observation;
+pub use telegram_config::resolve_hepta_kernel_telegram_secret_provider_path;
+pub use telegram_cursor::HeptaKernelTelegramCursorPlan;
+pub use telegram_cursor::HeptaKernelTelegramCursorStatus;
+pub use telegram_cursor::HeptaKernelTelegramCursorStatusInput;
+pub use telegram_cursor::build_hepta_kernel_telegram_cursor_status;
+pub use telegram_cursor::hepta_kernel_telegram_cursor_body;
+pub use telegram_cursor::hepta_kernel_telegram_cursor_duplicate_rule_valid;
+pub use telegram_cursor::hepta_kernel_telegram_update_already_drained;
+pub use telegram_cursor::parse_hepta_kernel_telegram_cursor_next_update_offset;
+pub use telegram_production_guard::HeptaKernelTelegramProductionGuardPolicyInput;
+pub use telegram_production_guard::HeptaKernelTelegramProductionGuardStatus;
+pub use telegram_production_guard::HeptaKernelTelegramProductionGuardStatusInput;
+pub use telegram_production_guard::build_hepta_kernel_telegram_production_guard_status;
+pub use telegram_production_guard::build_hepta_kernel_telegram_production_guard_status_from_policy;
+pub use telegram_production_guard::hepta_kernel_telegram_model_timeout;
+pub use telegram_production_guard::hepta_kernel_telegram_model_timeout_ms;
+pub use telegram_production_guard::hepta_kernel_telegram_read_max_attempts_policy;
+pub use telegram_production_guard::hepta_kernel_telegram_read_retry_backoff_policy;
+pub use telegram_production_guard::hepta_kernel_telegram_send_max_attempts_policy;
+pub use telegram_production_guard::hepta_kernel_telegram_send_min_interval_policy;
+pub use telegram_production_guard::hepta_kernel_telegram_send_retry_backoff_policy;
+pub use telegram_production_guard::hepta_kernel_telegram_typing_keepalive_interval_policy;
+pub use telegram_transport::HeptaKernelTelegramGetUpdatesProviderResultInput;
+pub use telegram_transport::HeptaKernelTelegramGetUpdatesProviderResultPlan;
+pub use telegram_transport::HeptaKernelTelegramSendProviderResultInput;
+pub use telegram_transport::HeptaKernelTelegramSendProviderResultPlan;
+pub use telegram_transport::HeptaKernelTelegramTransportPlan;
+pub use telegram_transport::hepta_kernel_telegram_bot_api_client_build_error;
+pub use telegram_transport::hepta_kernel_telegram_bot_api_http_status_error;
+pub use telegram_transport::hepta_kernel_telegram_bot_api_json_parse_error;
+pub use telegram_transport::hepta_kernel_telegram_bot_api_request_failed_error;
+pub use telegram_transport::hepta_kernel_telegram_bot_token_shape_ok;
+pub use telegram_transport::hepta_kernel_telegram_error_is_transient;
+pub use telegram_transport::hepta_kernel_telegram_get_updates_error_is_conflict;
+pub use telegram_transport::hepta_kernel_telegram_get_updates_error_is_transient;
+pub use telegram_transport::hepta_kernel_telegram_get_updates_query;
+pub use telegram_transport::hepta_kernel_telegram_get_updates_should_retry;
+pub use telegram_transport::hepta_kernel_telegram_send_chat_action_request_body;
+pub use telegram_transport::hepta_kernel_telegram_send_error_is_transient;
+pub use telegram_transport::hepta_kernel_telegram_send_message_request_body;
+pub use telegram_transport::hepta_kernel_telegram_send_rate_limit_sleep_for;
+pub use telegram_transport::hepta_kernel_telegram_send_should_retry;
+pub use telegram_transport::hepta_kernel_telegram_transport_plan_for_config_status;
+pub use telegram_transport::hepta_kernel_telegram_typing_keepalive_should_start;
+pub use telegram_transport::plan_hepta_kernel_telegram_get_updates_provider_result;
+pub use telegram_transport::plan_hepta_kernel_telegram_send_provider_result;
+pub use telegram_transport::redact_hepta_kernel_telegram_token_like_text;
 
 pub const HEPTA_KERNEL_CONTRACT: &str = "hepta-kernel-v1";
 pub const HEPTA_KERNEL_OWNER: &str = "hepta-kernel";
@@ -1705,8 +1767,7 @@ pub fn hepta_kernel_native_post_real_handler_scope_matches(
     handler_scope
         .map(hepta_kernel_native_post_real_handler_scope_tokens)
         .unwrap_or_default()
-        .iter()
-        .any(|token| *token == plan_kind)
+        .contains(&plan_kind)
 }
 
 pub fn hepta_kernel_native_post_real_handler_scope_selected_kinds(
@@ -1731,7 +1792,7 @@ pub fn hepta_kernel_native_post_real_handler_scope_single_selected_kind(
 
 fn hepta_kernel_native_post_real_handler_scope_tokens(handler_scope: &str) -> Vec<&str> {
     handler_scope
-        .split(|ch: char| matches!(ch, ',' | ';' | ' ' | '\t' | '\n' | '\r'))
+        .split([',', ';', ' ', '\t', '\n', '\r'])
         .map(str::trim)
         .filter(|token| !token.is_empty())
         .collect()
@@ -3332,21 +3393,6 @@ pub struct HeptaKernelTelegramDrainPipelineFinalStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HeptaKernelTelegramTransportPlan {
-    pub bot_api_transport_plan_ready: bool,
-    pub endpoint_template: &'static str,
-    pub get_updates_method: &'static str,
-    pub send_message_method: &'static str,
-    pub send_chat_action_method: &'static str,
-    pub allowed_updates: &'static str,
-    pub offset_commit_strategy: &'static str,
-    pub send_delivery_gate: &'static str,
-    pub typing_keepalive_plan: &'static str,
-    pub raw_token_exposed: bool,
-    pub external_network_performed_by_status: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeptaKernelTelegramSendPlan {
     pub send_plan_ready: bool,
     pub method: &'static str,
@@ -4031,146 +4077,6 @@ pub fn build_hepta_kernel_telegram_live_soak_status(
         raw_token_exposed: false,
         next_migration_slice: "keep the active gateway soaking; use this endpoint plus logs before broadening traffic or reducing guards",
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct HeptaKernelTelegramConfigStatus {
-    pub config_path: Option<String>,
-    pub config_found: bool,
-    pub enabled: bool,
-    pub dm_policy: String,
-    pub group_policy: String,
-    pub allow_from_count: usize,
-    pub group_count: usize,
-    pub token_source: &'static str,
-    pub token_secret_ref_present: bool,
-    pub token_secret_provider: Option<String>,
-    pub token_secret_id_present: bool,
-    pub token_file_present: bool,
-    pub token_file_mode_0600: bool,
-    pub token_file_security_ready: bool,
-    pub token_shape_ok: bool,
-    pub raw_token_exposed: bool,
-    pub binding_ready: bool,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct HeptaKernelTelegramConfigStatusInput {
-    pub config_path: Option<String>,
-    pub config_found: bool,
-    pub enabled: bool,
-    pub dm_policy: String,
-    pub group_policy: String,
-    pub allow_from_count: usize,
-    pub group_count: usize,
-    pub token_source: &'static str,
-    pub token_secret_ref_present: bool,
-    pub token_secret_provider: Option<String>,
-    pub token_secret_id_present: bool,
-    pub token_file_present: bool,
-    pub token_file_mode_0600: bool,
-    pub token_file_security_ready: bool,
-    pub token_shape_ok: bool,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeptaKernelTelegramTokenObservationInput {
-    pub env_token_present: bool,
-    pub env_token_shape_ok: bool,
-    pub file_token_present: bool,
-    pub file_token_shape_ok: bool,
-    pub inline_token_present: bool,
-    pub inline_token_shape_ok: bool,
-    pub token_secret_ref_present: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeptaKernelTelegramTokenObservation {
-    pub token_source: &'static str,
-    pub token_shape_ok: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeptaKernelTelegramConfigMetadata {
-    pub enabled: bool,
-    pub dm_policy: String,
-    pub group_policy: String,
-    pub allow_from_count: usize,
-    pub group_count: usize,
-    pub token_secret_ref_present: bool,
-    pub token_secret_provider: Option<String>,
-    pub token_secret_id_present: bool,
-    pub token_secret_path: Option<PathBuf>,
-    pub inline_token_present: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct HeptaKernelTelegramProductionGuardStatus {
-    pub read_max_attempts_env: &'static str,
-    pub read_max_attempts: u64,
-    pub read_retry_backoff_env: &'static str,
-    pub read_retry_backoff_ms: u64,
-    pub retry_transient_read_errors: bool,
-    pub typing_keepalive_env: &'static str,
-    pub typing_keepalive_enabled: bool,
-    pub typing_keepalive_interval_ms: u64,
-    pub model_timeout_env: &'static str,
-    pub model_timeout_ms: u64,
-    pub model_failure_fallback_env: &'static str,
-    pub model_failure_fallback_enabled: bool,
-    pub send_min_interval_env: &'static str,
-    pub send_min_interval_ms: u64,
-    pub send_max_attempts_env: &'static str,
-    pub send_max_attempts: u64,
-    pub send_retry_backoff_env: &'static str,
-    pub send_retry_backoff_ms: u64,
-    pub retry_transient_send_errors: bool,
-    pub rate_limit_scope: &'static str,
-    pub raw_token_exposed: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HeptaKernelTelegramProductionGuardStatusInput {
-    pub read_max_attempts_env: &'static str,
-    pub read_max_attempts: u64,
-    pub read_retry_backoff_env: &'static str,
-    pub read_retry_backoff_ms: u64,
-    pub typing_keepalive_env: &'static str,
-    pub typing_keepalive_enabled: bool,
-    pub typing_keepalive_interval_ms: u64,
-    pub model_timeout_env: &'static str,
-    pub model_timeout_ms: u64,
-    pub model_failure_fallback_env: &'static str,
-    pub model_failure_fallback_enabled: bool,
-    pub send_min_interval_env: &'static str,
-    pub send_min_interval_ms: u64,
-    pub send_max_attempts_env: &'static str,
-    pub send_max_attempts: u64,
-    pub send_retry_backoff_env: &'static str,
-    pub send_retry_backoff_ms: u64,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HeptaKernelTelegramProductionGuardPolicyInput {
-    pub read_max_attempts_env: &'static str,
-    pub read_max_attempts: Option<u64>,
-    pub read_retry_backoff_env: &'static str,
-    pub read_retry_backoff_ms: Option<u64>,
-    pub typing_keepalive_env: &'static str,
-    pub typing_keepalive_enabled: bool,
-    pub typing_keepalive_interval_ms: Option<u64>,
-    pub model_timeout_env: &'static str,
-    pub model_timeout_ms: Option<u64>,
-    pub model_failure_fallback_env: &'static str,
-    pub model_failure_fallback_enabled: bool,
-    pub send_min_interval_env: &'static str,
-    pub send_min_interval_ms: Option<u64>,
-    pub send_max_attempts_env: &'static str,
-    pub send_max_attempts: Option<u64>,
-    pub send_retry_backoff_env: &'static str,
-    pub send_retry_backoff_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -5027,48 +4933,6 @@ impl HeptaKernelTelegramSendExecutionReport {
     pub fn with_redacted_attention_error(self, error: &str) -> Self {
         self.with_attention_error(redact_hepta_kernel_telegram_token_like_text(error))
     }
-}
-
-impl HeptaKernelTelegramTransportPlan {
-    pub fn disabled() -> Self {
-        Self {
-            bot_api_transport_plan_ready: false,
-            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
-            get_updates_method: "getUpdates",
-            send_message_method: "sendMessage",
-            send_chat_action_method: "sendChatAction",
-            allowed_updates: HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES,
-            offset_commit_strategy: "disabled",
-            send_delivery_gate: "disabled",
-            typing_keepalive_plan: "disabled",
-            raw_token_exposed: false,
-            external_network_performed_by_status: false,
-        }
-    }
-
-    pub fn for_config_state(enabled: bool, token_shape_ok: bool, binding_ready: bool) -> Self {
-        let ready = enabled && token_shape_ok && binding_ready;
-        Self {
-            bot_api_transport_plan_ready: ready,
-            endpoint_template: "https://api.telegram.org/bot<redacted-token>/{method}",
-            get_updates_method: "getUpdates",
-            send_message_method: "sendMessage",
-            send_chat_action_method: "sendChatAction",
-            allowed_updates: HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES,
-            offset_commit_strategy: "commit getUpdates offset only after delivery succeeds or duplicate suppression is recorded",
-            send_delivery_gate: "sendMessage requires a successful model-turn or command dispatch plus explicit confirm-send runtime gate",
-            typing_keepalive_plan: "sendChatAction typing keepalive is planned while the model turn is running, with bounded TTL",
-            raw_token_exposed: false,
-            external_network_performed_by_status: false,
-        }
-    }
-}
-
-pub fn hepta_kernel_telegram_transport_plan_for_config_status(
-    config: &HeptaKernelTelegramConfigStatus,
-) -> HeptaKernelTelegramTransportPlan {
-    let config_ready = config.config_ready();
-    HeptaKernelTelegramTransportPlan::for_config_state(config_ready, config_ready, config_ready)
 }
 
 impl HeptaKernelTelegramSendPlan {
@@ -6070,430 +5934,6 @@ pub fn build_hepta_kernel_telegram_send_plan_status(
     }
 }
 
-pub fn hepta_kernel_telegram_update_already_drained(
-    update_id: i64,
-    next_update_offset: Option<i64>,
-) -> bool {
-    next_update_offset
-        .map(|cursor| update_id < cursor)
-        .unwrap_or(false)
-}
-
-pub fn hepta_kernel_telegram_cursor_duplicate_rule_valid() -> bool {
-    hepta_kernel_telegram_update_already_drained(41, Some(42))
-        && !hepta_kernel_telegram_update_already_drained(42, Some(42))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HeptaKernelTelegramCursorPlan {
-    pub cursor_path: &'static str,
-    pub duplicate_suppression_ready: bool,
-    pub duplicate_suppression_rule_valid: bool,
-    pub cursor_represents_next_update_offset: bool,
-    pub commit_offset_after_delivery: bool,
-    pub raw_update_payload_persisted: bool,
-}
-
-impl HeptaKernelTelegramCursorPlan {
-    pub fn disabled() -> Self {
-        Self {
-            cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-            duplicate_suppression_ready: false,
-            duplicate_suppression_rule_valid: true,
-            cursor_represents_next_update_offset: true,
-            commit_offset_after_delivery: false,
-            raw_update_payload_persisted: false,
-        }
-    }
-
-    pub fn ready() -> Self {
-        Self {
-            cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-            duplicate_suppression_ready: true,
-            duplicate_suppression_rule_valid: hepta_kernel_telegram_cursor_duplicate_rule_valid(),
-            cursor_represents_next_update_offset: true,
-            commit_offset_after_delivery: true,
-            raw_update_payload_persisted: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct HeptaKernelTelegramCursorStatus {
-    pub product: &'static str,
-    pub runtime: &'static str,
-    pub requested: bool,
-    pub status: &'static str,
-    pub cursor_path: &'static str,
-    pub cursor_file_present: bool,
-    pub cursor_parse_ok: bool,
-    pub next_update_offset: Option<i64>,
-    pub cursor_updated_at_unix_ms: Option<u64>,
-    pub last_delivered_next_update_offset: Option<i64>,
-    pub durable_cursor_evidence_present: bool,
-    pub cursor_represents_next_update_offset: bool,
-    pub duplicate_suppression_rule_valid: bool,
-    pub cursor_write_policy: &'static str,
-    pub cursor_written: bool,
-    pub raw_update_payload_persisted: bool,
-    pub error: Option<String>,
-    pub next_migration_slice: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeptaKernelTelegramCursorStatusInput<'a> {
-    pub requested: bool,
-    pub cursor_path: &'static str,
-    pub cursor_file_present: bool,
-    pub cursor_updated_at_unix_ms: Option<u64>,
-    pub raw_json: Option<&'a str>,
-    pub read_error: Option<&'a str>,
-}
-
-pub fn build_hepta_kernel_telegram_cursor_status(
-    input: HeptaKernelTelegramCursorStatusInput<'_>,
-) -> HeptaKernelTelegramCursorStatus {
-    if !input.requested {
-        return HeptaKernelTelegramCursorStatus {
-            product: "Hepta",
-            runtime: "hepta",
-            requested: false,
-            status: "disabled",
-            cursor_path: input.cursor_path,
-            cursor_file_present: false,
-            cursor_parse_ok: false,
-            next_update_offset: None,
-            cursor_updated_at_unix_ms: None,
-            last_delivered_next_update_offset: None,
-            durable_cursor_evidence_present: false,
-            cursor_represents_next_update_offset: true,
-            duplicate_suppression_rule_valid: true,
-            cursor_write_policy: "disabled",
-            cursor_written: false,
-            raw_update_payload_persisted: false,
-            error: None,
-            next_migration_slice: "enable Telegram plugin before reading cursor state",
-        };
-    }
-
-    let mut status = HeptaKernelTelegramCursorStatus {
-        product: "Hepta",
-        runtime: "hepta",
-        requested: true,
-        status: "missing",
-        cursor_path: input.cursor_path,
-        cursor_file_present: input.cursor_file_present,
-        cursor_parse_ok: false,
-        next_update_offset: None,
-        cursor_updated_at_unix_ms: input.cursor_updated_at_unix_ms,
-        last_delivered_next_update_offset: None,
-        durable_cursor_evidence_present: false,
-        cursor_represents_next_update_offset: true,
-        duplicate_suppression_rule_valid: hepta_kernel_telegram_cursor_duplicate_rule_valid(),
-        cursor_write_policy: "write only after model output is delivered or duplicate suppression is recorded",
-        cursor_written: false,
-        raw_update_payload_persisted: false,
-        error: None,
-        next_migration_slice: "wire cursor write after gated send delivery success",
-    };
-
-    if !input.cursor_file_present {
-        return status;
-    }
-
-    if let Some(error) = input.read_error {
-        status.status = "attention";
-        status.error = Some(redact_hepta_kernel_telegram_token_like_text(error));
-        return status;
-    }
-
-    let Some(raw) = input.raw_json else {
-        status.status = "attention";
-        status.error =
-            Some("Telegram cursor file was present but no JSON was provided".to_string());
-        return status;
-    };
-
-    match parse_hepta_kernel_telegram_cursor_next_update_offset(raw) {
-        Ok(next_update_offset) => {
-            let cursor_json = serde_json::from_str::<Value>(raw).unwrap_or(Value::Null);
-            let raw_update_payload_persisted = cursor_json
-                .get("raw_update_payload_persisted")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let cursor_updated_at_unix_ms = cursor_json
-                .get("updated_at_unix_ms")
-                .and_then(Value::as_u64)
-                .or(input.cursor_updated_at_unix_ms);
-            let last_delivered_next_update_offset = cursor_json
-                .get("last_delivered_next_update_offset")
-                .and_then(Value::as_i64)
-                .filter(|offset| *offset >= 0)
-                .or(Some(next_update_offset));
-
-            status.status = "ready";
-            status.cursor_parse_ok = true;
-            status.next_update_offset = Some(next_update_offset);
-            status.cursor_updated_at_unix_ms = cursor_updated_at_unix_ms;
-            status.last_delivered_next_update_offset = last_delivered_next_update_offset;
-            status.durable_cursor_evidence_present = cursor_updated_at_unix_ms.is_some()
-                && last_delivered_next_update_offset.is_some()
-                && !raw_update_payload_persisted;
-            status.raw_update_payload_persisted = raw_update_payload_persisted;
-            status.next_migration_slice = "cursor is ready; continue active soak and expect writes only after delivery or duplicate suppression";
-        }
-        Err(error) => {
-            status.status = "attention";
-            status.error = Some(redact_hepta_kernel_telegram_token_like_text(&error));
-        }
-    }
-
-    status
-}
-
-pub fn parse_hepta_kernel_telegram_cursor_next_update_offset(raw: &str) -> Result<i64, String> {
-    let value: Value = serde_json::from_str(raw)
-        .map_err(|error| format!("failed to parse Telegram cursor JSON: {error}"))?;
-    let explicit_next_update_offset = value
-        .get("next_update_offset")
-        .or_else(|| value.get("nextUpdateOffset"))
-        .and_then(Value::as_i64)
-        .or_else(|| {
-            value
-                .get("next_server_offset")
-                .or_else(|| value.get("nextServerOffset"))
-                .and_then(Value::as_i64)
-        });
-    let legacy_last_drained_next_offset = value
-        .get("last_drained_update_id")
-        .or_else(|| value.get("lastDrainedUpdateId"))
-        .and_then(Value::as_i64)
-        .filter(|offset| *offset >= 0)
-        .and_then(|offset| offset.checked_add(1));
-    let offset = explicit_next_update_offset
-        .or(legacy_last_drained_next_offset)
-        .ok_or_else(|| {
-            "Telegram cursor missing next_update_offset or legacy next_server_offset".to_string()
-        })?;
-    if offset < 0 {
-        Err("Telegram cursor next_update_offset must be non-negative".to_string())
-    } else {
-        Ok(offset)
-    }
-}
-
-pub fn hepta_kernel_telegram_cursor_body(
-    offset: i64,
-    updated_at_unix_ms: u64,
-) -> Result<Value, String> {
-    if offset < 0 {
-        return Err("Telegram cursor next_update_offset must be non-negative".to_string());
-    }
-    Ok(json!({
-        "schema": HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA,
-        "next_update_offset": offset,
-        "updated_at_unix_ms": updated_at_unix_ms,
-        "last_delivered_next_update_offset": offset,
-        "raw_update_payload_persisted": false,
-    }))
-}
-
-pub fn hepta_kernel_telegram_normalize_binding_id(raw: &str) -> String {
-    let trimmed = raw.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("telegram:") {
-        return trimmed["telegram:".len()..].trim().to_string();
-    }
-    if lower.starts_with("tg:") {
-        return trimmed["tg:".len()..].trim().to_string();
-    }
-    trimmed.to_string()
-}
-
-pub fn hepta_kernel_telegram_env_truthy_value(raw: &str) -> bool {
-    matches!(
-        raw.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
-    )
-}
-
-pub fn hepta_kernel_telegram_env_u64_value(raw: &str) -> Option<u64> {
-    raw.trim().parse::<u64>().ok()
-}
-
-pub fn hepta_kernel_telegram_token_observation(
-    input: HeptaKernelTelegramTokenObservationInput,
-) -> HeptaKernelTelegramTokenObservation {
-    if input.env_token_present {
-        return HeptaKernelTelegramTokenObservation {
-            token_source: "env",
-            token_shape_ok: input.env_token_shape_ok,
-        };
-    }
-    if input.file_token_present {
-        return HeptaKernelTelegramTokenObservation {
-            token_source: "secret_file",
-            token_shape_ok: input.file_token_shape_ok,
-        };
-    }
-    if input.inline_token_present {
-        return HeptaKernelTelegramTokenObservation {
-            token_source: "inline_config",
-            token_shape_ok: input.inline_token_shape_ok,
-        };
-    }
-    if input.token_secret_ref_present {
-        return HeptaKernelTelegramTokenObservation {
-            token_source: "secret_file_missing",
-            token_shape_ok: false,
-        };
-    }
-    HeptaKernelTelegramTokenObservation {
-        token_source: "missing",
-        token_shape_ok: false,
-    }
-}
-
-pub fn build_hepta_kernel_telegram_config_status(
-    input: HeptaKernelTelegramConfigStatusInput,
-) -> HeptaKernelTelegramConfigStatus {
-    let dm_policy = input.dm_policy.trim().to_ascii_lowercase();
-    let group_policy = input.group_policy.trim().to_ascii_lowercase();
-    let binding_ready = input.enabled
-        && input.token_shape_ok
-        && (input.allow_from_count > 0
-            || input.group_count > 0
-            || matches!(dm_policy.as_str(), "allow" | "trusted" | "all"));
-
-    HeptaKernelTelegramConfigStatus {
-        config_path: input.config_path,
-        config_found: input.config_found,
-        enabled: input.enabled,
-        dm_policy,
-        group_policy,
-        allow_from_count: input.allow_from_count,
-        group_count: input.group_count,
-        token_source: input.token_source,
-        token_secret_ref_present: input.token_secret_ref_present,
-        token_secret_provider: input.token_secret_provider,
-        token_secret_id_present: input.token_secret_id_present,
-        token_file_present: input.token_file_present,
-        token_file_mode_0600: input.token_file_mode_0600,
-        token_file_security_ready: input.token_file_security_ready,
-        token_shape_ok: input.token_shape_ok,
-        raw_token_exposed: false,
-        binding_ready,
-        error: input.error,
-    }
-}
-
-pub fn extract_hepta_kernel_telegram_config_metadata(
-    config_path: &Path,
-    config: &Value,
-) -> Result<HeptaKernelTelegramConfigMetadata, String> {
-    let telegram = config
-        .pointer("/channels/telegram")
-        .ok_or_else(|| "channels.telegram config is missing".to_string())?;
-
-    let enabled = telegram
-        .get("enabled")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let dm_policy = telegram
-        .get("dmPolicy")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-    let group_policy = telegram
-        .get("groupPolicy")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-    let allow_from_count = telegram
-        .get("allowFrom")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(hepta_kernel_telegram_normalize_binding_id)
-                .filter(|item| !item.is_empty())
-                .count()
-        })
-        .unwrap_or(0);
-    let group_count = telegram
-        .get("groups")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .or_else(|| {
-            telegram
-                .get("groups")
-                .and_then(Value::as_object)
-                .map(|groups| groups.len())
-        })
-        .unwrap_or(0);
-
-    let bot_token_ref = telegram.get("botToken");
-    let token_secret_ref_present = bot_token_ref
-        .and_then(|value| value.get("source"))
-        .and_then(Value::as_str)
-        == Some("file");
-    let token_secret_provider = bot_token_ref
-        .and_then(|value| value.get("provider"))
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned);
-    let token_secret_id_present = bot_token_ref
-        .and_then(|value| value.get("id"))
-        .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-    let token_secret_path = if token_secret_ref_present {
-        token_secret_provider.as_deref().and_then(|provider| {
-            resolve_hepta_kernel_telegram_secret_provider_path(config_path, config, provider)
-        })
-    } else {
-        None
-    };
-    let inline_token_present = bot_token_ref
-        .and_then(Value::as_str)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-
-    Ok(HeptaKernelTelegramConfigMetadata {
-        enabled,
-        dm_policy,
-        group_policy,
-        allow_from_count,
-        group_count,
-        token_secret_ref_present,
-        token_secret_provider,
-        token_secret_id_present,
-        token_secret_path,
-        inline_token_present,
-    })
-}
-
-pub fn resolve_hepta_kernel_telegram_secret_provider_path(
-    config_path: &Path,
-    config: &Value,
-    provider: &str,
-) -> Option<PathBuf> {
-    let raw = config
-        .get("secrets")?
-        .get("providers")?
-        .get(provider)?
-        .get("path")?
-        .as_str()?;
-    let path = PathBuf::from(raw);
-    if path.is_absolute() {
-        Some(path)
-    } else {
-        config_path.parent().map(|parent| parent.join(path))
-    }
-}
-
 pub fn hepta_kernel_telegram_next_update_offset(update_id: i64) -> Option<i64> {
     update_id.checked_add(1)
 }
@@ -6722,16 +6162,6 @@ pub fn clamp_hepta_kernel_mlx_max_tokens(value: Option<u64>) -> u64 {
         .unwrap_or(DEFAULT_TELEGRAM_MLX_MAX_TOKENS)
 }
 
-pub fn hepta_kernel_telegram_model_timeout_ms(value_ms: Option<u64>) -> u64 {
-    value_ms
-        .map(|value| value.clamp(MIN_TELEGRAM_MODEL_TIMEOUT_MS, MAX_TELEGRAM_MODEL_TIMEOUT_MS))
-        .unwrap_or(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS)
-}
-
-pub fn hepta_kernel_telegram_model_timeout(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(hepta_kernel_telegram_model_timeout_ms(value_ms))
-}
-
 pub fn hepta_kernel_telegram_poll_loop_should_spawn(
     requested: bool,
     poll_loop_gate_enabled: bool,
@@ -6819,366 +6249,6 @@ pub fn hepta_kernel_telegram_system_time_unix_ms(time: SystemTime) -> u64 {
     time.duration_since(UNIX_EPOCH)
         .map(hepta_kernel_duration_millis_u64)
         .unwrap_or(0)
-}
-
-pub fn hepta_kernel_telegram_typing_keepalive_interval_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.clamp(1_000, MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS))
-            .unwrap_or(DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS),
-    )
-}
-
-pub fn hepta_kernel_telegram_read_max_attempts_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|attempts| attempts.clamp(1, MAX_TELEGRAM_READ_MAX_ATTEMPTS))
-        .unwrap_or(DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS)
-}
-
-pub fn hepta_kernel_telegram_read_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.min(MAX_TELEGRAM_READ_RETRY_BACKOFF_MS))
-            .unwrap_or(DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS),
-    )
-}
-
-pub fn hepta_kernel_telegram_send_min_interval_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.min(MAX_TELEGRAM_SEND_MIN_INTERVAL_MS))
-            .unwrap_or(0),
-    )
-}
-
-pub fn hepta_kernel_telegram_send_max_attempts_policy(value: Option<u64>) -> u64 {
-    value
-        .map(|attempts| attempts.clamp(1, MAX_TELEGRAM_SEND_MAX_ATTEMPTS))
-        .unwrap_or(DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS)
-}
-
-pub fn hepta_kernel_telegram_send_retry_backoff_policy(value_ms: Option<u64>) -> Duration {
-    Duration::from_millis(
-        value_ms
-            .map(|ms| ms.min(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS))
-            .unwrap_or(DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS),
-    )
-}
-
-pub fn build_hepta_kernel_telegram_production_guard_status(
-    input: HeptaKernelTelegramProductionGuardStatusInput,
-) -> HeptaKernelTelegramProductionGuardStatus {
-    HeptaKernelTelegramProductionGuardStatus {
-        read_max_attempts_env: input.read_max_attempts_env,
-        read_max_attempts: input.read_max_attempts,
-        read_retry_backoff_env: input.read_retry_backoff_env,
-        read_retry_backoff_ms: input.read_retry_backoff_ms,
-        retry_transient_read_errors: true,
-        typing_keepalive_env: input.typing_keepalive_env,
-        typing_keepalive_enabled: input.typing_keepalive_enabled,
-        typing_keepalive_interval_ms: input.typing_keepalive_interval_ms,
-        model_timeout_env: input.model_timeout_env,
-        model_timeout_ms: input.model_timeout_ms,
-        model_failure_fallback_env: input.model_failure_fallback_env,
-        model_failure_fallback_enabled: input.model_failure_fallback_enabled,
-        send_min_interval_env: input.send_min_interval_env,
-        send_min_interval_ms: input.send_min_interval_ms,
-        send_max_attempts_env: input.send_max_attempts_env,
-        send_max_attempts: input.send_max_attempts,
-        send_retry_backoff_env: input.send_retry_backoff_env,
-        send_retry_backoff_ms: input.send_retry_backoff_ms,
-        retry_transient_send_errors: true,
-        rate_limit_scope: "in-process per chat id; reset on gateway restart",
-        raw_token_exposed: false,
-    }
-}
-
-pub fn build_hepta_kernel_telegram_production_guard_status_from_policy(
-    input: HeptaKernelTelegramProductionGuardPolicyInput,
-) -> HeptaKernelTelegramProductionGuardStatus {
-    build_hepta_kernel_telegram_production_guard_status(
-        HeptaKernelTelegramProductionGuardStatusInput {
-            read_max_attempts_env: input.read_max_attempts_env,
-            read_max_attempts: hepta_kernel_telegram_read_max_attempts_policy(
-                input.read_max_attempts,
-            ),
-            read_retry_backoff_env: input.read_retry_backoff_env,
-            read_retry_backoff_ms: hepta_kernel_duration_millis_u64(
-                hepta_kernel_telegram_read_retry_backoff_policy(input.read_retry_backoff_ms),
-            ),
-            typing_keepalive_env: input.typing_keepalive_env,
-            typing_keepalive_enabled: input.typing_keepalive_enabled,
-            typing_keepalive_interval_ms: hepta_kernel_duration_millis_u64(
-                hepta_kernel_telegram_typing_keepalive_interval_policy(
-                    input.typing_keepalive_interval_ms,
-                ),
-            ),
-            model_timeout_env: input.model_timeout_env,
-            model_timeout_ms: hepta_kernel_telegram_model_timeout_ms(input.model_timeout_ms),
-            model_failure_fallback_env: input.model_failure_fallback_env,
-            model_failure_fallback_enabled: input.model_failure_fallback_enabled,
-            send_min_interval_env: input.send_min_interval_env,
-            send_min_interval_ms: hepta_kernel_duration_millis_u64(
-                hepta_kernel_telegram_send_min_interval_policy(input.send_min_interval_ms),
-            ),
-            send_max_attempts_env: input.send_max_attempts_env,
-            send_max_attempts: hepta_kernel_telegram_send_max_attempts_policy(
-                input.send_max_attempts,
-            ),
-            send_retry_backoff_env: input.send_retry_backoff_env,
-            send_retry_backoff_ms: hepta_kernel_duration_millis_u64(
-                hepta_kernel_telegram_send_retry_backoff_policy(input.send_retry_backoff_ms),
-            ),
-        },
-    )
-}
-
-pub fn hepta_kernel_telegram_get_updates_query(
-    limit: usize,
-    offset: Option<i64>,
-) -> Vec<(&'static str, String)> {
-    let mut query = vec![
-        ("timeout", "0".to_string()),
-        ("limit", limit.clamp(1, 20).to_string()),
-        (
-            "allowed_updates",
-            HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES.to_string(),
-        ),
-    ];
-    if let Some(offset) = offset.filter(|offset| *offset >= 0) {
-        query.push(("offset", offset.to_string()));
-    }
-    query
-}
-
-pub fn hepta_kernel_telegram_send_chat_action_request_body(chat_id: i64) -> Result<Value, String> {
-    if chat_id == 0 {
-        return Err("Telegram sendChatAction chat id must be non-zero".to_string());
-    }
-    Ok(json!({
-        "chat_id": chat_id,
-        "action": "typing",
-    }))
-}
-
-pub fn hepta_kernel_telegram_send_message_request_body(
-    message_text: &str,
-    chat_id: i64,
-    reply_to_message_id: Option<i64>,
-) -> Result<Value, String> {
-    let text = message_text.trim();
-    if text.is_empty() {
-        return Err("Telegram sendMessage text must be non-empty".to_string());
-    }
-    let mut body = json!({
-        "chat_id": chat_id,
-        "text": text,
-        "disable_web_page_preview": true,
-    });
-    if let Some(message_id) = reply_to_message_id {
-        if message_id <= 0 {
-            return Err("Telegram reply message id must be positive".to_string());
-        }
-        body["reply_parameters"] = json!({
-            "message_id": message_id,
-            "allow_sending_without_reply": true,
-        });
-    }
-    Ok(body)
-}
-
-pub fn hepta_kernel_telegram_bot_api_http_status_error(
-    method: &str,
-    status_code: u16,
-    description: Option<&str>,
-) -> String {
-    let description = description
-        .map(redact_hepta_kernel_telegram_token_like_text)
-        .unwrap_or_else(|| "missing".to_string());
-    format!("Telegram Bot API {method} HTTP status {status_code}; description={description}")
-}
-
-pub fn hepta_kernel_telegram_bot_api_request_failed_error(method: &str, error: &str) -> String {
-    let error = redact_hepta_kernel_telegram_token_like_text(error);
-    format!("Telegram Bot API {method} request failed: {error}")
-}
-
-pub fn hepta_kernel_telegram_bot_api_client_build_error(method: &str, error: &str) -> String {
-    let error = redact_hepta_kernel_telegram_token_like_text(error);
-    format!("failed to build Telegram Bot API {method} client: {error}")
-}
-
-pub fn hepta_kernel_telegram_bot_api_json_parse_error(method: &str, error: &str) -> String {
-    let error = redact_hepta_kernel_telegram_token_like_text(error);
-    format!("failed to parse Telegram Bot API {method} response JSON: {error}")
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HeptaKernelTelegramSendProviderResultInput<'a> {
-    pub attempt: u64,
-    pub max_attempts: u64,
-    pub api_result: Result<&'a Value, &'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeptaKernelTelegramSendProviderResultPlan {
-    pub bot_api_ack: Option<bool>,
-    pub provider_message_id_present: bool,
-    pub external_send: bool,
-    pub should_retry: bool,
-    pub delivery_ledger_stage: Option<&'static str>,
-    pub report_status: &'static str,
-    pub error: Option<String>,
-    pub raw_response_text_exposed: bool,
-    pub raw_chat_id_exposed: bool,
-    pub raw_message_id_exposed: bool,
-    pub raw_token_exposed: bool,
-}
-
-pub fn plan_hepta_kernel_telegram_send_provider_result(
-    input: HeptaKernelTelegramSendProviderResultInput<'_>,
-) -> HeptaKernelTelegramSendProviderResultPlan {
-    match input.api_result {
-        Ok(api) => {
-            let ok = api.get("ok").and_then(Value::as_bool).unwrap_or(false);
-            let provider_message_id_present = api
-                .pointer("/result/message_id")
-                .and_then(Value::as_i64)
-                .is_some();
-            if ok {
-                return HeptaKernelTelegramSendProviderResultPlan {
-                    bot_api_ack: Some(true),
-                    provider_message_id_present,
-                    external_send: true,
-                    should_retry: false,
-                    delivery_ledger_stage: Some("acked"),
-                    report_status: "provider_acked",
-                    error: None,
-                    raw_response_text_exposed: false,
-                    raw_chat_id_exposed: false,
-                    raw_message_id_exposed: false,
-                    raw_token_exposed: false,
-                };
-            }
-
-            let error = api
-                .get("description")
-                .and_then(Value::as_str)
-                .map(redact_hepta_kernel_telegram_token_like_text)
-                .unwrap_or_else(|| "Telegram Bot API sendMessage returned ok=false".to_string());
-            let should_retry =
-                hepta_kernel_telegram_send_should_retry(input.attempt, input.max_attempts, &error);
-            HeptaKernelTelegramSendProviderResultPlan {
-                bot_api_ack: Some(false),
-                provider_message_id_present,
-                external_send: false,
-                should_retry,
-                delivery_ledger_stage: (!should_retry).then_some("failed"),
-                report_status: if should_retry { "sending" } else { "attention" },
-                error: Some(error),
-                raw_response_text_exposed: false,
-                raw_chat_id_exposed: false,
-                raw_message_id_exposed: false,
-                raw_token_exposed: false,
-            }
-        }
-        Err(error) => {
-            let error = redact_hepta_kernel_telegram_token_like_text(error);
-            let should_retry =
-                hepta_kernel_telegram_send_should_retry(input.attempt, input.max_attempts, &error);
-            HeptaKernelTelegramSendProviderResultPlan {
-                bot_api_ack: None,
-                provider_message_id_present: false,
-                external_send: false,
-                should_retry,
-                delivery_ledger_stage: (!should_retry).then_some("failed"),
-                report_status: if should_retry { "sending" } else { "attention" },
-                error: Some(error),
-                raw_response_text_exposed: false,
-                raw_chat_id_exposed: false,
-                raw_message_id_exposed: false,
-                raw_token_exposed: false,
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct HeptaKernelTelegramGetUpdatesProviderResultInput<'a> {
-    pub attempt: u64,
-    pub max_attempts: u64,
-    pub api_result: Result<&'a Value, &'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeptaKernelTelegramGetUpdatesProviderResultPlan {
-    pub bot_api_ok: Option<bool>,
-    pub external_read: bool,
-    pub should_retry: bool,
-    pub report_status: &'static str,
-    pub error: Option<String>,
-    pub raw_response_text_exposed: bool,
-    pub raw_token_exposed: bool,
-}
-
-pub fn plan_hepta_kernel_telegram_get_updates_provider_result(
-    input: HeptaKernelTelegramGetUpdatesProviderResultInput<'_>,
-) -> HeptaKernelTelegramGetUpdatesProviderResultPlan {
-    match input.api_result {
-        Ok(api) => HeptaKernelTelegramGetUpdatesProviderResultPlan {
-            bot_api_ok: api.get("ok").and_then(Value::as_bool),
-            external_read: true,
-            should_retry: false,
-            report_status: "provider_returned",
-            error: None,
-            raw_response_text_exposed: false,
-            raw_token_exposed: false,
-        },
-        Err(error) => {
-            let error = redact_hepta_kernel_telegram_token_like_text(error);
-            let should_retry = hepta_kernel_telegram_get_updates_should_retry(
-                input.attempt,
-                input.max_attempts,
-                &error,
-            );
-            let report_status = if should_retry {
-                "reading"
-            } else if hepta_kernel_telegram_get_updates_error_is_conflict(&error) {
-                "busy"
-            } else {
-                "attention"
-            };
-            HeptaKernelTelegramGetUpdatesProviderResultPlan {
-                bot_api_ok: None,
-                external_read: false,
-                should_retry,
-                report_status,
-                error: Some(error),
-                raw_response_text_exposed: false,
-                raw_token_exposed: false,
-            }
-        }
-    }
-}
-
-pub fn hepta_kernel_telegram_typing_keepalive_should_start(
-    enabled: bool,
-    token: &str,
-    chat_id: i64,
-) -> bool {
-    enabled && hepta_kernel_telegram_bot_token_shape_ok(token) && chat_id != 0
-}
-
-pub fn hepta_kernel_telegram_send_rate_limit_sleep_for(
-    last_elapsed: Option<Duration>,
-    min_interval: Duration,
-) -> Duration {
-    if min_interval.is_zero() {
-        return Duration::default();
-    }
-    last_elapsed
-        .and_then(|elapsed| min_interval.checked_sub(elapsed))
-        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -7454,79 +6524,6 @@ pub fn hepta_kernel_telegram_delivery_error_is_permanent(error: Option<&str>) ->
         || error.contains("bot was blocked")
         || error.contains("chat not found")
         || error.contains("bad request")
-}
-
-pub fn hepta_kernel_telegram_bot_token_shape_ok(token: &str) -> bool {
-    let Some((bot_id, secret)) = token.split_once(':') else {
-        return false;
-    };
-    !bot_id.is_empty()
-        && bot_id.chars().all(|ch| ch.is_ascii_digit())
-        && secret.len() >= 20
-        && secret
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
-}
-
-pub fn redact_hepta_kernel_telegram_token_like_text(text: &str) -> String {
-    text.split_whitespace()
-        .map(|part| {
-            let candidate = part.trim_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != ':' && ch != '_' && ch != '-' && ch != '='
-            });
-            let token_like = hepta_kernel_telegram_bot_token_shape_ok(candidate)
-                || candidate
-                    .rsplit_once('=')
-                    .is_some_and(|(_, value)| hepta_kernel_telegram_bot_token_shape_ok(value));
-            if token_like {
-                "[redacted-telegram-token]".to_string()
-            } else {
-                part.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub fn hepta_kernel_telegram_get_updates_error_is_conflict(error: &str) -> bool {
-    error.contains("Telegram Bot API getUpdates HTTP status 409")
-        && error.contains("terminated by other getUpdates request")
-}
-
-pub fn hepta_kernel_telegram_error_is_transient(error: &str) -> bool {
-    error.contains("request failed")
-        || error.contains("HTTP status 429")
-        || error.contains("HTTP status 500")
-        || error.contains("HTTP status 502")
-        || error.contains("HTTP status 503")
-        || error.contains("HTTP status 504")
-        || error.contains("Too Many Requests")
-}
-
-pub fn hepta_kernel_telegram_send_error_is_transient(error: &str) -> bool {
-    hepta_kernel_telegram_error_is_transient(error)
-}
-
-pub fn hepta_kernel_telegram_get_updates_error_is_transient(error: &str) -> bool {
-    hepta_kernel_telegram_error_is_transient(error)
-}
-
-pub fn hepta_kernel_telegram_get_updates_should_retry(
-    attempt: u64,
-    max_attempts: u64,
-    error: &str,
-) -> bool {
-    attempt < max_attempts
-        && hepta_kernel_telegram_get_updates_error_is_transient(error)
-        && !hepta_kernel_telegram_get_updates_error_is_conflict(error)
-}
-
-pub fn hepta_kernel_telegram_send_should_retry(
-    attempt: u64,
-    max_attempts: u64,
-    error: &str,
-) -> bool {
-    attempt < max_attempts && hepta_kernel_telegram_send_error_is_transient(error)
 }
 
 pub fn hepta_kernel_exec_child_args(last_message_path: &str, prompt: &str) -> Vec<String> {
@@ -8156,6 +7153,8 @@ fn build_hepta_kernel_prompt(input: &HeptaKernelTurnInput<'_>, user_message: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+    use std::path::PathBuf;
 
     const TEST_NOW_MS: u64 = 1_000_000;
 
@@ -10514,23 +9513,6 @@ not-json
     }
 
     #[test]
-    fn kernel_model_timeout_policy_clamps_and_defaults() {
-        assert_eq!(
-            hepta_kernel_telegram_model_timeout(None),
-            Duration::from_millis(DEFAULT_TELEGRAM_MODEL_TIMEOUT_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_model_timeout(Some(1)),
-            Duration::from_millis(MIN_TELEGRAM_MODEL_TIMEOUT_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_model_timeout(Some(999_999_999)),
-            Duration::from_millis(MAX_TELEGRAM_MODEL_TIMEOUT_MS)
-        );
-        assert_eq!(hepta_kernel_telegram_model_timeout_ms(Some(2_500)), 2_500);
-    }
-
-    #[test]
     fn kernel_poll_loop_and_receive_limit_policies_are_bounded() {
         assert!(hepta_kernel_telegram_poll_loop_should_spawn(
             true, true, true
@@ -10655,300 +9637,6 @@ not-json
             hepta_kernel_telegram_system_time_unix_ms(UNIX_EPOCH - Duration::from_millis(1)),
             0
         );
-    }
-
-    #[test]
-    fn kernel_transport_retry_and_keepalive_policies_are_bounded() {
-        assert_eq!(
-            hepta_kernel_telegram_typing_keepalive_interval_policy(None),
-            Duration::from_millis(DEFAULT_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_typing_keepalive_interval_policy(Some(1)),
-            Duration::from_millis(1_000)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_typing_keepalive_interval_policy(Some(999_999)),
-            Duration::from_millis(MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_read_max_attempts_policy(None),
-            DEFAULT_TELEGRAM_READ_MAX_ATTEMPTS
-        );
-        assert_eq!(hepta_kernel_telegram_read_max_attempts_policy(Some(0)), 1);
-        assert_eq!(
-            hepta_kernel_telegram_read_max_attempts_policy(Some(999)),
-            MAX_TELEGRAM_READ_MAX_ATTEMPTS
-        );
-        assert_eq!(
-            hepta_kernel_telegram_read_retry_backoff_policy(None),
-            Duration::from_millis(DEFAULT_TELEGRAM_READ_RETRY_BACKOFF_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_read_retry_backoff_policy(Some(999_999)),
-            Duration::from_millis(MAX_TELEGRAM_READ_RETRY_BACKOFF_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_min_interval_policy(None),
-            Duration::ZERO
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_min_interval_policy(Some(999_999)),
-            Duration::from_millis(MAX_TELEGRAM_SEND_MIN_INTERVAL_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_max_attempts_policy(None),
-            DEFAULT_TELEGRAM_SEND_MAX_ATTEMPTS
-        );
-        assert_eq!(hepta_kernel_telegram_send_max_attempts_policy(Some(0)), 1);
-        assert_eq!(
-            hepta_kernel_telegram_send_max_attempts_policy(Some(999)),
-            MAX_TELEGRAM_SEND_MAX_ATTEMPTS
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_retry_backoff_policy(None),
-            Duration::from_millis(DEFAULT_TELEGRAM_SEND_RETRY_BACKOFF_MS)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_retry_backoff_policy(Some(999_999)),
-            Duration::from_millis(MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS)
-        );
-    }
-
-    #[test]
-    fn kernel_telegram_production_guard_status_is_bounded() {
-        let direct = build_hepta_kernel_telegram_production_guard_status(
-            HeptaKernelTelegramProductionGuardStatusInput {
-                read_max_attempts_env: "READ_MAX",
-                read_max_attempts: 2,
-                read_retry_backoff_env: "READ_BACKOFF",
-                read_retry_backoff_ms: 500,
-                typing_keepalive_env: "TYPING",
-                typing_keepalive_enabled: true,
-                typing_keepalive_interval_ms: 4_000,
-                model_timeout_env: "MODEL_TIMEOUT",
-                model_timeout_ms: 120_000,
-                model_failure_fallback_env: "MODEL_FALLBACK",
-                model_failure_fallback_enabled: true,
-                send_min_interval_env: "SEND_MIN",
-                send_min_interval_ms: 1_000,
-                send_max_attempts_env: "SEND_MAX",
-                send_max_attempts: 3,
-                send_retry_backoff_env: "SEND_BACKOFF",
-                send_retry_backoff_ms: 700,
-            },
-        );
-
-        assert!(direct.retry_transient_read_errors);
-        assert!(direct.retry_transient_send_errors);
-        assert_eq!(
-            direct.rate_limit_scope,
-            "in-process per chat id; reset on gateway restart"
-        );
-        assert!(!direct.raw_token_exposed);
-
-        let from_policy = build_hepta_kernel_telegram_production_guard_status_from_policy(
-            HeptaKernelTelegramProductionGuardPolicyInput {
-                read_max_attempts_env: "READ_MAX",
-                read_max_attempts: Some(999),
-                read_retry_backoff_env: "READ_BACKOFF",
-                read_retry_backoff_ms: Some(999_999),
-                typing_keepalive_env: "TYPING",
-                typing_keepalive_enabled: true,
-                typing_keepalive_interval_ms: Some(1),
-                model_timeout_env: "MODEL_TIMEOUT",
-                model_timeout_ms: Some(1),
-                model_failure_fallback_env: "MODEL_FALLBACK",
-                model_failure_fallback_enabled: true,
-                send_min_interval_env: "SEND_MIN",
-                send_min_interval_ms: Some(999_999),
-                send_max_attempts_env: "SEND_MAX",
-                send_max_attempts: Some(0),
-                send_retry_backoff_env: "SEND_BACKOFF",
-                send_retry_backoff_ms: Some(999_999),
-            },
-        );
-
-        assert_eq!(
-            from_policy.read_max_attempts,
-            MAX_TELEGRAM_READ_MAX_ATTEMPTS
-        );
-        assert_eq!(
-            from_policy.read_retry_backoff_ms,
-            MAX_TELEGRAM_READ_RETRY_BACKOFF_MS
-        );
-        assert_eq!(from_policy.typing_keepalive_interval_ms, 1_000);
-        assert_eq!(from_policy.model_timeout_ms, MIN_TELEGRAM_MODEL_TIMEOUT_MS);
-        assert_eq!(
-            from_policy.send_min_interval_ms,
-            MAX_TELEGRAM_SEND_MIN_INTERVAL_MS
-        );
-        assert_eq!(from_policy.send_max_attempts, 1);
-        assert_eq!(
-            from_policy.send_retry_backoff_ms,
-            MAX_TELEGRAM_SEND_RETRY_BACKOFF_MS
-        );
-        assert!(!from_policy.raw_token_exposed);
-    }
-
-    #[test]
-    fn kernel_telegram_token_redaction_and_retry_classification_are_bounded() {
-        assert!(hepta_kernel_telegram_bot_token_shape_ok(
-            "123456789:abcdefghijklmnopqrstuvwxyz"
-        ));
-        assert!(!hepta_kernel_telegram_bot_token_shape_ok("not-a-token"));
-        assert_eq!(
-            redact_hepta_kernel_telegram_token_like_text(
-                "failed token=123456789:abcdefghijklmnopqrstuvwxyz!"
-            ),
-            "failed [redacted-telegram-token]"
-        );
-        assert_eq!(
-            hepta_kernel_telegram_bot_api_http_status_error(
-                "sendMessage",
-                401,
-                Some("Unauthorized token=123456789:abcdefghijklmnopqrstuvwxyz")
-            ),
-            "Telegram Bot API sendMessage HTTP status 401; description=Unauthorized [redacted-telegram-token]"
-        );
-        assert_eq!(
-            hepta_kernel_telegram_bot_api_http_status_error("getUpdates", 500, None),
-            "Telegram Bot API getUpdates HTTP status 500; description=missing"
-        );
-        assert_eq!(
-            hepta_kernel_telegram_bot_api_request_failed_error(
-                "getUpdates",
-                "connection reset token=123456789:abcdefghijklmnopqrstuvwxyz"
-            ),
-            "Telegram Bot API getUpdates request failed: connection reset [redacted-telegram-token]"
-        );
-        assert_eq!(
-            hepta_kernel_telegram_bot_api_client_build_error(
-                "sendMessage",
-                "bad proxy 123456789:abcdefghijklmnopqrstuvwxyz"
-            ),
-            "failed to build Telegram Bot API sendMessage client: bad proxy [redacted-telegram-token]"
-        );
-        assert_eq!(
-            hepta_kernel_telegram_bot_api_json_parse_error(
-                "sendMessage",
-                "bad json 123456789:abcdefghijklmnopqrstuvwxyz"
-            ),
-            "failed to parse Telegram Bot API sendMessage response JSON: bad json [redacted-telegram-token]"
-        );
-        let acked = plan_hepta_kernel_telegram_send_provider_result(
-            HeptaKernelTelegramSendProviderResultInput {
-                attempt: 1,
-                max_attempts: 3,
-                api_result: Ok(&json!({"ok": true, "result": {"message_id": 99}})),
-            },
-        );
-        assert_eq!(acked.bot_api_ack, Some(true));
-        assert!(acked.external_send);
-        assert!(!acked.should_retry);
-        assert_eq!(acked.delivery_ledger_stage, Some("acked"));
-        assert!(acked.provider_message_id_present);
-
-        let retrying = plan_hepta_kernel_telegram_send_provider_result(
-            HeptaKernelTelegramSendProviderResultInput {
-                attempt: 1,
-                max_attempts: 3,
-                api_result: Ok(&json!({"ok": false, "description": "Too Many Requests"})),
-            },
-        );
-        assert_eq!(retrying.bot_api_ack, Some(false));
-        assert!(retrying.should_retry);
-        assert_eq!(retrying.delivery_ledger_stage, None);
-        assert_eq!(retrying.report_status, "sending");
-
-        let terminal = plan_hepta_kernel_telegram_send_provider_result(
-            HeptaKernelTelegramSendProviderResultInput {
-                attempt: 3,
-                max_attempts: 3,
-                api_result: Err(
-                    "Telegram Bot API sendMessage HTTP status 503; token=123456789:abcdefghijklmnopqrstuvwxyz",
-                ),
-            },
-        );
-        assert_eq!(terminal.bot_api_ack, None);
-        assert!(!terminal.should_retry);
-        assert_eq!(terminal.delivery_ledger_stage, Some("failed"));
-        assert_eq!(terminal.report_status, "attention");
-        assert!(
-            terminal
-                .error
-                .as_deref()
-                .unwrap_or_default()
-                .contains("[redacted-telegram-token]")
-        );
-        let read_ok = plan_hepta_kernel_telegram_get_updates_provider_result(
-            HeptaKernelTelegramGetUpdatesProviderResultInput {
-                attempt: 1,
-                max_attempts: 3,
-                api_result: Ok(&json!({"ok": true, "result": []})),
-            },
-        );
-        assert_eq!(read_ok.bot_api_ok, Some(true));
-        assert!(read_ok.external_read);
-        assert!(!read_ok.should_retry);
-        assert_eq!(read_ok.report_status, "provider_returned");
-
-        let read_retry = plan_hepta_kernel_telegram_get_updates_provider_result(
-            HeptaKernelTelegramGetUpdatesProviderResultInput {
-                attempt: 1,
-                max_attempts: 3,
-                api_result: Err(
-                    "Telegram Bot API getUpdates request failed 123456789:abcdefghijklmnopqrstuvwxyz",
-                ),
-            },
-        );
-        assert!(read_retry.should_retry);
-        assert_eq!(read_retry.report_status, "reading");
-        assert!(
-            read_retry
-                .error
-                .as_deref()
-                .unwrap_or_default()
-                .contains("[redacted-telegram-token]")
-        );
-
-        let read_conflict = plan_hepta_kernel_telegram_get_updates_provider_result(
-            HeptaKernelTelegramGetUpdatesProviderResultInput {
-                attempt: 1,
-                max_attempts: 3,
-                api_result: Err(
-                    "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request",
-                ),
-            },
-        );
-        assert!(!read_conflict.should_retry);
-        assert_eq!(read_conflict.report_status, "busy");
-        let conflict = "Telegram Bot API getUpdates HTTP status 409; description=Conflict: terminated by other getUpdates request";
-        let auth_error = "Telegram Bot API sendMessage HTTP status 401";
-        let transient = "Telegram Bot API sendMessage HTTP status 503";
-        assert!(hepta_kernel_telegram_get_updates_error_is_conflict(
-            conflict
-        ));
-        assert!(!hepta_kernel_telegram_get_updates_error_is_conflict(
-            auth_error
-        ));
-        assert!(hepta_kernel_telegram_send_error_is_transient(transient));
-        assert!(hepta_kernel_telegram_get_updates_error_is_transient(
-            "request failed: timed out"
-        ));
-        assert!(!hepta_kernel_telegram_send_error_is_transient(auth_error));
-        assert!(hepta_kernel_telegram_get_updates_should_retry(
-            1, 2, transient
-        ));
-        assert!(!hepta_kernel_telegram_get_updates_should_retry(
-            2, 2, transient
-        ));
-        assert!(!hepta_kernel_telegram_get_updates_should_retry(
-            1, 2, conflict
-        ));
-        assert!(hepta_kernel_telegram_send_should_retry(1, 2, transient));
-        assert!(!hepta_kernel_telegram_send_should_retry(2, 2, transient));
-        assert!(!hepta_kernel_telegram_send_should_retry(1, 2, auth_error));
     }
 
     #[test]
@@ -11118,158 +9806,22 @@ not-json
     }
 
     #[test]
-    fn kernel_telegram_transport_request_shapes_are_bounded() {
-        assert_eq!(
-            hepta_kernel_telegram_get_updates_query(999, None),
-            vec![
-                ("timeout", "0".to_string()),
-                ("limit", "20".to_string()),
-                (
-                    "allowed_updates",
-                    HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES.to_string()
-                ),
-            ]
-        );
-        assert_eq!(
-            hepta_kernel_telegram_get_updates_query(5, Some(43)),
-            vec![
-                ("timeout", "0".to_string()),
-                ("limit", "5".to_string()),
-                (
-                    "allowed_updates",
-                    HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES.to_string()
-                ),
-                ("offset", "43".to_string()),
-            ]
-        );
-        assert!(
-            !hepta_kernel_telegram_get_updates_query(5, Some(-1))
-                .iter()
-                .any(|(name, _)| *name == "offset")
-        );
+    fn kernel_telegram_send_plan_is_side_effect_free() {
+        let disabled = HeptaKernelTelegramSendPlan::disabled();
+        assert!(!disabled.send_plan_ready);
+        assert_eq!(disabled.method, "disabled");
+        assert!(!disabled.delivery_performed_by_status);
+        assert!(!disabled.raw_token_exposed);
 
-        let send_body = hepta_kernel_telegram_send_message_request_body(
-            "  private model response text  ",
-            6476198178,
-            Some(11),
-        )
-        .expect("send body");
-        assert_eq!(
-            send_body.get("chat_id").and_then(Value::as_i64),
-            Some(6476198178)
-        );
-        assert_eq!(
-            send_body.get("text").and_then(Value::as_str),
-            Some("private model response text")
-        );
-        assert_eq!(
-            send_body
-                .pointer("/reply_parameters/message_id")
-                .and_then(Value::as_i64),
-            Some(11)
-        );
-        assert_eq!(
-            send_body
-                .pointer("/reply_parameters/allow_sending_without_reply")
-                .and_then(Value::as_bool),
-            Some(true)
-        );
-        assert_eq!(
-            send_body
-                .get("disable_web_page_preview")
-                .and_then(Value::as_bool),
-            Some(true)
-        );
-        assert!(send_body.get("parse_mode").is_none());
-        assert!(
-            hepta_kernel_telegram_send_message_request_body("   ", 6476198178, Some(11))
-                .expect_err("empty text rejected")
-                .contains("text must be non-empty")
-        );
-        assert!(
-            hepta_kernel_telegram_send_message_request_body("text", 6476198178, Some(0))
-                .expect_err("bad reply id rejected")
-                .contains("reply message id must be positive")
-        );
-
-        let typing_body =
-            hepta_kernel_telegram_send_chat_action_request_body(6476198178).expect("typing body");
-        assert_eq!(
-            typing_body.get("chat_id").and_then(Value::as_i64),
-            Some(6476198178)
-        );
-        assert_eq!(
-            typing_body.get("action").and_then(Value::as_str),
-            Some("typing")
-        );
-        assert!(
-            hepta_kernel_telegram_send_chat_action_request_body(0)
-                .expect_err("bad chat id rejected")
-                .contains("chat id must be non-zero")
-        );
-    }
-
-    #[test]
-    fn kernel_telegram_transport_and_send_plans_are_side_effect_free() {
-        let disabled_transport = HeptaKernelTelegramTransportPlan::disabled();
-        assert!(!disabled_transport.bot_api_transport_plan_ready);
-        assert_eq!(
-            disabled_transport.allowed_updates,
-            HEPTA_KERNEL_TELEGRAM_ALLOWED_UPDATES
-        );
-        assert!(!disabled_transport.external_network_performed_by_status);
-        assert!(!disabled_transport.raw_token_exposed);
-
-        let ready_transport = HeptaKernelTelegramTransportPlan::for_config_state(true, true, true);
-        assert!(ready_transport.bot_api_transport_plan_ready);
-        assert_eq!(ready_transport.get_updates_method, "getUpdates");
-        assert_eq!(ready_transport.send_message_method, "sendMessage");
-        assert_eq!(ready_transport.send_chat_action_method, "sendChatAction");
-        assert!(!ready_transport.external_network_performed_by_status);
-        assert!(!ready_transport.raw_token_exposed);
-        assert!(
-            !HeptaKernelTelegramTransportPlan::for_config_state(true, true, false)
-                .bot_api_transport_plan_ready
-        );
-        let ready_config =
-            build_hepta_kernel_telegram_config_status(HeptaKernelTelegramConfigStatusInput {
-                config_path: Some("private/config/openclaw.json".to_string()),
-                config_found: true,
-                enabled: true,
-                dm_policy: "allowlist".to_string(),
-                group_policy: "allowlist".to_string(),
-                allow_from_count: 1,
-                group_count: 1,
-                token_source: "secret_file",
-                token_secret_ref_present: true,
-                token_secret_provider: Some("telegram".to_string()),
-                token_secret_id_present: true,
-                token_file_present: true,
-                token_file_mode_0600: true,
-                token_file_security_ready: true,
-                token_shape_ok: true,
-                error: None,
-            });
-        assert!(
-            hepta_kernel_telegram_transport_plan_for_config_status(&ready_config)
-                .bot_api_transport_plan_ready
-        );
-
-        let disabled_send = HeptaKernelTelegramSendPlan::disabled();
-        assert!(!disabled_send.send_plan_ready);
-        assert_eq!(disabled_send.method, "disabled");
-        assert!(!disabled_send.delivery_performed_by_status);
-        assert!(!disabled_send.raw_token_exposed);
-
-        let ready_send = HeptaKernelTelegramSendPlan::ready();
-        assert!(ready_send.send_plan_ready);
-        assert_eq!(ready_send.method, "sendMessage");
-        assert!(!ready_send.request_body_materialized_by_status);
-        assert!(!ready_send.delivery_performed_by_status);
-        assert!(!ready_send.raw_response_text_exposed);
-        assert!(!ready_send.raw_chat_id_exposed);
-        assert!(!ready_send.raw_message_id_exposed);
-        assert!(!ready_send.raw_token_exposed);
+        let ready = HeptaKernelTelegramSendPlan::ready();
+        assert!(ready.send_plan_ready);
+        assert_eq!(ready.method, "sendMessage");
+        assert!(!ready.request_body_materialized_by_status);
+        assert!(!ready.delivery_performed_by_status);
+        assert!(!ready.raw_response_text_exposed);
+        assert!(!ready.raw_chat_id_exposed);
+        assert!(!ready.raw_message_id_exposed);
+        assert!(!ready.raw_token_exposed);
     }
 
     #[test]
@@ -11851,48 +10403,6 @@ not-json
     }
 
     #[test]
-    fn kernel_telegram_transport_keepalive_and_rate_limit_policies_are_bounded() {
-        let token = "123456789:abcdefghijklmnopqrstuvwxyz";
-        assert!(hepta_kernel_telegram_typing_keepalive_should_start(
-            true, token, 6476198178
-        ));
-        assert!(!hepta_kernel_telegram_typing_keepalive_should_start(
-            false, token, 6476198178
-        ));
-        assert!(!hepta_kernel_telegram_typing_keepalive_should_start(
-            true,
-            "not-a-token",
-            6476198178
-        ));
-        assert!(!hepta_kernel_telegram_typing_keepalive_should_start(
-            true, token, 0
-        ));
-
-        assert_eq!(
-            hepta_kernel_telegram_send_rate_limit_sleep_for(None, Duration::from_millis(750)),
-            Duration::default()
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_rate_limit_sleep_for(
-                Some(Duration::from_millis(250)),
-                Duration::from_millis(750)
-            ),
-            Duration::from_millis(500)
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_rate_limit_sleep_for(
-                Some(Duration::from_millis(900)),
-                Duration::from_millis(750)
-            ),
-            Duration::default()
-        );
-        assert_eq!(
-            hepta_kernel_telegram_send_rate_limit_sleep_for(Some(Duration::ZERO), Duration::ZERO),
-            Duration::default()
-        );
-    }
-
-    #[test]
     fn kernel_exec_child_args_are_ephemeral_read_only_and_capture_last_message() {
         let args =
             hepta_kernel_exec_child_args("/tmp/hepta-telegram-last-message.txt", "private prompt");
@@ -12397,210 +10907,6 @@ not-json
         assert!(candidate.cursor_write_allowed_after_delivery);
         assert_eq!(candidate.candidate_next_update_offset, Some(43));
         assert!(!candidate.raw_update_payload_exposed);
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_parser_accepts_current_and_legacy_shapes() {
-        assert_eq!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"next_update_offset": 5}"#),
-            Ok(5)
-        );
-        assert_eq!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"nextUpdateOffset": 6}"#),
-            Ok(6)
-        );
-        assert_eq!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"next_server_offset": 7}"#),
-            Ok(7)
-        );
-        assert_eq!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"nextServerOffset": 8}"#),
-            Ok(8)
-        );
-        assert_eq!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"lastDrainedUpdateId": 8}"#),
-            Ok(9)
-        );
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_policy_rejects_invalid_offsets_and_shapes() {
-        assert!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"next_update_offset": -1}"#)
-                .expect_err("negative offset should fail")
-                .contains("next_update_offset must be non-negative")
-        );
-        assert!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{"lastDrainedUpdateId": -1}"#)
-                .expect_err("negative legacy offset should fail")
-                .contains("missing next_update_offset")
-        );
-        assert!(
-            parse_hepta_kernel_telegram_cursor_next_update_offset(r#"{}"#)
-                .expect_err("missing offset should fail")
-                .contains("missing next_update_offset")
-        );
-        assert!(
-            hepta_kernel_telegram_cursor_body(-1, 123)
-                .expect_err("negative body offset should fail")
-                .contains("next_update_offset must be non-negative")
-        );
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_body_is_stable_and_payload_safe() {
-        assert_eq!(
-            HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-            ".hepta/telegram/ingress-drain-cursor.json"
-        );
-        assert_eq!(
-            HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA,
-            "hepta.telegram.cursor.v1"
-        );
-
-        let body = hepta_kernel_telegram_cursor_body(77, 1_777_777).expect("cursor body");
-        assert_eq!(body["schema"], HEPTA_KERNEL_TELEGRAM_CURSOR_SCHEMA);
-        assert_eq!(body["next_update_offset"], 77);
-        assert_eq!(body["updated_at_unix_ms"], 1_777_777);
-        assert_eq!(body["last_delivered_next_update_offset"], 77);
-        assert_eq!(body["raw_update_payload_persisted"], false);
-        assert!(body.get("raw_update_payload").is_none());
-        assert!(body.get("message").is_none());
-        assert!(body.get("chat").is_none());
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_status_summarizes_ready_cursor_without_raw_payload() {
-        let status = build_hepta_kernel_telegram_cursor_status(
-            HeptaKernelTelegramCursorStatusInput {
-                requested: true,
-                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-                cursor_file_present: true,
-                cursor_updated_at_unix_ms: Some(123),
-                raw_json: Some(
-                    r#"{"next_update_offset": 77, "last_delivered_next_update_offset": 77, "raw_update_payload_persisted": false}"#,
-                ),
-                read_error: None,
-            },
-        );
-
-        assert_eq!(status.status, "ready");
-        assert!(status.cursor_parse_ok);
-        assert_eq!(status.next_update_offset, Some(77));
-        assert_eq!(status.cursor_updated_at_unix_ms, Some(123));
-        assert_eq!(status.last_delivered_next_update_offset, Some(77));
-        assert!(status.durable_cursor_evidence_present);
-        assert!(!status.raw_update_payload_persisted);
-        assert!(status.duplicate_suppression_rule_valid);
-        assert!(!status.cursor_written);
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_status_flags_raw_payload_and_invalid_cursor() {
-        let raw_payload_status =
-            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
-                requested: true,
-                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-                cursor_file_present: true,
-                cursor_updated_at_unix_ms: Some(123),
-                raw_json: Some(
-                    r#"{"lastDrainedUpdateId": 6, "raw_update_payload_persisted": true}"#,
-                ),
-                read_error: None,
-            });
-        assert_eq!(raw_payload_status.status, "ready");
-        assert_eq!(raw_payload_status.next_update_offset, Some(7));
-        assert!(raw_payload_status.raw_update_payload_persisted);
-        assert!(!raw_payload_status.durable_cursor_evidence_present);
-
-        let invalid_status =
-            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
-                requested: true,
-                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-                cursor_file_present: true,
-                cursor_updated_at_unix_ms: Some(123),
-                raw_json: Some(r#"{"next_update_offset": -1}"#),
-                read_error: None,
-            });
-        assert_eq!(invalid_status.status, "attention");
-        assert!(!invalid_status.cursor_parse_ok);
-        assert!(
-            invalid_status
-                .error
-                .as_deref()
-                .unwrap_or_default()
-                .contains("next_update_offset must be non-negative")
-        );
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_status_handles_disabled_missing_and_read_error() {
-        let disabled =
-            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
-                requested: false,
-                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-                cursor_file_present: true,
-                cursor_updated_at_unix_ms: Some(123),
-                raw_json: Some(r#"{"next_update_offset": 1}"#),
-                read_error: None,
-            });
-        assert_eq!(disabled.status, "disabled");
-        assert!(!disabled.cursor_file_present);
-        assert_eq!(disabled.cursor_updated_at_unix_ms, None);
-
-        let missing =
-            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
-                requested: true,
-                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-                cursor_file_present: false,
-                cursor_updated_at_unix_ms: None,
-                raw_json: None,
-                read_error: None,
-            });
-        assert_eq!(missing.status, "missing");
-        assert!(!missing.cursor_parse_ok);
-
-        let read_error =
-            build_hepta_kernel_telegram_cursor_status(HeptaKernelTelegramCursorStatusInput {
-                requested: true,
-                cursor_path: HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH,
-                cursor_file_present: true,
-                cursor_updated_at_unix_ms: Some(123),
-                raw_json: None,
-                read_error: Some(
-                    "failed to read Telegram cursor file: 123456789:abcdefghijklmnopqrstuvwxyz",
-                ),
-            });
-        assert_eq!(read_error.status, "attention");
-        assert!(
-            read_error
-                .error
-                .as_deref()
-                .unwrap_or_default()
-                .contains("[redacted-telegram-token]")
-        );
-    }
-
-    #[test]
-    fn kernel_telegram_cursor_plan_is_bounded_and_payload_safe() {
-        let disabled = HeptaKernelTelegramCursorPlan::disabled();
-        assert_eq!(
-            disabled.cursor_path,
-            HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH
-        );
-        assert!(!disabled.duplicate_suppression_ready);
-        assert!(disabled.duplicate_suppression_rule_valid);
-        assert!(disabled.cursor_represents_next_update_offset);
-        assert!(!disabled.commit_offset_after_delivery);
-        assert!(!disabled.raw_update_payload_persisted);
-
-        let ready = HeptaKernelTelegramCursorPlan::ready();
-        assert_eq!(ready.cursor_path, HEPTA_KERNEL_TELEGRAM_INGRESS_CURSOR_PATH);
-        assert!(ready.duplicate_suppression_ready);
-        assert!(ready.duplicate_suppression_rule_valid);
-        assert!(ready.cursor_represents_next_update_offset);
-        assert!(ready.commit_offset_after_delivery);
-        assert!(!ready.raw_update_payload_persisted);
     }
 
     #[test]

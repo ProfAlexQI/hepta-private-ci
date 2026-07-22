@@ -1770,6 +1770,10 @@ scripts/hepta-route-gate-dynamic-count-regression-gate.sh
 echo "[hepta-preflight] suffix-ladder freeze"
 scripts/check-hepta-suffix-ladder-freeze.sh
 
+echo "[hepta-preflight] test evidence classification matrix"
+scripts/hepta-test-evidence-matrix verify
+scripts/hepta-test-evidence-matrix self-test
+
 echo "[hepta-preflight] preflight terminal coverage inventory gate"
 scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
 
@@ -1788,8 +1792,15 @@ scripts/hepta-upstream-codex-latest-release-governance-non-activation-gate.sh
 echo "[hepta-preflight] upstream Codex latest operator briefing non-persistence gate"
 scripts/hepta-upstream-codex-latest-operator-briefing-non-persistence-gate.sh
 
+echo "[hepta-preflight] upstream intake audit ledger"
+scripts/hepta-upstream-intake-audit-ledger verify
+scripts/hepta-upstream-intake-audit-ledger self-test
+
 echo "[hepta-preflight] resume state/fuse self-test"
 scripts/hepta-preflight-resume-self-test.sh
+
+echo "[hepta-preflight] resume supervisor retry/backoff self-test"
+scripts/hepta-preflight-supervisor-self-test.sh
 
 echo "[hepta-preflight] watchdog gate evidence mode self-test"
 scripts/hepta-watchdog-gate-evidence-self-test.sh
@@ -1799,6 +1810,9 @@ scripts/hepta-live-control-ui-truth-self-test.sh
 
 echo "[hepta-preflight] immutable release tree self-test"
 scripts/hepta-immutable-release-tree self-test
+
+echo "[hepta-preflight] active binary deployment consistency self-test"
+scripts/hepta-active-binary-consistency-self-test.sh
 
 echo "[hepta-preflight] watchdog build provenance self-test"
 scripts/hepta-watchdog-provenance-self-test.sh

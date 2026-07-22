@@ -62,7 +62,7 @@ verify_contract() {
     .schema == "hepta_ci_baseline_contract_v1"
     and .status == "ready"
     and .permissions == {contents:"read"}
-    and (.baseline_workflow.allowed_events | sort == ["pull_request","push","workflow_dispatch"])
+    and (.baseline_workflow.allowed_events | sort == ["pull_request","push","schedule","workflow_dispatch"])
     and (.full_workflow.allowed_events == ["workflow_dispatch"])
     and .upstream_intake == {
       url:"https://github.com/openai/codex.git",
@@ -95,6 +95,7 @@ verify_contract() {
   require_exact_literal "$baseline" "  pull_request:" "pull_request trigger"
   require_exact_literal "$baseline" "  push:" "push trigger"
   require_exact_literal "$baseline" "  workflow_dispatch:" "manual trigger"
+  require_exact_literal "$baseline" "  schedule:" "nightly static trigger"
   require_exact_literal "$full" "  workflow_dispatch:" "full manual-only trigger"
   reject_literal "$full" "  pull_request:"
   reject_literal "$full" "  push:"
@@ -121,7 +122,7 @@ verify_contract() {
   done < <(jq -er '.baseline_workflow.required_commands[]' "$CONTRACT")
   require_literal "$baseline" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
   require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
-  require_literal_count "$baseline" "          persist-credentials: false" 3 "checkout credential isolation"
+  require_literal_count "$baseline" "          persist-credentials: false" 5 "checkout credential isolation"
   require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
   while IFS= read -r binding; do
     require_literal "$baseline" "'$binding'" "Cargo cache binding $binding"

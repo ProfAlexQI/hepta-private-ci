@@ -676,6 +676,23 @@
             value["readiness_class"],
             "static_contract_ready_production_in_progress"
         );
+        assert_eq!(value["contract_valid"], true);
+        assert_eq!(value["locally_executable"], true);
+        assert_eq!(value["integration_verified"], false);
+        assert_eq!(value["live_enabled"], false);
+        assert_eq!(value["release_provenance_verified"], false);
+        assert_eq!(value["active_binary_consistency_verified"], false);
+        assert_eq!(value["production_ready"], false);
+        assert!(value["blockers"]
+            .as_array()
+            .expect("merge completion blockers")
+            .iter()
+            .any(|blocker| blocker == "release_provenance_not_verified"));
+        assert!(value["blockers"]
+            .as_array()
+            .expect("merge completion blockers")
+            .iter()
+            .any(|blocker| blocker == "active_binary_consistency_not_verified"));
         assert_eq!(value["source_package_merge_percent"], 100);
         assert_eq!(value["local_deterministic_function_percent"], 100);
         assert_eq!(value["active_service_coexistence_percent"], 100);

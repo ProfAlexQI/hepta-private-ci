@@ -3,6 +3,8 @@ use hepta_core::current_reality_capability_registry_count;
 use hepta_core::hepta_native_absorption_report;
 use hepta_core::production_surface_report;
 use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 
 use crate::gate_runner;
 use crate::gate_spec::ReceiptStateMachine;
@@ -15,6 +17,8 @@ const CURRENT_REALITY_CAPABILITY_REGISTRY_SCHEMA: &str =
     "hepta_current_reality_capability_registry_v1";
 const ROUTE_REGISTRY_SCHEMA: &str = "hepta_control_ui_route_registry_v1";
 const IMMUTABLE_RELEASE_MANIFEST_SCHEMA: &str = "hepta_immutable_release_manifest_v1";
+const ROUTE_REGISTRY_NORMALIZED_SHA256: &str =
+    "aabbfa3b6a873716afb5ad49bfd1e1d4fa7717ce495dde7bc94d8674aba320a1";
 
 #[derive(Debug, Serialize)]
 struct RegistryBinding {
@@ -89,6 +93,14 @@ pub fn canonical_manifest_json() -> Result<String> {
             "install_or_restart_authorized": false,
             "production_mutation_authorized": false,
         },
+        "contract_freeze": {
+            "route_registry_normalized_sha256": route_registry_normalized_sha256(),
+            "route_registry_expected_sha256": ROUTE_REGISTRY_NORMALIZED_SHA256,
+            "route_registry_hash_matches": route_registry_normalized_sha256()
+                == ROUTE_REGISTRY_NORMALIZED_SHA256,
+            "suffix_ladder_frozen": true,
+            "suffix_ladder_gate": "scripts/check-hepta-suffix-ladder-freeze.sh",
+        },
         "side_effects": {
             "provider_invoked": false,
             "credentials_read": false,
@@ -99,6 +111,12 @@ pub fn canonical_manifest_json() -> Result<String> {
     });
 
     Ok(serde_json::to_string(&manifest)?)
+}
+
+fn route_registry_normalized_sha256() -> String {
+    let canonical =
+        serde_json::to_vec(CONTROL_UI_ROUTE_SPECS).expect("static route registry must serialize");
+    format!("{:x}", Sha256::digest(canonical))
 }
 
 fn readiness_nodes() -> [ReadinessNode; 6] {
@@ -174,6 +192,14 @@ mod tests {
         assert_eq!(
             value["release_policy"]["production_mutation_authorized"],
             false
+        );
+        assert_eq!(
+            value["contract_freeze"]["route_registry_normalized_sha256"],
+            ROUTE_REGISTRY_NORMALIZED_SHA256
+        );
+        assert_eq!(
+            value["contract_freeze"]["route_registry_hash_matches"],
+            true
         );
     }
 }

@@ -110,7 +110,7 @@ materialize() {
         exit 1
       }
     fi
-    [[ -n "$preflight_head" && "$source_commit" == "$preflight_head"* ]] || {
+    [[ "$preflight_head" =~ ^[0-9a-f]{40}$ && "$source_commit" == "$preflight_head" ]] || {
       echo "preflight log head does not match source commit" >&2
       exit 1
     }
@@ -136,6 +136,8 @@ materialize() {
       .preflight_profiles.backend == true
       and .preflight_profiles.native == true
       and .preflight_profiles.release == true
+      and .deployment_consistency.checked_during_candidate_preflight == false
+      and .deployment_consistency.required_before_activation == true
     ' >/dev/null <<<"$build_provenance_json" || {
       echo "preflight build provenance receipt does not bind all required profiles" >&2
       exit 1
@@ -146,7 +148,7 @@ materialize() {
     )"
     jq -e \
       --argjson current "$current_build_provenance" \
-      '. as $receipt | ($receipt | del(.preflight_profiles)) == $current' \
+      '. as $receipt | ($receipt | del(.preflight_profiles, .watchdog_gate_mode, .deployment_consistency)) == $current' \
       >/dev/null <<<"$build_provenance_json" || {
       echo "preflight build provenance no longer matches source, toolchain, dependencies, or artifact" >&2
       exit 1
@@ -193,7 +195,7 @@ materialize() {
       source:{commit:$source_commit,commit_bound:$source_commit_bound},
       artifact:{relative_path:"bin/hepta",sha256:$artifact_sha256,size_bytes:$artifact_size_bytes,executable:true},
       build_provenance:$build_provenance,
-      preflight:{bound:$preflight_bound,source_head:(if $preflight_bound then $preflight_source_head else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
+      preflight:{bound:$preflight_bound,source_head:(if $preflight_bound then $preflight_source_head else null end),candidate_source_commit:(if $preflight_bound then $source_commit else null end),candidate_artifact_sha256:(if $preflight_bound then $artifact_sha256 else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
       policy:{immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
       side_effects:{service_restarted:false,active_process_mutated:false,provider_invoked:false,credentials_read:false,memory_or_kg_written:false,channel_message_sent:false}
     }' >"$staging/manifest.json"
@@ -239,8 +241,10 @@ verify_manifest() {
         and (.source.commit | test("^[0-9a-f]{40}$"))
         and .preflight.bound == true
         and .preflight.passed == true
-        and (.preflight.source_head | test("^[0-9a-f]{10,40}$"))
-        and (.source.commit as $commit | .preflight.source_head as $head | $commit | startswith($head))
+        and (.preflight.source_head | test("^[0-9a-f]{40}$"))
+        and .preflight.source_head == .source.commit
+        and .preflight.candidate_source_commit == .source.commit
+        and .preflight.candidate_artifact_sha256 == .artifact.sha256
         and (.preflight.log_sha256 | test("^[0-9a-f]{64}$"))
         and .build_provenance.schema_version == "hepta_build_provenance_v1"
         and .build_provenance.source.commit_bound == true
@@ -258,7 +262,7 @@ verify_manifest() {
         and .build_provenance.preflight_profiles.native == true
         and .build_provenance.preflight_profiles.release == true)
       or
-      (.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .build_provenance == null and .preflight.bound == false and .preflight.passed == false and .preflight.source_head == null and .preflight.log_sha256 == null)
+      (.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .build_provenance == null and .preflight.bound == false and .preflight.passed == false and .preflight.source_head == null and .preflight.candidate_source_commit == null and .preflight.candidate_artifact_sha256 == null and .preflight.log_sha256 == null)
     )
   ' "$manifest" >/dev/null
 
@@ -304,6 +308,15 @@ activate() {
   require_sha256 "$expected_current_sha"
   "$0" verify --manifest "$manifest" >/dev/null
   manifest="$(canonical_file "$manifest")"
+  jq -e '
+    .status == "ready"
+    and .source.commit_bound == true
+    and .preflight.bound == true
+    and .preflight.passed == true
+  ' "$manifest" >/dev/null || {
+    echo "immutable activation requires a source-bound passed-preflight candidate" >&2
+    exit 1
+  }
   [[ -f "$active_link" && -x "$active_link" ]] || {
     echo "active binary must already exist: $active_link" >&2
     exit 1
@@ -350,6 +363,7 @@ self_test() {
   [[ $# -eq 0 ]] || usage
   local root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
   local fixture_sha activation different different_manifest provenance invalid_manifest
+  local missing_preflight_rc legacy_activation_rc tampered_manifest
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   tool="$root/scripts/hepta-immutable-release-tree"
   tmp="$(mktemp -d /tmp/hepta-immutable-release-tree-self-test.XXXXXX)"
@@ -362,7 +376,11 @@ self_test() {
   preflight="$tmp/preflight.log"
   provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$artifact")"
   provenance="$(
-    jq -c '. + {preflight_profiles:{backend:true,native:true,release:true}}' <<<"$provenance"
+    jq -c '. + {
+      preflight_profiles:{backend:true,native:true,release:true},
+      watchdog_gate_mode:"fixture",
+      deployment_consistency:{checked_during_candidate_preflight:false,required_before_activation:true}
+    }' <<<"$provenance"
   )"
   printf '%s\n' \
     '[hepta-preflight] fixture' \
@@ -378,8 +396,15 @@ self_test() {
     and .build_provenance.dependencies.bound == true
     and .build_provenance.artifact.bound == true
     and .preflight.bound == true
+    and .preflight.source_head == .source.commit
+    and .preflight.candidate_source_commit == .source.commit
+    and .preflight.candidate_artifact_sha256 == .artifact.sha256
     and .policy.immutable_tree == true
   ' >/dev/null
+
+  missing_preflight_rc=0
+  $tool materialize --artifact "$artifact" --source-commit "$source_commit" --release-root "$tmp/missing-preflight" >/dev/null 2>&1 || missing_preflight_rc=$?
+  [[ "$missing_preflight_rc" == "1" ]]
 
   invalid_manifest="$tmp/invalid-manifest.json"
   jq 'del(.build_provenance)' "$bound_manifest" >"$invalid_manifest"
@@ -392,11 +417,26 @@ self_test() {
   legacy_manifest="$($tool materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/releases")"
   $tool verify --manifest "$legacy_manifest" | jq -e '.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false' >/dev/null
 
+  legacy_activation_rc=0
+  mkdir -p "$tmp/legacy-active"
+  cp "$artifact" "$tmp/legacy-active/hepta"
+  chmod 0755 "$tmp/legacy-active/hepta"
+  $tool activate --manifest "$legacy_manifest" --active-link "$tmp/legacy-active/hepta" --expected-current-sha256 "$(sha256_file "$artifact")" >/dev/null 2>&1 || legacy_activation_rc=$?
+  [[ "$legacy_activation_rc" == "1" ]]
+
+  tampered_manifest="$tmp/tampered-manifest.json"
+  jq '.preflight.candidate_artifact_sha256 = ("0" * 64)' "$bound_manifest" >"$tampered_manifest"
+  chmod 0444 "$tampered_manifest"
+  if $tool verify --manifest "$tampered_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted a mismatched preflight candidate artifact" >&2
+    exit 1
+  fi
+
   mkdir -p "$tmp/active"
   cp "$artifact" "$tmp/active/hepta"
   chmod 0755 "$tmp/active/hepta"
   fixture_sha="$(sha256_file "$artifact")"
-  activation="$($tool activate --manifest "$legacy_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
+  activation="$($tool activate --manifest "$bound_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
   jq -e '.status == "ready" and .bytes_changed == false and .service_restarted == false and .active_process_mutated == false' <<<"$activation" >/dev/null
   [[ -L "$tmp/active/hepta" ]]
   [[ -L "$tmp/active/hepta.manifest" ]]
@@ -414,7 +454,7 @@ self_test() {
   fi
 
   jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
-    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,source_bound_fixture_ready:true,legacy_unbound_fixture_ready:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,service_restarted:false,active_process_mutated:false}'
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,source_bound_fixture_ready:true,missing_preflight_denied:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,service_restarted:false,active_process_mutated:false}'
   echo "hepta immutable release tree self-test passed"
 }
 

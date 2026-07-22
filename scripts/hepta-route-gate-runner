@@ -51,11 +51,19 @@ validate_registry() {
           and (.compatibility_executor | test("^scripts/[a-z0-9-]+-route-gate-runner$"))
           and (.compatibility_validation_schema | test("^[a-z0-9_]+_v1$"))
           and (.compatibility_error_label | type == "string" and length > 10)
-          and (.source_capture_mode | IN("none", "live_url_min_soak_v1"))
+          and (.source_capture_mode | IN("none", "live_url_min_soak_v1", "live_url_release_bin_min_soak_v1"))
           and (.minimum_long_soak_samples | type == "number" and . >= 0 and floor == .)
           and (.live_expected_arg | IN("expected", "expected_route_count"))
           and (.terminal_coverage_required | type == "boolean")
           and (.include_route_gate_ready | type == "boolean")
+          and ((.include_source_gate_sha256 // false) | type == "boolean")
+          and ((.include_source_report_sha_field // false) | type == "boolean")
+          and ((.live_report_nulls // false) | type == "boolean")
+          and (if has("include_expected_route_count") then
+            (.include_expected_route_count | type == "boolean")
+          else true end)
+          and ((.terminal_report_mode // "full_v1") | IN("full_v1", "sha_only_v1"))
+          and ((.include_live_route_side_effects // false) | type == "boolean")
           and (.output_mode | IN("pretty_json", "pretty_json_with_message"))
           and (.native_requirement_min | type == "number" and . >= 1 and floor == .)
           and (.requires_source_contract | type == "boolean")
@@ -70,6 +78,7 @@ validate_registry() {
 
   local all_ids embedded_ids external_registry external_schema compatibility_executor
   local native_requirement_min requires_source_contract requires_pass_message
+  local requires_source_report_sha_field
   embedded_ids="$(jq -r '.families[].specs[]?.id' "$SPEC_FILE")"
   all_ids="$embedded_ids"
   while IFS= read -r family; do
@@ -79,6 +88,7 @@ validate_registry() {
     native_requirement_min="$(jq -r '.native_requirement_min' <<<"$family")"
     requires_source_contract="$(jq -r '.requires_source_contract' <<<"$family")"
     requires_pass_message="$(jq -r '.requires_pass_message' <<<"$family")"
+    requires_source_report_sha_field="$(jq -r '.include_source_report_sha_field // false' <<<"$family")"
     [[ -f "$ROOT/$external_registry" ]] || {
       echo "missing Hepta route gate family registry: $ROOT/$external_registry" >&2
       return 1
@@ -88,7 +98,8 @@ validate_registry() {
       --arg executor "$compatibility_executor" \
       --argjson native_requirement_min "$native_requirement_min" \
       --argjson requires_source_contract "$requires_source_contract" \
-      --argjson requires_pass_message "$requires_pass_message" '
+      --argjson requires_pass_message "$requires_pass_message" \
+      --argjson requires_source_report_sha_field "$requires_source_report_sha_field" '
         .schema_version == $schema
         and .executor == $executor
         and .receipt_state_machine == ["precondition", "denial", "receipt", "persistence", "retention", "terminal"]
@@ -119,6 +130,11 @@ validate_registry() {
           and (
             if $requires_pass_message then
               (.pass_message | type == "string" and length > 20)
+            else true end
+          )
+          and (
+            if $requires_source_report_sha_field then
+              (.source_sha_field | test("^source_[a-z_]+_gate_sha256$"))
             else true end
           )
         ))
@@ -256,6 +272,12 @@ if [[ "$execution_profile" == "first_model_invocation_transition_v1" ]]; then
   error_prefix="Hepta route gate"
   terminal_coverage_required=false
   include_route_gate_ready=true
+  include_source_gate_sha256=false
+  include_source_report_sha_field=false
+  live_report_nulls=false
+  include_expected_route_count=true
+  terminal_report_mode="full_v1"
+  include_live_route_side_effects=false
   source_capture_mode="none"
   live_expected_arg="expected"
 else
@@ -266,18 +288,41 @@ else
   error_prefix="$(jq -r '.compatibility_error_label' <<<"$family") route"
   terminal_coverage_required="$(jq -r '.terminal_coverage_required' <<<"$family")"
   include_route_gate_ready="$(jq -r '.include_route_gate_ready' <<<"$family")"
+  include_source_gate_sha256="$(jq -r '.include_source_gate_sha256 // false' <<<"$family")"
+  include_source_report_sha_field="$(jq -r '.include_source_report_sha_field // false' <<<"$family")"
+  live_report_nulls="$(jq -r '.live_report_nulls // false' <<<"$family")"
+  include_expected_route_count="$(
+    jq -r 'if has("include_expected_route_count") then .include_expected_route_count else true end' \
+      <<<"$family"
+  )"
+  terminal_report_mode="$(jq -r '.terminal_report_mode // "full_v1"' <<<"$family")"
+  include_live_route_side_effects="$(jq -r '.include_live_route_side_effects // false' <<<"$family")"
   source_capture_mode="$(jq -r '.source_capture_mode' <<<"$family")"
   live_expected_arg="$(jq -r '.live_expected_arg' <<<"$family")"
 fi
 
-if [[ "$source_capture_mode" == "live_url_min_soak_v1" ]]; then
-  source_json="$(
-    HEPTA_LIVE_URL="$BASE_URL" \
-      HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+case "$source_capture_mode" in
+  live_url_min_soak_v1)
+    source_json="$(
+      HEPTA_LIVE_URL="$BASE_URL" \
+        HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+        capture_json_report \
+          "$(jq -r '.source.capture_label' <<<"$spec")" \
+          "$(jq -r '.source.script' <<<"$spec")"
+    )"
+    ;;
+  live_url_release_bin_min_soak_v1)
+    source_json="$(
       capture_json_report \
         "$(jq -r '.source.capture_label' <<<"$spec")" \
-        "$(jq -r '.source.script' <<<"$spec")"
-  )"
+        env HEPTA_LIVE_URL="$BASE_URL" \
+          HEPTA_RELEASE_BIN="${HEPTA_RELEASE_BIN:-}" \
+          HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
+          "$(jq -r '.source.script' <<<"$spec")"
+    )"
+    ;;
+esac
+if [[ "$source_capture_mode" != "none" ]]; then
   jq -e "$(jq -r '.source.validation_filter' <<<"$spec")" >/dev/null <<<"$source_json"
 fi
 
@@ -357,25 +402,53 @@ if [[ "$terminal_coverage_required" == "true" ]]; then
     and .duplicate_required_marker_count == 0
     and .out_of_order_required_marker_count == 0
   ' >/dev/null <<<"$terminal_json"
-  terminal_report_fields="$(
-    jq -cn \
-      --arg sha "$(printf '%s' "$terminal_json" | shasum -a 256 | awk '{print $1}')" \
-      --argjson required "$(jq -r '.required_marker_count' <<<"$terminal_json")" \
-      --argjson present "$(jq -r '.present_required_marker_count' <<<"$terminal_json")" \
-      --argjson missing "$(jq -r '.missing_required_marker_count' <<<"$terminal_json")" '
-      {
-        terminal_coverage_sha256:$sha,
-        terminal_required_marker_count:$required,
-        terminal_present_required_marker_count:$present,
-        terminal_missing_required_marker_count:$missing
-      }
-    '
-  )"
+  if [[ "$terminal_report_mode" == "sha_only_v1" ]]; then
+    terminal_report_fields="$(
+      jq -cn \
+        --arg sha "$(printf '%s' "$terminal_json" | shasum -a 256 | awk '{print $1}')" \
+        '{terminal_coverage_sha256:$sha}'
+    )"
+  else
+    terminal_report_fields="$(
+      jq -cn \
+        --arg sha "$(printf '%s' "$terminal_json" | shasum -a 256 | awk '{print $1}')" \
+        --argjson required "$(jq -r '.required_marker_count' <<<"$terminal_json")" \
+        --argjson present "$(jq -r '.present_required_marker_count' <<<"$terminal_json")" \
+        --argjson missing "$(jq -r '.missing_required_marker_count' <<<"$terminal_json")" '
+        {
+          terminal_coverage_sha256:$sha,
+          terminal_required_marker_count:$required,
+          terminal_present_required_marker_count:$present,
+          terminal_missing_required_marker_count:$missing
+        }
+      '
+    )"
+  fi
 fi
 
 live_route_status="$(jq -r '.status // "skipped"' <<<"$live_json")"
 live_route_count="$(jq -r '.route_count // 0' <<<"$live_json")"
 live_missing_route_count="$(jq -r '.missing_route_count // 0' <<<"$live_json")"
+live_route_status_json="$(jq -c '.status // null' <<<"$live_json")"
+live_route_count_json="$(jq -c '.route_count // null' <<<"$live_json")"
+live_missing_route_count_json="$(jq -c '.missing_route_count // null' <<<"$live_json")"
+live_side_effects="$(jq -c '.side_effects // {}' <<<"$live_json")"
+source_gate_sha256=""
+if [[ "$include_source_gate_sha256" == "true" ]]; then
+  source_gate_sha256="$(sha256_file "$(jq -r '.source.script' <<<"$spec")")"
+fi
+source_report_sha_field=""
+source_report_sha256=""
+if [[ "$include_source_report_sha_field" == "true" ]]; then
+  source_report_sha_field="$(jq -r '.source_sha_field' <<<"$spec")"
+  source_report_sha256="$(printf '%s' "$source_json" | shasum -a 256 | awk '{print $1}')"
+  volatile_report_fields="$(
+    jq -cn \
+      --argjson volatile "$volatile_report_fields" \
+      --arg field "$source_report_sha_field" \
+      '$volatile + [$field]'
+  )"
+fi
 report="$(
   jq -n \
     --arg base_url "$BASE_URL" \
@@ -384,12 +457,24 @@ report="$(
     --arg source_command "$source_command" \
     --arg native_gateway_sha256 "$(sha256_file "$NATIVE_GATEWAY_SOURCE")" \
     --arg focused_test_log "$TEST_LOG" \
+    --arg source_gate_sha256 "$source_gate_sha256" \
+    --arg source_report_sha_field "$source_report_sha_field" \
+    --arg source_report_sha256 "$source_report_sha256" \
     --arg live_route_status "$live_route_status" \
     --argjson live_endpoint_checked "$([[ "$REQUIRE_LIVE_ENDPOINT" == "1" ]] && echo true || echo false)" \
     --argjson live_route_count "$live_route_count" \
     --argjson live_missing_route_count "$live_missing_route_count" \
+    --argjson live_route_status_json "$live_route_status_json" \
+    --argjson live_route_count_json "$live_route_count_json" \
+    --argjson live_missing_route_count_json "$live_missing_route_count_json" \
+    --argjson live_side_effects "$live_side_effects" \
     --argjson expected_route_count "$EXPECTED_ROUTE_COUNT" \
     --argjson include_route_gate_ready "$include_route_gate_ready" \
+    --argjson include_source_gate_sha256 "$include_source_gate_sha256" \
+    --argjson include_source_report_sha_field "$include_source_report_sha_field" \
+    --argjson live_report_nulls "$live_report_nulls" \
+    --argjson include_expected_route_count "$include_expected_route_count" \
+    --argjson include_live_route_side_effects "$include_live_route_side_effects" \
     --argjson report_fields "$report_fields" \
     --argjson terminal_report_fields "$terminal_report_fields" '
     {
@@ -402,6 +487,7 @@ report="$(
       source_command:$source_command,
       native_gateway_sha256:$native_gateway_sha256,
       focused_test_log:$focused_test_log,
+      source_gate_sha256:$source_gate_sha256,
       live_endpoint_checked:$live_endpoint_checked,
       live_route_status:$live_route_status,
       live_route_count:$live_route_count,
@@ -410,8 +496,21 @@ report="$(
       route_gate_ready:true
     }
     | if $include_route_gate_ready then . else del(.route_gate_ready) end
+    | if $include_source_gate_sha256 then . else del(.source_gate_sha256) end
+    | if $include_expected_route_count then . else del(.expected_route_count) end
+    | if $live_report_nulls then
+        .live_route_status = $live_route_status_json
+        | .live_route_count = $live_route_count_json
+        | .live_missing_route_count = $live_missing_route_count_json
+      else . end
     + $report_fields
     + $terminal_report_fields
+    | if $include_source_report_sha_field then
+        .[$source_report_sha_field] = $source_report_sha256
+      else . end
+    | if $include_live_route_side_effects then
+        .side_effects.live_route_side_effects = $live_side_effects
+      else . end
   '
 )"
 

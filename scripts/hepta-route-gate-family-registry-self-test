@@ -8,6 +8,10 @@ MEMORY_COMPAT_RUNNER="$ROOT/scripts/hepta-memory-live-mutation-activation-comman
 MEMORY_COMPAT_REGISTRY="$ROOT/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
 RUNTIME_COMPAT_RUNNER="$ROOT/scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-runner"
 RUNTIME_COMPAT_REGISTRY="$ROOT/scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json"
+ARTIFACT_COMPAT_RUNNER="$ROOT/scripts/hepta-artifact-signing-receipt-route-gate-runner"
+ARTIFACT_COMPAT_REGISTRY="$ROOT/scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json"
+RELEASE_COMPAT_RUNNER="$ROOT/scripts/hepta-release-publication-result-receipt-route-gate-runner"
+RELEASE_COMPAT_REGISTRY="$ROOT/scripts/hepta-release-publication-result-receipt-route-gate-specs-v1.json"
 MODE="${1:---schema}"
 
 [[ "$MODE" == "--schema" || "$MODE" == "--runtime-parity" ]] || {
@@ -15,12 +19,16 @@ MODE="${1:---schema}"
   exit 2
 }
 
-expected_unified_validation='{"schema":"hepta_route_gate_specs_validation_v1","status":"ready","family_count":3,"spec_count":9}'
+expected_unified_validation='{"schema":"hepta_route_gate_specs_validation_v1","status":"ready","family_count":5,"spec_count":15}'
 expected_memory_validation='{"schema":"hepta_memory_live_mutation_activation_command_result_receipt_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
 expected_runtime_validation='{"schema":"hepta_runtime_provider_router_activation_command_result_receipt_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+expected_artifact_validation='{"schema":"hepta_artifact_signing_receipt_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
+expected_release_validation='{"schema":"hepta_release_publication_result_receipt_route_gate_specs_validation_v1","status":"ready","family_count":1,"spec_count":3}'
 [[ "$("$UNIFIED_RUNNER" --validate)" == "$expected_unified_validation" ]]
 [[ "$("$MEMORY_COMPAT_RUNNER" --validate)" == "$expected_memory_validation" ]]
 [[ "$("$RUNTIME_COMPAT_RUNNER" --validate)" == "$expected_runtime_validation" ]]
+[[ "$("$ARTIFACT_COMPAT_RUNNER" --validate)" == "$expected_artifact_validation" ]]
+[[ "$("$RELEASE_COMPAT_RUNNER" --validate)" == "$expected_release_validation" ]]
 
 fixture_root="$(mktemp -d /tmp/hepta-route-gate-family-registry.XXXXXX)"
 trap 'rm -rf "$fixture_root"' EXIT
@@ -34,6 +42,10 @@ reset_fixture() {
     "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
   cp "$RUNTIME_COMPAT_REGISTRY" \
     "$fixture_root/scripts/hepta-runtime-provider-router-activation-command-result-receipt-route-gate-specs-v1.json"
+  cp "$ARTIFACT_COMPAT_REGISTRY" \
+    "$fixture_root/scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json"
+  cp "$RELEASE_COMPAT_REGISTRY" \
+    "$fixture_root/scripts/hepta-release-publication-result-receipt-route-gate-specs-v1.json"
   chmod +x "$fixture_root/scripts/hepta-route-gate-runner"
 }
 
@@ -85,6 +97,11 @@ replace_json '.schema_version = "wrong_schema_v1"' \
 assert_fixture_rejected incompatible_second_family_schema
 
 reset_fixture
+replace_json '.schema_version = "wrong_schema_v1"' \
+  "$fixture_root/scripts/hepta-release-publication-result-receipt-route-gate-specs-v1.json"
+assert_fixture_rejected incompatible_release_publication_family_schema
+
+reset_fixture
 replace_json '.specs[0].baseline_normalized_output_sha256 = "not-a-sha"' \
   "$fixture_root/scripts/hepta-memory-live-mutation-activation-command-result-receipt-route-gate-specs-v1.json"
 assert_fixture_rejected invalid_normalized_output_receipt
@@ -116,6 +133,14 @@ runtime_invalid_soak="$(HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES=invalid "$RUNTIME_C
 runtime_invalid_soak_rc=$?
 runtime_below_soak="$(HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES=23 "$RUNTIME_COMPAT_RUNNER" "$runtime_id" 2>&1)"
 runtime_below_soak_rc=$?
+artifact_usage="$($ARTIFACT_COMPAT_RUNNER 2>&1)"
+artifact_usage_rc=$?
+artifact_unknown="$($ARTIFACT_COMPAT_RUNNER hepta-unknown-artifact-signing-route 2>&1)"
+artifact_unknown_rc=$?
+release_usage="$($RELEASE_COMPAT_RUNNER 2>&1)"
+release_usage_rc=$?
+release_unknown="$($RELEASE_COMPAT_RUNNER hepta-unknown-release-publication-route 2>&1)"
+release_unknown_rc=$?
 set -e
 [[ "$compat_usage_rc" == 2 ]]
 [[ "$compat_usage" == \
@@ -134,39 +159,55 @@ set -e
   "HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES must be an unsigned integer" ]]
 [[ "$runtime_below_soak_rc" == 1 ]]
 [[ "$runtime_below_soak" == "minimum long-soak samples must be at least 24" ]]
+[[ "$artifact_usage_rc" == 2 ]]
+[[ "$artifact_usage" == \
+  "usage: scripts/hepta-artifact-signing-receipt-route-gate-runner <id|--validate>" ]]
+[[ "$artifact_unknown_rc" == 1 ]]
+[[ "$artifact_unknown" == \
+  "unknown artifact-signing receipt route spec id: hepta-unknown-artifact-signing-route" ]]
+[[ "$release_usage_rc" == 2 ]]
+[[ "$release_usage" == \
+  "usage: scripts/hepta-release-publication-result-receipt-route-gate-runner <id|--validate>" ]]
+[[ "$release_unknown_rc" == 1 ]]
+[[ "$release_unknown" == \
+  "unknown release-publication result-receipt route spec id: hepta-unknown-release-publication-route" ]]
 
 assert_runtime_parity() {
   local compatibility_runner="$1"
   local compatibility_registry="$2"
   local output_has_message="$3"
-  local id
+  local id parity_index=0 parity_prefix
   while IFS= read -r id; do
-    "$UNIFIED_RUNNER" "$id" >"$fixture_root/$id.unified.out"
-    "$compatibility_runner" "$id" >"$fixture_root/$id.compat.out"
+    parity_index=$((parity_index + 1))
+    parity_prefix="$fixture_root/parity-$parity_index"
+    "$UNIFIED_RUNNER" "$id" >"$parity_prefix.unified.out"
+    "$compatibility_runner" "$id" >"$parity_prefix.compat.out"
     if [[ "$output_has_message" == "true" ]]; then
-      [[ "$(tail -n 1 "$fixture_root/$id.unified.out")" == \
+      [[ "$(tail -n 1 "$parity_prefix.unified.out")" == \
         "$(jq -r --arg id "$id" '.specs[] | select(.id == $id) | .pass_message' "$compatibility_registry")" ]]
-      [[ "$(tail -n 1 "$fixture_root/$id.compat.out")" == \
-        "$(tail -n 1 "$fixture_root/$id.unified.out")" ]]
-      sed '$d' "$fixture_root/$id.unified.out" >"$fixture_root/$id.unified.json"
-      sed '$d' "$fixture_root/$id.compat.out" >"$fixture_root/$id.compat.json"
+      [[ "$(tail -n 1 "$parity_prefix.compat.out")" == \
+        "$(tail -n 1 "$parity_prefix.unified.out")" ]]
+      sed '$d' "$parity_prefix.unified.out" >"$parity_prefix.unified.json"
+      sed '$d' "$parity_prefix.compat.out" >"$parity_prefix.compat.json"
     else
-      cp "$fixture_root/$id.unified.out" "$fixture_root/$id.unified.json"
-      cp "$fixture_root/$id.compat.out" "$fixture_root/$id.compat.json"
+      cp "$parity_prefix.unified.out" "$parity_prefix.unified.json"
+      cp "$parity_prefix.compat.out" "$parity_prefix.compat.json"
     fi
-    jq -S 'del(.focused_test_log)' "$fixture_root/$id.unified.json" \
-      >"$fixture_root/$id.unified.normalized.json"
-    jq -S 'del(.focused_test_log)' "$fixture_root/$id.compat.json" \
-      >"$fixture_root/$id.compat.normalized.json"
-    cmp "$fixture_root/$id.unified.normalized.json" \
-      "$fixture_root/$id.compat.normalized.json"
+    jq -S 'del(.focused_test_log)' "$parity_prefix.unified.json" \
+      >"$parity_prefix.unified.normalized.json"
+    jq -S 'del(.focused_test_log)' "$parity_prefix.compat.json" \
+      >"$parity_prefix.compat.normalized.json"
+    cmp "$parity_prefix.unified.normalized.json" \
+      "$parity_prefix.compat.normalized.json"
   done < <(jq -r '.specs[].id' "$compatibility_registry")
 }
 
 if [[ "$MODE" == "--runtime-parity" ]]; then
   assert_runtime_parity "$MEMORY_COMPAT_RUNNER" "$MEMORY_COMPAT_REGISTRY" false
   assert_runtime_parity "$RUNTIME_COMPAT_RUNNER" "$RUNTIME_COMPAT_REGISTRY" true
+  assert_runtime_parity "$ARTIFACT_COMPAT_RUNNER" "$ARTIFACT_COMPAT_REGISTRY" true
+  assert_runtime_parity "$RELEASE_COMPAT_RUNNER" "$RELEASE_COMPAT_REGISTRY" true
 fi
 
-printf '{"schema":"hepta_route_gate_family_registry_self_test_v1","status":"ready","negative_fixture_count":8,"compatibility_exit_fixture_count":6,"runtime_parity_checked":%s}\n' \
+printf '{"schema":"hepta_route_gate_family_registry_self_test_v1","status":"ready","negative_fixture_count":9,"compatibility_exit_fixture_count":10,"runtime_parity_checked":%s}\n' \
   "$([[ "$MODE" == "--runtime-parity" ]] && echo true || echo false)"

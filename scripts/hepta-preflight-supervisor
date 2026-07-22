@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+RESUME="${HEPTA_PREFLIGHT_SUPERVISOR_RESUME:-$ROOT/scripts/hepta-preflight-resume}"
+INITIAL_BACKOFF_SECONDS="${HEPTA_PREFLIGHT_SUPERVISOR_INITIAL_BACKOFF_SECONDS:-30}"
+MAX_BACKOFF_SECONDS="${HEPTA_PREFLIGHT_SUPERVISOR_MAX_BACKOFF_SECONDS:-300}"
+
+require_non_negative_integer() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "[hepta-preflight-supervisor] $name must be a non-negative integer: $value" >&2
+    exit 64
+  fi
+}
+
+require_non_negative_integer HEPTA_PREFLIGHT_SUPERVISOR_INITIAL_BACKOFF_SECONDS \
+  "$INITIAL_BACKOFF_SECONDS"
+require_non_negative_integer HEPTA_PREFLIGHT_SUPERVISOR_MAX_BACKOFF_SECONDS \
+  "$MAX_BACKOFF_SECONDS"
+
+if (( MAX_BACKOFF_SECONDS < INITIAL_BACKOFF_SECONDS )); then
+  echo "[hepta-preflight-supervisor] maximum backoff must be at least the initial backoff" >&2
+  exit 64
+fi
+
+backoff_seconds="$INITIAL_BACKOFF_SECONDS"
+
+while :; do
+  show_json="$($RESUME --show)"
+  status="$(jq -er '.status' <<<"$show_json")"
+  resumable="$(jq -r '.resumable' <<<"$show_json")"
+  failure_streak="$(jq -er '.failure_streak' <<<"$show_json")"
+  fuse_threshold="$(jq -er '.fuse_threshold' <<<"$show_json")"
+  fuse_armed="$(jq -r '.fuse_armed' <<<"$show_json")"
+
+  if [[ "$status" == "complete" ]]; then
+    echo "[hepta-preflight-supervisor] complete"
+    exit 0
+  fi
+
+  if [[ "$fuse_armed" == "true" ]] \
+    || [[ "$status" == "blocked" && "$failure_streak" -ge "$fuse_threshold" ]]; then
+    echo "[hepta-preflight-supervisor] retry fuse armed after $failure_streak failures" >&2
+    exit 21
+  fi
+
+  if [[ "$resumable" != "true" ]]; then
+    environment_matches="$(jq -r '.environment_matches' <<<"$show_json")"
+    relevant_environment_matches="$(jq -r '.relevant_environment_matches' <<<"$show_json")"
+    worktree_state_matches="$(jq -r '.worktree_state_matches' <<<"$show_json")"
+    log_matches="$(jq -r '.log_matches' <<<"$show_json")"
+    echo "[hepta-preflight-supervisor] non-resumable state; refusing automatic retry" >&2
+    echo "[hepta-preflight-supervisor] environment_matches=$environment_matches relevant_environment_matches=$relevant_environment_matches worktree_state_matches=$worktree_state_matches log_matches=$log_matches" >&2
+    exit 22
+  fi
+
+  run_rc=0
+  "$RESUME" || run_rc=$?
+  if (( run_rc == 0 )); then
+    backoff_seconds="$INITIAL_BACKOFF_SECONDS"
+    continue
+  fi
+
+  show_json="$($RESUME --show)"
+  failure_streak="$(jq -er '.failure_streak' <<<"$show_json")"
+  fuse_threshold="$(jq -er '.fuse_threshold' <<<"$show_json")"
+  fuse_armed="$(jq -r '.fuse_armed' <<<"$show_json")"
+  resumable="$(jq -r '.resumable' <<<"$show_json")"
+
+  if [[ "$fuse_armed" == "true" ]] || (( failure_streak >= fuse_threshold )); then
+    echo "[hepta-preflight-supervisor] retry fuse armed after $failure_streak failures" >&2
+    exit 21
+  fi
+  if [[ "$resumable" != "true" ]]; then
+    echo "[hepta-preflight-supervisor] failed attempt became non-resumable; refusing automatic retry" >&2
+    exit 22
+  fi
+
+  echo "[hepta-preflight-supervisor] attempt failed rc=$run_rc failure_streak=$failure_streak; retrying in ${backoff_seconds}s" >&2
+  sleep "$backoff_seconds"
+  if (( backoff_seconds < MAX_BACKOFF_SECONDS )); then
+    backoff_seconds=$((backoff_seconds * 2))
+    if (( backoff_seconds > MAX_BACKOFF_SECONDS )); then
+      backoff_seconds="$MAX_BACKOFF_SECONDS"
+    fi
+  fi
+done

@@ -399,8 +399,20 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         || (env_truthy(HEPTA_CHANNEL_LIVE_READ_VERIFIED_ENV)
             && env_truthy(HEPTA_CHANNEL_LIVE_SEND_VERIFIED_ENV));
     let external_public_release_approved = env_truthy("HEPTA_PUBLIC_GA_RELEASE_APPROVED");
+    let release_provenance_verified = env_truthy(HEPTA_RELEASE_PROVENANCE_VERIFIED_ENV);
+    let active_binary_consistency_verified =
+        env_truthy(HEPTA_ACTIVE_BINARY_CONSISTENCY_VERIFIED_ENV);
     let control_ui_product_complete = control_ui.complete();
     let browser_visual_smoke_ready = control_ui.evidence_coverage.browser_behavior.complete();
+    let contract_valid = route_matrix.ready && control_ui.static_contract_complete();
+    let locally_executable = contract_valid;
+    let integration_verified = locally_executable
+        && control_ui_product_complete
+        && browser_visual_smoke_ready;
+    let live_enabled = telegram_live_poll_model_send_ready
+        && native_post_real_activation_ready
+        && credentialed_provider_smoke_ready
+        && channel_live_delivery_ready;
 
     let mut blockers = Vec::new();
     if !telegram_owner_or_parallel_ready {
@@ -421,10 +433,21 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
     if !external_public_release_approved {
         blockers.push("external_public_release_not_operator_approved");
     }
+    if !release_provenance_verified {
+        blockers.push("release_provenance_not_verified");
+    }
+    if !active_binary_consistency_verified {
+        blockers.push("active_binary_consistency_not_verified");
+    }
     if !control_ui_product_complete {
         blockers.push("control_ui_product_behavior_evidence_not_bound");
     }
-    let production_tracks_ready = blockers.is_empty();
+    let production_ready = integration_verified
+        && live_enabled
+        && external_public_release_approved
+        && release_provenance_verified
+        && active_binary_consistency_verified
+        && blockers.is_empty();
     let production_replacement_checks = [
         telegram_owner_or_parallel_ready,
         telegram_live_poll_model_send_ready,
@@ -433,6 +456,8 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         channel_live_delivery_ready,
         external_public_release_approved,
         control_ui_product_complete,
+        release_provenance_verified,
+        active_binary_consistency_verified,
     ];
     let production_replacement_percent = ((production_replacement_checks
         .iter()
@@ -444,7 +469,7 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
     HeptaMergeCompletionResponse {
         product: "Hepta",
         runtime: "hepta",
-        status: if production_tracks_ready {
+        status: if production_ready {
             "ready"
         } else {
             "attention"
@@ -458,13 +483,20 @@ fn hepta_merge_completion_report(options: &NativeGatewayOptions) -> HeptaMergeCo
         migration_matrix_doc: "docs/release/HEPTA_CLI_SCRIPT_MIGRATION_MATRIX_2026-05-20.md",
         audit_commit: "252a109 docs: audit Hepta merge completion",
         migration_gates_commit: "01c7477 ops: add Hepta Codex migration gates",
-        readiness_class: if production_tracks_ready {
+        readiness_class: if production_ready {
             "active_production_replacement_ready"
         } else if control_ui.static_contract_complete() {
             "static_contract_ready_production_in_progress"
         } else {
             "static_contract_incomplete"
         },
+        contract_valid,
+        locally_executable,
+        integration_verified,
+        live_enabled,
+        release_provenance_verified,
+        active_binary_consistency_verified,
+        production_ready,
         source_package_merge_percent: 100,
         local_deterministic_function_percent: 100,
         active_service_coexistence_percent: 100,

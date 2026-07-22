@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+pid=""
+installed_bin=""
+manifest=""
+expected_source_commit=""
+
+usage() {
+  echo "usage: scripts/hepta-active-binary-consistency-gate --pid PID --installed-bin PATH --manifest PATH --expected-source-commit SHA" >&2
+  exit 2
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --pid) shift; [[ $# -gt 0 ]] || usage; pid="$1" ;;
+    --installed-bin) shift; [[ $# -gt 0 ]] || usage; installed_bin="$1" ;;
+    --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+    --expected-source-commit) shift; [[ $# -gt 0 ]] || usage; expected_source_commit="$1" ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+[[ "$pid" =~ ^[1-9][0-9]*$ ]] || usage
+[[ "$expected_source_commit" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "expected source commit must be a full Git SHA" >&2
+  exit 2
+}
+[[ -f "$installed_bin" && -x "$installed_bin" ]] || {
+  echo "installed binary must be executable: $installed_bin" >&2
+  exit 1
+}
+[[ -f "$manifest" ]] || {
+  echo "manifest is missing: $manifest" >&2
+  exit 1
+}
+kill -0 "$pid" 2>/dev/null || {
+  echo "active process is not running: $pid" >&2
+  exit 1
+}
+manifest_contract_valid=false
+if "$ROOT/scripts/hepta-immutable-release-tree" verify --manifest "$manifest" >/dev/null 2>&1; then
+  manifest_contract_valid=true
+fi
+
+active_executable=""
+case "$(uname -s)" in
+  Darwin)
+    active_executable="$(lsof -a -p "$pid" -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+    ;;
+  Linux)
+    active_executable="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    active_executable="${active_executable% (deleted)}"
+    ;;
+  *)
+    echo "unsupported platform for active executable identity: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
+[[ -n "$active_executable" && -f "$active_executable" ]] || {
+  echo "could not resolve active executable for pid $pid" >&2
+  exit 1
+}
+
+sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
+
+active_sha256="$(sha256_file "$active_executable")"
+installed_sha256="$(sha256_file "$installed_bin")"
+manifest_sha256="$(jq -r '.artifact.sha256 // ""' "$manifest" 2>/dev/null || true)"
+manifest_source_commit="$(jq -r '.source.commit // "unknown"' "$manifest" 2>/dev/null || true)"
+manifest_bound="$(jq -r '
+  .status == "ready"
+  and .source.commit_bound == true
+  and .source.commit != "unknown"
+  and .preflight.bound == true
+  and .preflight.passed == true
+  and .preflight.source_head == .source.commit
+  and .preflight.candidate_source_commit == .source.commit
+  and .preflight.candidate_artifact_sha256 == .artifact.sha256
+  and .build_provenance.source.commit == .source.commit
+  and .build_provenance.artifact.sha256 == .artifact.sha256
+' "$manifest" 2>/dev/null || echo false)"
+
+source_commit_matches=false
+if [[ "$manifest_source_commit" == "$expected_source_commit" ]]; then
+  source_commit_matches=true
+fi
+installed_manifest_sha_match=false
+if [[ -n "$manifest_sha256" && "$installed_sha256" == "$manifest_sha256" ]]; then
+  installed_manifest_sha_match=true
+fi
+active_installed_sha_match=false
+if [[ "$active_sha256" == "$installed_sha256" ]]; then
+  active_installed_sha_match=true
+fi
+
+failure_reasons='[]'
+if [[ "$manifest_contract_valid" != "true" ]]; then
+  failure_reasons="$(jq -cn '$ARGS.positional' --args active_manifest_contract_invalid)"
+fi
+if [[ "$manifest_bound" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args active_manifest_not_source_preflight_bound)"
+fi
+if [[ "$installed_sha256" != "$manifest_sha256" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args installed_manifest_sha_mismatch)"
+fi
+if [[ "$active_sha256" != "$installed_sha256" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args active_installed_sha_mismatch)"
+fi
+if [[ "$source_commit_matches" != "true" ]]; then
+  failure_reasons="$(jq -cn --argjson reasons "$failure_reasons" '$reasons + $ARGS.positional' --args active_source_commit_mismatch)"
+fi
+
+contract_valid=false
+if [[ "$manifest_contract_valid" == "true" ]]; then
+  contract_valid=true
+fi
+locally_executable=true
+integration_verified=false
+if [[ "$contract_valid" == "true" && "$manifest_bound" == "true" && "$source_commit_matches" == "true" && "$installed_manifest_sha_match" == "true" ]]; then
+  integration_verified=true
+fi
+live_enabled=true
+production_ready=false
+if [[ "$(jq 'length' <<<"$failure_reasons")" == "0" ]]; then
+  production_ready=true
+fi
+
+jq -cn \
+  --argjson contract_valid "$contract_valid" \
+  --argjson locally_executable "$locally_executable" \
+  --argjson integration_verified "$integration_verified" \
+  --argjson live_enabled "$live_enabled" \
+  --argjson production_ready "$production_ready" \
+  --arg pid "$pid" \
+  --arg active_executable "$active_executable" \
+  --arg active_sha256 "$active_sha256" \
+  --arg installed_bin "$(realpath "$installed_bin")" \
+  --arg installed_sha256 "$installed_sha256" \
+  --arg manifest "$(realpath "$manifest")" \
+  --arg manifest_sha256 "$manifest_sha256" \
+  --argjson manifest_contract_valid "$manifest_contract_valid" \
+  --arg source_commit "$manifest_source_commit" \
+  --arg expected_source_commit "$expected_source_commit" \
+  --argjson manifest_source_preflight_bound "$manifest_bound" \
+  --argjson source_commit_matches "$source_commit_matches" \
+  --argjson installed_manifest_sha_match "$installed_manifest_sha_match" \
+  --argjson active_installed_sha_match "$active_installed_sha_match" \
+  --argjson failure_reasons "$failure_reasons" \
+  '{
+    status:(if $production_ready then "ready" else "blocked" end),
+    ready:$production_ready,
+    contract_valid:$contract_valid,
+    locally_executable:$locally_executable,
+    integration_verified:$integration_verified,
+    live_enabled:$live_enabled,
+    production_ready:$production_ready,
+    pid:($pid | tonumber),
+    active_executable:$active_executable,
+    active_sha256:$active_sha256,
+    installed_binary:$installed_bin,
+    installed_sha256:$installed_sha256,
+    manifest:$manifest,
+    manifest_contract_valid:$manifest_contract_valid,
+    manifest_artifact_sha256:$manifest_sha256,
+    source_commit:$source_commit,
+    expected_source_commit:$expected_source_commit,
+    manifest_source_preflight_bound:$manifest_source_preflight_bound,
+    source_commit_matches:$source_commit_matches,
+    installed_manifest_sha_match:$installed_manifest_sha_match,
+    active_installed_sha_match:$active_installed_sha_match,
+    active_installed_manifest_sha_match:($installed_manifest_sha_match and $active_installed_sha_match),
+    failure_reasons:$failure_reasons
+  }'
+
+[[ "$production_ready" == "true" ]]

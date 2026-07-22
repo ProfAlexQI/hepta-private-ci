@@ -318,7 +318,9 @@ fn parameterized_route_gate_fixtures_match_the_canonical_gate_specs() {
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-route-gate.sh"));
@@ -379,7 +381,9 @@ fn parameterized_core_activation_chain_fixtures_match_canonical_gate_specs() {
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -444,7 +448,9 @@ fn parameterized_provider_router_activation_chain_fixtures_match_canonical_gate_
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -509,7 +515,9 @@ fn parameterized_operator_canary_activation_chain_fixtures_match_canonical_gate_
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -574,7 +582,9 @@ fn parameterized_release_publication_result_receipt_fixtures_match_canonical_gat
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -641,7 +651,9 @@ fn parameterized_artifact_download_install_affordance_result_receipt_fixtures_ma
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -707,7 +719,9 @@ fn parameterized_artifact_download_install_affordance_result_receipt_route_fixtu
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -816,7 +830,9 @@ fn parameterized_memory_live_mutation_activation_command_result_receipt_route_fi
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path =
@@ -925,7 +941,9 @@ fn parameterized_runtime_provider_router_activation_command_result_receipt_route
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -993,7 +1011,9 @@ fn parameterized_release_publication_result_receipt_route_fixtures_match_canonic
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -1061,7 +1081,9 @@ fn parameterized_artifact_signing_receipt_route_fixtures_match_canonical_gate_sp
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -1127,7 +1149,9 @@ fn parameterized_durable_memory_receipt_boundary_route_fixtures_match_canonical_
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -1195,7 +1219,9 @@ fn parameterized_packet_acceptance_receipt_route_fixtures_match_canonical_gate_s
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -1261,7 +1287,9 @@ fn parameterized_operator_canary_receipt_route_fixtures_match_canonical_gate_spe
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -1329,7 +1357,9 @@ fn parameterized_operator_identity_session_replay_reinstatement_route_fixtures_m
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(
@@ -1400,7 +1430,9 @@ fn parameterized_memory_live_mutation_result_receipt_fixtures_match_canonical_ga
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -1465,7 +1497,9 @@ fn parameterized_terminal_public_claim_delivery_receipt_fixtures_match_canonical
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -1529,7 +1563,9 @@ fn parameterized_packet_acceptance_receipt_fixtures_match_canonical_gate_specs()
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -1591,7 +1627,9 @@ fn parameterized_artifact_signing_receipt_fixtures_match_canonical_gate_specs() 
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -1657,7 +1695,9 @@ fn parameterized_operator_identity_session_replay_reinstatement_fixtures_match_c
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
@@ -1727,7 +1767,9 @@ fn parameterized_durable_memory_dry_run_result_receipt_boundary_fixtures_match_c
         );
         assert_eq!(
             gate_spec["receipt_state"].as_str(),
-            canonical.receipt_state().map(|state| state.as_str())
+            canonical
+                .receipt_state()
+                .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
         let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
