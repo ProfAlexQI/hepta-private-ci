@@ -49,9 +49,14 @@ verify() {
   for file in codex-rs/hepta-native-gateway/src/native_gateway/*.rs; do
     verify_file_max "$file" 59000
   done
-  verify_total_max 181000 \
+  verify_file_max codex-rs/hepta-native-gateway/src/native_gateway/tests.rs 54500
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs \
+    3800
+  verify_total_max 180500 \
     codex-rs/hepta-native-gateway/src/native_gateway.rs \
-    codex-rs/hepta-native-gateway/src/native_gateway/*.rs
+    codex-rs/hepta-native-gateway/src/native_gateway/*.rs \
+    codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs
 
   verify_file_max codex-rs/hepta-kernel/src/lib.rs 11600
   verify_file_max codex-rs/hepta-kernel/src/telegram_config.rs 350
@@ -484,7 +489,7 @@ verify() {
     return 1
   fi
 
-  echo '{"schema":"hepta_architecture_budget_v1","status":"ready","native_gateway_main_max_lines":5800,"native_gateway_domain_max_lines":59000,"native_gateway_total_max_lines":181000,"runtime_lib_max_lines":1200,"runtime_domain_max_lines":5800,"runtime_total_max_lines":32500,"runtime_query_main_max_lines":5500,"runtime_query_domain_max_lines":3700,"runtime_query_total_max_lines":12000,"runtime_whole_tree_max_lines":605000,"hepta_owned_rust_whole_tree_max_lines":1080000,"scripts_whole_tree_max_lines":775000,"kernel_lib_max_lines":11600,"kernel_telegram_config_max_lines":350,"kernel_telegram_cursor_max_lines":300,"kernel_telegram_cursor_tests_max_lines":300,"kernel_telegram_production_guard_max_lines":250,"kernel_telegram_production_guard_tests_max_lines":200,"kernel_telegram_transport_max_lines":450,"kernel_telegram_transport_tests_max_lines":400,"native_room_screen_max_lines":38000,"report_dag_max_entries":2048,"report_dag_max_bytes":134217728,"report_max_bytes":2097152}'
+  echo '{"schema":"hepta_architecture_budget_v1","status":"ready","native_gateway_main_max_lines":5800,"native_gateway_domain_max_lines":59000,"native_gateway_tests_max_lines":54500,"native_gateway_first_model_invocation_tests_max_lines":3800,"native_gateway_total_max_lines":180500,"runtime_lib_max_lines":1200,"runtime_domain_max_lines":5800,"runtime_total_max_lines":32500,"runtime_query_main_max_lines":5500,"runtime_query_domain_max_lines":3700,"runtime_query_total_max_lines":12000,"runtime_whole_tree_max_lines":605000,"hepta_owned_rust_whole_tree_max_lines":1080000,"scripts_whole_tree_max_lines":775000,"kernel_lib_max_lines":11600,"kernel_telegram_config_max_lines":350,"kernel_telegram_cursor_max_lines":300,"kernel_telegram_cursor_tests_max_lines":300,"kernel_telegram_production_guard_max_lines":250,"kernel_telegram_production_guard_tests_max_lines":200,"kernel_telegram_transport_max_lines":450,"kernel_telegram_transport_tests_max_lines":400,"native_room_screen_max_lines":38000,"report_dag_max_entries":2048,"report_dag_max_bytes":134217728,"report_max_bytes":2097152}'
 }
 
 self_test_line_budget_negative_fixture() {
@@ -529,6 +534,16 @@ self_test_line_budget_negative_fixture() {
   }
 }
 
+self_test_first_model_invocation_test_family_split() {
+  local family_file="codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs"
+  local parent_file="codex-rs/hepta-native-gateway/src/native_gateway/tests.rs"
+
+  [[ -f "$family_file" ]]
+  rg -Fq 'mod first_model_invocation_tests {' "$parent_file"
+  rg -Fq 'include!("tests/first_model_invocation.rs");' "$parent_file"
+  [[ "$(rg -c '^[[:space:]]*#\[test\]' "$family_file")" == 17 ]]
+}
+
 self_test_report_dag_budget() (
   local cache_dir
   cache_dir="$(mktemp -d /tmp/hepta-report-dag-budget-self.XXXXXX)"
@@ -563,9 +578,10 @@ self_test_report_dag_budget() (
 self_test() {
   verify >/dev/null
   self_test_line_budget_negative_fixture
+  self_test_first_model_invocation_test_family_split
   scripts/hepta-budgeted-test self-test >/dev/null
   self_test_report_dag_budget
-  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"whole_tree_budgets_enforced":true,"giant_file_budgets_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true}'
+  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"whole_tree_budgets_enforced":true,"giant_file_budgets_enforced":true,"first_model_invocation_test_family_split_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true}'
 }
 
 case "${1:-verify}" in
