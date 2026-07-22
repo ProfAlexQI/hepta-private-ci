@@ -11,6 +11,18 @@ fail() {
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 command -v rg >/dev/null 2>&1 || fail 'rg is required'
 
+path_jq="$(command -v jq)"
+jq_labels=(path)
+jq_bins=("$path_jq")
+if [[ -x /usr/bin/jq ]]; then
+  jq_labels+=(system)
+  jq_bins+=(/usr/bin/jq)
+fi
+if [[ -x /opt/homebrew/bin/jq && "$path_jq" != /opt/homebrew/bin/jq ]]; then
+  jq_labels+=(homebrew)
+  jq_bins+=(/opt/homebrew/bin/jq)
+fi
+
 sources=(
   scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-boundary-route-gate.sh
   scripts/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-receipt-boundary-route-gate.sh
@@ -57,11 +69,24 @@ extract_report_filter() {
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-jq-conditional-route-summary.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
+unparenthesized_pattern='^[[:space:]]*[[:alnum:]_]+:[[:space:]]*if[[:space:]]'
+static_guard_fixtures=(
+  '  live_route_summary: if true then {} else null end'
+  '  live_route_summary:if true then {} else null end'
+)
+for fixture in "${static_guard_fixtures[@]}"; do
+  printf '%s\n' "$fixture" | rg -q "$unparenthesized_pattern" \
+    || fail "static guard did not reject fixture: $fixture"
+done
+
+# jq parser acceptance of a minimal unparenthesized object conditional varies by
+# release. Keep this policy fail-closed with a source scan, then prove the fixed
+# production filters by executing them with every locally available compiler.
 unparenthesized="$({
   rg -n \
     --glob '*.sh' \
     --glob '*.jq' \
-    '^[[:space:]]*[[:alnum:]_]+:[[:space:]]*if[[:space:]]' \
+    "$unparenthesized_pattern" \
     "$ROOT/scripts" || true
 })"
 [[ -z "$unparenthesized" ]] \
@@ -69,63 +94,98 @@ unparenthesized="$({
 
 terminal_coverage_fixture='{"required_marker_count":4,"present_required_marker_count":4,"missing_required_marker_count":0}'
 zero_hash='0000000000000000000000000000000000000000000000000000000000000000'
+compiler_evidence="$tmp/compiler-evidence.jsonl"
+compiled_report_filter_count=0
+non_live_shape_fixture_count=0
 
 for index in "${!sources[@]}"; do
   source_path="$ROOT/${sources[$index]}"
   filter_path="$tmp/report-$index.jq"
-  output_path="$tmp/report-$index.json"
 
   [[ -f "$source_path" ]] || fail "missing route gate: ${sources[$index]}"
   extract_report_filter "$source_path" >"$filter_path" \
     || fail "could not extract final jq report filter: ${sources[$index]}"
-
-  jq -n \
-    --arg product Hepta \
-    --arg runtime hepta \
-    --arg gate fixture_gate \
-    --arg endpoint /fixture \
-    --arg source_command '/fixture --json' \
-    --arg test_log_sha256 "$zero_hash" \
-    --arg script_gate_sha256 "$zero_hash" \
-    --arg live_route_sha256 "$zero_hash" \
-    --arg terminal_coverage_sha256 "$zero_hash" \
-    --argjson require_live_endpoint 0 \
-    --argjson expected_route_count 1 \
-    --argjson script_gate '{"status":"ready"}' \
-    --argjson live_route '{}' \
-    --argjson terminal_coverage "$terminal_coverage_fixture" \
-    -f "$filter_path" >"$output_path" \
-    || fail "jq rejected final report filter: ${sources[$index]}"
-
-  jq -e --arg ready_field "${ready_fields[$index]}" '
-    .product == "Hepta"
-    and .runtime == "hepta"
-    and .status == "ready"
-    and .gate == "fixture_gate"
-    and .expected_route_count == 1
-    and .require_live_endpoint == 0
-    and .source_text_verified == true
-    and .focused_rust_test_verified == true
-    and .script_gate_verified == true
-    and .live_endpoint_verified == false
-    and .terminal_coverage_verified == true
-    and .[$ready_field] == true
-    and .live_route_summary == null
-    and .terminal_coverage_summary == {
-      required_marker_count:4,
-      present_required_marker_count:4,
-      missing_required_marker_count:0
-    }
-  ' "$output_path" >/dev/null \
-    || fail "non-live report shape drifted: ${sources[$index]}"
 done
 
-negative_fixture="$tmp/unparenthesized-object-conditional.jq"
-printf '%s\n' '{live_route_summary:if true then {} else null end}' >"$negative_fixture"
-if jq -n -f "$negative_fixture" >/dev/null 2>&1; then
-  fail 'jq accepted the unparenthesized object conditional negative fixture'
-fi
+for compiler_index in "${!jq_bins[@]}"; do
+  jq_label="${jq_labels[$compiler_index]}"
+  jq_bin="${jq_bins[$compiler_index]}"
+  jq_version="$($jq_bin --version)" \
+    || fail "could not read jq version: $jq_label ($jq_bin)"
+  compiler_filter_count=0
+  compiler_shape_count=0
 
-printf '{"schema_version":"hepta_jq_conditional_route_summary_self_test_v1","status":"ready","compiled_report_filter_count":%d,"non_live_shape_fixture_count":%d,"negative_fixture_count":1,"unparenthesized_object_conditional_count":0}\n' \
-  "${#sources[@]}" "${#sources[@]}"
+  for index in "${!sources[@]}"; do
+    filter_path="$tmp/report-$index.jq"
+    output_path="$tmp/report-$compiler_index-$index.json"
+
+    "$jq_bin" -n \
+      --arg product Hepta \
+      --arg runtime hepta \
+      --arg gate fixture_gate \
+      --arg endpoint /fixture \
+      --arg source_command '/fixture --json' \
+      --arg test_log_sha256 "$zero_hash" \
+      --arg script_gate_sha256 "$zero_hash" \
+      --arg live_route_sha256 "$zero_hash" \
+      --arg terminal_coverage_sha256 "$zero_hash" \
+      --argjson require_live_endpoint 0 \
+      --argjson expected_route_count 1 \
+      --argjson script_gate '{"status":"ready"}' \
+      --argjson live_route '{}' \
+      --argjson terminal_coverage "$terminal_coverage_fixture" \
+      -f "$filter_path" >"$output_path" \
+      || fail "jq rejected final report filter: $jq_label ($jq_version): ${sources[$index]}"
+    compiler_filter_count=$((compiler_filter_count + 1))
+    compiled_report_filter_count=$((compiled_report_filter_count + 1))
+
+    "$jq_bin" -e --arg ready_field "${ready_fields[$index]}" '
+      .product == "Hepta"
+      and .runtime == "hepta"
+      and .status == "ready"
+      and .gate == "fixture_gate"
+      and .expected_route_count == 1
+      and .require_live_endpoint == 0
+      and .source_text_verified == true
+      and .focused_rust_test_verified == true
+      and .script_gate_verified == true
+      and .live_endpoint_verified == false
+      and .terminal_coverage_verified == true
+      and .[$ready_field] == true
+      and .live_route_summary == null
+      and .terminal_coverage_summary == {
+        required_marker_count:4,
+        present_required_marker_count:4,
+        missing_required_marker_count:0
+      }
+    ' "$output_path" >/dev/null \
+      || fail "non-live report shape drifted: $jq_label ($jq_version): ${sources[$index]}"
+    compiler_shape_count=$((compiler_shape_count + 1))
+    non_live_shape_fixture_count=$((non_live_shape_fixture_count + 1))
+  done
+
+  "$path_jq" -cn \
+    --arg label "$jq_label" \
+    --arg executable "$jq_bin" \
+    --arg version "$jq_version" \
+    --argjson executed_report_filter_count "$compiler_filter_count" \
+    --argjson verified_non_live_shape_count "$compiler_shape_count" \
+    '{label:$label,executable:$executable,version:$version,executed_report_filter_count:$executed_report_filter_count,verified_non_live_shape_count:$verified_non_live_shape_count}' \
+    >>"$compiler_evidence"
+done
+
+compiler_evidence_json="$($path_jq -s . "$compiler_evidence")"
+distinct_compiler_version_count="$($path_jq -r '[.[].version] | unique | length' <<<"$compiler_evidence_json")"
+"$path_jq" -cn \
+  --arg schema_version hepta_jq_conditional_route_summary_self_test_v2 \
+  --arg status ready \
+  --arg compatibility_truth 'unparenthesized object conditional parser acceptance varies by jq version; source policy is enforced statically while fixed production filters are executed per compiler' \
+  --argjson production_report_filter_count "${#sources[@]}" \
+  --argjson compiler_count "${#jq_bins[@]}" \
+  --argjson distinct_compiler_version_count "$distinct_compiler_version_count" \
+  --argjson compiled_report_filter_count "$compiled_report_filter_count" \
+  --argjson non_live_shape_fixture_count "$non_live_shape_fixture_count" \
+  --argjson static_guard_fixture_count "${#static_guard_fixtures[@]}" \
+  --argjson compiler_evidence "$compiler_evidence_json" \
+  '{schema_version:$schema_version,status:$status,compatibility_truth:$compatibility_truth,production_report_filter_count:$production_report_filter_count,compiler_count:$compiler_count,distinct_compiler_version_count:$distinct_compiler_version_count,compiled_report_filter_count:$compiled_report_filter_count,non_live_shape_fixture_count:$non_live_shape_fixture_count,static_guard_fixture_count:$static_guard_fixture_count,unparenthesized_object_conditional_count:0,compiler_evidence:$compiler_evidence}'
 echo 'hepta jq conditional route summary self-test passed'
