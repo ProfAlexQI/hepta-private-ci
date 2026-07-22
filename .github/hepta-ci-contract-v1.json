@@ -123,6 +123,8 @@
     "release:",
     "environment:",
     "scripts/hepta-immutable-release-tree activate",
+    "scripts/hepta-immutable-release-tree cutover",
+    "scripts/hepta-immutable-release-tree rollback",
     "scripts/hepta-watchdog.sh",
     "launchctl",
     "systemctl",

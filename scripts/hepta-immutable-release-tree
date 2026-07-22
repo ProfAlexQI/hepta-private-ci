@@ -12,10 +12,13 @@ usage:
   scripts/hepta-immutable-release-tree materialize --artifact PATH --source-commit SHA|unknown --release-root DIR [--preflight-log PATH]
   scripts/hepta-immutable-release-tree verify --manifest PATH
   scripts/hepta-immutable-release-tree activate --manifest PATH --active-link PATH --expected-current-sha256 SHA
+  scripts/hepta-immutable-release-tree cutover --manifest PATH --active-link PATH --expected-current-sha256 SHA
+  scripts/hepta-immutable-release-tree rollback --receipt PATH --expected-current-sha256 SHA
   scripts/hepta-immutable-release-tree self-test
 
 Activation is byte-preserving: current and target SHA-256 must match. Installing
-different bytes belongs to the separately authorized final release cutover.
+different bytes requires the explicit cutover command. Cutover changes only the
+active binary and manifest links; it never restarts services or mutates launchd.
 Source-bound materialization requires a preflight provenance receipt binding
 the source commit, Rust toolchains, Cargo lockfiles, artifact, and all required
 backend/native/release profiles.
@@ -35,6 +38,73 @@ require_sha256() {
     echo "invalid SHA-256: $1" >&2
     exit 1
   }
+}
+
+resolve_preflight_source_commit() {
+  local preflight_log="$1"
+  local provenance_json="$2"
+  local provenance_head metadata_heads metadata_head source_heads unique_heads source_head_count source_head
+  local resume_line_count resume_heads resume_head resume_head_count metadata_line_count metadata_head_count
+
+  provenance_head="$(jq -r '.source.commit // empty' <<<"$provenance_json")"
+  source_heads=""
+  if [[ -n "$provenance_head" ]]; then
+    [[ "$provenance_head" =~ ^[0-9a-f]{40}$ ]] || {
+      echo "preflight provenance source commit must be a full Git SHA" >&2
+      return 1
+    }
+    source_heads="$provenance_head"
+  fi
+
+  metadata_line_count="$(rg -c '"hepta_repo_head"' "$preflight_log" || true)"
+  metadata_line_count="${metadata_line_count:-0}"
+  metadata_heads="$(
+    sed -n 's/.*"hepta_repo_head"[[:space:]]*:[[:space:]]*"\([0-9a-f][0-9a-f]*\)".*/\1/p' "$preflight_log" \
+      | sort -u
+  )"
+  metadata_head_count="$(
+    sed -n 's/.*"hepta_repo_head"[[:space:]]*:[[:space:]]*"\([0-9a-f][0-9a-f]*\)".*/\1/p' "$preflight_log" \
+      | awk 'NF { count += 1 } END { print count + 0 }'
+  )"
+  [[ "$metadata_head_count" == "$metadata_line_count" ]] || {
+    echo "preflight metadata contains an invalid source commit truth" >&2
+    return 1
+  }
+  if [[ -n "$metadata_heads" ]]; then
+    while IFS= read -r metadata_head; do
+      [[ "$metadata_head" =~ ^[0-9a-f]{40}$ ]] || {
+        echo "preflight metadata source commit must be a full Git SHA" >&2
+        return 1
+      }
+      source_heads="${source_heads}${source_heads:+$'\n'}${metadata_head}"
+    done <<<"$metadata_heads"
+  fi
+
+  unique_heads="$(printf '%s\n' "$source_heads" | awk 'NF' | sort -u)"
+  source_head_count="$(printf '%s\n' "$unique_heads" | awk 'NF { count += 1 } END { print count + 0 }')"
+  [[ "$source_head_count" == "1" ]] || {
+    echo "preflight log must contain exactly one full source commit truth" >&2
+    return 1
+  }
+  source_head="$unique_heads"
+
+  resume_line_count="$(rg -c '^\[hepta-preflight-resume\] ' "$preflight_log" || true)"
+  resume_line_count="${resume_line_count:-0}"
+  resume_heads="$(
+    sed -n 's/^\[hepta-preflight-resume\] head=\([0-9a-f][0-9a-f]*\) .*/\1/p' "$preflight_log"
+  )"
+  resume_head_count="$(printf '%s\n' "$resume_heads" | awk 'NF { count += 1 } END { print count + 0 }')"
+  [[ "$resume_line_count" -gt 0 && "$resume_head_count" == "$resume_line_count" ]] || {
+    echo "preflight resume banner must contain a valid Git SHA prefix" >&2
+    return 1
+  }
+  while IFS= read -r resume_head; do
+    [[ "$resume_head" =~ ^[0-9a-f]{7,40}$ && "$source_head" == "$resume_head"* ]] || {
+      echo "preflight resume banner does not match the full source commit truth" >&2
+      return 1
+    }
+  done <<<"$resume_heads"
+  printf '%s\n' "$source_head"
 }
 
 materialize() {
@@ -102,18 +172,6 @@ materialize() {
       echo "preflight log has no pass marker: $preflight_log" >&2
       exit 1
     }
-    preflight_head="$(sed -n 's/^\[hepta-preflight-resume\] head=\([0-9a-f][0-9a-f]*\) .*/\1/p' "$preflight_log" | head -n 1)"
-    if [[ -z "$preflight_head" ]]; then
-      preflight_head="$(sed -n 's/.*"hepta_repo_head": "\([0-9a-f][0-9a-f]*\)".*/\1/p' "$preflight_log" | sort -u)"
-      [[ "$preflight_head" != *$'\n'* ]] || {
-        echo "preflight log contains conflicting source heads" >&2
-        exit 1
-      }
-    fi
-    [[ "$preflight_head" =~ ^[0-9a-f]{40}$ && "$source_commit" == "$preflight_head" ]] || {
-      echo "preflight log head does not match source commit" >&2
-      exit 1
-    }
     local provenance_line_count
     provenance_line_count="$(rg -c '^\[hepta-preflight-provenance\] ' "$preflight_log" || true)"
     [[ "$provenance_line_count" == "1" ]] || {
@@ -123,6 +181,13 @@ materialize() {
     build_provenance_json="$(sed -n 's/^\[hepta-preflight-provenance\] //p' "$preflight_log")"
     jq -e . >/dev/null <<<"$build_provenance_json" || {
       echo "preflight build provenance receipt is not valid JSON" >&2
+      exit 1
+    }
+    preflight_head="$(
+      resolve_preflight_source_commit "$preflight_log" "$build_provenance_json"
+    )" || exit 1
+    [[ "$source_commit" == "$preflight_head" ]] || {
+      echo "preflight log source truth does not match source commit" >&2
       exit 1
     }
     hepta_release_validate_build_provenance_json \
@@ -356,14 +421,497 @@ activate() {
 
   jq -n --arg status ready --arg release_id "$release_id" --arg active_link "$active_link" \
     --arg target "$target" --arg manifest "$manifest" --arg sha256 "$current_sha" --arg backup "$backup" \
-    '{status:$status,release_id:$release_id,active_link:$active_link,target:$target,manifest:$manifest,sha256:$sha256,backup:$backup,bytes_changed:false,service_restarted:false,active_process_mutated:false}'
+      '{status:$status,release_id:$release_id,active_link:$active_link,target:$target,manifest:$manifest,sha256:$sha256,backup:$backup,bytes_changed:false,service_restarted:false,active_process_mutated:false}'
+}
+
+CUTOVER_TRANSACTION_ARMED=false
+CUTOVER_ACTIVE_LINK=""
+CUTOVER_MANIFEST_LINK=""
+CUTOVER_ACTIVE_SNAPSHOT=""
+CUTOVER_MANIFEST_SNAPSHOT=""
+CUTOVER_ACTIVE_TEMP=""
+CUTOVER_MANIFEST_TEMP=""
+CUTOVER_LOCK_DIR=""
+CUTOVER_BACKUP=""
+CUTOVER_BACKUP_TEMP=""
+CUTOVER_BACKUP_TEMP_ROOT=""
+CUTOVER_CURRENT_SHA=""
+CUTOVER_CURRENT_MANIFEST_FILE_SHA=""
+CUTOVER_FAILURE_SCHEMA="hepta_immutable_release_cutover_receipt_v1"
+CUTOVER_OPERATION="cutover"
+
+cleanup_cutover_backup_temp() {
+  [[ -n "$CUTOVER_BACKUP_TEMP" ]] || return 0
+  [[ -n "$CUTOVER_BACKUP_TEMP_ROOT" \
+    && "$(dirname "$CUTOVER_BACKUP_TEMP")" == "$CUTOVER_BACKUP_TEMP_ROOT" \
+    && "$(basename "$CUTOVER_BACKUP_TEMP")" == .hepta-pre-cutover.* \
+    && -d "$CUTOVER_BACKUP_TEMP" \
+    && ! -L "$CUTOVER_BACKUP_TEMP" ]] || {
+    echo "refusing to remove unexpected cutover backup staging path: $CUTOVER_BACKUP_TEMP" >&2
+    return 1
+  }
+  chmod -R u+w "$CUTOVER_BACKUP_TEMP" 2>/dev/null || true
+  rm -R "$CUTOVER_BACKUP_TEMP"
+  CUTOVER_BACKUP_TEMP=""
+}
+
+snapshot_cutover_entry() {
+  local source="$1"
+  local snapshot="$2"
+  if [[ -L "$source" ]]; then
+    ln -s "$(readlink "$source")" "$snapshot"
+  else
+    cp -p "$source" "$snapshot"
+  fi
+}
+
+rollback_cutover_on_exit() {
+  local rc=$?
+  local rollback_performed=false rollback_restored=true cleanup_completed=true failure_status
+  trap - EXIT
+  set +e
+  if [[ "$CUTOVER_TRANSACTION_ARMED" == "true" ]]; then
+    rollback_performed=true
+    mv -f "$CUTOVER_MANIFEST_SNAPSHOT" "$CUTOVER_MANIFEST_LINK" || rollback_restored=false
+    mv -f "$CUTOVER_ACTIVE_SNAPSHOT" "$CUTOVER_ACTIVE_LINK" || rollback_restored=false
+    [[ "$(sha256_file "$CUTOVER_ACTIVE_LINK" 2>/dev/null)" == "$CUTOVER_CURRENT_SHA" ]] || rollback_restored=false
+    [[ "$(sha256_file "$CUTOVER_MANIFEST_LINK" 2>/dev/null)" == "$CUTOVER_CURRENT_MANIFEST_FILE_SHA" ]] || rollback_restored=false
+  fi
+  rm -f "$CUTOVER_ACTIVE_TEMP" "$CUTOVER_MANIFEST_TEMP" \
+    "$CUTOVER_ACTIVE_SNAPSHOT" "$CUTOVER_MANIFEST_SNAPSHOT" 2>/dev/null
+  cleanup_cutover_backup_temp || cleanup_completed=false
+  [[ -z "$CUTOVER_LOCK_DIR" ]] || rmdir "$CUTOVER_LOCK_DIR" 2>/dev/null
+  if [[ "$rollback_performed" == "true" ]]; then
+    [[ "$rc" != "0" ]] || rc=1
+    failure_status="rolled_back"
+    [[ "$rollback_restored" == "true" ]] || failure_status="rollback_failed"
+    jq -cn \
+      --arg schema_version "$CUTOVER_FAILURE_SCHEMA" \
+      --arg operation "$CUTOVER_OPERATION" \
+      --arg status "$failure_status" \
+      --arg active_link "$CUTOVER_ACTIVE_LINK" \
+      --arg manifest_link "$CUTOVER_MANIFEST_LINK" \
+      --arg backup "$CUTOVER_BACKUP" \
+      --arg current_sha256 "$CUTOVER_CURRENT_SHA" \
+      --argjson rollback_restored "$rollback_restored" \
+      --argjson cleanup_completed "$cleanup_completed" \
+      '{schema_version:$schema_version,operation:$operation,status:$status,active_link:$active_link,manifest_link:$manifest_link,backup:$backup,current_sha256:$current_sha256,operation_completed:false,rollback:{performed:true,restored:$rollback_restored},cleanup_completed:$cleanup_completed,service_restarted:false,launchd_mutated:false,plist_mutated:false}' >&2
+  fi
+  exit "$rc"
+}
+
+validate_cutover_rollback_record() {
+  local record="$1" active_link="$2" manifest_link="$3"
+  local previous_sha="$4" previous_manifest_sha="$5" previous_manifest_target="$6"
+  local deployed_sha="$7" deployed_manifest_sha="$8" deployed_manifest="$9"
+  [[ -f "$record" && ! -L "$record" ]] || {
+    echo "missing cutover rollback record: $record" >&2
+    return 1
+  }
+  [[ "$(stat -f '%Lp' "$record")" == "444" ]] || {
+    echo "cutover rollback record mode must be 0444: $record" >&2
+    return 1
+  }
+  jq -e \
+    --arg active_link "$active_link" \
+    --arg manifest_link "$manifest_link" \
+    --arg previous_sha "$previous_sha" \
+    --arg previous_manifest_sha "$previous_manifest_sha" \
+    --arg previous_manifest_target "$previous_manifest_target" \
+    --arg deployed_sha "$deployed_sha" \
+    --arg deployed_manifest_sha "$deployed_manifest_sha" \
+    --arg deployed_manifest "$deployed_manifest" '
+      .schema_version == "hepta_immutable_release_cutover_rollback_v1"
+      and .active_link == $active_link
+      and .manifest_link == $manifest_link
+      and .previous.artifact_relative_path == "bin/hepta"
+      and .previous.artifact_sha256 == $previous_sha
+      and .previous.manifest_relative_path == "manifest.json"
+      and .previous.manifest_sha256 == $previous_manifest_sha
+      and .previous.original_manifest == $previous_manifest_target
+      and .deployed.artifact_sha256 == $deployed_sha
+      and .deployed.manifest_sha256 == $deployed_manifest_sha
+      and .deployed.manifest == $deployed_manifest
+      and .policy.expected_current_sha256_required == true
+      and .policy.byte_change_required == true
+      and .policy.service_restart_forbidden == true
+      and .policy.launchd_mutation_forbidden == true
+      and .policy.plist_mutation_forbidden == true
+    ' "$record" >/dev/null || {
+      echo "cutover rollback record does not match the reviewed release pair: $record" >&2
+      return 1
+    }
+}
+
+replace_release_links_transactionally() {
+  local active_link="$1" manifest_link="$2" target="$3" manifest="$4"
+  local current_sha="$5" current_manifest_file_sha="$6" target_sha="$7"
+  local active_dir suffix failure_point
+  active_dir="$(dirname "$active_link")"
+  suffix="$$.$RANDOM"
+  CUTOVER_ACTIVE_TEMP="$active_dir/.hepta-cutover-active.$suffix"
+  CUTOVER_MANIFEST_TEMP="$active_dir/.hepta-cutover-manifest.$suffix"
+  CUTOVER_ACTIVE_SNAPSHOT="$active_dir/.hepta-cutover-active-rollback.$suffix"
+  CUTOVER_MANIFEST_SNAPSHOT="$active_dir/.hepta-cutover-manifest-rollback.$suffix"
+  ln -s "$target" "$CUTOVER_ACTIVE_TEMP"
+  ln -s "$manifest" "$CUTOVER_MANIFEST_TEMP"
+  snapshot_cutover_entry "$active_link" "$CUTOVER_ACTIVE_SNAPSHOT"
+  snapshot_cutover_entry "$manifest_link" "$CUTOVER_MANIFEST_SNAPSHOT"
+  [[ "$(sha256_file "$CUTOVER_ACTIVE_TEMP")" == "$target_sha" ]] || {
+    echo "pre-staged release binary link SHA-256 mismatch" >&2
+    exit 1
+  }
+  "$0" verify --manifest "$CUTOVER_MANIFEST_TEMP" >/dev/null
+  [[ "$(sha256_file "$active_link")" == "$current_sha" \
+    && "$(sha256_file "$manifest_link")" == "$current_manifest_file_sha" ]] || {
+    echo "active release changed while replacement was being staged" >&2
+    exit 1
+  }
+
+  failure_point="${HEPTA_IMMUTABLE_RELEASE_CUTOVER_TEST_FAILURE_POINT:-none}"
+  [[ "$failure_point" == "none" || "$failure_point" == "after_active_swap" || "$failure_point" == "after_manifest_swap" ]] || {
+    echo "invalid immutable cutover test failure point" >&2
+    exit 1
+  }
+  CUTOVER_TRANSACTION_ARMED=true
+  mv -f "$CUTOVER_ACTIVE_TEMP" "$active_link"
+  [[ "$failure_point" != "after_active_swap" ]] || {
+    echo "injected immutable cutover failure after active swap" >&2
+    exit 1
+  }
+  mv -f "$CUTOVER_MANIFEST_TEMP" "$manifest_link"
+  [[ "$failure_point" != "after_manifest_swap" ]] || {
+    echo "injected immutable cutover failure after manifest swap" >&2
+    exit 1
+  }
+  [[ -L "$active_link" && "$(readlink "$active_link")" == "$target" \
+    && "$(sha256_file "$active_link")" == "$target_sha" ]] || {
+    echo "active binary link verification failed after replacement" >&2
+    exit 1
+  }
+  [[ -L "$manifest_link" && "$(readlink "$manifest_link")" == "$manifest" ]] || {
+    echo "active manifest link verification failed after replacement" >&2
+    exit 1
+  }
+  "$0" verify --manifest "$manifest_link" >/dev/null
+  rmdir "$CUTOVER_LOCK_DIR"
+  CUTOVER_LOCK_DIR=""
+  CUTOVER_TRANSACTION_ARMED=false
+  trap - EXIT
+  rm -f "$CUTOVER_ACTIVE_SNAPSHOT" "$CUTOVER_MANIFEST_SNAPSHOT"
+}
+
+cutover() {
+  local manifest="" active_link="" expected_current_sha=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+      --active-link) shift; [[ $# -gt 0 ]] || usage; active_link="$1" ;;
+      --expected-current-sha256) shift; [[ $# -gt 0 ]] || usage; expected_current_sha="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+  [[ -n "$manifest" && -n "$active_link" && -n "$expected_current_sha" ]] || usage
+  require_sha256 "$expected_current_sha"
+  "$0" verify --manifest "$manifest" >/dev/null
+  manifest="$(canonical_file "$manifest")"
+  jq -e '.status == "ready" and .source.commit_bound == true and .preflight.bound == true and .preflight.passed == true' "$manifest" >/dev/null || {
+    echo "immutable cutover requires a source-bound passed-preflight candidate" >&2
+    exit 1
+  }
+
+  local target target_sha target_manifest_file_sha release_id active_dir manifest_link lock_dir
+  target="$(canonical_file "$(dirname "$manifest")/$(jq -r '.artifact.relative_path' "$manifest")")"
+  target_sha="$(jq -r '.artifact.sha256' "$manifest")"
+  target_manifest_file_sha="$(sha256_file "$manifest")"
+  release_id="$(jq -r '.release_id' "$manifest")"
+  require_sha256 "$target_sha"
+  active_dir="$(cd "$(dirname "$active_link")" && pwd -P)"
+  active_link="$active_dir/$(basename "$active_link")"
+  manifest_link="$active_link.manifest"
+  lock_dir="$active_dir/.hepta-immutable-release-cutover.lock"
+  mkdir "$lock_dir" 2>/dev/null || {
+    echo "immutable cutover lock is already held: $lock_dir" >&2
+    exit 1
+  }
+
+  CUTOVER_ACTIVE_LINK="$active_link"
+  CUTOVER_MANIFEST_LINK="$manifest_link"
+  CUTOVER_LOCK_DIR="$lock_dir"
+  trap rollback_cutover_on_exit EXIT
+
+  [[ -f "$active_link" && -x "$active_link" ]] || {
+    echo "active binary must already exist: $active_link" >&2
+    exit 1
+  }
+  [[ -f "$manifest_link" ]] || {
+    echo "active manifest must already exist: $manifest_link" >&2
+    exit 1
+  }
+  "$0" verify --manifest "$manifest_link" >/dev/null
+
+  local current_sha current_manifest_sha current_manifest_file_sha current_manifest_target
+  local backup_root backup backup_manifest rollback_record rollback_record_sha rollback_record_previous_manifest
+  local backup_staging backup_created
+  current_sha="$(sha256_file "$active_link")"
+  current_manifest_sha="$(jq -r '.artifact.sha256' "$manifest_link")"
+  current_manifest_file_sha="$(sha256_file "$manifest_link")"
+  current_manifest_target="$(canonical_file "$manifest_link")"
+  [[ "$current_sha" == "$expected_current_sha" ]] || {
+    echo "active binary changed since cutover review" >&2
+    exit 1
+  }
+  [[ "$current_manifest_sha" == "$current_sha" ]] || {
+    echo "active manifest does not bind the current active binary" >&2
+    exit 1
+  }
+  [[ "$current_sha" != "$target_sha" ]] || {
+    echo "immutable cutover requires different target bytes" >&2
+    exit 1
+  }
+
+  mkdir -p "$active_dir/backups"
+  backup_root="$active_dir/backups/hepta.pre-cutover-$current_sha-to-$target_sha"
+  backup="$backup_root/bin/hepta"
+  backup_manifest="$backup_root/manifest.json"
+  rollback_record="$backup_root/rollback.json"
+  backup_created=false
+  if [[ -e "$backup_root" || -L "$backup_root" ]]; then
+    [[ -d "$backup_root" && ! -L "$backup_root" \
+      && "$(stat -f '%Lp' "$backup_root")" == "555" \
+      && "$(stat -f '%Lp' "$backup_root/bin")" == "555" \
+      && "$(stat -f '%Lp' "$backup")" == "555" \
+      && "$(sha256_file "$backup")" == "$current_sha" \
+      && "$(sha256_file "$backup_manifest")" == "$current_manifest_file_sha" ]] || {
+      echo "existing cutover rollback bundle does not match the reviewed release pair: $backup_root" >&2
+      exit 1
+    }
+    "$0" verify --manifest "$backup_manifest" >/dev/null
+    rollback_record_previous_manifest="$(jq -r '.previous.original_manifest // empty' "$rollback_record" 2>/dev/null || true)"
+  else
+    backup_staging="$(mktemp -d "$active_dir/backups/.hepta-pre-cutover.XXXXXX")"
+    CUTOVER_BACKUP_TEMP="$backup_staging"
+    CUTOVER_BACKUP_TEMP_ROOT="$active_dir/backups"
+    mkdir "$backup_staging/bin"
+    cp -p "$(canonical_file "$active_link")" "$backup_staging/bin/hepta"
+    cp -p "$(canonical_file "$manifest_link")" "$backup_staging/manifest.json"
+    chmod 0555 "$backup_staging/bin/hepta" "$backup_staging/bin"
+    chmod 0444 "$backup_staging/manifest.json"
+    "$0" verify --manifest "$backup_staging/manifest.json" >/dev/null
+    jq -n \
+      --arg schema_version "hepta_immutable_release_cutover_rollback_v1" \
+      --arg active_link "$active_link" --arg manifest_link "$manifest_link" \
+      --arg previous_sha256 "$current_sha" --arg previous_manifest_sha256 "$current_manifest_file_sha" \
+      --arg previous_manifest_target "$current_manifest_target" \
+      --arg deployed_sha256 "$target_sha" --arg deployed_manifest_sha256 "$target_manifest_file_sha" \
+      --arg deployed_manifest "$manifest" \
+      '{schema_version:$schema_version,active_link:$active_link,manifest_link:$manifest_link,previous:{artifact_relative_path:"bin/hepta",artifact_sha256:$previous_sha256,manifest_relative_path:"manifest.json",manifest_sha256:$previous_manifest_sha256,original_manifest:$previous_manifest_target},deployed:{artifact_sha256:$deployed_sha256,manifest_sha256:$deployed_manifest_sha256,manifest:$deployed_manifest},policy:{expected_current_sha256_required:true,byte_change_required:true,service_restart_forbidden:true,launchd_mutation_forbidden:true,plist_mutation_forbidden:true}}' >"$backup_staging/rollback.json"
+    chmod 0444 "$backup_staging/rollback.json"
+    chmod 0555 "$backup_staging"
+    mv "$backup_staging" "$backup_root"
+    CUTOVER_BACKUP_TEMP=""
+    backup_created=true
+    rollback_record_previous_manifest="$current_manifest_target"
+  fi
+  validate_cutover_rollback_record \
+    "$rollback_record" "$active_link" "$manifest_link" \
+    "$current_sha" "$current_manifest_file_sha" "$rollback_record_previous_manifest" \
+    "$target_sha" "$target_manifest_file_sha" "$manifest"
+  rollback_record_sha="$(sha256_file "$rollback_record")"
+  CUTOVER_BACKUP="$backup"
+  CUTOVER_CURRENT_SHA="$current_sha"
+  CUTOVER_CURRENT_MANIFEST_FILE_SHA="$current_manifest_file_sha"
+
+  local receipt
+  receipt="$(jq -cn \
+    --arg schema_version "hepta_immutable_release_cutover_receipt_v1" \
+    --arg status "ready" \
+    --arg release_id "$release_id" \
+    --arg active_link "$active_link" \
+    --arg target "$target" \
+    --arg manifest_link "$manifest_link" \
+    --arg manifest "$manifest" \
+    --arg expected_current_sha256 "$expected_current_sha" \
+    --arg previous_sha256 "$current_sha" \
+    --arg previous_manifest "$current_manifest_target" \
+    --arg previous_manifest_sha256 "$current_manifest_file_sha" \
+    --arg target_sha256 "$target_sha" \
+    --arg target_manifest_sha256 "$target_manifest_file_sha" \
+    --arg backup_root "$backup_root" \
+    --arg backup "$backup" \
+    --arg backup_manifest "$backup_manifest" \
+    --arg rollback_record "$rollback_record" \
+    --arg rollback_record_sha256 "$rollback_record_sha" \
+    --argjson backup_created "$backup_created" \
+    '{schema_version:$schema_version,status:$status,release_id:$release_id,active_link:$active_link,target:$target,manifest_link:$manifest_link,manifest:$manifest,expected_current_sha256:$expected_current_sha256,previous:{artifact_sha256:$previous_sha256,manifest:$previous_manifest,manifest_sha256:$previous_manifest_sha256},target_release:{artifact_sha256:$target_sha256,manifest:$manifest,manifest_sha256:$target_manifest_sha256},backup:{bundle:$backup_root,artifact:$backup,manifest:$backup_manifest,artifact_sha256:$previous_sha256,manifest_sha256:$previous_manifest_sha256,created:$backup_created,verified:true},cas_verified:true,bytes_changed:true,links_pre_staged:true,individual_links_atomically_replaced:true,pair_transactional_with_trap:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,manifest_linked:true,rollback:{armed_during_cutover:true,performed:false,backup_available:true,record:$rollback_record,record_sha256:$rollback_record_sha256},service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}')"
+
+  replace_release_links_transactionally \
+    "$active_link" "$manifest_link" "$target" "$manifest" \
+    "$current_sha" "$current_manifest_file_sha" "$target_sha"
+  printf '%s\n' "$receipt"
+}
+
+rollback_release() {
+  local receipt_path="" expected_current_sha=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --receipt) shift; [[ $# -gt 0 ]] || usage; receipt_path="$1" ;;
+      --expected-current-sha256) shift; [[ $# -gt 0 ]] || usage; expected_current_sha="$1" ;;
+      *) usage ;;
+    esac
+    shift
+  done
+  [[ -n "$receipt_path" && -n "$expected_current_sha" ]] || usage
+  require_sha256 "$expected_current_sha"
+  [[ -f "$receipt_path" && ! -L "$receipt_path" ]] || {
+    echo "rollback receipt must be a regular file: $receipt_path" >&2
+    exit 1
+  }
+  receipt_path="$(canonical_file "$receipt_path")"
+  [[ "$(stat -f '%Lp' "$receipt_path")" == "444" ]] || {
+    echo "rollback receipt mode must be 0444: $receipt_path" >&2
+    exit 1
+  }
+  jq -e '
+    .schema_version == "hepta_immutable_release_cutover_rollback_v1"
+    and (.active_link | type == "string" and startswith("/"))
+    and (.manifest_link | type == "string" and startswith("/"))
+    and .previous.artifact_relative_path == "bin/hepta"
+    and (.previous.artifact_sha256 | test("^[0-9a-f]{64}$"))
+    and .previous.manifest_relative_path == "manifest.json"
+    and (.previous.manifest_sha256 | test("^[0-9a-f]{64}$"))
+    and (.previous.original_manifest | type == "string" and startswith("/"))
+    and (.deployed.artifact_sha256 | test("^[0-9a-f]{64}$"))
+    and (.deployed.manifest_sha256 | test("^[0-9a-f]{64}$"))
+    and (.deployed.manifest | type == "string" and startswith("/"))
+    and .policy.expected_current_sha256_required == true
+    and .policy.byte_change_required == true
+    and .policy.service_restart_forbidden == true
+    and .policy.launchd_mutation_forbidden == true
+    and .policy.plist_mutation_forbidden == true
+  ' "$receipt_path" >/dev/null || {
+    echo "invalid immutable cutover rollback receipt: $receipt_path" >&2
+    exit 1
+  }
+
+  local bundle_root active_link manifest_link previous_artifact previous_manifest previous_manifest_target
+  local previous_sha previous_manifest_sha deployed_sha deployed_manifest_sha deployed_manifest deployed_artifact
+  local active_dir lock_dir current_sha current_manifest_sha current_manifest_file_sha rollback_receipt
+  bundle_root="$(dirname "$receipt_path")"
+  active_link="$(jq -r '.active_link' "$receipt_path")"
+  manifest_link="$(jq -r '.manifest_link' "$receipt_path")"
+  previous_artifact="$bundle_root/$(jq -r '.previous.artifact_relative_path' "$receipt_path")"
+  previous_manifest="$bundle_root/$(jq -r '.previous.manifest_relative_path' "$receipt_path")"
+  previous_sha="$(jq -r '.previous.artifact_sha256' "$receipt_path")"
+  previous_manifest_sha="$(jq -r '.previous.manifest_sha256' "$receipt_path")"
+  previous_manifest_target="$(jq -r '.previous.original_manifest' "$receipt_path")"
+  deployed_sha="$(jq -r '.deployed.artifact_sha256' "$receipt_path")"
+  deployed_manifest_sha="$(jq -r '.deployed.manifest_sha256' "$receipt_path")"
+  deployed_manifest="$(jq -r '.deployed.manifest' "$receipt_path")"
+  require_sha256 "$previous_sha"
+  require_sha256 "$previous_manifest_sha"
+  require_sha256 "$deployed_sha"
+  require_sha256 "$deployed_manifest_sha"
+  [[ "$previous_sha" != "$deployed_sha" ]] || {
+    echo "immutable rollback requires different current and previous bytes" >&2
+    exit 1
+  }
+  [[ "$expected_current_sha" == "$deployed_sha" ]] || {
+    echo "rollback expected-current SHA-256 does not match the cutover receipt" >&2
+    exit 1
+  }
+  [[ -f "$previous_artifact" && -x "$previous_artifact" \
+    && "$(stat -f '%Lp' "$previous_artifact")" == "555" \
+    && "$(sha256_file "$previous_artifact")" == "$previous_sha" ]] || {
+    echo "durable rollback artifact does not match its receipt" >&2
+    exit 1
+  }
+  "$0" verify --manifest "$previous_manifest" >/dev/null
+  [[ "$(sha256_file "$previous_manifest")" == "$previous_manifest_sha" \
+    && "$(jq -r '.artifact.sha256' "$previous_manifest")" == "$previous_sha" ]] || {
+    echo "durable rollback manifest does not bind its artifact" >&2
+    exit 1
+  }
+  "$0" verify --manifest "$deployed_manifest" >/dev/null
+  [[ "$(sha256_file "$deployed_manifest")" == "$deployed_manifest_sha" \
+    && "$(jq -r '.artifact.sha256' "$deployed_manifest")" == "$deployed_sha" ]] || {
+    echo "deployed manifest no longer matches the rollback receipt" >&2
+    exit 1
+  }
+  deployed_artifact="$(canonical_file "$(dirname "$deployed_manifest")/$(jq -r '.artifact.relative_path' "$deployed_manifest")")"
+  validate_cutover_rollback_record \
+    "$receipt_path" "$active_link" "$manifest_link" \
+    "$previous_sha" "$previous_manifest_sha" "$previous_manifest_target" \
+    "$deployed_sha" "$deployed_manifest_sha" "$deployed_manifest"
+
+  active_dir="$(cd "$(dirname "$active_link")" && pwd -P)"
+  active_link="$active_dir/$(basename "$active_link")"
+  [[ "$manifest_link" == "$active_link.manifest" ]] || {
+    echo "rollback receipt manifest link is not paired with its active link" >&2
+    exit 1
+  }
+  lock_dir="$active_dir/.hepta-immutable-release-cutover.lock"
+  mkdir "$lock_dir" 2>/dev/null || {
+    echo "immutable cutover lock is already held: $lock_dir" >&2
+    exit 1
+  }
+
+  CUTOVER_ACTIVE_LINK="$active_link"
+  CUTOVER_MANIFEST_LINK="$manifest_link"
+  CUTOVER_LOCK_DIR="$lock_dir"
+  CUTOVER_BACKUP="$previous_artifact"
+  CUTOVER_FAILURE_SCHEMA="hepta_immutable_release_rollback_receipt_v1"
+  CUTOVER_OPERATION="rollback"
+  trap rollback_cutover_on_exit EXIT
+
+  [[ -f "$active_link" && -x "$active_link" && -f "$manifest_link" ]] || {
+    echo "active release pair is missing during rollback" >&2
+    exit 1
+  }
+  "$0" verify --manifest "$manifest_link" >/dev/null
+  current_sha="$(sha256_file "$active_link")"
+  current_manifest_sha="$(jq -r '.artifact.sha256' "$manifest_link")"
+  current_manifest_file_sha="$(sha256_file "$manifest_link")"
+  [[ "$current_sha" == "$expected_current_sha" ]] || {
+    echo "active binary changed since rollback review" >&2
+    exit 1
+  }
+  [[ "$current_manifest_sha" == "$current_sha" \
+    && "$current_manifest_file_sha" == "$deployed_manifest_sha" \
+    && "$(canonical_file "$active_link")" == "$deployed_artifact" \
+    && "$(canonical_file "$manifest_link")" == "$deployed_manifest" ]] || {
+    echo "active release pair does not match the deployed cutover receipt" >&2
+    exit 1
+  }
+
+  CUTOVER_CURRENT_SHA="$current_sha"
+  CUTOVER_CURRENT_MANIFEST_FILE_SHA="$current_manifest_file_sha"
+  rollback_receipt="$(jq -cn \
+    --arg schema_version "hepta_immutable_release_rollback_receipt_v1" \
+    --arg status "ready" \
+    --arg receipt "$receipt_path" \
+    --arg active_link "$active_link" \
+    --arg manifest_link "$manifest_link" \
+    --arg expected_current_sha256 "$expected_current_sha" \
+    --arg previous_sha256 "$previous_sha" \
+    --arg previous_manifest "$previous_manifest" \
+    --arg previous_manifest_sha256 "$previous_manifest_sha" \
+    '{schema_version:$schema_version,status:$status,receipt:$receipt,active_link:$active_link,manifest_link:$manifest_link,expected_current_sha256:$expected_current_sha256,restored:{artifact_sha256:$previous_sha256,manifest:$previous_manifest,manifest_sha256:$previous_manifest_sha256},cas_verified:true,bytes_changed:true,links_pre_staged:true,individual_links_atomically_replaced:true,pair_transactional_with_trap:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}')"
+
+  replace_release_links_transactionally \
+    "$active_link" "$manifest_link" "$previous_artifact" "$previous_manifest" \
+    "$current_sha" "$current_manifest_file_sha" "$previous_sha"
+  printf '%s\n' "$rollback_receipt"
 }
 
 self_test() {
   [[ $# -eq 0 ]] || usage
   local root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
-  local fixture_sha activation different different_manifest provenance invalid_manifest
-  local missing_preflight_rc legacy_activation_rc tampered_manifest
+  local fixture_sha activation different different_manifest provenance invalid_manifest short_head
+  local missing_preflight_rc legacy_activation_rc tampered_manifest conflicting_preflight missing_source_preflight wrong_banner_preflight
+  local different_preflight different_provenance different_sha cutover_receipt cutover_rc rollback_rc rollback_active
+  local rollback_record rollback_receipt rollback_manifest failure_point failure_log failure_receipt
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   tool="$root/scripts/hepta-immutable-release-tree"
   tmp="$(mktemp -d /tmp/hepta-immutable-release-tree-self-test.XXXXXX)"
@@ -373,6 +921,7 @@ self_test() {
   printf '%s\n' '#!/usr/bin/env bash' 'printf "hepta fixture\n"' >"$artifact"
   chmod 0755 "$artifact"
   source_commit="$(git -C "$root" rev-parse HEAD)"
+  short_head="${source_commit:0:10}"
   preflight="$tmp/preflight.log"
   provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$artifact")"
   provenance="$(
@@ -383,7 +932,7 @@ self_test() {
     }' <<<"$provenance"
   )"
   printf '%s\n' \
-    '[hepta-preflight] fixture' \
+    "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$preflight" \
     "{\"hepta_repo_head\": \"$source_commit\"}" \
     "[hepta-preflight-provenance] $provenance" \
     'Hepta preflight passed' >"$preflight"
@@ -402,9 +951,44 @@ self_test() {
     and .policy.immutable_tree == true
   ' >/dev/null
 
+  conflicting_preflight="$tmp/conflicting-preflight.log"
+  printf '%s\n' \
+    "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$conflicting_preflight" \
+    '{"hepta_repo_head": "0000000000000000000000000000000000000000"}' \
+    "[hepta-preflight-provenance] $provenance" \
+    'Hepta preflight passed' >"$conflicting_preflight"
+  if $tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$conflicting_preflight" --release-root "$tmp/conflicting-releases" >/dev/null 2>&1; then
+    echo "immutable release materialization accepted conflicting full source truths" >&2
+    exit 1
+  fi
+
+  wrong_banner_preflight="$tmp/wrong-banner-preflight.log"
+  printf '%s\n' \
+    "[hepta-preflight-resume] head=0000000000 attempt=1 start_line=1 marker=<start> log=$wrong_banner_preflight" \
+    "{\"hepta_repo_head\":\"$source_commit\"}" \
+    "[hepta-preflight-provenance] $provenance" \
+    'Hepta preflight passed' >"$wrong_banner_preflight"
+  if $tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$wrong_banner_preflight" --release-root "$tmp/wrong-banner-releases" >/dev/null 2>&1; then
+    echo "immutable release materialization accepted a conflicting resume banner" >&2
+    exit 1
+  fi
+
+  missing_source_preflight="$tmp/missing-source-preflight.log"
+  printf '%s\n' \
+    "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$missing_source_preflight" \
+    "[hepta-preflight-provenance] $(jq -c 'del(.source.commit)' <<<"$provenance")" \
+    'Hepta preflight passed' >"$missing_source_preflight"
+  if $tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$missing_source_preflight" --release-root "$tmp/missing-source-releases" >/dev/null 2>&1; then
+    echo "immutable release materialization accepted missing full source truth" >&2
+    exit 1
+  fi
+
   missing_preflight_rc=0
   $tool materialize --artifact "$artifact" --source-commit "$source_commit" --release-root "$tmp/missing-preflight" >/dev/null 2>&1 || missing_preflight_rc=$?
-  [[ "$missing_preflight_rc" == "1" ]]
+  if [[ "$missing_preflight_rc" != "1" ]]; then
+    echo "source-bound materialization without preflight did not fail closed" >&2
+    exit 1
+  fi
 
   invalid_manifest="$tmp/invalid-manifest.json"
   jq 'del(.build_provenance)' "$bound_manifest" >"$invalid_manifest"
@@ -422,7 +1006,10 @@ self_test() {
   cp "$artifact" "$tmp/legacy-active/hepta"
   chmod 0755 "$tmp/legacy-active/hepta"
   $tool activate --manifest "$legacy_manifest" --active-link "$tmp/legacy-active/hepta" --expected-current-sha256 "$(sha256_file "$artifact")" >/dev/null 2>&1 || legacy_activation_rc=$?
-  [[ "$legacy_activation_rc" == "1" ]]
+  if [[ "$legacy_activation_rc" != "1" ]]; then
+    echo "legacy-unbound activation did not fail closed" >&2
+    exit 1
+  fi
 
   tampered_manifest="$tmp/tampered-manifest.json"
   jq '.preflight.candidate_artifact_sha256 = ("0" * 64)' "$bound_manifest" >"$tampered_manifest"
@@ -438,23 +1025,126 @@ self_test() {
   fixture_sha="$(sha256_file "$artifact")"
   activation="$($tool activate --manifest "$bound_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
   jq -e '.status == "ready" and .bytes_changed == false and .service_restarted == false and .active_process_mutated == false' <<<"$activation" >/dev/null
-  [[ -L "$tmp/active/hepta" ]]
-  [[ -L "$tmp/active/hepta.manifest" ]]
-  [[ "$(sha256_file "$tmp/active/hepta")" == "$fixture_sha" ]]
-  [[ -f "$tmp/active/backups/hepta.pre-immutable-$fixture_sha" ]]
+  if [[ ! -L "$tmp/active/hepta" || ! -L "$tmp/active/hepta.manifest" \
+    || "$(sha256_file "$tmp/active/hepta")" != "$fixture_sha" \
+    || ! -f "$tmp/active/backups/hepta.pre-immutable-$fixture_sha" ]]; then
+    echo "byte-preserving activation did not create the expected release pair" >&2
+    exit 1
+  fi
   $tool verify --manifest "$tmp/active/hepta.manifest" >/dev/null
 
   different="$tmp/different"
   printf '%s\n' '#!/usr/bin/env bash' 'printf "different fixture\n"' >"$different"
   chmod 0755 "$different"
-  different_manifest="$($tool materialize --artifact "$different" --source-commit unknown --release-root "$tmp/releases")"
+  different_sha="$(sha256_file "$different")"
+  different_preflight="$tmp/different-preflight.log"
+  different_provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$different")"
+  different_provenance="$(jq -c '. + {preflight_profiles:{backend:true,native:true,release:true},watchdog_gate_mode:"fixture",deployment_consistency:{checked_during_candidate_preflight:false,required_before_activation:true}}' <<<"$different_provenance")"
+  printf '%s\n' \
+    "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$different_preflight" \
+    "{\"hepta_repo_head\": \"$source_commit\"}" \
+    "[hepta-preflight-provenance] $different_provenance" \
+    'Hepta preflight passed' >"$different_preflight"
+  different_manifest="$($tool materialize --artifact "$different" --source-commit "$source_commit" --preflight-log "$different_preflight" --release-root "$tmp/releases")"
   if $tool activate --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>&1; then
     echo "immutable activation accepted different binary bytes" >&2
     exit 1
   fi
 
+  # Model the deployed legacy-unbound manifest before the first source-bound cutover.
+  ln -s "$legacy_manifest" "$tmp/active/.hepta-legacy-manifest"
+  mv -f "$tmp/active/.hepta-legacy-manifest" "$tmp/active/hepta.manifest"
+
+  cutover_rc=0
+  $tool cutover --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$(printf '0%.0s' {1..64})" >/dev/null 2>&1 || cutover_rc=$?
+  if [[ "$cutover_rc" != "1" || "$(sha256_file "$tmp/active/hepta")" != "$fixture_sha" ]]; then
+    echo "stale immutable cutover CAS did not fail closed" >&2
+    exit 1
+  fi
+  if $tool cutover --manifest "$bound_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>&1; then
+    echo "immutable cutover accepted identical target bytes" >&2
+    exit 1
+  fi
+  cutover_receipt="$($tool cutover --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
+  jq -e --arg old "$fixture_sha" --arg new "$different_sha" '
+    .status == "ready" and .previous.artifact_sha256 == $old and .target_release.artifact_sha256 == $new
+    and .cas_verified == true and .bytes_changed == true and .manifest_linked == true
+    and .backup.verified == true and .rollback.backup_available == true
+    and .individual_links_atomically_replaced == true
+    and .pair_transactional_with_trap == true and .crash_consistent_pair == false
+    and .link_pair_consistency_verified_before_restart == true
+    and .runtime_deployment_consistency_required_after_restart == true
+    and .service_restarted == false and .launchd_mutated == false and .plist_mutated == false
+  ' >/dev/null <<<"$cutover_receipt"
+  rollback_record="$(jq -r '.rollback.record' <<<"$cutover_receipt")"
+  rollback_manifest="$(jq -r '.backup.manifest' <<<"$cutover_receipt")"
+  if [[ "$(sha256_file "$tmp/active/hepta")" != "$different_sha" \
+    || "$(readlink "$tmp/active/hepta.manifest")" != "$different_manifest" \
+    || "$(sha256_file "$(jq -r '.backup.artifact' <<<"$cutover_receipt")")" != "$fixture_sha" \
+    || "$(sha256_file "$rollback_manifest")" != "$(jq -r '.backup.manifest_sha256' <<<"$cutover_receipt")" \
+    || ! -f "$rollback_record" || "$(stat -f '%Lp' "$rollback_record")" != "444" ]]; then
+    echo "successful immutable cutover did not preserve its durable rollback bundle" >&2
+    exit 1
+  fi
+
+  rollback_receipt="$($tool rollback --receipt "$rollback_record" --expected-current-sha256 "$different_sha")"
+  jq -e --arg old "$fixture_sha" '
+    .status == "ready" and .restored.artifact_sha256 == $old
+    and .cas_verified == true and .bytes_changed == true
+    and .pair_transactional_with_trap == true and .crash_consistent_pair == false
+    and .service_restarted == false and .launchd_mutated == false and .plist_mutated == false
+  ' >/dev/null <<<"$rollback_receipt"
+  if [[ "$(sha256_file "$tmp/active/hepta")" != "$fixture_sha" \
+    || "$(readlink "$tmp/active/hepta")" != "$(dirname "$rollback_record")/bin/hepta" \
+    || "$(readlink "$tmp/active/hepta.manifest")" != "$(dirname "$rollback_record")/manifest.json" ]]; then
+    echo "durable rollback did not restore the prior release pair" >&2
+    exit 1
+  fi
+  $tool verify --manifest "$tmp/active/hepta.manifest" >/dev/null
+
+  cutover_receipt="$($tool cutover --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
+  jq -e '.status == "ready" and .backup.created == false and .backup.verified == true' >/dev/null <<<"$cutover_receipt"
+  rollback_receipt="$($tool rollback --receipt "$rollback_record" --expected-current-sha256 "$different_sha")"
+  jq -e '.status == "ready" and .cas_verified == true' >/dev/null <<<"$rollback_receipt"
+  if [[ "$(sha256_file "$tmp/active/hepta")" != "$fixture_sha" \
+    || "$(readlink "$tmp/active/hepta.manifest")" != "$(dirname "$rollback_record")/manifest.json" ]]; then
+    echo "reused rollback bundle did not support a repeated cutover and rollback" >&2
+    exit 1
+  fi
+
+  for failure_point in after_active_swap after_manifest_swap; do
+    rollback_active="$tmp/rollback-active-$failure_point"
+    mkdir -p "$rollback_active"
+    cp "$artifact" "$rollback_active/hepta"
+    chmod 0755 "$rollback_active/hepta"
+    $tool activate --manifest "$bound_manifest" --active-link "$rollback_active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null
+    failure_log="$tmp/$failure_point.stderr"
+    rollback_rc=0
+    HEPTA_IMMUTABLE_RELEASE_CUTOVER_TEST_FAILURE_POINT="$failure_point" \
+      $tool cutover --manifest "$different_manifest" --active-link "$rollback_active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>"$failure_log" || rollback_rc=$?
+    if [[ "$rollback_rc" != "1" ]]; then
+      echo "injected $failure_point cutover did not fail" >&2
+      exit 1
+    fi
+    failure_receipt="$(tail -n 1 "$failure_log")"
+    jq -e '.status == "rolled_back" and .operation == "cutover" and .rollback.performed == true and .rollback.restored == true' >/dev/null <<<"$failure_receipt"
+    if [[ "$(sha256_file "$rollback_active/hepta")" != "$fixture_sha" \
+      || "$(readlink "$rollback_active/hepta")" != "$(dirname "$bound_manifest")/bin/hepta" \
+      || "$(readlink "$rollback_active/hepta.manifest")" != "$bound_manifest" \
+      || "$(sha256_file "$rollback_active/backups/hepta.pre-cutover-$fixture_sha-to-$different_sha/bin/hepta")" != "$fixture_sha" \
+      || ! -f "$rollback_active/backups/hepta.pre-cutover-$fixture_sha-to-$different_sha/rollback.json" \
+      || -e "$rollback_active/.hepta-immutable-release-cutover.lock" ]]; then
+      echo "injected $failure_point cutover did not restore and preserve the reviewed release pair" >&2
+      exit 1
+    fi
+    if find "$rollback_active/backups" -maxdepth 1 -type d -name '.hepta-pre-cutover.*' | rg -q .; then
+      echo "injected $failure_point cutover leaked its backup staging directory" >&2
+      exit 1
+    fi
+  done
+
   jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
-    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,source_bound_fixture_ready:true,missing_preflight_denied:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,service_restarted:false,active_process_mutated:false}'
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
   echo "hepta immutable release tree self-test passed"
 }
 
@@ -465,6 +1155,8 @@ case "$command_name" in
   materialize) materialize "$@" ;;
   verify) verify_manifest "$@" ;;
   activate) activate "$@" ;;
+  cutover) cutover "$@" ;;
+  rollback) rollback_release "$@" ;;
   self-test) self_test "$@" ;;
   *) usage ;;
 esac

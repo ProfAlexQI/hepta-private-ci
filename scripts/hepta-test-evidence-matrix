@@ -32,6 +32,8 @@ reject_workflow_live_or_write() {
     'HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "1"' \
     'scripts/hepta-preflight-resume' \
     'scripts/hepta-immutable-release-tree activate' \
+    'scripts/hepta-immutable-release-tree cutover' \
+    'scripts/hepta-immutable-release-tree rollback' \
     'launchctl' \
     'systemctl' \
     'codesign' \
@@ -129,6 +131,8 @@ matrix_json() {
     && ! has_literal "$full_workflow" 'HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "1"' \
     && ! has_literal "$full_workflow" 'HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "1"' \
     && ! has_literal "$full_workflow" 'scripts/hepta-immutable-release-tree activate' \
+    && ! has_literal "$full_workflow" 'scripts/hepta-immutable-release-tree cutover' \
+    && ! has_literal "$full_workflow" 'scripts/hepta-immutable-release-tree rollback' \
     && ! has_literal "$full_workflow" 'codesign' \
     && ! has_literal "$full_workflow" 'notarytool'; then
     full_no_live_no_write=true
@@ -294,6 +298,14 @@ self_test() {
   printf '\n  contents: write\n' >>"$fixture/.github/workflows/hepta-ci.yml"
   expect_fixture_denied "$fixture" || return 1
 
+  make_fixture deployment-cutover
+  printf '\n      - run: scripts/hepta-immutable-release-tree cutover\n' >>"$fixture/.github/workflows/hepta-full-preflight.yml"
+  expect_fixture_denied "$fixture" || return 1
+
+  make_fixture deployment-rollback
+  printf '\n      - run: scripts/hepta-immutable-release-tree rollback\n' >>"$fixture/.github/workflows/hepta-full-preflight.yml"
+  expect_fixture_denied "$fixture" || return 1
+
   make_fixture command-drift
   perl -0pi -e 's/COMMAND="scripts\/hepta-ci-baseline full-workspace"/COMMAND="cargo test --workspace"/' "$fixture/scripts/hepta-full-workspace-evidence"
   expect_fixture_denied "$fixture" || return 1
@@ -342,7 +354,7 @@ self_test() {
     return 1
   fi
 
-  echo '{"schema":"hepta_test_evidence_matrix_self_test_v3","status":"ready","missing_full_workspace_denied":true,"missing_platform_denied":true,"wrong_runner_denied":true,"missing_confirmation_denied":true,"nightly_drift_denied":true,"manual_boundary_drift_denied":true,"dangerous_live_denied":true,"write_permissions_denied":true,"command_drift_denied":true,"cross_platform_pseudo_promotion_denied":true,"forged_success_receipt_denied":true,"scheduled_full_preflight_denied":true}'
+  echo '{"schema":"hepta_test_evidence_matrix_self_test_v3","status":"ready","missing_full_workspace_denied":true,"missing_platform_denied":true,"wrong_runner_denied":true,"missing_confirmation_denied":true,"nightly_drift_denied":true,"manual_boundary_drift_denied":true,"dangerous_live_denied":true,"write_permissions_denied":true,"deployment_cutover_denied":true,"deployment_rollback_denied":true,"command_drift_denied":true,"cross_platform_pseudo_promotion_denied":true,"forged_success_receipt_denied":true,"scheduled_full_preflight_denied":true}'
 }
 
 case "$MODE" in

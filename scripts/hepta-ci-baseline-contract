@@ -339,11 +339,25 @@ self_test() (
     echo "Hepta CI contract self-test accepted deployment activation" >&2
     return 1
   fi
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
+
+  printf '\n      - run: scripts/hepta-immutable-release-tree cutover\n' >>"$tmp/$full_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted deployment cutover" >&2
+    return 1
+  fi
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
+
+  printf '\n      - run: scripts/hepta-immutable-release-tree rollback\n' >>"$tmp/$full_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted deployment rollback" >&2
+    return 1
+  fi
 
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 
 [[ $# -eq 1 ]] || usage

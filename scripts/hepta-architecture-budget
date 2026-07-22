@@ -78,7 +78,7 @@ verify() {
     codex-rs/hepta-native-gateway/src \
     codex-rs/hepta-cli/src \
     apps/hepta-native/src
-  verify_tree_total_max 775175 '*' scripts
+  verify_tree_total_max 775893 '*' scripts
   [[ -x scripts/hepta-panic-debt-baseline ]]
   verify_file_max scripts/hepta-panic-debt-baseline 700
   verify_file_max scripts/hepta-panic-debt-baseline-v2.json 1200
