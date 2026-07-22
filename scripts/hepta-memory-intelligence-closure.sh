@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 MANIFEST="${HEPTA_MANIFEST:-codex-rs/Cargo.toml}"
+SOURCE_MODE="${HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE:-live_endpoint}"
+OFFLINE_FIXTURE="${HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE:-}"
 
 tmp_dir="${TMPDIR:-/tmp}/hepta-memory-intelligence-closure.$$"
 mkdir -p "$tmp_dir"
@@ -48,7 +50,26 @@ reject_core_package hepta-memory
 reject_core_package hepta-runtime
 reject_core_package hepta-kernel
 
-MEMORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-memory-capability-absorption-inventory")"
+source scripts/lib/hepta-route-parity-native-report-fixture.sh
+
+case "$SOURCE_MODE" in
+  live_endpoint)
+    [[ -z "$OFFLINE_FIXTURE" ]] || {
+      echo "HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE requires offline_fixture source mode" >&2
+      exit 2
+    }
+    MEMORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-memory-capability-absorption-inventory")"
+    ;;
+  offline_fixture)
+    hepta_load_route_parity_native_reports
+    MEMORY_JSON="$(jq -c '.memory_capability_absorption_inventory' \
+      <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    ;;
+  *)
+    echo "HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE must be live_endpoint or offline_fixture" >&2
+    exit 2
+    ;;
+esac
 
 jq -e '
   .runtime == "hepta"

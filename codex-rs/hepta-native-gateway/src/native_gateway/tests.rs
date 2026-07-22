@@ -2338,6 +2338,59 @@
     }
 
     #[test]
+    fn hepta_offline_route_parity_fixtures_match_native_reports() -> anyhow::Result<()> {
+        let options = NativeGatewayOptions {
+            bind_addr: "127.0.0.1:7373".to_string(),
+            with_telegram_plugin: true,
+            telegram_plugin_poll_ms: 1500,
+        };
+        let mut native_reports = serde_json::Map::new();
+        for (name, endpoint) in [
+            ("memory_capability_absorption_inventory", "/api/hepta-memory-capability-absorption-inventory"),
+            ("core_fusion_readiness", "/api/hepta-core-fusion-readiness"),
+            ("engine_dependency_closure", "/api/hepta-engine-dependency-closure"),
+            ("public_ga_operator_approval_packet", "/api/hepta-public-ga-operator-approval-packet"),
+            ("release_hardening_status_gate", "/api/hepta-release-hardening-status-gate"),
+            ("provider_channel_dry_run_plan", "/api/hepta-provider-channel-dry-run-plan"),
+            ("runtime_session_dry_run_inventory", "/api/hepta-runtime-session-dry-run-inventory"),
+            ("local_tooling_content_inventory", "/api/hepta-local-tooling-content-inventory"),
+        ] {
+            let (status, _, body) = route_native_gateway_request("GET", endpoint, &options);
+            assert_eq!(status, "200 OK");
+            native_reports.insert(name.to_string(), serde_json::from_str(&body)?);
+        }
+        let fixture_path = std::env::current_dir()?
+            .ancestors()
+            .map(|ancestor| {
+                ancestor.join("scripts/testdata/hepta-route-parity-native-report-fixture-bundle-v1.json")
+            })
+            .find(|candidate| candidate.is_file())
+            .context("offline route parity Native report fixture bundle")?;
+        let fixture: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&fixture_path)?)?;
+        let normalized_reports = serde_json::to_string(&fixture["reports"])?;
+
+        assert_eq!(
+            fixture["reports"]["memory_capability_absorption_inventory"],
+            serde_json::to_value(hepta_memory_capability_absorption_inventory_report())?
+        );
+        assert_eq!(
+            (
+                fixture["reports"].clone(),
+                fixture["provenance"]["normalized_reports_sha256"].clone(),
+            ),
+            (
+                serde_json::Value::Object(native_reports),
+                serde_json::Value::String(format!(
+                    "{:x}",
+                    Sha256::digest(normalized_reports.as_bytes())
+                )),
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
     fn hepta_memory_intelligence_kg_full_enablement_runtime_readiness_endpoint_is_route_count_aware()
      {
         let options = NativeGatewayOptions {

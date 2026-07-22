@@ -14,6 +14,7 @@ RELEASE_COMPAT_RUNNER="$ROOT/scripts/hepta-release-publication-result-receipt-ro
 RELEASE_COMPAT_REGISTRY="$ROOT/scripts/hepta-release-publication-result-receipt-route-gate-specs-v1.json"
 ARTIFACT_DOWNLOAD_COMPAT_RUNNER="$ROOT/scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-runner"
 ARTIFACT_DOWNLOAD_COMPAT_REGISTRY="$ROOT/scripts/hepta-artifact-download-install-affordance-result-receipt-route-gate-specs-v1.json"
+OFFLINE_NATIVE_REPORT_FIXTURE="$ROOT/scripts/testdata/hepta-route-parity-native-report-fixture-bundle-v1.json"
 MODE="${1:---schema}"
 
 [[ "$MODE" == "--schema" || "$MODE" == "--runtime-parity" ]] || {
@@ -222,8 +223,12 @@ assert_runtime_parity() {
   while IFS= read -r id; do
     parity_index=$((parity_index + 1))
     parity_prefix="$fixture_root/parity-$parity_index"
-    "$UNIFIED_RUNNER" "$id" >"$parity_prefix.unified.out" 2>"$parity_prefix.unified.err"
-    "$compatibility_runner" "$id" >"$parity_prefix.compat.out" 2>"$parity_prefix.compat.err"
+    env HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE=offline_fixture \
+      HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE="$OFFLINE_NATIVE_REPORT_FIXTURE" \
+      "$UNIFIED_RUNNER" "$id" >"$parity_prefix.unified.out" 2>"$parity_prefix.unified.err"
+    env HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE=offline_fixture \
+      HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE="$OFFLINE_NATIVE_REPORT_FIXTURE" \
+      "$compatibility_runner" "$id" >"$parity_prefix.compat.out" 2>"$parity_prefix.compat.err"
     if [[ "$message_stream" == "stdout" ]]; then
       [[ "$(tail -n 1 "$parity_prefix.unified.out")" == \
         "$(jq -r --arg id "$id" '.specs[] | select(.id == $id) | .pass_message' "$compatibility_registry")" ]]
@@ -250,6 +255,7 @@ assert_runtime_parity() {
 }
 
 if [[ "$MODE" == "--runtime-parity" ]]; then
+  "$ROOT/scripts/hepta-memory-intelligence-closure-self-test" >/dev/null
   assert_runtime_parity "$MEMORY_COMPAT_RUNNER" "$MEMORY_COMPAT_REGISTRY" none
   assert_runtime_parity "$RUNTIME_COMPAT_RUNNER" "$RUNTIME_COMPAT_REGISTRY" stdout
   assert_runtime_parity "$ARTIFACT_COMPAT_RUNNER" "$ARTIFACT_COMPAT_REGISTRY" stdout

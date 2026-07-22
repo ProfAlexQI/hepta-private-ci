@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+GATE="$ROOT/scripts/hepta-memory-intelligence-closure.sh"
+FIXTURE="$ROOT/scripts/testdata/hepta-route-parity-native-report-fixture-bundle-v1.json"
+fixture_root="$(mktemp -d /tmp/hepta-memory-intelligence-closure-self-test.XXXXXX)"
+trap 'rm -rf "$fixture_root"' EXIT
+
+mkdir -p "$fixture_root/bin"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "$*" >>"$HEPTA_CURL_DENIAL_LOG"' 'exit 97' \
+  >"$fixture_root/bin/curl"
+chmod +x "$fixture_root/bin/curl"
+curl_log="$fixture_root/curl.log"
+
+run_offline() {
+  PATH="$fixture_root/bin:$PATH" \
+    HEPTA_CURL_DENIAL_LOG="$curl_log" \
+    HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE=offline_fixture \
+    HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE="$1" \
+    "$GATE"
+}
+
+assert_rejected() {
+  local label="$1"
+  shift
+  if "$@" >"$fixture_root/$label.out" 2>"$fixture_root/$label.err"; then
+    echo "memory intelligence closure negative fixture unexpectedly passed: $label" >&2
+    exit 1
+  fi
+}
+
+run_offline "$FIXTURE" >"$fixture_root/success.out"
+[[ ! -e "$curl_log" ]]
+
+assert_rejected missing_fixture run_offline "$fixture_root/missing.json"
+[[ ! -e "$curl_log" ]]
+
+printf '{malformed\n' >"$fixture_root/malformed.json"
+assert_rejected malformed_fixture run_offline "$fixture_root/malformed.json"
+[[ ! -e "$curl_log" ]]
+
+jq '.schema = "stale"' "$FIXTURE" >"$fixture_root/stale.json"
+assert_rejected stale_fixture run_offline "$fixture_root/stale.json"
+[[ ! -e "$curl_log" ]]
+
+assert_rejected wrong_source_mode env \
+  PATH="$fixture_root/bin:$PATH" \
+  HEPTA_CURL_DENIAL_LOG="$curl_log" \
+  HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE=live_endpoint \
+  HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE="$FIXTURE" \
+  "$GATE"
+[[ ! -e "$curl_log" ]]
+
+assert_rejected accidental_live_fallback run_offline "$fixture_root/absent.json"
+[[ ! -e "$curl_log" ]]
+
+jq '.reports.memory_capability_absorption_inventory.status = "drifted"' "$FIXTURE" >"$fixture_root/drift.json"
+assert_rejected source_fixture_drift run_offline "$fixture_root/drift.json"
+[[ ! -e "$curl_log" ]]
+
+printf '{"schema":"hepta_memory_intelligence_closure_self_test_v1","status":"ready","negative_fixture_count":6,"curl_invocation_count":0}\n'

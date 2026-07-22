@@ -4,9 +4,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 
 source "$REPO_ROOT/scripts/lib/hepta-json-report-capture.sh"
+source "$REPO_ROOT/scripts/lib/hepta-route-parity-native-report-fixture.sh"
 cd "$REPO_ROOT"
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+SOURCE_MODE="${HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE:-live_endpoint}"
+OFFLINE_FIXTURE="${HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE:-}"
 
 sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
@@ -17,8 +20,27 @@ MEMORY_CLOSURE_JSON="$(
     "hepta-memory-intelligence-closure" \
     scripts/hepta-memory-intelligence-closure.sh
 )"
-MEMORY_INVENTORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-memory-capability-absorption-inventory")"
-CORE_FUSION_JSON="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
+case "$SOURCE_MODE" in
+  live_endpoint)
+    [[ -z "$OFFLINE_FIXTURE" ]] || {
+      echo "offline Native report fixtures require offline_fixture source mode" >&2
+      exit 2
+    }
+    MEMORY_INVENTORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-memory-capability-absorption-inventory")"
+    CORE_FUSION_JSON="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
+    ;;
+  offline_fixture)
+    hepta_load_route_parity_native_reports
+    MEMORY_INVENTORY_JSON="$(jq -c '.memory_capability_absorption_inventory' \
+      <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    CORE_FUSION_JSON="$(jq -c '.core_fusion_readiness' \
+      <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    ;;
+  *)
+    echo "HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE must be live_endpoint or offline_fixture" >&2
+    exit 2
+    ;;
+esac
 
 memory_closure_report_sha256="$(sha256_text "$MEMORY_CLOSURE_JSON")"
 kg_terminal_denial_gate_reference_sha256="$(

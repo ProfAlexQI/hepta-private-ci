@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+SOURCE_MODE="${HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE:-live_endpoint}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}}"
 INSTALLED_BIN="${HEPTA_INSTALLED_BIN:-${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
@@ -57,11 +58,32 @@ if [[ -d "$installed_dir" ]]; then
   fi
 fi
 
-MEMORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-memory-capability-absorption-inventory")"
-PACKET_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-operator-approval-packet")"
-RELEASE_JSON="$(curl -fsS "$BASE_URL/api/hepta-release-hardening-status-gate")"
-CORE_JSON="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
-DEPENDENCY_JSON="$(curl -fsS "$BASE_URL/api/hepta-engine-dependency-closure")"
+case "$SOURCE_MODE" in
+  live_endpoint)
+    [[ -z "${HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE:-}" ]] || {
+      echo "HEPTA_ROUTE_PARITY_NATIVE_REPORT_FIXTURE requires offline_fixture source mode" >&2
+      exit 2
+    }
+    MEMORY_JSON="$(curl -fsS "$BASE_URL/api/hepta-memory-capability-absorption-inventory")"
+    PACKET_JSON="$(curl -fsS "$BASE_URL/api/hepta-public-ga-operator-approval-packet")"
+    RELEASE_JSON="$(curl -fsS "$BASE_URL/api/hepta-release-hardening-status-gate")"
+    CORE_JSON="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
+    DEPENDENCY_JSON="$(curl -fsS "$BASE_URL/api/hepta-engine-dependency-closure")"
+    ;;
+  offline_fixture)
+    source "$REPO_ROOT/scripts/lib/hepta-route-parity-native-report-fixture.sh"
+    hepta_load_route_parity_native_reports
+    MEMORY_JSON="$(jq -c '.memory_capability_absorption_inventory' <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    PACKET_JSON="$(jq -c '.public_ga_operator_approval_packet' <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    RELEASE_JSON="$(jq -c '.release_hardening_status_gate' <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    CORE_JSON="$(jq -c '.core_fusion_readiness' <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    DEPENDENCY_JSON="$(jq -c '.engine_dependency_closure' <<<"$HEPTA_ROUTE_PARITY_NATIVE_REPORTS_JSON")"
+    ;;
+  *)
+    echo "HEPTA_MEMORY_INTELLIGENCE_SOURCE_MODE must be live_endpoint or offline_fixture" >&2
+    exit 2
+    ;;
+esac
 
 jq -n -e \
   --arg release_sha "$release_sha" \
