@@ -16,6 +16,7 @@ Hepta Control UI is a dependency-free, static-first local frontend for Hepta's R
 - Product-first work rail: the left conversation list is marked with `data-control-ui-work-rail="product-first"` and uses Review queue / Safety desk language instead of raw endpoint paths in the first-read surface.
 - Compact narrow/mobile path: `data-control-ui-compact-product-path="narrow-mobile"` keeps the Telegram chat header, messages, and composer visible while diagnostics stay collapsed.
 - Product copy guard: browser smoke fails if `old JS`, `blank module fallback`, `NO_REPLY`, `mutation=false`, or `payload hash` return.
+- Read-only V2 trace fails closed; authority, live, and production state stay unverified.
 - Shared Global Brain / isolated Workspace Context boundary.
 - Workspace Room for members, tasks, artifact previews, room activity, orchestration, and dry-run task actions.
 - Hepta runtime control-plane bridge inside the Workspace Room: status, sessions, tasks, approvals, events/logs, and runtime modules are represented by the Rust renderer without browser JavaScript.

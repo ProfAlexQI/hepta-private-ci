@@ -1,0 +1,27 @@
+<!-- architecture-v2-diagnostic:start -->
+                    <article class="tg-message tg-message--agent tg-message--v2-diagnostic" data-architecture-v2-diagnostic="read-only" data-architecture-v2-evidence-state="absent" data-architecture-v2-authority-state="unverified" data-architecture-v2-live-state="unverified" data-architecture-v2-production-state="not-claimed">
+                      <div class="tg-bubble v2-diagnostic">
+                        <span>architecture v2</span>
+                        <details>
+                          <summary><strong>Ownership trace</strong><em>readback not attached</em></summary>
+                          <p class="v2-diagnostic__intro">This shell has no attached V2 evidence. Compatibility reports may describe guarded routes, loopback policy, or redacted events; their status does not prove admission or authority.</p>
+                          <ol class="v2-control-flow" aria-label="Architecture V2 ownership and control flow">
+                            <li><strong>Runtime</strong><small>freeze revisions</small></li>
+                            <li><strong>Kernel</strong><small>admit exact request</small></li>
+                            <li><strong>Intelligence</strong><small>select admitted option</small></li>
+                            <li><strong>Kernel</strong><small>reauthorize at commit</small></li>
+                            <li><strong>Runtime</strong><small>execute and receipt</small></li>
+                            <li><strong>Memory</strong><small>preference CAS</small></li>
+                          </ol>
+                          <nav class="v2-readbacks" aria-label="Read-only Architecture V2 supporting diagnostics">
+                            <a href="/api/approvals" data-v2-readback="approval-route-inventory"><strong>Approvals</strong><small>guarded routes only</small></a>
+                            <a href="/api/policy" data-v2-readback="policy-snapshot"><strong>Policy</strong><small>loopback gates only</small></a>
+                            <a href="/api/events-report" data-v2-readback="redacted-event-summary"><strong>Events</strong><small>redacted counts only</small></a>
+                          </nav>
+                          <p class="v2-diagnostic__boundary">Exact request binding, commit authorization, outcome receipt, and preference transition stay unknown. No live or production-readiness state is inferred.</p>
+                        </details>
+                        <p class="v2-diagnostic__status-note">V2 authority, live state, and production readiness remain unverified.</p>
+                      </div>
+                      <small>local · read-only</small>
+                    </article>
+<!-- architecture-v2-diagnostic:end -->
