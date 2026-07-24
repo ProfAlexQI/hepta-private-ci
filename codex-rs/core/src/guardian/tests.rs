@@ -6,6 +6,7 @@ use crate::config::ManagedFeatures;
 use crate::config::NetworkProxySpec;
 use crate::config::test_config;
 use crate::guardian::approval_request::guardian_request_target_item_id;
+use crate::guardian::review::guardian_review_session_config;
 use crate::session::session::Session;
 use crate::session::turn_context::TurnContext;
 use crate::test_support;
@@ -25,6 +26,7 @@ use codex_model_provider::create_model_provider;
 use codex_model_provider_info::AMAZON_BEDROCK_GPT_5_4_MODEL_ID;
 use codex_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
 use codex_model_provider_info::ModelProviderInfo;
+use codex_models_manager::manager::StaticModelsManager;
 use codex_network_proxy::NetworkProxyConfig;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::NetworkApprovalProtocol;
@@ -32,6 +34,7 @@ use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::Event;
@@ -2194,6 +2197,69 @@ async fn guardian_review_session_config_preserves_parent_network_proxy() {
     assert_eq!(
         guardian_config.permissions.permission_profile(),
         &PermissionProfile::from_legacy_sandbox_policy(&SandboxPolicy::new_read_only_policy())
+    );
+}
+
+#[tokio::test]
+async fn guardian_review_session_config_clears_context_overrides_for_distinct_effective_model() {
+    let server = start_mock_server().await;
+    let (session, mut turn) = guardian_test_session_and_turn(&server).await;
+    let mut config = (*turn.config).clone();
+    config.model = Some("codex-auto-review".to_string());
+    config.model_context_window = Some(900_000);
+    config.model_auto_compact_token_limit = Some(600_000);
+    Arc::get_mut(&mut turn)
+        .expect("turn should be unique")
+        .config = Arc::new(config);
+
+    let guardian_config = guardian_review_session_config(session.as_ref(), turn.as_ref())
+        .await
+        .expect("guardian config")
+        .spawn_config;
+
+    assert_eq!(
+        (
+            guardian_config.model_context_window,
+            guardian_config.model_auto_compact_token_limit,
+        ),
+        (None, None)
+    );
+}
+
+#[tokio::test]
+async fn guardian_review_session_config_preserves_context_overrides_for_same_effective_model() {
+    let server = start_mock_server().await;
+    let (mut session, mut turn) = guardian_test_session_and_turn(&server).await;
+    let parent_model = turn.model_info.clone();
+    let auth_manager = Arc::clone(&session.services.auth_manager);
+    Arc::get_mut(&mut session)
+        .expect("session should be unique")
+        .services
+        .models_manager = Arc::new(StaticModelsManager::new(
+        /*auth_manager*/ Some(auth_manager),
+        ModelsResponse {
+            models: vec![parent_model],
+        },
+    ));
+    let mut config = (*turn.config).clone();
+    config.model = Some("stale-parent-model".to_string());
+    config.model_context_window = Some(128_000);
+    config.model_auto_compact_token_limit = Some(100_000);
+    Arc::get_mut(&mut turn)
+        .expect("turn should be unique")
+        .config = Arc::new(config);
+
+    let guardian_config = guardian_review_session_config(session.as_ref(), turn.as_ref())
+        .await
+        .expect("guardian config")
+        .spawn_config;
+
+    assert_eq!(
+        (
+            guardian_config.model_context_window,
+            guardian_config.model_auto_compact_token_limit,
+        ),
+        (Some(128_000), Some(100_000))
     );
 }
 
