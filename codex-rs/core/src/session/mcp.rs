@@ -33,6 +33,59 @@ struct GuardianMcpElicitationReviewer {
     session: std::sync::Weak<Session>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum McpRefreshPublication {
+    Published,
+    Superseded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnpublishedMcpReplacementError {
+    MissingParts,
+}
+
+struct UnpublishedMcpReplacement {
+    manager: Option<McpConnectionManager>,
+    cancel_token: Option<CancellationToken>,
+}
+
+impl UnpublishedMcpReplacement {
+    fn new(manager: McpConnectionManager, cancel_token: CancellationToken) -> Self {
+        Self {
+            manager: Some(manager),
+            cancel_token: Some(cancel_token),
+        }
+    }
+
+    fn manager(&self) -> Result<&McpConnectionManager, UnpublishedMcpReplacementError> {
+        self.manager
+            .as_ref()
+            .ok_or(UnpublishedMcpReplacementError::MissingParts)
+    }
+
+    fn take(
+        &mut self,
+    ) -> Result<(McpConnectionManager, CancellationToken), UnpublishedMcpReplacementError> {
+        match (self.manager.take(), self.cancel_token.take()) {
+            (Some(manager), Some(cancel_token)) => Ok((manager, cancel_token)),
+            (manager, cancel_token) => {
+                self.manager = manager;
+                self.cancel_token = cancel_token;
+                Err(UnpublishedMcpReplacementError::MissingParts)
+            }
+        }
+    }
+}
+
+impl Drop for UnpublishedMcpReplacement {
+    fn drop(&mut self) {
+        if let Some(cancel_token) = self.cancel_token.take() {
+            cancel_token.cancel();
+        }
+    }
+}
+
 impl GuardianMcpElicitationReviewer {
     fn new(session: &Arc<Session>) -> Self {
         Self {
@@ -272,7 +325,8 @@ impl Session {
         mcp_servers: HashMap<String, McpServerConfig>,
         store_mode: OAuthCredentialsStoreMode,
         elicitation_reviewer: Option<ElicitationReviewerHandle>,
-    ) {
+        expected_explicit_generation: Option<u64>,
+    ) -> McpRefreshPublication {
         let auth = self.services.auth_manager.auth().await;
         let config = self.get_config().await;
         let mcp_config = config
@@ -303,11 +357,6 @@ impl Session {
                 turn_context.cwd.to_path_buf(),
             ),
         };
-        {
-            let mut guard = self.services.mcp_startup_cancellation_token.lock().await;
-            guard.cancel();
-            *guard = CancellationToken::new();
-        }
         let (refreshed_manager, cancel_token) = McpConnectionManager::new(
             &mcp_servers,
             store_mode,
@@ -326,23 +375,65 @@ impl Session {
             elicitation_reviewer,
         )
         .await;
+        let mut replacement = UnpublishedMcpReplacement::new(refreshed_manager, cancel_token);
         {
             let current_manager = self.services.mcp_connection_manager.read().await;
+            let Ok(refreshed_manager) = replacement.manager() else {
+                warn!("MCP refresh replacement lost its unpublished manager");
+                return McpRefreshPublication::Failed;
+            };
             refreshed_manager.set_elicitations_auto_deny(current_manager.elicitations_auto_deny());
         }
-        {
-            let mut guard = self.services.mcp_startup_cancellation_token.lock().await;
-            if guard.is_cancelled() {
-                cancel_token.cancel();
+
+        #[cfg(test)]
+        if expected_explicit_generation.is_some() {
+            let gate = self.mcp_server_refresh_test_gate.lock().await.take();
+            if let Some((reached, release)) = gate {
+                reached.wait().await;
+                release.wait().await;
             }
-            *guard = cancel_token;
         }
 
-        let mut old_manager = {
-            let mut manager = self.services.mcp_connection_manager.write().await;
-            std::mem::replace(&mut *manager, refreshed_manager)
+        let mut refresh_state = match expected_explicit_generation {
+            Some(generation) => {
+                let state = self.mcp_server_refresh_state.lock().await;
+                if !state.is_pending(generation) {
+                    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
+                        warn!("superseded MCP refresh replacement lost unpublished parts");
+                        return McpRefreshPublication::Failed;
+                    };
+                    cancel_token.cancel();
+                    drop(state);
+                    stale_manager.shutdown().await;
+                    return McpRefreshPublication::Superseded;
+                }
+                Some(state)
+            }
+            None => None,
         };
+
+        let mut manager = self.services.mcp_connection_manager.write().await;
+        let mut startup_token = self.services.mcp_startup_cancellation_token.lock().await;
+        let Ok((refreshed_manager, cancel_token)) = replacement.take() else {
+            warn!("MCP refresh replacement lost unpublished parts before publication");
+            return McpRefreshPublication::Failed;
+        };
+        let mut old_manager = manager.publish(refreshed_manager);
+        let old_cancel_token = std::mem::replace(&mut *startup_token, cancel_token);
+        if old_cancel_token.is_cancelled() {
+            startup_token.cancel();
+        }
+        old_cancel_token.cancel();
+        if let (Some(generation), Some(state)) =
+            (expected_explicit_generation, refresh_state.as_mut())
+        {
+            debug_assert!(state.consume_published(generation));
+        }
+        drop(startup_token);
+        drop(manager);
+        drop(refresh_state);
         old_manager.shutdown().await;
+        McpRefreshPublication::Published
     }
 
     pub(crate) async fn refresh_mcp_servers_if_requested(
@@ -350,36 +441,50 @@ impl Session {
         turn_context: &TurnContext,
         elicitation_reviewer: Option<ElicitationReviewerHandle>,
     ) {
-        let refresh_config = { self.pending_mcp_server_refresh_config.lock().await.take() };
-        let Some(refresh_config) = refresh_config else {
-            return;
-        };
+        let _refresh_owner = self.mcp_server_refresh_lock.lock().await;
+        loop {
+            let intent = { self.mcp_server_refresh_state.lock().await.pending() };
+            let Some(intent) = intent else {
+                return;
+            };
 
-        let McpServerRefreshConfig {
-            mcp_servers,
-            mcp_oauth_credentials_store_mode,
-        } = refresh_config;
-
-        let mcp_servers =
-            match serde_json::from_value::<HashMap<String, McpServerConfig>>(mcp_servers) {
-                Ok(servers) => servers,
+            let McpServerRefreshConfig {
+                mcp_servers,
+                mcp_oauth_credentials_store_mode,
+            } = intent.config;
+            let mcp_servers =
+                match serde_json::from_value::<HashMap<String, McpServerConfig>>(mcp_servers) {
+                    Ok(servers) => servers,
+                    Err(err) => {
+                        warn!("failed to parse MCP server refresh config: {err}");
+                        return;
+                    }
+                };
+            let store_mode = match serde_json::from_value::<OAuthCredentialsStoreMode>(
+                mcp_oauth_credentials_store_mode,
+            ) {
+                Ok(mode) => mode,
                 Err(err) => {
-                    warn!("failed to parse MCP server refresh config: {err}");
+                    warn!("failed to parse MCP OAuth refresh config: {err}");
                     return;
                 }
             };
-        let store_mode = match serde_json::from_value::<OAuthCredentialsStoreMode>(
-            mcp_oauth_credentials_store_mode,
-        ) {
-            Ok(mode) => mode,
-            Err(err) => {
-                warn!("failed to parse MCP OAuth refresh config: {err}");
-                return;
-            }
-        };
 
-        self.refresh_mcp_servers_inner(turn_context, mcp_servers, store_mode, elicitation_reviewer)
-            .await;
+            match self
+                .refresh_mcp_servers_inner(
+                    turn_context,
+                    mcp_servers,
+                    store_mode,
+                    elicitation_reviewer.clone(),
+                    Some(intent.generation),
+                )
+                .await
+            {
+                McpRefreshPublication::Published => return,
+                McpRefreshPublication::Superseded => continue,
+                McpRefreshPublication::Failed => return,
+            }
+        }
     }
 
     pub(crate) async fn refresh_mcp_servers_now(
@@ -389,8 +494,15 @@ impl Session {
         store_mode: OAuthCredentialsStoreMode,
         elicitation_reviewer: Option<ElicitationReviewerHandle>,
     ) {
-        self.refresh_mcp_servers_inner(turn_context, mcp_servers, store_mode, elicitation_reviewer)
-            .await;
+        let _refresh_owner = self.mcp_server_refresh_lock.lock().await;
+        self.refresh_mcp_servers_inner(
+            turn_context,
+            mcp_servers,
+            store_mode,
+            elicitation_reviewer,
+            None,
+        )
+        .await;
     }
 
     #[cfg(test)]

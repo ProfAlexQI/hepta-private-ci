@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 use crate::SkillsManager;
@@ -36,8 +38,45 @@ use tokio::sync::RwLock;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
+pub(crate) struct PublishedMcpConnectionManager {
+    generation: u64,
+    manager: McpConnectionManager,
+}
+
+impl PublishedMcpConnectionManager {
+    pub(crate) fn new(manager: McpConnectionManager) -> Self {
+        Self {
+            generation: 0,
+            manager,
+        }
+    }
+
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub(crate) fn publish(&mut self, manager: McpConnectionManager) -> McpConnectionManager {
+        self.generation = self.generation.saturating_add(1);
+        std::mem::replace(&mut self.manager, manager)
+    }
+}
+
+impl Deref for PublishedMcpConnectionManager {
+    type Target = McpConnectionManager;
+
+    fn deref(&self) -> &Self::Target {
+        &self.manager
+    }
+}
+
+impl DerefMut for PublishedMcpConnectionManager {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.manager
+    }
+}
+
 pub(crate) struct SessionServices {
-    pub(crate) mcp_connection_manager: Arc<RwLock<McpConnectionManager>>,
+    pub(crate) mcp_connection_manager: Arc<RwLock<PublishedMcpConnectionManager>>,
     pub(crate) mcp_startup_cancellation_token: Mutex<CancellationToken>,
     pub(crate) unified_exec_manager: UnifiedExecProcessManager,
     #[cfg_attr(not(unix), allow(dead_code))]

@@ -1,6 +1,8 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::config::Config;
+use crate::function_tool::FunctionCallError;
 use crate::session::tests::make_session_and_context;
 use crate::tools::context::ToolPayload;
 use crate::turn_diff_tracker::TurnDiffTracker;
@@ -321,6 +323,69 @@ fn mcp_tool_info(
         connector_name: None,
         plugin_display_names: Vec::new(),
     }
+}
+
+#[tokio::test]
+async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
+    let (session, turn) = make_session_and_context().await;
+    let tool = mcp_tool_info(
+        "echo",
+        /*supports_parallel_tool_calls*/ false,
+        "mcp__echo__",
+        "query",
+    );
+    let tool_name = tool.canonical_tool_name();
+    let advertised_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    let router = ToolRouter::from_config(
+        &turn.tools_config,
+        ToolRouterParams {
+            deferred_mcp_tools: None,
+            mcp_tools: Some(vec![tool]),
+            discoverable_tools: None,
+            extension_tool_executors: Vec::new(),
+            dynamic_tools: turn.dynamic_tools.as_slice(),
+        },
+    )
+    .bind_mcp_generation(advertised_generation, HashSet::from([tool_name.clone()]));
+
+    let replacement = codex_mcp::McpConnectionManager::new_uninitialized_with_permission_profile(
+        &turn.approval_policy,
+        &turn.permission_profile(),
+    );
+    let mut old_manager = session
+        .services
+        .mcp_connection_manager
+        .write()
+        .await
+        .publish(replacement);
+    old_manager.shutdown().await;
+
+    let result = router
+        .dispatch_tool_call_with_code_mode_result(
+            Arc::new(session),
+            Arc::new(turn),
+            CancellationToken::new(),
+            Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new())),
+            ToolCall {
+                tool_name,
+                call_id: "call-stale-generation".to_string(),
+                payload: ToolPayload::Function {
+                    arguments: "{}".to_string(),
+                },
+            },
+            ToolCallSource::Direct,
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(FunctionCallError::RespondToModel(message))
+            if message.contains("catalog generation is stale")
+    ));
 }
 
 #[tokio::test]

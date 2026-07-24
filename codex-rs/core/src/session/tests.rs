@@ -4337,9 +4337,11 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
 
     let services = SessionServices {
         mcp_connection_manager: Arc::new(RwLock::new(
-            McpConnectionManager::new_uninitialized_with_permission_profile(
-                &config.permissions.approval_policy,
-                config.permissions.permission_profile(),
+            crate::state::PublishedMcpConnectionManager::new(
+                McpConnectionManager::new_uninitialized_with_permission_profile(
+                    &config.permissions.approval_policy,
+                    config.permissions.permission_profile(),
+                ),
             ),
         )),
         mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -4450,7 +4452,9 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         state: Mutex::new(state),
         managed_network_proxy_refresh_lock: Semaphore::new(/*permits*/ 1),
         features: config.features.clone(),
-        pending_mcp_server_refresh_config: Mutex::new(None),
+        mcp_server_refresh_lock: Mutex::new(()),
+        mcp_server_refresh_state: Mutex::new(super::session::McpServerRefreshState::default()),
+        mcp_server_refresh_test_gate: Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
         mailbox,
@@ -6198,9 +6202,11 @@ where
 
     let services = SessionServices {
         mcp_connection_manager: Arc::new(RwLock::new(
-            McpConnectionManager::new_uninitialized_with_permission_profile(
-                &config.permissions.approval_policy,
-                config.permissions.permission_profile(),
+            crate::state::PublishedMcpConnectionManager::new(
+                McpConnectionManager::new_uninitialized_with_permission_profile(
+                    &config.permissions.approval_policy,
+                    config.permissions.permission_profile(),
+                ),
             ),
         )),
         mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -6311,7 +6317,9 @@ where
         state: Mutex::new(state),
         managed_network_proxy_refresh_lock: Semaphore::new(/*permits*/ 1),
         features: config.features.clone(),
-        pending_mcp_server_refresh_config: Mutex::new(None),
+        mcp_server_refresh_lock: Mutex::new(()),
+        mcp_server_refresh_state: Mutex::new(super::session::McpServerRefreshState::default()),
+        mcp_server_refresh_test_gate: Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
         mailbox,
@@ -6414,9 +6422,10 @@ async fn explicit_refresh_rebuilds_mcp_connections_on_each_next_turn() {
     assert!(!old_token.is_cancelled());
     assert!(
         session
-            .pending_mcp_server_refresh_config
+            .mcp_server_refresh_state
             .lock()
             .await
+            .pending
             .is_some()
     );
 
@@ -6427,9 +6436,10 @@ async fn explicit_refresh_rebuilds_mcp_connections_on_each_next_turn() {
     assert!(old_token.is_cancelled());
     assert!(
         session
-            .pending_mcp_server_refresh_config
+            .mcp_server_refresh_state
             .lock()
             .await
+            .pending
             .is_none()
     );
     let new_token = session.mcp_startup_cancellation_token().await;
@@ -6443,6 +6453,193 @@ async fn explicit_refresh_rebuilds_mcp_connections_on_each_next_turn() {
     assert!(new_token.is_cancelled());
     let newest_token = session.mcp_startup_cancellation_token().await;
     assert!(!newest_token.is_cancelled());
+}
+
+#[tokio::test]
+async fn cancelled_explicit_mcp_refresh_preserves_intent_until_publication() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let old_token = session.mcp_startup_cancellation_token().await;
+    let initial_manager_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    let refresh_config = McpServerRefreshConfig {
+        mcp_servers: json!({}),
+        mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+            .expect("serialize store mode"),
+    };
+    super::handlers::refresh_mcp_servers(&session, refresh_config).await;
+    let intent_generation = session
+        .mcp_server_refresh_state
+        .lock()
+        .await
+        .pending
+        .as_ref()
+        .expect("refresh intent")
+        .generation;
+
+    let reached = Arc::new(tokio::sync::Barrier::new(2));
+    let release = Arc::new(tokio::sync::Barrier::new(2));
+    *session.mcp_server_refresh_test_gate.lock().await = Some((Arc::clone(&reached), release));
+    let refresh_task = {
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        tokio::spawn(async move {
+            session
+                .refresh_mcp_servers_if_requested(&turn_context, None)
+                .await;
+        })
+    };
+    reached.wait().await;
+    refresh_task.abort();
+    assert!(
+        refresh_task
+            .await
+            .expect_err("refresh task must be cancelled")
+            .is_cancelled()
+    );
+
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert_eq!(
+            state.pending.as_ref().map(|intent| intent.generation),
+            Some(intent_generation)
+        );
+        assert_eq!(state.applied_generation, 0);
+    }
+    assert!(!old_token.is_cancelled());
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation
+    );
+
+    session
+        .refresh_mcp_servers_if_requested(&turn_context, None)
+        .await;
+    let state = session.mcp_server_refresh_state.lock().await;
+    assert!(state.pending.is_none());
+    assert_eq!(state.applied_generation, intent_generation);
+    drop(state);
+    assert!(old_token.is_cancelled());
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation + 1
+    );
+}
+
+#[tokio::test]
+async fn rapid_explicit_mcp_refresh_only_publishes_latest_generation() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let initial_manager_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    let refresh_config = McpServerRefreshConfig {
+        mcp_servers: json!({}),
+        mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+            .expect("serialize store mode"),
+    };
+    super::handlers::refresh_mcp_servers(&session, refresh_config.clone()).await;
+
+    let reached = Arc::new(tokio::sync::Barrier::new(2));
+    let release = Arc::new(tokio::sync::Barrier::new(2));
+    *session.mcp_server_refresh_test_gate.lock().await =
+        Some((Arc::clone(&reached), Arc::clone(&release)));
+    let refresh_task = {
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        tokio::spawn(async move {
+            session
+                .refresh_mcp_servers_if_requested(&turn_context, None)
+                .await;
+        })
+    };
+    reached.wait().await;
+    super::handlers::refresh_mcp_servers(&session, refresh_config).await;
+    let latest_generation = session
+        .mcp_server_refresh_state
+        .lock()
+        .await
+        .pending
+        .as_ref()
+        .expect("latest refresh intent")
+        .generation;
+    release.wait().await;
+    refresh_task.await.expect("refresh task");
+
+    let state = session.mcp_server_refresh_state.lock().await;
+    assert!(state.pending.is_none());
+    assert_eq!(state.applied_generation, latest_generation);
+    assert_eq!(state.next_generation, latest_generation);
+    drop(state);
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation + 1
+    );
+}
+
+#[tokio::test]
+async fn invalid_explicit_mcp_refresh_remains_replaceable_without_busy_loop() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let old_token = session.mcp_startup_cancellation_token().await;
+    super::handlers::refresh_mcp_servers(
+        &session,
+        McpServerRefreshConfig {
+            mcp_servers: json!("invalid"),
+            mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+                .expect("serialize store mode"),
+        },
+    )
+    .await;
+    session
+        .refresh_mcp_servers_if_requested(&turn_context, None)
+        .await;
+    let invalid_generation = session
+        .mcp_server_refresh_state
+        .lock()
+        .await
+        .pending
+        .as_ref()
+        .expect("invalid intent remains pending")
+        .generation;
+    assert!(!old_token.is_cancelled());
+
+    super::handlers::refresh_mcp_servers(
+        &session,
+        McpServerRefreshConfig {
+            mcp_servers: json!({}),
+            mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+                .expect("serialize store mode"),
+        },
+    )
+    .await;
+    session
+        .refresh_mcp_servers_if_requested(&turn_context, None)
+        .await;
+    let state = session.mcp_server_refresh_state.lock().await;
+    assert!(state.pending.is_none());
+    assert!(state.applied_generation > invalid_generation);
+    drop(state);
+    assert!(old_token.is_cancelled());
 }
 
 #[tokio::test]

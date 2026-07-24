@@ -9,6 +9,47 @@ use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use tokio::sync::Semaphore;
 
+#[derive(Clone)]
+pub(super) struct McpServerRefreshIntent {
+    pub(super) generation: u64,
+    pub(super) config: McpServerRefreshConfig,
+}
+
+#[derive(Default)]
+pub(super) struct McpServerRefreshState {
+    pub(super) next_generation: u64,
+    pub(super) applied_generation: u64,
+    pub(super) pending: Option<McpServerRefreshIntent>,
+}
+
+impl McpServerRefreshState {
+    pub(super) fn request(&mut self, config: McpServerRefreshConfig) -> u64 {
+        self.next_generation = self.next_generation.saturating_add(1);
+        let generation = self.next_generation;
+        self.pending = Some(McpServerRefreshIntent { generation, config });
+        generation
+    }
+
+    pub(super) fn pending(&self) -> Option<McpServerRefreshIntent> {
+        self.pending.clone()
+    }
+
+    pub(super) fn is_pending(&self, generation: u64) -> bool {
+        self.pending
+            .as_ref()
+            .is_some_and(|intent| intent.generation == generation)
+    }
+
+    pub(super) fn consume_published(&mut self, generation: u64) -> bool {
+        if !self.is_pending(generation) {
+            return false;
+        }
+        self.pending = None;
+        self.applied_generation = generation;
+        true
+    }
+}
+
 /// Context for an initialized model agent
 ///
 /// A session has at most 1 running task at a time, and can be interrupted by user input.
@@ -25,7 +66,11 @@ pub(crate) struct Session {
     /// The set of enabled features should be invariant for the lifetime of the
     /// session.
     pub(super) features: ManagedFeatures,
-    pub(super) pending_mcp_server_refresh_config: Mutex<Option<McpServerRefreshConfig>>,
+    pub(super) mcp_server_refresh_lock: Mutex<()>,
+    pub(super) mcp_server_refresh_state: Mutex<McpServerRefreshState>,
+    #[cfg(test)]
+    pub(super) mcp_server_refresh_test_gate:
+        Mutex<Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>>,
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(super) mailbox: Mailbox,
@@ -893,9 +938,11 @@ impl Session {
                 // changing this to use Option or OnceCell, though the current
                 // setup is straightforward enough and performs well.
                 mcp_connection_manager: Arc::new(RwLock::new(
-                    McpConnectionManager::new_uninitialized_with_permission_profile(
-                        &config.permissions.approval_policy,
-                        config.permissions.permission_profile(),
+                    crate::state::PublishedMcpConnectionManager::new(
+                        McpConnectionManager::new_uninitialized_with_permission_profile(
+                            &config.permissions.approval_policy,
+                            config.permissions.permission_profile(),
+                        ),
                     ),
                 )),
                 mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -964,7 +1011,10 @@ impl Session {
                 state: Mutex::new(state),
                 managed_network_proxy_refresh_lock: Semaphore::new(/*permits*/ 1),
                 features: config.features.clone(),
-                pending_mcp_server_refresh_config: Mutex::new(None),
+                mcp_server_refresh_lock: Mutex::new(()),
+                mcp_server_refresh_state: Mutex::new(McpServerRefreshState::default()),
+                #[cfg(test)]
+                mcp_server_refresh_test_gate: Mutex::new(None),
                 conversation: Arc::new(RealtimeConversationManager::new()),
                 active_turn: Mutex::new(None),
                 mailbox,
@@ -1092,7 +1142,7 @@ impl Session {
             .await;
             {
                 let mut manager_guard = sess.services.mcp_connection_manager.write().await;
-                *manager_guard = mcp_connection_manager;
+                manager_guard.publish(mcp_connection_manager);
             }
             {
                 let mut cancel_guard = sess.services.mcp_startup_cancellation_token.lock().await;

@@ -1256,7 +1256,12 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context: 
         /*elicitation_reviewer*/ None,
     )
     .await;
-    *session.services.mcp_connection_manager.write().await = manager;
+    session
+        .services
+        .mcp_connection_manager
+        .write()
+        .await
+        .publish(manager);
 }
 
 #[tokio::test]

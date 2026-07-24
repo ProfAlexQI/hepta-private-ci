@@ -1246,6 +1246,7 @@ pub(crate) async fn built_tools(
     cancellation_token: &CancellationToken,
 ) -> CodexResult<Arc<ToolRouter>> {
     let mcp_connection_manager = sess.services.mcp_connection_manager.read().await;
+    let mcp_generation = mcp_connection_manager.generation();
     let has_mcp_servers = mcp_connection_manager.has_servers();
     let all_mcp_tools = mcp_connection_manager
         .list_all_tools()
@@ -1333,18 +1334,39 @@ pub(crate) async fn built_tools(
         &turn_context.config,
         &turn_context.tools_config,
     );
+    let mut mcp_tool_names = mcp_tool_exposure
+        .direct_tools
+        .iter()
+        .chain(
+            mcp_tool_exposure
+                .deferred_tools
+                .as_deref()
+                .unwrap_or_default(),
+        )
+        .map(codex_mcp::ToolInfo::canonical_tool_name)
+        .collect::<HashSet<_>>();
+    if has_mcp_servers {
+        mcp_tool_names.extend([
+            codex_tools::ToolName::plain("list_mcp_resources"),
+            codex_tools::ToolName::plain("list_mcp_resource_templates"),
+            codex_tools::ToolName::plain("read_mcp_resource"),
+        ]);
+    }
     let mcp_tools = has_mcp_servers.then_some(mcp_tool_exposure.direct_tools);
     let deferred_mcp_tools = mcp_tool_exposure.deferred_tools;
-    Ok(Arc::new(ToolRouter::from_config(
-        &turn_context.tools_config,
-        ToolRouterParams {
-            mcp_tools,
-            deferred_mcp_tools,
-            discoverable_tools,
-            extension_tool_executors: extension_tool_executors(sess),
-            dynamic_tools: turn_context.dynamic_tools.as_slice(),
-        },
-    )))
+    Ok(Arc::new(
+        ToolRouter::from_config(
+            &turn_context.tools_config,
+            ToolRouterParams {
+                mcp_tools,
+                deferred_mcp_tools,
+                discoverable_tools,
+                extension_tool_executors: extension_tool_executors(sess),
+                dynamic_tools: turn_context.dynamic_tools.as_slice(),
+            },
+        )
+        .bind_mcp_generation(mcp_generation, mcp_tool_names),
+    ))
 }
 
 #[derive(Debug)]

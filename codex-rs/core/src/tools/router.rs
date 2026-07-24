@@ -18,6 +18,7 @@ use codex_tools::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use codex_tools::ToolsConfig;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -34,6 +35,8 @@ pub struct ToolCall {
 pub struct ToolRouter {
     registry: ToolRegistry,
     model_visible_specs: Vec<ToolSpec>,
+    mcp_generation: Option<u64>,
+    mcp_tool_names: HashSet<ToolName>,
 }
 
 pub(crate) struct ToolRouterParams<'a> {
@@ -53,7 +56,19 @@ impl ToolRouter {
         Self {
             registry,
             model_visible_specs,
+            mcp_generation: None,
+            mcp_tool_names: HashSet::new(),
         }
+    }
+
+    pub(crate) fn bind_mcp_generation(
+        mut self,
+        generation: u64,
+        tool_names: HashSet<ToolName>,
+    ) -> Self {
+        self.mcp_generation = Some(generation);
+        self.mcp_tool_names = tool_names;
+        self
     }
 
     pub fn model_visible_specs(&self) -> Vec<ToolSpec> {
@@ -124,6 +139,10 @@ impl ToolRouter {
     }
 
     #[instrument(level = "trace", skip_all, err)]
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "MCP dispatch holds a generation lease so exposed tools execute on the same manager"
+    )]
     pub async fn dispatch_tool_call_with_code_mode_result(
         &self,
         session: Arc<Session>,
@@ -138,6 +157,19 @@ impl ToolRouter {
             call_id,
             payload,
         } = call;
+        let manager = Arc::clone(&session.services.mcp_connection_manager);
+        let mcp_generation_guard = if self.mcp_tool_names.contains(&tool_name) {
+            let guard = manager.read().await;
+            if self.mcp_generation != Some(guard.generation()) {
+                return Err(FunctionCallError::RespondToModel(
+                    "MCP tool catalog generation is stale; retry on the current runtime"
+                        .to_string(),
+                ));
+            }
+            Some(guard)
+        } else {
+            None
+        };
 
         let invocation = ToolInvocation {
             session,
@@ -150,7 +182,9 @@ impl ToolRouter {
             payload,
         };
 
-        self.registry.dispatch_any(invocation).await
+        let result = self.registry.dispatch_any(invocation).await;
+        drop(mcp_generation_guard);
+        result
     }
 }
 
