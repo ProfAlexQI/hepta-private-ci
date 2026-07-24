@@ -33,6 +33,69 @@ fn cursor_to_anchor_normalizes_timestamp_format() {
     assert_eq!(anchor.ts, expected_ts);
 }
 
+/// A runtime for another SQLite home must not be queried or clean up rows when
+/// a caller supplies a mismatched home.
+#[tokio::test]
+async fn list_threads_db_rejects_mismatched_sqlite_home_without_cleanup() -> anyhow::Result<()> {
+    let root = TempDir::new().expect("temp dir");
+    let runtime_home = root.path().join("runtime-sqlite");
+    let requested_home = root.path().join("requested-sqlite");
+    let runtime =
+        codex_state::StateRuntime::init(runtime_home, "test-provider".to_string()).await?;
+    let thread_id = ThreadId::new();
+    let metadata = ThreadMetadataBuilder::new(
+        thread_id,
+        root.path().join("missing-rollout.jsonl"),
+        Utc::now(),
+        SessionSource::Cli,
+    )
+    .build("test-provider");
+    runtime.upsert_thread(&metadata).await?;
+
+    let page = list_threads_db(
+        Some(runtime.as_ref()),
+        requested_home.as_path(),
+        /*page_size*/ 10,
+        /*cursor*/ None,
+        ThreadSortKey::CreatedAt,
+        SortDirection::Desc,
+        &[],
+        /*model_providers*/ None,
+        /*cwd_filters*/ None,
+        /*archived*/ false,
+        /*search_term*/ None,
+    )
+    .await;
+
+    assert!(page.is_none());
+    assert_eq!(runtime.get_thread(thread_id).await?, Some(metadata));
+    Ok(())
+}
+
+#[tokio::test]
+async fn try_init_uses_configured_sqlite_home_for_runtime_and_backfill() -> anyhow::Result<()> {
+    let root = TempDir::new().expect("temp dir");
+    let codex_home = root.path().join("codex-home");
+    let sqlite_home = root.path().join("sqlite-home");
+    tokio::fs::create_dir_all(&codex_home).await?;
+
+    let runtime = try_init_with_roots(
+        codex_home.clone(),
+        sqlite_home.clone(),
+        "test-provider".to_string(),
+    )
+    .await?;
+
+    assert_eq!(runtime.sqlite().home(), sqlite_home.as_path());
+    assert!(codex_state::state_db_path(&sqlite_home).exists());
+    assert!(!codex_state::state_db_path(&codex_home).exists());
+    assert_eq!(
+        runtime.get_backfill_state().await?.status,
+        codex_state::BackfillStatus::Complete
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn try_init_waits_for_concurrent_startup_backfill() -> anyhow::Result<()> {
     let home = TempDir::new().expect("temp dir");

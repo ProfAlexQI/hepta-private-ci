@@ -108,15 +108,15 @@ async fn try_init_with_roots_inner(
     default_model_provider_id: String,
     backfill_lease_seconds: Option<i64>,
 ) -> anyhow::Result<StateDbHandle> {
-    let runtime =
-        codex_state::StateRuntime::init(sqlite_home.clone(), default_model_provider_id.clone())
-            .await
-            .map_err(|err| {
-                anyhow::anyhow!(
-                    "failed to initialize state runtime at {}: {err}",
-                    sqlite_home.display()
-                )
-            })?;
+    let sqlite = codex_state::SqliteConfig::from(sqlite_home.clone());
+    let runtime = codex_state::StateRuntime::init(sqlite, default_model_provider_id.clone())
+        .await
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "failed to initialize state runtime at {}: {err}",
+                sqlite_home.display()
+            )
+        })?;
     let backfill_gate_started = Instant::now();
     let backfill_gate_result = wait_for_backfill_gate(
         runtime.as_ref(),
@@ -213,7 +213,8 @@ fn emit_startup_warning(message: &str) {
 /// Unlike [`init`], this helper does not run rollout backfill. It is for
 /// optional local reads from non-owning contexts such as remote app-server mode.
 pub async fn get_state_db(config: &impl RolloutConfigView) -> Option<StateDbHandle> {
-    let state_path = codex_state::state_db_path(config.sqlite_home());
+    let sqlite = config.sqlite_config();
+    let state_path = sqlite.state_db_path();
     if !tokio::fs::try_exists(&state_path).await.unwrap_or(false) {
         codex_state::record_fallback(
             "get_state_db",
@@ -222,12 +223,10 @@ pub async fn get_state_db(config: &impl RolloutConfigView) -> Option<StateDbHand
         );
         return None;
     }
-    let runtime = match codex_state::StateRuntime::init(
-        config.sqlite_home().to_path_buf(),
-        config.model_provider_id().to_string(),
-    )
-    .await
-    {
+    let runtime =
+        match codex_state::StateRuntime::init(sqlite.clone(), config.model_provider_id().to_string())
+            .await
+        {
         Ok(runtime) => runtime,
         Err(_) => {
             codex_state::record_fallback(
@@ -238,7 +237,7 @@ pub async fn get_state_db(config: &impl RolloutConfigView) -> Option<StateDbHand
             return None;
         }
     };
-    require_backfill_complete(runtime, config.sqlite_home()).await
+    require_backfill_complete(runtime, sqlite.home()).await
 }
 
 /// Build a SQLite telemetry recorder backed by an OTEL metrics client.
@@ -251,14 +250,14 @@ pub fn sqlite_telemetry_recorder(
 
 async fn require_backfill_complete(
     runtime: StateDbHandle,
-    codex_home: &Path,
+    sqlite_home: &Path,
 ) -> Option<StateDbHandle> {
     match runtime.get_backfill_state().await {
         Ok(state) if state.status == codex_state::BackfillStatus::Complete => Some(runtime),
         Ok(state) => {
             warn!(
                 "state db backfill not complete at {} (status: {})",
-                codex_home.display(),
+                sqlite_home.display(),
                 state.status.as_str()
             );
             codex_state::record_fallback(
@@ -271,7 +270,7 @@ async fn require_backfill_complete(
         Err(err) => {
             warn!(
                 "failed to read backfill state at {}: {err}",
-                codex_home.display()
+                sqlite_home.display()
             );
             codex_state::record_fallback(
                 "get_state_db",
@@ -299,7 +298,7 @@ pub fn normalize_cwd_for_state_db(cwd: &Path) -> PathBuf {
 #[allow(clippy::too_many_arguments)]
 pub async fn list_thread_ids_db(
     context: Option<&codex_state::StateRuntime>,
-    codex_home: &Path,
+    sqlite_home: &Path,
     page_size: usize,
     cursor: Option<&Cursor>,
     sort_key: ThreadSortKey,
@@ -309,12 +308,13 @@ pub async fn list_thread_ids_db(
     stage: &str,
 ) -> Option<Vec<ThreadId>> {
     let ctx = context?;
-    if ctx.codex_home() != codex_home {
+    if ctx.sqlite().home() != sqlite_home {
         warn!(
-            "state db codex_home mismatch: expected {}, got {}",
-            ctx.codex_home().display(),
-            codex_home.display()
+            "state db SQLite home mismatch: expected {}, got {}",
+            sqlite_home.display(),
+            ctx.sqlite().home().display()
         );
+        return None;
     }
 
     let anchor = cursor_to_anchor(cursor);
@@ -353,7 +353,7 @@ pub async fn list_thread_ids_db(
 #[allow(clippy::too_many_arguments)]
 pub async fn list_threads_db(
     context: Option<&codex_state::StateRuntime>,
-    codex_home: &Path,
+    sqlite_home: &Path,
     page_size: usize,
     cursor: Option<&Cursor>,
     sort_key: ThreadSortKey,
@@ -365,12 +365,13 @@ pub async fn list_threads_db(
     search_term: Option<&str>,
 ) -> Option<codex_state::ThreadsPage> {
     let ctx = context?;
-    if ctx.codex_home() != codex_home {
+    if ctx.sqlite().home() != sqlite_home {
         warn!(
-            "state db codex_home mismatch: expected {}, got {}",
-            ctx.codex_home().display(),
-            codex_home.display()
+            "state db SQLite home mismatch: expected {}, got {}",
+            sqlite_home.display(),
+            ctx.sqlite().home().display()
         );
+        return None;
     }
 
     let anchor = cursor_to_anchor(cursor);

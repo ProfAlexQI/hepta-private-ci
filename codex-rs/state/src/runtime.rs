@@ -21,6 +21,7 @@ use crate::LogQuery;
 use crate::LogRow;
 use crate::STATE_DB_FILENAME;
 use crate::SortKey;
+use crate::SqliteConfig;
 use crate::THREAD_HISTORY_DB_FILENAME;
 use crate::ThreadMetadata;
 use crate::ThreadMetadataBuilder;
@@ -46,26 +47,18 @@ use chrono::Utc;
 use codex_protocol::ThreadId;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::protocol::RolloutItem;
-use log::LevelFilter;
 use serde_json::Value;
-use sqlx::ConnectOptions;
 use sqlx::QueryBuilder;
 use sqlx::Row;
 use sqlx::Sqlite;
 use sqlx::SqliteConnection;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
-use sqlx::sqlite::SqliteAutoVacuum;
-use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::sqlite::SqliteJournalMode;
-use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::sqlite::SqliteSynchronous;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
-use std::time::Duration;
 use std::time::Instant;
 use tracing::warn;
 
@@ -100,7 +93,7 @@ const LOG_PARTITION_ROW_LIMIT: i64 = 1_000;
 
 #[derive(Clone)]
 pub struct StateRuntime {
-    codex_home: PathBuf,
+    sqlite: SqliteConfig,
     default_provider: String,
     pool: Arc<sqlx::SqlitePool>,
     logs_pool: Arc<sqlx::SqlitePool>,
@@ -108,54 +101,59 @@ pub struct StateRuntime {
 }
 
 impl StateRuntime {
-    /// Initialize the state runtime using the provided Hepta home and default provider.
+    /// Initialize the state runtime using the provided SQLite configuration and default provider.
     ///
-    /// This opens (and migrates) the state and logs databases under `codex_home`.
+    /// This opens (and migrates) the state and logs databases under `sqlite_home`.
     /// Paginated thread history has a dedicated path and migrator, but remains
     /// unopened until the history projector takes ownership of it.
-    pub async fn init(codex_home: PathBuf, default_provider: String) -> anyhow::Result<Arc<Self>> {
-        Self::init_inner(
-            codex_home,
-            default_provider,
-            /*telemetry_override*/ None,
-        )
-        .await
+    pub async fn init(
+        sqlite: impl Into<SqliteConfig>,
+        default_provider: String,
+    ) -> anyhow::Result<Arc<Self>> {
+        Self::init_inner(sqlite.into(), default_provider, /*telemetry_override*/ None).await
     }
 
     #[cfg(test)]
     pub(crate) async fn init_with_telemetry_for_tests(
-        codex_home: PathBuf,
+        sqlite: impl Into<SqliteConfig>,
         default_provider: String,
         telemetry_override: &dyn DbTelemetry,
     ) -> anyhow::Result<Arc<Self>> {
-        Self::init_inner(codex_home, default_provider, Some(telemetry_override)).await
+        Self::init_inner(
+            sqlite.into(),
+            default_provider,
+            Some(telemetry_override),
+        )
+        .await
     }
 
     async fn init_inner(
-        codex_home: PathBuf,
+        sqlite: SqliteConfig,
         default_provider: String,
         telemetry_override: Option<&dyn DbTelemetry>,
     ) -> anyhow::Result<Arc<Self>> {
-        tokio::fs::create_dir_all(&codex_home).await?;
+        tokio::fs::create_dir_all(sqlite.home()).await?;
         let state_migrator = runtime_state_migrator();
         let logs_migrator = runtime_logs_migrator();
-        let state_path = state_db_path(codex_home.as_path());
-        let logs_path = logs_db_path(codex_home.as_path());
-        let pool = match open_state_sqlite(&state_path, &state_migrator, telemetry_override).await {
+        let state_path = sqlite.state_db_path();
+        let logs_path = sqlite.logs_db_path();
+        let pool =
+            match open_state_sqlite(&sqlite, &state_path, &state_migrator, telemetry_override).await
+            {
             Ok(db) => Arc::new(db),
             Err(err) => {
                 warn!("failed to open state db at {}: {err}", state_path.display());
                 return Err(err);
             }
         };
-        let logs_pool = match open_logs_sqlite(&logs_path, &logs_migrator, telemetry_override).await
-        {
-            Ok(db) => Arc::new(db),
-            Err(err) => {
-                warn!("failed to open logs db at {}: {err}", logs_path.display());
-                return Err(err);
-            }
-        };
+        let logs_pool =
+            match open_logs_sqlite(&sqlite, &logs_path, &logs_migrator, telemetry_override).await {
+                Ok(db) => Arc::new(db),
+                Err(err) => {
+                    warn!("failed to open logs db at {}: {err}", logs_path.display());
+                    return Err(err);
+                }
+            };
         let started = Instant::now();
         let backfill_state_result = ensure_backfill_state_row_in_pool(pool.as_ref()).await;
         crate::telemetry::record_init_result(
@@ -184,7 +182,7 @@ impl StateRuntime {
         let runtime = Arc::new(Self {
             pool,
             logs_pool,
-            codex_home,
+            sqlite,
             default_provider,
             thread_updated_at_millis: Arc::new(AtomicI64::new(thread_updated_at_millis)),
         });
@@ -199,21 +197,17 @@ impl StateRuntime {
 
     /// Return the configured Hepta home directory for this runtime.
     pub fn codex_home(&self) -> &Path {
-        self.codex_home.as_path()
+        self.sqlite.home()
+    }
+
+    /// Return the resolved SQLite configuration owned by this runtime.
+    pub fn sqlite(&self) -> &SqliteConfig {
+        &self.sqlite
     }
 }
 
-fn base_sqlite_options(path: &Path) -> SqliteConnectOptions {
-    SqliteConnectOptions::new()
-        .filename(path)
-        .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal)
-        .busy_timeout(Duration::from_secs(5))
-        .log_statements(LevelFilter::Off)
-}
-
 async fn open_state_sqlite(
+    sqlite: &SqliteConfig,
     path: &Path,
     migrator: &Migrator,
     telemetry_override: Option<&dyn DbTelemetry>,
@@ -222,6 +216,7 @@ async fn open_state_sqlite(
     // existing DB requires a full VACUUM. Do not attempt that during process
     // startup: it is maintenance work that can contend with foreground writers.
     open_sqlite(
+        sqlite,
         path,
         migrator,
         DbKind::State,
@@ -233,11 +228,13 @@ async fn open_state_sqlite(
 }
 
 async fn open_logs_sqlite(
+    sqlite: &SqliteConfig,
     path: &Path,
     migrator: &Migrator,
     telemetry_override: Option<&dyn DbTelemetry>,
 ) -> anyhow::Result<SqlitePool> {
     open_sqlite(
+        sqlite,
         path,
         migrator,
         DbKind::Logs,
@@ -250,9 +247,11 @@ async fn open_logs_sqlite(
 
 /// Open and migrate the rebuildable paginated thread-history database.
 pub async fn open_thread_history_db(sqlite_home: &Path) -> anyhow::Result<SqlitePool> {
+    let sqlite = SqliteConfig::from(sqlite_home);
     let migrator = runtime_thread_history_migrator();
     open_sqlite(
-        thread_history_db_path(sqlite_home).as_path(),
+        &sqlite,
+        sqlite.thread_history_db_path().as_path(),
         &migrator,
         DbKind::ThreadHistory,
         "open_thread_history",
@@ -263,6 +262,7 @@ pub async fn open_thread_history_db(sqlite_home: &Path) -> anyhow::Result<Sqlite
 }
 
 async fn open_sqlite(
+    sqlite: &SqliteConfig,
     path: &Path,
     migrator: &Migrator,
     db: DbKind,
@@ -270,11 +270,9 @@ async fn open_sqlite(
     migrate_phase: &'static str,
     telemetry_override: Option<&dyn DbTelemetry>,
 ) -> anyhow::Result<SqlitePool> {
-    let options = base_sqlite_options(path).auto_vacuum(SqliteAutoVacuum::Incremental);
     let started = Instant::now();
-    let pool_result = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect_with(options)
+    let pool_result = sqlite
+        .open_read_write_pool(path)
         .await
         .map_err(anyhow::Error::from);
     crate::telemetry::record_init_result(
@@ -321,7 +319,7 @@ pub fn state_db_filename() -> String {
 }
 
 pub fn state_db_path(codex_home: &Path) -> PathBuf {
-    codex_home.join(state_db_filename())
+    SqliteConfig::from(codex_home).state_db_path()
 }
 
 pub fn logs_db_filename() -> String {
@@ -329,7 +327,7 @@ pub fn logs_db_filename() -> String {
 }
 
 pub fn logs_db_path(codex_home: &Path) -> PathBuf {
-    codex_home.join(logs_db_filename())
+    SqliteConfig::from(codex_home).logs_db_path()
 }
 
 pub fn thread_history_db_filename() -> String {
@@ -337,20 +335,13 @@ pub fn thread_history_db_filename() -> String {
 }
 
 pub fn thread_history_db_path(codex_home: &Path) -> PathBuf {
-    codex_home.join(thread_history_db_filename())
+    SqliteConfig::from(codex_home).thread_history_db_path()
 }
 
 /// Run SQLite's built-in integrity check against an existing database file.
 pub async fn sqlite_integrity_check(path: &Path) -> anyhow::Result<Vec<String>> {
-    let options = SqliteConnectOptions::new()
-        .filename(path)
-        .create_if_missing(false)
-        .read_only(true)
-        .log_statements(LevelFilter::Off);
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(options)
-        .await?;
+    let sqlite = SqliteConfig::from(path.parent().unwrap_or_else(|| Path::new("")));
+    let pool = sqlite.open_read_only_pool(path).await?;
     let rows = sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
         .fetch_all(&pool)
         .await?;
@@ -361,6 +352,7 @@ pub async fn sqlite_integrity_check(path: &Path) -> anyhow::Result<Vec<String>> 
 #[cfg(test)]
 mod tests {
     use super::StateRuntime;
+    use super::SqliteConfig;
     use super::open_state_sqlite;
     use super::runtime_state_migrator;
     use super::sqlite_integrity_check;
@@ -551,7 +543,9 @@ mod tests {
         strict_pool.close().await;
 
         let tolerant_migrator = runtime_state_migrator();
+        let sqlite = SqliteConfig::from(codex_home.as_path());
         let tolerant_pool = open_state_sqlite(
+            &sqlite,
             state_path.as_path(),
             &tolerant_migrator,
             /*telemetry_override*/ None,
@@ -561,6 +555,31 @@ mod tests {
         tolerant_pool.close().await;
 
         let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn sqlite_config_survives_restart_and_read_only_integrity_check() {
+        let sqlite_home = unique_temp_dir();
+        let sqlite = SqliteConfig::new_for_testing(sqlite_home.clone());
+        let first = StateRuntime::init(sqlite.clone(), "test-provider".to_string())
+            .await
+            .expect("first state runtime should initialize");
+        assert_eq!(first.sqlite(), &sqlite);
+        first.pool.close().await;
+        first.logs_pool.close().await;
+
+        let restarted = StateRuntime::init(sqlite.clone(), "test-provider".to_string())
+            .await
+            .expect("state runtime should reopen from the same SQLite config");
+        assert_eq!(restarted.sqlite(), &sqlite);
+        restarted.pool.close().await;
+        restarted.logs_pool.close().await;
+
+        let integrity = sqlite_integrity_check(sqlite.state_db_path().as_path())
+            .await
+            .expect("read-only integrity check should open the configured state database");
+        assert_eq!(integrity, vec!["ok".to_string()]);
+        let _ = tokio::fs::remove_dir_all(sqlite_home).await;
     }
 
     #[tokio::test]

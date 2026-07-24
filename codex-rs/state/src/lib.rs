@@ -10,6 +10,7 @@ mod migrations;
 mod model;
 mod paths;
 mod runtime;
+mod sqlite;
 mod telemetry;
 
 pub use model::LogEntry;
@@ -18,6 +19,8 @@ pub use model::LogRow;
 pub use model::Phase2JobClaimOutcome;
 /// Preferred entrypoint: owns configuration and metrics.
 pub use runtime::StateRuntime;
+pub use sqlite::RuntimeDbPath;
+pub use sqlite::SqliteConfig;
 
 /// Low-level storage engine: useful for focused tests.
 ///

@@ -1,3 +1,4 @@
+use codex_state::SqliteConfig;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -5,6 +6,9 @@ use std::sync::Arc;
 pub trait RolloutConfigView {
     fn codex_home(&self) -> &Path;
     fn sqlite_home(&self) -> &Path;
+    fn sqlite_config(&self) -> SqliteConfig {
+        SqliteConfig::from(self.sqlite_home())
+    }
     fn cwd(&self) -> &Path;
     fn model_provider_id(&self) -> &str;
     fn generate_memories(&self) -> bool;
