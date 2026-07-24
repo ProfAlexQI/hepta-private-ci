@@ -12,15 +12,22 @@
 - Security: upstream `a59a419afa34` maps to Hepta `e259297b3076`. Shell approval keys now bind the working directory as a file URI, with an opaque collision-separated fallback for unrepresentable or NUL-bearing paths. Focused result: `2 passed`.
 - Protocol/app-server: upstream `0d4910331db5` maps to Hepta `2a91f2c7f832`. External session imports preserve earliest/latest valid source timestamps after rollout-compatible name reconciliation. Focused results: external-session parser `18 passed`; app-server import regression `1 passed`.
 - Tools/apps/runtime: upstream `205d37a20f74` maps to Hepta `db39bc7d6aff`. Namespaced `DirectModelOnly` capabilities remain model-direct and are excluded from nested code mode, which preserves the upstream sleep-tool invariant without pretending Hepta already owns the upstream clock subsystem. Focused result: `1 passed`.
+- Durable state: upstream `946ed315a484` and `c769a0534069` map to Hepta `0109bb53ce68`. SQLite paths now derive from one `SqliteConfig`, and rollout/state consumers carry the configured `sqlite_home` rather than falling back to a process-global root. The commit contains regressions for single-root derivation, mismatched-root rejection without cleanup, and runtime/backfill initialization.
+- Tools/apps/runtime: upstream `fb4e6ba2f492` maps to Hepta `4317559f04e4`. `update_plan` remains enabled by default; explicit disablement removes it from direct visibility, registry publication, and code mode. Focused results: base gating `3 passed`; code-mode matrix `1 passed`.
+- Security: upstream `9d823343026e` maps to Hepta `7826b9bf1e13`. Guardian review sessions clear inherited context-window/auto-compaction overrides only for a different effective model and retain them for the same effective model, even when the configured parent slug is stale. Focused result: `14 passed`.
+- Security/state: upstream `5c94796dc9e8` maps to Hepta `6271e00d842f`. Paginated create/resume now hold a cross-process writer lock for the live recorder lifetime; competing writers fail as JSON-RPC `-32600`, reads remain available, and shutdown/process exit transfers ownership. Results: thread-store `106 passed`, core mapping `2 passed`, app-server resume regression `1 passed`.
+- Security/state: the archive half of upstream `963316583b74` also maps to Hepta `6271e00d842f`. The full discovered subtree is ownership-preflighted before any rollout move, including unmaterialized descendants. Archive regressions: `6 passed`. Hepta has no `thread/delete` API, so deletion ownership is not claimed.
 
 ## Tooling
 
-- Package fixes completed for `codex-external-agent-sessions`, `codex-app-server`, and `codex-core`.
+- Package fixes completed for `codex-external-agent-sessions`, `codex-thread-store`, `codex-app-server`, and `codex-core`.
 - `just fmt` completed; only existing stable-toolchain `imports_granularity` warnings and pre-existing lint warnings were emitted.
 - Machine-readable provenance, exact commit IDs, changed files, and commands are in the adjacent JSON receipt.
 
 ## Non-Claims
 
-- This receipt proves three selected semantic absorptions, not full consumption of the 97-commit R4 range.
+- This receipt proves nine selected semantic absorptions, not full consumption of the 97-commit R4 range.
+- The local archive surface is covered; upstream deletion ownership is not claimed because Hepta exposes no thread deletion API.
+- Writer-lock integrity assumes trusted permissions on `codex_home`; it does not resist a hostile same-UID process replacing lock files directly.
 - It does not promote the remaining R4 candidates to imported.
 - It does not establish production readiness, controlled-live readiness, or upstream history compatibility.

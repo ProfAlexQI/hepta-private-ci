@@ -2,6 +2,7 @@
   "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
   "record_id": "upstream-codex-r4-semantic-absorption-2026-07-24",
   "recorded_at": "2026-07-24T06:35:39Z",
+  "updated_at": "2026-07-24T10:25:07Z",
   "source_intake": {
     "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
     "commit": "77867f0f04ba5936d40798ef47027bb78872da8f",
@@ -77,11 +78,156 @@
           "tests_failed": 0
         }
       ]
+    },
+    {
+      "lane": "protocol_app_server",
+      "upstream_commit": "946ed315a484e052051d02b3e0274642da55dcf8",
+      "upstream_title": "Centralize SQLite connection configuration (#34808)",
+      "hepta_commit": "0109bb53ce6859b66598f42fe3db9015d0d84141",
+      "semantic_mapping": "Hepta centralizes state and log database path derivation in SqliteConfig, constructs StateRuntime from that single configuration object, and exposes the configured SQLite root through rollout composition rather than rediscovering it from process-global defaults.",
+      "files": [
+        "codex-rs/state/src/sqlite.rs",
+        "codex-rs/state/src/runtime.rs",
+        "codex-rs/rollout/src/config.rs",
+        "codex-rs/rollout/src/state_db.rs"
+      ],
+      "regression_coverage": [
+        "sqlite_config_derives_every_runtime_path_from_one_home",
+        "try_init_uses_configured_sqlite_home_for_runtime_and_backfill"
+      ]
+    },
+    {
+      "lane": "protocol_app_server",
+      "upstream_commit": "c769a053406985c1fc47281fb81171b7721a3687",
+      "upstream_title": "Honor the configured SQLite home across state consumers (#34994)",
+      "hepta_commit": "0109bb53ce6859b66598f42fe3db9015d0d84141",
+      "semantic_mapping": "Rollout and state consumers now carry the configured sqlite_home into runtime creation and reject a mismatched database root without deleting or silently replacing the existing state, preserving one durable-root identity across initialization and backfill.",
+      "files": [
+        "codex-rs/rollout/src/config.rs",
+        "codex-rs/rollout/src/recorder.rs",
+        "codex-rs/rollout/src/state_db.rs",
+        "codex-rs/rollout/src/state_db_tests.rs",
+        "codex-rs/state/src/runtime.rs"
+      ],
+      "regression_coverage": [
+        "list_threads_db_rejects_mismatched_sqlite_home_without_cleanup",
+        "try_init_uses_configured_sqlite_home_for_runtime_and_backfill"
+      ]
+    },
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "fb4e6ba2f49278c49b33ced725964ace9d0f5c37",
+      "upstream_title": "Allow disabling the update_plan tool (#35054)",
+      "hepta_commit": "4317559f04e4821e2d12c6ea2225d10610ab0e8b",
+      "semantic_mapping": "The tool configuration carries an explicit update_plan_enabled switch whose default remains enabled. When disabled, update_plan is absent from the visible tool surface, registry, and code-mode projection rather than merely rejected at execution time.",
+      "files": [
+        "codex-rs/tools/src/tool_config.rs",
+        "codex-rs/config/src/config_toml.rs",
+        "codex-rs/core/src/config/mod.rs",
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "scope": "default, visible-surface, and registry gating",
+          "result": "passed",
+          "tests_passed": 3,
+          "tests_failed": 0
+        },
+        {
+          "scope": "code-mode disabled matrix",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0
+        }
+      ]
+    },
+    {
+      "lane": "security",
+      "upstream_commit": "9d823343026e600dab694e41865ed60613da31b6",
+      "upstream_title": "Use Guardian model limits for review sessions (#34847)",
+      "hepta_commit": "7826b9bf1e13c22589e526ff0874210e338ed220",
+      "semantic_mapping": "Guardian review composition resolves the effective review model before spawning. Context-window and auto-compaction overrides are cleared only when that effective model differs from the active parent model, retained for the same model even when config.model is stale, and configuration failures still map fail closed to PromptBuild.",
+      "files": [
+        "codex-rs/core/src/guardian/review.rs",
+        "codex-rs/core/src/guardian/tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core guardian_review_session_config_",
+          "result": "passed",
+          "tests_passed": 14,
+          "tests_failed": 0
+        }
+      ]
+    },
+    {
+      "lane": "security",
+      "upstream_commit": "5c94796dc9e88580fdf0b05ef9ce9d975a86e1a6",
+      "upstream_title": "Enforce single-writer ownership for paginated threads (#34986)",
+      "hepta_commit": "6271e00d842f73729231c662ca38100ea8cea69a",
+      "semantic_mapping": "Paginated create and resume acquire a cross-process per-thread writer lock for the full live-recorder lifetime. Competing writers fail before persistence with a ThreadStore conflict mapped to JSON-RPC -32600, stale locks are cleaned under a coordination lock, metadata reads remain available, and ownership transfers after shutdown or process exit.",
+      "files": [
+        "codex-rs/thread-store/src/local/writer_lock.rs",
+        "codex-rs/thread-store/src/local/writer_lock_tests.rs",
+        "codex-rs/thread-store/src/local/live_writer.rs",
+        "codex-rs/thread-store/src/local/mod.rs",
+        "codex-rs/core/src/session_rollout_init_error.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-thread-store",
+          "result": "passed",
+          "tests_passed": 106,
+          "tests_failed": 0
+        },
+        {
+          "command": "cargo test -p codex-core session_rollout_init_error::tests",
+          "result": "passed",
+          "tests_passed": 2,
+          "tests_failed": 0
+        },
+        {
+          "command": "cargo test -p codex-app-server --test all v2::thread_resume::thread_resume_rejects_paginated_writer_owned_by_another_process",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0
+        }
+      ]
+    },
+    {
+      "lane": "security",
+      "upstream_commit": "963316583b744e707d653a854b30e90d8dda8a78",
+      "upstream_title": "Enforce writer ownership for thread archive and deletion (#35031)",
+      "hepta_commit": "6271e00d842f73729231c662ca38100ea8cea69a",
+      "semantic_mapping": "The locally available archive surface preflights writer ownership for the entire discovered subtree, including unmaterialized descendants, before moving any rollout. Conflicts return JSON-RPC -32600 with zero durable archive mutation. Hepta does not expose a thread/delete API, so deletion ownership is explicitly not claimed.",
+      "files": [
+        "codex-rs/thread-store/src/local/archive_thread.rs",
+        "codex-rs/thread-store/src/store.rs",
+        "codex-rs/thread-store/src/types.rs",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_archive.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-app-server --test all v2::thread_archive",
+          "result": "passed",
+          "tests_passed": 6,
+          "tests_failed": 0
+        }
+      ],
+      "non_claims": {
+        "thread_delete_api_present": false,
+        "thread_delete_ownership_absorbed": false,
+        "same_uid_lock_file_replacement_resistance": false
+      }
     }
   ],
   "tooling_evidence": {
     "package_fix": [
       "just fix -p codex-external-agent-sessions",
+      "just fix -p codex-thread-store",
       "just fix -p codex-app-server",
       "just fix -p codex-core"
     ],
@@ -89,7 +235,7 @@
     "result": "passed_with_existing_non_blocking_warnings"
   },
   "claims": {
-    "absorbed_commit_count": 3,
+    "absorbed_commit_count": 9,
     "all_r4_candidates_absorbed": false,
     "upstream_fully_consumed": false,
     "live_enablement": false,
