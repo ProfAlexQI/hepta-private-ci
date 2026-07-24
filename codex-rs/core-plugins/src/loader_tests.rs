@@ -5,6 +5,7 @@ use codex_config::ConfigLayerSource;
 use codex_config::ConfigRequirements;
 use codex_config::ConfigRequirementsToml;
 use codex_plugin::PluginId;
+use codex_utils_plugins::AGENT_PLUGIN_SCHEMA_URI;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
@@ -141,6 +142,39 @@ fn plugin_mcp_file_supports_top_level_server_map_format() {
     );
 }
 
+#[tokio::test]
+async fn plugin_mcp_loading_uses_the_captured_manifest_paths() {
+    let (_tmp, plugin_root) = plugin_root();
+    write_manifest(
+        &plugin_root,
+        r#"{"name":"demo-plugin","mcpServers":"./mcp-a.json"}"#,
+    );
+    fs::write(
+        plugin_root.join("mcp-a.json"),
+        r#"{"a":{"command":"mcp-a"}}"#,
+    )
+    .expect("write first MCP config");
+    fs::write(
+        plugin_root.join("mcp-b.json"),
+        r#"{"b":{"command":"mcp-b"}}"#,
+    )
+    .expect("write second MCP config");
+    let manifest = load_plugin_manifest(plugin_root.as_path()).expect("initial manifest");
+
+    write_manifest(
+        &plugin_root,
+        r#"{"name":"demo-plugin","mcpServers":"./mcp-b.json"}"#,
+    );
+
+    let mut names =
+        load_plugin_mcp_servers_from_manifest_paths(plugin_root.as_path(), &manifest.paths)
+            .await
+            .into_keys()
+            .collect::<Vec<_>>();
+    names.sort_unstable();
+    assert_eq!(names, vec!["a".to_string()]);
+}
+
 #[test]
 fn curated_plugin_cache_version_shortens_full_git_sha() {
     assert_eq!(
@@ -208,6 +242,7 @@ fn load_sources(plugin_root: &AbsolutePathBuf) -> (Vec<PluginHookSource>, Vec<St
         &plugin_id(),
         &plugin_data_root,
         &manifest.paths,
+        manifest.skill_discovery_mode,
     )
 }
 
@@ -233,6 +268,94 @@ fn assert_sources(sources: &[PluginHookSource], expected_relative_paths: &[&str]
             .collect::<Vec<_>>(),
         vec![1; expected_relative_paths.len()]
     );
+}
+
+#[tokio::test]
+async fn agent_plugin_does_not_implicitly_activate_default_apps_or_hooks() {
+    let (_tmp, plugin_root) = plugin_root();
+    fs::write(
+        plugin_root.join("plugin.json"),
+        format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"demo-plugin"}}"#),
+    )
+    .expect("write Agent Plugin manifest");
+    fs::write(
+        plugin_root.join(".app.json"),
+        r#"{"apps":{"default":{"id":"connector_default"}}}"#,
+    )
+    .expect("write default app config");
+    write_hook_file(
+        &plugin_root,
+        "hooks/hooks.json",
+        "PreToolUse",
+        "echo default",
+    );
+
+    assert_eq!(
+        load_plugin_apps(plugin_root.as_path()).await,
+        Vec::<AppConnectorId>::new()
+    );
+    let (sources, warnings) = load_sources(&plugin_root);
+    assert_eq!(sources, Vec::<PluginHookSource>::new());
+    assert_eq!(warnings, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn invalid_agent_plugin_manifest_does_not_fall_back_to_default_apps() {
+    let (_tmp, plugin_root) = plugin_root();
+    fs::write(
+        plugin_root.join("plugin.json"),
+        r#"{
+  "$schema": "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+  "name": "demo-plugin"
+}"#,
+    )
+    .expect("write unsupported Agent Plugin manifest");
+    fs::write(
+        plugin_root.join(".app.json"),
+        r#"{"apps":{"default":{"id":"connector_default"}}}"#,
+    )
+    .expect("write default app config");
+
+    assert_eq!(
+        load_plugin_apps(plugin_root.as_path()).await,
+        Vec::<AppConnectorId>::new()
+    );
+}
+
+#[tokio::test]
+async fn agent_plugin_codex_overlay_explicitly_activates_apps_and_hooks() {
+    let (_tmp, plugin_root) = plugin_root();
+    fs::write(
+        plugin_root.join("plugin.json"),
+        format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"demo-plugin"}}"#),
+    )
+    .expect("write Agent Plugin manifest");
+    write_manifest(
+        &plugin_root,
+        r#"{
+  "apps": "./explicit.app.json",
+  "hooks": "./hooks/explicit.json"
+}"#,
+    );
+    fs::write(
+        plugin_root.join("explicit.app.json"),
+        r#"{"apps":{"explicit":{"id":"connector_explicit"}}}"#,
+    )
+    .expect("write explicit app config");
+    write_hook_file(
+        &plugin_root,
+        "hooks/explicit.json",
+        "PreToolUse",
+        "echo explicit",
+    );
+
+    assert_eq!(
+        load_plugin_apps(plugin_root.as_path()).await,
+        vec![AppConnectorId("connector_explicit".to_string())]
+    );
+    let (sources, warnings) = load_sources(&plugin_root);
+    assert_eq!(warnings, Vec::<String>::new());
+    assert_sources(&sources, &["hooks/explicit.json"]);
 }
 
 #[test]
@@ -326,7 +449,7 @@ fn load_plugin_hooks_supports_inline_manifest_hooks() {
     let (sources, warnings) = load_sources(&plugin_root);
 
     assert_eq!(warnings, Vec::<String>::new());
-    assert_sources(&sources, &["plugin.json#hooks[0]"]);
+    assert_sources(&sources, &[".codex-plugin/plugin.json#hooks[0]"]);
 }
 
 #[test]
@@ -380,7 +503,90 @@ fn load_plugin_hooks_supports_inline_manifest_hook_list() {
     let (sources, warnings) = load_sources(&plugin_root);
 
     assert_eq!(warnings, Vec::<String>::new());
-    assert_sources(&sources, &["plugin.json#hooks[0]", "plugin.json#hooks[1]"]);
+    assert_sources(
+        &sources,
+        &[
+            ".codex-plugin/plugin.json#hooks[0]",
+            ".codex-plugin/plugin.json#hooks[1]",
+        ],
+    );
+}
+
+#[test]
+fn agent_plugin_inline_overlay_hooks_preserve_frozen_overlay_provenance() {
+    let (_tmp, plugin_root) = plugin_root();
+    fs::write(
+        plugin_root.join("plugin.json"),
+        format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"demo-plugin"}}"#),
+    )
+    .expect("write Agent Plugin manifest");
+    write_manifest(
+        &plugin_root,
+        r#"{
+  "hooks": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [{ "type": "command", "command": "echo overlay" }]
+        }
+      ]
+    }
+  }
+}"#,
+    );
+
+    let (sources, warnings) = load_sources(&plugin_root);
+
+    assert_eq!(warnings, Vec::<String>::new());
+    assert_sources(&sources, &[".codex-plugin/plugin.json#hooks[0]"]);
+    assert_eq!(
+        sources[0].source_path,
+        plugin_root.join(".codex-plugin/plugin.json")
+    );
+}
+
+#[test]
+fn agent_plugin_inline_extension_hooks_preserve_frozen_extension_provenance() {
+    let (_tmp, plugin_root) = plugin_root();
+    fs::write(
+        plugin_root.join("plugin.json"),
+        format!(
+            r#"{{
+  "$schema": "{AGENT_PLUGIN_SCHEMA_URI}",
+  "name": "demo-plugin",
+  "extensions": {{
+    "com.openai": {{
+      "hooks": {{
+        "hooks": {{
+          "SessionStart": [
+            {{
+              "hooks": [{{ "type": "command", "command": "echo extension" }}]
+            }}
+          ]
+        }}
+      }}
+    }}
+  }}
+}}"#
+        ),
+    )
+    .expect("write Agent Plugin manifest");
+    write_manifest(
+        &plugin_root,
+        r#"{
+  "hooks": {
+    "hooks": {
+      "Stop": [{"hooks": [{ "type": "command", "command": "echo ignored" }]}]
+    }
+  }
+}"#,
+    );
+
+    let (sources, warnings) = load_sources(&plugin_root);
+
+    assert_eq!(warnings, Vec::<String>::new());
+    assert_sources(&sources, &["plugin.json#extensions.com.openai.hooks[0]"]);
+    assert_eq!(sources[0].source_path, plugin_root.join("plugin.json"));
 }
 
 #[test]

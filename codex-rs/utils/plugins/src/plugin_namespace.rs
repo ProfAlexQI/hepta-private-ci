@@ -2,13 +2,56 @@
 
 use codex_exec_server::ExecutorFileSystem;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
 const DISCOVERABLE_PLUGIN_MANIFEST_PATHS: &[&str] =
     &[".codex-plugin/plugin.json", ".claude-plugin/plugin.json"];
 
+pub const AGENT_PLUGIN_MANIFEST_RELATIVE_PATH: &str = "plugin.json";
+pub const AGENT_PLUGIN_SCHEMA_URI: &str =
+    "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
+pub const SUPPORTED_AGENT_PLUGIN_SCHEMA_URIS: &[&str] = &[AGENT_PLUGIN_SCHEMA_URI];
+pub const AGENT_PLUGIN_SCHEMA_PREFIX: &str = "https://agent-plugins.org/schemas/";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentPluginSchemaStatus {
+    Supported,
+    Unsupported,
+    Unrelated,
+}
+
+pub fn agent_plugin_schema_status(contents: &str) -> AgentPluginSchemaStatus {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(contents) else {
+        return AgentPluginSchemaStatus::Unrelated;
+    };
+    let Some(schema) = value.get("$schema").and_then(serde_json::Value::as_str) else {
+        return AgentPluginSchemaStatus::Unrelated;
+    };
+    if SUPPORTED_AGENT_PLUGIN_SCHEMA_URIS.contains(&schema) {
+        AgentPluginSchemaStatus::Supported
+    } else if schema.starts_with(AGENT_PLUGIN_SCHEMA_PREFIX) {
+        AgentPluginSchemaStatus::Unsupported
+    } else {
+        AgentPluginSchemaStatus::Unrelated
+    }
+}
+
 pub fn find_plugin_manifest_path(plugin_root: &Path) -> Option<PathBuf> {
+    let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
+    if agent_manifest_path.is_file() {
+        match fs::read_to_string(&agent_manifest_path)
+            .ok()
+            .map(|contents| agent_plugin_schema_status(&contents))
+        {
+            Some(AgentPluginSchemaStatus::Supported | AgentPluginSchemaStatus::Unsupported) => {
+                return Some(agent_manifest_path);
+            }
+            Some(AgentPluginSchemaStatus::Unrelated) | None => {}
+        }
+    }
+
     DISCOVERABLE_PLUGIN_MANIFEST_PATHS
         .iter()
         .map(|relative_path| plugin_root.join(relative_path))
@@ -22,10 +65,42 @@ struct RawPluginManifestName {
     name: String,
 }
 
+enum PluginManifestNameResolution {
+    Found(String),
+    Rejected,
+    NotFound,
+}
+
 async fn plugin_manifest_name(
     fs: &dyn ExecutorFileSystem,
     plugin_root: &AbsolutePathBuf,
-) -> Option<String> {
+) -> PluginManifestNameResolution {
+    let agent_manifest_path = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
+    match fs
+        .get_metadata(&agent_manifest_path, /*sandbox*/ None)
+        .await
+    {
+        Ok(metadata) if metadata.is_file => {
+            if let Ok(contents) = fs
+                .read_file_text(&agent_manifest_path, /*sandbox*/ None)
+                .await
+            {
+                match agent_plugin_schema_status(&contents) {
+                    AgentPluginSchemaStatus::Supported => {
+                        return plugin_name_from_manifest_contents(plugin_root, &contents)
+                            .map(PluginManifestNameResolution::Found)
+                            .unwrap_or(PluginManifestNameResolution::Rejected);
+                    }
+                    AgentPluginSchemaStatus::Unsupported => {
+                        return PluginManifestNameResolution::Rejected;
+                    }
+                    AgentPluginSchemaStatus::Unrelated => {}
+                }
+            }
+        }
+        Ok(_) | Err(_) => {}
+    }
+
     let mut manifest_path = None;
     for relative_path in DISCOVERABLE_PLUGIN_MANIFEST_PATHS {
         let candidate = plugin_root.join(relative_path);
@@ -37,12 +112,22 @@ async fn plugin_manifest_name(
             Ok(_) | Err(_) => {}
         }
     }
-    let manifest_path = manifest_path?;
-    let contents = fs
-        .read_file_text(&manifest_path, /*sandbox*/ None)
-        .await
-        .ok()?;
-    let RawPluginManifestName { name: raw_name } = serde_json::from_str(&contents).ok()?;
+    let Some(manifest_path) = manifest_path else {
+        return PluginManifestNameResolution::NotFound;
+    };
+    let Ok(contents) = fs.read_file_text(&manifest_path, /*sandbox*/ None).await else {
+        return PluginManifestNameResolution::Rejected;
+    };
+    plugin_name_from_manifest_contents(plugin_root, &contents)
+        .map(PluginManifestNameResolution::Found)
+        .unwrap_or(PluginManifestNameResolution::Rejected)
+}
+
+fn plugin_name_from_manifest_contents(
+    plugin_root: &AbsolutePathBuf,
+    contents: &str,
+) -> Option<String> {
+    let RawPluginManifestName { name: raw_name } = serde_json::from_str(contents).ok()?;
     Some(
         plugin_root
             .file_name()
@@ -60,8 +145,10 @@ pub async fn plugin_namespace_for_skill_path(
     path: &AbsolutePathBuf,
 ) -> Option<String> {
     for ancestor in path.ancestors() {
-        if let Some(name) = plugin_manifest_name(fs, &ancestor).await {
-            return Some(name);
+        match plugin_manifest_name(fs, &ancestor).await {
+            PluginManifestNameResolution::Found(name) => return Some(name),
+            PluginManifestNameResolution::Rejected => return None,
+            PluginManifestNameResolution::NotFound => {}
         }
     }
     None
@@ -69,6 +156,8 @@ pub async fn plugin_namespace_for_skill_path(
 
 #[cfg(test)]
 mod tests {
+    use super::AGENT_PLUGIN_MANIFEST_RELATIVE_PATH;
+    use super::AGENT_PLUGIN_SCHEMA_URI;
     use super::find_plugin_manifest_path;
     use super::plugin_namespace_for_skill_path;
     use codex_exec_server::LOCAL_FS;
@@ -117,5 +206,140 @@ mod tests {
             Some("sample".to_string())
         );
         assert_eq!(find_plugin_manifest_path(&plugin_root), Some(manifest_path));
+    }
+
+    #[test]
+    fn supported_agent_manifest_precedes_legacy_manifest() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let root_manifest = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
+        let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::write(
+            &root_manifest,
+            format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"sample"}}"#),
+        )
+        .expect("write Agent Plugin manifest");
+        fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), Some(root_manifest));
+    }
+
+    #[test]
+    fn unsupported_agent_manifest_precedes_legacy_manifest_to_fail_closed() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let root_manifest = plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
+        let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::write(
+            &root_manifest,
+            r#"{
+  "$schema":"https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+  "name":"sample"
+}"#,
+        )
+        .expect("write unsupported Agent Plugin manifest");
+        fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+
+        assert_eq!(find_plugin_manifest_path(&plugin_root), Some(root_manifest));
+    }
+
+    #[test]
+    fn unrelated_root_manifest_keeps_codex_then_claude_precedence() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let codex_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        let claude_manifest = plugin_root.join(".claude-plugin/plugin.json");
+        fs::create_dir_all(codex_manifest.parent().expect("Codex parent")).expect("mkdir");
+        fs::create_dir_all(claude_manifest.parent().expect("Claude parent")).expect("mkdir");
+        fs::write(
+            plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH),
+            r#"{"name":"npm-package"}"#,
+        )
+        .expect("write unrelated root manifest");
+        fs::write(&codex_manifest, r#"{"name":"codex"}"#).expect("write Codex manifest");
+        fs::write(claude_manifest, r#"{"name":"claude"}"#).expect("write Claude manifest");
+
+        assert_eq!(
+            find_plugin_manifest_path(&plugin_root),
+            Some(codex_manifest)
+        );
+    }
+
+    #[tokio::test]
+    async fn uses_agent_plugin_manifest_name() {
+        let tmp = tempdir().expect("tempdir");
+        let plugin_root = tmp.path().join("plugins/sample");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("mkdir");
+        fs::write(
+            plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH),
+            format!(r#"{{"$schema":"{AGENT_PLUGIN_SCHEMA_URI}","name":"agent.sample"}}"#),
+        )
+        .expect("write Agent Plugin manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            Some("agent.sample".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn unsupported_agent_manifest_blocks_legacy_and_outer_namespaces() {
+        let tmp = tempdir().expect("tempdir");
+        let outer_root = tmp.path().join("plugins/outer");
+        let plugin_root = outer_root.join("nested");
+        let skill_path = plugin_root.join("skills/search/SKILL.md");
+        let outer_manifest = outer_root.join(".codex-plugin/plugin.json");
+        let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+        fs::create_dir_all(outer_manifest.parent().expect("outer parent")).expect("mkdir");
+        fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+        fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("mkdir");
+        fs::write(outer_manifest, r#"{"name":"outer"}"#).expect("write outer manifest");
+        fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+        fs::write(
+            plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH),
+            r#"{
+  "$schema":"https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
+  "name":"unsupported"
+}"#,
+        )
+        .expect("write unsupported Agent Plugin manifest");
+        fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+
+        assert_eq!(
+            plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_or_unrelated_agent_root_uses_legacy_namespace() {
+        for (case, root_contents) in [
+            ("malformed", "{not-json"),
+            ("unrelated", r#"{"name":"npm-package"}"#),
+        ] {
+            let tmp = tempdir().expect("tempdir");
+            let plugin_root = tmp.path().join("plugins").join(case);
+            let skill_path = plugin_root.join("skills/search/SKILL.md");
+            let legacy_manifest = plugin_root.join(".codex-plugin/plugin.json");
+            fs::create_dir_all(legacy_manifest.parent().expect("legacy parent")).expect("mkdir");
+            fs::create_dir_all(skill_path.parent().expect("skill parent")).expect("mkdir");
+            fs::write(
+                plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH),
+                root_contents,
+            )
+            .expect("write root manifest");
+            fs::write(legacy_manifest, r#"{"name":"legacy"}"#).expect("write legacy manifest");
+            fs::write(&skill_path, "---\ndescription: search\n---\n").expect("write skill");
+
+            assert_eq!(
+                plugin_namespace_for_skill_path(LOCAL_FS.as_ref(), &skill_path.abs()).await,
+                Some("legacy".to_string()),
+                "case {case}"
+            );
+        }
     }
 }

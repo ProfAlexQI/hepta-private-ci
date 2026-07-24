@@ -5,9 +5,9 @@ use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
 use crate::loader::configured_curated_plugin_ids_from_codex_home;
 use crate::loader::curated_plugin_cache_version;
 use crate::loader::installed_plugin_telemetry_metadata;
-use crate::loader::load_plugin_apps;
+use crate::loader::load_plugin_apps_from_manifest_paths;
 use crate::loader::load_plugin_hooks;
-use crate::loader::load_plugin_mcp_servers;
+use crate::loader::load_plugin_mcp_servers_from_manifest_paths;
 use crate::loader::load_plugin_skills;
 use crate::loader::load_plugins_from_layer_stack;
 use crate::loader::log_plugin_load_errors;
@@ -1417,7 +1417,9 @@ impl PluginsManager {
         let resolved_skills = load_plugin_skills(
             &source_path,
             &plugin_id,
+            &manifest.name,
             &manifest.paths,
+            manifest.skill_discovery_mode,
             self.restriction_product,
             &codex_core_skills::config_rules::skill_config_rules_from_stack(
                 &config.config_layer_stack,
@@ -1426,8 +1428,13 @@ impl PluginsManager {
         .await;
         let hooks = if config.plugin_hooks_enabled {
             let plugin_data_root = self.store.plugin_data_root(&plugin_id);
-            let (hook_sources, _hook_load_warnings) =
-                load_plugin_hooks(&source_path, &plugin_id, &plugin_data_root, &manifest.paths);
+            let (hook_sources, _hook_load_warnings) = load_plugin_hooks(
+                &source_path,
+                &plugin_id,
+                &plugin_data_root,
+                &manifest.paths,
+                manifest.skill_discovery_mode,
+            );
             plugin_hook_declarations(&hook_sources)
                 .into_iter()
                 .map(|hook| PluginHookSummary {
@@ -1438,11 +1445,17 @@ impl PluginsManager {
         } else {
             Vec::new()
         };
-        let apps = load_plugin_apps(source_path.as_path()).await;
-        let mut mcp_server_names = load_plugin_mcp_servers(source_path.as_path())
-            .await
-            .into_keys()
-            .collect::<Vec<_>>();
+        let apps = load_plugin_apps_from_manifest_paths(
+            source_path.as_path(),
+            &manifest.paths,
+            manifest.skill_discovery_mode,
+        )
+        .await;
+        let mut mcp_server_names =
+            load_plugin_mcp_servers_from_manifest_paths(source_path.as_path(), &manifest.paths)
+                .await
+                .into_keys()
+                .collect::<Vec<_>>();
         mcp_server_names.sort_unstable();
         mcp_server_names.dedup();
 

@@ -291,15 +291,13 @@ pub fn extract_tool_mentions_with_sigil(text: &str, sigil: char) -> ToolMentions
             index += 1;
             continue;
         };
-        if !is_mention_name_char(*first_name_byte) {
+        if !is_mention_name_start_char(*first_name_byte) {
             index += 1;
             continue;
         }
 
         let mut name_end = name_start + 1;
-        while let Some(next_byte) = text_bytes.get(name_end)
-            && is_mention_name_char(*next_byte)
-        {
+        while is_mention_name_continuation(text_bytes, name_end) {
             name_end += 1;
         }
 
@@ -409,14 +407,12 @@ fn parse_linked_tool_mention<'a>(
 
     let name_start = sigil_index + 1;
     let first_name_byte = text_bytes.get(name_start)?;
-    if !is_mention_name_char(*first_name_byte) {
+    if !is_mention_name_start_char(*first_name_byte) {
         return None;
     }
 
     let mut name_end = name_start + 1;
-    while let Some(next_byte) = text_bytes.get(name_end)
-        && is_mention_name_char(*next_byte)
-    {
+    while is_mention_name_continuation(text_bytes, name_end) {
         name_end += 1;
     }
 
@@ -495,7 +491,7 @@ fn text_mentions_skill(text: &str, skill_name: &str) -> bool {
 
         let after_index = name_start + skill_bytes.len();
         let after = text_bytes.get(after_index).copied();
-        if after.is_none_or(|b| !is_mention_name_char(b)) {
+        if after.is_none() || !is_mention_name_continuation(text_bytes, after_index) {
             return true;
         }
     }
@@ -504,7 +500,26 @@ fn text_mentions_skill(text: &str, skill_name: &str) -> bool {
 }
 
 fn is_mention_name_char(byte: u8) -> bool {
-    matches!(byte, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-' | b':')
+    matches!(
+        byte,
+        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-' | b':' | b'.'
+    )
+}
+
+fn is_mention_name_start_char(byte: u8) -> bool {
+    is_mention_name_char(byte) && byte != b'.'
+}
+
+fn is_mention_name_continuation(bytes: &[u8], index: usize) -> bool {
+    let Some(byte) = bytes.get(index).copied() else {
+        return false;
+    };
+    if byte != b'.' {
+        return is_mention_name_char(byte);
+    }
+    bytes
+        .get(index + 1)
+        .is_some_and(|next| next.is_ascii_alphanumeric() || matches!(next, b'_' | b'-'))
 }
 
 #[cfg(test)]

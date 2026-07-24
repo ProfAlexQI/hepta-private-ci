@@ -98,6 +98,32 @@ fn install_uses_manifest_name_for_destination_and_key() {
 }
 
 #[test]
+fn install_supports_dotted_agent_plugin_names() {
+    let tmp = tempdir().unwrap();
+    write_plugin(tmp.path(), "source-dir", "acme.tools");
+    let plugin_id = PluginId::new("acme.tools".to_string(), "market".to_string()).unwrap();
+
+    let result = PluginStore::new(tmp.path().to_path_buf())
+        .install(
+            AbsolutePathBuf::try_from(tmp.path().join("source-dir")).unwrap(),
+            plugin_id.clone(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        result,
+        PluginInstallResult {
+            plugin_id,
+            plugin_version: "local".to_string(),
+            installed_path: AbsolutePathBuf::try_from(
+                tmp.path().join("plugins/cache/market/acme.tools/local"),
+            )
+            .unwrap(),
+        }
+    );
+}
+
+#[test]
 fn plugin_root_derives_path_from_key_and_version() {
     let tmp = tempdir().unwrap();
     let store = PluginStore::new(tmp.path().to_path_buf());
@@ -273,13 +299,13 @@ fn plugin_root_rejects_path_separators_in_key_segments() {
     let err = PluginId::parse("../../etc@debug").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "invalid plugin name: only ASCII letters, digits, `_`, and `-` are allowed in `../../etc@debug`"
+        "invalid plugin name: only ASCII letters, digits, `_`, `-`, and `.` are allowed in `../../etc@debug`"
     );
 
     let err = PluginId::parse("sample@../../etc").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "invalid marketplace name: only ASCII letters, digits, `_`, and `-` are allowed in `sample@../../etc`"
+        "invalid marketplace name: only ASCII letters, digits, `_`, `-`, and `.` are allowed in `sample@../../etc`"
     );
 }
 
@@ -297,7 +323,7 @@ fn install_rejects_manifest_names_with_path_separators() {
 
     assert_eq!(
         err.to_string(),
-        "invalid plugin name: only ASCII letters, digits, `_`, and `-` are allowed"
+        "invalid plugin name: only ASCII letters, digits, `_`, `-`, and `.` are allowed"
     );
 }
 
@@ -307,7 +333,7 @@ fn install_rejects_marketplace_names_with_path_separators() {
 
     assert_eq!(
         err.to_string(),
-        "invalid marketplace name: only ASCII letters, digits, `_`, and `-` are allowed"
+        "invalid marketplace name: only ASCII letters, digits, `_`, `-`, and `.` are allowed"
     );
 }
 

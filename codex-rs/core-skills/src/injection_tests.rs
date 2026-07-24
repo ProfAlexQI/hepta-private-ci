@@ -75,6 +75,14 @@ fn text_mentions_skill_handles_end_boundary_and_near_misses() {
         true,
         text_mentions_skill("$alpha-skillx and later $alpha-skill ", "alpha-skill")
     );
+    assert_eq!(
+        true,
+        text_mentions_skill("$acme.tools:search.", "acme.tools:search")
+    );
+    assert_eq!(
+        false,
+        text_mentions_skill("$acme.tools:searching", "acme.tools:search")
+    );
 }
 
 #[test]
@@ -113,10 +121,10 @@ fn extract_tool_mentions_trims_linked_paths_and_allows_spacing() {
 }
 
 #[test]
-fn extract_tool_mentions_stops_at_non_name_chars() {
+fn extract_tool_mentions_keeps_dotted_names_and_stops_at_punctuation() {
     assert_mentions(
-        "use $alpha.skill and $beta_extra",
-        &["alpha", "beta_extra"],
+        "use $alpha.skill, $acme.tools:search. and $beta_extra",
+        &["acme.tools:search", "alpha.skill", "beta_extra"],
         &[],
     );
 }

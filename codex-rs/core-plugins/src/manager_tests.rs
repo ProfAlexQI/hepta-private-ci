@@ -250,12 +250,14 @@ async fn load_plugins_loads_default_skills_and_mcp_servers() {
         vec![LoadedPlugin {
             config_name: "sample@test".to_string(),
             manifest_name: Some("sample".to_string()),
+            plugin_namespace: Some("sample".to_string()),
             manifest_description: Some(
                 "Plugin that includes the sample MCP server and Skills".to_string(),
             ),
             root: AbsolutePathBuf::try_from(plugin_root.clone()).unwrap(),
             enabled: true,
             skill_roots: vec![plugin_root.join("skills").abs()],
+            skill_discovery_mode: codex_utils_plugins::SkillDiscoveryMode::Recursive,
             disabled_skill_paths: HashSet::new(),
             has_enabled_skills: true,
             mcp_servers: HashMap::from([(
@@ -906,10 +908,12 @@ async fn load_plugins_preserves_disabled_plugins_without_effective_contributions
         vec![LoadedPlugin {
             config_name: "sample@test".to_string(),
             manifest_name: None,
+            plugin_namespace: None,
             manifest_description: None,
             root: AbsolutePathBuf::try_from(plugin_root).unwrap(),
             enabled: false,
             skill_roots: Vec::new(),
+            skill_discovery_mode: codex_utils_plugins::SkillDiscoveryMode::Recursive,
             disabled_skill_paths: HashSet::new(),
             has_enabled_skills: false,
             mcp_servers: HashMap::new(),
@@ -1026,10 +1030,12 @@ fn capability_index_filters_inactive_and_zero_capability_plugins() {
     let plugin = |config_name: &str, dir_name: &str, manifest_name: &str| LoadedPlugin {
         config_name: config_name.to_string(),
         manifest_name: Some(manifest_name.to_string()),
+        plugin_namespace: Some(manifest_name.to_string()),
         manifest_description: None,
         root: AbsolutePathBuf::try_from(codex_home.path().join(dir_name)).unwrap(),
         enabled: true,
         skill_roots: Vec::new(),
+        skill_discovery_mode: codex_utils_plugins::SkillDiscoveryMode::Recursive,
         disabled_skill_paths: HashSet::new(),
         has_enabled_skills: false,
         mcp_servers: HashMap::new(),

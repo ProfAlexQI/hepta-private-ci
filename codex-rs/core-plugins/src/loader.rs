@@ -19,8 +19,8 @@ use codex_core_skills::config_rules::SkillConfigRules;
 use codex_core_skills::config_rules::resolve_disabled_skill_paths;
 use codex_core_skills::config_rules::skill_config_rules_from_stack;
 use codex_core_skills::loader::SkillRoot;
+use codex_core_skills::loader::SkillRootFileSystem;
 use codex_core_skills::loader::load_skills_from_roots;
-use codex_exec_server::LOCAL_FS;
 use codex_plugin::AppConnectorId;
 use codex_plugin::LoadedPlugin;
 use codex_plugin::PluginCapabilitySummary;
@@ -32,6 +32,7 @@ use codex_plugin::PluginTelemetryMetadata;
 use codex_protocol::protocol::Product;
 use codex_protocol::protocol::SkillScope;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_plugins::SkillDiscoveryMode;
 use codex_utils_plugins::find_plugin_manifest_path;
 use serde::Deserialize;
 use serde_json::Map as JsonMap;
@@ -41,7 +42,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
 use tempfile::TempDir;
 use tracing::warn;
 
@@ -587,10 +587,12 @@ async fn load_plugin(
     let mut loaded_plugin = LoadedPlugin {
         config_name,
         manifest_name: None,
+        plugin_namespace: None,
         manifest_description: None,
         root,
         enabled: plugin.enabled,
         skill_roots: Vec::new(),
+        skill_discovery_mode: SkillDiscoveryMode::Recursive,
         disabled_skill_paths: HashSet::new(),
         has_enabled_skills: false,
         mcp_servers: HashMap::new(),
@@ -638,11 +640,15 @@ async fn load_plugin(
         .map(str::to_string)
         .or_else(|| Some(manifest.name.clone()));
     loaded_plugin.manifest_description = manifest.description.clone();
+    loaded_plugin.plugin_namespace = Some(manifest.name.clone());
     loaded_plugin.skill_roots = plugin_skill_roots(&plugin_root, manifest_paths);
+    loaded_plugin.skill_discovery_mode = manifest.skill_discovery_mode;
     let resolved_skills = load_plugin_skills(
         &plugin_root,
         &loaded_plugin_id,
+        &manifest.name,
         manifest_paths,
+        manifest.skill_discovery_mode,
         restriction_product,
         skill_config_rules,
     )
@@ -668,13 +674,19 @@ async fn load_plugin(
         }
     }
     loaded_plugin.mcp_servers = mcp_servers;
-    loaded_plugin.apps = load_plugin_apps(plugin_root.as_path()).await;
+    loaded_plugin.apps = load_plugin_apps_from_manifest_paths(
+        plugin_root.as_path(),
+        manifest_paths,
+        manifest.skill_discovery_mode,
+    )
+    .await;
     if plugin_hooks_enabled {
         let (hook_sources, hook_load_warnings) = load_plugin_hooks(
             &plugin_root,
             &loaded_plugin_id,
             &store.plugin_data_root(&loaded_plugin_id),
             manifest_paths,
+            manifest.skill_discovery_mode,
         );
         loaded_plugin.hook_sources = hook_sources;
         loaded_plugin.hook_load_warnings = hook_load_warnings;
@@ -721,7 +733,9 @@ impl ResolvedPluginSkills {
 pub async fn load_plugin_skills(
     plugin_root: &AbsolutePathBuf,
     plugin_id: &PluginId,
+    plugin_namespace: &str,
     manifest_paths: &PluginManifestPaths,
+    discovery_mode: SkillDiscoveryMode,
     restriction_product: Option<Product>,
     skill_config_rules: &SkillConfigRules,
 ) -> ResolvedPluginSkills {
@@ -730,8 +744,11 @@ pub async fn load_plugin_skills(
         .map(|path| SkillRoot {
             path,
             scope: SkillScope::User,
-            file_system: Arc::clone(&LOCAL_FS),
+            file_system: SkillRootFileSystem::Local,
             plugin_id: Some(plugin_id.as_key()),
+            plugin_namespace: Some(plugin_namespace.to_string()),
+            plugin_root: Some(plugin_root.clone()),
+            discovery_mode,
         })
         .collect::<Vec<_>>();
     let outcome = load_skills_from_roots(roots).await;
@@ -797,23 +814,43 @@ fn default_mcp_config_paths(plugin_root: &Path) -> Vec<AbsolutePathBuf> {
 
 pub async fn load_plugin_apps(plugin_root: &Path) -> Vec<AppConnectorId> {
     if let Some(manifest) = load_plugin_manifest(plugin_root) {
-        return load_apps_from_paths(
+        return load_plugin_apps_from_manifest_paths(
             plugin_root,
-            plugin_app_config_paths(plugin_root, &manifest.paths),
+            &manifest.paths,
+            manifest.skill_discovery_mode,
         )
         .await;
     }
+    if find_plugin_manifest_path(plugin_root).is_some() {
+        return Vec::new();
+    }
     load_apps_from_paths(plugin_root, default_app_config_paths(plugin_root)).await
+}
+
+pub(crate) async fn load_plugin_apps_from_manifest_paths(
+    plugin_root: &Path,
+    manifest_paths: &PluginManifestPaths,
+    discovery_mode: SkillDiscoveryMode,
+) -> Vec<AppConnectorId> {
+    load_apps_from_paths(
+        plugin_root,
+        plugin_app_config_paths(plugin_root, manifest_paths, discovery_mode),
+    )
+    .await
 }
 
 fn plugin_app_config_paths(
     plugin_root: &Path,
     manifest_paths: &PluginManifestPaths,
+    discovery_mode: SkillDiscoveryMode,
 ) -> Vec<AbsolutePathBuf> {
     if let Some(path) = &manifest_paths.apps {
         return vec![path.clone()];
     }
-    default_app_config_paths(plugin_root)
+    match discovery_mode {
+        SkillDiscoveryMode::Recursive => default_app_config_paths(plugin_root),
+        SkillDiscoveryMode::DirectChildren => Vec::new(),
+    }
 }
 
 fn default_app_config_paths(plugin_root: &Path) -> Vec<AbsolutePathBuf> {
@@ -837,6 +874,7 @@ pub fn load_plugin_hooks(
     plugin_id: &PluginId,
     plugin_data_root: &AbsolutePathBuf,
     manifest_paths: &PluginManifestPaths,
+    discovery_mode: SkillDiscoveryMode,
 ) -> (Vec<PluginHookSource>, Vec<String>) {
     let mut sources = Vec::new();
     let mut warnings = Vec::new();
@@ -853,10 +891,17 @@ pub fn load_plugin_hooks(
                 );
             }
         }
-        Some(PluginManifestHooks::Inline(hooks_files)) => {
-            let manifest_path = find_plugin_manifest_path(plugin_root.as_path())
-                .and_then(|path| AbsolutePathBuf::try_from(path).ok())
-                .unwrap_or_else(|| plugin_root.join(".codex-plugin/plugin.json"));
+        Some(PluginManifestHooks::Inline {
+            source_path,
+            source_pointer,
+            hooks_files,
+        }) => {
+            let source_relative_path = source_path
+                .as_path()
+                .strip_prefix(plugin_root.as_path())
+                .unwrap_or(source_path.as_path())
+                .to_string_lossy()
+                .replace('\\', "/");
             for (index, hooks_file) in hooks_files.iter().enumerate() {
                 if hooks_file.hooks.is_empty() {
                     continue;
@@ -865,13 +910,15 @@ pub fn load_plugin_hooks(
                     plugin_id: plugin_id.clone(),
                     plugin_root: plugin_root.clone(),
                     plugin_data_root: plugin_data_root.clone(),
-                    source_path: manifest_path.clone(),
-                    source_relative_path: format!("plugin.json#hooks[{index}]"),
+                    source_path: source_path.clone(),
+                    source_relative_path: format!(
+                        "{source_relative_path}#{source_pointer}[{index}]"
+                    ),
                     hooks: hooks_file.hooks.clone(),
                 });
             }
         }
-        None => {
+        None if discovery_mode == SkillDiscoveryMode::Recursive => {
             let default_path = plugin_root.join(DEFAULT_HOOKS_CONFIG_FILE);
             if default_path.as_path().is_file() {
                 append_plugin_hook_file(
@@ -884,6 +931,7 @@ pub fn load_plugin_hooks(
                 );
             }
         }
+        None => {}
     }
     (sources, warnings)
 }
@@ -1011,7 +1059,11 @@ pub async fn plugin_telemetry_metadata_from_root(
             mcp_server_names,
             app_connector_ids: load_apps_from_paths(
                 plugin_root.as_path(),
-                plugin_app_config_paths(plugin_root.as_path(), manifest_paths),
+                plugin_app_config_paths(
+                    plugin_root.as_path(),
+                    manifest_paths,
+                    manifest.skill_discovery_mode,
+                ),
             )
             .await,
         }),
@@ -1023,8 +1075,15 @@ pub async fn load_plugin_mcp_servers(plugin_root: &Path) -> HashMap<String, McpS
         return HashMap::new();
     };
 
+    load_plugin_mcp_servers_from_manifest_paths(plugin_root, &manifest.paths).await
+}
+
+pub(crate) async fn load_plugin_mcp_servers_from_manifest_paths(
+    plugin_root: &Path,
+    manifest_paths: &PluginManifestPaths,
+) -> HashMap<String, McpServerConfig> {
     let mut mcp_servers = HashMap::new();
-    for mcp_config_path in plugin_mcp_config_paths(plugin_root, &manifest.paths) {
+    for mcp_config_path in plugin_mcp_config_paths(plugin_root, manifest_paths) {
         let plugin_mcp = load_mcp_servers_from_file(plugin_root, &mcp_config_path).await;
         for (name, config) in plugin_mcp.mcp_servers {
             mcp_servers.entry(name).or_insert(config);

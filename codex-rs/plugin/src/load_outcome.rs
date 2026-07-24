@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_plugins::PluginSkillRoot;
+use codex_utils_plugins::SkillDiscoveryMode;
 
 use crate::AppConnectorId;
 use crate::PluginCapabilitySummary;
@@ -15,10 +16,13 @@ const MAX_CAPABILITY_SUMMARY_DESCRIPTION_LEN: usize = 1024;
 pub struct LoadedPlugin<M> {
     pub config_name: String,
     pub manifest_name: Option<String>,
+    /// Namespace frozen from the parsed manifest that produced this loaded plugin.
+    pub plugin_namespace: Option<String>,
     pub manifest_description: Option<String>,
     pub root: AbsolutePathBuf,
     pub enabled: bool,
     pub skill_roots: Vec<AbsolutePathBuf>,
+    pub skill_discovery_mode: SkillDiscoveryMode,
     pub disabled_skill_paths: HashSet<AbsolutePathBuf>,
     pub has_enabled_skills: bool,
     pub mcp_servers: HashMap<String, M>,
@@ -121,11 +125,17 @@ impl<M: Clone> PluginLoadOutcome<M> {
         let mut skill_roots = Vec::new();
         let mut seen_paths = HashSet::new();
         for plugin in self.plugins.iter().filter(|plugin| plugin.is_active()) {
+            let Some(plugin_namespace) = &plugin.plugin_namespace else {
+                continue;
+            };
             for path in &plugin.skill_roots {
                 if seen_paths.insert(path.clone()) {
                     skill_roots.push(PluginSkillRoot {
                         path: path.clone(),
                         plugin_id: plugin.config_name.clone(),
+                        plugin_namespace: plugin_namespace.clone(),
+                        plugin_root: plugin.root.clone(),
+                        discovery_mode: plugin.skill_discovery_mode,
                     });
                 }
             }
@@ -218,10 +228,12 @@ mod tests {
         LoadedPlugin {
             config_name: config_name.to_string(),
             manifest_name: None,
+            plugin_namespace: Some(config_name.to_string()),
             manifest_description: None,
             root: test_path(config_name),
             enabled: true,
             skill_roots,
+            skill_discovery_mode: SkillDiscoveryMode::Recursive,
             disabled_skill_paths: HashSet::new(),
             has_enabled_skills: true,
             mcp_servers: HashMap::new(),
@@ -235,8 +247,10 @@ mod tests {
     #[test]
     fn effective_plugin_skill_roots_preserves_first_plugin_for_shared_root() {
         let shared_root = test_path("shared-skills");
+        let mut first = loaded_plugin("zeta@test", vec![shared_root.clone()]);
+        first.skill_discovery_mode = SkillDiscoveryMode::DirectChildren;
         let outcome = PluginLoadOutcome::from_plugins(vec![
-            loaded_plugin("zeta@test", vec![shared_root.clone()]),
+            first,
             loaded_plugin("alpha@test", vec![shared_root.clone()]),
         ]);
 
@@ -245,6 +259,9 @@ mod tests {
             vec![PluginSkillRoot {
                 path: shared_root,
                 plugin_id: "zeta@test".to_string(),
+                plugin_namespace: "zeta@test".to_string(),
+                plugin_root: test_path("zeta@test"),
+                discovery_mode: SkillDiscoveryMode::DirectChildren,
             }]
         );
     }

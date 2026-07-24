@@ -54,11 +54,51 @@ pub fn validate_plugin_segment(segment: &str, kind: &str) -> Result<(), String> 
     }
     if !segment
         .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
     {
         return Err(format!(
-            "invalid {kind}: only ASCII letters, digits, `_`, and `-` are allowed"
+            "invalid {kind}: only ASCII letters, digits, `_`, `-`, and `.` are allowed"
+        ));
+    }
+    if segment.starts_with('.') || segment.ends_with('.') || segment.contains("..") {
+        return Err(format!(
+            "invalid {kind}: `.` must separate non-empty path-safe components"
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_path_safe_dotted_segments() {
+        assert_eq!(
+            PluginId::parse("acme.tools@company.market").expect("dotted plugin id"),
+            PluginId {
+                plugin_name: "acme.tools".to_string(),
+                marketplace_name: "company.market".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_dot_path_components() {
+        for plugin_key in [
+            ".@market",
+            "..@market",
+            ".plugin@market",
+            "plugin.@market",
+            "plugin..tools@market",
+            "plugin@.market",
+            "plugin@market.",
+            "plugin@market..place",
+        ] {
+            assert!(
+                PluginId::parse(plugin_key).is_err(),
+                "{plugin_key} should be rejected"
+            );
+        }
+    }
 }

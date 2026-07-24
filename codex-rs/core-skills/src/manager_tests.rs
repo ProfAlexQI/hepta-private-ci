@@ -154,8 +154,13 @@ async fn skills_for_config_with_stack(
             .iter()
             .cloned()
             .map(|path| PluginSkillRoot {
+                plugin_root: path
+                    .parent()
+                    .expect("test skill root should have a plugin root"),
                 path,
                 plugin_id: "test-plugin@test".to_string(),
+                plugin_namespace: "sample".to_string(),
+                discovery_mode: codex_utils_plugins::SkillDiscoveryMode::Recursive,
             })
             .collect(),
         config_layer_stack.clone(),

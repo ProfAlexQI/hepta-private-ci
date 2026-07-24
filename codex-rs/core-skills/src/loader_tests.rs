@@ -10,6 +10,7 @@ use codex_protocol::protocol::SkillScope;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::PathExt;
+use codex_utils_plugins::SkillDiscoveryMode;
 use dunce::canonicalize as canonicalize_path;
 use pretty_assertions::assert_eq;
 use std::fs;
@@ -954,8 +955,11 @@ async fn loads_skills_via_symlinked_subdir_for_admin_scope() {
     let outcome = load_skills_from_roots([SkillRoot {
         path: admin_root.path().abs(),
         scope: SkillScope::Admin,
-        file_system: Arc::clone(&LOCAL_FS),
+        file_system: SkillRootFileSystem::Local,
         plugin_id: None,
+        plugin_namespace: None,
+        plugin_root: None,
+        discovery_mode: SkillDiscoveryMode::Recursive,
     }])
     .await;
 
@@ -1035,8 +1039,11 @@ async fn system_scope_ignores_symlinked_subdir() {
     let outcome = load_skills_from_roots([SkillRoot {
         path: system_root.abs(),
         scope: SkillScope::System,
-        file_system: Arc::clone(&LOCAL_FS),
+        file_system: SkillRootFileSystem::Local,
         plugin_id: None,
+        plugin_namespace: None,
+        plugin_root: None,
+        discovery_mode: SkillDiscoveryMode::Recursive,
     }])
     .await;
     assert!(
@@ -1068,8 +1075,11 @@ async fn respects_max_scan_depth_for_user_scope() {
     let outcome = load_skills_from_roots([SkillRoot {
         path: skills_root.abs(),
         scope: SkillScope::User,
-        file_system: Arc::clone(&LOCAL_FS),
+        file_system: SkillRootFileSystem::Local,
         plugin_id: None,
+        plugin_namespace: None,
+        plugin_root: None,
+        discovery_mode: SkillDiscoveryMode::Recursive,
     }])
     .await;
 
@@ -1156,7 +1166,7 @@ async fn falls_back_to_directory_name_when_skill_name_is_missing() {
 }
 
 #[tokio::test]
-async fn namespaces_plugin_skills_using_plugin_name() {
+async fn namespaces_plugin_skills_using_frozen_namespace_after_manifest_changes() {
     let root = tempfile::tempdir().expect("tempdir");
     let plugin_root = root.path().join("plugins/sample");
     let skill_path = write_raw_skill_at(
@@ -1167,15 +1177,18 @@ async fn namespaces_plugin_skills_using_plugin_name() {
     fs::create_dir_all(plugin_root.join(".codex-plugin")).unwrap();
     fs::write(
         plugin_root.join(".codex-plugin/plugin.json"),
-        r#"{"name":"sample"}"#,
+        r#"{"name":"changed-on-disk"}"#,
     )
     .unwrap();
 
     let outcome = load_skills_from_roots([SkillRoot {
         path: plugin_root.join("skills").abs(),
         scope: SkillScope::User,
-        file_system: Arc::clone(&LOCAL_FS),
+        file_system: SkillRootFileSystem::Local,
         plugin_id: Some("sample@test".to_string()),
+        plugin_namespace: Some("sample".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::Recursive,
     }])
     .await;
 
@@ -1198,6 +1211,309 @@ async fn namespaces_plugin_skills_using_plugin_name() {
             plugin_id: Some("sample@test".to_string()),
         }]
     );
+}
+
+#[tokio::test]
+async fn plugin_skill_name_allows_max_qualified_length() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let plugin_namespace = "p".repeat(MAX_NAME_LEN - 1);
+    let skill_name = "s".repeat(MAX_NAME_LEN);
+    let skill_path = write_skill_at(
+        &plugin_root.join("skills"),
+        "max-name",
+        &skill_name,
+        "max qualified name",
+    );
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: plugin_root.join("skills").abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some(plugin_namespace.clone()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::Recursive,
+    }])
+    .await;
+
+    assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
+    assert_eq!(outcome.skills.len(), 1);
+    assert_eq!(
+        outcome.skills[0].name,
+        format!("{plugin_namespace}:{skill_name}")
+    );
+    assert_eq!(outcome.skills[0].path_to_skills_md, normalized(&skill_path));
+    assert_eq!(
+        outcome.skills[0].name.chars().count(),
+        MAX_QUALIFIED_NAME_LEN
+    );
+}
+
+#[tokio::test]
+async fn plugin_skill_name_rejects_overlong_qualified_name() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let plugin_namespace = "p".repeat(MAX_NAME_LEN);
+    let skill_name = "s".repeat(MAX_NAME_LEN);
+    write_skill_at(
+        &plugin_root.join("skills"),
+        "overlong-name",
+        &skill_name,
+        "overlong qualified name",
+    );
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: plugin_root.join("skills").abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some(plugin_namespace),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::Recursive,
+    }])
+    .await;
+
+    assert!(outcome.skills.is_empty());
+    assert_eq!(outcome.errors.len(), 1);
+    assert!(
+        outcome.errors[0].message.contains("invalid qualified name"),
+        "{:?}",
+        outcome.errors
+    );
+}
+
+#[tokio::test]
+async fn direct_child_discovery_ignores_nested_skills() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let skills_root = plugin_root.join("skills");
+    let direct = write_skill_at(&skills_root, "direct", "direct", "direct skill");
+    write_skill_at(&skills_root, "nested/too-deep", "too-deep", "nested skill");
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert!(outcome.errors.is_empty());
+    assert_eq!(
+        outcome.skills,
+        vec![SkillMetadata {
+            name: "plugin:direct".to_string(),
+            description: "direct skill".to_string(),
+            short_description: None,
+            interface: None,
+            dependencies: None,
+            policy: None,
+            path_to_skills_md: normalized(&direct),
+            scope: SkillScope::User,
+            plugin_id: Some("plugin@test".to_string()),
+        }]
+    );
+}
+
+#[tokio::test]
+async fn direct_child_discovery_rejects_executor_filesystem_without_local_authority() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let skills_root = plugin_root.join("skills");
+    write_skill_at(&skills_root, "direct", "direct", "direct skill");
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Executor(Arc::clone(&LOCAL_FS)),
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert!(outcome.skills.is_empty());
+    assert!(outcome.errors.is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn direct_child_discovery_skips_paths_resolving_outside_plugin_root() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let skills_root = plugin_root.join("skills");
+    let outside_root = root.path().join("outside");
+    write_skill_at(&outside_root, "escaped", "escaped", "escaped skill");
+    fs::create_dir_all(&skills_root).expect("create skills root");
+    symlink_dir(
+        outside_root.join("escaped").as_path(),
+        &skills_root.join("escaped"),
+    );
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert!(outcome.skills.is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn direct_child_discovery_ignores_symlinked_metadata_outside_plugin_root() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let skills_root = plugin_root.join("skills");
+    let skill_path = write_skill_at(&skills_root, "direct", "direct", "direct skill");
+    let skill_dir = skill_path.parent().expect("skill dir");
+    let outside_metadata = root.path().join("outside/openai.yaml");
+    fs::create_dir_all(outside_metadata.parent().expect("outside parent"))
+        .expect("create outside metadata dir");
+    fs::write(
+        &outside_metadata,
+        "policy:\n  allow_implicit_invocation: false\n",
+    )
+    .expect("write outside metadata");
+    let metadata_path = skill_dir
+        .join(SKILLS_METADATA_DIR)
+        .join(SKILLS_METADATA_FILENAME);
+    fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
+        .expect("create metadata dir");
+    symlink_file(&outside_metadata, &metadata_path);
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert_eq!(outcome.skills.len(), 1);
+    assert_eq!(outcome.skills[0].policy, None);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn direct_child_discovery_ignores_icon_symlinks_outside_skill_boundary() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let skills_root = plugin_root.join("skills");
+    let skill_path = write_skill_at(&skills_root, "direct", "direct", "direct skill");
+    let skill_dir = skill_path.parent().expect("skill dir");
+    write_skill_interface_at(
+        skill_dir,
+        r#"
+interface:
+  display_name: "Direct"
+  icon_small: "assets/icon.png"
+"#,
+    );
+    let outside_icon = root.path().join("outside/icon.png");
+    fs::create_dir_all(outside_icon.parent().expect("outside parent"))
+        .expect("create outside icon dir");
+    fs::write(&outside_icon, "icon").expect("write outside icon");
+    let icon_path = skill_dir.join("assets/icon.png");
+    fs::create_dir_all(icon_path.parent().expect("icon parent")).expect("create assets dir");
+    symlink_file(&outside_icon, &icon_path);
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert_eq!(outcome.skills.len(), 1);
+    assert_eq!(
+        outcome.skills[0].interface,
+        Some(SkillInterface {
+            display_name: Some("Direct".to_string()),
+            short_description: None,
+            icon_small: None,
+            icon_large: None,
+            brand_color: None,
+            default_prompt: None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn direct_child_discovery_loads_regular_metadata_and_icons_inside_skill_boundary() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let plugin_root = root.path().join("plugin");
+    let skills_root = plugin_root.join("skills");
+    let skill_path = write_skill_at(&skills_root, "direct", "direct", "direct skill");
+    let skill_dir = skill_path.parent().expect("skill dir");
+    write_skill_interface_at(
+        skill_dir,
+        r#"
+interface:
+  display_name: "Direct"
+  icon_small: "assets/icon.png"
+"#,
+    );
+    let icon_path = skill_dir.join("assets/icon.png");
+    fs::create_dir_all(icon_path.parent().expect("icon parent")).expect("create assets dir");
+    fs::write(&icon_path, "icon").expect("write icon");
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: Some(plugin_root.abs()),
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert_eq!(outcome.skills.len(), 1);
+    assert_eq!(
+        outcome.skills[0]
+            .interface
+            .as_ref()
+            .and_then(|interface| interface.icon_small.as_ref()),
+        Some(&normalized(&icon_path))
+    );
+}
+
+#[tokio::test]
+async fn direct_child_discovery_requires_plugin_root_boundary() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let skills_root = root.path().join("skills");
+    write_skill_at(&skills_root, "direct", "direct", "direct skill");
+
+    let outcome = load_skills_from_roots([SkillRoot {
+        path: skills_root.abs(),
+        scope: SkillScope::User,
+        file_system: SkillRootFileSystem::Local,
+        plugin_id: Some("plugin@test".to_string()),
+        plugin_namespace: Some("plugin".to_string()),
+        plugin_root: None,
+        discovery_mode: SkillDiscoveryMode::DirectChildren,
+    }])
+    .await;
+
+    assert!(outcome.skills.is_empty());
 }
 
 #[tokio::test]
@@ -1496,14 +1812,20 @@ async fn deduplicates_by_path_preferring_first_root() {
         SkillRoot {
             path: root.path().abs(),
             scope: SkillScope::Repo,
-            file_system: Arc::clone(&LOCAL_FS),
+            file_system: SkillRootFileSystem::Local,
             plugin_id: None,
+            plugin_namespace: None,
+            plugin_root: None,
+            discovery_mode: SkillDiscoveryMode::Recursive,
         },
         SkillRoot {
             path: root.path().abs(),
             scope: SkillScope::User,
-            file_system: Arc::clone(&LOCAL_FS),
+            file_system: SkillRootFileSystem::Local,
             plugin_id: None,
+            plugin_namespace: None,
+            plugin_root: None,
+            discovery_mode: SkillDiscoveryMode::Recursive,
         },
     ])
     .await;
