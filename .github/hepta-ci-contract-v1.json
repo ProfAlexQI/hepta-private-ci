@@ -125,13 +125,18 @@
         "role": "current_r7",
         "ref": "refs/remotes/upstream/hepta-intake-20260724-r7",
         "sha": "f201c30c52a35f819262865a53df94b6f4ea7a50"
+      },
+      {
+        "role": "current_r8",
+        "ref": "refs/remotes/upstream/hepta-intake-20260724-r8",
+        "sha": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2"
       }
     ]
   },
   "upstream_truth": {
     "capability_version": 1,
     "registry": "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
-    "registry_sha256": "ba093121ee0f2fbaf29cf501d62f2a08226bd73b1dca574a27d625312c3f74aa",
+    "registry_sha256": "14049e92278a049f666d737ba29d5af823941843f609e504aa21249b7a504a0e",
     "ci_job": "upstream-truth",
     "semantic_command": "scripts/hepta-upstream-truth-gate verify-semantic",
     "self_test_command": "scripts/hepta-upstream-truth-gate self-test",

@@ -6,8 +6,8 @@
     "branch": "main",
     "remote_ref": "refs/heads/main",
     "tracking_ref": "refs/remotes/upstream/main",
-    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r7",
-    "expected_head": "f201c30c52a35f819262865a53df94b6f4ea7a50"
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r8",
+    "expected_head": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2"
   },
   "network_receipt": {
     "schema_version": "hepta_upstream_network_freshness_receipt_v1",
@@ -211,6 +211,40 @@
           "scope": "cancellation_safe_generation_bound_runtime_replacement",
           "non_claims": [
             "Published immutable McpRuntime and authentication-generation prerequisites remain unavailable."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r8",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R8.json",
+        "sha256": "60833a3504bca61ed33f527d6bc9315193540b839650e92280eeedb6cf10dba3",
+        "range_start_exclusive": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+        "range_end_inclusive": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r8"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R8_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
+        "sha256": "3280224009f116e13b97022a132a1180b45fa95b47268f67fddd318496038611",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+          "local_commit": "16364d4f2599ae2e6f05c3361961bc302b947081",
+          "scope": "serialized_cancellation_safe_refresh_coordination_during_session_lifetime",
+          "non_claims": [
+            "The local coordinator remains generation-bound session state rather than the upstream closeable semaphore abstraction."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+          "scope": "closeable_shutdown_refresh_gate_and_single_owner_module",
+          "non_claims": [
+            "Explicit shutdown-gate closure and structural coordinator consolidation remain deferred."
           ]
         }
       ]

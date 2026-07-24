@@ -1,0 +1,107 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "upstream-codex-r8-semantic-absorption-2026-07-24",
+  "recorded_at": "2026-07-24T12:07:41Z",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R8.json",
+    "manifest_sha256": "60833a3504bca61ed33f527d6bc9315193540b839650e92280eeedb6cf10dba3",
+    "commit": "5fe7506f63e4bf10ed351b203a48639b217f2002",
+    "range_start_exclusive": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+    "range_end_inclusive": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "integration_mode": "existing_generation_coordinator_equivalence_with_bounded_shutdown_deferral",
+  "absorptions": [
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+      "upstream_title": "Encapsulate MCP refresh coordination (#35164)",
+      "disposition": "existing_semantic_equivalent",
+      "scope": "serialized_cancellation_safe_refresh_coordination_during_session_lifetime",
+      "hepta_commit": "16364d4f2599ae2e6f05c3361961bc302b947081",
+      "production_behavior_preexisting": false,
+      "production_code_modified": true,
+      "semantic_mapping": "Hepta's session-owned refresh lock serializes every rebuild/publication cycle, while its desired/applied generation state retains the exact pending intent until a matching manager generation publishes. Cancellation, invalid configuration, or supersession therefore cannot consume the desired refresh, and stale generations cannot replace the published manager. This is a richer generation-bound equivalent of the upstream pending-bit plus gate behavior during the active session lifetime.",
+      "core_files": [
+        "codex-rs/core/src/session/handlers.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/state/service.rs",
+        "codex-rs/core/src/tools/router.rs",
+        "codex-rs/core/src/tools/router_tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core explicit_refresh_rebuilds_mcp_connections_on_each_next_turn",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "Each consumed explicit refresh rebuilds configured MCP connections."
+        },
+        {
+          "command": "cargo test -p codex-core cancelled_explicit_mcp_refresh_preserves_intent_until_publication",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "Cancellation cannot consume the pending desired generation before publication."
+        },
+        {
+          "command": "cargo test -p codex-core rapid_explicit_mcp_refresh_only_publishes_latest_generation",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "Concurrent desired generations publish only the latest valid replacement."
+        },
+        {
+          "command": "cargo test -p codex-core advertised_mcp_tool_fails_closed_after_manager_generation_changes",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "A catalog entry cannot dispatch through a different published manager generation."
+        }
+      ],
+      "non_claims": [
+        "No byte-for-byte or type-level equivalence with upstream McpRefresh is claimed.",
+        "The local coordinator remains a generation state plus session-owned lock rather than one closeable semaphore abstraction.",
+        "This narrow equivalence does not close R6 authentication-generation refresh or background prewarm."
+      ]
+    }
+  ],
+  "deferrals": [
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+      "upstream_title": "Encapsulate MCP refresh coordination (#35164)",
+      "disposition": "deferred_local_shutdown_contract_and_structural_consolidation",
+      "scope": "closeable_shutdown_refresh_gate_and_single_owner_module",
+      "hepta_commit": null,
+      "reason": "The upstream abstraction explicitly closes a semaphore during shutdown and places pending invalidation plus gate ownership in one module. Hepta currently relies on session/task teardown and keeps the generation state and serialization lock as adjacent Session fields. Consolidating those fields while R6 authentication publication is changing would add churn without closing a current behavioral defect.",
+      "missing_prerequisites": [
+        "stable R6 authentication-generation publication contract",
+        "explicit local shutdown behavior for a refresh waiting on the publication lock",
+        "one coordinator API that preserves desired and applied generations",
+        "regression proof that structural consolidation does not weaken same-generation catalog and client binding"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "The upstream closeable refresh semaphore was not copied.",
+        "No claim is made that task teardown is identical to explicit gate closure."
+      ]
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 0,
+    "existing_semantic_equivalent_count": 1,
+    "deferred_commit_count": 1,
+    "all_r8_candidates_absorbed": false,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
