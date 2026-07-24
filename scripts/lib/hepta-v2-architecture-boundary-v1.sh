@@ -454,6 +454,23 @@ verify_capability_manifest_ownership() {
   fi
 }
 
+verify_tool_schema_ownership() {
+  local contracts="codex-rs/hepta-contracts/src/tool.rs"
+  local core="codex-rs/hepta-core/src/tools.rs"
+  local runtime="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
+  grep -Fq 'pub struct ToolSchema' "$ROOT/$contracts" &&
+    grep -Fq 'pub use tool::ToolSchema;' "$ROOT/codex-rs/hepta-contracts/src/lib.rs" || {
+      echo "Architecture V2 canonical ToolSchema owner is incomplete" >&2
+      return 1
+    }
+  if grep -Fq 'pub struct ToolSchema' "$ROOT/$core" ||
+    grep -Fq 'hepta_core::ToolSchema' "$ROOT/$runtime"; then
+    echo "Architecture V2 ToolSchema ownership regressed into a compatibility layer" >&2
+    return 1
+  fi
+  grep -Fq 'use ::hepta_contracts::ToolSchema;' "$ROOT/$runtime"
+}
+
 verify_exact_admission_boundary() {
   local kernel_policy="codex-rs/hepta-kernel/src/safety_gate/policy_evidence.rs"
   local kernel_admission="codex-rs/hepta-kernel/src/safety_gate/admission.rs"
@@ -534,7 +551,7 @@ verify_v2_test_inventories() {
   local runtime_tests="codex-rs/hepta-runtime/src/runtime_kernel/tests"
   local memory_tests="codex-rs/hepta-memory/src/tests"
 
-  hepta_v2_assert_test_inventory "Architecture V2 stable contracts" 11 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 stable contracts" 12 '.*' \
     "$ROOT/codex-rs/hepta-contracts/tests/stable_contracts.rs"
   hepta_v2_assert_test_inventory "Architecture V2 intelligence neuron activation" 4 '.*' \
     "$ROOT/codex-rs/hepta-intelligence/src/neuron_activation/tests.rs"
@@ -1807,6 +1824,7 @@ verify() {
   verify_intuition_feedback_ownership
   verify_intuition_planner_ownership
   verify_capability_manifest_ownership
+  verify_tool_schema_ownership
   verify_exact_admission_boundary
   verify_sealed_execution_boundaries
   verify_v2_test_inventories
@@ -1822,7 +1840,7 @@ verify() {
   verify_production_durable_composition
   verify_durable_outcome_boundary
 
-  echo '{"schema":"hepta_architecture_v2_dependency_boundary_v1","status":"ready","contract_boundary":"hepta-contracts","contract_dependencies":0,"compatibility_shell":"hepta-core","forbidden_reverse_edges":46,"live_preference_authority":"authenticated-native-http","trusted_preference_feedback_authority":"keyed-composed-live-hmac","trusted_preference_transport":"native-http-challenge-commit","trusted_preference_authority_composition":"keyed-durable-pinned-hmac-source","legacy_intuition_feedback_owner":"hepta-intelligence","legacy_intuition_planner_owner":"hepta-intelligence","capability_manifest_owner":"runtime-catalog-adapter","exact_admission_owner":"hepta-kernel","runtime_self_admission":"forbidden","identity_sealed_write_path":"retained-openat","process_write_reservation":"identity-global","cross_process_write_reservation":"advisory-prefix-identity-lock","exact_dispatch_selector":"executor-capability","production_tool_descriptor_inventory":41,"test_tool_descriptor_inventory":42,"production_exec_process":"quarantined","quarantined_process_descriptor":"high-non-read-only-destructive","production_disk_junk_audit":"test-only","backup_prune_deletion":"release-quarantined","mutation_transaction_evidence":"generalized-set","mutation_install_durability":"atomic-ambiguous-effect-recorded","provider_effect_plan":"pre-dispatch-canonical","provider_effect_ack":"durable-exact-before-terminal","provider_effect_recovery":"read-only-fail-closed","live_tts_effect":"private-byte-stage-before-intent-durable-ack","sealed_read_capability":"retained-fd-captured-bytes","production_unsealed_reads":"quarantined","production_live_native_mutations":"exact-receipt-quarantined","production_live_native_mutation_inventory":20,"production_outcome_composition":"durable-keyed-only","durable_schema":5,"durable_compatibility_schema":4,"durable_row_integrity":"hmac-sha256-v1","durable_integrity_key":"external-caller-supplied","durable_rollback_resistance":"external-monotonic-anchor-required","execution_intent_stage":"before-provider-invocation","execution_intent_terminal_resolution":"atomic-with-outcome-record","execution_intent_idempotency_domain":"v3","execution_intent_row_schema":4,"strict_terminal_evidence_field_inventory":80,"durable_sidecar_validation":"bounded-identity-recheck","durable_sidecar_validation_attempts":4,"test_inventory_binding":"test-attribute-plus-target-function","contracts_test_inventory":11,"intelligence_neuron_test_inventory":4,"intelligence_tool_candidate_test_inventory":4,"intelligence_feedback_test_inventory":4,"intelligence_planner_test_inventory":8,"intelligence_preference_test_inventory":8,"intelligence_trusted_preference_test_inventory":9,"memory_preference_authority_test_inventory":6,"memory_preference_test_inventory":35,"memory_durable_preference_test_inventory":19,"memory_durable_opening_security_test_inventory":7,"memory_durable_sidecar_lifecycle_test_inventory":2,"memory_outcome_test_inventory":50,"memory_durable_outcome_test_inventory":29,"memory_effect_ack_test_inventory":4,"memory_execution_intent_test_inventory":9,"memory_pending_outcome_intent_test_inventory":3,"memory_sync_outcome_writer_test_inventory":13,"runtime_neuron_test_inventory":8,"runtime_exact_safety_test_inventory":10,"runtime_execution_lease_test_inventory":5,"runtime_outcome_receipt_test_inventory":4,"runtime_outcome_flow_test_inventory":8,"runtime_outcome_sink_test_inventory":19,"runtime_provider_idempotency_test_inventory":2,"runtime_provider_effect_test_inventory":2,"runtime_resource_reservation_test_inventory":4,"runtime_capability_descriptor_test_inventory":4,"runtime_symlink_reservation_test_inventory":4,"runtime_process_reservation_test_inventory":8,"runtime_dispatch_selector_test_inventory":3,"runtime_native_mutation_test_inventory":8,"runtime_sealed_read_test_inventory":9,"runtime_cross_process_write_lock_test_inventory":4,"runtime_process_control_test_inventory":2,"runtime_maintenance_test_inventory":7,"durable_outcome_sink":"keyed-producer-intent-journal-exact-reconciliation","durable_outcome_database_open":"keyed-bootstrap-new-or-identity-bound-existing-private-filesystem","durable_preference_database_open":"bootstrap-new-or-existing-private-filesystem-keyed-capable"}'
+  echo '{"schema":"hepta_architecture_v2_dependency_boundary_v1","status":"ready","contract_boundary":"hepta-contracts","contract_dependencies":0,"compatibility_shell":"hepta-core","tool_schema_owner":"hepta-contracts","forbidden_reverse_edges":46,"live_preference_authority":"authenticated-native-http","trusted_preference_feedback_authority":"keyed-composed-live-hmac","trusted_preference_transport":"native-http-challenge-commit","trusted_preference_authority_composition":"keyed-durable-pinned-hmac-source","legacy_intuition_feedback_owner":"hepta-intelligence","legacy_intuition_planner_owner":"hepta-intelligence","capability_manifest_owner":"runtime-catalog-adapter","exact_admission_owner":"hepta-kernel","runtime_self_admission":"forbidden","identity_sealed_write_path":"retained-openat","process_write_reservation":"identity-global","cross_process_write_reservation":"advisory-prefix-identity-lock","exact_dispatch_selector":"executor-capability","production_tool_descriptor_inventory":41,"test_tool_descriptor_inventory":42,"production_exec_process":"quarantined","quarantined_process_descriptor":"high-non-read-only-destructive","production_disk_junk_audit":"test-only","backup_prune_deletion":"release-quarantined","mutation_transaction_evidence":"generalized-set","mutation_install_durability":"atomic-ambiguous-effect-recorded","provider_effect_plan":"pre-dispatch-canonical","provider_effect_ack":"durable-exact-before-terminal","provider_effect_recovery":"read-only-fail-closed","live_tts_effect":"private-byte-stage-before-intent-durable-ack","sealed_read_capability":"retained-fd-captured-bytes","production_unsealed_reads":"quarantined","production_live_native_mutations":"exact-receipt-quarantined","production_live_native_mutation_inventory":20,"production_outcome_composition":"durable-keyed-only","durable_schema":5,"durable_compatibility_schema":4,"durable_row_integrity":"hmac-sha256-v1","durable_integrity_key":"external-caller-supplied","durable_rollback_resistance":"external-monotonic-anchor-required","execution_intent_stage":"before-provider-invocation","execution_intent_terminal_resolution":"atomic-with-outcome-record","execution_intent_idempotency_domain":"v3","execution_intent_row_schema":4,"strict_terminal_evidence_field_inventory":80,"durable_sidecar_validation":"bounded-identity-recheck","durable_sidecar_validation_attempts":4,"test_inventory_binding":"test-attribute-plus-target-function","contracts_test_inventory":12,"intelligence_neuron_test_inventory":4,"intelligence_tool_candidate_test_inventory":4,"intelligence_feedback_test_inventory":4,"intelligence_planner_test_inventory":8,"intelligence_preference_test_inventory":8,"intelligence_trusted_preference_test_inventory":9,"memory_preference_authority_test_inventory":6,"memory_preference_test_inventory":35,"memory_durable_preference_test_inventory":19,"memory_durable_opening_security_test_inventory":7,"memory_durable_sidecar_lifecycle_test_inventory":2,"memory_outcome_test_inventory":50,"memory_durable_outcome_test_inventory":29,"memory_effect_ack_test_inventory":4,"memory_execution_intent_test_inventory":9,"memory_pending_outcome_intent_test_inventory":3,"memory_sync_outcome_writer_test_inventory":13,"runtime_neuron_test_inventory":8,"runtime_exact_safety_test_inventory":10,"runtime_execution_lease_test_inventory":5,"runtime_outcome_receipt_test_inventory":4,"runtime_outcome_flow_test_inventory":8,"runtime_outcome_sink_test_inventory":19,"runtime_provider_idempotency_test_inventory":2,"runtime_provider_effect_test_inventory":2,"runtime_resource_reservation_test_inventory":4,"runtime_capability_descriptor_test_inventory":4,"runtime_symlink_reservation_test_inventory":4,"runtime_process_reservation_test_inventory":8,"runtime_dispatch_selector_test_inventory":3,"runtime_native_mutation_test_inventory":8,"runtime_sealed_read_test_inventory":9,"runtime_cross_process_write_lock_test_inventory":4,"runtime_process_control_test_inventory":2,"runtime_maintenance_test_inventory":7,"durable_outcome_sink":"keyed-producer-intent-journal-exact-reconciliation","durable_outcome_database_open":"keyed-bootstrap-new-or-identity-bound-existing-private-filesystem","durable_preference_database_open":"bootstrap-new-or-existing-private-filesystem-keyed-capable"}'
 }
 
 expect_fixture_denied() {
@@ -1866,6 +1884,10 @@ self_test() (
   mkdir -p "$fixture/codex-rs/hepta-core/src"
   cp "$ROOT/codex-rs/hepta-core/src/hepta_contracts.rs" \
     "$fixture/codex-rs/hepta-core/src/hepta_contracts.rs"
+  cp "$ROOT/codex-rs/hepta-core/src/tools.rs" "$fixture/codex-rs/hepta-core/src/tools.rs"
+  mkdir -p "$fixture/codex-rs/hepta-contracts/src"
+  cp "$ROOT/codex-rs/hepta-contracts/src/"{lib.rs,tool.rs} \
+    "$fixture/codex-rs/hepta-contracts/src/"
   mkdir -p "$fixture/codex-rs/hepta-contracts/tests"
   cp "$ROOT/codex-rs/hepta-contracts/tests/stable_contracts.rs" \
     "$fixture/codex-rs/hepta-contracts/tests/stable_contracts.rs"

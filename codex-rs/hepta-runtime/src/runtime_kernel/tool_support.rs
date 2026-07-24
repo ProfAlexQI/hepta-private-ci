@@ -1,3 +1,5 @@
+use ::hepta_contracts::ToolSchema;
+
 struct ToolRegistry {
     tools: Vec<RegisteredTool>,
     #[cfg(test)]
@@ -191,7 +193,7 @@ impl ToolRegistry {
             .ok_or_else(|| HeptaError(format!("unknown tool: {}", name)))
     }
 
-    fn schema(&self, name: &str) -> Result<hepta_core::ToolSchema, HeptaError> {
+    fn schema(&self, name: &str) -> Result<ToolSchema, HeptaError> {
         self.tools
             .iter()
             .find(|tool| tool.name() == name)
@@ -612,7 +614,7 @@ impl RegisteredTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
         match self {
             Self::Echo(tool) => tool.schema(),
             Self::ReadFile(tool) => tool.schema(),
@@ -673,8 +675,8 @@ impl Tool for EchoTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Return the provided input as-is".into(),
             input_schema_json: r#"{"type":"object","required":["text"],"properties":{"text":{"type":"string","minLength":1}}}"#.into(),
@@ -715,8 +717,8 @@ impl Tool for ReadFileTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Read a UTF-8 text file from disk".into(),
             input_schema_json: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string","minLength":1,"description":"relative or absolute file path"}}}"#.into(),
@@ -755,8 +757,8 @@ impl Tool for WriteFileTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Write a UTF-8 text file to disk with explicit create, overwrite, or append semantics".into(),
             input_schema_json: r#"{"type":"object","required":["path","content"],"properties":{"path":{"type":"string","minLength":1,"description":"relative or absolute file path"},"content":{"type":"string","minLength":0,"description":"UTF-8 file content to write"},"mode":{"type":"string","enum":["create","overwrite","append"],"description":"create=new file only, overwrite=replace existing, append=append to existing or create"},"confirm_destructive":{"type":"boolean","description":"required for overwriting an existing file"},"preview_only":{"type":"boolean","description":"when true, return diff/backup plan without mutating the filesystem"}}}"#.into(),
@@ -795,8 +797,8 @@ impl Tool for ListDirTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "List immediate files and directories under a workspace path".into(),
             input_schema_json: r#"{"type":"object","properties":{"path":{"type":"string","minLength":1},"max_entries":{"type":"integer","minimum":1}}}"#.into(),
@@ -871,8 +873,8 @@ impl Tool for SearchTextTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Search UTF-8 text files under a workspace path for a literal pattern".into(),
             input_schema_json: r#"{"type":"object","required":["path","pattern"],"properties":{"path":{"type":"string","minLength":1},"pattern":{"type":"string","minLength":1},"max_results":{"type":"integer","minimum":1}}}"#.into(),
@@ -976,8 +978,8 @@ impl Tool for DiskJunkAuditTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Run a bounded, read-only local disk cleanup candidate audit over common cache/log/temp roots".into(),
             input_schema_json: r#"{"type":"object","properties":{"scope":{"type":"string"},"max_entries":{"type":"integer","minimum":1},"include_var_folders":{"type":"boolean"}}}"#.into(),
@@ -1092,8 +1094,8 @@ impl Tool for JsonGetTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Extract a JSON value by RFC-6901 pointer from a JSON string".into(),
             input_schema_json: r#"{"type":"object","required":["json","pointer"],"properties":{"json":{"type":"string","minLength":1},"pointer":{"type":"string","minLength":0}}}"#.into(),
@@ -1150,8 +1152,8 @@ impl Tool for SkillProposeTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Generate a quarantined SKILL.md draft from transcript text".into(),
             input_schema_json: r#"{"type":"object","required":["transcript"],"properties":{"transcript":{"type":"string","minLength":1}}}"#.into(),
@@ -1209,8 +1211,8 @@ impl Tool for SkillScanTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Scan a SKILL.md draft for local safety and structure violations".into(),
             input_schema_json: r#"{"type":"object","required":["skill_md"],"properties":{"skill_md":{"type":"string","minLength":1}}}"#.into(),
@@ -1258,8 +1260,8 @@ impl Tool for SkillApplyPlanTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Create a review-gated atomic apply plan for a generated skill draft".into(),
             input_schema_json: r#"{"type":"object","required":["transcript"],"properties":{"transcript":{"type":"string","minLength":1}}}"#.into(),
@@ -1308,8 +1310,8 @@ impl Tool for ToolManifestValidateTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Validate a generated tool manifest before promotion".into(),
             input_schema_json: r#"{"type":"object","required":["manifest_json"],"properties":{"manifest_json":{"type":"string","minLength":1}}}"#.into(),
@@ -1361,8 +1363,8 @@ impl Tool for ToolGenerateStubTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name().into(),
             description: "Generate a canonical local tool manifest/stub from operator intent".into(),
             input_schema_json: r#"{"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1},"description":{"type":"string","minLength":0}}}"#.into(),
@@ -1597,8 +1599,8 @@ impl Tool for NativeOpenClawCompatibleTool {
         }
     }
 
-    fn schema(&self) -> hepta_core::ToolSchema {
-        hepta_core::ToolSchema {
+    fn schema(&self) -> ToolSchema {
+        ToolSchema {
             name: self.name.into(),
             description: self.description.into(),
             input_schema_json: native_openclaw_compat_input_schema(self.name, self.behavior).into(),

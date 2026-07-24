@@ -15,6 +15,7 @@ mod identity;
 mod observation;
 mod outcome;
 mod preference;
+mod tool;
 mod validation;
 
 pub use capability::CandidateRef;
@@ -55,4 +56,5 @@ pub use preference::PreferenceEvidenceRef;
 pub use preference::PreferenceEvidenceSignal;
 pub use preference::PreferenceState;
 pub use preference::PreferenceTransition;
+pub use tool::ToolSchema;
 pub use validation::ContractError;

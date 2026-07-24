@@ -34,6 +34,7 @@ use hepta_contracts::ReceiptId;
 use hepta_contracts::ReceiptRef;
 use hepta_contracts::Revision;
 use hepta_contracts::RevisionStamp;
+use hepta_contracts::ToolSchema;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CompleteContractFlow {
@@ -56,6 +57,26 @@ fn complete_architecture_flow_compares_as_whole_objects() -> Result<(), Contract
 
     assert_eq!(actual, expected);
     Ok(())
+}
+
+#[test]
+fn tool_schema_preserves_exact_provider_contract_material() {
+    let schema = ToolSchema {
+        name: "workspace.read".into(),
+        description: "Read one workspace file".into(),
+        input_schema_json: r#"{"type":"object"}"#.into(),
+        output_schema_json: r#"{"type":"string"}"#.into(),
+    };
+
+    assert_eq!(
+        schema,
+        ToolSchema {
+            name: "workspace.read".into(),
+            description: "Read one workspace file".into(),
+            input_schema_json: r#"{"type":"object"}"#.into(),
+            output_schema_json: r#"{"type":"string"}"#.into(),
+        }
+    );
 }
 
 #[test]

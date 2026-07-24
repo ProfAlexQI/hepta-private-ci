@@ -106,6 +106,7 @@ mod contract_tests {
     use crate::SessionId;
     use crate::ToolError;
     use crate::ToolExecutionMetadata;
+    use crate::ToolSchema;
     use crate::Usage;
     use crate::WritePathScope;
 
@@ -184,6 +185,12 @@ mod contract_tests {
             argument_name: "path".into(),
             scope: crate::FilesystemScope::WorkspaceOnly,
         };
+        let schema = ToolSchema {
+            name: "workspace.read".into(),
+            description: "Read one workspace file".into(),
+            input_schema_json: r#"{"type":"object"}"#.into(),
+            output_schema_json: r#"{"type":"string"}"#.into(),
+        };
 
         let metadata_json = serde_json::to_string(&metadata).expect("metadata should serialize");
         let gate_json = serde_json::to_value(&gate).expect("gate should serialize");
@@ -200,6 +207,7 @@ mod contract_tests {
             "{\"read_only\":true,\"destructive\":false,\"idempotent\":true,\"produces_structured_output\":true}"
         );
         assert_eq!(gate_json["scope"], json!("workspace_only"));
+        assert_eq!(schema.name, "workspace.read");
         assert_eq!(
             serde_json::to_string(&WritePathScope::ArtifactsOnly).expect("scope should serialize"),
             "\"artifacts_only\""

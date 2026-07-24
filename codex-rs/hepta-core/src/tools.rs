@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::runtime_types::CorrelationId;
 use crate::runtime_types::SessionId;
+use ::hepta_contracts::ToolSchema;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,14 +50,6 @@ pub struct ToolExecutionMetadata {
     pub destructive: bool,
     pub idempotent: bool,
     pub produces_structured_output: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolSchema {
-    pub name: String,
-    pub description: String,
-    pub input_schema_json: String,
-    pub output_schema_json: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
