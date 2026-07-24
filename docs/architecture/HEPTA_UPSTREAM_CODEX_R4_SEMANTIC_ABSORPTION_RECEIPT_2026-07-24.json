@@ -1,0 +1,99 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_receipt_v1",
+  "receipt_id": "upstream-codex-r4-semantic-absorption-2026-07-24",
+  "recorded_at": "2026-07-24T06:35:39Z",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+    "commit": "77867f0f04ba5936d40798ef47027bb78872da8f",
+    "range_end": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "integration_mode": "selective_semantic_transplant",
+  "absorptions": [
+    {
+      "lane": "security",
+      "upstream_commit": "a59a419afa3492c58eb3d4865bf8ab1fd8c68330",
+      "upstream_title": "Use path URIs in shell approval keys (#34806)",
+      "hepta_commit": "e259297b3076b4024a858b0fe304f716c1bbb6c2",
+      "semantic_mapping": "Upstream PathUri behavior is implemented locally as a private ApprovalPathUri using existing url and base64 dependencies. Normal absolute paths serialize as file URIs; unrepresentable or NUL-bearing paths use a collision-separated opaque URI.",
+      "files": [
+        "codex-rs/core/src/tools/runtimes/shell.rs",
+        "codex-rs/core/src/tools/runtimes/shell_tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core tools::runtimes::shell::tests --lib",
+          "result": "passed",
+          "tests_passed": 2,
+          "tests_failed": 0
+        }
+      ]
+    },
+    {
+      "lane": "protocol_app_server",
+      "upstream_commit": "0d4910331db5e5c6ec8e42f94d82119570801f95",
+      "upstream_title": "Preserve timestamps when importing external agent sessions (#34989)",
+      "hepta_commit": "2a91f2c7f832b798b9cc20df1554df60e981a02d",
+      "semantic_mapping": "The local external-session parser derives earliest and latest valid source message timestamps, and app-server persists them after rollout-compatible naming so reconciliation cannot overwrite source chronology.",
+      "files": [
+        "codex-rs/external-agent-sessions/src/lib.rs",
+        "codex-rs/external-agent-sessions/src/export.rs",
+        "codex-rs/app-server/src/request_processors/external_agent_config_processor.rs",
+        "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test --locked --offline -p codex-external-agent-sessions",
+          "result": "passed",
+          "tests_passed": 18,
+          "tests_failed": 0
+        },
+        {
+          "command": "cargo test --locked --offline -p codex-app-server external_agent_config_import_creates_session_rollouts",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0
+        }
+      ]
+    },
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "205d37a20f742b0bf8e191622bd07c43f567ea49",
+      "upstream_title": "Keep the sleep tool outside code mode (#34969)",
+      "hepta_commit": "db39bc7d6aff56bcfd9c22631cafade3dacb6b90",
+      "semantic_mapping": "Hepta does not yet own the upstream clock.sleep subsystem, so the invariant is enforced generically: namespaced DirectModelOnly capabilities remain directly model-visible and never enter the nested code-mode surface.",
+      "files": [
+        "codex-rs/core/src/tools/registry.rs",
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core --features code-mode-v8 direct_model_only_namespaced_capability_stays_direct_and_outside_code_mode",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0
+        }
+      ]
+    }
+  ],
+  "tooling_evidence": {
+    "package_fix": [
+      "just fix -p codex-external-agent-sessions",
+      "just fix -p codex-app-server",
+      "just fix -p codex-core"
+    ],
+    "format": "just fmt",
+    "result": "passed_with_existing_non_blocking_warnings"
+  },
+  "claims": {
+    "absorbed_commit_count": 3,
+    "all_r4_candidates_absorbed": false,
+    "upstream_fully_consumed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
