@@ -1,5 +1,61 @@
+/// Production builds intentionally expose no ephemeral runtime constructor.
+///
+/// ```compile_fail
+/// use hepta_runtime::RuntimeKernel;
+///
+/// let _runtime = RuntimeKernel::new();
+/// ```
+///
+/// They also intentionally do not implement [`Default`].
+///
+/// ```compile_fail
+/// use hepta_runtime::RuntimeKernel;
+///
+/// let _runtime: RuntimeKernel = Default::default();
+/// ```
 impl RuntimeKernel {
+    /// Constructs an ephemeral runtime whose outcome receipts live in memory.
+    ///
+    /// This compatibility constructor exists only in unit-test builds.
+    #[cfg(test)]
     pub fn new() -> Self {
+        Self::new_with_outcome_sink(runtime_kernel::outcome_sink::in_memory_outcome_sink())
+    }
+
+    /// Bootstraps a brand-new durable outcome database and runtime.
+    ///
+    /// This fails if the target already exists and never overwrites or adopts
+    /// an existing database.
+    pub fn bootstrap_with_durable_outcomes(
+        path: impl AsRef<std::path::Path>,
+        integrity_key: hepta_memory::DurableIntegrityKey,
+    ) -> Result<Self, hepta_memory::DurableOutcomeWriterError> {
+        let outcome_sink = runtime_kernel::outcome_sink::bootstrap_new_durable_outcome_sink(
+            path.as_ref(),
+            integrity_key,
+        )?;
+        Ok(Self::new_with_outcome_sink(outcome_sink))
+    }
+
+    /// Opens an existing runtime only after the durable outcome database fully
+    /// recovers and its path identity is bound.
+    ///
+    /// A missing, replaced, corrupt, or uninitialized database is returned as
+    /// an error. This constructor never creates a file or falls back to memory.
+    pub fn open_with_durable_outcomes(
+        path: impl AsRef<std::path::Path>,
+        integrity_key: hepta_memory::DurableIntegrityKey,
+    ) -> Result<Self, hepta_memory::DurableOutcomeWriterError> {
+        let outcome_sink = runtime_kernel::outcome_sink::open_existing_durable_outcome_sink(
+            path.as_ref(),
+            integrity_key,
+        )?;
+        Ok(Self::new_with_outcome_sink(outcome_sink))
+    }
+
+    pub(crate) fn new_with_outcome_sink(
+        outcome_sink: runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,
+    ) -> Self {
         let providers = ProviderRegistry::new();
         let active = providers.default_model();
 
@@ -9,6 +65,10 @@ impl RuntimeKernel {
             memory: InMemoryStore::default(),
             policy: ConfigurablePolicyEngine::default(),
             approval_state: Arc::new(Mutex::new(ApprovalState::default())),
+            context_revision_state: Arc::new(Mutex::new(ContextRevisionState::default())),
+            execution_lease_registry: Arc::new(Mutex::new(ExecutionLeaseRegistry::default())),
+            execution_outcome_state: Arc::new(Mutex::new(ExecutionOutcomeState::default())),
+            outcome_sink,
             history_state: Arc::new(Mutex::new(Vec::new())),
             event_state: Arc::new(Mutex::new(EventState::new_with_boot_event())),
             model_state: Arc::new(Mutex::new(ModelState {
@@ -111,6 +171,7 @@ impl RuntimeKernel {
         if session_id.is_empty() {
             return Err(HeptaError("session id must not be empty".into()));
         }
+        let _mutation = self.begin_session_context_mutation(session_id)?;
         self.ensure_session_record_sync(session_id)?;
         let mut guard = self
             .execution_profile_state
@@ -186,6 +247,7 @@ impl RuntimeKernel {
         if session_id.is_empty() {
             return Err(HeptaError("session id must not be empty".into()));
         }
+        let _mutation = self.begin_session_context_mutation(session_id)?;
         self.ensure_session_record_sync(session_id)?;
         let mut guard = self
             .filesystem_scope_state
@@ -261,6 +323,7 @@ impl RuntimeKernel {
         if session_id.is_empty() {
             return Err(HeptaError("session id must not be empty".into()));
         }
+        let _mutation = self.begin_session_context_mutation(session_id)?;
         self.ensure_session_record_sync(session_id)?;
         let mut guard = self
             .write_path_scope_state
@@ -364,6 +427,7 @@ impl RuntimeKernel {
         if argument_name.is_empty() {
             return Err(HeptaError("argument name must not be empty".into()));
         }
+        let _mutation = self.begin_session_context_mutation(session_id)?;
         self.ensure_session_record_sync(session_id)?;
         self.tools.schema(tool_name)?;
         ensure_tool_schema_has_field(
@@ -447,6 +511,7 @@ impl RuntimeKernel {
             return Err(HeptaError("rule id must not be empty".into()));
         }
 
+        let _mutation = self.begin_session_context_mutation(session_id)?;
         let mut guard = self
             .capability_gate_state
             .lock()
@@ -490,6 +555,7 @@ impl RuntimeKernel {
         if session_id.is_empty() {
             return Err(HeptaError("session id must not be empty".into()));
         }
+        let _mutation = self.begin_session_context_mutation(session_id)?;
         self.ensure_session_record_sync(session_id)?;
         let mut guard = self
             .model_state
@@ -632,6 +698,7 @@ impl RuntimeKernel {
             self.ensure_session_record_sync(session_id)?;
         }
 
+        let _mutation = self.begin_global_context_mutation()?;
         let next_index = self
             .policy
             .custom_rules()
@@ -671,6 +738,7 @@ impl RuntimeKernel {
         if rule_id.is_empty() {
             return Err(HeptaError("policy rule id must not be empty".into()));
         }
+        let _mutation = self.begin_global_context_mutation()?;
         let removed = self
             .policy
             .remove_rule(rule_id)
@@ -688,6 +756,7 @@ impl RuntimeKernel {
     }
 
     pub fn reset_policy_rules(&self) -> Result<String, HeptaError> {
+        let _mutation = self.begin_global_context_mutation()?;
         let removed = self.policy.clear_rules().map_err(|err| HeptaError(err.0))?;
         self.emit_event(
             EventKind::PolicyUpdated,
@@ -752,17 +821,78 @@ impl RuntimeKernel {
             .approval_state
             .lock()
             .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
-        guard.grant(session_id, tool_name);
+        let proactive_allowed = SafetyGateClient::proactive_allowed(self, tool_name)?;
+        let approval = guard.approve_tool(session_id, tool_name, proactive_allowed)?;
         drop(guard);
+        let (approval_detail, response) = match approval {
+            ApprovalGrant::Exact { binding_hash } => {
+                let short = short_hash(&binding_hash);
+                (
+                    format!(" exact candidate {short}"),
+                    format!(
+                        "approved exact candidate for session {}: {} ({short})",
+                        session_id, tool_name
+                    ),
+                )
+            }
+            ApprovalGrant::Proactive => (
+                " proactive one-shot token".to_string(),
+                format!(
+                    "created proactive one-shot approval for session {}: {}",
+                    session_id, tool_name
+                ),
+            ),
+        };
         self.emit_event(
             EventKind::ApprovalGranted,
             Some(SessionId(session_id.to_string())),
             None,
-            format!("approved tool {}", tool_name),
+            format!("approved tool {tool_name}:{approval_detail}"),
+        )?;
+        Ok(response)
+    }
+
+    pub fn approve_candidate(&self, binding_hash: &str) -> Result<String, HeptaError> {
+        let active_session_id = self.active_session_id()?;
+        self.approve_candidate_in_session(&active_session_id, binding_hash)
+    }
+
+    pub fn approve_candidate_in_session(
+        &self,
+        session_id: &str,
+        binding_hash: &str,
+    ) -> Result<String, HeptaError> {
+        let session_id = session_id.trim();
+        let binding_hash = binding_hash.trim();
+        if session_id.is_empty() {
+            return Err(HeptaError("session id must not be empty".into()));
+        }
+        if binding_hash.is_empty() {
+            return Err(HeptaError(
+                "candidate binding hash must not be empty".into(),
+            ));
+        }
+        self.ensure_session_record_sync(session_id)?;
+        let (tool_name, approved_hash) = self
+            .approval_state
+            .lock()
+            .map_err(|_| HeptaError("approval state mutex poisoned".into()))?
+            .approve_candidate(session_id, binding_hash)?;
+        self.emit_event(
+            EventKind::ApprovalGranted,
+            Some(SessionId(session_id.to_string())),
+            None,
+            format!(
+                "approved exact candidate {} for tool {}",
+                short_hash(&approved_hash),
+                tool_name
+            ),
         )?;
         Ok(format!(
-            "approved tool for session {}: {}",
-            session_id, tool_name
+            "approved candidate for session {}: {} ({})",
+            session_id,
+            tool_name,
+            short_hash(&approved_hash)
         ))
     }
 
@@ -892,7 +1022,11 @@ impl RuntimeKernel {
         if session_id.is_empty() {
             return Err(HeptaError("session id must not be empty".into()));
         }
+        let _mutation = self.begin_session_context_mutation(session_id)?;
+        self.delete_session_unleased(session_id)
+    }
 
+    fn delete_session_unleased(&self, session_id: &str) -> Result<String, HeptaError> {
         let active_session_id = self.active_session_id()?;
         if active_session_id == session_id {
             let fallback = self.choose_fallback_session_id(Some(session_id))?;
@@ -918,6 +1052,7 @@ impl RuntimeKernel {
                 .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
             approval_state.remove_session(session_id);
         }
+        SafetyGateClient::reset_context_for_session(self, session_id)?;
         {
             let mut history_state = self
                 .history_state
@@ -1029,8 +1164,9 @@ impl RuntimeKernel {
             ));
         }
 
+        let _mutation = self.begin_sessions_context_mutation(targets.iter().map(String::as_str))?;
         for session_id in &targets {
-            self.delete_session(session_id)?;
+            self.delete_session_unleased(session_id)?;
         }
 
         self.emit_event(
@@ -1080,25 +1216,12 @@ impl RuntimeKernel {
         let archived = export.session.archived_at_unix_ms.is_some();
         let export_json = serde_json::to_string_pretty(&export)
             .map_err(|err| HeptaError(format!("failed to serialize session export: {}", err)))?;
-        let export_path = PathBuf::from(path);
-        if let Some(parent) = export_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(|err| {
-                    HeptaError(format!(
-                        "failed to create export directory {}: {}",
-                        parent.display(),
-                        err
-                    ))
-                })?;
-            }
-        }
-        fs::write(&export_path, export_json).map_err(|err| {
-            HeptaError(format!(
-                "failed to write session export {}: {}",
-                export_path.display(),
-                err
-            ))
-        })?;
+        let export_path = PathBuf::from(self.write_maintenance_blob_sealed(
+            session_id,
+            "export_session",
+            path,
+            export_json.as_bytes(),
+        )?);
         let report = SessionExportReport {
             session_id: session_id.to_string(),
             export_path: export_path.display().to_string(),
@@ -1131,9 +1254,13 @@ impl RuntimeKernel {
         }
 
         let import_path = PathBuf::from(path);
-        let import_json = fs::read_to_string(&import_path).map_err(|err| {
+        let import_json = String::from_utf8(read_existing_file_within_root(
+            &self.workspace_root()?,
+            &import_path,
+        )?)
+        .map_err(|err| {
             HeptaError(format!(
-                "failed to read session import {}: {}",
+                "session import is not UTF-8 {}: {}",
                 import_path.display(),
                 err
             ))
@@ -1236,82 +1363,68 @@ impl RuntimeKernel {
                     backup_ref
                 ))
             })?;
+        let backup_bytes = read_existing_file_within_root(&workspace_root, &backup_path)?;
         let active_session_id = self.active_session_id()?;
-        self.ensure_write_path_scope_allows_path_string(
-            &SessionId(active_session_id.clone()),
-            "restore_backup",
-            &backup.target_path,
-        )?;
-        self.ensure_write_target_unlocked(
+        let prepared = self.prepare_sealed_write_target(
             &active_session_id,
-            &backup.target_path,
             "restore_backup",
+            "restore_backup",
+            &backup.target_path,
+            "overwrite",
+            false,
+            None,
         )?;
+        if normalize_path(PathBuf::from(&prepared.target_path))
+            != normalize_path(PathBuf::from(&backup.target_path))
+        {
+            return Err(HeptaError(format!(
+                "backup target identity changed since capture: expected {} resolved {}",
+                backup.target_path, prepared.target_path
+            )));
+        }
 
-        let target_path = PathBuf::from(&backup.target_path);
-        let target_existed_before_restore = target_path.exists();
+        let target_path = PathBuf::from(&prepared.target_path);
+        let target_existed_before_restore = prepared.target_existed_before;
         let previous_target_backup_path = if target_existed_before_restore {
-            let existing = fs::read(&target_path).map_err(|err| {
+            let existing = prepared.before_bytes.as_deref().ok_or_else(|| {
                 HeptaError(format!(
-                    "failed to read current target {} before restore: {}",
-                    target_path.display(),
-                    err
+                    "sealed restore target {} is missing captured contents",
+                    target_path.display()
                 ))
             })?;
             let planned_backup = preview_backup_path(&workspace_root, &target_path)
                 .map_err(|err| HeptaError(err.0))?;
-            if let Some(parent) = planned_backup.parent() {
-                fs::create_dir_all(parent).map_err(|err| {
-                    HeptaError(format!(
-                        "failed to create restore-backup parent {}: {}",
-                        parent.display(),
-                        err
-                    ))
-                })?;
-            }
-            fs::write(&planned_backup, existing).map_err(|err| {
-                HeptaError(format!(
-                    "failed to write restore backup {}: {}",
-                    planned_backup.display(),
-                    err
-                ))
-            })?;
+            write_new_file_within_root(&workspace_root, &planned_backup, existing)?;
             Some(planned_backup.display().to_string())
         } else {
             None
         };
 
-        let backup_bytes = fs::read(&backup_path).map_err(|err| {
-            HeptaError(format!(
-                "failed to read backup {}: {}",
-                backup_path.display(),
-                err
-            ))
-        })?;
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                HeptaError(format!(
-                    "failed to create restore target parent {}: {}",
-                    parent.display(),
-                    err
-                ))
-            })?;
+        let before_content_hash = prepared.before_bytes.as_deref().map(mutation_content_hash);
+        let before_file_identity = prepared
+            .sealed_target
+            .target_identity
+            .map(file_identity_label);
+        write_prepared_target(&prepared, "overwrite", &backup_bytes)?;
+        let (committed_bytes, committed_identity) =
+            read_committed_sealed_target(&prepared.sealed_target)?;
+        if committed_bytes != backup_bytes {
+            return Err(HeptaError(format!(
+                "restored bytes differ after atomic commit: {}",
+                prepared.target_path
+            )));
         }
-        fs::write(&target_path, &backup_bytes).map_err(|err| {
-            HeptaError(format!(
-                "failed to restore {} from {}: {}",
-                target_path.display(),
-                backup_path.display(),
-                err
-            ))
-        })?;
 
         let active_session = SessionId(active_session_id.clone());
         let transaction_id = self.record_restore_backup_transaction(
             &active_session,
-            &backup.target_path,
+            &prepared.target_path,
             target_existed_before_restore,
             backup_bytes.len() as u64,
+            before_content_hash,
+            mutation_content_hash(&committed_bytes),
+            before_file_identity,
+            file_identity_label(committed_identity),
             previous_target_backup_path.clone(),
             backup.backup_path.clone(),
         )?;
@@ -1320,7 +1433,7 @@ impl RuntimeKernel {
             transaction_id,
             backup_id: backup.id.clone(),
             backup_path: backup.backup_path.clone(),
-            restored_target_path: backup.target_path.clone(),
+            restored_target_path: prepared.target_path.clone(),
             restored_bytes: backup_bytes.len() as u64,
             target_existed_before_restore,
             previous_target_backup_path,
@@ -1346,6 +1459,20 @@ impl RuntimeKernel {
         self.plan_backup_prune(target_path, keep_latest_per_target, max_age_ms, false)
     }
 
+    #[cfg(not(test))]
+    pub fn prune_backups(
+        &self,
+        _target_path: Option<&str>,
+        _keep_latest_per_target: usize,
+        _max_age_ms: Option<u64>,
+    ) -> Result<BackupPruneReport, HeptaError> {
+        Err(HeptaError(
+            "backup prune is quarantined until rollback references have a durable cross-process pin catalog"
+                .into(),
+        ))
+    }
+
+    #[cfg(test)]
     pub fn prune_backups(
         &self,
         target_path: Option<&str>,
@@ -1779,10 +1906,11 @@ impl RuntimeKernel {
             .map(|step| step.target_path.clone())
             .filter(|target_path| !target_path.is_empty())
             .collect::<Vec<_>>();
-        self.acquire_group_rollback_locks(
+        let group_reservation = self.acquire_group_rollback_locks_internal(
             &plan.session_id,
             &plan.group_id,
             &attempt_id,
+            resumed_from_attempt_id.as_deref(),
             &locked_target_paths,
         )?;
         let mut executed_transaction_ids = Vec::new();
@@ -1818,7 +1946,9 @@ impl RuntimeKernel {
                 skipped_already_rolled_back_ids.push(step.transaction_id.clone());
                 continue;
             }
-            match self.rollback_write_transaction(&step.transaction_id) {
+            match self
+                .rollback_write_transaction_internal(&step.transaction_id, Some(&group_reservation))
+            {
                 Ok(report) => {
                     executed_transaction_ids.push(report.transaction_id);
                     pending_transaction_ids.retain(|id| id != &step.transaction_id);
@@ -1921,7 +2051,7 @@ impl RuntimeKernel {
                 resume_command,
             });
         }
-        self.release_group_rollback_locks(&plan.session_id, &plan.group_id)?;
+        self.release_group_rollback_reservation(&group_reservation)?;
         self.emit_event_with_payload(
             EventKind::WriteGroupRolledBack,
             Some(SessionId(plan.session_id.clone())),
@@ -1960,6 +2090,14 @@ impl RuntimeKernel {
         &self,
         transaction_id: &str,
     ) -> Result<RollbackWriteReport, HeptaError> {
+        self.rollback_write_transaction_internal(transaction_id, None)
+    }
+
+    fn rollback_write_transaction_internal(
+        &self,
+        transaction_id: &str,
+        group_reservation: Option<&GroupRollbackReservation>,
+    ) -> Result<RollbackWriteReport, HeptaError> {
         let transaction_id = transaction_id.trim();
         if transaction_id.is_empty() {
             return Err(HeptaError("transaction id must not be empty".into()));
@@ -1986,6 +2124,60 @@ impl RuntimeKernel {
             )));
         }
 
+        let active_session_id = self.active_session_id()?;
+        let mut prepared = self.prepare_sealed_write_target(
+            &active_session_id,
+            "rollback_write_transaction",
+            "rollback_write_transaction",
+            &entry.target_path,
+            "overwrite",
+            false,
+            group_reservation,
+        )?;
+        if normalize_path(PathBuf::from(&prepared.target_path))
+            != normalize_path(PathBuf::from(&entry.target_path))
+        {
+            return Err(HeptaError(format!(
+                "rollback target identity changed since transaction capture: expected {} resolved {}",
+                entry.target_path, prepared.target_path
+            )));
+        }
+        if let Some(expected_hash) = entry.after_content_hash.as_deref() {
+            let current = prepared.before_bytes.as_deref().ok_or_else(|| {
+                HeptaError(format!(
+                    "rollback target disappeared since transaction {} committed",
+                    transaction_id
+                ))
+            })?;
+            let current_hash = mutation_content_hash(current);
+            if current_hash != expected_hash {
+                return Err(HeptaError(format!(
+                    "rollback target contents changed since transaction {} committed",
+                    transaction_id
+                )));
+            }
+        }
+        if entry.after_content_hash.is_none()
+            && let Some(expected_identity) = entry.after_file_identity.as_deref()
+        {
+            let current_identity = prepared
+                .sealed_target
+                .target_identity
+                .map(file_identity_label)
+                .ok_or_else(|| {
+                    HeptaError(format!(
+                        "rollback target identity disappeared since transaction {} committed",
+                        transaction_id
+                    ))
+                })?;
+            if current_identity != expected_identity {
+                return Err(HeptaError(format!(
+                    "rollback target identity changed since transaction {} committed",
+                    transaction_id
+                )));
+            }
+        }
+
         {
             let mut guard = self
                 .rollback_failure_injection_state
@@ -2003,41 +2195,12 @@ impl RuntimeKernel {
             }
         }
 
-        let active_session_id = self.active_session_id()?;
-        self.ensure_write_path_scope_allows_path_string(
-            &SessionId(active_session_id.clone()),
-            "rollback_write_transaction",
-            &entry.target_path,
-        )?;
-
         let workspace_root = self.workspace_root()?;
-        let target_path = PathBuf::from(&entry.target_path);
-        let previous_target_backup_path = if target_path.exists() {
-            let existing = fs::read(&target_path).map_err(|err| {
-                HeptaError(format!(
-                    "failed to read current target {} before rollback: {}",
-                    target_path.display(),
-                    err
-                ))
-            })?;
+        let target_path = PathBuf::from(&prepared.target_path);
+        let previous_target_backup_path = if let Some(existing) = prepared.before_bytes.as_deref() {
             let planned_backup = preview_backup_path(&workspace_root, &target_path)
                 .map_err(|err| HeptaError(err.0))?;
-            if let Some(parent) = planned_backup.parent() {
-                fs::create_dir_all(parent).map_err(|err| {
-                    HeptaError(format!(
-                        "failed to create rollback backup parent {}: {}",
-                        parent.display(),
-                        err
-                    ))
-                })?;
-            }
-            fs::write(&planned_backup, existing).map_err(|err| {
-                HeptaError(format!(
-                    "failed to write rollback safety backup {}: {}",
-                    planned_backup.display(),
-                    err
-                ))
-            })?;
+            write_new_file_within_root(&workspace_root, &planned_backup, existing)?;
             Some(planned_backup.display().to_string())
         } else {
             None
@@ -2052,39 +2215,21 @@ impl RuntimeKernel {
                             transaction_id
                         ))
                     })?;
-                let checkpoint_bytes = fs::read(checkpoint_path).map_err(|err| {
-                    HeptaError(format!(
-                        "failed to read rollback checkpoint {}: {}",
-                        checkpoint_path, err
-                    ))
-                })?;
-                if let Some(parent) = target_path.parent() {
-                    fs::create_dir_all(parent).map_err(|err| {
-                        HeptaError(format!(
-                            "failed to create rollback target parent {}: {}",
-                            parent.display(),
-                            err
-                        ))
-                    })?;
+                let checkpoint_bytes =
+                    read_existing_file_within_root(&workspace_root, Path::new(checkpoint_path))?;
+                if let Some(expected_hash) = entry.before_content_hash.as_deref()
+                    && mutation_content_hash(&checkpoint_bytes) != expected_hash
+                {
+                    return Err(HeptaError(format!(
+                        "rollback checkpoint contents changed for transaction {}",
+                        transaction_id
+                    )));
                 }
-                fs::write(&target_path, checkpoint_bytes).map_err(|err| {
-                    HeptaError(format!(
-                        "failed to restore {} during rollback: {}",
-                        target_path.display(),
-                        err
-                    ))
-                })?;
+                write_prepared_target(&prepared, "overwrite", &checkpoint_bytes)?;
+                mark_prepared_target_written(&mut prepared, checkpoint_bytes)?;
             }
             "delete_target" => {
-                if target_path.exists() {
-                    fs::remove_file(&target_path).map_err(|err| {
-                        HeptaError(format!(
-                            "failed to delete {} during rollback: {}",
-                            target_path.display(),
-                            err
-                        ))
-                    })?;
-                }
+                delete_prepared_target(&mut prepared)?;
             }
             other => {
                 return Err(HeptaError(format!(
@@ -2115,7 +2260,7 @@ impl RuntimeKernel {
             rollback_strategy: entry.rollback_strategy.clone(),
             rollback_checkpoint_path: entry.rollback_checkpoint_path.clone(),
             previous_target_backup_path,
-            target_exists_after_rollback: target_path.exists(),
+            target_exists_after_rollback: prepared.sealed_target.target_identity.is_some(),
         };
         self.emit_event(
             EventKind::WriteRolledBack,
@@ -2157,6 +2302,8 @@ impl RuntimeKernel {
             Err(err) => return Err(err),
         }
 
+        let _mutation =
+            self.begin_sessions_context_mutation([source_session_id, target_session_id])?;
         let mut export = self.session_export(source_session_id)?;
         let now = current_unix_ms()?;
         export.session.session_id = SessionId(target_session_id.to_string());
@@ -2176,7 +2323,7 @@ impl RuntimeKernel {
         let topic_session_count = export.topic_sessions.len();
         let topic_graph_edge_count = export.topic_graph_edges.len();
 
-        self.apply_session_export(export)?;
+        self.apply_session_export_unleased(export)?;
         let forked = self
             .existing_session_snapshot_for_id(target_session_id)
             .map_err(|err| {
@@ -2232,6 +2379,8 @@ impl RuntimeKernel {
             ));
         }
 
+        let _mutation =
+            self.begin_sessions_context_mutation([source_session_id, target_session_id])?;
         let source_export = self.session_export(source_session_id)?;
         let history_plan = self.plan_history_merge(target_session_id, &source_export.history)?;
         let target_approvals = self.approval_snapshot_for_session(target_session_id)?;
@@ -2314,7 +2463,7 @@ impl RuntimeKernel {
         )?;
 
         if options.adopt_model {
-            self.set_session_model(target_session_id, source_export.model.clone())?;
+            self.set_session_model_unleased(target_session_id, source_export.model.clone())?;
         }
 
         {
@@ -2322,15 +2471,9 @@ impl RuntimeKernel {
                 .approval_state
                 .lock()
                 .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
-            approval_state.remove_session(target_session_id);
-            if !merged_approvals.granted_tools.is_empty() || !merged_approvals.pending.is_empty() {
-                approval_state.sessions.push(SessionApprovalState {
-                    session_id: target_session_id.to_string(),
-                    granted_tools: merged_approvals.granted_tools,
-                    pending: merged_approvals.pending,
-                });
-            }
+            approval_state.set_legacy_snapshot(target_session_id, merged_approvals);
         }
+        SafetyGateClient::reset_context_for_session(self, target_session_id)?;
         {
             let mut history_state = self
                 .history_state
@@ -2352,7 +2495,7 @@ impl RuntimeKernel {
                     .map_err(|_| HeptaError("session state mutex poisoned".into()))?;
                 guard.active_session_id = target_session_id.to_string();
             }
-            self.delete_session(source_session_id)?;
+            self.delete_session_unleased(source_session_id)?;
         }
 
         let report = MergeExecutionReport {
@@ -2638,25 +2781,13 @@ impl RuntimeKernel {
         let snapshot = self.runtime_snapshot()?;
         let snapshot_json = serde_json::to_string_pretty(&snapshot)
             .map_err(|err| HeptaError(format!("failed to serialize runtime snapshot: {}", err)))?;
-        let snapshot_path = PathBuf::from(path);
-        if let Some(parent) = snapshot_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(|err| {
-                    HeptaError(format!(
-                        "failed to create snapshot directory {}: {}",
-                        parent.display(),
-                        err
-                    ))
-                })?;
-            }
-        }
-        fs::write(&snapshot_path, snapshot_json).map_err(|err| {
-            HeptaError(format!(
-                "failed to write runtime snapshot {}: {}",
-                snapshot_path.display(),
-                err
-            ))
-        })?;
+        let active_session_id = self.active_session_id()?;
+        let snapshot_path = PathBuf::from(self.write_maintenance_blob_sealed(
+            &active_session_id,
+            "write_snapshot",
+            path,
+            snapshot_json.as_bytes(),
+        )?);
         if emit_audit_event {
             self.emit_event(
                 EventKind::SnapshotSaved,
@@ -2673,9 +2804,13 @@ impl RuntimeKernel {
 
     pub fn load_snapshot(&self, path: &str) -> Result<String, HeptaError> {
         let snapshot_path = PathBuf::from(path);
-        let snapshot_json = fs::read_to_string(&snapshot_path).map_err(|err| {
+        let snapshot_json = String::from_utf8(read_existing_file_within_root(
+            &self.workspace_root()?,
+            &snapshot_path,
+        )?)
+        .map_err(|err| {
             HeptaError(format!(
-                "failed to read runtime snapshot {}: {}",
+                "runtime snapshot is not UTF-8 {}: {}",
                 snapshot_path.display(),
                 err
             ))

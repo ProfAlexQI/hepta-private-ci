@@ -1,3 +1,4 @@
+#[cfg(test)]
 impl Default for RuntimeKernel {
     fn default() -> Self {
         Self::new()

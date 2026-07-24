@@ -1,11 +1,13 @@
-const WRITE_LOCK_LEASE_MS: u64 = 5 * 60 * 1000;
-
 pub struct RuntimeKernel {
     providers: ProviderRegistry,
     tools: ToolRegistry,
     memory: InMemoryStore,
     policy: ConfigurablePolicyEngine,
     approval_state: Arc<Mutex<ApprovalState>>,
+    context_revision_state: Arc<Mutex<ContextRevisionState>>,
+    execution_lease_registry: Arc<Mutex<ExecutionLeaseRegistry>>,
+    execution_outcome_state: Arc<Mutex<ExecutionOutcomeState>>,
+    outcome_sink: runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,
     history_state: Arc<Mutex<Vec<TurnRecord>>>,
     event_state: Arc<Mutex<EventState>>,
     model_state: Arc<Mutex<ModelState>>,
@@ -125,19 +127,31 @@ pub struct CapabilityGateReport {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingApproval {
+    /// Compatibility display name; never sufficient to authorize execution.
     pub tool_name: String,
+    /// Human-readable policy reason.
     pub reason: String,
+    /// Exact candidate binding for operator selection, if created by V2 safety.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_binding_hash: Option<String>,
+    /// Exact canonical tool-name-and-arguments digest, without raw arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ApprovalSnapshot {
+    /// Display-only compatibility grants; snapshots never restore authority.
     pub granted_tools: Vec<String>,
+    /// Display projection of pending approvals; imported entries are non-authoritative.
     pub pending: Vec<PendingApproval>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ToolDescriptor {
     pub name: String,
+    pub executor_provider: String,
+    pub operation: String,
     pub description: String,
     pub risk_tier: RiskTier,
     pub execution_metadata: hepta_core::ToolExecutionMetadata,
@@ -370,10 +384,47 @@ pub struct WriteTransactionEntry {
     pub target_existed_before: bool,
     pub bytes_before: u64,
     pub bytes_after: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_content_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_content_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_plan_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_ack_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_file_identity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_file_identity: Option<String>,
     pub rollback_strategy: String,
     pub rollback_checkpoint_path: Option<String>,
     pub source_backup_path: Option<String>,
     pub rolled_back_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionEffectInspectionState {
+    Unplanned,
+    NotApplied,
+    AppliedAcknowledged,
+    AppliedUnacknowledged,
+    InDoubt,
+    Drifted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingExecutionEffectInspection {
+    pub attempt_id: String,
+    pub tool_name: String,
+    pub state: ExecutionEffectInspectionState,
+    pub target_path: Option<String>,
+    pub expected_before_content_hash: Option<String>,
+    pub expected_after_content_hash: Option<String>,
+    pub observed_content_hash: Option<String>,
+    pub effect_plan_hash: Option<String>,
+    pub effect_ack_hash: Option<String>,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -551,13 +602,164 @@ pub struct WriteGroupLock {
     pub lease_expires_at_unix_ms: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct PreparedWriteTransaction {
+    operation: String,
+    requested_path: String,
     target_path: String,
     mode_requested: String,
     preview_only: bool,
     target_existed_before: bool,
     before_bytes: Option<Vec<u8>>,
+    staged_after_bytes: Option<Vec<u8>>,
+    sealed_target: SealedWriteTarget,
+    _reservation: WriteTargetReservation,
+}
+
+#[derive(Debug)]
+struct PreparedWriteReservationSet {
+    transactions: Vec<PreparedWriteTransaction>,
+}
+
+impl PreparedWriteReservationSet {
+    fn empty() -> Self {
+        Self {
+            transactions: Vec::new(),
+        }
+    }
+}
+
+/// Non-cloneable, read-only proof of the exact bytes and filesystem identity
+/// captured before kernel authorization.
+///
+/// This capability is intentionally independent from write reservations and
+/// mutation receipts. The retained descriptors are used only to revalidate
+/// namespace identity; providers consume `bytes` and never reopen `requested_path`.
+#[derive(Debug)]
+struct PreparedReadCapability {
+    tool_name: String,
+    argument_name: String,
+    requested_path: String,
+    resolved_path: PathBuf,
+    anchor_path: PathBuf,
+    relative_components: Vec<std::ffi::OsString>,
+    anchor_identity: FileIdentity,
+    parent_identity: FileIdentity,
+    file_identity: FileIdentity,
+    content_hash: String,
+    bytes: Vec<u8>,
+    anchor_directory: fs::File,
+    retained_file: fs::File,
+}
+
+#[derive(Debug)]
+struct SealedWriteCandidate {
+    operation: String,
+    requested_path: String,
+    target_path: String,
+    mode_requested: String,
+    preview_only: bool,
+    target_existed_before: bool,
+    before_bytes: Option<Vec<u8>>,
+    sealed_target: SealedWriteTarget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    device: u64,
+    inode: u64,
+}
+
+/// Filesystem identity used by the in-process registry and OS advisory-lock
+/// key derivation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SealedWriteIdentity {
+    canonical_namespace: PathBuf,
+    existing_target: Option<FileIdentity>,
+    anchor: FileIdentity,
+    anchor_suffix: Vec<std::ffi::OsString>,
+}
+
+#[derive(Debug, Clone)]
+struct ProcessWriteReservationEntry {
+    lock: WriteTargetLock,
+    identity: SealedWriteIdentity,
+}
+
+#[derive(Debug, Default)]
+struct ProcessWriteReservationRegistry {
+    active: Vec<ProcessWriteReservationEntry>,
+}
+
+/// Non-cloneable capability proving ownership of one process-global rollback
+/// group reservation. Callers cannot reconstruct this witness from public
+/// session, group, attempt, or lock-report strings.
+#[derive(Debug)]
+struct GroupRollbackReservation {
+    token: String,
+    session_id: String,
+    group_id: String,
+    attempt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveGroupRollbackReservation {
+    token: String,
+    session_id: String,
+    group_id: String,
+    attempt_id: String,
+    lease_expires_at_unix_ms: u64,
+    cross_process_lease:
+        Arc<runtime_kernel::cross_process_write_lock::CrossProcessWriteLease>,
+}
+
+/// Filesystem capability captured before authorization.
+///
+/// The open anchor directory is deliberately retained through dispatch. The
+/// provider can therefore create/open the leaf relative to the authorized
+/// directory identity instead of resolving an attacker-controlled path again.
+#[derive(Debug)]
+struct SealedWriteTarget {
+    workspace_root: PathBuf,
+    canonical_path: PathBuf,
+    canonical_anchor: PathBuf,
+    missing_parent_components: Vec<std::ffi::OsString>,
+    leaf_name: std::ffi::OsString,
+    anchor_identity: FileIdentity,
+    target_identity: Option<FileIdentity>,
+    namespace_case_insensitive: bool,
+    #[cfg(unix)]
+    anchor_directory: fs::File,
+}
+
+#[derive(Debug)]
+struct WriteTargetReservation {
+    reservation_id: String,
+    write_lock_state: Arc<Mutex<WriteLockState>>,
+    process_reservation_id: Option<String>,
+    _cross_process_lease:
+        Option<runtime_kernel::cross_process_write_lock::CrossProcessWriteLease>,
+}
+
+impl Drop for WriteTargetReservation {
+    fn drop(&mut self) {
+        if let Some(reservation_id) = self.process_reservation_id.as_deref() {
+            let mut registry = match process_write_reservation_registry().lock() {
+                Ok(registry) => registry,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            registry
+                .active
+                .retain(|entry| entry.lock.owner_id != reservation_id);
+        }
+        let mut state = match self.write_lock_state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        state
+            .active_target_reservations
+            .retain(|lock| lock.owner_id != self.reservation_id);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -577,6 +779,8 @@ struct WriteTransactionGroupState {
 struct WriteLockState {
     target_locks: Vec<WriteTargetLock>,
     group_locks: Vec<WriteGroupLock>,
+    active_target_reservations: Vec<WriteTargetLock>,
+    active_group_rollback_reservations: Vec<ActiveGroupRollbackReservation>,
 }
 
 #[derive(Debug, Clone)]
@@ -828,90 +1032,7 @@ struct SessionApprovalState {
     pending: Vec<PendingApproval>,
 }
 
-#[derive(Debug, Default)]
-struct ApprovalState {
-    sessions: Vec<SessionApprovalState>,
-}
-
 #[derive(Debug, Default, Clone)]
 struct ConfigurablePolicyEngine {
     custom_rules: Arc<Mutex<Vec<PolicyRule>>>,
-}
-
-impl ApprovalState {
-    fn session(&self, session_id: &str) -> Option<&SessionApprovalState> {
-        self.sessions
-            .iter()
-            .find(|session| session.session_id == session_id)
-    }
-
-    fn session_mut(&mut self, session_id: &str) -> &mut SessionApprovalState {
-        if let Some(index) = self
-            .sessions
-            .iter()
-            .position(|session| session.session_id == session_id)
-        {
-            return &mut self.sessions[index];
-        }
-
-        self.sessions.push(SessionApprovalState {
-            session_id: session_id.to_string(),
-            granted_tools: Vec::new(),
-            pending: Vec::new(),
-        });
-        self.sessions
-            .last_mut()
-            .expect("session approval state should exist after push")
-    }
-
-    fn snapshot_for(&self, session_id: &str) -> ApprovalSnapshot {
-        match self.session(session_id) {
-            Some(session) => ApprovalSnapshot {
-                granted_tools: session.granted_tools.clone(),
-                pending: session.pending.clone(),
-            },
-            None => ApprovalSnapshot {
-                granted_tools: Vec::new(),
-                pending: Vec::new(),
-            },
-        }
-    }
-
-    fn is_granted(&self, session_id: &str, tool_name: &str) -> bool {
-        self.session(session_id)
-            .map(|session| session.granted_tools.iter().any(|tool| tool == tool_name))
-            .unwrap_or(false)
-    }
-
-    fn remember_pending(&mut self, session_id: &str, tool_name: &str, reason: &str) {
-        let session = self.session_mut(session_id);
-        if session
-            .pending
-            .iter()
-            .any(|item| item.tool_name == tool_name)
-        {
-            return;
-        }
-        session.pending.push(PendingApproval {
-            tool_name: tool_name.to_string(),
-            reason: reason.to_string(),
-        });
-    }
-
-    fn grant(&mut self, session_id: &str, tool_name: &str) {
-        let session = self.session_mut(session_id);
-        if !session.granted_tools.iter().any(|tool| tool == tool_name) {
-            session.granted_tools.push(tool_name.to_string());
-        }
-        session.pending.retain(|item| item.tool_name != tool_name);
-    }
-
-    fn all_sessions(&self) -> Vec<SessionApprovalState> {
-        self.sessions.clone()
-    }
-
-    fn remove_session(&mut self, session_id: &str) {
-        self.sessions
-            .retain(|session| session.session_id != session_id);
-    }
 }

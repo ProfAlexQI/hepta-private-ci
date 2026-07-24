@@ -2547,11 +2547,13 @@ mod tests {
 
     #[tokio::test]
     async fn multi_agent_runtime_snapshot_recovers_inbox_controls_and_evidence() {
-        let path = std::env::temp_dir().join(format!(
-            "hepta-multi-agent-recovery-{}-{}.json",
-            std::process::id(),
-            current_unix_ms().unwrap_or(0)
-        ));
+        let path = crate::tool_workspace_root_path()
+            .join("artifacts")
+            .join(format!(
+                "hepta-multi-agent-recovery-{}-{}.json",
+                std::process::id(),
+                current_unix_ms().unwrap_or(0)
+            ));
         let path_string = path.to_string_lossy().to_string();
         let runtime = RuntimeKernel::new();
         runtime.register_agent_runtime("alpha").unwrap();

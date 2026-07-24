@@ -48,7 +48,6 @@ use hepta_core::HeptaError;
 use hepta_core::HeptaNeuron;
 use hepta_core::IntuitionFeedbackRecord;
 use hepta_core::MemoryQuery;
-use hepta_core::MemoryRecord;
 use hepta_core::MemoryScope;
 use hepta_core::MemoryStore;
 use hepta_core::MessageRole;
@@ -76,8 +75,6 @@ use hepta_core::ToolContext;
 use hepta_core::ToolResult;
 use hepta_core::TopicGraphEdge;
 use hepta_core::TopicSession;
-use hepta_core::TranscriptEntry;
-use hepta_core::TranscriptEntryKind;
 use hepta_core::Usage;
 use hepta_core::WritePathScope;
 use hepta_intelligence::TopicAwareModelFeedbackRecord;
@@ -992,9 +989,36 @@ mod workflow_temporal_lite_work_graph_projection_local_persistence_readback;
 mod workflow_temporal_lite_work_graph_projection_replay_alignment_feature_gated_readback;
 mod workflow_temporal_lite_work_graph_projection_replay_alignment_local_persistence_readback;
 
+mod runtime_kernel {
+    pub(super) mod approval_state;
+    pub(super) mod context_freezer;
+    pub(super) mod cross_process_write_lock;
+    pub(super) mod execution_attempt;
+    pub(super) mod execution_bus;
+    pub(super) mod execution_lease;
+    pub(super) mod outcome_recorder;
+    pub(super) mod outcome_sink;
+    pub(super) mod provider_effect;
+    pub(super) mod safety_gate_client;
+    pub(super) mod terminal_outcome;
+}
+
+use runtime_kernel::approval_state::ApprovalGrant;
+use runtime_kernel::approval_state::ApprovalState;
+use runtime_kernel::approval_state::CandidateApproval;
+use runtime_kernel::approval_state::ExactApprovalMaterial;
+use runtime_kernel::approval_state::short_hash;
+use runtime_kernel::context_freezer::ContextRevisionState;
+use runtime_kernel::execution_attempt::ExecutionOutcomeState;
+use runtime_kernel::execution_bus::ExecutionBus;
+use runtime_kernel::execution_lease::ExecutionLeaseRegistry;
+use runtime_kernel::outcome_recorder::OutcomeRecorder;
+use runtime_kernel::safety_gate_client::SafetyGateClient;
+
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");
 include!("runtime_kernel/types.rs");
+include!("runtime_kernel/turn_coordinator.rs");
 include!("runtime_kernel/session_ops.rs");
 include!("runtime_kernel/context_turn_ops.rs");
 include!("runtime_kernel/provider_support.rs");

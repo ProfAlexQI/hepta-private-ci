@@ -21,8 +21,8 @@ use serde_json::json;
 use super::RuntimeContextRecallProviderRollup;
 use super::RuntimeKernel;
 use super::VerticalSliceResult;
-use super::WriteTransactionEntry;
 use super::current_unix_ms;
+#[cfg(test)]
 use super::resolve_path_within_root;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +352,53 @@ pub struct WorkerTaskFileLease {
     pub lease_expires_at_unix_ms: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conflict_task_ids: Vec<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkerPatchApplyAuthorization {
+    worker_session_id: String,
+    requested_path: String,
+    workspace_root: String,
+}
+
+impl WorkerPatchApplyAuthorization {
+    pub(crate) fn worker_session_id(&self) -> &str {
+        &self.worker_session_id
+    }
+
+    pub(crate) fn requested_path(&self) -> &str {
+        &self.requested_path
+    }
+
+    pub(crate) fn workspace_root(&self) -> &str {
+        &self.workspace_root
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkerPatchRollbackAuthorization {
+    worker_session_id: String,
+    requested_path: String,
+    workspace_root: String,
+    transaction_id: String,
+}
+
+impl WorkerPatchRollbackAuthorization {
+    pub(crate) fn worker_session_id(&self) -> &str {
+        &self.worker_session_id
+    }
+
+    pub(crate) fn requested_path(&self) -> &str {
+        &self.requested_path
+    }
+
+    pub(crate) fn workspace_root(&self) -> &str {
+        &self.workspace_root
+    }
+
+    pub(crate) fn transaction_id(&self) -> &str {
+        &self.transaction_id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1904,7 +1951,7 @@ impl RuntimeKernel {
         task_id: &str,
         patch_id: &str,
     ) -> Result<WorkerTaskPatchReviewReport, HeptaError> {
-        let (worker_session_id, patch) = {
+        let (task, patch) = {
             let task = self.find_worker_task(task_id)?;
             let patch = task
                 .patch_proposals
@@ -1912,9 +1959,10 @@ impl RuntimeKernel {
                 .find(|patch| patch.patch_id == patch_id)
                 .cloned()
                 .ok_or_else(|| HeptaError(format!("unknown patch: {}", patch_id)))?;
-            (task.worker_session_id, patch)
+            (task, patch)
         };
-        let outcome = self.apply_worker_patch_to_workspace(&worker_session_id, &patch)?;
+        let worker_session_id = task.worker_session_id.clone();
+        let outcome = self.apply_worker_patch_to_workspace(&task, &patch)?;
         let mut task = self.update_worker_patch_after_apply(task_id, patch_id, outcome.clone())?;
         if outcome.apply_status == WorkerTaskPatchApplyStatus::Conflicted {
             task = self.append_worker_patch_revision(task_id, patch_id, &patch, &outcome)?;
@@ -1938,6 +1986,147 @@ impl RuntimeKernel {
             })),
         )?;
         Ok(worker_task_patch_review_report(task))
+    }
+
+    fn authorize_worker_patch_apply(
+        &self,
+        task: &WorkerTaskRecord,
+        patch: &WorkerTaskPatchProposal,
+    ) -> Result<WorkerPatchApplyAuthorization, HeptaError> {
+        let now = current_unix_ms()?;
+        if !matches!(
+            task.status,
+            WorkerTaskStatus::Running | WorkerTaskStatus::Completed
+        ) || patch.apply_status != WorkerTaskPatchApplyStatus::Proposed
+            || !task.patch_proposals.iter().any(|stored| stored == patch)
+        {
+            return Err(HeptaError(
+                "worker patch authority requires an active exact proposed patch".into(),
+            ));
+        }
+        let requested = Path::new(&patch.file_path);
+        if requested.is_absolute()
+            || requested.components().next().is_none()
+            || requested
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(HeptaError(
+                "worker patch authority requires a normalized relative target".into(),
+            ));
+        }
+        let mut exact_leases = task.file_leases.iter().filter(|lease| {
+            lease.task_id == task.task_id
+                && lease.worker_id == task.worker_id
+                && lease.worker_session_id == task.worker_session_id
+                && lease.target_path == patch.file_path
+        });
+        let Some(exact_lease) = exact_leases.next() else {
+            return Err(HeptaError(format!(
+                "worker patch has no exact file lease: {}",
+                patch.file_path
+            )));
+        };
+        if exact_leases.next().is_some()
+            || !matches!(
+                exact_lease.status,
+                WorkerTaskFileLeaseStatus::Active | WorkerTaskFileLeaseStatus::HeldForReview
+            )
+            || !exact_lease.conflict_task_ids.is_empty()
+            || now < exact_lease.acquired_at_unix_ms
+            || now > exact_lease.lease_expires_at_unix_ms
+        {
+            return Err(HeptaError(format!(
+                "worker patch exact file lease is not active and conflict-free: {}",
+                patch.file_path
+            )));
+        }
+        let workspace_root = self.worker_patch_authorized_workspace(task)?;
+        Ok(WorkerPatchApplyAuthorization {
+            worker_session_id: task.worker_session_id.clone(),
+            requested_path: patch.file_path.clone(),
+            workspace_root,
+        })
+    }
+
+    fn worker_patch_authorized_workspace(
+        &self,
+        task: &WorkerTaskRecord,
+    ) -> Result<String, HeptaError> {
+        let workspace_root = self.workspace_root()?;
+        let envelope_root = fs::canonicalize(&task.safety_envelope.sandbox.workspace_root)
+            .map_err(|error| {
+                HeptaError(format!(
+                    "worker patch safety workspace cannot be resolved: {error}"
+                ))
+            })?;
+        let safety_valid = task.permission_envelope.filesystem_scope
+            == FilesystemScope::WorkspaceOnly
+            && task.permission_envelope.write_scope != WritePathScope::AnyPath
+            && task.permission_envelope.execution_profile != ExecutionProfile::NoTools
+            && task.safety_envelope.sandbox.host_process_allowed
+            && task.safety_envelope.cancel_supported
+            && task.safety_envelope.cancel_checked_before_host_command
+            && task.safety_envelope.resource_limits.task_timeout_budget_ms
+                == task.timeout_budget_ms
+            && task.patch_proposals.len()
+                <= task.safety_envelope.resource_limits.max_patch_proposals
+            && envelope_root == workspace_root;
+        if !safety_valid {
+            return Err(HeptaError(
+                "worker patch safety envelope does not authorize this workspace mutation".into(),
+            ));
+        }
+        Ok(workspace_root.display().to_string())
+    }
+
+    fn authorize_worker_patch_rollback(
+        &self,
+        task: &WorkerTaskRecord,
+        patch: &WorkerTaskPatchProposal,
+        transaction_id: &str,
+    ) -> Result<WorkerPatchRollbackAuthorization, HeptaError> {
+        if task.status != WorkerTaskStatus::Completed
+            || patch.apply_status != WorkerTaskPatchApplyStatus::Applied
+            || patch.transaction_id.as_deref() != Some(transaction_id)
+            || !task.patch_proposals.iter().any(|stored| stored == patch)
+        {
+            return Err(HeptaError(
+                "worker patch rollback requires an exact applied patch receipt".into(),
+            ));
+        }
+        let mut exact_leases = task.file_leases.iter().filter(|lease| {
+            lease.task_id == task.task_id
+                && lease.worker_id == task.worker_id
+                && lease.worker_session_id == task.worker_session_id
+                && lease.target_path == patch.file_path
+        });
+        let exact_lease = exact_leases.next();
+        if exact_lease.is_none_or(|lease| lease.status == WorkerTaskFileLeaseStatus::Conflicted)
+            || exact_leases.next().is_some()
+        {
+            return Err(HeptaError(format!(
+                "worker patch rollback has no conflict-free exact file lease record: {}",
+                patch.file_path
+            )));
+        }
+        let requested = Path::new(&patch.file_path);
+        if requested.is_absolute()
+            || requested.components().next().is_none()
+            || requested
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(HeptaError(
+                "worker patch rollback requires a normalized relative target".into(),
+            ));
+        }
+        Ok(WorkerPatchRollbackAuthorization {
+            worker_session_id: task.worker_session_id.clone(),
+            requested_path: patch.file_path.clone(),
+            workspace_root: self.worker_patch_authorized_workspace(task)?,
+            transaction_id: transaction_id.to_string(),
+        })
     }
 
     pub fn apply_worker_task_patch_set(
@@ -2027,7 +2216,7 @@ impl RuntimeKernel {
                 failed_patch_ids.push(patch_id);
                 continue;
             };
-            match self.rollback_worker_patch_transaction(&transaction_id) {
+            match self.rollback_worker_patch_transaction(task_id, &patch_id, &transaction_id) {
                 Ok(_) => {
                     rolled_back_transaction_ids.push(transaction_id.clone());
                     let _ = self.update_worker_patch_after_apply(
@@ -2059,67 +2248,20 @@ impl RuntimeKernel {
         })
     }
 
-    fn rollback_worker_patch_transaction(&self, transaction_id: &str) -> Result<(), HeptaError> {
-        let entry = {
-            let guard = self
-                .write_transaction_state
-                .lock()
-                .map_err(|_| HeptaError("write transaction state mutex poisoned".into()))?;
-            guard
-                .iter()
-                .find(|entry| entry.transaction_id == transaction_id)
-                .cloned()
-                .ok_or_else(|| {
-                    HeptaError(format!("unknown write transaction: {}", transaction_id))
-                })?
-        };
-        if entry.action != "worker_task_patch_apply" {
-            return Err(HeptaError(format!(
-                "transaction {} is not a worker patch apply",
-                transaction_id
-            )));
-        }
-        if entry.rolled_back_at_unix_ms.is_some() {
-            return Err(HeptaError(format!(
-                "write transaction {} already rolled back",
-                transaction_id
-            )));
-        }
-        match entry.rollback_strategy.as_str() {
-            "delete_target" => {
-                let target_path = Path::new(&entry.target_path);
-                if target_path.exists() {
-                    fs::remove_file(target_path).map_err(|err| {
-                        HeptaError(format!(
-                            "failed to delete {} during worker patch rollback: {}",
-                            target_path.display(),
-                            err
-                        ))
-                    })?;
-                }
-            }
-            other => {
-                return Err(HeptaError(format!(
-                    "unsupported worker patch rollback strategy {} for transaction {}",
-                    other, transaction_id
-                )));
-            }
-        }
-        let rolled_back_at_unix_ms = current_unix_ms()?;
-        {
-            let mut guard = self
-                .write_transaction_state
-                .lock()
-                .map_err(|_| HeptaError("write transaction state mutex poisoned".into()))?;
-            let stored = guard
-                .iter_mut()
-                .find(|entry| entry.transaction_id == transaction_id)
-                .ok_or_else(|| {
-                    HeptaError(format!("unknown write transaction: {}", transaction_id))
-                })?;
-            stored.rolled_back_at_unix_ms = Some(rolled_back_at_unix_ms);
-        }
-        Ok(())
+    fn rollback_worker_patch_transaction(
+        &self,
+        task_id: &str,
+        patch_id: &str,
+        transaction_id: &str,
+    ) -> Result<(), HeptaError> {
+        let task = self.find_worker_task(task_id)?;
+        let patch = task
+            .patch_proposals
+            .iter()
+            .find(|patch| patch.patch_id == patch_id)
+            .ok_or_else(|| HeptaError(format!("unknown patch: {}", patch_id)))?;
+        let authorization = self.authorize_worker_patch_rollback(&task, patch, transaction_id)?;
+        self.rollback_worker_patch_create_sealed(authorization)
     }
 
     pub fn reject_worker_task_patch(
@@ -2190,11 +2332,12 @@ impl RuntimeKernel {
             .worker_task_state
             .lock()
             .map_err(|_| HeptaError("worker task state mutex poisoned".into()))?;
-        let task = guard
+        let task_index = guard
             .records
-            .iter_mut()
-            .find(|task| task.task_id == task_id)
+            .iter()
+            .position(|task| task.task_id == task_id)
             .ok_or_else(|| HeptaError(format!("unknown task: {}", task_id)))?;
+        let task = &mut guard.records[task_index];
         let patch = task
             .patch_proposals
             .iter_mut()
@@ -2221,11 +2364,12 @@ impl RuntimeKernel {
             .worker_task_state
             .lock()
             .map_err(|_| HeptaError("worker task state mutex poisoned".into()))?;
-        let task = guard
+        let task_index = guard
             .records
-            .iter_mut()
-            .find(|task| task.task_id == task_id)
+            .iter()
+            .position(|task| task.task_id == task_id)
             .ok_or_else(|| HeptaError(format!("unknown task: {}", task_id)))?;
+        let task = &mut guard.records[task_index];
         if task
             .patch_proposals
             .iter()
@@ -2289,12 +2433,19 @@ impl RuntimeKernel {
             passed: true,
         });
         task.updated_at_unix_ms = now;
-        Ok(task.clone())
+        ensure_worker_patch_file_lease(
+            &mut guard.records,
+            task_index,
+            &revised_file_path,
+            WorkerTaskFileLeaseStatus::HeldForReview,
+            now,
+        );
+        Ok(guard.records[task_index].clone())
     }
 
     fn apply_worker_patch_to_workspace(
         &self,
-        session_id: &str,
+        task: &WorkerTaskRecord,
         patch: &WorkerTaskPatchProposal,
     ) -> Result<WorkerPatchApplyOutcome, HeptaError> {
         let now = current_unix_ms()?;
@@ -2304,96 +2455,20 @@ impl RuntimeKernel {
                 return Ok(WorkerPatchApplyOutcome::conflicted(now, conflict_reason));
             }
         };
-        let workspace_root = self.workspace_root()?;
-        let target_path = resolve_path_within_root(&workspace_root, Path::new(&patch.file_path));
-        if !target_path.starts_with(&workspace_root) {
-            return Ok(WorkerPatchApplyOutcome::conflicted(
-                now,
-                format!("patch target escapes workspace: {}", target_path.display()),
-            ));
-        }
-
-        let target_existed_before = target_path.exists();
-        let before_bytes = if target_existed_before {
-            match fs::read(&target_path) {
-                Ok(bytes) => bytes,
-                Err(err) => {
-                    return Ok(WorkerPatchApplyOutcome::conflicted(
-                        now,
-                        format!(
-                            "failed to read existing target {}: {}",
-                            target_path.display(),
-                            err
-                        ),
-                    ));
-                }
-            }
-        } else {
-            Vec::new()
-        };
         let after_bytes = content.into_bytes();
-        if target_existed_before {
-            if before_bytes == after_bytes {
-                return Ok(WorkerPatchApplyOutcome {
-                    apply_status: WorkerTaskPatchApplyStatus::Applied,
-                    applied_at_unix_ms: Some(now),
-                    transaction_id: None,
-                    conflict_reason: None,
-                });
-            }
-            return Ok(WorkerPatchApplyOutcome::conflicted(
-                now,
-                format!(
-                    "target already exists with different content: {}",
-                    target_path.display()
-                ),
-            ));
-        }
-
-        if let Some(parent) = target_path.parent() {
-            if let Err(err) = fs::create_dir_all(parent) {
-                return Ok(WorkerPatchApplyOutcome::conflicted(
-                    now,
-                    format!("failed to create parent {}: {}", parent.display(), err),
-                ));
-            }
-        }
-        let transaction_id = self.next_write_transaction_id()?;
-        if let Err(err) = fs::write(&target_path, &after_bytes) {
-            return Ok(WorkerPatchApplyOutcome::conflicted(
-                now,
-                format!("failed to write target {}: {}", target_path.display(), err),
-            ));
-        }
-        let entry = WriteTransactionEntry {
-            transaction_id: transaction_id.clone(),
-            session_id: session_id.to_string(),
-            action: "worker_task_patch_apply".into(),
-            target_path: target_path.display().to_string(),
-            created_at_unix_ms: now,
-            mode: "create".into(),
-            target_existed_before,
-            bytes_before: before_bytes.len() as u64,
-            bytes_after: after_bytes.len() as u64,
-            rollback_strategy: "delete_target".into(),
-            rollback_checkpoint_path: None,
-            source_backup_path: None,
-            rolled_back_at_unix_ms: None,
+        let authorization = match self.authorize_worker_patch_apply(task, patch) {
+            Ok(authorization) => authorization,
+            Err(error) => return Ok(WorkerPatchApplyOutcome::conflicted(now, error.0)),
         };
-        {
-            let mut guard = self
-                .write_transaction_state
-                .lock()
-                .map_err(|_| HeptaError("write transaction state mutex poisoned".into()))?;
-            guard.push(entry);
+        match self.apply_worker_patch_create_sealed(authorization, &after_bytes) {
+            Ok(transaction_id) => Ok(WorkerPatchApplyOutcome {
+                apply_status: WorkerTaskPatchApplyStatus::Applied,
+                applied_at_unix_ms: Some(now),
+                transaction_id,
+                conflict_reason: None,
+            }),
+            Err(error) => Ok(WorkerPatchApplyOutcome::conflicted(now, error.0)),
         }
-        self.append_transaction_to_active_group(session_id, &transaction_id)?;
-        Ok(WorkerPatchApplyOutcome {
-            apply_status: WorkerTaskPatchApplyStatus::Applied,
-            applied_at_unix_ms: Some(now),
-            transaction_id: Some(transaction_id),
-            conflict_reason: None,
-        })
     }
 
     async fn run_autonomous_coding_worker_loop(
@@ -3515,25 +3590,43 @@ impl RuntimeKernel {
             .worker_task_state
             .lock()
             .map_err(|_| HeptaError("worker task state mutex poisoned".into()))?;
-        let task = guard
+        let task_index = guard
             .records
-            .iter_mut()
-            .find(|task| task.task_id == task_id)
+            .iter()
+            .position(|task| task.task_id == task_id)
             .ok_or_else(|| HeptaError(format!("unknown task: {}", task_id)))?;
-        task.status = status;
-        task.paused_from_status = None;
-        task.updated_at_unix_ms = now;
-        task.completed_at_unix_ms = completed_at_unix_ms;
-        task.last_error = last_error;
-        task.failure_kind = failure_kind;
-        task.retry_after_unix_ms = retry_after_unix_ms;
-        task.result_summary = result_summary;
-        task.artifacts = artifacts;
-        task.diff_summary = diff_summary;
-        task.patch_proposals = patch_proposals;
-        task.coding_rounds = coding_rounds;
-        task.loop_steps = loop_steps;
-        task.command_runs = command_runs;
+        {
+            let task = &mut guard.records[task_index];
+            task.status = status;
+            task.paused_from_status = None;
+            task.updated_at_unix_ms = now;
+            task.completed_at_unix_ms = completed_at_unix_ms;
+            task.last_error = last_error;
+            task.failure_kind = failure_kind;
+            task.retry_after_unix_ms = retry_after_unix_ms;
+            task.result_summary = result_summary;
+            task.artifacts = artifacts;
+            task.diff_summary = diff_summary;
+            task.patch_proposals = patch_proposals;
+            task.coding_rounds = coding_rounds;
+            task.loop_steps = loop_steps;
+            task.command_runs = command_runs;
+        }
+        let patch_paths = guard.records[task_index]
+            .patch_proposals
+            .iter()
+            .map(|patch| patch.file_path.clone())
+            .collect::<Vec<_>>();
+        for target_path in patch_paths {
+            ensure_worker_patch_file_lease(
+                &mut guard.records,
+                task_index,
+                &target_path,
+                WorkerTaskFileLeaseStatus::Active,
+                now,
+            );
+        }
+        let task = &mut guard.records[task_index];
         update_worker_file_lease_statuses_after_run(task, status, now);
         Ok(task.clone())
     }
@@ -3925,6 +4018,62 @@ fn build_worker_file_leases(
             }
         })
         .collect()
+}
+
+fn ensure_worker_patch_file_lease(
+    records: &mut [WorkerTaskRecord],
+    task_index: usize,
+    target_path: &str,
+    open_status: WorkerTaskFileLeaseStatus,
+    now_unix_ms: u64,
+) {
+    let task_id = records[task_index].task_id.clone();
+    let worker_id = records[task_index].worker_id.clone();
+    let worker_session_id = records[task_index].worker_session_id.clone();
+    let lease_expires_at_unix_ms =
+        now_unix_ms.saturating_add(records[task_index].timeout_budget_ms);
+    let mut conflict_task_ids = records
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != task_index)
+        .flat_map(|(_, task)| task.file_leases.iter())
+        .filter(|lease| lease.target_path == target_path && is_open_file_lease_status(lease.status))
+        .map(|lease| lease.task_id.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    conflict_task_ids.sort();
+    let status = if conflict_task_ids.is_empty() {
+        open_status
+    } else {
+        WorkerTaskFileLeaseStatus::Conflicted
+    };
+    let task = &mut records[task_index];
+    if let Some(lease) = task
+        .file_leases
+        .iter_mut()
+        .find(|lease| lease.target_path == target_path)
+    {
+        lease.status = status;
+        lease.lease_expires_at_unix_ms = lease_expires_at_unix_ms;
+        lease.conflict_task_ids = conflict_task_ids;
+        return;
+    }
+    task.file_leases.push(WorkerTaskFileLease {
+        lease_id: format!(
+            "{}:patch:{}",
+            sanitize_for_id(&task_id),
+            sanitize_for_id(target_path)
+        ),
+        task_id,
+        worker_id,
+        worker_session_id,
+        target_path: target_path.to_string(),
+        status,
+        acquired_at_unix_ms: now_unix_ms,
+        lease_expires_at_unix_ms,
+        conflict_task_ids,
+    });
 }
 
 fn infer_worker_execution_mode(worker_id: &str, prompt: &str) -> WorkerTaskExecutionMode {
@@ -7262,10 +7411,15 @@ mod tests {
         }));
 
         let patch = run.task.patch_proposals[0].clone();
+        assert!(run.task.file_leases.iter().any(|lease| {
+            lease.target_path == patch.file_path
+                && lease.status == WorkerTaskFileLeaseStatus::HeldForReview
+        }));
         let applied = runtime
             .apply_worker_task_patch(&run.task.task_id, &patch.patch_id)
             .expect("autonomous patch should apply");
         assert_eq!(applied.applied_count, 1);
+        assert!(applied.patches[0].transaction_id.is_some());
         let handoff = runtime
             .worker_task_handoff_bundle(&run.task.task_id)
             .expect("handoff should build after apply");
@@ -7399,6 +7553,14 @@ mod tests {
             .await
             .expect("task should run");
         let patch = run.task.patch_proposals[0].clone();
+        assert_eq!(
+            run.task.permission_envelope.write_scope,
+            WritePathScope::ArtifactsOnly
+        );
+        assert!(run.task.file_leases.iter().any(|lease| {
+            lease.target_path == patch.file_path
+                && lease.status == WorkerTaskFileLeaseStatus::HeldForReview
+        }));
         let target_path = super::resolve_path_within_root(
             &runtime
                 .workspace_root()
@@ -7426,6 +7588,13 @@ mod tests {
             .expect("conflict should generate a revision proposal")
             .clone();
         assert_eq!(revision.revision_index, 1);
+        let revised_task = runtime
+            .find_worker_task(&run.task.task_id)
+            .expect("revised task should remain queryable");
+        assert!(revised_task.file_leases.iter().any(|lease| {
+            lease.target_path == revision.file_path
+                && lease.status == WorkerTaskFileLeaseStatus::HeldForReview
+        }));
         let loop_report = runtime
             .worker_task_loop(&run.task.task_id)
             .expect("loop should include revision iteration");
@@ -7463,6 +7632,49 @@ mod tests {
             .await
             .expect("task should run");
         assert_eq!(run.task.patch_proposals.len(), 2);
+        assert_eq!(
+            run.task.permission_envelope.write_scope,
+            WritePathScope::ArtifactsOnly
+        );
+        assert!(run.task.patch_proposals.iter().all(|patch| {
+            run.task.file_leases.iter().any(|lease| {
+                lease.target_path == patch.file_path
+                    && lease.status == WorkerTaskFileLeaseStatus::HeldForReview
+            })
+        }));
+        let patch = &run.task.patch_proposals[0];
+        let ordinary_scope_error = runtime
+            .prepare_sealed_write_target(
+                &run.task.worker_session_id,
+                "write_file",
+                "write_file",
+                &patch.file_path,
+                "create",
+                false,
+                None,
+            )
+            .expect_err("ordinary tool scope must remain artifacts-only");
+        assert!(ordinary_scope_error.0.contains("outside artifacts root"));
+        let mut missing_lease = run.task.clone();
+        missing_lease
+            .file_leases
+            .retain(|lease| lease.target_path != patch.file_path);
+        assert!(
+            runtime
+                .authorize_worker_patch_apply(&missing_lease, patch)
+                .expect_err("missing exact lease must fail")
+                .0
+                .contains("no exact file lease")
+        );
+        let mut unsafe_envelope = run.task.clone();
+        unsafe_envelope.safety_envelope.sandbox.workspace_root = "/".into();
+        assert!(
+            runtime
+                .authorize_worker_patch_apply(&unsafe_envelope, patch)
+                .expect_err("mismatched safety root must fail")
+                .0
+                .contains("safety envelope")
+        );
 
         let applied = runtime
             .apply_worker_task_patch_set(&run.task.task_id)

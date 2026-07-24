@@ -159,6 +159,68 @@ impl RuntimeKernel {
         ])
     }
 
+    fn tool_scope_block(
+        &self,
+        session_id: &SessionId,
+        tool_name: &str,
+        arguments_json: &str,
+    ) -> Option<RuntimeToolStep> {
+        if let Err(err) = self.ensure_execution_profile_allows_tool(session_id, tool_name) {
+            return Some(RuntimeToolStep::Blocked {
+                final_text: format!("execution profile blocked tool {tool_name}"),
+                reason: err.0,
+            });
+        }
+        if let Err(err) =
+            self.ensure_filesystem_scope_allows_tool_input(session_id, tool_name, arguments_json)
+        {
+            return Some(RuntimeToolStep::Blocked {
+                final_text: format!("filesystem scope blocked tool {tool_name}"),
+                reason: err.0,
+            });
+        }
+        if let Err(err) =
+            self.ensure_write_path_scope_allows_tool_input(session_id, tool_name, arguments_json)
+        {
+            return Some(RuntimeToolStep::Blocked {
+                final_text: format!("write path scope blocked tool {tool_name}"),
+                reason: err.0,
+            });
+        }
+        if let Err(err) = self.ensure_destructive_write_semantics(tool_name, arguments_json) {
+            return Some(RuntimeToolStep::Blocked {
+                final_text: format!("write semantics blocked tool {tool_name}"),
+                reason: err.0,
+            });
+        }
+        None
+    }
+
+    fn remember_exact_pending_for_turn(
+        &self,
+        session_id: &SessionId,
+        session_key: &str,
+        correlation_id: &CorrelationId,
+        material: ExactApprovalMaterial,
+    ) -> Result<RuntimeToolStep, HeptaError> {
+        let tool_name = material.tool_name.clone();
+        let reason = material.reason.clone();
+        let binding = short_hash(material.binding_hash().as_str()).to_string();
+        let mut approvals = self
+            .approval_state
+            .lock()
+            .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
+        approvals.remember_pending_exact(session_key, material);
+        drop(approvals);
+        self.emit_event(
+            EventKind::ApprovalRequested,
+            Some(session_id.clone()),
+            Some(correlation_id.clone()),
+            format!("tool {tool_name} candidate {binding} requires exact approval: {reason}"),
+        )?;
+        Ok(RuntimeToolStep::ApprovalRequired { tool_name, reason })
+    }
+
     async fn execute_tool_call_for_turn(
         &self,
         session_id: &SessionId,
@@ -186,131 +248,205 @@ impl RuntimeKernel {
             .await
             .map_err(|err| HeptaError(err.0))?;
 
-        let granted = {
-            let guard = self
+        if decision.requirement == ApprovalRequirement::Deny {
+            return Ok(RuntimeToolStep::Blocked {
+                final_text: format!("policy denied tool {}", tool_call.name),
+                reason: decision.reason,
+            });
+        }
+
+        let prepared = SafetyGateClient::prepare_candidate(
+            self,
+            session_key,
+            active_model,
+            &tool_call.name,
+            &tool_call.arguments_json,
+            &decision,
+        )?;
+        let (approved, grant_required) = match decision.requirement {
+            ApprovalRequirement::Ask => {
+                let candidate_approval = self
+                    .approval_state
+                    .lock()
+                    .map_err(|_| HeptaError("approval state mutex poisoned".into()))?
+                    .candidate_approval(session_key, &prepared);
+                match candidate_approval {
+                    CandidateApproval::Exact(approved) => (*approved, true),
+                    CandidateApproval::Missing => {
+                        return self.remember_exact_pending_for_turn(
+                            session_id,
+                            session_key,
+                            correlation_id,
+                            prepared,
+                        );
+                    }
+                }
+            }
+            ApprovalRequirement::None => (prepared, false),
+            ApprovalRequirement::Deny => {
+                return Ok(RuntimeToolStep::Blocked {
+                    final_text: format!("policy denied tool {}", tool_call.name),
+                    reason: decision.reason,
+                });
+            }
+        };
+
+        if let Some(blocked) =
+            self.tool_scope_block(session_id, &tool_call.name, &approved.canonical_arguments)
+        {
+            return Ok(blocked);
+        }
+
+        let execution_epoch = match self.capture_execution_epoch(session_key) {
+            Ok(epoch) => epoch,
+            Err(err) => {
+                return Ok(RuntimeToolStep::Blocked {
+                    final_text: format!(
+                        "commit-time safety coordination blocked tool {}",
+                        tool_call.name
+                    ),
+                    reason: err.0,
+                });
+            }
+        };
+        let current_decision = self
+            .policy
+            .evaluate_tool(PolicyEvaluationContext {
+                session_id: Some(session_id.clone()),
+                model: Some(active_model.clone()),
+                tool_name: tool_call.name.clone(),
+                risk_tier: risk,
+            })
+            .await
+            .map_err(|err| HeptaError(err.0))?;
+        if current_decision.requirement == ApprovalRequirement::Deny {
+            return Ok(RuntimeToolStep::Blocked {
+                final_text: format!("policy denied tool {}", tool_call.name),
+                reason: current_decision.reason,
+            });
+        }
+
+        if let Some(blocked) =
+            self.tool_scope_block(session_id, &tool_call.name, &tool_call.arguments_json)
+        {
+            return Ok(blocked);
+        }
+        let presented = SafetyGateClient::prepare_candidate(
+            self,
+            session_key,
+            active_model,
+            &tool_call.name,
+            &tool_call.arguments_json,
+            &current_decision,
+        )?;
+        if current_decision.requirement == ApprovalRequirement::Ask && !grant_required {
+            return self.remember_exact_pending_for_turn(
+                session_id,
+                session_key,
+                correlation_id,
+                presented,
+            );
+        }
+
+        let execution_lease = match self.begin_execution_lease(execution_epoch) {
+            Ok(lease) => lease,
+            Err(err) => {
+                return Ok(RuntimeToolStep::Blocked {
+                    final_text: format!(
+                        "commit-time safety coordination blocked tool {}",
+                        tool_call.name
+                    ),
+                    reason: err.0,
+                });
+            }
+        };
+        let execution_lease = match execution_lease.bind_tool_resources(
+            self,
+            &session_id.0,
+            &tool_call.name,
+            &presented.canonical_arguments,
+        ) {
+            Ok(lease) => lease,
+            Err(err) => {
+                return Ok(RuntimeToolStep::Blocked {
+                    final_text: format!("resource binding blocked tool {}", tool_call.name),
+                    reason: err.0,
+                });
+            }
+        };
+        let authorized_execution = if grant_required {
+            let mut approvals = self
                 .approval_state
                 .lock()
                 .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
-            guard.is_granted(session_key, &tool_call.name)
+            SafetyGateClient::authorize_execution_and_consume(
+                self,
+                &mut approvals,
+                session_key,
+                session_id,
+                correlation_id,
+                &approved,
+                &presented,
+                execution_lease,
+            )
+        } else {
+            SafetyGateClient::authorize_execution_without_grant(
+                self,
+                session_id,
+                correlation_id,
+                &approved,
+                &presented,
+                execution_lease,
+            )
+        };
+        let authorized_execution = match authorized_execution {
+            Ok(authorized_execution) => authorized_execution,
+            Err(err) => {
+                return Ok(RuntimeToolStep::Blocked {
+                    final_text: format!("commit-time safety gate blocked tool {}", tool_call.name),
+                    reason: err.0,
+                });
+            }
         };
 
-        match decision.requirement {
-            ApprovalRequirement::Deny => Ok(RuntimeToolStep::Blocked {
-                final_text: format!("policy denied tool {}", tool_call.name),
-                reason: decision.reason,
-            }),
-            ApprovalRequirement::Ask if !granted => {
-                let mut guard = self
-                    .approval_state
-                    .lock()
-                    .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
-                guard.remember_pending(session_key, &tool_call.name, &decision.reason);
-                drop(guard);
-                self.emit_event(
-                    EventKind::ApprovalRequested,
-                    Some(session_id.clone()),
-                    Some(correlation_id.clone()),
-                    format!(
-                        "tool {} requires approval: {}",
-                        tool_call.name, decision.reason
-                    ),
-                )?;
-                Ok(RuntimeToolStep::ApprovalRequired {
-                    tool_name: tool_call.name.clone(),
-                    reason: decision.reason,
-                })
-            }
-            ApprovalRequirement::None | ApprovalRequirement::Ask => {
-                if let Err(err) =
-                    self.ensure_execution_profile_allows_tool(session_id, &tool_call.name)
-                {
-                    return Ok(RuntimeToolStep::Blocked {
-                        final_text: format!("execution profile blocked tool {}", tool_call.name),
-                        reason: err.0,
-                    });
-                }
-                if let Err(err) = self.ensure_filesystem_scope_allows_tool_input(
-                    session_id,
-                    &tool_call.name,
-                    &tool_call.arguments_json,
-                ) {
-                    return Ok(RuntimeToolStep::Blocked {
-                        final_text: format!("filesystem scope blocked tool {}", tool_call.name),
-                        reason: err.0,
-                    });
-                }
-                if let Err(err) = self.ensure_write_path_scope_allows_tool_input(
-                    session_id,
-                    &tool_call.name,
-                    &tool_call.arguments_json,
-                ) {
-                    return Ok(RuntimeToolStep::Blocked {
-                        final_text: format!("write path scope blocked tool {}", tool_call.name),
-                        reason: err.0,
-                    });
-                }
-                if let Err(err) = self
-                    .ensure_destructive_write_semantics(&tool_call.name, &tool_call.arguments_json)
-                {
-                    return Ok(RuntimeToolStep::Blocked {
-                        final_text: format!("write semantics blocked tool {}", tool_call.name),
-                        reason: err.0,
-                    });
-                }
+        let mut captured = ExecutionBus::new(self).dispatch(authorized_execution).await;
+        captured.capture_write_transaction();
 
-                let prepared_write_transaction = match self
-                    .prepare_write_transaction_with_lock_check(
-                        &session_id.0,
-                        &tool_call.name,
-                        &tool_call.arguments_json,
-                    ) {
-                    Ok(prepared) => prepared,
-                    Err(err) => {
-                        return Ok(RuntimeToolStep::Blocked {
-                            final_text: format!("write lock blocked tool {}", tool_call.name),
-                            reason: err.0,
-                        });
-                    }
-                };
-
-                let mut tool_result = self
-                    .invoke_tool_with_validation(
-                        &tool_call.name,
-                        session_id,
-                        correlation_id,
-                        &tool_call.arguments_json,
-                    )
-                    .await?;
-                let tool_output_json = self.record_write_transaction_from_tool_result(
-                    session_id,
-                    prepared_write_transaction,
-                    tool_result.structured_json.clone(),
-                )?;
-                tool_result.structured_json = tool_output_json.clone();
-
-                self.store_memory(
-                    Some(session_id),
-                    "mem-tool",
-                    MemoryScope::LongTerm,
-                    format_tool_memory_content(&tool_result),
-                )
-                .await?;
-
-                if tool_result_is_timeout(&tool_result) {
-                    return Ok(RuntimeToolStep::TimedOut(RuntimeToolTimeout {
-                        tool_name: tool_call.name.clone(),
-                        tool_output_json,
-                        final_text: tool_result.content.clone(),
-                    }));
-                }
-
-                Ok(RuntimeToolStep::Executed(RuntimeToolExecution {
-                    tool_name: tool_call.name.clone(),
-                    tool_output_json,
-                    tool_message: format_tool_message(&tool_result),
-                }))
-            }
+        OutcomeRecorder::new(self).finalize_tool_dispatch(&mut captured)?;
+        let outward_error = captured.outward_error().cloned();
+        let tool_result = captured.tool_result().cloned();
+        if let Some(error) = outward_error {
+            return Err(error);
         }
+        let tool_result = tool_result.ok_or_else(|| {
+            HeptaError(format!(
+                "tool {} completed without a result",
+                tool_call.name
+            ))
+        })?;
+        let tool_output_json = tool_result.structured_json.clone();
+
+        OutcomeRecorder::new(self)
+            .store_memory(
+                Some(session_id),
+                "mem-tool",
+                MemoryScope::LongTerm,
+                format_tool_memory_content(&tool_result),
+            )
+            .await?;
+
+        if tool_result_is_timeout(&tool_call.name, &tool_result) {
+            return Ok(RuntimeToolStep::TimedOut(RuntimeToolTimeout {
+                tool_name: tool_call.name.clone(),
+                tool_output_json,
+                final_text: tool_result.content.clone(),
+            }));
+        }
+        Ok(RuntimeToolStep::Executed(RuntimeToolExecution {
+            tool_name: tool_call.name.clone(),
+            tool_output_json,
+            tool_message: format_tool_message(&tool_result),
+        }))
     }
 
     pub async fn run_demo_turn(&self, input: &str) -> Result<VerticalSliceResult, HeptaError> {
@@ -376,228 +512,15 @@ impl RuntimeKernel {
         model_timeout_ms: Option<u64>,
         selected_snippets: Option<&CoreTurnContextRecallSelectedSnippetEnvelope>,
     ) -> Result<VerticalSliceResult, HeptaError> {
-        let session_key = session_id.0.clone();
-        let correlation_id = CorrelationId("corr-demo".into());
-        let active_model = self.model_selection_for_session(&session_key)?.active;
-
-        self.ensure_session_record(&session_id).await?;
-        self.upsert_session_record(
-            &session_id,
-            None,
-            Some(summarize_user_intent(input)),
-            None,
-            true,
-        )?;
-        self.emit_event(
-            EventKind::MessageReceived,
-            Some(session_id.clone()),
-            Some(correlation_id.clone()),
-            summarize_user_intent(input),
-        )?;
-
-        let base_messages = self
-            .model_messages_for_turn_with_selected_snippets(&session_id, input, selected_snippets)
-            .await?;
-        let model_tools = self.tools.model_tool_specs_for_turn(input);
-
-        self.emit_event(
-            EventKind::ModelCalled,
-            Some(session_id.clone()),
-            Some(correlation_id.clone()),
-            format!(
-                "initial model call via {}/{}",
-                active_model.provider, active_model.model
-            ),
-        )?;
-        let deterministic_message = self.deterministic_runtime_response_for_session(
-            &session_id,
+        TurnCoordinator {
+            kernel: self,
+            session_id,
             input,
-            &active_model,
-            &base_messages,
-        )?;
-        let mut current_response = if let Some(message) = deterministic_message {
-            ModelResponse {
-                message: Some(ModelMessage {
-                    role: MessageRole::Assistant,
-                    content: message,
-                }),
-                tool_calls: vec![],
-                finish_reason: FinishReason::Stop,
-                usage: Usage {
-                    input_tokens: 0,
-                    output_tokens: 0,
-                },
-            }
-        } else if let Some(tool_call) = native_pre_model_tool_call(input) {
-            ModelResponse {
-                message: None,
-                tool_calls: vec![tool_call],
-                finish_reason: FinishReason::ToolCall,
-                usage: Usage {
-                    input_tokens: 0,
-                    output_tokens: 0,
-                },
-            }
-        } else {
-            self.providers
-                .chat(ModelRequest {
-                    model: active_model.clone(),
-                    messages: base_messages.clone(),
-                    thinking: ThinkingLevel::High,
-                    tools: model_tools.clone(),
-                    timeout_ms: model_timeout_ms,
-                })
-                .await?
-        };
-
-        let mut conversation_messages = base_messages;
-        let mut invoked_tool = None::<String>;
-        let mut tool_output_json = None::<String>;
-        let mut final_text = String::new();
-        let mut approval_required = None::<String>;
-        let mut blocked_reason = None::<String>;
-        let max_tool_steps = 6usize;
-
-        for step_index in 0..max_tool_steps {
-            if let Some(tool_call) = current_response.tool_calls.first().cloned() {
-                if model_tools.is_empty() {
-                    final_text = current_response
-                        .message
-                        .as_ref()
-                        .map(|message| message.content.trim().to_string())
-                        .filter(|message| !message.is_empty())
-                        .unwrap_or_else(|| {
-                            "这条消息按普通对话处理；没有明确工具意图，所以 Hepta 没有调用工具。"
-                                .into()
-                        });
-                    blocked_reason = Some("tool-intent-not-authorized-for-turn".into());
-                    break;
-                }
-                match self
-                    .execute_tool_call_for_turn(
-                        &session_id,
-                        &session_key,
-                        &correlation_id,
-                        &active_model,
-                        &tool_call,
-                    )
-                    .await?
-                {
-                    RuntimeToolStep::Executed(execution) => {
-                        if invoked_tool.is_none() {
-                            invoked_tool = Some(execution.tool_name.clone());
-                        }
-                        tool_output_json = execution.tool_output_json.clone();
-                        conversation_messages.push(ModelMessage {
-                            role: MessageRole::Tool,
-                            content: execution.tool_message,
-                        });
-                        self.emit_event(
-                            EventKind::ModelCalled,
-                            Some(session_id.clone()),
-                            Some(correlation_id.clone()),
-                            format!(
-                                "followup model call after tool {} step {}",
-                                execution.tool_name,
-                                step_index + 1
-                            ),
-                        )?;
-                        current_response = self
-                            .providers
-                            .chat(ModelRequest {
-                                model: active_model.clone(),
-                                messages: conversation_messages.clone(),
-                                thinking: ThinkingLevel::High,
-                                tools: model_tools.clone(),
-                                timeout_ms: model_timeout_ms,
-                            })
-                            .await?;
-                    }
-                    RuntimeToolStep::TimedOut(timeout) => {
-                        if invoked_tool.is_none() {
-                            invoked_tool = Some(timeout.tool_name.clone());
-                        }
-                        tool_output_json = timeout.tool_output_json.clone();
-                        final_text = timeout.final_text;
-                        break;
-                    }
-                    RuntimeToolStep::ApprovalRequired { tool_name, reason } => {
-                        final_text =
-                            format!("approval required before invoking tool {}", tool_name);
-                        approval_required = Some(tool_name);
-                        blocked_reason = Some(reason);
-                        break;
-                    }
-                    RuntimeToolStep::Blocked {
-                        final_text: blocked_text,
-                        reason,
-                    } => {
-                        final_text = blocked_text;
-                        blocked_reason = Some(reason);
-                        break;
-                    }
-                }
-            } else {
-                final_text = current_response
-                    .message
-                    .take()
-                    .map(|message| message.content)
-                    .unwrap_or_else(|| "empty model response".into());
-                self.store_memory(
-                    Some(&session_id),
-                    "mem-assistant",
-                    MemoryScope::LongTerm,
-                    format!("assistant:{}", input),
-                )
-                .await?;
-                break;
-            }
+            model_timeout_ms,
+            selected_snippets,
         }
-
-        if final_text.is_empty() && blocked_reason.is_none() {
-            final_text = format!("tool loop exceeded maximum steps ({})", max_tool_steps);
-            blocked_reason = Some("tool loop exceeded maximum steps".into());
-        }
-        if looks_like_live_agent_marker_recall_intent(input)
-            && let Some(marker) = self.latest_live_agent_e2e_marker_for_session(&session_id)?
-            && !final_text.contains(&marker)
-        {
-            final_text = format!("The live-agent-e2e marker is {marker}.");
-        }
-
-        let recalled = self
-            .memory
-            .search(MemoryQuery {
-                text: if invoked_tool.is_some() {
-                    "tool:".into()
-                } else {
-                    "assistant:".into()
-                },
-                limit: 10,
-            })
-            .await
-            .map_err(|e| HeptaError(e.0))?;
-
-        let result = VerticalSliceResult {
-            session_id: session_id.0.clone(),
-            active_model,
-            invoked_tool,
-            tool_output_json,
-            final_text,
-            recalled_memories: recalled.len(),
-            approval_required,
-            blocked_reason,
-        };
-
-        self.record_turn(TurnRecord {
-            session_id: result.session_id.clone(),
-            input: input.to_string(),
-            invoked_tool: result.invoked_tool.clone(),
-            final_text: result.final_text.clone(),
-            blocked_reason: result.blocked_reason.clone(),
-        })?;
-
-        Ok(result)
+        .run()
+        .await
     }
 
     fn deterministic_runtime_response_for_session(
@@ -640,42 +563,6 @@ impl RuntimeKernel {
             .find_map(|entry| extract_live_agent_e2e_marker(&entry.content)))
     }
 
-    async fn invoke_tool_with_validation(
-        &self,
-        tool_name: &str,
-        session_id: &SessionId,
-        correlation_id: &CorrelationId,
-        input_json: &str,
-    ) -> Result<ToolResult, HeptaError> {
-        let tool_result = self
-            .tools
-            .invoke(
-                tool_name,
-                ToolContext {
-                    session_id: Some(session_id.clone()),
-                    correlation_id: Some(correlation_id.clone()),
-                },
-                ToolCallRequest {
-                    name: tool_name.to_string(),
-                    input_json: input_json.to_string(),
-                },
-            )
-            .await?;
-
-        if let Some(output_json) = tool_result.structured_json.as_deref() {
-            self.validate_tool_output(tool_name, output_json)?;
-        }
-
-        self.emit_event(
-            EventKind::ToolInvoked,
-            Some(session_id.clone()),
-            Some(correlation_id.clone()),
-            format!("invoked tool {}", tool_name),
-        )?;
-
-        Ok(tool_result)
-    }
-
     fn ensure_execution_profile_allows_tool(
         &self,
         session_id: &SessionId,
@@ -710,7 +597,9 @@ impl RuntimeKernel {
         tool_name: &str,
         input_json: &str,
     ) -> Result<(), HeptaError> {
-        let Some(argument_name) = path_argument_name_for_tool(tool_name) else {
+        let write_argument_name = write_path_argument_name_for_tool(tool_name);
+        let Some(argument_name) = path_argument_name_for_tool(tool_name).or(write_argument_name)
+        else {
             return Ok(());
         };
 
@@ -726,8 +615,12 @@ impl RuntimeKernel {
                 let requested_path = parse_required_string_field(input_json, argument_name)
                     .map_err(|err| HeptaError(err.0))?;
                 let workspace_root = self.workspace_root()?;
-                let resolved =
-                    resolve_path_within_root(&workspace_root, Path::new(&requested_path));
+                let resolved = if write_argument_name.is_some() {
+                    resolve_write_path_within_root(&workspace_root, Path::new(&requested_path))?
+                        .canonical_path
+                } else {
+                    resolve_path_within_root(&workspace_root, Path::new(&requested_path))
+                };
                 if resolved.starts_with(&workspace_root) {
                     Ok(())
                 } else {
@@ -767,7 +660,8 @@ impl RuntimeKernel {
     ) -> Result<(), HeptaError> {
         let workspace_root = self.workspace_root()?;
         let artifacts_root = workspace_root.join("artifacts");
-        let resolved = resolve_path_within_root(&workspace_root, Path::new(&requested_path));
+        let resolved = resolve_write_path_within_root(&workspace_root, Path::new(&requested_path))?
+            .canonical_path;
         let scope = self.write_path_scope_for_session(&session_id.0)?;
 
         match scope {
@@ -801,6 +695,68 @@ impl RuntimeKernel {
         }
     }
 
+    /// Checks both independent path authorities against the exact canonical
+    /// target that will be sealed into the execution reservation.
+    fn ensure_resolved_write_path_scopes_allow_for_arguments(
+        &self,
+        session_id: &SessionId,
+        tool_name: &str,
+        argument_names: &[&str],
+        requested_path: &str,
+        resolved: &Path,
+    ) -> Result<(), HeptaError> {
+        let workspace_root = self.workspace_root()?;
+        let default_filesystem_scope = self.filesystem_scope_for_session(&session_id.0)?;
+        let gates = self.path_capability_gates_for_session(&session_id.0)?;
+        let filesystem_scope = argument_names
+            .iter()
+            .map(|argument_name| {
+                gates
+                    .iter()
+                    .find(|gate| {
+                        gate.tool_name == tool_name && gate.argument_name == *argument_name
+                    })
+                    .map(|gate| gate.scope)
+                    .unwrap_or(default_filesystem_scope)
+            })
+            .find(|scope| *scope == FilesystemScope::WorkspaceOnly)
+            .unwrap_or(default_filesystem_scope);
+        if filesystem_scope == FilesystemScope::WorkspaceOnly
+            && !resolved.starts_with(&workspace_root)
+        {
+            return Err(HeptaError(format!(
+                "filesystem scope {} blocks {} path {} outside workspace {}",
+                format_filesystem_scope(filesystem_scope),
+                tool_name,
+                requested_path,
+                workspace_root.display()
+            )));
+        }
+
+        let write_scope = self.write_path_scope_for_session(&session_id.0)?;
+        let allowed_root = match write_scope {
+            WritePathScope::AnyPath => return Ok(()),
+            WritePathScope::WorkspaceOnly => workspace_root,
+            WritePathScope::ArtifactsOnly => workspace_root.join("artifacts"),
+        };
+        if resolved.starts_with(&allowed_root) {
+            Ok(())
+        } else {
+            Err(HeptaError(format!(
+                "write path scope {} blocks {} path {} outside {} root {}",
+                format_write_path_scope(write_scope),
+                tool_name,
+                requested_path,
+                if write_scope == WritePathScope::ArtifactsOnly {
+                    "artifacts"
+                } else {
+                    "workspace"
+                },
+                allowed_root.display()
+            )))
+        }
+    }
+
     fn ensure_destructive_write_semantics(
         &self,
         tool_name: &str,
@@ -822,8 +778,8 @@ impl RuntimeKernel {
             .map_err(|err| HeptaError(err.0))?
             .unwrap_or(false);
         let workspace_root = self.workspace_root()?;
-        let resolved = resolve_path_within_root(&workspace_root, Path::new(&requested_path));
-        let exists = resolved.exists();
+        let resolved = resolve_write_path_within_root(&workspace_root, Path::new(&requested_path))?;
+        let exists = fs::symlink_metadata(&resolved.canonical_path).is_ok();
 
         if preview_only {
             return match mode.as_str() {
@@ -881,104 +837,6 @@ impl RuntimeKernel {
 
     fn ensure_session_record_sync(&self, session_id: &str) -> Result<(), HeptaError> {
         self.upsert_session_record(&SessionId(session_id.to_string()), None, None, None, true)
-    }
-
-    async fn store_memory(
-        &self,
-        session_id: Option<&SessionId>,
-        id_prefix: &str,
-        scope: MemoryScope,
-        content: String,
-    ) -> Result<(), HeptaError> {
-        let memory_id = {
-            let existing = self
-                .memory
-                .list_memories()
-                .map_err(|err| HeptaError(err.0))?;
-            format!("{}-{}", id_prefix, existing.len() + 1)
-        };
-        self.memory
-            .put(MemoryRecord {
-                id: memory_id.clone(),
-                scope,
-                content,
-            })
-            .await
-            .map_err(|e| HeptaError(e.0))?;
-        self.emit_event(
-            EventKind::MemoryWritten,
-            session_id.cloned(),
-            None,
-            format!("stored memory {}", memory_id),
-        )?;
-        Ok(())
-    }
-
-    fn record_turn(&self, record: TurnRecord) -> Result<(), HeptaError> {
-        let existing_entries = self
-            .memory
-            .list_transcript_entries()
-            .map_err(|err| HeptaError(err.0))?;
-        let next_sequence = existing_entries
-            .iter()
-            .filter(|entry| entry.session_id.0 == record.session_id)
-            .count() as u64
-            + 1;
-        let now = current_unix_ms()?;
-
-        self.memory
-            .append_transcript_sync(TranscriptEntry {
-                entry_id: format!("{}-{}-user", record.session_id, next_sequence),
-                session_id: SessionId(record.session_id.clone()),
-                sequence: next_sequence,
-                kind: TranscriptEntryKind::Message,
-                role: Some(MessageRole::User),
-                content: record.input.clone(),
-                created_at_unix_ms: now,
-                tool_name: None,
-                correlation_id: None,
-                summary_of_range: None,
-            })
-            .map_err(|err| HeptaError(err.0))?;
-
-        self.memory
-            .append_transcript_sync(TranscriptEntry {
-                entry_id: format!("{}-{}-assistant", record.session_id, next_sequence + 1),
-                session_id: SessionId(record.session_id.clone()),
-                sequence: next_sequence + 1,
-                kind: TranscriptEntryKind::Message,
-                role: Some(MessageRole::Assistant),
-                content: record.final_text.clone(),
-                created_at_unix_ms: now,
-                tool_name: record.invoked_tool.clone(),
-                correlation_id: None,
-                summary_of_range: None,
-            })
-            .map_err(|err| HeptaError(err.0))?;
-
-        if let Some(reason) = &record.blocked_reason {
-            self.memory
-                .append_transcript_sync(TranscriptEntry {
-                    entry_id: format!("{}-{}-event", record.session_id, next_sequence + 2),
-                    session_id: SessionId(record.session_id.clone()),
-                    sequence: next_sequence + 2,
-                    kind: TranscriptEntryKind::Event,
-                    role: None,
-                    content: format!("blocked_reason:{}", reason),
-                    created_at_unix_ms: now,
-                    tool_name: record.invoked_tool.clone(),
-                    correlation_id: None,
-                    summary_of_range: None,
-                })
-                .map_err(|err| HeptaError(err.0))?;
-        }
-
-        let mut guard = self
-            .history_state
-            .lock()
-            .map_err(|_| HeptaError("history state mutex poisoned".into()))?;
-        guard.push(record);
-        Ok(())
     }
 
     fn upsert_session_record(
@@ -1067,6 +925,15 @@ impl RuntimeKernel {
     }
 
     fn set_session_model(&self, session_id: &str, model: ModelRef) -> Result<(), HeptaError> {
+        let _mutation = self.begin_session_context_mutation(session_id)?;
+        self.set_session_model_unleased(session_id, model)
+    }
+
+    fn set_session_model_unleased(
+        &self,
+        session_id: &str,
+        model: ModelRef,
+    ) -> Result<(), HeptaError> {
         let mut guard = self
             .model_state
             .lock()
@@ -1405,6 +1272,12 @@ impl RuntimeKernel {
 
     fn apply_session_export(&self, export: SessionExport) -> Result<(), HeptaError> {
         let session_id = export.session.session_id.0.clone();
+        let _mutation = self.begin_session_context_mutation(&session_id)?;
+        self.apply_session_export_unleased(export)
+    }
+
+    fn apply_session_export_unleased(&self, export: SessionExport) -> Result<(), HeptaError> {
+        let session_id = export.session.session_id.0.clone();
 
         if !self.providers.contains_model_ref(&export.model) {
             return Err(HeptaError(format!(
@@ -1422,15 +1295,9 @@ impl RuntimeKernel {
                 .approval_state
                 .lock()
                 .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
-            approval_state.remove_session(&session_id);
-            if !export.approval.granted_tools.is_empty() || !export.approval.pending.is_empty() {
-                approval_state.sessions.push(SessionApprovalState {
-                    session_id: session_id.clone(),
-                    granted_tools: export.approval.granted_tools,
-                    pending: export.approval.pending,
-                });
-            }
+            approval_state.set_legacy_snapshot(&session_id, export.approval);
         }
+        SafetyGateClient::reset_context_for_session(self, &session_id)?;
         {
             let mut history_state = self
                 .history_state
@@ -1733,6 +1600,11 @@ impl RuntimeKernel {
     }
 
     fn apply_runtime_snapshot(&self, snapshot: RuntimeSnapshot) -> Result<(), HeptaError> {
+        let _mutation = self.begin_global_context_mutation()?;
+        self.apply_runtime_snapshot_unleased(snapshot)
+    }
+
+    fn apply_runtime_snapshot_unleased(&self, snapshot: RuntimeSnapshot) -> Result<(), HeptaError> {
         if !self.providers.contains_model_ref(&snapshot.active_model) {
             return Err(HeptaError(format!(
                 "cannot load snapshot with unknown active model {}/{}",
@@ -1779,8 +1651,9 @@ impl RuntimeKernel {
                 .approval_state
                 .lock()
                 .map_err(|_| HeptaError("approval state mutex poisoned".into()))?;
-            approval_state.sessions = snapshot.approvals;
+            approval_state.replace_legacy_sessions(snapshot.approvals);
         }
+        SafetyGateClient::reset_all_context(self)?;
         {
             let mut execution_profile_state = self
                 .execution_profile_state

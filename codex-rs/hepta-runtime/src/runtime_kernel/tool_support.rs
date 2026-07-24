@@ -1,5 +1,11 @@
 struct ToolRegistry {
     tools: Vec<RegisteredTool>,
+    #[cfg(test)]
+    executor_binding_overrides: std::collections::BTreeMap<String, (String, String)>,
+    #[cfg(test)]
+    manifest_description_overrides: std::collections::BTreeMap<String, String>,
+    #[cfg(test)]
+    provider_invocation_counts: Mutex<std::collections::BTreeMap<String, usize>>,
 }
 
 impl ToolRegistry {
@@ -8,8 +14,9 @@ impl ToolRegistry {
             RegisteredTool::Echo(EchoTool),
             RegisteredTool::ReadFile(ReadFileTool),
             RegisteredTool::WriteFile(WriteFileTool),
-            RegisteredTool::ListDir(ListDirTool),
-            RegisteredTool::SearchText(SearchTextTool),
+            // Host-wide disk discovery is intentionally test-only until its
+            // scan roots have an exact, AnyPath-bound read capability.
+            #[cfg(test)]
             RegisteredTool::DiskJunkAudit(DiskJunkAuditTool),
             RegisteredTool::JsonGet(JsonGetTool),
             RegisteredTool::SkillPropose(SkillProposeTool),
@@ -23,7 +30,41 @@ impl ToolRegistry {
                 .into_iter()
                 .map(RegisteredTool::NativeOpenClawCompatible),
         );
-        Self { tools }
+        Self {
+            tools,
+            #[cfg(test)]
+            executor_binding_overrides: std::collections::BTreeMap::new(),
+            #[cfg(test)]
+            manifest_description_overrides: std::collections::BTreeMap::new(),
+            #[cfg(test)]
+            provider_invocation_counts: Mutex::new(std::collections::BTreeMap::new()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_with_quarantined_exec_process_for_test() -> Self {
+        let mut registry = Self::new();
+        registry.tools.extend(
+            quarantined_exec_process_tools_for_test()
+                .into_iter()
+                .map(RegisteredTool::NativeOpenClawCompatible),
+        );
+        registry
+    }
+
+    #[cfg(test)]
+    fn new_with_all_quarantined_tools_for_test() -> Self {
+        let mut registry = Self::new_with_quarantined_exec_process_for_test();
+        registry.tools.extend([
+            RegisteredTool::ListDir(ListDirTool),
+            RegisteredTool::SearchText(SearchTextTool),
+        ]);
+        registry.tools.extend(
+            quarantined_native_read_and_generator_tools_for_test()
+                .into_iter()
+                .map(RegisteredTool::NativeOpenClawCompatible),
+        );
+        registry
     }
 
     fn names(&self) -> Vec<String> {
@@ -38,8 +79,11 @@ impl ToolRegistry {
             .iter()
             .map(|tool| {
                 let schema = tool.schema();
-                ToolDescriptor {
+                let (executor_provider, operation) = self.executor_binding(tool);
+                let descriptor = ToolDescriptor {
                     name: schema.name,
+                    executor_provider,
+                    operation,
                     description: schema.description,
                     risk_tier: tool.risk_tier(),
                     execution_metadata: tool.execution_metadata(),
@@ -49,9 +93,65 @@ impl ToolRegistry {
                     ),
                     input_schema_json: schema.input_schema_json,
                     output_schema_json: schema.output_schema_json,
-                }
+                };
+                #[cfg(test)]
+                let descriptor = {
+                    let mut descriptor = descriptor;
+                    if let Some(description) = self
+                        .manifest_description_overrides
+                        .get(descriptor.name.as_str())
+                    {
+                        descriptor.description = description.clone();
+                    }
+                    descriptor
+                };
+                descriptor
             })
             .collect()
+    }
+
+    fn executor_binding(&self, tool: &RegisteredTool) -> (String, String) {
+        #[cfg(test)]
+        if let Some(binding) = self.executor_binding_overrides.get(tool.name()) {
+            return binding.clone();
+        }
+        (
+            tool.executor_provider().to_string(),
+            tool.name().to_string(),
+        )
+    }
+
+    #[cfg(test)]
+    fn override_executor_binding(&mut self, tool_name: &str, provider: &str, operation: &str) {
+        self.executor_binding_overrides.insert(
+            tool_name.to_string(),
+            (provider.to_string(), operation.to_string()),
+        );
+    }
+
+    #[cfg(test)]
+    fn override_manifest_description(&mut self, tool_name: &str, description: &str) {
+        self.manifest_description_overrides
+            .insert(tool_name.to_string(), description.to_string());
+    }
+
+    #[cfg(test)]
+    fn provider_invocation_count(&self, tool_name: &str) -> usize {
+        self.provider_invocation_counts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(tool_name)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    fn record_provider_invocation(&self, tool_name: &str) {
+        let mut counts = self
+            .provider_invocation_counts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *counts.entry(tool_name.to_string()).or_default() += 1;
     }
 
     fn model_tool_specs(&self) -> Vec<ModelToolSpec> {
@@ -122,34 +222,301 @@ impl ToolRegistry {
         )
     }
 
+    #[cfg(test)]
     async fn invoke(
         &self,
         name: &str,
         ctx: ToolContext,
         req: ToolCallRequest,
     ) -> Result<ToolResult, HeptaError> {
-        let tool = self
-            .tools
-            .iter()
-            .find(|candidate| candidate.name() == name)
-            .ok_or_else(|| HeptaError(format!("unknown tool: {}", name)))?;
-        let result = if matches!(tool, RegisteredTool::NativeOpenClawCompatible(_)) {
-            match tokio::time::timeout(
-                Duration::from_millis(NATIVE_TOOL_INVOCATION_TIMEOUT_MS),
-                tool.invoke(ctx, req),
-            )
+        self.invoke_with_reservation(name, ctx, req, &[], None, None, None, None, None)
             .await
-            {
-                Ok(result) => result,
-                Err(_) => Ok(native_tool_invocation_timeout_result(
-                    name,
-                    NATIVE_TOOL_INVOCATION_TIMEOUT_MS,
-                )),
+    }
+
+    async fn invoke_authorized(
+        &self,
+        name: &str,
+        ctx: ToolContext,
+        req: ToolCallRequest,
+        prepared_writes: &[PreparedWriteTransaction],
+        prepared_read: Option<&PreparedReadCapability>,
+        executor: &runtime_kernel::execution_attempt::ExecutorBinding,
+        capability: &::hepta_contracts::CapabilityManifestRef,
+        expected_attempt_id: &str,
+        expected_idempotency_key: &str,
+        execution_intent: &hepta_memory::ExecutionIntent,
+        outcome_sink: &runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,
+    ) -> Result<ToolResult, HeptaError> {
+        self.invoke_with_reservation(
+            name,
+            ctx,
+            req,
+            prepared_writes,
+            prepared_read,
+            Some((executor, capability)),
+            Some((expected_attempt_id, expected_idempotency_key)),
+            Some(execution_intent),
+            Some(outcome_sink),
+        )
+        .await
+    }
+
+    async fn invoke_with_reservation(
+        &self,
+        name: &str,
+        ctx: ToolContext,
+        req: ToolCallRequest,
+        prepared_writes: &[PreparedWriteTransaction],
+        prepared_read: Option<&PreparedReadCapability>,
+        selector: Option<(
+            &runtime_kernel::execution_attempt::ExecutorBinding,
+            &::hepta_contracts::CapabilityManifestRef,
+        )>,
+        expected_provider_identity: Option<(&str, &str)>,
+        expected_execution_intent: Option<&hepta_memory::ExecutionIntent>,
+        effect_sink: Option<&runtime_kernel::outcome_sink::SharedOutcomeReceiptSink>,
+    ) -> Result<ToolResult, HeptaError> {
+        let provider_execution_identity = match (selector, expected_provider_identity) {
+            (Some(_), Some((expected_attempt_id, expected_idempotency_key))) => Some(
+                ProviderExecutionIdentity::from_exact_context(
+                    &ctx,
+                    expected_attempt_id,
+                    expected_idempotency_key,
+                )
+                .map_err(|error| HeptaError(error.0))?,
+            ),
+            (Some(_), None) => {
+                return Err(HeptaError(
+                    "authorized provider dispatch lacks its expected execution identity".into(),
+                ));
             }
-        } else {
-            tool.invoke(ctx, req).await
+            (None, Some(_)) => {
+                return Err(HeptaError(
+                    "provider execution identity was supplied without an authorized selector"
+                        .into(),
+                ));
+            }
+            (None, None) => ProviderExecutionIdentity::from_context(&ctx)
+                .map_err(|error| HeptaError(error.0))?,
+        };
+        let provider_effect_expectation = match expected_execution_intent {
+            Some(intent) => {
+                let Some((expected_attempt_id, expected_idempotency_key)) =
+                    expected_provider_identity
+                else {
+                    return Err(HeptaError(
+                        "provider effect plan was supplied without an execution identity".into(),
+                    ));
+                };
+                if intent.attempt_id() != expected_attempt_id
+                    || intent.idempotency_key() != expected_idempotency_key
+                {
+                    return Err(HeptaError(
+                        "provider effect plan disagrees with its dispatch identity".into(),
+                    ));
+                }
+                runtime_kernel::provider_effect::ProviderEffectExpectation::from_intent(intent)?
+            }
+            None => None,
+        };
+        if selector.is_some() != effect_sink.is_some()
+            || selector.is_some() != expected_execution_intent.is_some()
+        {
+            return Err(HeptaError(
+                "authorized provider dispatch has incomplete effect coordination".into(),
+            ));
+        }
+        let tool = self.select_tool(name, selector)?;
+        let result = match tool {
+            RegisteredTool::ReadFile(_) => match prepared_read {
+                Some(prepared) => match preflight_prepared_read(name, prepared, &req.input_json) {
+                    Ok(()) => {
+                        let identity = provider_execution_identity
+                            .as_ref()
+                            .ok_or_else(|| {
+                                hepta_core::ToolError(
+                                    "read_file lacks durable provider execution identity".into(),
+                                )
+                            })
+                            .map_err(|error| HeptaError(error.0))?;
+                        #[cfg(test)]
+                        self.record_provider_invocation(name);
+                        invoke_prepared_read_file(prepared, identity)
+                    }
+                    Err(error) => Err(error),
+                },
+                None => Err(hepta_core::ToolError(
+                    "read_file requires a sealed read capability".into(),
+                )),
+            },
+            RegisteredTool::WriteFile(_) => match prepared_writes {
+                [prepared] if prepared.operation == "write_file" => {
+                    let identity = provider_execution_identity
+                        .as_ref()
+                        .ok_or_else(|| {
+                            hepta_core::ToolError(
+                                "write_file lacks durable provider execution identity".into(),
+                            )
+                        })
+                        .map_err(|error| HeptaError(error.0))?;
+                    let effect_sink = effect_sink.ok_or_else(|| {
+                        HeptaError("write_file lacks provider effect coordination".into())
+                    })?;
+                    #[cfg(test)]
+                    self.record_provider_invocation(name);
+                    runtime_kernel::provider_effect::acknowledge_provider_invocation(
+                        invoke_prepared_write_file(prepared, &req.input_json, identity),
+                        prepared_writes,
+                        provider_effect_expectation.as_ref(),
+                        effect_sink,
+                    )
+                }
+                _ => Err(hepta_core::ToolError(
+                    "write_file requires an identity-bound execution reservation".into(),
+                )),
+            },
+            RegisteredTool::NativeOpenClawCompatible(native)
+                if matches!(
+                    native.behavior,
+                    NativeOpenClawCompatibleBehavior::Read
+                        | NativeOpenClawCompatibleBehavior::MemoryGet
+                ) =>
+            {
+                match prepared_read {
+                    Some(prepared) => {
+                        match preflight_prepared_read(name, prepared, &req.input_json) {
+                            Ok(()) => {
+                                let identity = provider_execution_identity
+                                    .as_ref()
+                                    .ok_or_else(|| {
+                                        hepta_core::ToolError(format!(
+                                            "{name} lacks durable provider execution identity"
+                                        ))
+                                    })
+                                    .map_err(|error| HeptaError(error.0))?;
+                                #[cfg(test)]
+                                self.record_provider_invocation(name);
+                                invoke_prepared_native_read(
+                                    name,
+                                    prepared,
+                                    &req.input_json,
+                                    identity,
+                                )
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    None => Err(hepta_core::ToolError(format!(
+                        "{name} requires a sealed read capability"
+                    ))),
+                }
+            }
+            RegisteredTool::NativeOpenClawCompatible(native)
+                if matches!(
+                    native.behavior,
+                    NativeOpenClawCompatibleBehavior::Write
+                        | NativeOpenClawCompatibleBehavior::Edit
+                        | NativeOpenClawCompatibleBehavior::ApplyPatch
+                ) || native.name == "tts" =>
+            {
+                match preflight_prepared_native_mutation(name, prepared_writes, &req.input_json) {
+                    Ok(()) => {
+                        let identity = provider_execution_identity
+                            .as_ref()
+                            .ok_or_else(|| {
+                                hepta_core::ToolError(format!(
+                                    "{name} lacks durable provider execution identity"
+                                ))
+                            })
+                            .map_err(|error| HeptaError(error.0))?;
+                        let effect_sink = effect_sink.ok_or_else(|| {
+                            HeptaError(format!(
+                                "{name} lacks provider effect coordination"
+                            ))
+                        })?;
+                        #[cfg(test)]
+                        self.record_provider_invocation(name);
+                        runtime_kernel::provider_effect::acknowledge_provider_invocation(
+                            invoke_prepared_native_mutation(
+                                name,
+                                prepared_writes,
+                                &req.input_json,
+                                identity,
+                            ),
+                            prepared_writes,
+                            provider_effect_expectation.as_ref(),
+                            effect_sink,
+                        )
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            RegisteredTool::NativeOpenClawCompatible(_) => {
+                #[cfg(test)]
+                self.record_provider_invocation(name);
+                match tokio::time::timeout(
+                    Duration::from_millis(NATIVE_TOOL_INVOCATION_TIMEOUT_MS),
+                    tool.invoke(ctx, req),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => Ok(native_tool_invocation_timeout_result(
+                        name,
+                        NATIVE_TOOL_INVOCATION_TIMEOUT_MS,
+                    )),
+                }
+            }
+            _ => {
+                #[cfg(test)]
+                self.record_provider_invocation(name);
+                tool.invoke(ctx, req).await
+            }
         };
         result.map_err(|err| HeptaError(err.0))
+    }
+
+    fn select_tool<'a>(
+        &'a self,
+        name: &str,
+        selector: Option<(
+            &runtime_kernel::execution_attempt::ExecutorBinding,
+            &::hepta_contracts::CapabilityManifestRef,
+        )>,
+    ) -> Result<&'a RegisteredTool, HeptaError> {
+        let Some((executor, capability)) = selector else {
+            return self
+                .tools
+                .iter()
+                .find(|candidate| candidate.name() == name)
+                .ok_or_else(|| HeptaError(format!("unknown tool: {name}")));
+        };
+        if executor.manifest_hash() != capability.manifest_hash() {
+            return Err(HeptaError(
+                "dispatch selector denied: executor_manifest_mismatch".into(),
+            ));
+        }
+        let mut matches = self.tools.iter().filter(|candidate| {
+            if candidate.name() != name {
+                return false;
+            }
+            let (provider, operation) = self.executor_binding(candidate);
+            provider == executor.provider() && operation == executor.operation()
+        });
+        let selected = matches.next().ok_or_else(|| {
+            HeptaError(format!(
+                "dispatch selector denied: no exact registry executor for {name} provider={} operation={} manifest={}",
+                executor.provider(),
+                executor.operation(),
+                executor.manifest_hash().as_str()
+            ))
+        })?;
+        if matches.next().is_some() {
+            return Err(HeptaError(format!(
+                "dispatch selector denied: ambiguous exact registry executor for {name}"
+            )));
+        }
+        Ok(selected)
     }
 }
 
@@ -157,8 +524,11 @@ enum RegisteredTool {
     Echo(EchoTool),
     ReadFile(ReadFileTool),
     WriteFile(WriteFileTool),
+    #[cfg_attr(not(test), allow(dead_code))]
     ListDir(ListDirTool),
+    #[cfg_attr(not(test), allow(dead_code))]
     SearchText(SearchTextTool),
+    #[cfg_attr(not(test), allow(dead_code))]
     DiskJunkAudit(DiskJunkAuditTool),
     JsonGet(JsonGetTool),
     SkillPropose(SkillProposeTool),
@@ -170,6 +540,24 @@ enum RegisteredTool {
 }
 
 impl RegisteredTool {
+    fn executor_provider(&self) -> &'static str {
+        match self {
+            Self::NativeOpenClawCompatible(_) => "openclaw-native",
+            Self::Echo(_)
+            | Self::ReadFile(_)
+            | Self::WriteFile(_)
+            | Self::ListDir(_)
+            | Self::SearchText(_)
+            | Self::DiskJunkAudit(_)
+            | Self::JsonGet(_)
+            | Self::SkillPropose(_)
+            | Self::SkillScan(_)
+            | Self::SkillApplyPlan(_)
+            | Self::ToolManifestValidate(_)
+            | Self::ToolGenerateStub(_) => "hepta-runtime-builtin",
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             Self::Echo(tool) => tool.name(),
@@ -339,27 +727,11 @@ impl Tool for ReadFileTool {
     async fn invoke(
         &self,
         _ctx: ToolContext,
-        req: ToolCallRequest,
+        _req: ToolCallRequest,
     ) -> Result<ToolResult, hepta_core::ToolError> {
-        let requested_path = parse_required_string_field(&req.input_json, "path")?;
-        let workspace_root = tool_workspace_root_path();
-        let path = resolve_path_within_root(&workspace_root, Path::new(&requested_path));
-        let content = fs::read_to_string(&path).map_err(|err| {
-            hepta_core::ToolError(format!("failed to read {}: {}", path.display(), err))
-        })?;
-        let preview = content.lines().take(6).collect::<Vec<_>>().join(" | ");
-        let line_count = content.lines().count();
-        Ok(ToolResult {
-            content: format!("read_file:{} => {}", path.display(), preview),
-            structured_json: Some(
-                json!({
-                    "path": path.display().to_string(),
-                    "preview": preview,
-                    "line_count": line_count,
-                })
-                .to_string(),
-            ),
-        })
+        Err(hepta_core::ToolError(
+            "read_file requires a sealed read capability".into(),
+        ))
     }
 }
 
@@ -395,202 +767,11 @@ impl Tool for WriteFileTool {
     async fn invoke(
         &self,
         _ctx: ToolContext,
-        req: ToolCallRequest,
+        _req: ToolCallRequest,
     ) -> Result<ToolResult, hepta_core::ToolError> {
-        let requested_path = parse_required_string_field(&req.input_json, "path")?;
-        let content = parse_required_string_field(&req.input_json, "content")?;
-        let mode = parse_optional_string_field(&req.input_json, "mode")?
-            .unwrap_or_else(|| "create".to_string());
-        let preview_only =
-            parse_optional_bool_field(&req.input_json, "preview_only")?.unwrap_or(false);
-        let workspace_root = tool_workspace_root_path();
-        let path = resolve_path_within_root(&workspace_root, Path::new(&requested_path));
-        let existed_before = path.exists();
-        let before_content = if existed_before {
-            Some(fs::read_to_string(&path).map_err(|err| {
-                hepta_core::ToolError(format!(
-                    "failed to read existing content from {}: {}",
-                    path.display(),
-                    err
-                ))
-            })?)
-        } else {
-            None
-        };
-        let before_text = before_content.as_deref().unwrap_or("");
-        let after_content = match mode.as_str() {
-            "create" | "overwrite" => content.clone(),
-            "append" => format!("{}{}", before_text, content),
-            other => {
-                return Err(hepta_core::ToolError(format!(
-                    "unsupported write mode {} for {}",
-                    other,
-                    path.display()
-                )));
-            }
-        };
-        let bytes_before = before_text.len();
-        let bytes_after = after_content.len();
-        let content_changed = before_text != after_content;
-        let backup_planned = existed_before && mode == "overwrite";
-        let change_summary = summarize_write_change(
-            mode.as_str(),
-            existed_before,
-            content_changed,
-            bytes_before,
-            bytes_after,
-        );
-
-        if preview_only {
-            let mut output = serde_json::Map::new();
-            output.insert("path".into(), json!(path.display().to_string()));
-            output.insert("bytes_written".into(), json!(0));
-            output.insert("mode_requested".into(), json!(mode.clone()));
-            output.insert("mode_applied".into(), json!(mode.clone()));
-            output.insert("existed_before".into(), json!(existed_before));
-            output.insert("preview_only".into(), json!(true));
-            output.insert("content_changed".into(), json!(content_changed));
-            output.insert("bytes_before".into(), json!(bytes_before));
-            output.insert("bytes_after".into(), json!(bytes_after));
-            output.insert("backup_planned".into(), json!(backup_planned));
-            output.insert("backup_created".into(), json!(false));
-            if let Some(backup_path) = backup_planned
-                .then(|| preview_backup_path(&workspace_root, &path))
-                .transpose()?
-            {
-                output.insert(
-                    "backup_path".into(),
-                    json!(backup_path.display().to_string()),
-                );
-            }
-            output.insert("change_summary".into(), json!(change_summary.clone()));
-            return Ok(ToolResult {
-                content: format!(
-                    "write_file:{} => preview {}",
-                    path.display(),
-                    change_summary
-                ),
-                structured_json: Some(Value::Object(output).to_string()),
-            });
-        }
-
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                hepta_core::ToolError(format!(
-                    "failed to create parent directories for {}: {}",
-                    path.display(),
-                    err
-                ))
-            })?;
-        }
-        let mut backup_path = None;
-        let mode_applied = match mode.as_str() {
-            "create" => {
-                let mut file = fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&path)
-                    .map_err(|err| {
-                        hepta_core::ToolError(format!(
-                            "failed to create {}: {}",
-                            path.display(),
-                            err
-                        ))
-                    })?;
-                use std::io::Write as _;
-                file.write_all(content.as_bytes()).map_err(|err| {
-                    hepta_core::ToolError(format!("failed to write {}: {}", path.display(), err))
-                })?;
-                "create"
-            }
-            "overwrite" => {
-                if let Some(previous_content) = before_content.as_deref() {
-                    let planned_backup_path = preview_backup_path(&workspace_root, &path)?;
-                    if let Some(parent) = planned_backup_path.parent() {
-                        fs::create_dir_all(parent).map_err(|err| {
-                            hepta_core::ToolError(format!(
-                                "failed to create backup parent directories for {}: {}",
-                                planned_backup_path.display(),
-                                err
-                            ))
-                        })?;
-                    }
-                    fs::write(&planned_backup_path, previous_content.as_bytes()).map_err(
-                        |err| {
-                            hepta_core::ToolError(format!(
-                                "failed to write backup {}: {}",
-                                planned_backup_path.display(),
-                                err
-                            ))
-                        },
-                    )?;
-                    backup_path = Some(planned_backup_path);
-                }
-                fs::write(&path, content.as_bytes()).map_err(|err| {
-                    hepta_core::ToolError(format!(
-                        "failed to overwrite {}: {}",
-                        path.display(),
-                        err
-                    ))
-                })?;
-                "overwrite"
-            }
-            "append" => {
-                let mut file = fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&path)
-                    .map_err(|err| {
-                        hepta_core::ToolError(format!(
-                            "failed to append {}: {}",
-                            path.display(),
-                            err
-                        ))
-                    })?;
-                use std::io::Write as _;
-                file.write_all(content.as_bytes()).map_err(|err| {
-                    hepta_core::ToolError(format!("failed to append {}: {}", path.display(), err))
-                })?;
-                "append"
-            }
-            other => {
-                return Err(hepta_core::ToolError(format!(
-                    "unsupported write mode {} for {}",
-                    other,
-                    path.display()
-                )));
-            }
-        };
-        Ok(ToolResult {
-            content: format!(
-                "write_file:{} => {} bytes ({})",
-                path.display(),
-                content.len(),
-                mode_applied
-            ),
-            structured_json: Some({
-                let mut output = serde_json::Map::new();
-                output.insert("path".into(), json!(path.display().to_string()));
-                output.insert("bytes_written".into(), json!(content.len()));
-                output.insert("mode_requested".into(), json!(mode.clone()));
-                output.insert("mode_applied".into(), json!(mode_applied));
-                output.insert("existed_before".into(), json!(existed_before));
-                output.insert("preview_only".into(), json!(false));
-                output.insert("content_changed".into(), json!(content_changed));
-                output.insert("bytes_before".into(), json!(bytes_before));
-                output.insert("bytes_after".into(), json!(bytes_after));
-                output.insert("backup_planned".into(), json!(backup_planned));
-                output.insert("backup_created".into(), json!(backup_path.is_some()));
-                if let Some(backup_path) = backup_path.as_ref() {
-                    output.insert(
-                        "backup_path".into(),
-                        json!(backup_path.display().to_string()),
-                    );
-                }
-                output.insert("change_summary".into(), json!(change_summary.clone()));
-                Value::Object(output).to_string()
-            }),
-        })
+        Err(hepta_core::ToolError(
+            "write_file requires an identity-bound execution reservation".into(),
+        ))
     }
 }
 
@@ -755,6 +936,7 @@ impl Tool for SearchTextTool {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 struct DiskJunkAuditTool;
 
 #[derive(Debug, Clone)]
@@ -1221,16 +1403,112 @@ struct NativeOpenClawCompatibleTool {
     behavior: NativeOpenClawCompatibleBehavior,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProviderExecutionIdentity {
+    attempt_id: String,
+    idempotency_key: String,
+}
+
+impl ProviderExecutionIdentity {
+    fn from_context(context: &ToolContext) -> Result<Option<Self>, hepta_core::ToolError> {
+        match (
+            context.execution_attempt_id.as_deref(),
+            context.idempotency_key.as_deref(),
+        ) {
+            (Some(attempt_id), Some(idempotency_key)) => {
+                validate_provider_execution_identity(
+                    attempt_id,
+                    idempotency_key,
+                    attempt_id,
+                    idempotency_key,
+                )?;
+                Ok(Some(Self {
+                    attempt_id: attempt_id.to_owned(),
+                    idempotency_key: idempotency_key.to_owned(),
+                }))
+            }
+            (None, None) => Ok(None),
+            _ => Err(hepta_core::ToolError(
+                "provider execution identity is incomplete".into(),
+            )),
+        }
+    }
+
+    fn from_exact_context(
+        context: &ToolContext,
+        expected_attempt_id: &str,
+        expected_idempotency_key: &str,
+    ) -> Result<Self, hepta_core::ToolError> {
+        let presented_attempt_id = context
+            .execution_attempt_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                hepta_core::ToolError(
+                    "authorized provider dispatch requires an exact execution attempt".into(),
+                )
+            })?;
+        let presented_idempotency_key = context
+            .idempotency_key
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                hepta_core::ToolError(
+                    "authorized provider dispatch requires a durable idempotency key".into(),
+                )
+            })?;
+        validate_provider_execution_identity(
+            expected_attempt_id,
+            expected_idempotency_key,
+            presented_attempt_id,
+            presented_idempotency_key,
+        )?;
+        Ok(Self {
+            attempt_id: expected_attempt_id.to_owned(),
+            idempotency_key: expected_idempotency_key.to_owned(),
+        })
+    }
+
+    fn require<'a>(
+        identity: Option<&'a Self>,
+        tool: &str,
+    ) -> Result<&'a Self, hepta_core::ToolError> {
+        identity.ok_or_else(|| {
+            hepta_core::ToolError(format!(
+                "{tool} live provider action requires an attempt-bound idempotency key"
+            ))
+        })
+    }
+
+    fn apply_to_command(&self, command: &mut Command) {
+        command.env("HEPTA_EXECUTION_ATTEMPT_ID", &self.attempt_id);
+        command.env("HEPTA_EXECUTION_IDEMPOTENCY_KEY", &self.idempotency_key);
+    }
+}
+
+fn reject_native_live_without_idempotency_receipt(
+    tool: &str,
+    provider_identity: Option<&ProviderExecutionIdentity>,
+) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
+    let _identity = ProviderExecutionIdentity::require(provider_identity, tool)?;
+    Err(hepta_core::ToolError(format!(
+        "{tool} live provider action remains quarantined until its adapter durably deduplicates the exact idempotency key and returns a binding receipt"
+    )))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NativeOpenClawCompatibleBehavior {
     Read,
     Write,
     Edit,
     ApplyPatch,
+    #[cfg_attr(not(test), allow(dead_code))]
     Exec,
+    #[cfg_attr(not(test), allow(dead_code))]
     Process,
     WebFetch,
     WebSearch,
+    #[cfg_attr(not(test), allow(dead_code))]
     MemorySearch,
     MemoryGet,
     SessionStatus,
@@ -1330,19 +1608,29 @@ impl Tool for NativeOpenClawCompatibleTool {
 
     async fn invoke(
         &self,
-        _ctx: ToolContext,
+        ctx: ToolContext,
         req: ToolCallRequest,
     ) -> Result<ToolResult, hepta_core::ToolError> {
+        let provider_identity = ProviderExecutionIdentity::from_context(&ctx)?;
         let input = parse_tool_input_object(&req.input_json)?;
         let result = match self.behavior {
-            NativeOpenClawCompatibleBehavior::Read => native_compat_read(self.name, &input),
-            NativeOpenClawCompatibleBehavior::Write => native_compat_write(self.name, &input),
-            NativeOpenClawCompatibleBehavior::Edit => native_compat_edit(self.name, &input),
-            NativeOpenClawCompatibleBehavior::ApplyPatch => {
-                native_compat_apply_patch(self.name, &input)
+            NativeOpenClawCompatibleBehavior::Read
+            | NativeOpenClawCompatibleBehavior::MemoryGet => Err(hepta_core::ToolError(format!(
+                "{} requires a sealed read capability",
+                self.name
+            ))),
+            NativeOpenClawCompatibleBehavior::Write
+            | NativeOpenClawCompatibleBehavior::Edit
+            | NativeOpenClawCompatibleBehavior::ApplyPatch => Err(hepta_core::ToolError(format!(
+                "{} requires an identity-bound execution reservation",
+                self.name
+            ))),
+            NativeOpenClawCompatibleBehavior::Exec => {
+                native_compat_exec(self.name, &input, provider_identity.as_ref())
             }
-            NativeOpenClawCompatibleBehavior::Exec => native_compat_exec(self.name, &input),
-            NativeOpenClawCompatibleBehavior::Process => native_compat_process(self.name, &input),
+            NativeOpenClawCompatibleBehavior::Process => {
+                native_compat_process(self.name, &input, provider_identity.as_ref())
+            }
             NativeOpenClawCompatibleBehavior::WebFetch => {
                 native_compat_web_fetch(self.name, &input)
             }
@@ -1352,17 +1640,19 @@ impl Tool for NativeOpenClawCompatibleTool {
             NativeOpenClawCompatibleBehavior::MemorySearch => {
                 native_compat_memory_search(self.name, &input)
             }
-            NativeOpenClawCompatibleBehavior::MemoryGet => {
-                native_compat_memory_get(self.name, &input)
-            }
             NativeOpenClawCompatibleBehavior::SessionStatus => {
                 Ok(native_compat_status_report(self.name, &input))
             }
             NativeOpenClawCompatibleBehavior::PlanEcho => {
                 Ok(native_compat_plan_echo(self.name, &input))
             }
+            NativeOpenClawCompatibleBehavior::NativeSurface if self.name == "tts" => {
+                Err(hepta_core::ToolError(
+                    "tts requires an identity-bound execution reservation".into(),
+                ))
+            }
             NativeOpenClawCompatibleBehavior::NativeSurface => {
-                native_compat_live_surface(self.name, &input)
+                native_compat_live_surface(self.name, &input, provider_identity.as_ref())
             }
         }?;
         let content = result
@@ -1417,24 +1707,6 @@ fn native_openclaw_compatible_tools() -> Vec<NativeOpenClawCompatibleTool> {
             B::ApplyPatch,
         ),
         native_tool(
-            "exec",
-            "Run a local shell command through Hepta's Rust-native process runner; use this for filesystem maintenance or cache cleanup only with the normal high-risk approval gate",
-            RiskTier::High,
-            false,
-            true,
-            false,
-            B::Exec,
-        ),
-        native_tool(
-            "process",
-            "Inspect or control Hepta background process sessions created by exec background=true; not for deleting files, caches, or workspace storage",
-            RiskTier::Medium,
-            true,
-            false,
-            true,
-            B::Process,
-        ),
-        native_tool(
             "canvas",
             "Run Hepta-native canvas-plane adapter/audit actions without OpenClaw proxying",
             RiskTier::Medium,
@@ -1455,36 +1727,9 @@ fn native_openclaw_compatible_tools() -> Vec<NativeOpenClawCompatibleTool> {
         native_tool(
             "tts",
             "Synthesize local speech through Hepta's native macOS TTS adapter",
-            RiskTier::Medium,
+            RiskTier::High,
             false,
-            false,
-            false,
-            B::NativeSurface,
-        ),
-        native_tool(
-            "image_generate",
-            "Generate images through Hepta's native local Ollama/helper adapter",
-            RiskTier::Medium,
-            false,
-            false,
-            false,
-            B::NativeSurface,
-        ),
-        native_tool(
-            "music_generate",
-            "Generate music through a configured Hepta-native local generator command",
-            RiskTier::Medium,
-            false,
-            false,
-            false,
-            B::NativeSurface,
-        ),
-        native_tool(
-            "video_generate",
-            "Generate video through a configured Hepta-native local generator command",
-            RiskTier::Medium,
-            false,
-            false,
+            true,
             false,
             B::NativeSurface,
         ),
@@ -1586,33 +1831,6 @@ fn native_openclaw_compatible_tools() -> Vec<NativeOpenClawCompatibleTool> {
             false,
             true,
             B::WebFetch,
-        ),
-        native_tool(
-            "image",
-            "Analyze local image metadata through Hepta-native filesystem tools",
-            RiskTier::Medium,
-            true,
-            false,
-            true,
-            B::NativeSurface,
-        ),
-        native_tool(
-            "pdf",
-            "Extract local PDF text/metadata through Hepta-native filesystem tools",
-            RiskTier::Medium,
-            true,
-            false,
-            true,
-            B::NativeSurface,
-        ),
-        native_tool(
-            "memory_search",
-            "Search Hepta/OpenClaw workspace memory files using local Rust filesystem reads",
-            RiskTier::Low,
-            true,
-            false,
-            true,
-            B::MemorySearch,
         ),
         native_tool(
             "memory_get",
@@ -1743,6 +1961,92 @@ fn native_openclaw_compatible_tools() -> Vec<NativeOpenClawCompatibleTool> {
     ]
 }
 
+#[cfg(test)]
+fn quarantined_exec_process_tools_for_test() -> [NativeOpenClawCompatibleTool; 2] {
+    use NativeOpenClawCompatibleBehavior as B;
+    [
+        native_tool(
+            "exec",
+            "Quarantined native shell runner retained for test-only lifecycle coverage",
+            RiskTier::High,
+            false,
+            true,
+            false,
+            B::Exec,
+        ),
+        native_tool(
+            "process",
+            "Quarantined native process controller retained for test-only lifecycle coverage",
+            RiskTier::High,
+            false,
+            true,
+            false,
+            B::Process,
+        ),
+    ]
+}
+
+#[cfg(test)]
+fn quarantined_native_read_and_generator_tools_for_test() -> [NativeOpenClawCompatibleTool; 6] {
+    use NativeOpenClawCompatibleBehavior as B;
+    [
+        native_tool(
+            "image_generate",
+            "Quarantined image generator retained for test-only lower coverage",
+            RiskTier::High,
+            false,
+            true,
+            false,
+            B::NativeSurface,
+        ),
+        native_tool(
+            "music_generate",
+            "Quarantined music generator retained for test-only lower coverage",
+            RiskTier::High,
+            false,
+            true,
+            false,
+            B::NativeSurface,
+        ),
+        native_tool(
+            "video_generate",
+            "Quarantined video generator retained for test-only lower coverage",
+            RiskTier::High,
+            false,
+            true,
+            false,
+            B::NativeSurface,
+        ),
+        native_tool(
+            "image",
+            "Quarantined image path analyzer retained for test-only lower coverage",
+            RiskTier::Medium,
+            true,
+            false,
+            true,
+            B::NativeSurface,
+        ),
+        native_tool(
+            "pdf",
+            "Quarantined PDF path analyzer retained for test-only lower coverage",
+            RiskTier::Medium,
+            true,
+            false,
+            true,
+            B::NativeSurface,
+        ),
+        native_tool(
+            "memory_search",
+            "Quarantined memory directory walk retained for test-only lower coverage",
+            RiskTier::Low,
+            true,
+            false,
+            true,
+            B::MemorySearch,
+        ),
+    ]
+}
+
 fn native_tool(
     name: &'static str,
     description: &'static str,
@@ -1807,8 +2111,8 @@ fn native_tool_invocation_timeout_result(tool: &str, timeout_ms: u64) -> ToolRes
     }
 }
 
-fn tool_result_is_timeout(tool_result: &ToolResult) -> bool {
-    if tool_result.content.contains("ToolTimeout/") || tool_result.content.contains(" timed out") {
+fn tool_result_is_timeout(expected_tool: &str, tool_result: &ToolResult) -> bool {
+    if has_reserved_timeout_signature(expected_tool, &tool_result.content) {
         return true;
     }
     let Some(structured_json) = tool_result.structured_json.as_deref() else {
@@ -1827,28 +2131,84 @@ fn tool_result_is_timeout(tool_result: &ToolResult) -> bool {
             == Some(true)
 }
 
-fn native_compat_read(
+fn has_reserved_timeout_signature(expected_tool: &str, content: &str) -> bool {
+    let Some(signature) = content.strip_prefix("ToolTimeout/") else {
+        return false;
+    };
+    let Some((tool, detail)) = signature.split_once(" timed out") else {
+        return false;
+    };
+    if tool != expected_tool || tool.chars().any(char::is_whitespace) {
+        return false;
+    }
+    if detail.is_empty() {
+        return true;
+    }
+    detail
+        .strip_prefix(" after ")
+        .and_then(|duration| duration.strip_suffix(" ms"))
+        .is_some_and(|duration| duration.parse::<u64>().is_ok())
+}
+
+fn invoke_prepared_read_file(
+    prepared: &PreparedReadCapability,
+    provider_identity: &ProviderExecutionIdentity,
+) -> Result<ToolResult, hepta_core::ToolError> {
+    let _provider_identity = provider_identity;
+    let content = std::str::from_utf8(&prepared.bytes).map_err(|error| {
+        hepta_core::ToolError(format!(
+            "captured read bytes are not UTF-8 for {}: {error}",
+            prepared.resolved_path.display()
+        ))
+    })?;
+    let preview = content.lines().take(6).collect::<Vec<_>>().join(" | ");
+    let line_count = content.lines().count();
+    Ok(ToolResult {
+        content: format!(
+            "read_file:{} => {}",
+            prepared.resolved_path.display(),
+            preview
+        ),
+        structured_json: Some(
+            json!({
+                "path": prepared.resolved_path.display().to_string(),
+                "preview": preview,
+                "line_count": line_count,
+            })
+            .to_string(),
+        ),
+    })
+}
+
+fn invoke_prepared_native_read(
     tool: &str,
-    input: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
-    let path_text = input
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| hepta_core::ToolError("read requires string field 'path'".into()))?;
-    let offset = input
-        .get("offset")
-        .and_then(Value::as_u64)
-        .unwrap_or(1)
-        .max(1) as usize;
-    let limit = input
-        .get("limit")
-        .and_then(Value::as_u64)
-        .unwrap_or(2000)
-        .max(1) as usize;
-    let workspace_root = tool_workspace_root_path();
-    let path = resolve_path_within_root(&workspace_root, Path::new(path_text));
-    let content = fs::read_to_string(&path).map_err(|err| {
-        hepta_core::ToolError(format!("failed to read {}: {}", path.display(), err))
+    prepared: &PreparedReadCapability,
+    input_json: &str,
+    provider_identity: &ProviderExecutionIdentity,
+) -> Result<ToolResult, hepta_core::ToolError> {
+    let _provider_identity = provider_identity;
+    let input = parse_tool_input_object(input_json)?;
+    let offset = (if tool == "memory_get" {
+        input.get("from")
+    } else {
+        input.get("offset")
+    })
+    .and_then(Value::as_u64)
+    .unwrap_or(1)
+    .max(1) as usize;
+    let limit = (if tool == "memory_get" {
+        input.get("lines")
+    } else {
+        input.get("limit")
+    })
+    .and_then(Value::as_u64)
+    .unwrap_or(2000)
+    .max(1) as usize;
+    let content = std::str::from_utf8(&prepared.bytes).map_err(|error| {
+        hepta_core::ToolError(format!(
+            "captured read bytes are not UTF-8 for {}: {error}",
+            prepared.resolved_path.display()
+        ))
     })?;
     let lines: Vec<&str> = content.lines().collect();
     let start = offset.saturating_sub(1).min(lines.len());
@@ -1859,7 +2219,7 @@ fn native_compat_read(
     out.insert(
         "result".into(),
         json!({
-            "path": path.display().to_string(),
+            "path": prepared.resolved_path.display().to_string(),
             "offset": offset,
             "limit": limit,
             "line_count": lines.len(),
@@ -1868,251 +2228,14 @@ fn native_compat_read(
             "text": excerpt
         }),
     );
-    Ok(out)
-}
-
-fn native_compat_write(
-    tool: &str,
-    input: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
-    let path_text = input
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| hepta_core::ToolError("write requires string field 'path'".into()))?;
-    let content = input
-        .get("content")
-        .and_then(Value::as_str)
-        .ok_or_else(|| hepta_core::ToolError("write requires string field 'content'".into()))?;
-    let preview_only = input
-        .get("preview_only")
-        .or_else(|| input.get("dryRun"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let workspace_root = tool_workspace_root_path();
-    let path = resolve_path_within_root(&workspace_root, Path::new(path_text));
-    let existed_before = path.exists();
-    if !preview_only {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                hepta_core::ToolError(format!("failed to create {}: {}", parent.display(), err))
-            })?;
-        }
-        fs::write(&path, content).map_err(|err| {
-            hepta_core::ToolError(format!("failed to write {}: {}", path.display(), err))
-        })?;
-    }
-    let mut out = native_compat_base(tool, if preview_only { "preview" } else { "ok" });
-    out.insert(
-        "content".into(),
-        Value::String(format!(
-            "{} {} bytes to {}{}",
-            if preview_only { "would write" } else { "wrote" },
-            content.len(),
-            path.display(),
-            if existed_before {
-                " (overwrote existing file)"
-            } else {
-                ""
-            }
-        )),
-    );
-    out.insert(
-        "result".into(),
-        json!({
-            "path": path.display().to_string(),
-            "bytes": content.len(),
-            "existed_before": existed_before,
-            "preview_only": preview_only
-        }),
-    );
-    Ok(out)
-}
-
-fn native_compat_edit(
-    tool: &str,
-    input: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
-    let path_text = input
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| hepta_core::ToolError("edit requires string field 'path'".into()))?;
-    let edits = input
-        .get("edits")
-        .and_then(Value::as_array)
-        .ok_or_else(|| hepta_core::ToolError("edit requires array field 'edits'".into()))?;
-    let preview_only = input
-        .get("preview_only")
-        .or_else(|| input.get("dryRun"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let workspace_root = tool_workspace_root_path();
-    let path = resolve_path_within_root(&workspace_root, Path::new(path_text));
-    let mut content = fs::read_to_string(&path).map_err(|err| {
-        hepta_core::ToolError(format!("failed to read {}: {}", path.display(), err))
-    })?;
-    let mut applied = 0usize;
-    for edit in edits {
-        let old_text = edit
-            .get("oldText")
-            .or_else(|| edit.get("old_text"))
+    Ok(ToolResult {
+        content: out
+            .get("content")
             .and_then(Value::as_str)
-            .ok_or_else(|| hepta_core::ToolError("each edit requires oldText".into()))?;
-        let new_text = edit
-            .get("newText")
-            .or_else(|| edit.get("new_text"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| hepta_core::ToolError("each edit requires newText".into()))?;
-        let count = content.matches(old_text).count();
-        if count != 1 {
-            return Err(hepta_core::ToolError(format!(
-                "oldText must match exactly once; matched {} times",
-                count
-            )));
-        }
-        content = content.replacen(old_text, new_text, 1);
-        applied += 1;
-    }
-    if !preview_only {
-        fs::write(&path, content).map_err(|err| {
-            hepta_core::ToolError(format!("failed to write {}: {}", path.display(), err))
-        })?;
-    }
-    let mut out = native_compat_base(tool, if preview_only { "preview" } else { "ok" });
-    out.insert(
-        "content".into(),
-        Value::String(format!(
-            "{} {} edit(s) in {}",
-            if preview_only {
-                "would apply"
-            } else {
-                "applied"
-            },
-            applied,
-            path.display()
-        )),
-    );
-    out.insert(
-        "result".into(),
-        json!({ "path": path.display().to_string(), "edits_applied": applied, "preview_only": preview_only }),
-    );
-    Ok(out)
-}
-
-fn native_compat_apply_patch(
-    tool: &str,
-    input: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
-    let patch = input
-        .get("input")
-        .or_else(|| input.get("patch"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            hepta_core::ToolError("apply_patch requires string field 'input' or 'patch'".into())
-        })?;
-    let preview_only = input
-        .get("preview_only")
-        .or_else(|| input.get("dryRun"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let ops = parse_native_apply_patch(patch)?;
-    let workspace_root = tool_workspace_root_path();
-    let mut summaries = Vec::new();
-    for op in ops {
-        match op {
-            NativePatchOp::Add { path, content } => {
-                let target = resolve_path_within_root(&workspace_root, Path::new(&path));
-                if target.exists() {
-                    return Err(hepta_core::ToolError(format!(
-                        "cannot add existing file {}",
-                        target.display()
-                    )));
-                }
-                if !preview_only {
-                    if let Some(parent) = target.parent() {
-                        fs::create_dir_all(parent).map_err(|err| {
-                            hepta_core::ToolError(format!(
-                                "failed to create {}: {}",
-                                parent.display(),
-                                err
-                            ))
-                        })?;
-                    }
-                    fs::write(&target, &content).map_err(|err| {
-                        hepta_core::ToolError(format!(
-                            "failed to add {}: {}",
-                            target.display(),
-                            err
-                        ))
-                    })?;
-                }
-                summaries.push(
-                    json!({"op":"add","path":target.display().to_string(),"bytes":content.len()}),
-                );
-            }
-            NativePatchOp::Delete { path } => {
-                let target = resolve_path_within_root(&workspace_root, Path::new(&path));
-                if !target.exists() {
-                    return Err(hepta_core::ToolError(format!(
-                        "cannot delete missing file {}",
-                        target.display()
-                    )));
-                }
-                if !preview_only {
-                    fs::remove_file(&target).map_err(|err| {
-                        hepta_core::ToolError(format!(
-                            "failed to delete {}: {}",
-                            target.display(),
-                            err
-                        ))
-                    })?;
-                }
-                summaries.push(json!({"op":"delete","path":target.display().to_string()}));
-            }
-            NativePatchOp::Update { path, old, new } => {
-                let target = resolve_path_within_root(&workspace_root, Path::new(&path));
-                let current = fs::read_to_string(&target).map_err(|err| {
-                    hepta_core::ToolError(format!("failed to read {}: {}", target.display(), err))
-                })?;
-                let count = current.matches(&old).count();
-                if count != 1 {
-                    return Err(hepta_core::ToolError(format!(
-                        "patch update for {} matched old hunk {} times; expected exactly once",
-                        target.display(),
-                        count
-                    )));
-                }
-                let updated = current.replacen(&old, &new, 1);
-                if !preview_only {
-                    fs::write(&target, updated).map_err(|err| {
-                        hepta_core::ToolError(format!(
-                            "failed to update {}: {}",
-                            target.display(),
-                            err
-                        ))
-                    })?;
-                }
-                summaries.push(json!({"op":"update","path":target.display().to_string(),"old_bytes":old.len(),"new_bytes":new.len()}));
-            }
-        }
-    }
-    let mut out = native_compat_base(tool, if preview_only { "preview" } else { "ok" });
-    out.insert(
-        "content".into(),
-        Value::String(format!(
-            "{} {} patch operation(s)",
-            if preview_only {
-                "would apply"
-            } else {
-                "applied"
-            },
-            summaries.len()
-        )),
-    );
-    out.insert(
-        "result".into(),
-        json!({"operation_count": summaries.len(), "operations": summaries, "preview_only": preview_only}),
-    );
-    Ok(out)
+            .unwrap_or("sealed read completed")
+            .to_string(),
+        structured_json: Some(Value::Object(out).to_string()),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2339,6 +2462,7 @@ fn native_run_command_with_deadline(
     command: &str,
     workdir: &Path,
     timeout_ms: u64,
+    provider_identity: &ProviderExecutionIdentity,
 ) -> Result<NativeCommandRunOutput, hepta_core::ToolError> {
     let stdout_path = native_command_temp_path("stdout");
     let stderr_path = native_command_temp_path("stderr");
@@ -2356,7 +2480,9 @@ fn native_run_command_with_deadline(
             err
         ))
     })?;
-    let mut child = prepare_native_command(command, workdir)
+    let mut provider_command = prepare_native_command(command, workdir);
+    provider_identity.apply_to_command(&mut provider_command);
+    let mut child = provider_command
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
         .spawn()
@@ -2415,7 +2541,9 @@ fn native_run_command_with_deadline(
 fn native_compat_exec(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
+    let provider_identity = ProviderExecutionIdentity::require(provider_identity, tool)?;
     let command = input
         .get("command")
         .and_then(Value::as_str)
@@ -2430,13 +2558,14 @@ fn native_compat_exec(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if background {
-        return native_compat_exec_background(tool, command, &workdir);
+        return native_compat_exec_background(tool, command, &workdir, provider_identity);
     }
     let timeout_ms = native_timeout_ms_from_input(input);
-    let output = native_run_command_with_deadline(command, &workdir, timeout_ms)?;
+    let output =
+        native_run_command_with_deadline(command, &workdir, timeout_ms, provider_identity)?;
     if output.timed_out {
         let error = format!(
-            "ToolTimeout/native_compat_exec timed out after {} ms",
+            "ToolTimeout/{tool} timed out after {} ms",
             output.timeout_ms
         );
         let mut out = native_compat_base(tool, "timeout");
@@ -2483,6 +2612,7 @@ fn native_compat_exec(
 struct NativeBackgroundProcess {
     child: Child,
     stdin: Option<ChildStdin>,
+    log_reader: fs::File,
     command: String,
     workdir: PathBuf,
     log_path: PathBuf,
@@ -2500,6 +2630,7 @@ fn native_compat_exec_background(
     tool: &str,
     command: &str,
     workdir: &Path,
+    provider_identity: &ProviderExecutionIdentity,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let started_at_unix_ms = current_unix_ms().map_err(|err| hepta_core::ToolError(err.0))?;
     let log_dir = native_process_log_dir();
@@ -2537,7 +2668,16 @@ fn native_compat_exec_background(
             err
         ))
     })?;
-    let mut child = prepare_native_command(command, workdir)
+    let log_reader = stdout_file.try_clone().map_err(|err| {
+        hepta_core::ToolError(format!(
+            "failed to retain identity-bound log handle {}: {}",
+            temp_log_path.display(),
+            err
+        ))
+    })?;
+    let mut provider_command = prepare_native_command(command, workdir);
+    provider_identity.apply_to_command(&mut provider_command);
+    let mut child = provider_command
         .stdin(Stdio::piped())
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
@@ -2563,6 +2703,7 @@ fn native_compat_exec_background(
             NativeBackgroundProcess {
                 child,
                 stdin,
+                log_reader,
                 command: command.to_string(),
                 workdir: workdir.to_path_buf(),
                 log_path: log_path.clone(),
@@ -2597,94 +2738,31 @@ fn native_process_log_dir() -> PathBuf {
     tool_workspace_root_path().join("target/hepta-processes")
 }
 
-fn native_process_log_path(id: &str) -> PathBuf {
-    native_process_log_dir().join(format!("{}.log", id))
-}
-
-fn native_process_pid_from_id(id: &str) -> Option<u32> {
-    id.rsplit_once('-')
-        .and_then(|(_, pid)| pid.parse::<u32>().ok())
-}
-
-fn native_process_started_at_from_id(id: &str) -> Option<u64> {
-    let rest = id.strip_prefix("hepta-proc-")?;
-    rest.split_once('-')
-        .and_then(|(started, _)| started.parse::<u64>().ok())
-}
-
-fn native_process_pid_alive(pid: u32) -> bool {
-    std::process::Command::new("/bin/kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-fn native_process_command_from_log(log_path: &Path) -> String {
-    fs::read_to_string(log_path)
-        .ok()
-        .and_then(|text| {
-            text.lines()
-                .next()
-                .map(|line| line.trim_start_matches("$ ").to_string())
-        })
-        .unwrap_or_else(|| "<unknown>".into())
-}
-
-fn native_process_snapshot_from_log(id: &str) -> Option<Value> {
-    let log_path = native_process_log_path(id);
-    if !log_path.exists() {
-        return None;
+fn validate_native_process_id(id: &str) -> Result<(), hepta_core::ToolError> {
+    let rest = id.strip_prefix("hepta-proc-").ok_or_else(|| {
+        hepta_core::ToolError("process sessionId must be a runtime-issued opaque token".into())
+    })?;
+    let (started, pid) = rest.split_once('-').ok_or_else(|| {
+        hepta_core::ToolError("process sessionId must be a runtime-issued opaque token".into())
+    })?;
+    if started.is_empty()
+        || pid.is_empty()
+        || !started.bytes().all(|byte| byte.is_ascii_digit())
+        || !pid.bytes().all(|byte| byte.is_ascii_digit())
+        || started.parse::<u64>().is_err()
+        || pid.parse::<u32>().is_err()
+    {
+        return Err(hepta_core::ToolError(
+            "process sessionId must be a runtime-issued opaque token".into(),
+        ));
     }
-    let pid = native_process_pid_from_id(id);
-    let running = pid.map(native_process_pid_alive).unwrap_or(false);
-    Some(json!({
-        "sessionId": id,
-        "id": id,
-        "pid": pid,
-        "command": native_process_command_from_log(&log_path),
-        "workdir": tool_workspace_root_path().display().to_string(),
-        "log_path": log_path.display().to_string(),
-        "started_at_unix_ms": native_process_started_at_from_id(id),
-        "running": running,
-        "exit_code": null,
-        "stdin_open": false,
-        "registry_backed": false,
-        "log_backed": true,
-    }))
-}
-
-fn native_process_log_snapshots() -> Vec<Value> {
-    let Ok(entries) = fs::read_dir(native_process_log_dir()) else {
-        return Vec::new();
-    };
-    let mut snapshots = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("log") {
-                return None;
-            }
-            let id = path.file_stem().and_then(|stem| stem.to_str())?;
-            if !id.starts_with("hepta-proc-") {
-                return None;
-            }
-            native_process_snapshot_from_log(id)
-        })
-        .collect::<Vec<_>>();
-    snapshots.sort_by_key(|snapshot| {
-        snapshot
-            .get("started_at_unix_ms")
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-    });
-    snapshots
+    Ok(())
 }
 
 fn native_compat_process(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let action = input
         .get("action")
@@ -2694,9 +2772,18 @@ fn native_compat_process(
         "list" | "status" => native_process_list(tool, action),
         "poll" => native_process_poll(tool, input),
         "log" | "read" => native_process_log(tool, input),
-        "write" | "submit" => native_process_write(tool, input),
-        "kill" | "terminate" => native_process_kill(tool, input),
-        "clear" | "remove" => native_process_remove(tool, input, action),
+        "write" | "submit" => {
+            ProviderExecutionIdentity::require(provider_identity, tool)?;
+            native_process_write(tool, input)
+        }
+        "kill" | "terminate" => {
+            ProviderExecutionIdentity::require(provider_identity, tool)?;
+            native_process_kill(tool, input)
+        }
+        "clear" | "remove" => {
+            ProviderExecutionIdentity::require(provider_identity, tool)?;
+            native_process_remove(tool, input, action)
+        }
         other => Err(hepta_core::ToolError(format!(
             "unsupported process action '{}'; supported actions: list, poll, log, write, kill, clear, remove",
             other
@@ -2707,13 +2794,15 @@ fn native_compat_process(
 fn native_process_id(
     input: &serde_json::Map<String, Value>,
 ) -> Result<String, hepta_core::ToolError> {
-    input
+    let id = input
         .get("sessionId")
         .or_else(|| input.get("session_id"))
         .or_else(|| input.get("id"))
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| hepta_core::ToolError("process action requires sessionId".into()))
+        .ok_or_else(|| hepta_core::ToolError("process action requires sessionId".into()))?;
+    validate_native_process_id(&id)?;
+    Ok(id)
 }
 
 fn native_process_snapshot(
@@ -2740,6 +2829,77 @@ fn native_process_snapshot(
     }))
 }
 
+#[cfg(unix)]
+fn native_process_read_log(
+    process: &NativeBackgroundProcess,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<u8>, hepta_core::ToolError> {
+    use std::os::unix::fs::FileExt as _;
+
+    let total_len = process
+        .log_reader
+        .metadata()
+        .map_err(|error| {
+            hepta_core::ToolError(format!(
+                "failed to inspect identity-bound process log: {error}"
+            ))
+        })?
+        .len() as usize;
+    let read_len = total_len.saturating_sub(offset).min(limit.min(1_000_000));
+    let mut bytes = vec![0_u8; read_len];
+    let mut read = 0;
+    while read < read_len {
+        let count = process
+            .log_reader
+            .read_at(&mut bytes[read..], (offset + read) as u64)
+            .map_err(|error| {
+                hepta_core::ToolError(format!(
+                    "failed to read identity-bound process log: {error}"
+                ))
+            })?;
+        if count == 0 {
+            break;
+        }
+        read += count;
+    }
+    bytes.truncate(read);
+    Ok(bytes)
+}
+
+#[cfg(not(unix))]
+fn native_process_read_log(
+    process: &NativeBackgroundProcess,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<u8>, hepta_core::ToolError> {
+    use std::io::Read as _;
+    use std::io::Seek as _;
+
+    let mut reader = process.log_reader.try_clone().map_err(|error| {
+        hepta_core::ToolError(format!(
+            "failed to clone identity-bound process log: {error}"
+        ))
+    })?;
+    reader
+        .seek(std::io::SeekFrom::Start(offset as u64))
+        .map_err(|error| {
+            hepta_core::ToolError(format!(
+                "failed to seek identity-bound process log: {error}"
+            ))
+        })?;
+    let mut bytes = Vec::new();
+    reader
+        .take(limit.min(1_000_000) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            hepta_core::ToolError(format!(
+                "failed to read identity-bound process log: {error}"
+            ))
+        })?;
+    Ok(bytes)
+}
+
 fn native_process_list(
     tool: &str,
     action: &str,
@@ -2750,19 +2910,6 @@ fn native_process_list(
     let mut processes = Vec::new();
     for (id, process) in registry.iter_mut() {
         processes.push(native_process_snapshot(id, process)?);
-    }
-    let registry_ids = registry
-        .keys()
-        .cloned()
-        .collect::<std::collections::HashSet<_>>();
-    drop(registry);
-    for snapshot in native_process_log_snapshots() {
-        let Some(id) = snapshot.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        if !registry_ids.contains(id) {
-            processes.push(snapshot);
-        }
     }
     let mut out = native_compat_base(tool, "ok");
     out.insert(
@@ -2776,7 +2923,7 @@ fn native_process_list(
             "processes": processes,
             "native_registry_present": true,
             "background_exec_capture_supported": true,
-            "log_backed_followup_supported": true,
+            "log_backed_followup_supported": false,
             "followup_actions": ["poll", "log", "write", "kill", "clear", "remove"]
         }),
     );
@@ -2803,9 +2950,10 @@ fn native_process_poll(
             let snapshot = if let Some(process) = registry.get_mut(&id) {
                 native_process_snapshot(&id, process)?
             } else {
-                native_process_snapshot_from_log(&id).ok_or_else(|| {
-                    hepta_core::ToolError(format!("no native background process found for {}", id))
-                })?
+                return Err(hepta_core::ToolError(format!(
+                    "no runtime-issued native background process found for {}",
+                    id
+                )));
             };
             if snapshot.get("running").and_then(Value::as_bool) != Some(true) || timeout_ms == 0 {
                 let mut out = native_compat_base(tool, "ok");
@@ -2843,28 +2991,28 @@ fn native_process_log(
     input: &serde_json::Map<String, Value>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let id = native_process_id(input)?;
-    let (log_path, snapshot) = {
-        let mut registry = native_process_registry()
-            .lock()
-            .map_err(|_| hepta_core::ToolError("native process registry lock poisoned".into()))?;
-        if let Some(process) = registry.get_mut(&id) {
-            (
-                process.log_path.clone(),
-                native_process_snapshot(&id, process)?,
-            )
-        } else {
-            let snapshot = native_process_snapshot_from_log(&id).ok_or_else(|| {
-                hepta_core::ToolError(format!("no native background process found for {}", id))
-            })?;
-            (native_process_log_path(&id), snapshot)
-        }
-    };
     let offset = input.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
     let limit = input.get("limit").and_then(Value::as_u64).unwrap_or(50_000) as usize;
-    let bytes = fs::read(&log_path).unwrap_or_default();
-    let start = offset.min(bytes.len());
-    let end = start.saturating_add(limit).min(bytes.len());
-    let text = String::from_utf8_lossy(&bytes[start..end]).to_string();
+    let mut registry = native_process_registry()
+        .lock()
+        .map_err(|_| hepta_core::ToolError("native process registry lock poisoned".into()))?;
+    let process = registry.get_mut(&id).ok_or_else(|| {
+        hepta_core::ToolError(format!(
+            "no runtime-issued native background process found for {}",
+            id
+        ))
+    })?;
+    let snapshot = native_process_snapshot(&id, process)?;
+    let bytes = native_process_read_log(process, offset, limit)?;
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    let next_offset = offset.saturating_add(bytes.len());
+    let total_len = process
+        .log_reader
+        .metadata()
+        .map_err(|error| {
+            hepta_core::ToolError(format!("failed to inspect log for {}: {}", id, error))
+        })?
+        .len() as usize;
     let mut out = native_compat_base(tool, "ok");
     out.insert("content".into(), Value::String(text.clone()));
     out.insert(
@@ -2873,8 +3021,8 @@ fn native_process_log(
             "action": "log",
             "process": snapshot,
             "offset": offset,
-            "next_offset": end,
-            "truncated": end < bytes.len(),
+            "next_offset": next_offset,
+            "truncated": next_offset < total_len,
             "text": text
         }),
     );
@@ -2930,27 +3078,20 @@ fn native_process_kill(
     let mut registry = native_process_registry()
         .lock()
         .map_err(|_| hepta_core::ToolError("native process registry lock poisoned".into()))?;
-    let snapshot = if let Some(process) = registry.get_mut(&id) {
-        let killed_tree = native_kill_child_process_tree(&mut process.child);
-        let snapshot = native_process_snapshot(&id, process)?;
-        if !killed_tree && snapshot.get("exit_code").and_then(Value::as_i64).is_none() {
-            return Err(hepta_core::ToolError(format!(
-                "failed to signal native process tree for {}",
-                id
-            )));
-        }
-        snapshot
-    } else if let Some(pid) = native_process_pid_from_id(&id) {
-        let _ = native_send_signal_to_pid_tree(pid, "-TERM");
-        native_process_snapshot_from_log(&id).ok_or_else(|| {
-            hepta_core::ToolError(format!("no native background process found for {}", id))
-        })?
-    } else {
+    let process = registry.get_mut(&id).ok_or_else(|| {
+        hepta_core::ToolError(format!(
+            "no runtime-issued native background process found for {}",
+            id
+        ))
+    })?;
+    let killed_tree = native_kill_child_process_tree(&mut process.child);
+    let snapshot = native_process_snapshot(&id, process)?;
+    if !killed_tree && snapshot.get("exit_code").and_then(Value::as_i64).is_none() {
         return Err(hepta_core::ToolError(format!(
-            "no native background process found for {}",
+            "failed to signal native process tree for {}",
             id
         )));
-    };
+    }
     let mut out = native_compat_base(tool, "ok");
     out.insert("content".into(), Value::String(format!("killed {}", id)));
     out.insert(
@@ -2968,33 +3109,21 @@ fn native_process_remove(
     let mut registry = native_process_registry()
         .lock()
         .map_err(|_| hepta_core::ToolError("native process registry lock poisoned".into()))?;
-    let removed = if action == "clear" && native_process_id(input).is_err() {
-        let count = registry.len();
-        registry.clear();
-        let log_removed = fs::read_dir(native_process_log_dir())
-            .ok()
-            .into_iter()
-            .flat_map(|entries| entries.filter_map(Result::ok))
-            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("log"))
-            .filter(|entry| fs::remove_file(entry.path()).is_ok())
-            .count();
-        count + log_removed
-    } else {
-        let id = native_process_id(input)?;
-        if let Some(mut process) = registry.remove(&id) {
-            if process.child.try_wait().ok().flatten().is_none() {
-                let _ = process.child.kill();
-                let _ = process.child.wait();
-            }
-            let _ = fs::remove_file(native_process_log_path(&id));
-            1
-        } else if native_process_log_path(&id).exists() {
-            let _ = fs::remove_file(native_process_log_path(&id));
-            1
-        } else {
-            0
-        }
-    };
+    let id = native_process_id(input)?;
+    let mut process = registry.remove(&id).ok_or_else(|| {
+        hepta_core::ToolError(format!(
+            "no runtime-issued native background process found for {}",
+            id
+        ))
+    })?;
+    if process.child.try_wait().ok().flatten().is_none() {
+        let _ = native_kill_child_process_tree(&mut process.child);
+        let _ = process.child.wait();
+    }
+    // The process tool only drops the live registry capability. Its exact log
+    // remains as an audit artifact; deleting audit files is a separate trusted
+    // maintenance authority.
+    let removed = 1;
     let mut out = native_compat_base(tool, "ok");
     out.insert(
         "content".into(),
@@ -3005,7 +3134,7 @@ fn native_process_remove(
     );
     out.insert(
         "result".into(),
-        json!({"action": action, "removed": removed}),
+        json!({"action": action, "removed": removed, "audit_log_retained": true}),
     );
     Ok(out)
 }
@@ -3130,27 +3259,6 @@ fn native_compat_memory_search(
     Ok(out)
 }
 
-fn native_compat_memory_get(
-    tool: &str,
-    input: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
-    let path = input
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| hepta_core::ToolError("memory_get requires string field 'path'".into()))?;
-    native_compat_read(tool, &{
-        let mut mapped = serde_json::Map::new();
-        mapped.insert("path".into(), Value::String(path.into()));
-        if let Some(from) = input.get("from") {
-            mapped.insert("offset".into(), from.clone());
-        }
-        if let Some(lines) = input.get("lines") {
-            mapped.insert("limit".into(), lines.clone());
-        }
-        mapped
-    })
-}
-
 fn memory_candidate_paths(workspace: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let root_memory = workspace.join("MEMORY.md");
@@ -3205,29 +3313,37 @@ fn native_compat_plan_echo(
 fn native_compat_live_surface(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     match tool {
-        "message" => native_compat_message(tool, input),
-        "tts" => native_compat_tts(tool, input),
-        "image_generate" => native_compat_image_generate(tool, input),
-        "music_generate" => {
-            native_compat_configured_generator(tool, input, "HEPTA_MUSIC_GENERATE_CMD")
-        }
-        "video_generate" => {
-            native_compat_configured_generator(tool, input, "HEPTA_VIDEO_GENERATE_CMD")
-        }
+        "message" => native_compat_message(tool, input, provider_identity),
+        "image_generate" => native_compat_image_generate(tool, input, provider_identity),
+        "music_generate" => native_compat_configured_generator(
+            tool,
+            input,
+            "HEPTA_MUSIC_GENERATE_CMD",
+            provider_identity,
+        ),
+        "video_generate" => native_compat_configured_generator(
+            tool,
+            input,
+            "HEPTA_VIDEO_GENERATE_CMD",
+            provider_identity,
+        ),
         "image" => native_compat_image_analyze(tool, input),
         "pdf" => native_compat_pdf_analyze(tool, input),
-        "agents_list" => native_compat_hepta_cli(tool, &["/agent-pool", "--json"]),
-        "sessions_list" => native_compat_hepta_cli(tool, &["/sessions", "--json"]),
-        "sessions_history" => native_compat_sessions_history(tool, input),
-        "sessions_send" => native_compat_sessions_send(tool, input),
-        "sessions_spawn" => native_compat_sessions_spawn(tool, input),
-        "sessions_yield" => Ok(native_compat_local_event(tool, input, "yield_recorded")),
-        "subagents" => native_compat_subagents(tool, input),
-        "canvas" => {
-            native_compat_hepta_cli(tool, &["/canvas-plane", "--all", "--sample-run", "--json"])
+        "agents_list" => {
+            native_compat_hepta_cli(tool, &["/agent-pool", "--json"], provider_identity)
         }
+        "sessions_list" => {
+            native_compat_hepta_cli(tool, &["/sessions", "--json"], provider_identity)
+        }
+        "sessions_history" => native_compat_sessions_history(tool, input, provider_identity),
+        "sessions_send" => native_compat_sessions_send(tool, input, provider_identity),
+        "sessions_spawn" => native_compat_sessions_spawn(tool, input, provider_identity),
+        "sessions_yield" => Ok(native_compat_local_event(tool, input, "yield_recorded")),
+        "subagents" => native_compat_subagents(tool, input, provider_identity),
+        "canvas" => reject_native_live_without_idempotency_receipt(tool, provider_identity),
         "feishu_app_scopes"
         | "feishu_chat"
         | "feishu_doc"
@@ -3240,7 +3356,7 @@ fn native_compat_live_surface(
         | "feishu_bitable_create_record"
         | "feishu_bitable_update_record"
         | "feishu_bitable_create_app"
-        | "feishu_bitable_create_field" => native_compat_feishu(tool, input),
+        | "feishu_bitable_create_field" => native_compat_feishu(tool, input, provider_identity),
         _ => Ok(native_compat_surface_report(tool, input)),
     }
 }
@@ -3248,19 +3364,21 @@ fn native_compat_live_surface(
 fn native_compat_hepta_cli(
     tool: &str,
     args: &[&str],
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let binary = hepta_cli_binary();
-    let output = std::process::Command::new(&binary)
-        .args(args)
-        .current_dir(tool_workspace_root_path())
-        .output()
-        .map_err(|err| {
-            hepta_core::ToolError(format!(
-                "failed to run Hepta native CLI {}: {}",
-                binary.display(),
-                err
-            ))
-        })?;
+    let mut command = std::process::Command::new(&binary);
+    command.args(args).current_dir(tool_workspace_root_path());
+    if let Some(identity) = provider_identity {
+        identity.apply_to_command(&mut command);
+    }
+    let output = command.output().map_err(|err| {
+        hepta_core::ToolError(format!(
+            "failed to run Hepta native CLI {}: {}",
+            binary.display(),
+            err
+        ))
+    })?;
     command_output_to_native_result(tool, &binary.display().to_string(), args, output)
 }
 
@@ -3308,6 +3426,7 @@ fn command_output_to_native_result(
 fn native_compat_message(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let action = input
         .get("action")
@@ -3324,7 +3443,7 @@ fn native_compat_message(
             }
             _ => ["/telegram-adapter", "--dry-run", "--json"].as_slice(),
         };
-        return native_compat_hepta_cli(tool, args);
+        return native_compat_hepta_cli(tool, args, provider_identity);
     }
     let target = input
         .get("target")
@@ -3377,94 +3496,22 @@ fn native_compat_message(
         );
         return Ok(out);
     }
-    let args = vec![
-        "/telegram-adapter".to_string(),
-        "--live-send".to_string(),
-        "--confirm-send".to_string(),
-        "--to".to_string(),
-        target.to_string(),
-        "--text".to_string(),
-        text.to_string(),
-        "--json".to_string(),
-    ];
-    native_compat_hepta_cli_owned(tool, &args)
+    reject_native_live_without_idempotency_receipt(tool, provider_identity)
 }
 
 fn native_compat_hepta_cli_owned(
     tool: &str,
     args: &[String],
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let borrowed = args.iter().map(String::as_str).collect::<Vec<_>>();
-    native_compat_hepta_cli(tool, &borrowed)
-}
-
-fn native_compat_tts(
-    tool: &str,
-    input: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
-    let text = input
-        .get("text")
-        .and_then(Value::as_str)
-        .ok_or_else(|| hepta_core::ToolError("tts requires string field 'text'".into()))?;
-    let dry_run = input
-        .get("dryRun")
-        .or_else(|| input.get("dry_run"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let target = input
-        .get("path")
-        .or_else(|| input.get("filename"))
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            tool_workspace_root_path().join(format!(
-                "target/hepta-tts-{}-{}.aiff",
-                std::process::id(),
-                current_unix_ms().unwrap_or(0)
-            ))
-        });
-    let target = resolve_path_within_root(&tool_workspace_root_path(), &target);
-    if dry_run {
-        let mut out = native_compat_base(tool, "preview");
-        out.insert(
-            "content".into(),
-            Value::String(format!(
-                "would synthesize {} chars to {}",
-                text.chars().count(),
-                target.display()
-            )),
-        );
-        out.insert("result".into(), json!({"path": target.display().to_string(), "chars": text.chars().count(), "dryRun": true}));
-        return Ok(out);
-    }
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|err| {
-            hepta_core::ToolError(format!("failed to create {}: {}", parent.display(), err))
-        })?;
-    }
-    let output = std::process::Command::new("say")
-        .arg("-o")
-        .arg(&target)
-        .arg(text)
-        .output()
-        .map_err(|err| hepta_core::ToolError(format!("failed to run macOS say: {}", err)))?;
-    let mut out = command_output_to_native_result(
-        tool,
-        "say",
-        &["-o", "<redacted-path>", "<redacted-text>"],
-        output,
-    )?;
-    out.insert(
-        "content".into(),
-        Value::String(format!("synthesized speech to {}", target.display())),
-    );
-    out.insert("result".into(), json!({"path": target.display().to_string(), "chars": text.chars().count(), "format": "aiff", "live_adapter_invoked": true}));
-    Ok(out)
+    native_compat_hepta_cli(tool, &borrowed, provider_identity)
 }
 
 fn native_compat_image_generate(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let prompt = input
         .get("prompt")
@@ -3488,20 +3535,25 @@ fn native_compat_image_generate(
         out.insert("result".into(), json!({"script": script.as_ref().map(|path| path.display().to_string()), "env_fallback": "HEPTA_IMAGE_GENERATE_CMD", "prompt_chars": prompt.chars().count(), "dryRun": true}));
         return Ok(out);
     }
+    let provider_identity = ProviderExecutionIdentity::require(provider_identity, tool)?;
     let Some(script) = script else {
-        return native_compat_configured_generator(tool, input, "HEPTA_IMAGE_GENERATE_CMD");
+        return native_compat_configured_generator(
+            tool,
+            input,
+            "HEPTA_IMAGE_GENERATE_CMD",
+            Some(provider_identity),
+        );
     };
-    let output = std::process::Command::new(&script)
-        .arg(prompt)
-        .current_dir(tool_workspace_root_path())
-        .output()
-        .map_err(|err| {
-            hepta_core::ToolError(format!(
-                "failed to run image helper {}: {}",
-                script.display(),
-                err
-            ))
-        })?;
+    let mut command = std::process::Command::new(&script);
+    command.arg(prompt).current_dir(tool_workspace_root_path());
+    provider_identity.apply_to_command(&mut command);
+    let output = command.output().map_err(|err| {
+        hepta_core::ToolError(format!(
+            "failed to run image helper {}: {}",
+            script.display(),
+            err
+        ))
+    })?;
     command_output_to_native_result(
         tool,
         &script.display().to_string(),
@@ -3525,6 +3577,7 @@ fn native_compat_configured_generator(
     tool: &str,
     input: &serde_json::Map<String, Value>,
     env_name: &str,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let prompt = input
         .get("prompt")
@@ -3548,20 +3601,22 @@ fn native_compat_configured_generator(
         );
         return Ok(out);
     }
+    let provider_identity = ProviderExecutionIdentity::require(provider_identity, tool)?;
     let command = env::var(env_name).map_err(|_| {
         hepta_core::ToolError(format!(
             "{} has no native provider command configured; set {} to a local generator command that accepts the prompt as argv[1]",
             tool, env_name
         ))
     })?;
-    let output = std::process::Command::new("/bin/zsh")
+    let mut provider_command = std::process::Command::new("/bin/zsh");
+    provider_command
         .arg("-lc")
         .arg(format!("{} -- {}", command, shell_quote(prompt)))
-        .current_dir(tool_workspace_root_path())
-        .output()
-        .map_err(|err| {
-            hepta_core::ToolError(format!("failed to run configured generator: {}", err))
-        })?;
+        .current_dir(tool_workspace_root_path());
+    provider_identity.apply_to_command(&mut provider_command);
+    let output = provider_command.output().map_err(|err| {
+        hepta_core::ToolError(format!("failed to run configured generator: {}", err))
+    })?;
     command_output_to_native_result(
         tool,
         env_name,
@@ -3678,6 +3733,7 @@ fn native_compat_pdf_analyze(
 fn native_compat_sessions_history(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let session = input
         .get("sessionKey")
@@ -3696,12 +3752,13 @@ fn native_compat_sessions_history(
         limit,
         "--json".to_string(),
     ];
-    native_compat_hepta_cli_owned(tool, &args)
+    native_compat_hepta_cli_owned(tool, &args, provider_identity)
 }
 
 fn native_compat_sessions_send(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let session = input
         .get("sessionKey")
@@ -3733,17 +3790,13 @@ fn native_compat_sessions_send(
         out.insert("result".into(), json!({"session": session, "message_chars": message.chars().count(), "would_execute": true}));
         return Ok(out);
     }
-    let args = vec![
-        "/run-in".to_string(),
-        session.to_string(),
-        message.to_string(),
-    ];
-    native_compat_hepta_cli_owned(tool, &args)
+    reject_native_live_without_idempotency_receipt(tool, provider_identity)
 }
 
 fn native_compat_sessions_spawn(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let task = input
         .get("task")
@@ -3778,53 +3831,37 @@ fn native_compat_sessions_spawn(
         );
         return Ok(out);
     }
-    let args = vec![
-        "/spawn-task".to_string(),
-        worker.to_string(),
-        task.to_string(),
-        "--json".to_string(),
-    ];
-    native_compat_hepta_cli_owned(tool, &args)
+    reject_native_live_without_idempotency_receipt(tool, provider_identity)
 }
 
 fn native_compat_subagents(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let action = input
         .get("action")
         .and_then(Value::as_str)
         .unwrap_or("list");
     match action {
-        "list" => native_compat_hepta_cli(tool, &["/agent-pool", "--json"]),
+        "list" => native_compat_hepta_cli(tool, &["/agent-pool", "--json"], provider_identity),
         "steer" => {
-            let target = input
+            let _target = input
                 .get("target")
                 .and_then(Value::as_str)
                 .ok_or_else(|| hepta_core::ToolError("subagents steer requires target".into()))?;
-            let message = input
+            let _message = input
                 .get("message")
                 .and_then(Value::as_str)
                 .ok_or_else(|| hepta_core::ToolError("subagents steer requires message".into()))?;
-            let args = vec![
-                "/agent-steer".to_string(),
-                target.to_string(),
-                message.to_string(),
-                "--json".to_string(),
-            ];
-            native_compat_hepta_cli_owned(tool, &args)
+            reject_native_live_without_idempotency_receipt(tool, provider_identity)
         }
         "kill" | "stop" => {
-            let target = input
+            let _target = input
                 .get("target")
                 .and_then(Value::as_str)
                 .ok_or_else(|| hepta_core::ToolError("subagents stop requires target".into()))?;
-            let args = vec![
-                "/agent-stop".to_string(),
-                target.to_string(),
-                "--json".to_string(),
-            ];
-            native_compat_hepta_cli_owned(tool, &args)
+            reject_native_live_without_idempotency_receipt(tool, provider_identity)
         }
         other => Err(hepta_core::ToolError(format!(
             "unsupported subagents action '{}'",
@@ -3836,6 +3873,7 @@ fn native_compat_subagents(
 fn native_compat_feishu(
     tool: &str,
     input: &serde_json::Map<String, Value>,
+    provider_identity: Option<&ProviderExecutionIdentity>,
 ) -> Result<serde_json::Map<String, Value>, hepta_core::ToolError> {
     let dry_run = input
         .get("dryRun")
@@ -3848,9 +3886,13 @@ fn native_compat_feishu(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if dry_run || !live_probe {
-        return native_compat_hepta_cli(tool, &["/feishu-adapter", "--dry-run", "--json"]);
+        return native_compat_hepta_cli(
+            tool,
+            &["/feishu-adapter", "--dry-run", "--json"],
+            provider_identity,
+        );
     }
-    native_compat_hepta_cli(tool, &["/feishu-adapter", "--live-probe", "--json"])
+    reject_native_live_without_idempotency_receipt(tool, provider_identity)
 }
 
 fn native_compat_local_event(
@@ -3961,14 +4003,14 @@ fn ensure_tool_schema_has_field(
 
 fn path_argument_name_for_tool(tool_name: &str) -> Option<&'static str> {
     match tool_name {
-        "read_file" | "list_dir" | "search_text" => Some("path"),
+        "read_file" | "read" | "memory_get" | "list_dir" | "search_text" => Some("path"),
         _ => None,
     }
 }
 
 fn write_path_argument_name_for_tool(tool_name: &str) -> Option<&'static str> {
     match tool_name {
-        "write_file" => Some("path"),
+        "write_file" | "write" | "edit" => Some("path"),
         _ => None,
     }
 }
@@ -4103,28 +4145,61 @@ fn summarize_write_change(
 }
 
 fn collect_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), HeptaError> {
-    if !dir.exists() {
-        return Ok(());
+    let metadata = match fs::symlink_metadata(dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(HeptaError(format!(
+                "failed to inspect recursive read root {}: {}",
+                dir.display(),
+                error
+            )));
+        }
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(HeptaError(format!(
+            "recursive read root must be a non-symlink directory: {}",
+            dir.display()
+        )));
     }
     for entry in fs::read_dir(dir).map_err(|err| {
         HeptaError(format!(
-            "failed to read backup directory {}: {}",
+            "failed to read recursive directory {}: {}",
             dir.display(),
             err
         ))
     })? {
-        let entry =
-            entry.map_err(|err| HeptaError(format!("failed to read backup dir entry: {}", err)))?;
+        let entry = entry
+            .map_err(|err| HeptaError(format!("failed to read recursive dir entry: {}", err)))?;
+        let file_type = entry.file_type().map_err(|error| {
+            HeptaError(format!(
+                "failed to inspect recursive entry {}: {}",
+                entry.path().display(),
+                error
+            ))
+        })?;
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_symlink() {
+            return Err(HeptaError(format!(
+                "recursive traversal refuses symlink entry: {}",
+                path.display()
+            )));
+        }
+        if file_type.is_dir() {
             collect_files_recursive(&path, files)?;
-        } else if path.is_file() {
+        } else if file_type.is_file() {
             files.push(path);
+        } else {
+            return Err(HeptaError(format!(
+                "recursive traversal refuses special entry: {}",
+                path.display()
+            )));
         }
     }
     Ok(())
 }
 
+#[cfg(test)]
 fn looks_like_disk_junk_audit_intent(input: &str) -> bool {
     let lower = input.to_ascii_lowercase();
     let cleanup_words = input.contains("垃圾")
@@ -4148,14 +4223,18 @@ fn looks_like_disk_junk_audit_intent(input: &str) -> bool {
     cleanup_words && scan_words
 }
 
+#[cfg(not(test))]
+fn looks_like_disk_junk_audit_intent(_input: &str) -> bool {
+    // The implementation is deliberately test-only until backup pruning and
+    // filesystem traversal are entirely fd-relative and reservation-bound.
+    false
+}
+
 fn native_pre_model_tool_call(input: &str) -> Option<ToolCall> {
+    if requests_quarantined_native_tool(input) {
+        return None;
+    }
     if let Some(tool_call) = extract_explicit_echo_tool_call(input) {
-        return Some(tool_call);
-    }
-    if let Some(tool_call) = extract_explicit_exec_tool_call(input) {
-        return Some(tool_call);
-    }
-    if let Some(tool_call) = extract_explicit_process_tool_call(input) {
         return Some(tool_call);
     }
     if let Some(tool_call) = extract_explicit_write_file_tool_call(input) {
@@ -4188,6 +4267,9 @@ fn native_pre_model_tool_call(input: &str) -> Option<ToolCall> {
 fn should_offer_model_tools_for_turn(input: &str) -> bool {
     let user_text = hepta_agent_body_or_input(input).trim();
     if user_text.is_empty() {
+        return false;
+    }
+    if requests_quarantined_native_tool(user_text) {
         return false;
     }
     let lower = user_text.to_ascii_lowercase();
@@ -4242,8 +4324,6 @@ fn should_offer_model_tools_for_turn(input: &str) -> bool {
         "read_file",
         "web_search",
         "web_fetch",
-        "process",
-        "exec",
         "sessions_",
         "message",
     ]
@@ -4262,6 +4342,22 @@ fn should_offer_model_tools_for_turn(input: &str) -> bool {
     ]
     .iter()
     .any(|needle| compact_lower.contains(needle))
+}
+
+fn requests_quarantined_native_tool(input: &str) -> bool {
+    let lower = input.to_ascii_lowercase();
+    let trimmed = lower.trim_start();
+    let compact = trimmed.split_whitespace().collect::<String>();
+    ["exec", "process"].iter().any(|tool| {
+        compact.starts_with(&format!("{tool}:"))
+            || compact.starts_with(&format!("tool:{tool}"))
+            || lower.contains(&format!("{tool} 工具"))
+            || lower.contains(&format!("{tool} tool"))
+            || lower.contains(&format!("调用 {tool}"))
+            || lower.contains(&format!("use {tool}"))
+            || lower.contains(&format!("用 {tool}"))
+            || lower.contains(&format!("通过 {tool}"))
+    })
 }
 
 fn model_identity_response(input: &str, active_model: &ModelRef) -> Option<String> {
@@ -4616,6 +4712,7 @@ fn hepta_agent_body_or_input(input: &str) -> &str {
         .unwrap_or(input)
 }
 
+#[cfg(test)]
 fn extract_explicit_exec_tool_call(input: &str) -> Option<ToolCall> {
     let lower = input.to_ascii_lowercase();
     let explicit_exec = lower.contains("exec 工具")
@@ -4647,6 +4744,7 @@ fn extract_explicit_exec_tool_call(input: &str) -> Option<ToolCall> {
     })
 }
 
+#[cfg(test)]
 fn extract_exec_timeout_ms(input: &str) -> Option<u64> {
     for marker in ["timeoutMs=", "timeoutMs:", "timeout_ms=", "timeout_ms:"] {
         if let Some((_, after)) = input.split_once(marker) {
@@ -4663,6 +4761,7 @@ fn extract_exec_timeout_ms(input: &str) -> Option<u64> {
     None
 }
 
+#[cfg(test)]
 fn extract_exec_command_text(input: &str) -> Option<String> {
     let trimmed = input.trim();
     for marker in [
@@ -4698,6 +4797,7 @@ fn extract_exec_command_text(input: &str) -> Option<String> {
     None
 }
 
+#[cfg(test)]
 fn trim_command_clause(input: &str) -> String {
     let mut clause = input.trim();
     for separator in [
@@ -4729,6 +4829,7 @@ fn trim_command_clause(input: &str) -> String {
         .to_string()
 }
 
+#[cfg(test)]
 fn extract_explicit_process_tool_call(input: &str) -> Option<ToolCall> {
     let lower = input.to_ascii_lowercase();
     let explicit_process = lower.contains("process 工具")
@@ -4763,6 +4864,7 @@ fn extract_explicit_process_tool_call(input: &str) -> Option<ToolCall> {
     })
 }
 
+#[cfg(test)]
 fn extract_hepta_process_id(input: &str) -> Option<String> {
     input
         .split(|ch: char| ch.is_whitespace() || matches!(ch, '`' | '"' | '\'' | ',' | ';'))
@@ -5060,6 +5162,14 @@ fn parse_backup_entry(
     else {
         return Ok(None);
     };
+    if backup_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_prefix(".hepta-stage-"))
+        .is_some_and(|suffix| uuid::Uuid::parse_str(suffix).is_ok())
+    {
+        return Ok(None);
+    }
     let remainder = components.as_path();
     let original_relative = parse_backup_relative_target(remainder)?;
     let (scope, target_path) = match scope_component {

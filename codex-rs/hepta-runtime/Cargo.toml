@@ -5,17 +5,19 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+hepta-contracts.workspace = true
 hepta-core.workspace = true
 hepta-intelligence.workspace = true
 hepta-kernel.workspace = true
 hepta-memory.workspace = true
-hepta-plugins.workspace = true
+libc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
-tempfile.workspace = true
