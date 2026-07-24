@@ -1,0 +1,176 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v6",
+  "intake_id": "upstream-codex-intake-2026-07-24-r6",
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R5.json",
+    "manifest_sha256": "dd56ea3130f035714fe14dcf25584161e669bb441a946548273a2ddec741e18f",
+    "cutoff_head": "81da9deb065d7adb283816b19b40f89bcc484276",
+    "preserved": true,
+    "modified_by_r6": false
+  },
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-24T10:01:59Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+    "range_start_exclusive": "81da9deb065d7adb283816b19b40f89bcc484276",
+    "range_end_inclusive": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+    "commit_count": 2,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 11,
+    "net_insertions": 465,
+    "net_deletions": 47,
+    "commit_file_touches": 14,
+    "local_head_observed": "4317559f04e4821e2d12c6ea2225d10610ab0e8b",
+    "local_root": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+    "upstream_root": "59a180ddec4adaf9760972cdb1eb89f06a81be8b",
+    "merge_base": null,
+    "history_relationship": "no_merge_base_unrelated_roots",
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream refs/heads/main:refs/remotes/upstream/main",
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "049e178e5bb6190f59776a7f3ef6bf924e9e1a5a3c3cc70ba02de4d1acfcfda5"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "6402b9e303d68b212faa4162047bd635919051d0ebb7facac6ec5e77445de934"
+    },
+    "commit_identity": {
+      "algorithm": "sha256(git_log_reverse_sha_authored_at_title_lf)",
+      "digest": "2cb86a8276e7831da2174db0d5873147a71419ac6adadd7dd5be6298581685d9"
+    },
+    "normalized_commit_inventory_identity": {
+      "algorithm": "sha256(jq_canonical_sorted_commit_inventory)",
+      "digest": "62990e0160f88e604440469f2ea72fe2c517ecd337a5bca9dce516ebc6520d47"
+    },
+    "related_path_inventory_identity": {
+      "algorithm": "sha256(c_locale_sorted_unique_related_paths_lf)",
+      "digest": "c39553d1d0715dccc7bd4a416c6eddcbe4a71b4c964ee1ed14d2e45991fbcf1f"
+    }
+  },
+  "classification_summary": {
+    "commit_count": 2,
+    "status_counts": {
+      "candidate": 2,
+      "deferred": 0,
+      "rejected": 0,
+      "imported": 0
+    },
+    "priority_counts": {
+      "P1": 2
+    },
+    "category_counts": {
+      "tools_apps_runtime": 2
+    }
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "ef2d3edb959a75a90665ade37d554f3ca65fe880",
+      "authored_at": "2026-07-24T09:35:03Z",
+      "title": "Prewarm MCP runtime updates in the background (#35144)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "background_prewarm",
+        "refresh_coalescing",
+        "shutdown_join"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r6-p1-mcp-prewarm-coalescing",
+      "reason": "Eager MCP refresh can reduce model-step latency, but correctness must remain owned by exact model-step refresh and the worker must coalesce stale work, rebuild from the latest frozen session inputs, and join cleanly at shutdown.",
+      "semantic_absorption_recommendation": "Adapt the coalescing prewarm worker only after proving that stale refreshes cannot publish, exact model-step refresh remains authoritative, policy and configuration changes mark the runtime dirty, and shutdown cannot detach a writer.",
+      "changed_file_count": 9,
+      "related_files": [
+        "codex-rs/core/src/session/handlers.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/mcp_prewarm.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn_context.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs",
+        "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+      "authored_at": "2026-07-24T09:43:48Z",
+      "title": "Refresh MCP runtimes when session auth changes (#35146)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "authentication_snapshot",
+        "credential_rotation",
+        "startup_consistency"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r6-p1-mcp-auth-refresh-consistency",
+      "reason": "Credential rotation must invalidate an MCP projection, but plugin discovery and connection construction must consume one consistent authentication snapshot and startup must not publish a runtime built from stale credentials.",
+      "semantic_absorption_recommendation": "Transplant authentication-state invalidation and single-snapshot runtime construction with regression coverage for API-key replacement, startup auth changes, and no mixed-credential projection.",
+      "changed_file_count": 5,
+      "related_files": [
+        "codex-rs/codex-mcp/src/runtime.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/mcp_runtime.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    }
+  ],
+  "selective_semantic_transplant": {
+    "ordinary_merge_rebase": "forbidden_no_merge_base",
+    "direct_cherry_pick": "not_default",
+    "ordered_slices": [
+      {
+        "order": 1,
+        "id": "r6-p1-mcp-auth-refresh-consistency",
+        "commits": [
+          "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899"
+        ],
+        "required_evidence": [
+          "credential replacement marks the MCP runtime dirty",
+          "runtime construction consumes one authentication snapshot",
+          "startup authentication changes cannot publish stale credentials",
+          "plugin discovery and MCP connections use consistent credentials"
+        ]
+      },
+      {
+        "order": 2,
+        "id": "r6-p1-mcp-prewarm-coalescing",
+        "commits": [
+          "ef2d3edb959a75a90665ade37d554f3ca65fe880"
+        ],
+        "required_evidence": [
+          "superseded prewarm work cannot publish",
+          "the latest session state is rebuilt",
+          "exact model-step refresh remains authoritative",
+          "the worker stops and joins during shutdown"
+        ]
+      }
+    ]
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
