@@ -1,4 +1,4 @@
-# Hepta Upstream Codex R4 Semantic Absorption Receipt
+# Hepta Upstream Codex R4 Semantic Absorption Record
 
 ## Boundary
 

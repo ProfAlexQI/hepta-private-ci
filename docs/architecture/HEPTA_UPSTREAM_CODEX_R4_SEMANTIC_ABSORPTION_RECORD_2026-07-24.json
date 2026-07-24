@@ -1,6 +1,6 @@
 {
-  "schema_version": "hepta_upstream_codex_semantic_absorption_receipt_v1",
-  "receipt_id": "upstream-codex-r4-semantic-absorption-2026-07-24",
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "upstream-codex-r4-semantic-absorption-2026-07-24",
   "recorded_at": "2026-07-24T06:35:39Z",
   "source_intake": {
     "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
