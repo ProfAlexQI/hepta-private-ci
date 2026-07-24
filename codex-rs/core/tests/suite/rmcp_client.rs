@@ -40,6 +40,7 @@ use codex_protocol::openai_models::TruncationPolicyConfig;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::McpInvocation;
+use codex_protocol::protocol::McpServerRefreshConfig;
 use codex_protocol::protocol::McpToolCallBeginEvent;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
@@ -1723,6 +1724,72 @@ async fn host_owned_apps_mcp_does_not_send_chatgpt_auth_to_configured_origin() -
             ("notifications/initialized".to_string(), None),
             ("tools/list".to_string(), None),
         ]
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_refresh_reinitializes_the_same_apps_transport() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let responses_server = responses::start_mock_server().await;
+    let apps_transport = MockServer::start().await;
+    let apps_server = AppsTestServer::mount(&apps_transport).await?;
+    let fixture = apps_enabled_builder(apps_server.chatgpt_base_url)
+        .build(&responses_server)
+        .await?;
+
+    wait_for_mcp_server(&fixture, "codex_apps").await?;
+
+    let refresh_config = McpServerRefreshConfig {
+        mcp_servers: serde_json::to_value(fixture.config.mcp_servers.get())?,
+        mcp_oauth_credentials_store_mode: serde_json::to_value(
+            fixture.config.mcp_oauth_credentials_store_mode,
+        )?,
+    };
+    mount_sse_once(
+        &responses_server,
+        responses::sse(vec![
+            responses::ev_response_created("resp-1"),
+            responses::ev_assistant_message("msg-1", "refresh completed"),
+            responses::ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    fixture
+        .codex
+        .submit(Op::RefreshMcpServers {
+            config: refresh_config,
+        })
+        .await?;
+    fixture
+        .codex
+        .submit(read_only_user_turn(
+            &fixture,
+            "wait for the explicit MCP refresh",
+        ))
+        .await?;
+
+    wait_for_mcp_server(&fixture, "codex_apps").await?;
+    wait_for_event(&fixture.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+
+    let initialize_count = apps_transport
+        .received_requests()
+        .await
+        .expect("mock server should capture Apps MCP startup requests")
+        .into_iter()
+        .filter(|request| request.url.path() == "/api/codex/ps/mcp")
+        .filter_map(|request| serde_json::from_slice::<Value>(&request.body).ok())
+        .filter(|body| body.get("method").and_then(Value::as_str) == Some("initialize"))
+        .count();
+    assert_eq!(
+        initialize_count, 2,
+        "initial startup and explicit refresh must use distinct MCP transports"
     );
 
     Ok(())

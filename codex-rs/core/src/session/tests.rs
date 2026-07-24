@@ -6398,8 +6398,8 @@ pub(crate) async fn make_session_and_context_with_rx() -> (
 }
 
 #[tokio::test]
-async fn refresh_mcp_servers_is_deferred_until_next_turn() {
-    let (session, turn_context) = make_session_and_context().await;
+async fn explicit_refresh_rebuilds_mcp_connections_on_each_next_turn() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     let old_token = session.mcp_startup_cancellation_token().await;
     assert!(!old_token.is_cancelled());
 
@@ -6409,10 +6409,7 @@ async fn refresh_mcp_servers_is_deferred_until_next_turn() {
         mcp_servers: json!({}),
         mcp_oauth_credentials_store_mode,
     };
-    {
-        let mut guard = session.pending_mcp_server_refresh_config.lock().await;
-        *guard = Some(refresh_config);
-    }
+    super::handlers::refresh_mcp_servers(&session, refresh_config.clone()).await;
 
     assert!(!old_token.is_cancelled());
     assert!(
@@ -6437,6 +6434,15 @@ async fn refresh_mcp_servers_is_deferred_until_next_turn() {
     );
     let new_token = session.mcp_startup_cancellation_token().await;
     assert!(!new_token.is_cancelled());
+
+    super::handlers::refresh_mcp_servers(&session, refresh_config).await;
+    session
+        .refresh_mcp_servers_if_requested(&turn_context, /*elicitation_reviewer*/ None)
+        .await;
+
+    assert!(new_token.is_cancelled());
+    let newest_token = session.mcp_startup_cancellation_token().await;
+    assert!(!newest_token.is_cancelled());
 }
 
 #[tokio::test]
