@@ -34,10 +34,23 @@ fi
 BASE_URL="http://${BIND_ADDR}"
 server_pid=""
 attempt_log_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-browser-smoke.XXXXXX")"
+runtime_fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-runtime.XXXXXX")"
+runtime_database="$runtime_fixture_dir/outcomes.sqlite3"
+runtime_key_file="$runtime_fixture_dir/integrity.key"
+chmod 700 "$runtime_fixture_dir"
+(umask 077; printf '%s' '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' >"$runtime_key_file")
+chmod 600 "$runtime_key_file"
 
 start_server() {
+  local outcome_mode="bootstrap-new"
+  if [[ -e "$runtime_database" ]]; then
+    outcome_mode="open-existing"
+  fi
   : >"$SERVER_LOG"
-  cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
+  HEPTA_RUNTIME_OUTCOME_DATABASE="$runtime_database" \
+    HEPTA_RUNTIME_INTEGRITY_KEY_FILE="$runtime_key_file" \
+    HEPTA_RUNTIME_OUTCOME_MODE="$outcome_mode" \
+    cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
     >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
 }
@@ -56,6 +69,7 @@ cleanup() {
     wait "$server_pid" 2>/dev/null || true
   fi
   rm -rf "$attempt_log_dir"
+  rm -rf "$runtime_fixture_dir"
 }
 trap cleanup EXIT
 
