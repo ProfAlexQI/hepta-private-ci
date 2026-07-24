@@ -4342,6 +4342,10 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
                     &config.permissions.approval_policy,
                     config.permissions.permission_profile(),
                 ),
+                crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+                    .await
+                    .expect("capture MCP auth snapshot")
+                    .binding(),
             ),
         )),
         mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -4489,11 +4493,20 @@ async fn load_latest_config_for_session(session: &Session) -> Config {
 async fn make_session_with_config_and_rx(
     mutator: impl FnOnce(&mut Config),
 ) -> anyhow::Result<(Arc<Session>, async_channel::Receiver<Event>)> {
+    make_session_with_config_and_auth_manager_and_rx(mutator, None).await
+}
+
+async fn make_session_with_config_and_auth_manager_and_rx(
+    mutator: impl FnOnce(&mut Config),
+    auth_manager: Option<Arc<AuthManager>>,
+) -> anyhow::Result<(Arc<Session>, async_channel::Receiver<Event>)> {
     let codex_home = tempfile::tempdir().expect("create temp dir");
     let mut config = build_test_config(codex_home.path()).await;
     mutator(&mut config);
     let config = Arc::new(config);
-    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("Test API Key"));
+    let auth_manager = auth_manager.unwrap_or_else(|| {
+        AuthManager::from_auth_for_testing(CodexAuth::from_api_key("Test API Key"))
+    });
     let models_manager = models_manager_with_provider(
         config.codex_home.to_path_buf(),
         auth_manager.clone(),
@@ -6207,6 +6220,10 @@ where
                     &config.permissions.approval_policy,
                     config.permissions.permission_profile(),
                 ),
+                crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+                    .await
+                    .expect("capture MCP auth snapshot")
+                    .binding(),
             ),
         )),
         mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -6640,6 +6657,202 @@ async fn invalid_explicit_mcp_refresh_remains_replaceable_without_busy_loop() {
     assert!(state.applied_generation > invalid_generation);
     drop(state);
     assert!(old_token.is_cancelled());
+}
+
+#[tokio::test]
+async fn api_key_replacement_requests_mcp_generation_refresh() {
+    let auth_home = tempfile::tempdir().expect("create auth home");
+    let auth_manager = AuthManager::from_auth_for_testing_with_home(
+        CodexAuth::from_api_key("Test API Key"),
+        auth_home.path().to_path_buf(),
+    );
+    let (mut session, turn_context) = make_session_and_context().await;
+    session.services.auth_manager = Arc::clone(&auth_manager);
+    let session = Arc::new(session);
+    let initial_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+
+    codex_login::login_with_api_key(
+        auth_home.path(),
+        "replacement-api-key",
+        codex_config::types::AuthCredentialsStoreMode::File,
+    )
+    .expect("store replacement API key");
+    assert!(auth_manager.reload().await);
+
+    session
+        .refresh_mcp_servers_if_requested(&turn_context, None)
+        .await;
+
+    let latest_binding = crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+        .await
+        .expect("capture latest MCP auth snapshot")
+        .binding();
+    let manager = session.services.mcp_connection_manager.read().await;
+    assert_eq!(manager.generation(), initial_generation + 1);
+    assert!(manager.auth_matches(&latest_binding));
+}
+
+#[tokio::test]
+async fn startup_in_flight_auth_change_discards_stale_runtime() {
+    let auth_home = tempfile::tempdir().expect("create auth home");
+    let auth_manager = AuthManager::from_auth_for_testing_with_home(
+        CodexAuth::from_api_key("startup-old-api-key"),
+        auth_home.path().to_path_buf(),
+    );
+    let reached = Arc::new(tokio::sync::Barrier::new(2));
+    let release = Arc::new(tokio::sync::Barrier::new(2));
+    super::session::install_mcp_startup_auth_test_gate(
+        &auth_manager,
+        Arc::clone(&reached),
+        Arc::clone(&release),
+    );
+    let session_task = {
+        let auth_manager = Arc::clone(&auth_manager);
+        tokio::spawn(async move {
+            make_session_with_config_and_auth_manager_and_rx(|_config| {}, Some(auth_manager)).await
+        })
+    };
+    reached.wait().await;
+
+    codex_login::login_with_api_key(
+        auth_home.path(),
+        "startup-new-api-key",
+        codex_config::types::AuthCredentialsStoreMode::File,
+    )
+    .expect("store startup replacement API key");
+    assert!(auth_manager.reload().await);
+    release.wait().await;
+
+    let (session, _rx) = session_task
+        .await
+        .expect("startup task")
+        .expect("session startup");
+    let latest_binding = crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+        .await
+        .expect("capture latest MCP auth snapshot")
+        .binding();
+    let manager = session.services.mcp_connection_manager.read().await;
+    assert_eq!(manager.generation(), 1);
+    assert!(manager.auth_matches(&latest_binding));
+}
+
+#[tokio::test]
+async fn mcp_refresh_projection_uses_one_frozen_auth_snapshot() {
+    let auth_home = tempfile::tempdir().expect("create auth home");
+    let auth_manager = AuthManager::from_auth_for_testing_with_home(
+        CodexAuth::from_api_key("projection-old-api-key"),
+        auth_home.path().to_path_buf(),
+    );
+    let frozen = crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+        .await
+        .expect("capture frozen MCP auth snapshot");
+    let frozen_cache_key = codex_mcp::codex_apps_tools_cache_key(frozen.auth());
+
+    codex_login::login_with_api_key(
+        auth_home.path(),
+        "projection-new-api-key",
+        codex_config::types::AuthCredentialsStoreMode::File,
+    )
+    .expect("store projection replacement API key");
+    assert!(auth_manager.reload().await);
+    let latest = crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+        .await
+        .expect("capture latest MCP auth snapshot");
+
+    assert!(!frozen.matches(&latest));
+    assert_eq!(
+        codex_mcp::codex_apps_tools_cache_key(frozen.auth()),
+        frozen_cache_key
+    );
+    assert_eq!(
+        codex_mcp::codex_apps_tools_cache_key(frozen.auth()),
+        codex_mcp::codex_apps_tools_cache_key(latest.auth())
+    );
+    assert_eq!(
+        frozen.auth().and_then(CodexAuth::api_key),
+        Some("projection-old-api-key")
+    );
+    assert_eq!(
+        latest.auth().and_then(CodexAuth::api_key),
+        Some("projection-new-api-key")
+    );
+}
+
+#[tokio::test]
+async fn stale_auth_generation_does_not_publish_mcp_manager() {
+    let auth_home = tempfile::tempdir().expect("create auth home");
+    let auth_manager = AuthManager::from_auth_for_testing_with_home(
+        CodexAuth::from_api_key("Test API Key"),
+        auth_home.path().to_path_buf(),
+    );
+    let (mut session, turn_context) = make_session_and_context().await;
+    session.services.auth_manager = Arc::clone(&auth_manager);
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let initial_manager_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    super::handlers::refresh_mcp_servers(
+        &session,
+        McpServerRefreshConfig {
+            mcp_servers: json!({}),
+            mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+                .expect("serialize store mode"),
+        },
+    )
+    .await;
+    let stale_intent_generation = session
+        .mcp_server_refresh_state
+        .lock()
+        .await
+        .pending
+        .as_ref()
+        .expect("stale refresh intent")
+        .generation;
+
+    let reached = Arc::new(tokio::sync::Barrier::new(2));
+    let release = Arc::new(tokio::sync::Barrier::new(2));
+    *session.mcp_server_refresh_test_gate.lock().await =
+        Some((Arc::clone(&reached), Arc::clone(&release)));
+    let refresh_task = {
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        tokio::spawn(async move {
+            session
+                .refresh_mcp_servers_if_requested(&turn_context, None)
+                .await;
+        })
+    };
+    reached.wait().await;
+    codex_login::login_with_api_key(
+        auth_home.path(),
+        "latest-api-key",
+        codex_config::types::AuthCredentialsStoreMode::File,
+    )
+    .expect("store latest API key");
+    assert!(auth_manager.reload().await);
+    release.wait().await;
+    refresh_task.await.expect("refresh task");
+
+    let refresh_state = session.mcp_server_refresh_state.lock().await;
+    assert!(refresh_state.pending.is_none());
+    assert!(refresh_state.applied_generation > stale_intent_generation);
+    drop(refresh_state);
+    let latest_binding = crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+        .await
+        .expect("capture latest MCP auth snapshot")
+        .binding();
+    let manager = session.services.mcp_connection_manager.read().await;
+    assert_eq!(manager.generation(), initial_manager_generation + 1);
+    assert!(manager.auth_matches(&latest_binding));
 }
 
 #[tokio::test]

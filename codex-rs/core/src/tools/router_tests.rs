@@ -357,12 +357,17 @@ async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
         &turn.approval_policy,
         &turn.permission_profile(),
     );
+    let auth_binding =
+        crate::state::FrozenMcpAuthSnapshot::capture(session.services.auth_manager.as_ref())
+            .await
+            .expect("capture MCP auth snapshot")
+            .binding();
     let mut old_manager = session
         .services
         .mcp_connection_manager
         .write()
         .await
-        .publish(replacement);
+        .publish(replacement, auth_binding);
     old_manager.shutdown().await;
 
     let result = router

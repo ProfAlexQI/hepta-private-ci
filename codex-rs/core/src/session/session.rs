@@ -9,6 +9,39 @@ use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TurnEnvironmentSelection;
 use tokio::sync::Semaphore;
 
+#[cfg(test)]
+type McpStartupAuthTestGate = (Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>);
+
+#[cfg(test)]
+static MCP_STARTUP_AUTH_TEST_GATES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<usize, McpStartupAuthTestGate>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+#[cfg(test)]
+pub(super) fn install_mcp_startup_auth_test_gate(
+    auth_manager: &Arc<AuthManager>,
+    reached: Arc<tokio::sync::Barrier>,
+    release: Arc<tokio::sync::Barrier>,
+) {
+    let key = Arc::as_ptr(auth_manager).cast::<()>() as usize;
+    if let Ok(mut gates) = MCP_STARTUP_AUTH_TEST_GATES.lock() {
+        gates.insert(key, (reached, release));
+    }
+}
+
+#[cfg(test)]
+async fn wait_for_mcp_startup_auth_test_gate(auth_manager: &Arc<AuthManager>) {
+    let key = Arc::as_ptr(auth_manager).cast::<()>() as usize;
+    let gate = MCP_STARTUP_AUTH_TEST_GATES
+        .lock()
+        .ok()
+        .and_then(|mut gates| gates.remove(&key));
+    if let Some((reached, release)) = gate {
+        reached.wait().await;
+        release.wait().await;
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct McpServerRefreshIntent {
     pub(super) generation: u64,
@@ -46,6 +79,19 @@ impl McpServerRefreshState {
         }
         self.pending = None;
         self.applied_generation = generation;
+        true
+    }
+
+    pub(super) fn supersede_for_auth_change(&mut self, generation: u64) -> bool {
+        let Some(intent) = self
+            .pending
+            .as_ref()
+            .filter(|intent| intent.generation == generation)
+            .cloned()
+        else {
+            return false;
+        };
+        self.request(intent.config);
         true
     }
 }
@@ -607,27 +653,22 @@ impl Session {
         let auth_manager_clone = Arc::clone(&auth_manager);
         let config_for_mcp = Arc::clone(&config);
         let mcp_manager_for_mcp = Arc::clone(&mcp_manager);
-        let auth_and_mcp_fut = async move {
+        let auth_fut = async move {
             let auth = auth_manager_clone.auth().await;
             let mcp_servers = mcp_manager_for_mcp
                 .effective_servers(&config_for_mcp, auth.as_ref())
                 .await;
-            let auth_statuses = compute_auth_statuses(
-                mcp_servers.iter(),
-                config_for_mcp.mcp_oauth_credentials_store_mode,
-                auth.as_ref(),
-            )
-            .await;
-            (auth, mcp_servers, auth_statuses)
+            let mcp_server_names = mcp_servers.into_keys().collect::<Vec<_>>();
+            (auth, mcp_server_names)
         }
         .instrument(info_span!(
-            "session_init.auth_mcp",
-            otel.name = "session_init.auth_mcp",
+            "session_init.auth",
+            otel.name = "session_init.auth",
         ));
 
         // Join all independent futures.
-        let (thread_persistence_result, state_db_ctx, (auth, mcp_servers, auth_statuses)) =
-            tokio::join!(thread_persistence_fut, state_db_fut, auth_and_mcp_fut);
+        let (thread_persistence_result, state_db_ctx, (auth, mcp_server_names)) =
+            tokio::join!(thread_persistence_fut, state_db_fut, auth_fut);
 
         let mut live_thread_init =
             LiveThreadInitGuard::new(thread_persistence_result.map_err(|e| {
@@ -713,10 +754,12 @@ impl Session {
                 });
             }
 
-            let auth = auth.as_ref();
-            let auth_mode = auth.map(CodexAuth::auth_mode).map(TelemetryAuthMode::from);
-            let account_id = auth.and_then(CodexAuth::get_account_id);
-            let account_email = auth.and_then(CodexAuth::get_account_email);
+            let auth_ref = auth.as_ref();
+            let auth_mode = auth_ref
+                .map(CodexAuth::auth_mode)
+                .map(TelemetryAuthMode::from);
+            let account_id = auth_ref.and_then(CodexAuth::get_account_id);
+            let account_email = auth_ref.and_then(CodexAuth::get_account_email);
             let originator = originator().value;
             let terminal_type = user_agent();
             let session_model = session_configuration.collaboration_mode.model().to_string();
@@ -777,7 +820,7 @@ impl Session {
                 config
                     .permissions
                     .legacy_sandbox_policy(session_configuration.cwd.as_path()),
-                mcp_servers.keys().map(String::as_str).collect(),
+                mcp_server_names.iter().map(String::as_str).collect(),
                 config.active_profile.clone(),
             );
 
@@ -929,6 +972,13 @@ impl Session {
                 });
             }
 
+            let initial_mcp_auth_binding: crate::state::McpAuthBinding =
+                crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
+                    .await
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("failed to capture initial MCP auth snapshot")
+                    })?
+                    .binding();
             let services = SessionServices {
                 // Initialize the MCP connection manager with an uninitialized
                 // instance. It will be replaced with one created via
@@ -943,6 +993,7 @@ impl Session {
                             &config.permissions.approval_policy,
                             config.permissions.permission_profile(),
                         ),
+                        initial_mcp_auth_binding,
                     ),
                 )),
                 mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -1065,19 +1116,6 @@ impl Session {
                 sess.send_event_raw(event).await;
             }
 
-            let mut required_mcp_servers: Vec<String> = mcp_servers
-                .iter()
-                .filter(|(_, server)| server.enabled() && server.required())
-                .map(|(name, _)| name.clone())
-                .collect();
-            required_mcp_servers.sort();
-            let enabled_mcp_server_count =
-                mcp_servers.values().filter(|server| server.enabled()).count();
-            let required_mcp_server_count = required_mcp_servers.len();
-            let tool_plugin_provenance = mcp_manager.tool_plugin_provenance(config.as_ref()).await;
-            let host_owned_codex_apps_enabled = config
-                .features
-                .apps_enabled_for_auth(auth.as_ref().is_some_and(|auth| auth.uses_codex_backend()));
             let client_elicitation_capability = if config.features.enabled(Feature::AuthElicitation) {
                 ElicitationCapability {
                     form: Some(FormElicitationCapability::default()),
@@ -1086,11 +1124,6 @@ impl Session {
             } else {
                 ElicitationCapability::default()
             };
-            {
-                let mut cancel_guard = sess.services.mcp_startup_cancellation_token.lock().await;
-                cancel_guard.cancel();
-                *cancel_guard = CancellationToken::new();
-            }
             let turn_environment = crate::environment_selection::resolve_environment_selections(
                 sess.services.environment_manager.as_ref(),
                 &session_configuration.environments,
@@ -1103,54 +1136,157 @@ impl Session {
             })?
             .primary()
             .cloned();
-            let mcp_runtime_environment = match turn_environment {
-                Some(turn_environment) => McpRuntimeEnvironment::new(
-                    Arc::clone(&turn_environment.environment),
-                    turn_environment.cwd.to_path_buf(),
-                ),
-                None => McpRuntimeEnvironment::new(
-                    sess.services
-                        .environment_manager
-                        .default_environment()
-                        .unwrap_or_else(|| sess.services.environment_manager.local_environment()),
-                    session_configuration.cwd.to_path_buf(),
-                ),
-            };
-            let (mcp_connection_manager, cancel_token) = McpConnectionManager::new(
-                &mcp_servers,
-                config.mcp_oauth_credentials_store_mode,
-                auth_statuses.clone(),
-                &session_configuration.approval_policy,
-                INITIAL_SUBMIT_ID.to_owned(),
-                tx_event.clone(),
-                session_configuration.permission_profile(),
-                mcp_runtime_environment,
-                config.codex_home.to_path_buf(),
-                codex_apps_tools_cache_key(auth),
-                host_owned_codex_apps_enabled,
-                client_elicitation_capability,
-                tool_plugin_provenance,
-                auth,
-                Some(sess.mcp_elicitation_reviewer()),
-            )
-            .instrument(info_span!(
-                "session_init.mcp_manager_init",
-                otel.name = "session_init.mcp_manager_init",
-                session_init.enabled_mcp_server_count = enabled_mcp_server_count,
-                session_init.required_mcp_server_count = required_mcp_server_count,
-            ))
-            .await;
-            {
-                let mut manager_guard = sess.services.mcp_connection_manager.write().await;
-                manager_guard.publish(mcp_connection_manager);
-            }
-            {
-                let mut cancel_guard = sess.services.mcp_startup_cancellation_token.lock().await;
-                if cancel_guard.is_cancelled() {
+            let (required_mcp_servers, required_mcp_server_count) = loop {
+                let Some(auth_snapshot) = crate::state::FrozenMcpAuthSnapshot::capture(
+                    sess.services.auth_manager.as_ref(),
+                )
+                .await
+                else {
+                    anyhow::bail!("failed to capture startup MCP auth snapshot");
+                };
+                let auth_changes = sess.services.auth_manager.auth_change_receiver();
+                let mcp_config = config
+                    .to_mcp_config(sess.services.plugins_manager.as_ref())
+                    .await;
+                let mcp_servers =
+                    codex_mcp::effective_mcp_servers(&mcp_config, auth_snapshot.auth());
+                let auth_statuses = compute_auth_statuses(
+                    mcp_servers.iter(),
+                    config.mcp_oauth_credentials_store_mode,
+                    auth_snapshot.auth(),
+                )
+                .await;
+                let tool_plugin_provenance = codex_mcp::tool_plugin_provenance(&mcp_config);
+                let host_owned_codex_apps_enabled = config.features.apps_enabled_for_auth(
+                    auth_snapshot
+                        .auth()
+                        .is_some_and(CodexAuth::uses_codex_backend),
+                );
+                let mut required_mcp_servers: Vec<String> = mcp_servers
+                    .iter()
+                    .filter(|(_, server)| server.enabled() && server.required())
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                required_mcp_servers.sort();
+                let enabled_mcp_server_count =
+                    mcp_servers.values().filter(|server| server.enabled()).count();
+                let required_mcp_server_count = required_mcp_servers.len();
+                let mcp_runtime_environment = match turn_environment.as_ref() {
+                    Some(turn_environment) => McpRuntimeEnvironment::new(
+                        Arc::clone(&turn_environment.environment),
+                        turn_environment.cwd.to_path_buf(),
+                    ),
+                    None => McpRuntimeEnvironment::new(
+                        sess.services
+                            .environment_manager
+                            .default_environment()
+                            .unwrap_or_else(|| {
+                                sess.services.environment_manager.local_environment()
+                            }),
+                        session_configuration.cwd.to_path_buf(),
+                    ),
+                };
+                let (mcp_connection_manager, cancel_token) = McpConnectionManager::new(
+                    &mcp_servers,
+                    config.mcp_oauth_credentials_store_mode,
+                    auth_statuses,
+                    &session_configuration.approval_policy,
+                    INITIAL_SUBMIT_ID.to_owned(),
+                    tx_event.clone(),
+                    session_configuration.permission_profile(),
+                    mcp_runtime_environment,
+                    config.codex_home.to_path_buf(),
+                    codex_apps_tools_cache_key(auth_snapshot.auth()),
+                    host_owned_codex_apps_enabled,
+                    client_elicitation_capability.clone(),
+                    tool_plugin_provenance,
+                    auth_snapshot.auth(),
+                    Some(sess.mcp_elicitation_reviewer()),
+                )
+                .instrument(info_span!(
+                    "session_init.mcp_manager_init",
+                    otel.name = "session_init.mcp_manager_init",
+                    session_init.enabled_mcp_server_count = enabled_mcp_server_count,
+                    session_init.required_mcp_server_count = required_mcp_server_count,
+                ))
+                .await;
+                let mut replacement =
+                    super::mcp::UnpublishedMcpReplacement::new(mcp_connection_manager, cancel_token);
+
+                #[cfg(test)]
+                wait_for_mcp_startup_auth_test_gate(&sess.services.auth_manager).await;
+
+                let Some(latest_auth_snapshot) = crate::state::FrozenMcpAuthSnapshot::capture(
+                    sess.services.auth_manager.as_ref(),
+                )
+                .await
+                else {
+                    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
+                        anyhow::bail!(
+                            "startup MCP replacement lost parts after auth snapshot failure"
+                        );
+                    };
                     cancel_token.cancel();
+                    stale_manager.shutdown().await;
+                    anyhow::bail!("failed to recapture startup MCP auth snapshot");
+                };
+                if auth_changes.has_changed().unwrap_or(true)
+                    || !auth_snapshot.matches(&latest_auth_snapshot)
+                {
+                    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
+                        anyhow::bail!("startup MCP replacement lost unpublished parts");
+                    };
+                    cancel_token.cancel();
+                    stale_manager.shutdown().await;
+                    continue;
                 }
-                *cancel_guard = cancel_token;
-            }
+
+                let mut manager_guard = sess.services.mcp_connection_manager.write().await;
+                let mut cancel_guard =
+                    sess.services.mcp_startup_cancellation_token.lock().await;
+                let Some(auth_publication_guard) =
+                    sess.services.auth_manager.auth_publication_guard()
+                else {
+                    drop(cancel_guard);
+                    drop(manager_guard);
+                    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
+                        anyhow::bail!(
+                            "startup MCP replacement lost parts after auth gate failure"
+                        );
+                    };
+                    cancel_token.cancel();
+                    stale_manager.shutdown().await;
+                    anyhow::bail!("failed to acquire startup MCP auth publication gate");
+                };
+                if auth_changes.has_changed().unwrap_or(true)
+                    || sess.services.auth_manager.auth_revision() != auth_snapshot.revision()
+                {
+                    drop(auth_publication_guard);
+                    drop(cancel_guard);
+                    drop(manager_guard);
+                    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
+                        anyhow::bail!("startup MCP replacement lost unpublished parts");
+                    };
+                    cancel_token.cancel();
+                    stale_manager.shutdown().await;
+                    continue;
+                }
+                let Ok((mcp_connection_manager, cancel_token)) = replacement.take() else {
+                    anyhow::bail!("startup MCP replacement lost unpublished parts");
+                };
+                let mut old_manager =
+                    manager_guard.publish(mcp_connection_manager, auth_snapshot.binding());
+                let old_cancel_token = std::mem::replace(&mut *cancel_guard, cancel_token);
+                if old_cancel_token.is_cancelled() {
+                    cancel_guard.cancel();
+                }
+                old_cancel_token.cancel();
+                drop(auth_publication_guard);
+                drop(cancel_guard);
+                drop(manager_guard);
+                old_manager.shutdown().await;
+                break (required_mcp_servers, required_mcp_server_count);
+            };
             if !required_mcp_servers.is_empty() {
                 let failures = sess
                     .services

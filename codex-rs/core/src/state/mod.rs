@@ -2,6 +2,8 @@ mod service;
 mod session;
 mod turn;
 
+pub(crate) use service::FrozenMcpAuthSnapshot;
+pub(crate) use service::McpAuthBinding;
 pub(crate) use service::PublishedMcpConnectionManager;
 pub(crate) use service::SessionServices;
 pub(crate) use session::SessionState;

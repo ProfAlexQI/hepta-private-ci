@@ -24,6 +24,8 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistry;
 use codex_hooks::Hooks;
 use codex_login::AuthManager;
+use codex_login::CodexAuth;
+use codex_login::auth::AuthManagerSnapshot;
 use codex_mcp::McpConnectionManager;
 use codex_models_manager::manager::SharedModelsManager;
 use codex_otel::SessionTelemetry;
@@ -38,15 +40,108 @@ use tokio::sync::RwLock;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
+pub(crate) struct FrozenMcpAuthSnapshot {
+    auth: Option<CodexAuth>,
+    binding: McpAuthBinding,
+}
+
+#[derive(Clone)]
+pub(crate) struct McpAuthBinding {
+    revision: u64,
+    auth_mode: Option<codex_app_server_protocol::AuthMode>,
+    account_id: Option<String>,
+    account_email: Option<String>,
+    chatgpt_user_id: Option<String>,
+    is_fedramp_account: bool,
+    token_fingerprint: Option<[u8; 32]>,
+}
+
+impl FrozenMcpAuthSnapshot {
+    pub(crate) async fn capture(auth_manager: &AuthManager) -> Option<Self> {
+        auth_manager
+            .auth_snapshot()
+            .await
+            .map(Self::from_auth_manager_snapshot)
+    }
+
+    fn from_auth_manager_snapshot(snapshot: AuthManagerSnapshot) -> Self {
+        let (auth, revision) = snapshot.into_parts();
+        let auth_ref = auth.as_ref();
+        Self {
+            binding: McpAuthBinding {
+                revision,
+                auth_mode: auth_ref.map(CodexAuth::api_auth_mode),
+                account_id: auth_ref.and_then(CodexAuth::get_account_id),
+                account_email: auth_ref.and_then(CodexAuth::get_account_email),
+                chatgpt_user_id: auth_ref.and_then(CodexAuth::get_chatgpt_user_id),
+                is_fedramp_account: auth_ref.is_some_and(CodexAuth::is_fedramp_account),
+                token_fingerprint: auth_ref.and_then(CodexAuth::credential_fingerprint),
+            },
+            auth,
+        }
+    }
+
+    pub(crate) fn auth(&self) -> Option<&CodexAuth> {
+        self.auth.as_ref()
+    }
+
+    pub(crate) fn binding(&self) -> McpAuthBinding {
+        self.binding.clone()
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.binding.revision
+    }
+
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        self.binding.matches(&other.binding)
+    }
+}
+
+impl McpAuthBinding {
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        let token_matches = constant_time_optional_fingerprint_eq(
+            &self.token_fingerprint,
+            &other.token_fingerprint,
+        );
+        self.revision == other.revision
+            && self.auth_mode == other.auth_mode
+            && self.account_id == other.account_id
+            && self.account_email == other.account_email
+            && self.chatgpt_user_id == other.chatgpt_user_id
+            && self.is_fedramp_account == other.is_fedramp_account
+            && token_matches
+    }
+}
+
+fn constant_time_optional_fingerprint_eq(
+    left: &Option<[u8; 32]>,
+    right: &Option<[u8; 32]>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            let mut difference = 0_u8;
+            for index in 0..left.len() {
+                difference |= left[index] ^ right[index];
+            }
+            difference == 0
+        }
+        (None, None) => true,
+        (Some(_), None) | (None, Some(_)) => false,
+    }
+}
+
 pub(crate) struct PublishedMcpConnectionManager {
     generation: u64,
+    auth_binding: McpAuthBinding,
     manager: McpConnectionManager,
 }
 
 impl PublishedMcpConnectionManager {
-    pub(crate) fn new(manager: McpConnectionManager) -> Self {
+    pub(crate) fn new(manager: McpConnectionManager, auth_binding: McpAuthBinding) -> Self {
         Self {
             generation: 0,
+            auth_binding,
             manager,
         }
     }
@@ -55,8 +150,17 @@ impl PublishedMcpConnectionManager {
         self.generation
     }
 
-    pub(crate) fn publish(&mut self, manager: McpConnectionManager) -> McpConnectionManager {
+    pub(crate) fn auth_matches(&self, auth_binding: &McpAuthBinding) -> bool {
+        self.auth_binding.matches(auth_binding)
+    }
+
+    pub(crate) fn publish(
+        &mut self,
+        manager: McpConnectionManager,
+        auth_binding: McpAuthBinding,
+    ) -> McpConnectionManager {
         self.generation = self.generation.saturating_add(1);
+        self.auth_binding = auth_binding;
         std::mem::replace(&mut self.manager, manager)
     }
 }

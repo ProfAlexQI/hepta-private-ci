@@ -1261,7 +1261,13 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context: 
         .mcp_connection_manager
         .write()
         .await
-        .publish(manager);
+        .publish(
+            manager,
+            crate::state::FrozenMcpAuthSnapshot::capture(session.services.auth_manager.as_ref())
+                .await
+                .expect("capture MCP auth snapshot")
+                .binding(),
+        );
 }
 
 #[tokio::test]

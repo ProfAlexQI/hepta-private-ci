@@ -5,6 +5,8 @@ use serde::Deserialize;
 use serde::Serialize;
 #[cfg(test)]
 use serial_test::serial;
+use sha2::Digest;
+use sha2::Sha256;
 use std::env;
 use std::fmt::Debug;
 use std::path::Path;
@@ -12,9 +14,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::sync::RwLockReadGuard;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use tokio::sync::Semaphore;
+use tokio::sync::watch;
 
 use codex_agent_identity::decode_agent_identity_jwt;
 use codex_agent_identity::fetch_agent_identity_jwks;
@@ -333,6 +337,16 @@ impl CodexAuth {
                 "agent identity auth does not expose a bearer token",
             )),
         }
+    }
+
+    /// Returns a one-way, domain-separated fingerprint of the current request
+    /// credential without extending the credential's plaintext lifetime.
+    pub fn credential_fingerprint(&self) -> Option<[u8; 32]> {
+        let token = self.get_token().ok()?;
+        let mut hasher = Sha256::new();
+        hasher.update(b"codex-login:request-credential-fingerprint:v1\0");
+        hasher.update(token.as_bytes());
+        Some(hasher.finalize().into())
     }
 
     /// Returns `None` if ChatGPT backend auth does not expose an account id.
@@ -1264,12 +1278,25 @@ impl UnauthorizedRecovery {
 pub struct AuthManager {
     hepta_home: PathBuf,
     inner: RwLock<CachedAuth>,
+    auth_publication_gate: RwLock<()>,
+    auth_change_tx: watch::Sender<u64>,
     enable_codex_api_key_env: bool,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
     forced_chatgpt_workspace_id: RwLock<Option<Vec<String>>>,
     chatgpt_base_url: Option<String>,
     refresh_lock: Semaphore,
     external_auth: RwLock<Option<Arc<dyn ExternalAuth>>>,
+}
+
+pub struct AuthManagerSnapshot {
+    auth: Option<CodexAuth>,
+    revision: u64,
+}
+
+impl AuthManagerSnapshot {
+    pub fn into_parts(self) -> (Option<CodexAuth>, u64) {
+        (self.auth, self.revision)
+    }
 }
 
 /// Configuration view required to construct a shared [`AuthManager`].
@@ -1332,12 +1359,15 @@ impl AuthManager {
         .await
         .ok()
         .flatten();
+        let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Self {
             hepta_home,
             inner: RwLock::new(CachedAuth {
                 auth: managed_auth,
                 permanent_refresh_failure: None,
             }),
+            auth_publication_gate: RwLock::new(()),
+            auth_change_tx,
             enable_codex_api_key_env,
             auth_credentials_store_mode,
             forced_chatgpt_workspace_id: RwLock::new(None),
@@ -1353,10 +1383,13 @@ impl AuthManager {
             auth: Some(auth),
             permanent_refresh_failure: None,
         };
+        let (auth_change_tx, _auth_change_rx) = watch::channel(0);
 
         Arc::new(Self {
             hepta_home: PathBuf::from("non-existent"),
             inner: RwLock::new(cached),
+            auth_publication_gate: RwLock::new(()),
+            auth_change_tx,
             enable_codex_api_key_env: false,
             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
             forced_chatgpt_workspace_id: RwLock::new(None),
@@ -1372,9 +1405,12 @@ impl AuthManager {
             auth: Some(auth),
             permanent_refresh_failure: None,
         };
+        let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Arc::new(Self {
             hepta_home,
             inner: RwLock::new(cached),
+            auth_publication_gate: RwLock::new(()),
+            auth_change_tx,
             enable_codex_api_key_env: false,
             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
             forced_chatgpt_workspace_id: RwLock::new(None),
@@ -1385,12 +1421,15 @@ impl AuthManager {
     }
 
     pub fn external_bearer_only(config: ModelProviderAuthInfo) -> Arc<Self> {
+        let (auth_change_tx, _auth_change_rx) = watch::channel(0);
         Arc::new(Self {
             hepta_home: PathBuf::from("non-existent"),
             inner: RwLock::new(CachedAuth {
                 auth: None,
                 permanent_refresh_failure: None,
             }),
+            auth_publication_gate: RwLock::new(()),
+            auth_change_tx,
             enable_codex_api_key_env: false,
             auth_credentials_store_mode: AuthCredentialsStoreMode::File,
             forced_chatgpt_workspace_id: RwLock::new(None),
@@ -1405,6 +1444,50 @@ impl AuthManager {
     /// Current cached auth (clone) without attempting a refresh.
     pub fn auth_cached(&self) -> Option<CodexAuth> {
         self.inner.read().ok().and_then(|c| c.auth.clone())
+    }
+
+    /// Subscribes to credential changes that require rebuilding auth-bound runtimes.
+    pub fn auth_change_receiver(&self) -> watch::Receiver<u64> {
+        self.auth_change_tx.subscribe()
+    }
+
+    pub fn auth_revision(&self) -> u64 {
+        *self.auth_change_tx.borrow()
+    }
+
+    /// Captures one credential snapshot whose revision did not change while
+    /// the credential was being resolved.
+    pub async fn auth_snapshot(&self) -> Option<AuthManagerSnapshot> {
+        loop {
+            let revision_before = self.auth_revision();
+            let auth = self.auth().await;
+            let publication_guard = self.auth_publication_guard()?;
+            let revision_after = self.auth_revision();
+            if revision_before == revision_after {
+                drop(publication_guard);
+                return Some(AuthManagerSnapshot {
+                    auth,
+                    revision: revision_after,
+                });
+            }
+            drop(publication_guard);
+        }
+    }
+
+    /// Captures cached credentials and their revision under the publication
+    /// gate. This does not perform proactive token refresh.
+    pub fn auth_cached_snapshot(&self) -> Option<AuthManagerSnapshot> {
+        let _publication_guard = self.auth_publication_guard()?;
+        Some(AuthManagerSnapshot {
+            auth: self.auth_cached(),
+            revision: self.auth_revision(),
+        })
+    }
+
+    /// Prevents credential mutation while a consumer performs a synchronous
+    /// validate-and-publish step.
+    pub fn auth_publication_guard(&self) -> Option<RwLockReadGuard<'_, ()>> {
+        self.auth_publication_gate.read().ok()
     }
 
     pub fn refresh_failure_for_auth(&self, auth: &CodexAuth) -> Option<RefreshTokenFailedError> {
@@ -1499,14 +1582,6 @@ impl AuthManager {
         }
     }
 
-    fn auths_equal(a: Option<&CodexAuth>, b: Option<&CodexAuth>) -> bool {
-        match (a, b) {
-            (None, None) => true,
-            (Some(a), Some(b)) => a == b,
-            _ => false,
-        }
-    }
-
     /// Records a permanent refresh failure only if the failed refresh was
     /// attempted against the auth snapshot that is still cached.
     fn record_permanent_refresh_failure_if_unchanged(
@@ -1539,16 +1614,21 @@ impl AuthManager {
     }
 
     fn set_cached_auth(&self, new_auth: Option<CodexAuth>) -> bool {
+        let Ok(_publication_guard) = self.auth_publication_gate.write() else {
+            return false;
+        };
         if let Ok(mut guard) = self.inner.write() {
             let previous = guard.auth.as_ref();
-            let changed = !AuthManager::auths_equal(previous, new_auth.as_ref());
-            let auth_changed_for_refresh =
-                !Self::auths_equal_for_refresh(previous, new_auth.as_ref());
-            if auth_changed_for_refresh {
+            let changed = !Self::auths_equal_for_refresh(previous, new_auth.as_ref());
+            if changed {
                 guard.permanent_refresh_failure = None;
             }
             tracing::info!("Reloaded auth, changed: {changed}");
             guard.auth = new_auth;
+            if changed {
+                self.auth_change_tx
+                    .send_modify(|revision| *revision = revision.wrapping_add(1));
+            }
             changed
         } else {
             false
@@ -1556,14 +1636,25 @@ impl AuthManager {
     }
 
     pub fn set_external_auth(&self, external_auth: Arc<dyn ExternalAuth>) {
+        let Ok(_publication_guard) = self.auth_publication_gate.write() else {
+            return;
+        };
         if let Ok(mut guard) = self.external_auth.write() {
             *guard = Some(external_auth);
+            self.auth_change_tx
+                .send_modify(|revision| *revision = revision.wrapping_add(1));
         }
     }
 
     pub fn clear_external_auth(&self) {
+        let Ok(_publication_guard) = self.auth_publication_gate.write() else {
+            return;
+        };
         if let Ok(mut guard) = self.external_auth.write() {
-            *guard = None;
+            if guard.take().is_some() {
+                self.auth_change_tx
+                    .send_modify(|revision| *revision = revision.wrapping_add(1));
+            }
         }
     }
 
