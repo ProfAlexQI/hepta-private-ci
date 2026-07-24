@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+fixture="$(mktemp -d /tmp/hepta-terminal-delivery-status.XXXXXX)"
+fixture="$(cd "$fixture" && pwd -P)"
+trap 'rm -rf "$fixture"' EXIT
+
+while read -r expected_sha id; do
+  jq -e --arg id "$id" '
+    (.pairs | map(select(.id == $id))) as $pairs
+    | ($pairs | length) == 1
+      and $pairs[0].template != "captured_shell_compat_v1"
+      and ($pairs[0] | has("report_implementation") | not)
+      and ($pairs[0] | has("gate_implementation") | not)
+  ' "$SPEC" >/dev/null
+
+  "$ROOT/scripts/$id-report.sh" >"$fixture/$id.report"
+  actual_sha="$(shasum -a 256 "$fixture/$id.report" | awk '{print $1}')"
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    echo "terminal delivery status report golden mismatch: $id" >&2
+    exit 1
+  }
+  "$ROOT/scripts/lib/hepta-gate-pair-compat-v1/$id.report" >"$fixture/$id.compat"
+  cmp -s "$fixture/$id.report" "$fixture/$id.compat" || {
+    echo "terminal delivery status compatibility report mismatch: $id" >&2
+    exit 1
+  }
+  actual_pass="$("$ROOT/scripts/$id-gate.sh")"
+  expected_pass="$(jq -r --arg id "$id" '.pairs[] | select(.id == $id) | .pass_message' "$SPEC")"
+  [[ "$actual_pass" == "$expected_pass" ]] || {
+    echo "terminal delivery status gate output mismatch: $id" >&2
+    exit 1
+  }
+done <<'CASES'
+f3c277126bc32c982c2890842d448abfbeddeffbbebd9c08025a642471ac4052 hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-final-ack-final-index-delivery-receipt-terminal-status
+237dfb7a24e8607628085dbd0f52dfeb7acdc1043b0da5196b3305f506e5ac24 hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-readback
+cb8950566cbb5fffb2fad26c9e9ec807858594c2de79670cac4882aa4791ab44 hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-final-index
+7d9e1d2c4a49c0d8ed5be5758a58a5f1abd62075d646d995d957fe2b4319d4bb hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-final-index-delivery-receipt-public-status
+8649bf65feb15ee64572d5b33e6bd1a2d59c92e56c022bb4aa28a00cd3be5989 hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-public-status-readback
+299a62d5278016cf5d4656cbd70634468dec6ffa326770d37710dcd81eb53488 hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-public-status-final-index
+CASES
+
+mkdir -p "$fixture/negative/scripts/lib"
+cp "$ROOT/scripts/hepta-gate-pair-runner" "$ROOT/scripts/hepta-gate-pair-specs-v1.json" "$fixture/negative/scripts/"
+cp "$ROOT"/scripts/lib/hepta-gate-pair-*-v1.sh "$fixture/negative/scripts/lib/"
+negative_id='hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-final-ack-final-index-delivery-receipt-terminal-status'
+if "$fixture/negative/scripts/hepta-gate-pair-runner" report "$negative_id" >"$fixture/negative.stdout" 2>"$fixture/negative.stderr"; then
+  echo "terminal delivery status missing-source negative fixture unexpectedly passed" >&2
+  exit 1
+fi
+[[ ! -s "$fixture/negative.stdout" ]]
+missing_message="$(jq -r --arg id "$negative_id" '.pairs[] | select(.id == $id) | .missing_source_message' "$SPEC")"
+source_report="$(jq -r --arg id "$negative_id" '.pairs[] | select(.id == $id) | .source_report' "$SPEC")"
+[[ "$(<"$fixture/negative.stderr")" == "$missing_message: $fixture/negative/$source_report" ]]
+
+echo "hepta gate-pair terminal delivery status self-test passed"

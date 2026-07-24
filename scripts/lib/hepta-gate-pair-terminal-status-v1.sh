@@ -5,12 +5,21 @@ render_signing_terminal_status_attachment() {
   local terminal_status_gate_rel terminal_status_doc_rel
   local terminal_status_gate terminal_status_doc
   local missing_gate_message missing_doc_message
+  local acknowledgement_profile final_ack_source_file_key
+  local terminal_status_gate_source_file_key terminal_status_doc_source_file_key
+  local source_report_display_path local_gate
   terminal_status_gate_rel="$(jq -r '.terminal_status_gate' <<<"$spec")"
   terminal_status_doc_rel="$(jq -r '.terminal_status_doc' <<<"$spec")"
   terminal_status_gate="$ROOT/$terminal_status_gate_rel"
   terminal_status_doc="$ROOT/$terminal_status_doc_rel"
   missing_gate_message="$(jq -r '.missing_terminal_status_gate_message' <<<"$spec")"
   missing_doc_message="$(jq -r '.missing_terminal_status_doc_message' <<<"$spec")"
+  acknowledgement_profile="$(jq -r '.acknowledgement_profile // "signing_receipt"' <<<"$spec")"
+  final_ack_source_file_key="$(jq -r '.final_ack_source_file_key // "signing_final_acknowledgement_final_index_report"' <<<"$spec")"
+  terminal_status_gate_source_file_key="$(jq -r '.terminal_status_gate_source_file_key // "signing_terminal_status_denial_gate"' <<<"$spec")"
+  terminal_status_doc_source_file_key="$(jq -r '.terminal_status_doc_source_file_key // "signing_terminal_status_denial_doc"' <<<"$spec")"
+  source_report_display_path="$(jq -r '.source_report_display_path // .source_report' <<<"$spec")"
+  local_gate="$(jq -r '.local_gate // .report_path | sub("-report[.]sh$"; "-gate.sh")' <<<"$spec")"
 
   [[ -x "$source_report" ]] || {
     echo "$missing_source_message: $source_report" >&2
@@ -35,27 +44,42 @@ render_signing_terminal_status_attachment() {
 
   jq -e \
     --arg source_surface "$attachment_surface" \
+    --arg acknowledgement_profile "$acknowledgement_profile" \
     --argjson blocker_count "$blocker_count" \
     '
       .surface == $source_surface
       and .[($source_surface + "_ready")] == true
       and .[($source_surface + "_blocked")] == true
       and .final_blocker_count == $blocker_count
-      and .signing_receipt_final_acknowledgement_recorded == false
-      and .signing_receipt_operator_received_recorded == false
-      and .signing_receipt_operator_read_recorded == false
-      and .telegram_signing_receipt_acknowledgement_sent == false
-      and .release_publication_authority_from_signing_receipt_acknowledgement_derived == false
-      and .activation_authority_from_signing_receipt_acknowledgement_derived == false
+      and (
+        if $acknowledgement_profile == "terminal_delivery_receipt"
+        then
+          .terminal_public_claim_delivery_receipt_final_acknowledgement_recorded == false
+          and .operator_received_recorded == false
+          and .operator_read_recorded == false
+          and .telegram_acknowledgement_sent == false
+          and .release_publication_authority_from_acknowledgement_derived == false
+          and .activation_authority_from_acknowledgement_derived == false
+        else
+          .signing_receipt_final_acknowledgement_recorded == false
+          and .signing_receipt_operator_received_recorded == false
+          and .signing_receipt_operator_read_recorded == false
+          and .telegram_signing_receipt_acknowledgement_sent == false
+          and .release_publication_authority_from_signing_receipt_acknowledgement_derived == false
+          and .activation_authority_from_signing_receipt_acknowledgement_derived == false
+        end
+      )
       and .provider_invoked == false
       and .credential_read == false
       and .public_ga_claimed == false
       and .public_release_published == false
     ' <<<"$source_json" >/dev/null
 
-  terminal_status_static_mention_count="$(
-    grep -Eci 'terminal|decision|status|promotion|public|claim|accepted|approval|authority|download|install|restart|active-binary|telegram|external|live' "$terminal_status_gate" || true
-  )"
+  if [[ "$(jq -r '.static_match_case_sensitive // false' <<<"$spec")" == "true" ]]; then
+    terminal_status_static_mention_count="$(grep -Ec 'terminal|decision|status|promotion|public|claim|accepted|approval|authority|download|install|restart|active-binary|telegram|external|live' "$terminal_status_gate" || true)"
+  else
+    terminal_status_static_mention_count="$(grep -Eci 'terminal|decision|status|promotion|public|claim|accepted|approval|authority|download|install|restart|active-binary|telegram|external|live' "$terminal_status_gate" || true)"
+  fi
 
   jq -n \
     --argjson source "$source_json" \
@@ -68,11 +92,15 @@ render_signing_terminal_status_attachment() {
     --argjson attachment_blocker_count "$attachment_blocker_count" \
     --argjson terminal_status_static_mention_count "$terminal_status_static_mention_count" \
     --arg next_migration_step "$next_migration_step" \
-    --arg local_gate "scripts/$id-gate.sh" \
+    --arg local_gate "$local_gate" \
     --arg architecture_note "$architecture_note_rel" \
-    --arg source_report "$source_report_rel" \
+    --arg source_report "$source_report_display_path" \
     --arg terminal_status_gate "$terminal_status_gate_rel" \
     --arg terminal_status_doc "$terminal_status_doc_rel" \
+    --arg acknowledgement_profile "$acknowledgement_profile" \
+    --arg final_ack_source_file_key "$final_ack_source_file_key" \
+    --arg terminal_status_gate_source_file_key "$terminal_status_gate_source_file_key" \
+    --arg terminal_status_doc_source_file_key "$terminal_status_doc_source_file_key" \
     '{
       runtime: "hepta",
       surface: $attachment_surface,
@@ -124,6 +152,8 @@ render_signing_terminal_status_attachment() {
       install_from_terminal_status_executed: false,
       service_restart_from_terminal_status_performed: false,
       active_binary_from_terminal_status_mutated: false,
+      memory_store_write_performed: (if $acknowledgement_profile == "terminal_delivery_receipt" then false else null end),
+      live_kg_write_performed: (if $acknowledgement_profile == "terminal_delivery_receipt" then false else null end),
       provider_invoked: false,
       model_invoked: false,
       credential_read: false,
@@ -143,9 +173,9 @@ render_signing_terminal_status_attachment() {
       local_gate: $local_gate,
       architecture_note: $architecture_note,
       source_files: {
-        signing_final_acknowledgement_final_index_report: $source_report,
-        signing_terminal_status_denial_gate: $terminal_status_gate,
-        signing_terminal_status_denial_doc: $terminal_status_doc
+        ($final_ack_source_file_key): $source_report,
+        ($terminal_status_gate_source_file_key): $terminal_status_gate,
+        ($terminal_status_doc_source_file_key): $terminal_status_doc
       },
       side_effect_free: true,
       side_effects: {
@@ -187,7 +217,11 @@ render_signing_terminal_status_attachment() {
         rollback_executed: false,
         external_network_read: false
       }
-    }'
+    }
+    | if $acknowledgement_profile == "terminal_delivery_receipt"
+      then .
+      else del(.memory_store_write_performed, .live_kg_write_performed)
+      end'
 }
 
 verify_signing_terminal_status_attachment() {
@@ -282,10 +316,13 @@ render_signing_terminal_status_readback() {
     exit 1
   }
 
-  local source_json readback_mode final_ack_attachment_surface
+  local source_json readback_mode final_ack_attachment_surface source_file_key
+  local source_report_display_path
   source_json="$("$source_report")"
   readback_mode="$(jq -r '.readback_mode' <<<"$spec")"
   final_ack_attachment_surface="$(jq -r '.final_ack_attachment_surface' <<<"$spec")"
+  source_file_key="$(jq -r '.source_file_key // "signing_terminal_decision_status_attachment_report"' <<<"$spec")"
+  source_report_display_path="$(jq -r '.source_report_display_path // .source_report' <<<"$spec")"
   jq -e \
     --arg source_surface "$attachment_surface" \
     --argjson blocker_count "$blocker_count" \
@@ -313,7 +350,8 @@ render_signing_terminal_status_readback() {
     --arg readback_mode "$readback_mode" \
     --argjson blocker_count "$blocker_count" \
     --arg next_migration_step "$next_migration_step" \
-    --arg source_report "$source_report_rel" \
+    --arg source_report "$source_report_display_path" \
+    --arg source_file_key "$source_file_key" \
     '{
       runtime: "hepta",
       surface: $readback_surface,
@@ -369,7 +407,7 @@ render_signing_terminal_status_readback() {
       rollback_execution_allowed: false,
       next_migration_step: $next_migration_step,
       source_files: {
-        signing_terminal_decision_status_attachment_report: $source_report
+        ($source_file_key): $source_report
       },
       side_effect_free: true,
       side_effects: ($source.side_effects + {

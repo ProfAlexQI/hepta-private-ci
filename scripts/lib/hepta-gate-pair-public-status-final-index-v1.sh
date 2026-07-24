@@ -7,10 +7,11 @@ render_signing_public_status_final_index() {
     exit 1
   }
 
-  local source_json final_index_surface source_file_prefix
+  local source_json final_index_surface source_file_prefix source_report_display_path
   source_json="$("$source_report")"
   final_index_surface="${attachment_surface%_terminal_public_claim_status_exposure_readback}_terminal_decision_status_promotion_final_index"
   source_file_prefix="$(jq -r '.source_file_prefix' <<<"$spec")"
+  source_report_display_path="$(jq -r '.source_report_display_path // .source_report' <<<"$spec")"
   jq -e \
     --arg source_surface "$attachment_surface" \
     --argjson blocker_count "$blocker_count" \
@@ -38,7 +39,7 @@ render_signing_public_status_final_index() {
     --argjson blocker_count "$blocker_count" \
     --arg next_migration_step "$next_migration_step" \
     --arg source_file_prefix "$source_file_prefix" \
-    --arg source_report "$source_report_rel" \
+    --arg source_report "$source_report_display_path" \
     '{
       runtime: "hepta",
       surface: $public_status_final_index_surface,
@@ -106,7 +107,7 @@ render_signing_public_status_final_index() {
       rollback_execution_allowed: false,
       next_migration_step: $next_migration_step,
       source_files: {
-        ($source_file_prefix + "_public_claim_status_exposure_readback_report"): $source_report
+        ((if $source_file_prefix == "" then "" else $source_file_prefix + "_" end) + "public_claim_status_exposure_readback_report"): $source_report
       },
       side_effect_free: true,
       side_effects: ($source.side_effects + {

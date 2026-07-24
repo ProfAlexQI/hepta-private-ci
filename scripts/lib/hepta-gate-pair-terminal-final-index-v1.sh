@@ -7,9 +7,11 @@ render_signing_terminal_status_final_index() {
     exit 1
   }
 
-  local source_json final_ack_attachment_surface
+  local source_json final_ack_attachment_surface source_file_key source_report_display_path
   source_json="$("$source_report")"
   final_ack_attachment_surface="$(jq -r '.final_ack_attachment_surface' <<<"$spec")"
+  source_file_key="$(jq -r '.source_file_key // "signing_terminal_decision_status_readback_report"' <<<"$spec")"
+  source_report_display_path="$(jq -r '.source_report_display_path // .source_report' <<<"$spec")"
   jq -e \
     --arg source_surface "$attachment_surface" \
     --argjson blocker_count "$blocker_count" \
@@ -36,7 +38,8 @@ render_signing_terminal_status_final_index() {
     --arg terminal_status_prefix "$summary_prefix" \
     --argjson blocker_count "$blocker_count" \
     --arg next_migration_step "$next_migration_step" \
-    --arg source_report "$source_report_rel" \
+    --arg source_report "$source_report_display_path" \
+    --arg source_file_key "$source_file_key" \
     '{
       runtime: "hepta",
       surface: $final_index_surface,
@@ -93,7 +96,7 @@ render_signing_terminal_status_final_index() {
       rollback_execution_allowed: false,
       next_migration_step: $next_migration_step,
       source_files: {
-        signing_terminal_decision_status_readback_report: $source_report
+        ($source_file_key): $source_report
       },
       side_effect_free: true,
       side_effects: ($source.side_effects + {

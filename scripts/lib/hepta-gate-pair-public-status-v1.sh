@@ -4,10 +4,16 @@ render_signing_public_status_attachment() {
   local source_report="$ROOT/$source_report_rel"
   local public_status_gate_rel public_status_doc_rel source_file_prefix
   local public_status_gate public_status_doc attachment_blocker_count
+  local source_report_display_path
+  local status_source_file_key status_gate_source_file_key status_doc_source_file_key
   public_status_gate_rel="$(jq -r '.public_status_gate' <<<"$spec")"
   public_status_doc_rel="$(jq -r '.public_status_doc' <<<"$spec")"
   source_file_prefix="$(jq -r '.source_file_prefix' <<<"$spec")"
   attachment_blocker_count="$(jq -r '.attachment_blocker_count' <<<"$spec")"
+  source_report_display_path="$(jq -r '.source_report_display_path // .source_report' <<<"$spec")"
+  status_source_file_key="$(jq -r '.status_source_file_key // ((if .source_file_prefix == "" then "" else .source_file_prefix + "_" end) + "terminal_decision_status_final_index_report")' <<<"$spec")"
+  status_gate_source_file_key="$(jq -r '.status_gate_source_file_key // ((if .source_file_prefix == "" then "" else .source_file_prefix + "_" end) + "public_status_denial_gate")' <<<"$spec")"
+  status_doc_source_file_key="$(jq -r '.status_doc_source_file_key // ((if .source_file_prefix == "" then "" else .source_file_prefix + "_" end) + "public_status_denial_doc")' <<<"$spec")"
   public_status_gate="$ROOT/$public_status_gate_rel"
   public_status_doc="$ROOT/$public_status_doc_rel"
 
@@ -51,10 +57,12 @@ render_signing_public_status_attachment() {
       and .public_release_published == false
     ' <<<"$source_json" >/dev/null
 
-  public_status_static_mention_count="$(
-    grep -Eci 'public|claim|status|exposure|release|channel|dashboard|endpoint|query|export|observability|telegram|external|authority|install|restart|active-binary|live' "$public_status_gate" || true
-  )"
-  local_gate="${report_rel%-report.sh}-gate.sh"
+  if [[ "$(jq -r '.static_match_case_sensitive // false' <<<"$spec")" == "true" ]]; then
+    public_status_static_mention_count="$(grep -Ec 'public|claim|status|exposure|release|channel|dashboard|endpoint|query|export|observability|telegram|external|authority|install|restart|active-binary|live' "$public_status_gate" || true)"
+  else
+    public_status_static_mention_count="$(grep -Eci 'public|claim|status|exposure|release|channel|dashboard|endpoint|query|export|observability|telegram|external|authority|install|restart|active-binary|live' "$public_status_gate" || true)"
+  fi
+  local_gate="$(jq -r '.local_gate // .report_path | sub("-report[.]sh$"; "-gate.sh")' <<<"$spec")"
 
   jq -n \
     --argjson source "$source_json" \
@@ -69,9 +77,12 @@ render_signing_public_status_attachment() {
     --arg local_gate "$local_gate" \
     --arg architecture_note "$(jq -r '.architecture_note' <<<"$spec")" \
     --arg source_file_prefix "$source_file_prefix" \
-    --arg source_report "$source_report_rel" \
+    --arg source_report "$source_report_display_path" \
     --arg public_status_gate "$public_status_gate_rel" \
     --arg public_status_doc "$public_status_doc_rel" \
+    --arg status_source_file_key "$status_source_file_key" \
+    --arg status_gate_source_file_key "$status_gate_source_file_key" \
+    --arg status_doc_source_file_key "$status_doc_source_file_key" \
     '{
       runtime: "hepta",
       surface: $attachment_surface,
@@ -152,9 +163,9 @@ render_signing_public_status_attachment() {
       local_gate: $local_gate,
       architecture_note: $architecture_note,
       source_files: {
-        ($source_file_prefix + "_terminal_decision_status_final_index_report"): $source_report,
-        ($source_file_prefix + "_public_status_denial_gate"): $public_status_gate,
-        ($source_file_prefix + "_public_status_denial_doc"): $public_status_doc
+        ($status_source_file_key): $source_report,
+        ($status_gate_source_file_key): $public_status_gate,
+        ($status_doc_source_file_key): $public_status_doc
       },
       side_effect_free: true,
       side_effects: {
@@ -283,10 +294,12 @@ render_signing_public_status_readback() {
   }
 
   local source_json final_index_surface readback_mode source_file_prefix
+  local source_report_display_path
   source_json="$("$source_report")"
   final_index_surface="${attachment_surface%_terminal_public_claim_status_exposure_attachment}_terminal_decision_status_promotion_final_index"
   readback_mode="$(jq -r '.readback_mode' <<<"$spec")"
   source_file_prefix="$(jq -r '.source_file_prefix' <<<"$spec")"
+  source_report_display_path="$(jq -r '.source_report_display_path // .source_report' <<<"$spec")"
   jq -e \
     --arg source_surface "$attachment_surface" \
     --argjson blocker_count "$blocker_count" \
@@ -315,7 +328,7 @@ render_signing_public_status_readback() {
     --argjson blocker_count "$blocker_count" \
     --arg next_migration_step "$next_migration_step" \
     --arg source_file_prefix "$source_file_prefix" \
-    --arg source_report "$source_report_rel" \
+    --arg source_report "$source_report_display_path" \
     '{
       runtime: "hepta",
       surface: $readback_surface,
@@ -382,7 +395,7 @@ render_signing_public_status_readback() {
       rollback_execution_allowed: false,
       next_migration_step: $next_migration_step,
       source_files: {
-        ($source_file_prefix + "_public_claim_status_exposure_attachment_report"): $source_report
+        ((if $source_file_prefix == "" then "" else $source_file_prefix + "_" end) + "public_claim_status_exposure_attachment_report"): $source_report
       },
       side_effect_free: true,
       side_effects: ($source.side_effects + {
