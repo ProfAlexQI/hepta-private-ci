@@ -1,0 +1,133 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v8",
+  "intake_id": "upstream-codex-intake-2026-07-24-r8",
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R7.json",
+    "manifest_sha256": "63d15fc05f42605dceeb29899cb357f664ec99e691d24b8d296a0033c359feee",
+    "cutoff_head": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+    "preserved": true,
+    "modified_by_r8": false
+  },
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-24T12:07:41Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+    "range_start_exclusive": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+    "range_end_inclusive": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+    "commit_count": 1,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 6,
+    "net_insertions": 81,
+    "net_deletions": 63,
+    "commit_file_touches": 6,
+    "local_head_observed": "16364d4f2599ae2e6f05c3361961bc302b947081",
+    "local_root": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+    "upstream_root": "59a180ddec4adaf9760972cdb1eb89f06a81be8b",
+    "merge_base": null,
+    "history_relationship": "no_merge_base_unrelated_roots",
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2:refs/remotes/upstream/hepta-intake-20260724-r8",
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "aa5aeda987db109b75fdcb1fb130da8a9996cdfdab87bf897eaa2215b0a8c1f5"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "3fdd6e10977611d16a25338b9270615f187a5ef666040dbed2a33147262904e4"
+    },
+    "commit_identity": {
+      "algorithm": "sha256(git_log_reverse_sha_authored_at_title_lf)",
+      "digest": "dd8a95f921dd891b5750022edf1fedb44b5fa0e9957f06cd29d78fc786acff6a"
+    },
+    "normalized_commit_inventory_identity": {
+      "algorithm": "sha256(jq_canonical_sorted_commit_inventory)",
+      "digest": "9e41732419966ebd2c6e1ee54ea4a2d3d0cc3f1393de55f480e5c8920481e800"
+    },
+    "related_path_inventory_identity": {
+      "algorithm": "sha256(c_locale_sorted_unique_related_paths_lf)",
+      "digest": "dac025271875834e3bc7d6fd778054a13105961411324665177b22860ffacf03"
+    }
+  },
+  "classification_summary": {
+    "commit_count": 1,
+    "status_counts": {
+      "candidate": 1,
+      "deferred": 0,
+      "rejected": 0,
+      "imported": 0
+    },
+    "priority_counts": {
+      "P1": 1
+    },
+    "category_counts": {
+      "tools_apps_runtime": 1
+    }
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+      "authored_at": "2026-07-24T11:52:38Z",
+      "title": "Encapsulate MCP refresh coordination (#35164)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "refresh_coordination",
+        "serialized_publication",
+        "cancellation_recovery"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r8-p1-mcp-refresh-coordinator",
+      "reason": "MCP invalidation, serialization, cancellation recovery, and publication ownership must remain one coherent concurrency contract rather than drifting across independently mutable session fields.",
+      "semantic_absorption_recommendation": "Prove bounded semantic equivalence against Hepta's generation-bound refresh state and serialized publication lock. Preserve the richer desired/applied generation model, and do not copy the upstream AtomicBool implementation over it.",
+      "changed_file_count": 6,
+      "related_files": [
+        "codex-rs/core/src/session/handlers.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/mcp_refresh.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    }
+  ],
+  "selective_semantic_transplant": {
+    "ordinary_merge_rebase": "forbidden_no_merge_base",
+    "direct_cherry_pick": "not_default",
+    "ordered_slices": [
+      {
+        "order": 1,
+        "id": "r8-p1-mcp-refresh-coordinator",
+        "commits": [
+          "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2"
+        ],
+        "required_evidence": [
+          "one session-owned gate serializes refresh publication",
+          "cancelled replacement leaves the exact refresh intent pending",
+          "only the latest valid generation can publish",
+          "shutdown closes or drains refresh ownership without publishing stale state",
+          "tool exposure and execution remain bound to one published manager generation"
+        ]
+      }
+    ]
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
