@@ -1,0 +1,129 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v7",
+  "intake_id": "upstream-codex-intake-2026-07-24-r7",
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R6.json",
+    "manifest_sha256": "4e8993154f769ce2f4bdbd078816fe6ce193e64ca12913ca09acec073532bbdc",
+    "cutoff_head": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+    "preserved": true,
+    "modified_by_r7": false
+  },
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-24T10:39:16Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+    "range_start_exclusive": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+    "range_end_inclusive": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+    "commit_count": 1,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 3,
+    "net_insertions": 65,
+    "net_deletions": 8,
+    "commit_file_touches": 3,
+    "local_head_observed": "f8a4465ea1fa9efb6cf0eda78537bf4d1cb36c7b",
+    "local_root": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+    "upstream_root": "59a180ddec4adaf9760972cdb1eb89f06a81be8b",
+    "merge_base": null,
+    "history_relationship": "no_merge_base_unrelated_roots",
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream refs/heads/main:refs/remotes/upstream/main",
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "58b43c4389ea3adf336023a05d08b6b6a4708d4c89eb49b4f2529d83ea1cbc4e"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "7db8ff45019f54816b0175ae01cb4a4bd0d09d8886fc7ed93515bcbe27c1a03e"
+    },
+    "commit_identity": {
+      "algorithm": "sha256(git_log_reverse_sha_authored_at_title_lf)",
+      "digest": "fb0f8b5c3dbc294a0cdda6c452c249646084d82cf3b33465dc3b116a60e3b40d"
+    },
+    "normalized_commit_inventory_identity": {
+      "algorithm": "sha256(jq_canonical_sorted_commit_inventory)",
+      "digest": "151ffc8a8db68378663d69b0e28f9de3e442456f28a92fa525114e8603c82209"
+    },
+    "related_path_inventory_identity": {
+      "algorithm": "sha256(c_locale_sorted_unique_related_paths_lf)",
+      "digest": "4610d4f464aa739db64c87ed819562d335b6cebb807815b496e9ec4d550449a8"
+    }
+  },
+  "classification_summary": {
+    "commit_count": 1,
+    "status_counts": {
+      "candidate": 1,
+      "deferred": 0,
+      "rejected": 0,
+      "imported": 0
+    },
+    "priority_counts": {
+      "P1": 1
+    },
+    "category_counts": {
+      "tools_apps_runtime": 1
+    }
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+      "authored_at": "2026-07-24T10:18:14Z",
+      "title": "Reconnect MCP servers on explicit refresh (#35151)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "explicit_refresh",
+        "connection_rebuild",
+        "cancellation_preservation"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r7-p1-explicit-mcp-reconnect",
+      "reason": "An explicit MCP refresh must rebuild every configured server connection rather than silently reusing a stale live connection, while cancellation must preserve the reconnect request for the next exact replacement.",
+      "semantic_absorption_recommendation": "Adapt a generation-bound force-reconnect request only after the R6 runtime publication prerequisites exist, proving that explicit refresh rebuilds all configured connections, cancelled replacement cannot consume the request, and ordinary runtime updates retain safe connection reuse.",
+      "changed_file_count": 3,
+      "related_files": [
+        "codex-rs/codex-mcp/src/runtime.rs",
+        "codex-rs/core/src/session/handlers.rs",
+        "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    }
+  ],
+  "selective_semantic_transplant": {
+    "ordinary_merge_rebase": "forbidden_no_merge_base",
+    "direct_cherry_pick": "not_default",
+    "ordered_slices": [
+      {
+        "order": 1,
+        "id": "r7-p1-explicit-mcp-reconnect",
+        "commits": [
+          "f201c30c52a35f819262865a53df94b6f4ea7a50"
+        ],
+        "required_evidence": [
+          "explicit refresh rebuilds every configured MCP server connection",
+          "cancelled replacement preserves the force-reconnect request",
+          "ordinary runtime updates continue safe connection reuse",
+          "tool exposure and execution bind to the same published runtime generation"
+        ]
+      }
+    ]
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
