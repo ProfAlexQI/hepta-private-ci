@@ -167,6 +167,19 @@ verify_contract() {
         }
       ]
     }
+    and .upstream_truth == {
+      capability_version:1,
+      registry:"docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
+      registry_sha256:"ba093121ee0f2fbaf29cf501d62f2a08226bd73b1dca574a27d625312c3f74aa",
+      ci_job:"upstream-truth",
+      semantic_command:"scripts/hepta-upstream-truth-gate verify-semantic",
+      self_test_command:"scripts/hepta-upstream-truth-gate self-test",
+      network_receipt_command:"scripts/hepta-upstream-truth-gate network-receipt artifacts/upstream-network-freshness-receipt.json",
+      network_receipt_verify_command:"scripts/hepta-upstream-truth-gate verify-network-receipt artifacts/upstream-network-freshness-receipt.json",
+      ordinary_ci_events:["pull_request","push","workflow_dispatch"],
+      network_freshness_required:true,
+      semantic_absorption_required:true
+    }
   ' "$CONTRACT" >/dev/null
 
   local baseline_rel full_rel baseline full
@@ -211,7 +224,7 @@ verify_contract() {
   require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-safe-lint-security-baseline" run' "safe lint/security baseline execution"
   require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
-  require_literal_count "$baseline" "          persist-credentials: false" 5 "checkout credential isolation"
+  require_literal_count "$baseline" "          persist-credentials: false" 6 "checkout credential isolation"
   require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
   while IFS= read -r binding; do
     require_literal "$baseline" "'$binding'" "Cargo cache binding $binding"

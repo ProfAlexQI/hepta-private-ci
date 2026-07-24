@@ -1,0 +1,226 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_registry_v1",
+  "status": "ready",
+  "upstream": {
+    "repository": "https://github.com/openai/codex.git",
+    "branch": "main",
+    "remote_ref": "refs/heads/main",
+    "tracking_ref": "refs/remotes/upstream/main",
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r7",
+    "expected_head": "f201c30c52a35f819262865a53df94b6f4ea7a50"
+  },
+  "network_receipt": {
+    "schema_version": "hepta_upstream_network_freshness_receipt_v1",
+    "maximum_age_seconds": 3600,
+    "future_clock_skew_seconds": 300
+  },
+  "records": [
+    {
+      "id": "r4",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+        "sha256": "ec5f48d428f80f9fa1eace82f23f758f0dc71ebe2f5ebc5f04ba05308c32a616",
+        "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+        "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r4"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R4_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
+        "sha256": "0f6b4f061096bd8e20a9e0f2710c7755d0776ade02ecc668cd1a1d4b62eb3d04",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "a59a419afa3492c58eb3d4865bf8ab1fd8c68330",
+          "local_commit": "e259297b3076b4024a858b0fe304f716c1bbb6c2",
+          "scope": "shell_approval_path_uri_identity",
+          "non_claims": [
+            "No claim of byte-for-byte equivalence with the upstream PathUri implementation."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "0d4910331db5e5c6ec8e42f94d82119570801f95",
+          "local_commit": "2a91f2c7f832b798b9cc20df1554df60e981a02d",
+          "scope": "external_session_source_timestamp_preservation",
+          "non_claims": [
+            "No claim of complete external-session importer equivalence."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "205d37a20f742b0bf8e191622bd07c43f567ea49",
+          "local_commit": "db39bc7d6aff56bcfd9c22631cafade3dacb6b90",
+          "scope": "direct_model_only_capabilities_excluded_from_code_mode",
+          "non_claims": [
+            "Hepta does not claim ownership of the upstream clock.sleep subsystem."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "946ed315a484e052051d02b3e0274642da55dcf8",
+          "local_commit": "0109bb53ce6859b66598f42fe3db9015d0d84141",
+          "scope": "single_sqlite_configuration_root",
+          "non_claims": [
+            "No claim of complete upstream state-runtime schema equivalence."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "c769a053406985c1fc47281fb81171b7721a3687",
+          "local_commit": "0109bb53ce6859b66598f42fe3db9015d0d84141",
+          "scope": "configured_sqlite_root_consumer_consistency",
+          "non_claims": [
+            "No claim that every upstream SQLite migration or consumer is present."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "fb4e6ba2f49278c49b33ced725964ace9d0f5c37",
+          "local_commit": "4317559f04e4821e2d12c6ea2225d10610ab0e8b",
+          "scope": "explicit_update_plan_tool_exposure_disable",
+          "non_claims": [
+            "No claim of general equivalence for every upstream tool-configuration switch."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "9d823343026e600dab694e41865ed60613da31b6",
+          "local_commit": "7826b9bf1e13c22589e526ff0874210e338ed220",
+          "scope": "guardian_effective_model_context_limits",
+          "non_claims": [
+            "No claim of complete upstream Guardian review composition equivalence."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "5c94796dc9e88580fdf0b05ef9ce9d975a86e1a6",
+          "local_commit": "6271e00d842f73729231c662ca38100ea8cea69a",
+          "scope": "paginated_thread_single_writer_ownership",
+          "non_claims": [
+            "Same-UID lock-file replacement resistance is not claimed."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "963316583b744e707d653a854b30e90d8dda8a78",
+          "local_commit": "6271e00d842f73729231c662ca38100ea8cea69a",
+          "scope": "thread_archive_writer_ownership_preflight",
+          "non_claims": [
+            "Thread deletion ownership is not absorbed because Hepta has no thread/delete API."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r5",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R5.json",
+        "sha256": "dd56ea3130f035714fe14dcf25584161e669bb441a946548273a2ddec741e18f",
+        "range_start_exclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+        "range_end_inclusive": "81da9deb065d7adb283816b19b40f89bcc484276",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r5"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R5_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
+        "sha256": "ce9ede502caa6b3db2bf351eca94cf019a6c150ab7b9a2cf39fd19e65be145fd",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "a28374e0dbb4119659fb68f8c73de48e01838a5e",
+          "local_commit": "cb366251686a0e1251adc17ad240916ec7f87e66",
+          "scope": "local_agent_plugin_manifest_recognition_and_containment",
+          "non_claims": [
+            "Remote plugin sharing still requires .codex-plugin/plugin.json.",
+            "Consumed component bytes are not immutable snapshots."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "81da9deb065d7adb283816b19b40f89bcc484276",
+          "scope": "wait_for_environment_host_description_customization",
+          "non_claims": [
+            "DeferredExecutor and wait_for_environment behavior are not absorbed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r6",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R6.json",
+        "sha256": "4e8993154f769ce2f4bdbd078816fe6ce193e64ca12913ca09acec073532bbdc",
+        "range_start_exclusive": "81da9deb065d7adb283816b19b40f89bcc484276",
+        "range_end_inclusive": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r6"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R6_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
+        "sha256": "9aabea289a1ea72eb2c529ba51cbb2731a74ed5663e513c0cb1569ce4888120f",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "deferral",
+          "upstream_commit": "ef2d3edb959a75a90665ade37d554f3ca65fe880",
+          "scope": "background_mcp_runtime_prewarm",
+          "non_claims": [
+            "No background MCP runtime publication or coalescing writer is absorbed."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+          "scope": "authentication_generation_bound_mcp_refresh",
+          "non_claims": [
+            "No authoritative authentication generation or same-generation catalog/client binding is absorbed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r7",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R7.json",
+        "sha256": "63d15fc05f42605dceeb29899cb357f664ec99e691d24b8d296a0033c359feee",
+        "range_start_exclusive": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+        "range_end_inclusive": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r7"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R7_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
+        "sha256": "0c17962f91d8ca173666cc1a51dca60bf5b43a3f9aaa5163694c51130a7ac529",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+          "local_commit": "c3d57839b0c1cc41e98db346e9535d2e5daa7d9c",
+          "scope": "explicit_refresh_rebuilds_configured_connections",
+          "non_claims": [
+            "The narrow equivalence does not absorb cancellation-safe generation-bound replacement."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+          "scope": "cancellation_safe_generation_bound_runtime_replacement",
+          "non_claims": [
+            "Published immutable McpRuntime and authentication-generation prerequisites remain unavailable."
+          ]
+        }
+      ]
+    }
+  ],
+  "claims": {
+    "network_freshness_requires_live_observation": true,
+    "registry_is_semantic_equivalence_not_source_import": true,
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "upstream_fully_consumed": false
+  }
+}

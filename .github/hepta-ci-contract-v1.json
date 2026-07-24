@@ -11,6 +11,7 @@
     ],
     "required_jobs": [
       "contract",
+      "upstream-truth",
       "static",
       "rust-backend",
       "full-workspace",
@@ -19,6 +20,11 @@
     "required_commands": [
       "scripts/hepta-ci-baseline contract",
       "scripts/hepta-ci-baseline contract-self-test",
+      "scripts/hepta-ci-materialize-upstream-intake materialize",
+      "scripts/hepta-upstream-truth-gate network-receipt artifacts/upstream-network-freshness-receipt.json",
+      "scripts/hepta-upstream-truth-gate verify-network-receipt artifacts/upstream-network-freshness-receipt.json",
+      "scripts/hepta-upstream-truth-gate verify-semantic",
+      "scripts/hepta-upstream-truth-gate self-test",
       "scripts/hepta-ci-baseline static",
       "scripts/hepta-ci-baseline rust-backend",
       "scripts/hepta-full-workspace-evidence run",
@@ -121,6 +127,23 @@
         "sha": "f201c30c52a35f819262865a53df94b6f4ea7a50"
       }
     ]
+  },
+  "upstream_truth": {
+    "capability_version": 1,
+    "registry": "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
+    "registry_sha256": "ba093121ee0f2fbaf29cf501d62f2a08226bd73b1dca574a27d625312c3f74aa",
+    "ci_job": "upstream-truth",
+    "semantic_command": "scripts/hepta-upstream-truth-gate verify-semantic",
+    "self_test_command": "scripts/hepta-upstream-truth-gate self-test",
+    "network_receipt_command": "scripts/hepta-upstream-truth-gate network-receipt artifacts/upstream-network-freshness-receipt.json",
+    "network_receipt_verify_command": "scripts/hepta-upstream-truth-gate verify-network-receipt artifacts/upstream-network-freshness-receipt.json",
+    "ordinary_ci_events": [
+      "pull_request",
+      "push",
+      "workflow_dispatch"
+    ],
+    "network_freshness_required": true,
+    "semantic_absorption_required": true
   },
   "permissions": {
     "contents": "read"

@@ -43,6 +43,31 @@ jobs:
       - name: Exercise fail-closed contract fixtures
         run: scripts/hepta-ci-baseline contract-self-test
 
+  upstream-truth:
+    name: Upstream network and semantic truth
+    if: github.event_name != 'schedule'
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out complete local history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install upstream truth tools
+        run: sudo apt-get update && sudo apt-get install --yes jq
+      - name: Materialize immutable upstream intake refs
+        run: scripts/hepta-ci-materialize-upstream-intake materialize
+      - name: Observe official main and align the floating tracking ref
+        run: scripts/hepta-upstream-truth-gate network-receipt artifacts/upstream-network-freshness-receipt.json
+      - name: Verify the network freshness receipt
+        run: scripts/hepta-upstream-truth-gate verify-network-receipt artifacts/upstream-network-freshness-receipt.json
+      - name: Verify canonical semantic absorption
+        run: scripts/hepta-upstream-truth-gate verify-semantic
+      - name: Exercise semantic and receipt denial fixtures
+        run: scripts/hepta-upstream-truth-gate self-test
+
   static:
     name: Static safety gates
     if: github.event_name != 'schedule'

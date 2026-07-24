@@ -1,0 +1,682 @@
+#!/usr/bin/env python3
+"""Fail-closed network freshness and semantic-absorption truth gate."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_REGISTRY = (
+    ROOT
+    / "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json"
+)
+CI_CONTRACT = ROOT / ".github/hepta-ci-contract-v1.json"
+
+
+class GateError(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise GateError(message)
+
+
+def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args],
+        check=check,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise GateError(f"cannot read JSON {path}: {error}") from error
+    require(isinstance(value, dict), f"JSON root must be an object: {path}")
+    return value
+
+
+def digest_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def repo_path(relative: str) -> Path:
+    path = Path(relative)
+    require(not path.is_absolute(), f"repository path must be relative: {relative}")
+    require(".." not in path.parts, f"repository path escapes root: {relative}")
+    resolved = (ROOT / path).resolve()
+    require(
+        resolved == ROOT or ROOT in resolved.parents,
+        f"repository path escapes root: {relative}",
+    )
+    return resolved
+
+
+def verify_registry_ci_binding(registry_path: Path) -> None:
+    contract = load_json(CI_CONTRACT)
+    binding = contract.get("upstream_truth")
+    require(isinstance(binding, dict), "CI upstream-truth binding is missing")
+    expected_path = repo_path(binding.get("registry", ""))
+    require(
+        registry_path.resolve() == expected_path,
+        "semantic registry path is not the CI-bound registry",
+    )
+    require(
+        digest_file(registry_path) == binding.get("registry_sha256"),
+        "semantic registry hash is not bound by the CI contract",
+    )
+
+
+def ref_oid(ref: str) -> str | None:
+    result = git("rev-parse", "--verify", ref, check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def require_direct_commit(ref: str, expected: str, label: str) -> None:
+    symbolic = git("symbolic-ref", "-q", ref, check=False)
+    require(symbolic.returncode != 0, f"{label} ref must not be symbolic: {ref}")
+    actual = ref_oid(ref)
+    require(actual == expected, f"{label} ref mismatch: expected {expected}, found {actual}")
+    object_type = git("cat-file", "-t", expected, check=False)
+    require(
+        object_type.returncode == 0 and object_type.stdout.strip() == "commit",
+        f"{label} object is not an available commit: {expected}",
+    )
+
+
+def require_commit(commit: str, label: str) -> None:
+    require(
+        isinstance(commit, str)
+        and len(commit) == 40
+        and all(character in "0123456789abcdef" for character in commit),
+        f"{label} must be a lowercase full SHA-1",
+    )
+    object_type = git("cat-file", "-t", commit, check=False)
+    require(
+        object_type.returncode == 0 and object_type.stdout.strip() == "commit",
+        f"{label} is not an available commit: {commit}",
+    )
+
+
+def is_ancestor(ancestor: str, descendant: str) -> bool:
+    return git("merge-base", "--is-ancestor", ancestor, descendant, check=False).returncode == 0
+
+
+def intake_entries(intake: dict[str, Any]) -> list[dict[str, Any]]:
+    inline = intake.get("commit_inventory")
+    if isinstance(inline, list):
+        return inline
+    layout = intake.get("storage_layout")
+    require(isinstance(layout, dict), "intake lacks commit inventory storage layout")
+    shards = layout.get("inventory_shards")
+    require(isinstance(shards, list) and shards, "intake inventory shards are missing")
+    entries: list[dict[str, Any]] = []
+    for shard in shards:
+        require(isinstance(shard, dict), "intake shard descriptor must be an object")
+        path = repo_path(shard.get("path", ""))
+        require(path.is_file(), f"intake shard is missing: {path}")
+        require(
+            digest_file(path) == shard.get("sha256"),
+            f"intake shard hash mismatch: {path}",
+        )
+        inventory = load_json(path).get("commit_inventory")
+        require(isinstance(inventory, list), f"intake shard lacks commit_inventory: {path}")
+        entries.extend(inventory)
+    return entries
+
+
+def meaningful_non_claims(value: Any) -> bool:
+    if isinstance(value, list):
+        return bool(value) and all(isinstance(item, str) and item.strip() for item in value)
+    if isinstance(value, dict):
+        return bool(value)
+    return isinstance(value, str) and bool(value.strip())
+
+
+def verify_evidence(item: dict[str, Any], label: str) -> None:
+    behavioral = item.get("behavioral_evidence")
+    regression = item.get("regression_coverage")
+    if isinstance(behavioral, list) and behavioral:
+        for evidence in behavioral:
+            require(isinstance(evidence, dict), f"{label} evidence must be an object")
+            result = evidence.get("result")
+            require(
+                isinstance(result, str) and result.startswith("passed"),
+                f"{label} evidence is not passing",
+            )
+            require(
+                bool(evidence.get("command") or evidence.get("scope")),
+                f"{label} evidence lacks command or scope",
+            )
+    else:
+        require(
+            isinstance(regression, list)
+            and bool(regression)
+            and all(isinstance(test, str) and test.strip() for test in regression),
+            f"{label} lacks passing behavioral evidence or regression coverage",
+        )
+    files = item.get("files", item.get("core_files"))
+    require(isinstance(files, list) and files, f"{label} lacks bounded file evidence")
+    for relative in files:
+        require(isinstance(relative, str), f"{label} file evidence must be a string")
+        require(repo_path(relative).is_file(), f"{label} evidence file is missing: {relative}")
+
+
+def verify_semantic(
+    registry_path: Path,
+    *,
+    enforce_ci_binding: bool = True,
+) -> dict[str, Any]:
+    if enforce_ci_binding:
+        verify_registry_ci_binding(registry_path)
+    registry = load_json(registry_path)
+    require(
+        registry.get("schema_version")
+        == "hepta_upstream_codex_semantic_absorption_registry_v1",
+        "unsupported semantic-absorption registry schema",
+    )
+    require(registry.get("status") == "ready", "semantic-absorption registry is not ready")
+    upstream = registry.get("upstream")
+    require(isinstance(upstream, dict), "registry upstream contract is missing")
+    expected_head = upstream.get("expected_head")
+    frozen_ref = upstream.get("frozen_ref")
+    require_commit(expected_head, "registry expected upstream head")
+    require_direct_commit(frozen_ref, expected_head, "latest frozen upstream")
+
+    head = git("rev-parse", "HEAD").stdout.strip()
+    records = registry.get("records")
+    require(isinstance(records, list) and records, "registry records are missing")
+    ids: set[str] = set()
+    absorption_total = 0
+    deferral_total = 0
+
+    for descriptor in records:
+        require(isinstance(descriptor, dict), "registry record descriptor must be an object")
+        record_id = descriptor.get("id")
+        require(isinstance(record_id, str) and record_id, "registry record id is missing")
+        require(record_id not in ids, f"duplicate registry record id: {record_id}")
+        ids.add(record_id)
+        source = descriptor.get("source_intake")
+        record_spec = descriptor.get("record")
+        require(isinstance(source, dict), f"{record_id} source intake contract is missing")
+        require(isinstance(record_spec, dict), f"{record_id} record contract is missing")
+        intake_path = repo_path(source.get("path", ""))
+        record_path = repo_path(record_spec.get("path", ""))
+        require(intake_path.is_file(), f"{record_id} source intake is missing")
+        require(record_path.is_file(), f"{record_id} absorption record is missing")
+        require(digest_file(intake_path) == source.get("sha256"), f"{record_id} intake hash mismatch")
+        require(digest_file(record_path) == record_spec.get("sha256"), f"{record_id} record hash mismatch")
+
+        intake = load_json(intake_path)
+        record = load_json(record_path)
+        require(
+            record.get("schema_version") == record_spec.get("schema_version"),
+            f"{record_id} absorption record schema mismatch",
+        )
+        source_record = record.get("source_intake")
+        require(isinstance(source_record, dict), f"{record_id} source binding is missing")
+        require(source_record.get("path") == source.get("path"), f"{record_id} source path mismatch")
+        embedded_hash = source_record.get("manifest_sha256")
+        require(
+            embedded_hash is None or embedded_hash == source.get("sha256"),
+            f"{record_id} embedded source manifest hash mismatch",
+        )
+        source_commit = source_record.get("commit")
+        require_commit(source_commit, f"{record_id} source-manifest local commit")
+        require(is_ancestor(source_commit, head), f"{record_id} source-manifest commit is unreachable")
+
+        observation = intake.get("observation")
+        require(isinstance(observation, dict), f"{record_id} intake observation is missing")
+        start = source.get("range_start_exclusive")
+        end = source.get("range_end_inclusive")
+        require(observation.get("range_start_exclusive") == start, f"{record_id} range start mismatch")
+        require(observation.get("range_end_inclusive") == end, f"{record_id} range end mismatch")
+        require(observation.get("observed_upstream_head") == end, f"{record_id} observed head mismatch")
+        require_direct_commit(source.get("frozen_ref"), end, f"{record_id} frozen upstream")
+        require_commit(start, f"{record_id} upstream range start")
+
+        entries = intake_entries(intake)
+        by_commit: dict[str, dict[str, Any]] = {}
+        for entry in entries:
+            commit = entry.get("upstream_commit")
+            require(isinstance(commit, str), f"{record_id} intake entry lacks upstream commit")
+            require(commit not in by_commit, f"{record_id} duplicate intake commit: {commit}")
+            by_commit[commit] = entry
+
+        absorptions = record.get("absorptions", [])
+        deferrals = record.get("deferrals", [])
+        require(isinstance(absorptions, list), f"{record_id} absorptions must be an array")
+        require(isinstance(deferrals, list), f"{record_id} deferrals must be an array")
+        actual: dict[tuple[str, str], dict[str, Any]] = {}
+        for kind, items in (("absorption", absorptions), ("deferral", deferrals)):
+            for item in items:
+                require(isinstance(item, dict), f"{record_id} {kind} must be an object")
+                commit = item.get("upstream_commit")
+                key = (kind, commit)
+                require(key not in actual, f"{record_id} duplicate {kind}: {commit}")
+                actual[key] = item
+
+        bindings = descriptor.get("disposition_bindings")
+        require(isinstance(bindings, list), f"{record_id} disposition bindings are missing")
+        expected_keys: set[tuple[str, str]] = set()
+        for binding in bindings:
+            require(isinstance(binding, dict), f"{record_id} binding must be an object")
+            kind = binding.get("kind")
+            commit = binding.get("upstream_commit")
+            require(kind in {"absorption", "deferral"}, f"{record_id} binding kind is invalid")
+            key = (kind, commit)
+            require(key not in expected_keys, f"{record_id} duplicate canonical binding: {key}")
+            expected_keys.add(key)
+            require(
+                isinstance(binding.get("scope"), str) and binding["scope"].strip(),
+                f"{record_id} canonical binding scope is missing: {commit}",
+            )
+            require(
+                meaningful_non_claims(binding.get("non_claims")),
+                f"{record_id} canonical binding non-claims are missing: {commit}",
+            )
+            if kind == "absorption":
+                require_commit(
+                    binding.get("local_commit"),
+                    f"{record_id} canonical local absorption commit",
+                )
+                require(
+                    is_ancestor(binding["local_commit"], head),
+                    f"{record_id} canonical local absorption commit is unreachable",
+                )
+            else:
+                require(
+                    binding.get("local_commit") is None,
+                    f"{record_id} deferral must not bind a local commit",
+                )
+        require(set(actual) == expected_keys, f"{record_id} dispositions drifted from registry")
+
+        for (kind, commit), item in actual.items():
+            require_commit(commit, f"{record_id} disposition upstream commit")
+            require(commit in by_commit, f"{record_id} disposition is absent from source intake: {commit}")
+            require(is_ancestor(commit, end), f"{record_id} disposition is after range end: {commit}")
+            require(commit != start and not is_ancestor(commit, start), f"{record_id} disposition is outside range")
+            record_title = item.get("upstream_title")
+            intake_title = by_commit[commit].get("title")
+            require(
+                isinstance(record_title, str)
+                and isinstance(intake_title, str)
+                and record_title.replace("`", "") == intake_title.replace("`", ""),
+                f"{record_id} upstream title mismatch: {commit}",
+            )
+            binding = next(value for value in bindings if (value["kind"], value["upstream_commit"]) == (kind, commit))
+            if item.get("scope") is not None:
+                require(item.get("scope") == binding.get("scope"), f"{record_id} scope mismatch: {commit}")
+            if item.get("non_claims") is not None:
+                require(meaningful_non_claims(item["non_claims"]), f"{record_id} empty record non-claims")
+            if kind == "absorption":
+                local_commit = item.get("hepta_commit")
+                require(
+                    local_commit == binding.get("local_commit"),
+                    f"{record_id} local absorption binding mismatch",
+                )
+                require_commit(local_commit, f"{record_id} local absorption commit")
+                require(is_ancestor(local_commit, head), f"{record_id} local absorption commit is unreachable")
+                require(
+                    isinstance(item.get("semantic_mapping"), str) and item["semantic_mapping"].strip(),
+                    f"{record_id} semantic mapping is missing: {commit}",
+                )
+                verify_evidence(item, f"{record_id} absorption {commit}")
+            else:
+                require(item.get("hepta_commit") is None, f"{record_id} deferral has local commit")
+                require(
+                    isinstance(item.get("disposition"), str)
+                    and item["disposition"].startswith("deferred"),
+                    f"{record_id} deferral disposition is invalid",
+                )
+                require(
+                    isinstance(item.get("reason"), str) and item["reason"].strip(),
+                    f"{record_id} deferral reason is missing",
+                )
+                require(
+                    isinstance(item.get("missing_prerequisites"), list)
+                    and bool(item["missing_prerequisites"]),
+                    f"{record_id} deferral prerequisites are missing",
+                )
+                require(item.get("tests_run") is False, f"{record_id} deferred tests_run must be false")
+
+        claims = record.get("claims")
+        require(isinstance(claims, dict), f"{record_id} record claims are missing")
+        absorbed_claim = claims.get("absorbed_commit_count", 0)
+        equivalent_claim = claims.get("existing_semantic_equivalent_count", 0)
+        require(
+            len(absorptions) == absorbed_claim + equivalent_claim,
+            f"{record_id} absorbed/equivalent count drift",
+        )
+        require(
+            len(deferrals) == claims.get("deferred_commit_count", len(deferrals)),
+            f"{record_id} deferred count drift",
+        )
+        for claim in (
+            "upstream_fully_consumed",
+            "merge_performed",
+            "rebase_performed",
+            "cherry_pick_performed",
+            "live_enablement",
+            "deployment",
+            "publication",
+        ):
+            require(claims.get(claim, False) is False, f"{record_id} forbidden claim is true: {claim}")
+        absorption_total += len(absorptions)
+        deferral_total += len(deferrals)
+
+    claims = registry.get("claims")
+    require(isinstance(claims, dict), "registry claims are missing")
+    require(claims.get("upstream_fully_consumed") is False, "registry must not claim full consumption")
+    return {
+        "schema": "hepta_upstream_semantic_absorption_gate_v1",
+        "status": "ready",
+        "registry_sha256": digest_file(registry_path),
+        "record_count": len(records),
+        "absorption_or_equivalence_count": absorption_total,
+        "deferral_count": deferral_total,
+        "source_manifest_hashes_verified": True,
+        "upstream_entries_verified": True,
+        "local_commits_reachable": True,
+        "behavioral_evidence_verified": True,
+        "scope_and_non_claims_verified": True,
+        "upstream_fully_consumed": False,
+    }
+
+
+def observation_digest(remote_ref: str, remote_head: str) -> str:
+    return hashlib.sha256(f"{remote_ref}\t{remote_head}\n".encode()).hexdigest()
+
+
+def write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    require(not path.is_symlink(), f"receipt output must not be a symlink: {path}")
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def registry_from_environment() -> Path:
+    value = os.environ.get("HEPTA_UPSTREAM_TRUTH_REGISTRY")
+    return Path(value).resolve() if value else DEFAULT_REGISTRY
+
+
+def make_network_receipt(registry_path: Path, output: Path) -> dict[str, Any]:
+    verify_registry_ci_binding(registry_path)
+    registry = load_json(registry_path)
+    upstream = registry.get("upstream")
+    require(isinstance(upstream, dict), "registry upstream contract is missing")
+    repository = upstream.get("repository")
+    remote_ref = upstream.get("remote_ref")
+    expected = upstream.get("expected_head")
+    result = git("ls-remote", "--exit-code", repository, remote_ref, check=False)
+    require(result.returncode == 0, f"network upstream observation failed: {result.stderr.strip()}")
+    rows = [line.split() for line in result.stdout.splitlines() if line.strip()]
+    require(len(rows) == 1 and len(rows[0]) == 2, "network upstream observation is ambiguous")
+    remote_head, observed_ref = rows[0]
+    require(observed_ref == remote_ref, "network upstream ref mismatch")
+    require(remote_head == expected, f"upstream advanced: expected {expected}, found {remote_head}")
+    require_direct_commit(upstream.get("frozen_ref"), expected, "latest frozen upstream")
+
+    tracking_ref = upstream.get("tracking_ref")
+    symbolic = git("symbolic-ref", "-q", tracking_ref, check=False)
+    require(symbolic.returncode != 0, f"tracking ref must not be symbolic: {tracking_ref}")
+    old = ref_oid(tracking_ref) or ("0" * 40)
+    updated = git("update-ref", tracking_ref, remote_head, old, check=False)
+    require(updated.returncode == 0, f"tracking ref changed concurrently: {updated.stderr.strip()}")
+    require_direct_commit(tracking_ref, expected, "floating upstream tracking")
+
+    now = int(time.time())
+    generated_at = datetime.fromtimestamp(now, timezone.utc).isoformat().replace("+00:00", "Z")
+    receipt = {
+        "schema_version": registry["network_receipt"]["schema_version"],
+        "generated_at": generated_at,
+        "generated_at_epoch": now,
+        "repository": repository,
+        "branch": upstream.get("branch"),
+        "remote_ref": remote_ref,
+        "remote_head": remote_head,
+        "expected_head": expected,
+        "frozen_ref": upstream.get("frozen_ref"),
+        "frozen_head": expected,
+        "tracking_ref": tracking_ref,
+        "tracking_head": expected,
+        "registry_sha256": digest_file(registry_path),
+        "observation_sha256": observation_digest(remote_ref, remote_head),
+        "network_freshness_checked": True,
+        "remote_matches_expected": True,
+        "frozen_ref_matches_expected": True,
+        "tracking_ref_matches_expected": True,
+        "merge_performed": False,
+        "rebase_performed": False,
+        "checkout_performed": False,
+    }
+    write_json_atomic(output, receipt)
+    return receipt
+
+
+def verify_network_receipt(registry_path: Path, receipt_path: Path) -> dict[str, Any]:
+    verify_registry_ci_binding(registry_path)
+    registry = load_json(registry_path)
+    receipt = load_json(receipt_path)
+    upstream = registry.get("upstream")
+    policy = registry.get("network_receipt")
+    require(isinstance(upstream, dict) and isinstance(policy, dict), "registry network contract missing")
+    require(receipt.get("schema_version") == policy.get("schema_version"), "receipt schema mismatch")
+    expected_fields = {
+        "repository": upstream.get("repository"),
+        "branch": upstream.get("branch"),
+        "remote_ref": upstream.get("remote_ref"),
+        "remote_head": upstream.get("expected_head"),
+        "expected_head": upstream.get("expected_head"),
+        "frozen_ref": upstream.get("frozen_ref"),
+        "frozen_head": upstream.get("expected_head"),
+        "tracking_ref": upstream.get("tracking_ref"),
+        "tracking_head": upstream.get("expected_head"),
+        "registry_sha256": digest_file(registry_path),
+    }
+    for field, expected in expected_fields.items():
+        require(receipt.get(field) == expected, f"receipt field mismatch: {field}")
+    for field in (
+        "network_freshness_checked",
+        "remote_matches_expected",
+        "frozen_ref_matches_expected",
+        "tracking_ref_matches_expected",
+    ):
+        require(receipt.get(field) is True, f"receipt truth flag is not true: {field}")
+    for field in ("merge_performed", "rebase_performed", "checkout_performed"):
+        require(receipt.get(field) is False, f"receipt mutation flag is not false: {field}")
+    require(
+        receipt.get("observation_sha256")
+        == observation_digest(upstream["remote_ref"], upstream["expected_head"]),
+        "receipt observation digest mismatch",
+    )
+    generated_epoch = receipt.get("generated_at_epoch")
+    require(isinstance(generated_epoch, int), "receipt epoch is missing")
+    parsed_epoch = int(
+        datetime.fromisoformat(receipt.get("generated_at", "").replace("Z", "+00:00")).timestamp()
+    )
+    require(parsed_epoch == generated_epoch, "receipt timestamp and epoch disagree")
+    age = int(time.time()) - generated_epoch
+    require(age <= policy.get("maximum_age_seconds"), "network receipt is stale")
+    require(age >= -policy.get("future_clock_skew_seconds"), "network receipt is from the future")
+    require_direct_commit(upstream["frozen_ref"], upstream["expected_head"], "receipt frozen upstream")
+    require_direct_commit(upstream["tracking_ref"], upstream["expected_head"], "receipt tracking upstream")
+    return {
+        "schema": "hepta_upstream_network_freshness_verification_v1",
+        "status": "ready",
+        "remote_head": upstream["expected_head"],
+        "receipt_age_seconds": age,
+        "network_freshness_checked": True,
+        "tracking_ref_aligned": True,
+    }
+
+
+def expect_failure(callback: Any, label: str) -> None:
+    try:
+        callback()
+    except (GateError, ValueError, TypeError):
+        return
+    raise GateError(f"negative fixture unexpectedly passed: {label}")
+
+
+def self_test(registry_path: Path) -> dict[str, Any]:
+    verify_semantic(registry_path)
+    registry = load_json(registry_path)
+    with tempfile.TemporaryDirectory(prefix="hepta-upstream-truth-") as temporary:
+        directory = Path(temporary)
+        bad_hash = json.loads(json.dumps(registry))
+        bad_hash["records"][0]["source_intake"]["sha256"] = "0" * 64
+        bad_hash_path = directory / "bad-hash.json"
+        bad_hash_path.write_text(json.dumps(bad_hash), encoding="utf-8")
+        expect_failure(
+            lambda: verify_semantic(bad_hash_path, enforce_ci_binding=False),
+            "source manifest hash",
+        )
+
+        no_scope = json.loads(json.dumps(registry))
+        no_scope["records"][0]["disposition_bindings"][0]["scope"] = ""
+        no_scope_path = directory / "no-scope.json"
+        no_scope_path.write_text(json.dumps(no_scope), encoding="utf-8")
+        expect_failure(
+            lambda: verify_semantic(no_scope_path, enforce_ci_binding=False),
+            "canonical scope",
+        )
+
+        no_non_claims = json.loads(json.dumps(registry))
+        no_non_claims["records"][0]["disposition_bindings"][0]["non_claims"] = []
+        no_non_claims_path = directory / "no-non-claims.json"
+        no_non_claims_path.write_text(json.dumps(no_non_claims), encoding="utf-8")
+        expect_failure(
+            lambda: verify_semantic(no_non_claims_path, enforce_ci_binding=False),
+            "canonical non-claims",
+        )
+
+        unreachable = json.loads(json.dumps(registry))
+        unreachable["records"][0]["disposition_bindings"][0]["local_commit"] = registry[
+            "upstream"
+        ]["expected_head"]
+        unreachable_path = directory / "unreachable-local-commit.json"
+        unreachable_path.write_text(json.dumps(unreachable), encoding="utf-8")
+        expect_failure(
+            lambda: verify_semantic(unreachable_path, enforce_ci_binding=False),
+            "unreachable local absorption commit",
+        )
+
+        upstream = registry["upstream"]
+        now = int(time.time())
+        base = {
+            "schema_version": registry["network_receipt"]["schema_version"],
+            "generated_at": datetime.fromtimestamp(now, timezone.utc).isoformat().replace("+00:00", "Z"),
+            "generated_at_epoch": now,
+            "repository": upstream["repository"],
+            "branch": upstream["branch"],
+            "remote_ref": upstream["remote_ref"],
+            "remote_head": upstream["expected_head"],
+            "expected_head": upstream["expected_head"],
+            "frozen_ref": upstream["frozen_ref"],
+            "frozen_head": upstream["expected_head"],
+            "tracking_ref": upstream["tracking_ref"],
+            "tracking_head": upstream["expected_head"],
+            "registry_sha256": digest_file(registry_path),
+            "observation_sha256": observation_digest(upstream["remote_ref"], upstream["expected_head"]),
+            "network_freshness_checked": True,
+            "remote_matches_expected": True,
+            "frozen_ref_matches_expected": True,
+            "tracking_ref_matches_expected": True,
+            "merge_performed": False,
+            "rebase_performed": False,
+            "checkout_performed": False,
+        }
+        valid_path = directory / "valid-receipt.json"
+        valid_path.write_text(json.dumps(base), encoding="utf-8")
+        verify_network_receipt(registry_path, valid_path)
+
+        mismatch = dict(base)
+        mismatch["remote_head"] = "0" * 40
+        mismatch_path = directory / "mismatch-receipt.json"
+        mismatch_path.write_text(json.dumps(mismatch), encoding="utf-8")
+        expect_failure(
+            lambda: verify_network_receipt(registry_path, mismatch_path),
+            "network head mismatch",
+        )
+
+        stale = dict(base)
+        stale_epoch = now - registry["network_receipt"]["maximum_age_seconds"] - 1
+        stale["generated_at_epoch"] = stale_epoch
+        stale["generated_at"] = (
+            datetime.fromtimestamp(stale_epoch, timezone.utc).isoformat().replace("+00:00", "Z")
+        )
+        stale_path = directory / "stale-receipt.json"
+        stale_path.write_text(json.dumps(stale), encoding="utf-8")
+        expect_failure(
+            lambda: verify_network_receipt(registry_path, stale_path),
+            "stale network receipt",
+        )
+    return {
+        "schema": "hepta_upstream_truth_gate_self_test_v1",
+        "status": "ready",
+        "positive_fixtures": 2,
+        "negative_fixtures": 6,
+    }
+
+
+def emit(value: dict[str, Any]) -> None:
+    print(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def main() -> int:
+    registry_path = registry_from_environment()
+    if len(sys.argv) == 2 and sys.argv[1] == "verify-semantic":
+        emit(verify_semantic(registry_path))
+        return 0
+    if len(sys.argv) == 2 and sys.argv[1] == "self-test":
+        emit(self_test(registry_path))
+        return 0
+    if len(sys.argv) == 3 and sys.argv[1] == "network-receipt":
+        emit(make_network_receipt(registry_path, Path(sys.argv[2]).resolve()))
+        return 0
+    if len(sys.argv) == 3 and sys.argv[1] == "verify-network-receipt":
+        emit(verify_network_receipt(registry_path, Path(sys.argv[2]).resolve()))
+        return 0
+    print(
+        "usage: scripts/hepta-upstream-truth-gate "
+        "<verify-semantic|self-test|network-receipt PATH|verify-network-receipt PATH>",
+        file=sys.stderr,
+    )
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except GateError as error:
+        print(f"Hepta upstream truth gate denied: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
