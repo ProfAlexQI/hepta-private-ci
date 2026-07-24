@@ -51,7 +51,7 @@ gate_implementation_sha256="$(jq -r '.gate_implementation_sha256 // empty' <<<"$
 report_implementation="$(jq -r '.report_implementation // empty' <<<"$spec")"
 report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <<<"$spec")"
 
-[[ "$template" == "captured_shell_compat_v1" || "$source_report_rel" == scripts/*-report.sh ]] || {
+[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$source_report_rel" == scripts/*-report.sh ]] || {
   echo "invalid Hepta migrated source report path for: $id" >&2
   exit 1
 }
@@ -63,7 +63,7 @@ report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <
   echo "unexpected Hepta migrated receipt state for: $id" >&2
   exit 1
 }
-[[ "$template" == "captured_shell_compat_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_readback" ]] || {
+[[ "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" || "$template" == "signing_final_ack_readback" || "$template" == "signing_final_ack_final_index" || "$template" == "signing_terminal_status_attachment" || "$template" == "signing_terminal_status_final_index" || "$template" == "signing_terminal_status_readback" || "$template" == "signing_public_status_attachment" || "$template" == "signing_public_status_readback" || "$template" == "signing_public_status_final_index" || "$template" == "signing_summary_readback" ]] || {
   echo "unexpected Hepta migrated pair template for: $id" >&2
   exit 1
 }
@@ -75,6 +75,13 @@ report_implementation_sha256="$(jq -r '.report_implementation_sha256 // empty' <
   echo "missing Hepta migrated final-index denial side-effect key for: $id" >&2
   exit 1
 }
+
+owned_capture_cache=""
+if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" && ( "$template" == "captured_shell_compat_v1" || "$template" == "legacy_workgraph_projection_v1" ) ]]; then
+  owned_capture_cache="$(mktemp -d "${TMPDIR:-/tmp}/hepta-report-dag.XXXXXX")"
+  export HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR="$owned_capture_cache"
+  trap 'rm -rf "$owned_capture_cache"' EXIT
+fi
 
 execute_captured_shell_compat() {
   local implementation expected_sha actual_sha
@@ -145,6 +152,48 @@ execute_captured_shell_compat() {
   export -f grep rg
   eval "$(<"$implementation")"
 }
+
+verify_legacy_workgraph_projection() {
+  local report="$ROOT/$report_rel"
+  local route="${id#hepta-systems-work-graph-}"
+  local source_stem="work_graph_${route//-/_}"
+  local rust_source="$ROOT/codex-rs/hepta-runtime/src/$source_stem.rs"
+  local expected_gate="hepta_${source_stem}_gate"
+  local expected_schema="${source_stem}_v1"
+
+  [[ -x "$report" ]] || {
+    echo "$missing_report_message: $report" >&2
+    exit 1
+  }
+  [[ -f "$rust_source" ]] || {
+    echo "missing legacy WorkGraph projection source: $rust_source" >&2
+    exit 1
+  }
+
+  local json
+  json="$("$report")"
+  printf '%s\n' "$json"
+  jq -e \
+    --arg expected_gate "$expected_gate" \
+    --arg expected_schema "$expected_schema" \
+    '
+      .product == "Hepta"
+      and .runtime == "hepta"
+      and (.status == "ready" or .status == "blocked")
+      and .gate == $expected_gate
+      and .schema_version == $expected_schema
+      and .required_prior_gate_count == (.required_prior_gates | length)
+      and (.required_prior_gates | length == (unique | length))
+      and .ready_for_live_execution == false
+      and ([.source_probes | .. | select(type == "boolean")] | length > 0 and all)
+      and (.side_effects | to_entries | all(.value == false))
+    ' <<<"$json" >/dev/null
+
+  cargo test --manifest-path "$ROOT/codex-rs/Cargo.toml" -p hepta-runtime \
+    "$source_stem" --lib
+  printf '%s\n' "$pass_message"
+}
+
 render_report() {
   local source_report="$ROOT/$source_report_rel"
   [[ -x "$source_report" ]] || {
@@ -555,6 +604,8 @@ verify_summary_gate() {
 
 case "$kind:$template" in
   gate:captured_shell_compat_v1|report:captured_shell_compat_v1) execute_captured_shell_compat ;;
+  report:legacy_workgraph_projection_v1) execute_captured_shell_compat ;;
+  gate:legacy_workgraph_projection_v1) verify_legacy_workgraph_projection ;;
   report:signing_final_ack_readback) render_report ;;
   gate:signing_final_ack_readback) verify_gate ;;
   report:signing_final_ack_final_index) render_final_index_report ;;

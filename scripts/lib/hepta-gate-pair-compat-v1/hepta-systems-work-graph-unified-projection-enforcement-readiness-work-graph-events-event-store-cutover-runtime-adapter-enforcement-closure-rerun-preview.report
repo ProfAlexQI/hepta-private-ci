@@ -35,10 +35,10 @@ rerun_rust_module_present="$(
   bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_rerun_preview.rs
 )"
 rerun_report_script_present="$(
-  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview.report
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview-report.sh
 )"
 rerun_gate_script_present="$(
-  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview.gate
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview-gate.sh
 )"
 application_rust_module_present="$(
   bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_event_store_cutover_runtime_adapter_enforcement_closure_application_preview.rs

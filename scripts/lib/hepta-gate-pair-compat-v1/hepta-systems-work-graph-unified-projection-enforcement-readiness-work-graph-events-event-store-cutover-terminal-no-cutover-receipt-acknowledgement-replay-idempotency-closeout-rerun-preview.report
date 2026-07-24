@@ -35,10 +35,10 @@ rerun_rust_module_present="$(
   bool_for path_exists codex-rs/hepta-runtime/src/work_graph_unified_projection_enforcement_readiness_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_rerun_preview.rs
 )"
 rerun_report_script_present="$(
-  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview.report
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview-report.sh
 )"
 rerun_gate_script_present="$(
-  bool_for path_exists scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview.gate
+  bool_for path_exists scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview-gate.sh
 )"
 application_rust_module_present="$(
   bool_for path_exists codex-rs/hepta-runtime/src/work_graph_append_only_work_graph_events_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_application_preview.rs

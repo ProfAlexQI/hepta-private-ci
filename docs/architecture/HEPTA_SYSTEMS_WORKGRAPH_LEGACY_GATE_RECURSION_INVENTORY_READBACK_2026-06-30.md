@@ -31,6 +31,21 @@ The inventory groups the legacy routes into:
 - runtime write boundary chain
 - operator review packet chain
 
+## Convergence Update
+
+On 2026-07-24, all 8 inventoried gate bodies moved to the shared
+`legacy_workgraph_projection_v1` runner contract. The legacy report payloads
+remain the compatibility projection source, but recursive dependencies now use
+an invocation-scoped bounded JSON DAG cache. Each consolidated gate validates
+the report identity, unique prior-gate set, source probes, closed live-execution
+boundary, and zero side effects before running the route's targeted Rust tests.
+
+The 8 retired gate payload hashes remain in
+`scripts/hepta-gate-pair-specs-v1.json` as parity evidence. Before deletion, all
+8 replacement gates passed the complete legacy assertions, and the terminal
+receipt acknowledgement report matched its pre-migration JSON byte for byte.
+No report semantics or live surfaces were added.
+
 ## Contract
 
 Every inventoried legacy route must be treated as a migration target. New or
