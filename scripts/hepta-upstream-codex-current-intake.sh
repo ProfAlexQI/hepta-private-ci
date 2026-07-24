@@ -5,30 +5,68 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$ROOT"
 
 PINNED_URL="https://github.com/openai/codex.git"
-PINNED_SOURCE_REF="refs/heads/main"
-PINNED_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json"
-PINNED_CUTOFF_REF="refs/remotes/upstream/hepta-intake-20260722-r3"
-PINNED_CUTOFF_HEAD="9fc715c0861c956c894a91890b78dc05b304ba29"
-PINNED_RANGE_START="88fac6fe108237a105d3203e3508b0d531054312"
-PINNED_R2_REF="refs/remotes/upstream/hepta-intake-20260721-r2"
-PINNED_R2_HEAD="88fac6fe108237a105d3203e3508b0d531054312"
-PINNED_R2_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-21_R2.json"
-PINNED_R2_MANIFEST_SHA256="41d9f73fe2d3339d1912578be7628a76f546cea2aaa54f1477964cbad2c1c9ca"
-PINNED_R1_REF="refs/remotes/upstream/hepta-intake-20260721"
-PINNED_R1_HEAD="45ac251e178416ff5c3022457ad8d2778c0d4549"
-PINNED_RANGE_DIGEST="c56a557f74a6299f0300b1dc65a69b99d7a42027e0c832984e6ee67f98bc9a45"
-PINNED_PATH_DIGEST="388e77f541fb5752993b6287b69ed97cca7faa57e68c479190c573f48bfcb837"
-PINNED_NORMALIZED_COMMIT_DIGEST="765ba2e7eaac8d94e936ac4b17289a0ac945bb05469499204a8dfb15f63d24e2"
-PINNED_NORMALIZED_FILE_DIGEST="8b6858172f5ba38a968d791caef26ac354d23ecef66f0a95d72810abdb8ae220"
+PINNED_R3_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json"
+PINNED_R3_MANIFEST_SHA256="4e0ad42fe7edc0f073d840457f48cf579befbbfd0abb73cc0845778f3122eca6"
+PINNED_R3_REF="refs/remotes/upstream/hepta-intake-20260722-r3"
+PINNED_R3_HEAD="9fc715c0861c956c894a91890b78dc05b304ba29"
 
-MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_MANIFEST:-$PINNED_MANIFEST}"
-CUTOFF_REF="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_REF:-$PINNED_CUTOFF_REF}"
-CUTOFF_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_CUTOFF_HEAD:-$PINNED_CUTOFF_HEAD}"
+PINNED_R4_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json"
+PINNED_R4_MANIFEST_SHA256="ec5f48d428f80f9fa1eace82f23f758f0dc71ebe2f5ebc5f04ba05308c32a616"
+PINNED_R4_REF="refs/remotes/upstream/hepta-intake-20260724-r4"
+PINNED_R4_HEAD="f61b51ddd924643514b33234816a8a2772b1aec7"
+PINNED_R4_RANGE_DIGEST="33d5eaeddf0f4e69919df5dde501747ca1abbe10ab30ad3a192a2c64441a6469"
+PINNED_R4_PATH_DIGEST="edf243d8bcd9c047d8e03034dcc0090b83b996b6fadf8658fb5fc78e27fb5d15"
+PINNED_R4_NORMALIZED_COMMIT_DIGEST="279eaf925d7a23470b6ad3a37d68e60f3ed4c81ef1bbb44c5f259a7985dc9f52"
+PINNED_R4_NORMALIZED_FILE_DIGEST="164b64cbc09bb08676974bac32877313b7f77f594d0fc848dfb2d3d9f67b612b"
+
+PINNED_R4_SECURITY="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_SECURITY.json"
+PINNED_R4_SECURITY_SHA256="32d1b2fb73abbecd18c7677bac5330c87f99917fb59bc3a7fde4516b017cbea8"
+PINNED_R4_PROTOCOL="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_PROTOCOL_APP_SERVER.json"
+PINNED_R4_PROTOCOL_SHA256="090f33912ca0947858466a3e725be4d230d1f216fba46de11d7acf6ccf1d8a69"
+PINNED_R4_TOOLS="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_TOOLS_APPS_RUNTIME.json"
+PINNED_R4_TOOLS_SHA256="29bbaee20b42666ddd4f058537ef9c50d2a71412f9ef1ed6a57dc154ae2e8793"
+PINNED_R4_TUI="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_TUI_OTHER.json"
+PINNED_R4_TUI_SHA256="37b0fb2e5930fc321c14caf5e3c60c83b3c8a4e249bf21cff40c780d155bc029"
+PINNED_R4_FILES="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_FILE_SURFACE.json"
+PINNED_R4_FILES_SHA256="332bedaa48b008ae142cdafa2f4402c8bbad645951fd703cdb19c9e75dbeef73"
+
+PINNED_R5_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R5.json"
+PINNED_R5_MANIFEST_SHA256="dd56ea3130f035714fe14dcf25584161e669bb441a946548273a2ddec741e18f"
+PINNED_R5_REF="refs/remotes/upstream/hepta-intake-20260724-r5"
+PINNED_R5_HEAD="81da9deb065d7adb283816b19b40f89bcc484276"
+PINNED_R5_RANGE_DIGEST="b158a9313653c113ca9bf695cd7209ac929bff6c9c04dfdfcaec9b423a9bd0a5"
+PINNED_R5_PATH_DIGEST="3340c084533627f55e6fa28ea4464da9ff2065ad40d34dfc6e4cf1178ea9779f"
+PINNED_R5_NORMALIZED_COMMIT_DIGEST="6d7afb49c0a74d70cb7067037e4df1fa89c4cd3561f3211c1aea9768113fd42e"
+PINNED_R5_RELATED_PATH_DIGEST="d57fa54f0278a6a032173c402c4dc190ec5bb49b3af48b4a86d10a1656dc4042"
+
+PINNED_R6_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R6.json"
+PINNED_R6_MANIFEST_SHA256="4e8993154f769ce2f4bdbd078816fe6ce193e64ca12913ca09acec073532bbdc"
+PINNED_R6_REF="refs/remotes/upstream/hepta-intake-20260724-r6"
+PINNED_R6_HEAD="6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899"
+PINNED_R6_RANGE_DIGEST="049e178e5bb6190f59776a7f3ef6bf924e9e1a5a3c3cc70ba02de4d1acfcfda5"
+PINNED_R6_PATH_DIGEST="6402b9e303d68b212faa4162047bd635919051d0ebb7facac6ec5e77445de934"
+PINNED_R6_COMMIT_IDENTITY_DIGEST="2cb86a8276e7831da2174db0d5873147a71419ac6adadd7dd5be6298581685d9"
+PINNED_R6_NORMALIZED_COMMIT_DIGEST="62990e0160f88e604440469f2ea72fe2c517ecd337a5bca9dce516ebc6520d47"
+PINNED_R6_RELATED_PATH_DIGEST="c39553d1d0715dccc7bd4a416c6eddcbe4a71b4c964ee1ed14d2e45991fbcf1f"
+
+R4_MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R4_MANIFEST:-$PINNED_R4_MANIFEST}"
+R5_MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_MANIFEST:-$PINNED_R5_MANIFEST}"
+R6_MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_MANIFEST:-$PINNED_R6_MANIFEST}"
+R4_REF="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R4_REF:-$PINNED_R4_REF}"
+R4_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R4_HEAD:-$PINNED_R4_HEAD}"
+R5_REF="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_REF:-$PINNED_R5_REF}"
+R5_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_HEAD:-$PINNED_R5_HEAD}"
+R6_REF="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_REF:-$PINNED_R6_REF}"
+R6_HEAD="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_HEAD:-$PINNED_R6_HEAD}"
 ALLOW_FIXTURE_MANIFEST="${HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST:-0}"
 
 fail() {
-  echo "hepta upstream Codex current intake gate failed: $*" >&2
+  echo "hepta upstream Codex current latest-recorded intake gate failed: $*" >&2
   exit 1
+}
+
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
 }
 
 resolve_direct_commit_ref() {
@@ -41,99 +79,368 @@ resolve_direct_commit_ref() {
   [[ "$object_type" == "commit" ]] || fail "$label must point directly to a commit, found $object_type"
 }
 
+require_file_hash() {
+  local label="$1" file="$2" expected="$3"
+  [[ -f "$file" ]] || fail "$label is missing: $file"
+  [[ "$(sha256_file "$file")" == "$expected" ]] || fail "$label hash drifted"
+}
+
 command -v jq >/dev/null || fail "jq is required"
 command -v shasum >/dev/null || fail "shasum is required"
-[[ "$MANIFEST" == "$PINNED_MANIFEST" || "$ALLOW_FIXTURE_MANIFEST" == "1" ]] || fail "manifest override requires explicit fixture opt-in"
-[[ -f "$MANIFEST" ]] || fail "manifest is missing: $MANIFEST"
-[[ "$CUTOFF_REF" == "$PINNED_CUTOFF_REF" ]] || fail "cutoff ref does not match pinned r3 ref"
-[[ "$CUTOFF_HEAD" == "$PINNED_CUTOFF_HEAD" ]] || fail "cutoff head does not match pinned r3 head"
-[[ "$(shasum -a 256 "$PINNED_R2_MANIFEST" | awk '{print $1}')" == "$PINNED_R2_MANIFEST_SHA256" ]] || fail "r2 predecessor manifest hash drifted"
-resolve_direct_commit_ref "r1 predecessor cutoff" "$PINNED_R1_REF" "$PINNED_R1_HEAD"
-resolve_direct_commit_ref "r2 predecessor cutoff" "$PINNED_R2_REF" "$PINNED_R2_HEAD"
-resolve_direct_commit_ref "r3 current cutoff" "$CUTOFF_REF" "$CUTOFF_HEAD"
-git merge-base --is-ancestor "$PINNED_R1_HEAD" "$PINNED_R2_HEAD" || fail "r1 predecessor is not an ancestor of r2"
-git merge-base --is-ancestor "$PINNED_R2_HEAD" "$CUTOFF_HEAD" || fail "r2 predecessor is not an ancestor of r3"
+command -v cmp >/dev/null || fail "cmp is required"
+
+[[ "$R4_MANIFEST" == "$PINNED_R4_MANIFEST" ]] || fail "R4 manifest override is forbidden"
+[[ "$R5_MANIFEST" == "$PINNED_R5_MANIFEST" || "$ALLOW_FIXTURE_MANIFEST" == "1" ]] || fail "R5 manifest override requires explicit fixture opt-in"
+[[ "$R6_MANIFEST" == "$PINNED_R6_MANIFEST" || "$ALLOW_FIXTURE_MANIFEST" == "1" ]] || fail "R6 manifest override requires explicit fixture opt-in"
+[[ "$R4_REF" == "$PINNED_R4_REF" ]] || fail "R4 ref does not match the pinned frozen ref"
+[[ "$R4_HEAD" == "$PINNED_R4_HEAD" ]] || fail "R4 head does not match the pinned cutoff"
+[[ "$R5_REF" == "$PINNED_R5_REF" ]] || fail "R5 ref does not match the pinned frozen ref"
+[[ "$R5_HEAD" == "$PINNED_R5_HEAD" ]] || fail "R5 head does not match the pinned cutoff"
+[[ "$R6_REF" == "$PINNED_R6_REF" ]] || fail "R6 ref does not match the pinned frozen ref"
+[[ "$R6_HEAD" == "$PINNED_R6_HEAD" ]] || fail "R6 head does not match the pinned cutoff"
+
+bash "$ROOT/scripts/hepta-upstream-codex-r3-integrity.sh" >/dev/null
+require_file_hash "R3 predecessor manifest" "$PINNED_R3_MANIFEST" "$PINNED_R3_MANIFEST_SHA256"
+require_file_hash "R4 manifest" "$R4_MANIFEST" "$PINNED_R4_MANIFEST_SHA256"
+[[ -f "$R5_MANIFEST" ]] || fail "R5 manifest is missing: $R5_MANIFEST"
+if [[ "$R5_MANIFEST" == "$PINNED_R5_MANIFEST" ]]; then
+  require_file_hash "R5 manifest" "$R5_MANIFEST" "$PINNED_R5_MANIFEST_SHA256"
+fi
+[[ -f "$R6_MANIFEST" ]] || fail "R6 manifest is missing: $R6_MANIFEST"
+if [[ "$R6_MANIFEST" == "$PINNED_R6_MANIFEST" ]]; then
+  require_file_hash "R6 manifest" "$R6_MANIFEST" "$PINNED_R6_MANIFEST_SHA256"
+fi
+require_file_hash "R4 security shard" "$PINNED_R4_SECURITY" "$PINNED_R4_SECURITY_SHA256"
+require_file_hash "R4 protocol/app-server shard" "$PINNED_R4_PROTOCOL" "$PINNED_R4_PROTOCOL_SHA256"
+require_file_hash "R4 tools/apps/runtime shard" "$PINNED_R4_TOOLS" "$PINNED_R4_TOOLS_SHA256"
+require_file_hash "R4 TUI/other shard" "$PINNED_R4_TUI" "$PINNED_R4_TUI_SHA256"
+require_file_hash "R4 file-surface shard" "$PINNED_R4_FILES" "$PINNED_R4_FILES_SHA256"
 
 jq -e \
   --arg url "$PINNED_URL" \
-  --arg source_ref "$PINNED_SOURCE_REF" \
-  --arg cutoff_ref "$PINNED_CUTOFF_REF" \
-  --arg cutoff_head "$PINNED_CUTOFF_HEAD" \
-  --arg range_start "$PINNED_RANGE_START" \
-  --arg predecessor_manifest "$PINNED_R2_MANIFEST" \
-  --arg predecessor_sha256 "$PINNED_R2_MANIFEST_SHA256" \
-  --arg predecessor_ref "$PINNED_R2_REF" \
-  --arg range_digest "$PINNED_RANGE_DIGEST" \
-  --arg path_digest "$PINNED_PATH_DIGEST" \
-  --arg commit_digest "$PINNED_NORMALIZED_COMMIT_DIGEST" \
-  --arg file_digest "$PINNED_NORMALIZED_FILE_DIGEST" '
-  .schema_version == "hepta_upstream_codex_current_intake_v3"
-  and .intake_id == "upstream-codex-intake-2026-07-22-r3"
-  and .schema_evolution == {mode:"additive_versioned",predecessor_schema:"hepta_upstream_codex_current_intake_v2",compatibility:"v2 predecessor remains immutable and hash-bound"}
-  and .predecessor_intake == {manifest_path:$predecessor_manifest,manifest_sha256:$predecessor_sha256,cutoff_ref:$predecessor_ref,cutoff_head:$range_start,preserved:true}
-  and .observation.upstream_repository == $url
-  and .observation.target_branch == "main"
-  and .observation.target_source_ref == $source_ref
-  and .observation.discovery_command == "git ls-remote https://github.com/openai/codex refs/heads/main"
-  and .observation.discovered_remote_head == $cutoff_head
-  and .observation.exact_sha_fetch_performed == true
-  and .observation.fetch_source == $cutoff_head
-  and .observation.temporary_intake_ref == "refs/hepta/intake/tmp/upstream-codex-20260722-9fc715c0"
-  and .observation.cutoff_ref == $cutoff_ref
-  and .observation.cutoff_head == $cutoff_head
-  and .observation.range_start == $range_start
-  and .observation.range_end == $cutoff_head
-  and .observation.range_identity == {algorithm:"sha256(git_rev_list_reverse_range_lf)",digest:$range_digest}
-  and .observation.file_surface_identity == {algorithm:"sha256(c_locale_sorted_name_status_lf)",digest:$path_digest}
-  and .observation.normalized_commit_inventory_sha256 == $commit_digest
-  and .observation.normalized_file_surface_sha256 == $file_digest
-  and .classification.policy == "inventory_only_selective_semantic_follow_up"
-  and .classification.disposition_counts == {deferred:74,rejected:9,imported:0}
-  and ([.commit_inventory[].upstream_commit] | length == 83 and length == (unique|length))
-  and ([.commit_inventory[] | select(.disposition == "deferred")] | length) == 74
-  and ([.commit_inventory[] | select(.disposition == "rejected")] | length) == 9
-  and ([.commit_inventory[] | select(.disposition == "imported" or .imported or .integrated or .tested)] | length) == 0
-  and ([.candidate_follow_up_slices[] | select(.status != "candidate_only_not_started")] | length) == 0
-  and .boundaries == {inventory_only:true,upstream_code_imported:false,upstream_code_integrated:false,upstream_code_tested:false,bulk_merge_performed:false,bulk_rebase_performed:false,cherry_pick_performed:false,whole_tree_copy_performed:false,cargo_lock_replaced:false,module_lock_replaced:false,product_code_modified:false,follow_up_started:false}
-  ' "$MANIFEST" >/dev/null || fail "r3 manifest contract drifted"
+  --arg r3_manifest "$PINNED_R3_MANIFEST" \
+  --arg r3_manifest_sha "$PINNED_R3_MANIFEST_SHA256" \
+  --arg r3_head "$PINNED_R3_HEAD" \
+  --arg r4_head "$PINNED_R4_HEAD" \
+  --arg range_digest "$PINNED_R4_RANGE_DIGEST" \
+  --arg path_digest "$PINNED_R4_PATH_DIGEST" \
+  --arg normalized_commit_digest "$PINNED_R4_NORMALIZED_COMMIT_DIGEST" \
+  --arg normalized_file_digest "$PINNED_R4_NORMALIZED_FILE_DIGEST" '
+    .schema_version == "hepta_upstream_codex_current_intake_v4"
+    and .intake_id == "upstream-codex-intake-2026-07-24-r4"
+    and .predecessor_intake == {
+      manifest_path:$r3_manifest,
+      manifest_sha256:$r3_manifest_sha,
+      cutoff_head:$r3_head,
+      preserved:true,
+      modified_by_r4:false
+    }
+    and .observation.upstream_repository == $url
+    and .observation.target_branch == "main"
+    and .observation.observed_upstream_head == $r4_head
+    and .observation.range_start_exclusive == $r3_head
+    and .observation.range_end_inclusive == $r4_head
+    and .observation.commit_count == 97
+    and .observation.merge_commit_count == 0
+    and .observation.net_changed_file_count == 744
+    and .observation.history_relationship == "no_merge_base_unrelated_roots"
+    and .observation.ordinary_merge_allowed == false
+    and .observation.ordinary_rebase_allowed == false
+    and .observation.direct_cherry_pick_default == false
+    and .observation.merge_performed == false
+    and .observation.rebase_performed == false
+    and .observation.cherry_pick_performed == false
+    and .observation.range_identity == {algorithm:"sha256(git_rev_list_reverse_range_lf)",digest:$range_digest}
+    and .observation.file_surface_identity == {algorithm:"sha256(c_locale_sorted_name_status_lf)",digest:$path_digest}
+    and .observation.normalized_commit_inventory_identity == {algorithm:"sha256(json_generate_sha_sorted_inventory)",digest:$normalized_commit_digest}
+    and .observation.normalized_file_surface_identity == {algorithm:"sha256(json_generate_path_sorted_surface)",digest:$normalized_file_digest}
+    and .classification_summary.status_counts == {candidate:41,deferred:34,rejected:22,imported:0}
+    and .validation_contract.expected_status_counts == {candidate:41,deferred:34,rejected:22,imported:0}
+    and .validation_contract.sharded_commit_count == 97
+    and .validation_contract.sharded_file_count == 744
+  ' "$R4_MANIFEST" >/dev/null || fail "R4 manifest contract drifted"
 
-range="$PINNED_RANGE_START..$CUTOFF_HEAD"
-commit_count="$(git rev-list --count "$range")"
-merge_count="$(git rev-list --merges --count "$range")"
-changed_file_count="$(git diff --name-only "$range" | wc -l | tr -d '[:space:]')"
-codex_rs_changed_file_count="$(git diff --name-only "$range" | awk '$0 ~ /^codex-rs\// {n++} END {print n+0}')"
-range_digest="$(git rev-list --reverse "$range" | shasum -a 256 | awk '{print $1}')"
-path_digest="$(git diff --name-status "$range" | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')"
-[[ "$commit_count" == "83" && "$merge_count" == "0" ]] || fail "r3 commit inventory count drifted"
-[[ "$changed_file_count" == "522" && "$codex_rs_changed_file_count" == "508" ]] || fail "r3 file inventory count drifted"
-[[ "$range_digest" == "$PINNED_RANGE_DIGEST" ]] || fail "r3 range digest drifted"
-[[ "$path_digest" == "$PINNED_PATH_DIGEST" ]] || fail "r3 path surface digest drifted"
+r4_shards=(
+  "$PINNED_R4_SECURITY"
+  "$PINNED_R4_PROTOCOL"
+  "$PINNED_R4_TOOLS"
+  "$PINNED_R4_TUI"
+)
+jq -se '
+  [.[].commit_inventory[]] as $items
+  | ($items | length) == 97
+  and ([$items[].upstream_commit] | unique | length) == 97
+  and ([$items[] | select(.status == "candidate")] | length) == 41
+  and ([$items[] | select(.status == "deferred")] | length) == 34
+  and ([$items[] | select(.status == "rejected")] | length) == 22
+  and ([$items[] | select(.status == "imported" or .imported == true)] | length) == 0
+  and ([$items[] | select(
+    (has("upstream_commit")
+      and has("primary_category")
+      and has("status")
+      and has("reason")
+      and has("related_files")
+      and has("semantic_absorption_recommendation")
+      and has("imported")) | not
+  )] | length) == 0
+' "${r4_shards[@]}" >/dev/null || fail "R4 sharded commit inventory drifted"
 
-expected_commits="$(mktemp)"
-manifest_commits="$(mktemp)"
-manifest_files="$(mktemp)"
-trap 'rm -f "$expected_commits" "$manifest_commits" "$manifest_files"' EXIT
-git log --reverse --format='%H%x09%aI%x09%s' "$range" >"$expected_commits"
-jq -r '.commit_inventory[] | [.upstream_commit,.authored_at,.title] | @tsv' "$MANIFEST" >"$manifest_commits"
-cmp -s "$expected_commits" "$manifest_commits" || fail "r3 commit inventory does not match the complete range"
-jq -r '.file_surface[] | if has("old_path") then [.status,.old_path,.path] else [.status,.path] end | @tsv' "$MANIFEST" >"$manifest_files"
-git diff --name-status "$range" | cmp -s - "$manifest_files" || fail "r3 file surface does not match the complete range"
+r4_range="$PINNED_R3_HEAD..$R4_HEAD"
+r4_commit_count="$(git rev-list --count "$r4_range")"
+r4_merge_count="$(git rev-list --merges --count "$r4_range")"
+r4_changed_file_count="$(git diff --name-only "$r4_range" | wc -l | tr -d '[:space:]')"
+r4_range_digest="$(git rev-list --reverse "$r4_range" | shasum -a 256 | awk '{print $1}')"
+r4_path_digest="$(git diff --name-status "$r4_range" | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')"
+[[ "$r4_commit_count" == "97" && "$r4_merge_count" == "0" ]] || fail "R4 commit inventory count drifted"
+[[ "$r4_changed_file_count" == "744" ]] || fail "R4 file inventory count drifted"
+[[ "$r4_range_digest" == "$PINNED_R4_RANGE_DIGEST" ]] || fail "R4 range digest drifted"
+[[ "$r4_path_digest" == "$PINNED_R4_PATH_DIGEST" ]] || fail "R4 path surface digest drifted"
 
-normalized_commit_digest="$(jq -cS '.commit_inventory' "$MANIFEST" | shasum -a 256 | awk '{print $1}')"
-normalized_file_digest="$(jq -cS '.file_surface' "$MANIFEST" | shasum -a 256 | awk '{print $1}')"
-[[ "$normalized_commit_digest" == "$PINNED_NORMALIZED_COMMIT_DIGEST" ]] || fail "normalized commit inventory digest drifted"
-[[ "$normalized_file_digest" == "$PINNED_NORMALIZED_FILE_DIGEST" ]] || fail "normalized file surface digest drifted"
+r4_expected_commits="$(mktemp)"
+r4_manifest_commits="$(mktemp)"
+r4_manifest_files="$(mktemp)"
+r5_expected_commits="$(mktemp)"
+r5_manifest_commits="$(mktemp)"
+r5_expected_files="$(mktemp)"
+r5_manifest_files="$(mktemp)"
+r5_commit_expected_files="$(mktemp)"
+r5_commit_manifest_files="$(mktemp)"
+r6_expected_commits="$(mktemp)"
+r6_manifest_commits="$(mktemp)"
+r6_expected_files="$(mktemp)"
+r6_manifest_files="$(mktemp)"
+r6_commit_expected_files="$(mktemp)"
+r6_commit_manifest_files="$(mktemp)"
+trap 'rm -f "$r4_expected_commits" "$r4_manifest_commits" "$r4_manifest_files" "$r5_expected_commits" "$r5_manifest_commits" "$r5_expected_files" "$r5_manifest_files" "$r5_commit_expected_files" "$r5_commit_manifest_files" "$r6_expected_commits" "$r6_manifest_commits" "$r6_expected_files" "$r6_manifest_files" "$r6_commit_expected_files" "$r6_commit_manifest_files"' EXIT
+
+git log --reverse --format='%H%x09%aI%x09%s' "$r4_range" | LC_ALL=C sort >"$r4_expected_commits"
+jq -sr '.[].commit_inventory[] | [.upstream_commit,.authored_at,.title] | @tsv' "${r4_shards[@]}" | LC_ALL=C sort >"$r4_manifest_commits"
+cmp -s "$r4_expected_commits" "$r4_manifest_commits" || fail "R4 commit shards do not match the complete range"
+jq -r '.file_surface[] | if has("old_path") then [.status,.old_path,.path] else [.status,.path] end | @tsv' "$PINNED_R4_FILES" >"$r4_manifest_files"
+git diff --name-status "$r4_range" | cmp -s - "$r4_manifest_files" || fail "R4 file-surface shard does not match the complete range"
+
+jq -e \
+  --arg url "$PINNED_URL" \
+  --arg r4_manifest "$PINNED_R4_MANIFEST" \
+  --arg r4_manifest_sha "$PINNED_R4_MANIFEST_SHA256" \
+  --arg r4_head "$PINNED_R4_HEAD" \
+  --arg r5_head "$PINNED_R5_HEAD" \
+  --arg range_digest "$PINNED_R5_RANGE_DIGEST" \
+  --arg path_digest "$PINNED_R5_PATH_DIGEST" '
+    .schema_version == "hepta_upstream_codex_current_intake_v5"
+    and .intake_id == "upstream-codex-intake-2026-07-24-r5"
+    and .predecessor_intake == {
+      manifest_path:$r4_manifest,
+      manifest_sha256:$r4_manifest_sha,
+      cutoff_head:$r4_head,
+      preserved:true,
+      modified_by_r5:false
+    }
+    and .observation.state == "observed_and_classified"
+    and .observation.upstream_repository == $url
+    and .observation.target_branch == "main"
+    and .observation.observed_upstream_head == $r5_head
+    and .observation.range_start_exclusive == $r4_head
+    and .observation.range_end_inclusive == $r5_head
+    and .observation.commit_count == 2
+    and .observation.merge_commit_count == 0
+    and .observation.net_changed_file_count == 28
+    and .observation.net_insertions == 1191
+    and .observation.net_deletions == 87
+    and .observation.commit_file_touches == 28
+    and .observation.history_relationship == "no_merge_base_unrelated_roots"
+    and .observation.ordinary_merge_allowed == false
+    and .observation.ordinary_rebase_allowed == false
+    and .observation.direct_cherry_pick_default == false
+    and .observation.required_integration_mode == "selective_semantic_transplant_with_behavioral_evidence"
+    and .observation.range_identity == {algorithm:"sha256(git_rev_list_reverse_range_lf)",digest:$range_digest}
+    and .observation.file_surface_identity == {algorithm:"sha256(c_locale_sorted_name_status_lf)",digest:$path_digest}
+    and .classification_summary == {
+      commit_count:2,
+      status_counts:{candidate:2,deferred:0,rejected:0,imported:0},
+      priority_counts:{P1:2},
+      category_counts:{tools_apps_runtime:2}
+    }
+    and ([.commit_inventory[].upstream_commit] | length == 2 and length == (unique | length))
+    and ([.commit_inventory[] | select(.status != "candidate" or .imported != false or .imported_evidence != null)] | length) == 0
+    and .selective_semantic_transplant.ordinary_merge_rebase == "forbidden_no_merge_base"
+    and .selective_semantic_transplant.direct_cherry_pick == "not_default"
+    and .claims == {
+      upstream_fully_consumed:false,
+      source_imported_at_observation:false,
+      merge_performed:false,
+      rebase_performed:false,
+      cherry_pick_performed:false,
+      deployment_performed:false,
+      live_enablement_performed:false
+    }
+  ' "$R5_MANIFEST" >/dev/null || fail "R5 manifest contract drifted"
+
+r5_normalized_commit_digest="$(jq -cS '.commit_inventory' "$R5_MANIFEST" | shasum -a 256 | awk '{print $1}')"
+r5_related_path_digest="$(jq -r '[.commit_inventory[].related_files[]] | unique[]' "$R5_MANIFEST" | shasum -a 256 | awk '{print $1}')"
+[[ "$r5_normalized_commit_digest" == "$PINNED_R5_NORMALIZED_COMMIT_DIGEST" ]] || fail "R5 normalized commit inventory digest drifted"
+[[ "$r5_related_path_digest" == "$PINNED_R5_RELATED_PATH_DIGEST" ]] || fail "R5 related path inventory digest drifted"
+
+r5_range="$R4_HEAD..$R5_HEAD"
+r5_commit_count="$(git rev-list --count "$r5_range")"
+r5_merge_count="$(git rev-list --merges --count "$r5_range")"
+r5_changed_file_count="$(git diff --name-only "$r5_range" | wc -l | tr -d '[:space:]')"
+r5_range_digest="$(git rev-list --reverse "$r5_range" | shasum -a 256 | awk '{print $1}')"
+r5_path_digest="$(git diff --name-status "$r5_range" | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')"
+[[ "$r5_commit_count" == "2" && "$r5_merge_count" == "0" ]] || fail "R5 commit inventory count drifted"
+[[ "$r5_changed_file_count" == "28" ]] || fail "R5 file inventory count drifted"
+[[ "$r5_range_digest" == "$PINNED_R5_RANGE_DIGEST" ]] || fail "R5 range digest drifted"
+[[ "$r5_path_digest" == "$PINNED_R5_PATH_DIGEST" ]] || fail "R5 path surface digest drifted"
+
+git log --reverse --format='%H%x09%aI' "$r5_range" >"$r5_expected_commits"
+jq -r '.commit_inventory[] | [.upstream_commit,.authored_at] | @tsv' "$R5_MANIFEST" >"$r5_manifest_commits"
+cmp -s "$r5_expected_commits" "$r5_manifest_commits" || fail "R5 commit identity inventory does not match the complete range"
+git diff --name-only "$r5_range" | LC_ALL=C sort >"$r5_expected_files"
+jq -r '[.commit_inventory[].related_files[]] | unique[]' "$R5_MANIFEST" >"$r5_manifest_files"
+cmp -s "$r5_expected_files" "$r5_manifest_files" || fail "R5 related path inventory does not match the complete range"
+
+while IFS= read -r r5_commit; do
+  git show --format= --name-only "$r5_commit" | sed '/^$/d' | LC_ALL=C sort -u >"$r5_commit_expected_files"
+  jq -r --arg commit "$r5_commit" '.commit_inventory[] | select(.upstream_commit == $commit) | .related_files[]' "$R5_MANIFEST" | LC_ALL=C sort -u >"$r5_commit_manifest_files"
+  cmp -s "$r5_commit_expected_files" "$r5_commit_manifest_files" || fail "R5 per-commit path inventory drifted for $r5_commit"
+done < <(git rev-list --reverse "$r5_range")
+
+jq -e \
+  --arg url "$PINNED_URL" \
+  --arg r5_manifest "$PINNED_R5_MANIFEST" \
+  --arg r5_manifest_sha "$PINNED_R5_MANIFEST_SHA256" \
+  --arg r5_head "$PINNED_R5_HEAD" \
+  --arg r6_head "$PINNED_R6_HEAD" \
+  --arg range_digest "$PINNED_R6_RANGE_DIGEST" \
+  --arg path_digest "$PINNED_R6_PATH_DIGEST" \
+  --arg commit_identity_digest "$PINNED_R6_COMMIT_IDENTITY_DIGEST" \
+  --arg normalized_commit_digest "$PINNED_R6_NORMALIZED_COMMIT_DIGEST" \
+  --arg related_path_digest "$PINNED_R6_RELATED_PATH_DIGEST" '
+    .schema_version == "hepta_upstream_codex_current_intake_v6"
+    and .intake_id == "upstream-codex-intake-2026-07-24-r6"
+    and .predecessor_intake == {
+      manifest_path:$r5_manifest,
+      manifest_sha256:$r5_manifest_sha,
+      cutoff_head:$r5_head,
+      preserved:true,
+      modified_by_r6:false
+    }
+    and .observation.state == "observed_and_classified"
+    and .observation.upstream_repository == $url
+    and .observation.target_branch == "main"
+    and .observation.target_ref == "refs/remotes/upstream/main"
+    and .observation.observed_upstream_head == $r6_head
+    and .observation.range_start_exclusive == $r5_head
+    and .observation.range_end_inclusive == $r6_head
+    and .observation.commit_count == 2
+    and .observation.merge_commit_count == 0
+    and .observation.net_changed_file_count == 11
+    and .observation.net_insertions == 465
+    and .observation.net_deletions == 47
+    and .observation.commit_file_touches == 14
+    and .observation.history_relationship == "no_merge_base_unrelated_roots"
+    and .observation.predecessor_relationship == "linear_ancestor"
+    and .observation.ordinary_merge_allowed == false
+    and .observation.ordinary_rebase_allowed == false
+    and .observation.direct_cherry_pick_default == false
+    and .observation.required_integration_mode == "selective_semantic_transplant_with_behavioral_evidence"
+    and .observation.range_identity == {algorithm:"sha256(git_rev_list_reverse_range_lf)",digest:$range_digest}
+    and .observation.file_surface_identity == {algorithm:"sha256(c_locale_sorted_name_status_lf)",digest:$path_digest}
+    and .observation.commit_identity == {algorithm:"sha256(git_log_reverse_sha_authored_at_title_lf)",digest:$commit_identity_digest}
+    and .observation.normalized_commit_inventory_identity == {algorithm:"sha256(jq_canonical_sorted_commit_inventory)",digest:$normalized_commit_digest}
+    and .observation.related_path_inventory_identity == {algorithm:"sha256(c_locale_sorted_unique_related_paths_lf)",digest:$related_path_digest}
+    and .classification_summary == {
+      commit_count:2,
+      status_counts:{candidate:2,deferred:0,rejected:0,imported:0},
+      priority_counts:{P1:2},
+      category_counts:{tools_apps_runtime:2}
+    }
+    and ([.commit_inventory[].upstream_commit] | length == 2 and length == (unique | length))
+    and (.commit_inventory | all(.[]; (.related_files | length) == .changed_file_count))
+    and ([.commit_inventory[] | select(.status != "candidate" or .imported != false or .imported_evidence != null)] | length) == 0
+    and .selective_semantic_transplant.ordinary_merge_rebase == "forbidden_no_merge_base"
+    and .selective_semantic_transplant.direct_cherry_pick == "not_default"
+    and [.selective_semantic_transplant.ordered_slices[].id] == [
+      "r6-p1-mcp-auth-refresh-consistency",
+      "r6-p1-mcp-prewarm-coalescing"
+    ]
+    and .claims == {
+      upstream_fully_consumed:false,
+      source_imported_at_observation:false,
+      merge_performed:false,
+      rebase_performed:false,
+      cherry_pick_performed:false,
+      deployment_performed:false,
+      live_enablement_performed:false
+    }
+  ' "$R6_MANIFEST" >/dev/null || fail "R6 manifest contract drifted"
+
+r6_normalized_commit_digest="$(jq -cS '.commit_inventory' "$R6_MANIFEST" | shasum -a 256 | awk '{print $1}')"
+r6_related_path_digest="$(jq -r '[.commit_inventory[].related_files[]] | unique[]' "$R6_MANIFEST" | shasum -a 256 | awk '{print $1}')"
+[[ "$r6_normalized_commit_digest" == "$PINNED_R6_NORMALIZED_COMMIT_DIGEST" ]] || fail "R6 normalized commit inventory digest drifted"
+[[ "$r6_related_path_digest" == "$PINNED_R6_RELATED_PATH_DIGEST" ]] || fail "R6 related path inventory digest drifted"
+
+resolve_direct_commit_ref "R3 historical cutoff" "$PINNED_R3_REF" "$PINNED_R3_HEAD"
+resolve_direct_commit_ref "R4 frozen cutoff" "$R4_REF" "$R4_HEAD"
+resolve_direct_commit_ref "R5 historical cutoff" "$R5_REF" "$R5_HEAD"
+resolve_direct_commit_ref "R6 frozen cutoff" "$R6_REF" "$R6_HEAD"
+git merge-base --is-ancestor "$PINNED_R3_HEAD" "$R4_HEAD" || fail "R3 is not an ancestor of R4"
+git merge-base --is-ancestor "$R4_HEAD" "$R5_HEAD" || fail "R4 is not an ancestor of R5"
+git merge-base --is-ancestor "$R5_HEAD" "$R6_HEAD" || fail "R5 is not an ancestor of R6"
+
+r6_range="$R5_HEAD..$R6_HEAD"
+r6_commit_count="$(git rev-list --count "$r6_range")"
+r6_merge_count="$(git rev-list --merges --count "$r6_range")"
+r6_changed_file_count="$(git diff --name-only "$r6_range" | wc -l | tr -d '[:space:]')"
+r6_net_insertions="$(git diff --numstat "$r6_range" | awk '{insertions += $1} END {print insertions + 0}')"
+r6_net_deletions="$(git diff --numstat "$r6_range" | awk '{deletions += $2} END {print deletions + 0}')"
+r6_commit_file_touches="$(
+  while IFS= read -r r6_commit; do
+    git show --format= --name-only "$r6_commit" | sed '/^$/d'
+  done < <(git rev-list --reverse "$r6_range") | wc -l | tr -d '[:space:]'
+)"
+r6_range_digest="$(git rev-list --reverse "$r6_range" | shasum -a 256 | awk '{print $1}')"
+r6_path_digest="$(git diff --name-status "$r6_range" | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')"
+r6_commit_identity_digest="$(git log --reverse --format='%H%x09%aI%x09%s' "$r6_range" | shasum -a 256 | awk '{print $1}')"
+[[ "$r6_commit_count" == "2" && "$r6_merge_count" == "0" ]] || fail "R6 commit inventory count drifted"
+[[ "$r6_changed_file_count" == "11" ]] || fail "R6 file inventory count drifted"
+[[ "$r6_net_insertions" == "465" && "$r6_net_deletions" == "47" ]] || fail "R6 net line counts drifted"
+[[ "$r6_commit_file_touches" == "14" ]] || fail "R6 commit file-touch count drifted"
+[[ "$r6_range_digest" == "$PINNED_R6_RANGE_DIGEST" ]] || fail "R6 range digest drifted"
+[[ "$r6_path_digest" == "$PINNED_R6_PATH_DIGEST" ]] || fail "R6 path surface digest drifted"
+[[ "$r6_commit_identity_digest" == "$PINNED_R6_COMMIT_IDENTITY_DIGEST" ]] || fail "R6 commit identity digest drifted"
+
+git log --reverse --format='%H%x09%aI%x09%s' "$r6_range" >"$r6_expected_commits"
+jq -r '.commit_inventory[] | [.upstream_commit,.authored_at,.title] | @tsv' "$R6_MANIFEST" >"$r6_manifest_commits"
+cmp -s "$r6_expected_commits" "$r6_manifest_commits" || fail "R6 commit identity inventory does not match the complete range"
+git diff --name-only "$r6_range" | LC_ALL=C sort >"$r6_expected_files"
+jq -r '[.commit_inventory[].related_files[]] | unique[]' "$R6_MANIFEST" >"$r6_manifest_files"
+cmp -s "$r6_expected_files" "$r6_manifest_files" || fail "R6 related path inventory does not match the complete range"
+
+while IFS= read -r r6_commit; do
+  git show --format= --name-only "$r6_commit" | sed '/^$/d' | LC_ALL=C sort -u >"$r6_commit_expected_files"
+  jq -r --arg commit "$r6_commit" '.commit_inventory[] | select(.upstream_commit == $commit) | .related_files[]' "$R6_MANIFEST" | LC_ALL=C sort -u >"$r6_commit_manifest_files"
+  cmp -s "$r6_commit_expected_files" "$r6_commit_manifest_files" || fail "R6 per-commit path inventory drifted for $r6_commit"
+done < <(git rev-list --reverse "$r6_range")
 
 jq -n \
-  --arg schema hepta_upstream_codex_current_intake_verify_v3 \
+  --arg schema hepta_upstream_codex_current_intake_verify_v6 \
   --arg status ready \
-  --arg manifest "$MANIFEST" \
-  --arg cutoff_ref "$CUTOFF_REF" \
-  --arg cutoff_head "$CUTOFF_HEAD" \
-  --arg range_digest "$range_digest" \
-  --arg path_digest "$path_digest" \
-  --argjson commit_count "$commit_count" \
-  --argjson changed_file_count "$changed_file_count" \
-  '{schema:$schema,status:$status,manifest:$manifest,cutoff_ref:$cutoff_ref,cutoff_head:$cutoff_head,commit_count:$commit_count,changed_file_count:$changed_file_count,range_digest:$range_digest,path_digest:$path_digest,imported_count:0,integrated_count:0,tested_count:0,predecessor_refs_preserved:true,network_access_performed:false,workspace_product_code_modified:false}'
+  --arg historical_manifest "$PINNED_R3_MANIFEST" \
+  --arg r4_manifest "$R4_MANIFEST" \
+  --arg r5_manifest "$R5_MANIFEST" \
+  --arg manifest "$R6_MANIFEST" \
+  --arg r4_ref "$R4_REF" \
+  --arg r4_head "$R4_HEAD" \
+  --arg r5_ref "$R5_REF" \
+  --arg r5_head "$R5_HEAD" \
+  --arg r6_ref "$R6_REF" \
+  --arg r6_head "$R6_HEAD" \
+  --arg range_digest "$r6_range_digest" \
+  --arg path_digest "$r6_path_digest" \
+  --arg commit_identity_digest "$r6_commit_identity_digest" \
+  --argjson commit_count "$r6_commit_count" \
+  --argjson changed_file_count "$r6_changed_file_count" \
+  '{schema:$schema,status:$status,role:"latest_recorded_intake",historical_manifest:$historical_manifest,r4_manifest:$r4_manifest,r5_manifest:$r5_manifest,manifest:$manifest,r4_ref:$r4_ref,r4_head:$r4_head,r5_ref:$r5_ref,r5_head:$r5_head,r6_ref:$r6_ref,r6_head:$r6_head,commit_count:$commit_count,changed_file_count:$changed_file_count,range_digest:$range_digest,path_digest:$path_digest,commit_identity_digest:$commit_identity_digest,imported_count:0,predecessor_chain_preserved:true,network_freshness_checked:false,network_access_performed:false,workspace_product_code_modified:false,merge_performed:false,rebase_performed:false,cherry_pick_performed:false,deployment_performed:false,live_enablement_performed:false}'
 
-echo "Hepta upstream Codex current intake gate passed"
+echo "Hepta upstream Codex current latest-recorded intake gate passed"

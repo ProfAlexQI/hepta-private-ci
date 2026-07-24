@@ -33,26 +33,49 @@ Set `HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=1` to perform a read-only
 `HEPTA_UPSTREAM_CODEX_BASE_HEAD` and either `HEPTA_UPSTREAM_CODEX_TARGET_HEAD`
 or remote observation to materialize a candidate diff range.
 
-The canonical current-intake freshness gate is:
+The canonical offline latest-recorded intake gate is:
 
 ```bash
 scripts/hepta-upstream-codex-current-intake.sh
 ```
 
-It is offline and fail-closed. Its machine-readable ledger is
-`docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json`.
-The additive v3 ledger pins canonical URL
-`https://github.com/openai/codex.git`, source ref `refs/heads/main`, predecessor
-cutoff `88fac6fe108237a105d3203e3508b0d531054312`, local-only R3 ref
-`refs/remotes/upstream/hepta-intake-20260722-r3`, and observed remote head
-`9fc715c0861c956c894a91890b78dc05b304ba29`. The gate rejects a missing or
-different direct ref, URL/ref/SHA drift, incomplete commit or file inventory,
-normalized hash drift, floating-fetch evidence, false import claims, or drift
-in either preserved predecessor. Its negative fixture is:
+It is offline and fail-closed. It validates the immutable R4-to-R6 predecessor
+chain and the latest recorded R6 observation without claiming that the network
+head is still unchanged. R4 is frozen at
+`refs/remotes/upstream/hepta-intake-20260724-r4` /
+`f61b51ddd924643514b33234816a8a2772b1aec7`; historical R5 is frozen at
+`refs/remotes/upstream/hepta-intake-20260724-r5` /
+`81da9deb065d7adb283816b19b40f89bcc484276`; latest-recorded R6 is frozen at
+`refs/remotes/upstream/hepta-intake-20260724-r6` /
+`6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899`. The R6 manifest SHA-256 is
+`4e8993154f769ce2f4bdbd078816fe6ce193e64ca12913ca09acec073532bbdc`.
+The gate verifies direct refs, manifest and shard hashes, ancestry, complete
+Git ranges, range and path digests, commit and file inventories, zero imported
+claims, and all merge, rebase, cherry-pick, deployment, and live-enablement
+non-claims. Its negative fixture is:
 
 ```bash
 scripts/hepta-upstream-codex-current-intake-negative-fixture.sh
 ```
+
+The historical R3 integrity gate remains independently available as:
+
+```bash
+bash scripts/hepta-upstream-codex-r3-integrity.sh
+```
+
+The canonical R6 gate invokes it before validating R4, R5, and R6. R3 remains bound
+to `docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json`
+with SHA-256
+`4e0ad42fe7edc0f073d840457f48cf579befbbfd0abb73cc0845778f3122eca6`.
+The additive v3 ledger pins canonical URL
+`https://github.com/openai/codex.git`, source ref `refs/heads/main`, predecessor
+cutoff `88fac6fe108237a105d3203e3508b0d531054312`, local-only R3 ref
+`refs/remotes/upstream/hepta-intake-20260722-r3`, and observed remote head
+`9fc715c0861c956c894a91890b78dc05b304ba29`. The historical gate rejects a
+missing or different direct ref, URL/ref/SHA drift, incomplete commit or file
+inventory, normalized hash drift, floating-fetch evidence, false import
+claims, or drift in either preserved predecessor.
 
 The R3-only `88fac6fe…9fc715c0` range contains 83 commits, 522 changed
 repository paths, and 508 changed `codex-rs` paths. Its reproducible identities
@@ -80,16 +103,17 @@ Its frozen ref `refs/remotes/upstream/hepta-intake-20260721` remains pinned to
 that evidence. In particular, the `history_storage_efficiency` receipt remains
 bound to that literal upstream commit instead of inheriting the current cutoff.
 
-Manual full-preflight CI materializes all three frozen refs through
+Manual full-preflight CI materializes all six frozen refs through
 `scripts/hepta-ci-materialize-upstream-intake materialize`. The
-`.github/hepta-ci-contract-v1.json` contract binds R1, R2, and R3 refs to their
-exact SHAs. A clean checkout fetches only a missing exact commit and creates
-only its missing ref; already-correct predecessors are left untouched, while
-any existing misdirected frozen ref is rejected rather than moved. Frozen refs
+`.github/hepta-ci-contract-v1.json` contract binds R1 through R6 to their exact
+SHAs. A clean checkout fetches only a missing exact commit and creates only its
+missing ref; already-correct historical refs are left untouched, while any
+existing misdirected frozen ref is rejected rather than moved. Frozen refs
 must be direct refs whose raw object IDs equal the pinned SHAs and whose raw
 objects are commits. `scripts/hepta-ci-baseline-contract self-test` covers
-missing R3, misdirected R3, exact clean-checkout R3 materialization, R1/R2
-preservation, and overwrite denial.
+missing or misdirected R4/R5/R6 refs, exact clean-checkout R4/R5/R6
+materialization, R1/R2/R3 preservation, R4/R5 preservation while materializing
+R6, and overwrite denial.
 
 The r2-only selected absorption for upstream
 `44481a1c4548d1cc0cc3c95aa03b59ec4cba074a` is a bounded semantic port. The

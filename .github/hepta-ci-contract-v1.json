@@ -99,6 +99,21 @@
         "role": "current_r3",
         "ref": "refs/remotes/upstream/hepta-intake-20260722-r3",
         "sha": "9fc715c0861c956c894a91890b78dc05b304ba29"
+      },
+      {
+        "role": "current_r4",
+        "ref": "refs/remotes/upstream/hepta-intake-20260724-r4",
+        "sha": "f61b51ddd924643514b33234816a8a2772b1aec7"
+      },
+      {
+        "role": "current_r5",
+        "ref": "refs/remotes/upstream/hepta-intake-20260724-r5",
+        "sha": "81da9deb065d7adb283816b19b40f89bcc484276"
+      },
+      {
+        "role": "current_r6",
+        "ref": "refs/remotes/upstream/hepta-intake-20260724-r6",
+        "sha": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899"
       }
     ]
   },

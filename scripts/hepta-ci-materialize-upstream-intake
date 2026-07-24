@@ -10,6 +10,12 @@ EXPECTED_R2_REF="refs/remotes/upstream/hepta-intake-20260721-r2"
 EXPECTED_R2_SHA="88fac6fe108237a105d3203e3508b0d531054312"
 EXPECTED_R3_REF="refs/remotes/upstream/hepta-intake-20260722-r3"
 EXPECTED_R3_SHA="9fc715c0861c956c894a91890b78dc05b304ba29"
+EXPECTED_R4_REF="refs/remotes/upstream/hepta-intake-20260724-r4"
+EXPECTED_R4_SHA="f61b51ddd924643514b33234816a8a2772b1aec7"
+EXPECTED_R5_REF="refs/remotes/upstream/hepta-intake-20260724-r5"
+EXPECTED_R5_SHA="81da9deb065d7adb283816b19b40f89bcc484276"
+EXPECTED_R6_REF="refs/remotes/upstream/hepta-intake-20260724-r6"
+EXPECTED_R6_SHA="6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899"
 
 usage() {
   echo "usage: scripts/hepta-ci-materialize-upstream-intake <verify|materialize>" >&2
@@ -29,6 +35,12 @@ load_contract() {
     --arg r2_sha "$EXPECTED_R2_SHA" \
     --arg r3_ref "$EXPECTED_R3_REF" \
     --arg r3_sha "$EXPECTED_R3_SHA" \
+    --arg r4_ref "$EXPECTED_R4_REF" \
+    --arg r4_sha "$EXPECTED_R4_SHA" \
+    --arg r5_ref "$EXPECTED_R5_REF" \
+    --arg r5_sha "$EXPECTED_R5_SHA" \
+    --arg r6_ref "$EXPECTED_R6_REF" \
+    --arg r6_sha "$EXPECTED_R6_SHA" \
     '
       .upstream_intake == {
         url:$url,
@@ -36,7 +48,10 @@ load_contract() {
         refs:[
           {role:"predecessor",ref:$predecessor_ref,sha:$predecessor_sha},
           {role:"current_r2",ref:$r2_ref,sha:$r2_sha},
-          {role:"current_r3",ref:$r3_ref,sha:$r3_sha}
+          {role:"current_r3",ref:$r3_ref,sha:$r3_sha},
+          {role:"current_r4",ref:$r4_ref,sha:$r4_sha},
+          {role:"current_r5",ref:$r5_ref,sha:$r5_sha},
+          {role:"current_r6",ref:$r6_ref,sha:$r6_sha}
         ]
       }
     ' "$CONTRACT" >/dev/null; then
@@ -150,8 +165,8 @@ case "$1" in
 esac
 
 jq -n \
-  --arg schema hepta_ci_upstream_intake_v2 \
+  --arg schema hepta_ci_upstream_intake_v4 \
   --arg status ready \
   --arg url "$url" \
   --argjson refs "$(jq -c '.upstream_intake.refs' "$CONTRACT")" \
-  '{schema:$schema,status:$status,url:$url,refs:$refs,exact_fetch_only:true,predecessor_refs_preserved:true,current_r3_ref_materialized:true,merge_performed:false,checkout_performed:false,push_performed:false}'
+  '{schema:$schema,status:$status,url:$url,refs:$refs,exact_fetch_only:true,historical_refs_preserved:true,current_r4_ref_materialized:true,current_r5_ref_materialized:true,current_r6_ref_materialized:true,merge_performed:false,checkout_performed:false,push_performed:false}'

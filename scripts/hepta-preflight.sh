@@ -1752,10 +1752,10 @@ HEPTA_UPSTREAM_CODEX_SNAPSHOT_OBSERVE_REMOTE=0 \
 echo "[hepta-preflight] upstream Codex diff ledger gate"
 scripts/hepta-upstream-codex-diff-ledger.sh
 
-echo "[hepta-preflight] upstream Codex current intake freshness gate"
+echo "[hepta-preflight] upstream Codex current latest-recorded intake gate (includes R3 historical integrity)"
 scripts/hepta-upstream-codex-current-intake.sh
 
-echo "[hepta-preflight] upstream Codex current intake negative fixture"
+echo "[hepta-preflight] upstream Codex current latest-recorded intake negative fixture"
 scripts/hepta-upstream-codex-current-intake-negative-fixture.sh
 
 echo "[hepta-preflight] upstream Codex doctor environment diagnostics absorption gate"
