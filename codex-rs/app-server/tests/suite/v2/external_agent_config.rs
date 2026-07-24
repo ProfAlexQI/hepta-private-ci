@@ -250,25 +250,30 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path(), &server.uri())?;
     let project_root = codex_home.path().join("repo");
+    let source_created_at_text = "2024-01-02T03:04:05Z";
+    let source_updated_at_text = "2024-03-01T04:05:06Z";
+    let source_created_at =
+        chrono::DateTime::parse_from_rfc3339(source_created_at_text)?.timestamp();
+    let source_updated_at =
+        chrono::DateTime::parse_from_rfc3339(source_updated_at_text)?.timestamp();
     let recent_timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let session_dir = codex_home.path().join(".claude/projects/repo");
     let session_path = session_dir.join("session.jsonl");
     std::fs::create_dir_all(&project_root)?;
     std::fs::create_dir_all(&session_dir)?;
-    std::fs::write(
-        &session_path,
+    let session_contents = |created_at: &str, updated_at: &str| {
         [
             serde_json::json!({
                 "type": "user",
                 "cwd": &project_root,
-                "timestamp": &recent_timestamp,
+                "timestamp": created_at,
                 "message": { "content": "first request" },
             })
             .to_string(),
             serde_json::json!({
                 "type": "assistant",
                 "cwd": &project_root,
-                "timestamp": &recent_timestamp,
+                "timestamp": updated_at,
                 "message": { "content": "first answer" },
             })
             .to_string(),
@@ -278,7 +283,11 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {
             })
             .to_string(),
         ]
-        .join("\n"),
+        .join("\n")
+    };
+    std::fs::write(
+        &session_path,
+        session_contents(&recent_timestamp, &recent_timestamp),
     )?;
 
     let home_dir = codex_home.path().display().to_string();
@@ -301,6 +310,10 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {
     .await??;
     let detected: ExternalAgentConfigDetectResponse = to_response(response)?;
     assert_eq!(detected.items.len(), 1);
+    std::fs::write(
+        &session_path,
+        session_contents(source_created_at_text, source_updated_at_text),
+    )?;
 
     let request_id = mcp
         .send_raw_request(
@@ -332,7 +345,7 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {
             source_kinds: None,
             archived: None,
             cwd: None,
-            use_state_db_only: false,
+            use_state_db_only: true,
             search_term: None,
         })
         .await?;
@@ -349,6 +362,8 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {
         .clone();
     assert_eq!(thread.preview, "first request");
     assert_eq!(thread.name.as_deref(), Some("source session title"));
+    assert_eq!(thread.created_at, source_created_at);
+    assert_eq!(thread.updated_at, source_updated_at);
 
     let request_id = mcp
         .send_thread_read_request(ThreadReadParams {

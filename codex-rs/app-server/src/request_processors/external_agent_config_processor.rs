@@ -11,6 +11,7 @@ use crate::error_code::internal_error;
 use crate::error_code::invalid_params;
 use crate::outgoing_message::ConnectionRequestId;
 use crate::outgoing_message::OutgoingMessageSender;
+use chrono::DateTime;
 use codex_app_server_protocol::CommandMigration;
 use codex_app_server_protocol::ExternalAgentConfigDetectParams;
 use codex_app_server_protocol::ExternalAgentConfigDetectResponse;
@@ -282,7 +283,14 @@ impl ExternalAgentConfigRequestProcessor {
             cwd,
             title,
             rollout_items,
+            chronology,
         } = session;
+        let chronology = chronology.and_then(|chronology| {
+            Some((
+                DateTime::from_timestamp(chronology.created_at, /*nsecs*/ 0)?,
+                DateTime::from_timestamp(chronology.updated_at, /*nsecs*/ 0)?,
+            ))
+        });
         let config = self
             .config_manager
             .load_with_overrides(
@@ -317,9 +325,10 @@ impl ExternalAgentConfigRequestProcessor {
             })
             .await
             .map_err(|err| internal_error(format!("failed to import session: {err}")))?;
-        if let Some(title) = title
-            && let Some(name) = codex_core::util::normalize_thread_name(&title)
-        {
+        let name = title
+            .as_deref()
+            .and_then(codex_core::util::normalize_thread_name);
+        if let Some(name) = name {
             imported_thread
                 .thread
                 .update_thread_metadata(
@@ -331,6 +340,24 @@ impl ExternalAgentConfigRequestProcessor {
                 )
                 .await
                 .map_err(|err| internal_error(format!("failed to name imported session: {err}")))?;
+        }
+        if let Some((created_at, updated_at)) = chronology {
+            imported_thread
+                .thread
+                .update_thread_metadata(
+                    ThreadMetadataPatch {
+                        created_at: Some(created_at),
+                        updated_at: Some(updated_at),
+                        ..Default::default()
+                    },
+                    /*include_archived*/ false,
+                )
+                .await
+                .map_err(|err| {
+                    internal_error(format!(
+                        "failed to preserve imported session chronology: {err}"
+                    ))
+                })?;
         }
         Ok(imported_thread.thread_id)
     }

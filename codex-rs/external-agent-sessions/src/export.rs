@@ -1,5 +1,6 @@
 use crate::ConversationMessage;
 use crate::ImportedExternalAgentSession;
+use crate::ImportedSessionChronology;
 use crate::MessageRole;
 use crate::records::conversation_messages;
 use crate::records::project_root_from_records;
@@ -29,6 +30,21 @@ pub fn load_session_for_import(path: &Path) -> io::Result<Option<ImportedExterna
         return Ok(None);
     };
     let messages = conversation_messages(&records);
+    let chronology = messages
+        .iter()
+        .filter_map(|message| message.timestamp)
+        .fold(None, |chronology: Option<(i64, i64)>, timestamp| {
+            Some(match chronology {
+                Some((created_at, updated_at)) => {
+                    (created_at.min(timestamp), updated_at.max(timestamp))
+                }
+                None => (timestamp, timestamp),
+            })
+        })
+        .map(|(created_at, updated_at)| ImportedSessionChronology {
+            created_at,
+            updated_at,
+        });
     let rollout_items = rollout_items_from_messages(&messages);
     if rollout_items.is_empty() {
         return Ok(None);
@@ -43,6 +59,7 @@ pub fn load_session_for_import(path: &Path) -> io::Result<Option<ImportedExterna
         cwd,
         title,
         rollout_items,
+        chronology,
     }))
 }
 

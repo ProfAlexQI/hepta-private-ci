@@ -32,6 +32,13 @@ pub struct ImportedExternalAgentSession {
     pub cwd: PathBuf,
     pub title: Option<String>,
     pub rollout_items: Vec<RolloutItem>,
+    pub chronology: Option<ImportedSessionChronology>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportedSessionChronology {
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone)]
