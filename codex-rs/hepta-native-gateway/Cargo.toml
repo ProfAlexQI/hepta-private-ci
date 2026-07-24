@@ -23,6 +23,7 @@ codex-exec = { workspace = true, optional = true }
 hepta-core = { workspace = true }
 hepta-gateway = { workspace = true }
 hepta-memory = { workspace = true }
+hepta-runtime = { workspace = true }
 libc = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
@@ -30,3 +31,4 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+zeroize.workspace = true

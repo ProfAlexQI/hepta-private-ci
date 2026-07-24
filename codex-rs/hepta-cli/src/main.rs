@@ -24,5 +24,6 @@ async fn main() -> anyhow::Result<()> {
         );
     };
 
-    native_gateway::run_native_gateway(options).await
+    let runtime = native_gateway::NativeGatewayRuntime::from_env()?;
+    native_gateway::run_native_gateway(options, runtime).await
 }

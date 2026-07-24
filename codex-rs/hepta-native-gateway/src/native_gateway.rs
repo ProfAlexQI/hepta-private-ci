@@ -102,6 +102,7 @@ use crate::native_telegram::NativeTelegramPluginStatus;
 use crate::provider_domain::ProviderChannelDryRunPlanResponse;
 use crate::provider_domain::ProviderReportContext;
 use crate::route_registry::*;
+use crate::runtime_composition::NativeGatewayRuntime;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
@@ -180,13 +181,22 @@ const NATIVE_TASK_ARTIFACT_ROUTE_SPECS: &[NativeTaskArtifactRouteSpec] = &[
     },
 ];
 
-pub async fn run_native_gateway(options: NativeGatewayOptions) -> Result<()> {
+pub async fn run_native_gateway(
+    options: NativeGatewayOptions,
+    runtime: NativeGatewayRuntime,
+) -> Result<()> {
     if !is_loopback_bind_addr(&options.bind_addr) && !allow_non_loopback_ui() {
         anyhow::bail!(
             "refusing to serve UI on non-loopback address {}; set HEPTA_ALLOW_NON_LOOPBACK_UI=1 only for an explicit local lab exposure",
             options.bind_addr
         );
     }
+    runtime.validate_readiness()?;
+    println!(
+        "Hepta Architecture V2 runtime composition ready: durable_outcomes={} live_gateway_mutations=false",
+        runtime.outcome_mode()
+    );
+    let _runtime = runtime;
 
     if options.with_telegram_plugin {
         let telegram_plugin =

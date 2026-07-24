@@ -7247,6 +7247,7 @@ dependencies = [
  "hepta-core",
  "hepta-gateway",
  "hepta-memory",
+ "hepta-runtime",
  "libc",
  "reqwest",
  "serde",
@@ -7254,6 +7255,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

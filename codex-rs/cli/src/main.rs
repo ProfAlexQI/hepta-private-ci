@@ -842,7 +842,8 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
         let Some(options) = native_gateway_options else {
             unreachable!("entrypoint facade selected native gateway without parsed options");
         };
-        native_gateway::run_native_gateway(options).await?;
+        let runtime = native_gateway::NativeGatewayRuntime::from_env()?;
+        native_gateway::run_native_gateway(options, runtime).await?;
         return Ok(());
     }
 
