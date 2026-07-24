@@ -5,9 +5,20 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+hepta-contracts.workspace = true
 hepta-core.workspace = true
+hmac.workspace = true
+same-file.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+tokio = { workspace = true, features = ["rt", "time"] }
+zeroize.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

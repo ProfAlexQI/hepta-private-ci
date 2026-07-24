@@ -111,6 +111,8 @@ fn transcript_entry(
 
 mod context_memory;
 mod context_plane;
+mod outcome_store;
+mod preference_cas;
 mod recall_context_core;
 mod recall_context_helpers;
 mod recall_context_quality;

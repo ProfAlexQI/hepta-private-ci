@@ -1,10 +1,13 @@
-//! In-memory reference store for Hepta session, memory, and transcript
-//! contracts.
+//! Hepta session, memory, transcript, outcome, and preference stores.
 //!
-//! The crate intentionally stays lightweight and storage-agnostic. Beyond the
-//! async store traits from `hepta-core`, it exposes snapshot helpers that make
-//! contract testing, doctor-style inspection, and restore preview automation
-//! easy to exercise without a durable backend. Recall callers can also derive
+//! Session/recall compatibility surfaces retain their lightweight in-memory
+//! reference implementation. Architecture V2 outcome receipts and preference
+//! CAS additionally have recoverable SQLite-WAL stores with full-sync commits,
+//! canonical-row integrity hashes, immutable transition replay, and
+//! fail-closed projection checks. Beyond the async store traits from
+//! `hepta-core`, the crate exposes snapshot helpers that make contract testing,
+//! doctor-style inspection, and restore preview automation easy to exercise
+//! without a durable backend. Recall callers can also derive
 //! compact per-source bundle counts through `hepta_core::ContextRecallSourceCounts`,
 //! the pre-limit `hepta_core::ContextRecallAvailability` summary when they only
 //! need source availability counts, a payload-light
@@ -126,8 +129,56 @@ use serde::Deserialize;
 use serde::Serialize;
 
 mod context_plane_helpers;
+mod contract_codec;
+mod durable;
+mod outcome_store;
+mod preference_authority;
+mod preference_cas;
 mod recall_helpers;
 mod snapshot_helpers;
+
+pub use durable::DurableIntegrityKey;
+pub use outcome_store::DurableOutcomeStore;
+pub use outcome_store::DurableOutcomeWriterError;
+pub use outcome_store::ExecutionEffectAck;
+pub use outcome_store::ExecutionEffectAckError;
+pub use outcome_store::ExecutionEffectAckParts;
+pub use outcome_store::ExecutionEffectAckRecordResult;
+pub use outcome_store::ExecutionIntent;
+pub use outcome_store::ExecutionIntentError;
+pub use outcome_store::ExecutionIntentParts;
+pub use outcome_store::ExecutionIntentResolveResult;
+pub use outcome_store::ExecutionIntentStageResult;
+pub use outcome_store::InMemoryOutcomeStore;
+pub use outcome_store::OutcomeIntent;
+pub use outcome_store::OutcomeIntentStageResult;
+pub use outcome_store::OutcomeIntentState;
+pub use outcome_store::OutcomeRecord;
+pub use outcome_store::OutcomeRecordResult;
+pub use outcome_store::OutcomeStoreError;
+pub use outcome_store::SyncDurableOutcomeWriter;
+pub use outcome_store::candidate_reference_hash;
+pub use preference_authority::AuthenticatedPreferenceFeedback;
+pub use preference_authority::PreferenceAuthorityCommitOutcome;
+pub use preference_authority::PreferenceAuthorityError;
+pub use preference_authority::PreferenceDomainReducer;
+pub use preference_authority::PreferenceDomainReducerError;
+pub use preference_authority::PreferenceFeedbackAuthenticationError;
+pub use preference_authority::PreferenceFeedbackAuthenticator;
+pub use preference_authority::PreferenceFeedbackChallenge;
+pub use preference_authority::PreferenceFeedbackRequest;
+pub use preference_authority::PreferenceFeedbackRequestParts;
+pub use preference_authority::PreferenceFeedbackSourceRef;
+pub use preference_authority::PreferenceReducerRef;
+pub use preference_authority::PreferenceReductionDraft;
+pub use preference_cas::DurablePreferenceStore;
+pub use preference_cas::InMemoryPreferenceStore;
+pub use preference_cas::PreferenceCasError;
+pub use preference_cas::PreferenceCommitOutcome;
+pub use preference_cas::PreferenceDocumentCommitOutcome;
+pub use preference_cas::PreferenceGenesisOutcome;
+pub use preference_cas::PreferenceSeedOutcome;
+pub use preference_cas::PreferenceStateDocument;
 
 /// Small non-durable store for local development, tests, and snapshot-backed
 /// runtime state.
