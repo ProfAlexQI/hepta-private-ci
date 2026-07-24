@@ -97,7 +97,7 @@ run_rust_backend() {
       -p hepta-gateway \
       -p hepta-native-gateway \
       -p hepta-cli --bin hepta
-  assert_test_inventory "Architecture V2 stable contracts" 11 '.*' \
+  assert_test_inventory "Architecture V2 stable contracts" 12 '.*' \
     "$ROOT/codex-rs/hepta-contracts/tests/stable_contracts.rs"
   budgeted_cargo ci-hepta-contracts-tests 600 \
     cargo test --locked --manifest-path "$MANIFEST" -q \

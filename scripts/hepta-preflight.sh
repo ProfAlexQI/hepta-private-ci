@@ -74,7 +74,7 @@ cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-cli --bin hepta
 
 echo "[hepta-preflight] Architecture V2 contract boundary tests"
-assert_test_inventory "Architecture V2 stable contracts" 11 '.*' \
+assert_test_inventory "Architecture V2 stable contracts" 12 '.*' \
   codex-rs/hepta-contracts/tests/stable_contracts.rs
 budgeted_cargo_test architecture-v2-contracts "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
   --offline --manifest-path "$MANIFEST" -q -p hepta-contracts
