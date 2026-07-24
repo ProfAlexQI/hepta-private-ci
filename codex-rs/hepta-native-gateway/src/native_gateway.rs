@@ -103,6 +103,8 @@ use crate::provider_domain::ProviderChannelDryRunPlanResponse;
 use crate::provider_domain::ProviderReportContext;
 use crate::route_registry::*;
 use crate::runtime_composition::NativeGatewayRuntime;
+use crate::runtime_composition::RuntimeRequestDisposition;
+use crate::runtime_composition::RuntimeRequestPreflightReceipt;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
@@ -196,7 +198,7 @@ pub async fn run_native_gateway(
         "Hepta Architecture V2 runtime composition ready: durable_outcomes={} live_gateway_mutations=false",
         runtime.outcome_mode()
     );
-    let _runtime = runtime;
+    let runtime = Arc::new(runtime);
 
     if options.with_telegram_plugin {
         let telegram_plugin =
@@ -227,6 +229,7 @@ pub async fn run_native_gateway(
     );
     let connection_pool = NativeGatewayConnectionPool::new(
         options,
+        runtime,
         NATIVE_GATEWAY_WORKER_COUNT,
         NATIVE_GATEWAY_CONNECTION_QUEUE_CAPACITY,
     )?;
@@ -267,6 +270,7 @@ struct NativeGatewayConnection {
 impl NativeGatewayConnectionPool {
     fn new(
         options: NativeGatewayOptions,
+        runtime: Arc<NativeGatewayRuntime>,
         worker_count: usize,
         queue_capacity: usize,
     ) -> Result<Self> {
@@ -277,10 +281,11 @@ impl NativeGatewayConnectionPool {
         let receiver = Arc::new(Mutex::new(receiver));
         for index in 0..worker_count {
             let receiver = Arc::clone(&receiver);
+            let runtime = Arc::clone(&runtime);
             let options = options.clone();
             thread::Builder::new()
                 .name(format!("hepta-native-http-{index}"))
-                .spawn(move || native_gateway_worker_loop(receiver, options))
+                .spawn(move || native_gateway_worker_loop(receiver, options, runtime))
                 .with_context(|| format!("spawn native gateway HTTP worker {index}"))?;
         }
         Ok(Self { sender })
@@ -321,6 +326,7 @@ impl NativeGatewayConnectionPool {
 fn native_gateway_worker_loop(
     receiver: Arc<Mutex<mpsc::Receiver<NativeGatewayConnection>>>,
     options: NativeGatewayOptions,
+    runtime: Arc<NativeGatewayRuntime>,
 ) {
     loop {
         let connection = match receiver.lock() {
@@ -333,9 +339,12 @@ fn native_gateway_worker_loop(
         let Ok(mut connection) = connection else {
             return;
         };
-        if let Err(error) =
-            handle_native_gateway_connection(&mut connection.stream, connection.deadline, &options)
-        {
+        if let Err(error) = handle_native_gateway_connection(
+            &mut connection.stream,
+            connection.deadline,
+            &options,
+            &runtime,
+        ) {
             eprintln!("native gateway HTTP connection failed: {error:#}");
         }
     }
@@ -345,6 +354,7 @@ fn handle_native_gateway_connection(
     stream: &mut TcpStream,
     deadline: Instant,
     options: &NativeGatewayOptions,
+    runtime: &NativeGatewayRuntime,
 ) -> Result<()> {
     configure_http_stream(stream)?;
     let request = match read_http_request_with_deadline(stream, deadline) {
@@ -367,12 +377,28 @@ fn handle_native_gateway_connection(
             br#"{"error":"bad request"}"#,
         );
     };
+    if !matches!(method, "GET" | "POST") {
+        return write_http_response(
+            stream,
+            "405 Method Not Allowed",
+            "text/plain; charset=utf-8",
+            b"method not allowed; supported POST endpoints are /api/actions/<action> and native POST route specs",
+        );
+    }
+    let request_body = request_body_text(&request);
+    let preflight = runtime
+        .preflight_request(method, path, request_body)
+        .map_err(|error| anyhow::anyhow!("RuntimeKernel request preflight failed: {error}"))?;
     if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path) {
         return write_http_response(stream, status, content_type, body);
     }
-    let request_body = request_body_text(&request);
-    let (status, content_type, body) =
-        route_native_gateway_request_with_body(method, path, options, request_body);
+    let (status, content_type, body) = route_native_gateway_request_with_preflight(
+        method,
+        path,
+        options,
+        request_body,
+        &preflight,
+    );
     write_http_response(stream, status, content_type, body.as_bytes())
 }
 
@@ -385,12 +411,53 @@ fn route_native_gateway_request(
     route_native_gateway_request_with_body(method, path, options, None)
 }
 
+#[cfg(test)]
 fn route_native_gateway_request_with_body(
     method: &str,
     path: &str,
     options: &NativeGatewayOptions,
     request_body: Option<&str>,
 ) -> (&'static str, &'static str, String) {
+    let preflight = RuntimeRequestPreflightReceipt {
+        request_binding_hash: "unit-test-request-binding".into(),
+        disposition: if method == "GET" {
+            RuntimeRequestDisposition::ReadOnlyDispatch
+        } else {
+            RuntimeRequestDisposition::PlanOnlyQuarantine
+        },
+        mutation_authorized: false,
+        durable_intent_recorded: false,
+        provider_effect_ack_recorded: false,
+        terminal_receipt_recorded: false,
+    };
+    route_native_gateway_request_with_preflight(method, path, options, request_body, &preflight)
+}
+
+fn route_native_gateway_request_with_preflight(
+    method: &str,
+    path: &str,
+    options: &NativeGatewayOptions,
+    request_body: Option<&str>,
+    preflight: &RuntimeRequestPreflightReceipt,
+) -> (&'static str, &'static str, String) {
+    let expected_disposition = if method == "GET" {
+        RuntimeRequestDisposition::ReadOnlyDispatch
+    } else {
+        RuntimeRequestDisposition::PlanOnlyQuarantine
+    };
+    if preflight.request_binding_hash.is_empty()
+        || preflight.disposition != expected_disposition
+        || preflight.mutation_authorized
+        || preflight.durable_intent_recorded
+        || preflight.provider_effect_ack_recorded
+        || preflight.terminal_receipt_recorded
+    {
+        return (
+            "503 Service Unavailable",
+            "application/json; charset=utf-8",
+            r#"{"error":"runtime request preflight invalid"}"#.to_string(),
+        );
+    }
     let telegram_plugin = native_telegram::telegram_plugin_status(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,
@@ -3057,12 +3124,16 @@ fn route_native_gateway_request_with_body(
         }
     }
 
+    let native_post_gates = preflight.native_post_gate_inputs(
+        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
+        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+    );
     if let Some(report) = hepta_gateway::native_post_dispatch_plan_report(
         method,
         path,
         request_body,
-        env_truthy(NATIVE_POST_REAL_HANDLERS_ENV),
-        env_truthy(NATIVE_POST_REAL_HANDLER_APPROVAL_ENV),
+        native_post_gates.real_handler_enabled,
+        native_post_gates.operator_approval_enabled,
         native_post_real_handler_scope_from_env().as_deref(),
         &native_post_execution_store_root(),
         NativePostExecutionStoreLimits {

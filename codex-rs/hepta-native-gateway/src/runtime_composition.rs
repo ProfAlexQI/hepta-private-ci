@@ -7,6 +7,8 @@ use anyhow::Context;
 use anyhow::Result;
 use hepta_memory::DurableIntegrityKey;
 use hepta_runtime::RuntimeKernel;
+use sha2::Digest;
+use sha2::Sha256;
 use zeroize::Zeroizing;
 
 #[cfg(unix)]
@@ -33,6 +35,48 @@ const ENCODED_KEY_WITH_NEWLINE_BYTES: usize = ENCODED_KEY_BYTES + 1;
 pub struct NativeGatewayRuntime {
     kernel: RuntimeKernel,
     outcome_mode: RuntimeOutcomeMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RuntimeRequestDisposition {
+    ReadOnlyDispatch,
+    PlanOnlyQuarantine,
+}
+
+/// Request-bound readiness/quarantine evidence. This is neither exact tool
+/// authority nor a durable execution outcome receipt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RuntimeRequestPreflightReceipt {
+    pub(crate) request_binding_hash: String,
+    pub(crate) disposition: RuntimeRequestDisposition,
+    pub(crate) mutation_authorized: bool,
+    pub(crate) durable_intent_recorded: bool,
+    pub(crate) provider_effect_ack_recorded: bool,
+    pub(crate) terminal_receipt_recorded: bool,
+}
+
+pub(crate) struct NativePostRuntimeGateInputs {
+    pub(crate) real_handler_enabled: bool,
+    pub(crate) operator_approval_enabled: bool,
+}
+
+impl RuntimeRequestPreflightReceipt {
+    pub(crate) fn native_post_gate_inputs(
+        &self,
+        configured_enablement: bool,
+        configured_approval: bool,
+    ) -> NativePostRuntimeGateInputs {
+        let exact_effect_authority = self.disposition
+            == RuntimeRequestDisposition::PlanOnlyQuarantine
+            && self.mutation_authorized
+            && self.durable_intent_recorded
+            && !self.provider_effect_ack_recorded
+            && !self.terminal_receipt_recorded;
+        NativePostRuntimeGateInputs {
+            real_handler_enabled: configured_enablement && exact_effect_authority,
+            operator_approval_enabled: configured_approval && exact_effect_authority,
+        }
+    }
 }
 
 impl fmt::Debug for NativeGatewayRuntime {
@@ -128,8 +172,73 @@ impl NativeGatewayRuntime {
             .map_err(|error| anyhow::anyhow!("attached RuntimeKernel readiness failed: {error}"))
     }
 
+    pub(crate) fn preflight_request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> Result<RuntimeRequestPreflightReceipt> {
+        let disposition = match method {
+            "GET" => RuntimeRequestDisposition::ReadOnlyDispatch,
+            "POST" => RuntimeRequestDisposition::PlanOnlyQuarantine,
+            _ => anyhow::bail!("attached RuntimeKernel denied unsupported HTTP method"),
+        };
+        if !path.starts_with('/') {
+            anyhow::bail!("attached RuntimeKernel denied non-origin request target");
+        }
+        let session_id = self
+            .kernel
+            .active_session_id()
+            .map_err(|error| anyhow::anyhow!("attached RuntimeKernel session failed: {error}"))?;
+        let model = self
+            .kernel
+            .model_selection_for_session(&session_id)
+            .map_err(|error| anyhow::anyhow!("attached RuntimeKernel model failed: {error}"))?
+            .active;
+        let mut hasher = Sha256::new();
+        for value in [
+            b"hepta-native-gateway-runtime-request-v1".as_slice(),
+            method.as_bytes(),
+            path.as_bytes(),
+            body.unwrap_or_default().as_bytes(),
+            session_id.as_bytes(),
+            model.provider.as_bytes(),
+            model.model.as_bytes(),
+        ] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value);
+        }
+        Ok(RuntimeRequestPreflightReceipt {
+            request_binding_hash: format!("{:x}", hasher.finalize()),
+            disposition,
+            mutation_authorized: false,
+            durable_intent_recorded: false,
+            provider_effect_ack_recorded: false,
+            terminal_receipt_recorded: false,
+        })
+    }
+
     pub(crate) const fn outcome_mode(&self) -> &'static str {
         self.outcome_mode.as_str()
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn bootstrap_for_test(root: &Path) -> Result<Self> {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
+        let key = root.join("runtime.key");
+        fs::write(
+            &key,
+            b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )?;
+        fs::set_permissions(&key, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
+        Self::open(RuntimeCompositionConfig {
+            outcome_database: root.join("outcomes.sqlite3"),
+            integrity_key_file: key,
+            outcome_mode: RuntimeOutcomeMode::BootstrapNew,
+        })
     }
 }
 
@@ -262,6 +371,36 @@ mod tests {
         })
         .expect("bootstrap keyed runtime");
         bootstrap.validate_readiness().expect("bootstrap readiness");
+        let read = bootstrap
+            .preflight_request("GET", "/api/health", None)
+            .expect("read-only preflight");
+        assert_eq!(
+            read.disposition,
+            RuntimeRequestDisposition::ReadOnlyDispatch
+        );
+        assert!(!read.mutation_authorized);
+        assert!(!read.durable_intent_recorded);
+        assert!(!read.provider_effect_ack_recorded);
+        assert!(!read.terminal_receipt_recorded);
+        let plan = bootstrap
+            .preflight_request("POST", "/api/tasks/publish", Some(r#"{"dry_run":true}"#))
+            .expect("plan-only preflight");
+        assert_eq!(
+            plan.disposition,
+            RuntimeRequestDisposition::PlanOnlyQuarantine
+        );
+        assert_ne!(read.request_binding_hash, plan.request_binding_hash);
+        assert!(!plan.mutation_authorized);
+        let configured = plan.native_post_gate_inputs(true, true);
+        assert!(!configured.real_handler_enabled);
+        assert!(!configured.operator_approval_enabled);
+        assert!(
+            bootstrap
+                .preflight_request("DELETE", "/api/tasks/1", None)
+                .expect_err("mutation method must fail closed")
+                .to_string()
+                .contains("unsupported HTTP method")
+        );
         drop(bootstrap);
 
         let opened = NativeGatewayRuntime::open(RuntimeCompositionConfig {

@@ -35,21 +35,28 @@
         assert!(err.to_string().contains("unexpected --serve-ui argument"));
     }
 
+    fn test_gateway_options(with_telegram_plugin: bool) -> NativeGatewayOptions {
+        NativeGatewayOptions {
+            bind_addr: DEFAULT_BIND_ADDR.to_string(),
+            with_telegram_plugin,
+            telegram_plugin_poll_ms: DEFAULT_TELEGRAM_POLL_MS,
+        }
+    }
+
     #[test]
     fn bounded_worker_pool_keeps_a_fast_rejection_responsive_during_a_slow_read() {
         use std::io::Read;
         use std::io::Write;
         use std::time::Duration;
-
-        let options = NativeGatewayOptions {
-            bind_addr: DEFAULT_BIND_ADDR.to_string(),
-            with_telegram_plugin: false,
-            telegram_plugin_poll_ms: DEFAULT_TELEGRAM_POLL_MS,
-        };
-        let pool = NativeGatewayConnectionPool::new(options, 2, 2).expect("worker pool");
+        let options = test_gateway_options(false);
+        let runtime_root = tempfile::tempdir().expect("runtime root");
+        let runtime = Arc::new(
+            NativeGatewayRuntime::bootstrap_for_test(runtime_root.path()).expect("keyed runtime"),
+        );
+        let pool =
+            NativeGatewayConnectionPool::new(options, runtime, 2, 2).expect("worker pool");
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
         let address = listener.local_addr().expect("address");
-
         let slow_client = TcpStream::connect(address).expect("slow client");
         let (slow_server, _) = listener.accept().expect("slow server");
         pool.dispatch(slow_server).expect("dispatch slow connection");
@@ -219,11 +226,7 @@
 
     #[test]
     fn native_gateway_readiness_exposes_pending_telegram_migration() {
-        let options = NativeGatewayOptions {
-            bind_addr: "127.0.0.1:7373".to_string(),
-            with_telegram_plugin: true,
-            telegram_plugin_poll_ms: 1500,
-        };
+        let options = test_gateway_options(true);
         let telegram_plugin =
             native_telegram::telegram_plugin_status(true, options.telegram_plugin_poll_ms);
         let body = native_gateway_json(&options, &telegram_plugin);
@@ -284,11 +287,7 @@
 
     #[test]
     fn telegram_live_soak_endpoint_is_side_effect_free() {
-        let options = NativeGatewayOptions {
-            bind_addr: "127.0.0.1:7373".to_string(),
-            with_telegram_plugin: true,
-            telegram_plugin_poll_ms: 1500,
-        };
+        let options = test_gateway_options(true);
         let (status, content_type, body) =
             route_native_gateway_request("GET", "/api/telegram-live-soak", &options);
         assert_eq!(status, "200 OK");
@@ -47494,6 +47493,10 @@
         use super::*;
 
         include!("tests/first_model_invocation.rs");
+    }
+    mod runtime_ingress_tests {
+        use super::*;
+        include!("tests/runtime_ingress.rs");
     }
     #[test]
     fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_operator_acknowledgement_non_acceptance_endpoint_blocks_acknowledgement_side_effects()
