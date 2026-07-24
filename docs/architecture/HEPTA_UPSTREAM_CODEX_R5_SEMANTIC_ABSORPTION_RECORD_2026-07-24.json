@@ -1,0 +1,114 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "upstream-codex-r5-semantic-absorption-2026-07-24",
+  "recorded_at": "2026-07-24T10:12:57Z",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R5.json",
+    "manifest_sha256": "dd56ea3130f035714fe14dcf25584161e669bb441a946548273a2ddec741e18f",
+    "commit": "a53794d561b01bf2d8e73defcd3a8e4271ea00b2",
+    "range_start_exclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "range_end_inclusive": "81da9deb065d7adb283816b19b40f89bcc484276",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "integration_mode": "selective_semantic_transplant_with_fail_closed_deferral",
+  "absorptions": [
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "a28374e0dbb4119659fb68f8c73de48e01838a5e",
+      "upstream_title": "Support Agent Plugins manifests (#35105)",
+      "disposition": "selective_semantic_transplant",
+      "hepta_commit": "cb366251686a0e1251adc17ad240916ec7f87e66",
+      "semantic_mapping": "Hepta recognizes supported Agent Plugin root manifests while preserving legacy manifest precedence, freezes manifest namespace and provenance before component loading, restricts Agent overlays to apps, hooks, and interface metadata, and enforces local DirectChildren filesystem authority with canonical containment and no-symlink checks for consumed skill resources.",
+      "core_files": [
+        "codex-rs/core-plugins/src/agent_plugin_manifest.rs",
+        "codex-rs/core-plugins/src/loader.rs",
+        "codex-rs/core-plugins/src/manifest.rs",
+        "codex-rs/core-skills/src/direct_child_discovery.rs",
+        "codex-rs/core-skills/src/skill_parser.rs",
+        "codex-rs/plugin/src/plugin_id.rs",
+        "codex-rs/utils/plugins/src/plugin_namespace.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-plugin",
+          "result": "passed",
+          "tests_passed": 3,
+          "tests_failed": 0
+        },
+        {
+          "command": "cargo test -p codex-core-skills",
+          "result": "passed",
+          "tests_passed": 103,
+          "tests_failed": 0
+        },
+        {
+          "command": "cargo test -p codex-core-plugins",
+          "result": "passed",
+          "tests_passed": 265,
+          "tests_failed": 0
+        },
+        {
+          "command": "cargo test -p codex-utils-plugins",
+          "result": "passed",
+          "tests_passed": 8,
+          "tests_failed": 0
+        }
+      ],
+      "package_fix_evidence": [
+        {
+          "command": "just fix -p codex-plugin",
+          "result": "passed"
+        },
+        {
+          "command": "just fix -p codex-core-skills",
+          "result": "passed"
+        },
+        {
+          "command": "just fix -p codex-core-plugins",
+          "result": "passed"
+        },
+        {
+          "command": "just fix -p codex-utils-plugins",
+          "result": "passed"
+        }
+      ],
+      "non_claims": [
+        "Remote plugin sharing still requires .codex-plugin/plugin.json.",
+        "Apps, hooks, and MCP component contents are consumed later from frozen paths and are not immutable byte snapshots.",
+        "The generic namespace validator is not yet fully unified with the Agent Plugin name validator."
+      ]
+    }
+  ],
+  "deferrals": [
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "81da9deb065d7adb283816b19b40f89bcc484276",
+      "upstream_title": "Allow hosts to customize `wait_for_environment` descriptions (#35106)",
+      "disposition": "deferred_prerequisite_unavailable",
+      "hepta_commit": null,
+      "reason": "The local baseline does not own the DeferredExecutor feature, wait_for_environment handler, router wiring, starting-environment state machine, or turn-frozen tool-description snapshot required to preserve authoritative exposure and bounded host customization.",
+      "missing_prerequisites": [
+        "DeferredExecutor feature gate",
+        "wait_for_environment handler",
+        "tool router wiring",
+        "starting-environment state machine",
+        "turn-frozen tool-description snapshot and StepContext binding"
+      ],
+      "tests_run": false
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 1,
+    "deferred_commit_count": 1,
+    "all_r5_candidates_absorbed": false,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "upstream-codex-r6-semantic-absorption-2026-07-24",
+  "recorded_at": "2026-07-24T10:12:57Z",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R6.json",
+    "manifest_sha256": "4e8993154f769ce2f4bdbd078816fe6ce193e64ca12913ca09acec073532bbdc",
+    "commit": "846e2d4aa0f6cf8ab5851d8a2dbb8e15d814f418",
+    "range_start_exclusive": "81da9deb065d7adb283816b19b40f89bcc484276",
+    "range_end_inclusive": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "integration_mode": "fail_closed_deferral_pending_hepta_native_prerequisites",
+  "absorptions": [],
+  "deferrals": [
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "ef2d3edb959a75a90665ade37d554f3ca65fe880",
+      "upstream_title": "Prewarm MCP runtime updates in the background (#35144)",
+      "disposition": "deferred_prerequisite_unavailable",
+      "hepta_commit": null,
+      "reason": "The local baseline lacks a published immutable McpRuntime, serialized exact refresh ownership, an authoritative dirty/generation transition, and the latest desired-state plus environment snapshot needed to ensure that stale background work cannot publish or detach a writer.",
+      "missing_prerequisites": [
+        "published immutable McpRuntime snapshot",
+        "serialized exact refresh lock and ownership",
+        "authoritative dirty and generation transition",
+        "latest desired-state snapshot",
+        "latest environment snapshot",
+        "coalescing worker whose stale generations cannot publish",
+        "joined shutdown semantics"
+      ],
+      "tests_run": false
+    },
+    {
+      "lane": "security_tools_apps_runtime",
+      "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+      "upstream_title": "Refresh MCP runtimes when session auth changes (#35146)",
+      "disposition": "deferred_prerequisite_unavailable",
+      "hepta_commit": null,
+      "reason": "Credential rotation is a high-priority security semantic, but the local baseline lacks an authoritative authentication generation publisher and watcher, plugin auth-mode binding, a published auth/token snapshot, startup re-projection, and generation-bound coupling between the exposed tool catalog and the executing MCP client.",
+      "missing_prerequisites": [
+        "authoritative authentication generation publisher",
+        "authentication change watcher",
+        "plugin authentication-mode binding",
+        "published immutable auth and token snapshot",
+        "startup authentication re-projection",
+        "generation-bound tool catalog and executing MCP client"
+      ],
+      "required_behavioral_tests": [
+        "An old-generation runtime is revoked and cannot expose or execute tools after authentication rotation.",
+        "A real MCP Authorization header uses the new credential generation after rotation.",
+        "A cross-account transition cannot leak the prior account's tool catalog.",
+        "A startup authentication race cannot publish a mixed-credential runtime.",
+        "Tool exposure and execution always resolve through the same published generation."
+      ],
+      "tests_run": false
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 0,
+    "deferred_commit_count": 2,
+    "all_r6_candidates_absorbed": false,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
