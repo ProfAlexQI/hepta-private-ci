@@ -79,7 +79,7 @@
     "rust_toolchain_path": "codex-rs/rust-toolchain.toml",
     "rust_toolchain_sha256": "3e0fa7308a423309995753182d075dfff3e4bd6b891871c3f3b947f3e97699be",
     "cargo_lock_path": "codex-rs/Cargo.lock",
-    "cargo_lock_sha256": "efe28119c12e677d474619edbad8d936322068cb0f52b67505b30069d9e788fc",
+    "cargo_lock_sha256": "e7f2e4ee8a57d47b4570f3aa292cba9b7e0d44ee14fdfda69517c3f2064c940a",
     "workspace_manifest_path": "codex-rs/Cargo.toml",
     "workspace_manifest_sha256": "2681ba1813ddc978508f0ad811c352923f5a9018d0e80cdbbe8e05874dad2fe4",
     "package_manifest_path": "codex-rs/hepta-cli/Cargo.toml",
