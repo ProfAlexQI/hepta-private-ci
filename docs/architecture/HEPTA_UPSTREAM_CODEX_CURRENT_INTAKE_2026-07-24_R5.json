@@ -1,0 +1,177 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v5",
+  "intake_id": "upstream-codex-intake-2026-07-24-r5",
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+    "manifest_sha256": "ec5f48d428f80f9fa1eace82f23f758f0dc71ebe2f5ebc5f04ba05308c32a616",
+    "cutoff_head": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "preserved": true,
+    "modified_by_r5": false
+  },
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-24T07:26:25Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "81da9deb065d7adb283816b19b40f89bcc484276",
+    "range_start_exclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "range_end_inclusive": "81da9deb065d7adb283816b19b40f89bcc484276",
+    "commit_count": 2,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 28,
+    "net_insertions": 1191,
+    "net_deletions": 87,
+    "commit_file_touches": 28,
+    "local_head_observed": "038823b608f6919c637875b5ae15aba8996dd795",
+    "local_root": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+    "upstream_root": "59a180ddec4adaf9760972cdb1eb89f06a81be8b",
+    "merge_base": null,
+    "history_relationship": "no_merge_base_unrelated_roots",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream refs/heads/main:refs/remotes/upstream/main",
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "b158a9313653c113ca9bf695cd7209ac929bff6c9c04dfdfcaec9b423a9bd0a5"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "3340c084533627f55e6fa28ea4464da9ff2065ad40d34dfc6e4cf1178ea9779f"
+    }
+  },
+  "classification_summary": {
+    "commit_count": 2,
+    "status_counts": {
+      "candidate": 2,
+      "deferred": 0,
+      "rejected": 0,
+      "imported": 0
+    },
+    "priority_counts": {
+      "P1": 2
+    },
+    "category_counts": {
+      "tools_apps_runtime": 2
+    }
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "a28374e0dbb4119659fb68f8c73de48e01838a5e",
+      "authored_at": "2026-07-24T05:54:09Z",
+      "title": "Support Agent Plugins manifests (#35105)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "plugin_manifest",
+        "skill_discovery",
+        "path_containment",
+        "extension_precedence"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r5-p1-agent-plugin-manifest-trust",
+      "reason": "Agent Plugins 1.0 metadata and direct-child skill containment are applicable, but activation must remain behind Hepta plugin trust, namespace, hook, app, and filesystem-authority boundaries.",
+      "semantic_absorption_recommendation": "Adapt schema recognition, unsupported-version rejection, extension precedence, and direct-child path containment into Hepta's existing plugin loader. Do not activate root plugin.json support until trust and golden compatibility gates prove legacy precedence and path non-escape.",
+      "changed_file_count": 16,
+      "related_files": [
+        "codex-rs/core-plugins/src/agent_plugin_manifest.rs",
+        "codex-rs/core-plugins/src/agent_plugin_manifest_tests.rs",
+        "codex-rs/core-plugins/src/loader.rs",
+        "codex-rs/core-plugins/src/manifest.rs",
+        "codex-rs/core-skills/src/loader.rs",
+        "codex-rs/core-skills/src/loader/discovery.rs",
+        "codex-rs/core-skills/src/loader/environment.rs",
+        "codex-rs/core-skills/src/loader_tests.rs",
+        "codex-rs/core-skills/src/root_loader.rs",
+        "codex-rs/core-skills/src/service_tests.rs",
+        "codex-rs/core-skills/tests/environment_loader.rs",
+        "codex-rs/ext/skills/src/provider/host_tests.rs",
+        "codex-rs/ext/skills/tests/executor_file_system_authority.rs",
+        "codex-rs/plugin/src/load_outcome.rs",
+        "codex-rs/utils/plugins/src/lib.rs",
+        "codex-rs/utils/plugins/src/plugin_namespace.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "81da9deb065d7adb283816b19b40f89bcc484276",
+      "authored_at": "2026-07-24T05:54:53Z",
+      "title": "Allow hosts to customize wait_for_environment descriptions (#35106)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "core_api",
+        "deferred_executor",
+        "tool_spec_bounds",
+        "host_extension_data"
+      ],
+      "risk": "medium",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r5-p1-host-tool-description-bounds",
+      "reason": "Bounded host customization is compatible with Hepta's turn-frozen tool surface when feature gating remains authoritative and oversized descriptions fall back to defaults.",
+      "semantic_absorption_recommendation": "Transplant the bounded extension-data contract, default fallback, serialized-size limits, and independent DeferredExecutor feature gate. Preserve Hepta's explicit tool exposure and exact registration tests.",
+      "changed_file_count": 12,
+      "related_files": [
+        "codex-rs/core-api/src/lib.rs",
+        "codex-rs/core/src/lib.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/stream_events_utils_tests.rs",
+        "codex-rs/core/src/tools/handlers/mod.rs",
+        "codex-rs/core/src/tools/handlers/wait_for_environment.rs",
+        "codex-rs/core/src/tools/router.rs",
+        "codex-rs/core/src/tools/router_tests.rs",
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs",
+        "codex-rs/core/tests/suite/remote_env.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    }
+  ],
+  "selective_semantic_transplant": {
+    "ordinary_merge_rebase": "forbidden_no_merge_base",
+    "direct_cherry_pick": "not_default",
+    "ordered_slices": [
+      {
+        "order": 1,
+        "id": "r5-p1-host-tool-description-bounds",
+        "commits": [
+          "81da9deb065d7adb283816b19b40f89bcc484276"
+        ],
+        "required_evidence": [
+          "default descriptions preserved",
+          "custom descriptions bounded",
+          "oversized values fall back",
+          "feature-disabled tool remains absent"
+        ]
+      },
+      {
+        "order": 2,
+        "id": "r5-p1-agent-plugin-manifest-trust",
+        "commits": [
+          "a28374e0dbb4119659fb68f8c73de48e01838a5e"
+        ],
+        "required_evidence": [
+          "unsupported schema rejected",
+          "legacy manifest precedence preserved",
+          "direct-child skills cannot escape plugin root",
+          "apps and hooks remain trust-gated"
+        ]
+      }
+    ]
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
