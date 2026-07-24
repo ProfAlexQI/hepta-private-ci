@@ -8,7 +8,8 @@ R3_GATE="scripts/hepta-upstream-codex-r3-integrity.sh"
 R3_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json"
 R5_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R5.json"
 R6_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R6.json"
-fixture_dir="$(mktemp -d /tmp/hepta-current-intake-r6-negative.XXXXXX)"
+R7_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R7.json"
+fixture_dir="$(mktemp -d /tmp/hepta-current-intake-r7-negative.XXXXXX)"
 trap 'rm -rf "$fixture_dir"' EXIT
 
 expect_denied() {
@@ -70,16 +71,22 @@ expect_denied stale_r5_ref \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_REF=refs/remotes/upstream/main
 expect_denied_with_message stale_r6_ref "R6 ref does not match the pinned frozen ref" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_REF=refs/remotes/upstream/main
+expect_denied_with_message stale_r7_ref "R7 ref does not match the pinned frozen ref" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_REF=refs/remotes/upstream/main
 expect_denied r4_head_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R4_HEAD=9fc715c0861c956c894a91890b78dc05b304ba29
 expect_denied r5_head_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_HEAD=f61b51ddd924643514b33234816a8a2772b1aec7
 expect_denied_with_message r6_head_mismatch "R6 head does not match the pinned cutoff" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_HEAD=81da9deb065d7adb283816b19b40f89bcc484276
+expect_denied_with_message r7_head_mismatch "R7 head does not match the pinned cutoff" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_HEAD=6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899
 expect_denied manifest_override_without_fixture_opt_in \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_MANIFEST="$fixture_dir/r5-untrusted.json"
 expect_denied_with_message r6_manifest_override_without_fixture_opt_in "R6 manifest override requires explicit fixture opt-in" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_MANIFEST="$fixture_dir/r6-untrusted.json"
+expect_denied_with_message r7_manifest_override_without_fixture_opt_in "R7 manifest override requires explicit fixture opt-in" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-untrusted.json"
 
 jq '.predecessor_intake.manifest_sha256="0000000000000000000000000000000000000000000000000000000000000000"' "$R5_MANIFEST" >"$fixture_dir/r5-predecessor-hash.json"
 expect_denied r5_predecessor_hash_mismatch \
@@ -151,13 +158,49 @@ expect_denied_with_message r6_incomplete_file_surface "R6 manifest contract drif
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R6_MANIFEST="$fixture_dir/r6-incomplete-files.json"
 
+jq '.predecessor_intake.manifest_sha256="0000000000000000000000000000000000000000000000000000000000000000"' "$R7_MANIFEST" >"$fixture_dir/r7-predecessor-hash.json"
+expect_denied_with_message r7_predecessor_hash_mismatch "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-predecessor-hash.json"
+
+jq '.observation.range_identity.digest="0000000000000000000000000000000000000000000000000000000000000000"' "$R7_MANIFEST" >"$fixture_dir/r7-range-hash.json"
+expect_denied_with_message r7_range_hash_mismatch "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-range-hash.json"
+
+jq 'del(.commit_inventory[0])' "$R7_MANIFEST" >"$fixture_dir/r7-incomplete-commits.json"
+expect_denied_with_message r7_incomplete_commit_inventory "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-incomplete-commits.json"
+
+jq '.commit_inventory += [.commit_inventory[0]]' "$R7_MANIFEST" >"$fixture_dir/r7-duplicate-commit.json"
+expect_denied_with_message r7_duplicate_commit_inventory "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-duplicate-commit.json"
+
+jq '.commit_inventory[0].status="imported" | .commit_inventory[0].imported=true | .commit_inventory[0].imported_evidence={local_commit:"0000000000000000000000000000000000000000"} | .classification_summary.status_counts={candidate:0,deferred:0,rejected:0,imported:1}' "$R7_MANIFEST" >"$fixture_dir/r7-imported.json"
+expect_denied_with_message r7_false_import_claim "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-imported.json"
+
+jq '.claims.live_enablement_performed=true' "$R7_MANIFEST" >"$fixture_dir/r7-live-claim.json"
+expect_denied_with_message r7_false_live_claim "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-live-claim.json"
+
+jq 'del(.commit_inventory[0].related_files[0])' "$R7_MANIFEST" >"$fixture_dir/r7-incomplete-files.json"
+expect_denied_with_message r7_incomplete_file_surface "R7 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-incomplete-files.json"
+
 jq -n '{
-  schema:"hepta_upstream_codex_current_intake_negative_fixture_v6",
+  schema:"hepta_upstream_codex_current_intake_negative_fixture_v7",
   status:"ready",
   r3_historical_integrity_preserved:true,
   stale_r4_ref_denied:true,
   stale_or_floating_r5_ref_denied:true,
   stale_or_floating_r6_ref_denied:true,
+  stale_or_floating_r7_ref_denied:true,
   cutoff_sha_mismatch_denied:true,
   untrusted_manifest_override_denied:true,
   predecessor_hash_mismatch_denied:true,

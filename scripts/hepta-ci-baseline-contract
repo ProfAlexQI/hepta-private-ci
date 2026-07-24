@@ -159,6 +159,11 @@ verify_contract() {
           role:"current_r6",
           ref:"refs/remotes/upstream/hepta-intake-20260724-r6",
           sha:"6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899"
+        },
+        {
+          role:"current_r7",
+          ref:"refs/remotes/upstream/hepta-intake-20260724-r7",
+          sha:"f201c30c52a35f819262865a53df94b6f4ea7a50"
         }
       ]
     }
@@ -298,7 +303,7 @@ self_test() (
     echo "Hepta CI contract self-test accepted a different upstream intake ref" >&2
     return 1
   fi
-  jq '.upstream_intake.refs[5].sha = "0000000000000000000000000000000000000000"' \
+  jq '.upstream_intake.refs[6].sha = "0000000000000000000000000000000000000000"' \
     "$tmp/contract.json" >"$tmp/contract-mutated.json"
   if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted a different upstream intake SHA" >&2
@@ -327,7 +332,7 @@ self_test() (
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
 
-  local ref_fixture predecessor_ref predecessor_sha r2_ref r2_sha r3_ref r3_sha r4_ref r4_sha r5_ref r5_sha r6_ref r6_sha predecessor_before r2_before r3_before r4_before r5_before wrong_r4_after wrong_r5_after wrong_r6_after
+  local ref_fixture predecessor_ref predecessor_sha r2_ref r2_sha r3_ref r3_sha r4_ref r4_sha r5_ref r5_sha r6_ref r6_sha r7_ref r7_sha predecessor_before r2_before r3_before r4_before r5_before r6_before wrong_r4_after wrong_r5_after wrong_r6_after wrong_r7_after
   ref_fixture="$tmp/ref-fixture"
   predecessor_ref="refs/remotes/upstream/hepta-intake-20260721"
   predecessor_sha="45ac251e178416ff5c3022457ad8d2778c0d4549"
@@ -341,6 +346,8 @@ self_test() (
   r5_sha="81da9deb065d7adb283816b19b40f89bcc484276"
   r6_ref="refs/remotes/upstream/hepta-intake-20260724-r6"
   r6_sha="6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899"
+  r7_ref="refs/remotes/upstream/hepta-intake-20260724-r7"
+  r7_sha="f201c30c52a35f819262865a53df94b6f4ea7a50"
   git clone -q --shared --no-checkout "$ROOT" "$ref_fixture"
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$predecessor_sha"
   git -C "$ref_fixture" update-ref "$r2_ref" "$r2_sha"
@@ -348,10 +355,11 @@ self_test() (
   git -C "$ref_fixture" update-ref -d "$r4_ref"
   git -C "$ref_fixture" update-ref -d "$r5_ref"
   git -C "$ref_fixture" update-ref -d "$r6_ref"
+  git -C "$ref_fixture" update-ref -d "$r7_ref"
 
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" verify >/dev/null 2>&1; then
-    echo "Hepta CI contract self-test accepted missing R4/R5/R6 upstream intake refs" >&2
+    echo "Hepta CI contract self-test accepted missing R4/R5/R6/R7 upstream intake refs" >&2
     return 1
   fi
 
@@ -393,9 +401,23 @@ self_test() (
     return 1
   }
 
+  git -C "$ref_fixture" update-ref "$r6_ref" "$r6_sha"
+  git -C "$ref_fixture" update-ref "$r7_ref" "$r6_sha"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
+    "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test overwrote a misdirected R7 upstream intake ref" >&2
+    return 1
+  fi
+  wrong_r7_after="$(git -C "$ref_fixture" rev-parse "$r7_ref")"
+  [[ "$wrong_r7_after" == "$r6_sha" ]] || {
+    echo "Hepta CI contract self-test mutated a misdirected R7 upstream intake ref" >&2
+    return 1
+  }
+
   git -C "$ref_fixture" update-ref -d "$r4_ref"
   git -C "$ref_fixture" update-ref -d "$r5_ref"
   git -C "$ref_fixture" update-ref -d "$r6_ref"
+  git -C "$ref_fixture" update-ref -d "$r7_ref"
   predecessor_before="$(git -C "$ref_fixture" rev-parse "$predecessor_ref")"
   r2_before="$(git -C "$ref_fixture" rev-parse "$r2_ref")"
   r3_before="$(git -C "$ref_fixture" rev-parse "$r3_ref")"
@@ -425,22 +447,31 @@ self_test() (
     echo "Hepta CI contract self-test failed to materialize the exact R6 upstream intake ref" >&2
     return 1
   }
+  [[ "$(git -C "$ref_fixture" rev-parse "$r7_ref")" == "$r7_sha" ]] || {
+    echo "Hepta CI contract self-test failed to materialize the exact R7 upstream intake ref" >&2
+    return 1
+  }
 
   r4_before="$(git -C "$ref_fixture" rev-parse "$r4_ref")"
   r5_before="$(git -C "$ref_fixture" rev-parse "$r5_ref")"
-  git -C "$ref_fixture" update-ref -d "$r6_ref"
+  r6_before="$(git -C "$ref_fixture" rev-parse "$r6_ref")"
+  git -C "$ref_fixture" update-ref -d "$r7_ref"
   HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null
   [[ "$(git -C "$ref_fixture" rev-parse "$r4_ref")" == "$r4_before" ]] || {
-    echo "Hepta CI contract self-test moved the R4 historical upstream intake ref while materializing R6" >&2
+    echo "Hepta CI contract self-test moved the R4 historical upstream intake ref while materializing R7" >&2
     return 1
   }
   [[ "$(git -C "$ref_fixture" rev-parse "$r5_ref")" == "$r5_before" ]] || {
-    echo "Hepta CI contract self-test moved the R5 historical upstream intake ref while materializing R6" >&2
+    echo "Hepta CI contract self-test moved the R5 historical upstream intake ref while materializing R7" >&2
     return 1
   }
-  [[ "$(git -C "$ref_fixture" rev-parse "$r6_ref")" == "$r6_sha" ]] || {
-    echo "Hepta CI contract self-test failed to rematerialize the exact R6 upstream intake ref" >&2
+  [[ "$(git -C "$ref_fixture" rev-parse "$r6_ref")" == "$r6_before" ]] || {
+    echo "Hepta CI contract self-test moved the R6 historical upstream intake ref while materializing R7" >&2
+    return 1
+  }
+  [[ "$(git -C "$ref_fixture" rev-parse "$r7_ref")" == "$r7_sha" ]] || {
+    echo "Hepta CI contract self-test failed to rematerialize the exact R7 upstream intake ref" >&2
     return 1
   }
   HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -484,7 +515,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,missing_r4_r5_r6_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,clean_checkout_r4_r5_r6_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r6:true,historical_r5_ref_preserved_while_materializing_r6:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,missing_r4_r5_r6_r7_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r7:true,historical_r5_ref_preserved_while_materializing_r7:true,historical_r6_ref_preserved_while_materializing_r7:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 
 [[ $# -eq 1 ]] || usage
