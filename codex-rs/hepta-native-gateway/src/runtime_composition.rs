@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use anyhow::Context;
 use anyhow::Result;
 use hepta_memory::DurableIntegrityKey;
+use hepta_runtime::RuntimeExecutionReceipt;
 use hepta_runtime::RuntimeKernel;
+use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 
@@ -22,10 +24,29 @@ const INTEGRITY_KEY_FILE_ENV: &str = "HEPTA_RUNTIME_INTEGRITY_KEY_FILE";
 const OUTCOME_MODE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_MODE";
 const OPEN_EXISTING_MODE: &str = "open-existing";
 const BOOTSTRAP_NEW_MODE: &str = "bootstrap-new";
+pub(crate) const RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT: &str = "/api/actions/runtime-kernel-canary";
 pub struct NativeGatewayRuntime {
     kernel: RuntimeKernel,
     preference_ingress: NativePreferenceIngress,
     outcome_mode: RuntimeOutcomeMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RuntimeKernelCanaryReceipt {
+    product: &'static str,
+    runtime: &'static str,
+    status: &'static str,
+    action: &'static str,
+    request_binding_hash: String,
+    active_model_provider: String,
+    active_model: String,
+    invoked_tool: String,
+    execution_receipt: RuntimeExecutionReceipt,
+    provider_effect_ack_requirement: &'static str,
+    external_network_requested: bool,
+    external_side_effects: bool,
+    live_surface_expanded: bool,
+    raw_request_body_exposed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +127,16 @@ impl RuntimeTelegramDrainPreflightReceipt {
             Err(RuntimeTelegramDrainAdmissionError::ExactAuthorityUnavailable)
         }
     }
+}
+
+pub(crate) fn runtime_kernel_canary_body_admitted(body: Option<&str>) -> bool {
+    let Some(body) = body else {
+        return false;
+    };
+    let Ok(serde_json::Value::Object(object)) = serde_json::from_str(body) else {
+        return false;
+    };
+    object.len() == 1 && object.get("dry_run") == Some(&serde_json::Value::Bool(true))
 }
 
 impl fmt::Debug for NativeGatewayRuntime {
@@ -324,6 +355,70 @@ impl NativeGatewayRuntime {
     ) -> Option<PreferenceHttpResponse> {
         self.preference_ingress
             .route_http(method, path, body, request_binding_hash)
+    }
+
+    pub(crate) fn execute_runtime_kernel_canary(
+        &self,
+        request_binding_hash: &str,
+    ) -> Result<RuntimeKernelCanaryReceipt> {
+        if request_binding_hash.len() != 64
+            || !request_binding_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        {
+            anyhow::bail!("runtime canary requires a canonical request binding");
+        }
+        let session_id = "native-gateway:runtime-kernel-canary";
+        self.kernel
+            .switch_model_in_session(session_id, "demo/demo-chat")
+            .map_err(|error| anyhow::anyhow!("select isolated canary model: {error}"))?;
+        let executor = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .context("build isolated RuntimeKernel canary executor")?;
+        let result = executor
+            .block_on(self.kernel.run_demo_turn_in_session(
+                session_id,
+                &format!(
+                    "Use the echo tool with arguments exactly {{\"text\":\"{request_binding_hash}\"}}. Do not answer directly."
+                ),
+            ))
+            .map_err(|error| anyhow::anyhow!("execute RuntimeKernel canary: {error}"))?;
+        let receipt = result
+            .execution_receipt
+            .context("RuntimeKernel canary completed without an execution receipt")?;
+        if result.active_model.provider != "demo"
+            || result.active_model.model != "demo-chat"
+            || result.invoked_tool.as_deref() != Some("echo")
+            || !receipt.durable_intent_recorded
+            || receipt.effect_plan_recorded
+            || receipt.provider_effect_ack_hash.is_some()
+            || receipt.terminal_status != "succeeded"
+        {
+            anyhow::bail!("RuntimeKernel canary lifecycle evidence failed closed");
+        }
+        Ok(RuntimeKernelCanaryReceipt {
+            product: "Hepta",
+            runtime: "hepta",
+            status: "succeeded",
+            action: "runtime-kernel-canary",
+            request_binding_hash: request_binding_hash.to_string(),
+            active_model_provider: result.active_model.provider,
+            active_model: result.active_model.model,
+            invoked_tool: "echo".into(),
+            execution_receipt: receipt,
+            provider_effect_ack_requirement: "not_applicable_read_only_tool",
+            external_network_requested: false,
+            external_side_effects: false,
+            live_surface_expanded: false,
+            raw_request_body_exposed: false,
+        })
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn terminal_receipt_recorded_for_test(&self, attempt_id: &str) -> Result<bool> {
+        self.kernel
+            .terminal_receipt_recorded(attempt_id)
+            .map_err(anyhow::Error::msg)
     }
 
     #[cfg(all(test, unix))]

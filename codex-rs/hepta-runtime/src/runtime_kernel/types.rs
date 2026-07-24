@@ -35,10 +35,24 @@ pub struct VerticalSliceResult {
     pub active_model: ModelRef,
     pub invoked_tool: Option<String>,
     pub tool_output_json: Option<String>,
+    pub execution_receipt: Option<RuntimeExecutionReceipt>,
     pub final_text: String,
     pub recalled_memories: usize,
     pub approval_required: Option<String>,
     pub blocked_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeExecutionReceipt {
+    pub attempt_id: String,
+    pub durable_intent_recorded: bool,
+    pub effect_plan_recorded: bool,
+    pub provider_effect_ack_hash: Option<String>,
+    pub terminal_receipt_id: String,
+    pub terminal_receipt_hash: String,
+    pub terminal_outcome_hash: String,
+    pub terminal_evidence_hash: String,
+    pub terminal_status: String,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -816,6 +830,7 @@ pub struct TurnRecord {
 struct RuntimeToolExecution {
     tool_name: String,
     tool_output_json: Option<String>,
+    execution_receipt: RuntimeExecutionReceipt,
     tool_message: String,
 }
 
@@ -823,6 +838,7 @@ struct RuntimeToolExecution {
 struct RuntimeToolTimeout {
     tool_name: String,
     tool_output_json: Option<String>,
+    execution_receipt: RuntimeExecutionReceipt,
     final_text: String,
 }
 

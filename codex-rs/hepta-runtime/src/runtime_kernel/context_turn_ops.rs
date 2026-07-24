@@ -412,7 +412,57 @@ impl RuntimeKernel {
         let mut captured = ExecutionBus::new(self).dispatch(authorized_execution).await;
         captured.capture_write_transaction();
 
+        let (attempt_id, durable_intent_recorded, effect_plan_recorded, provider_effect_ack_hash) =
+            captured
+                .execution()
+                .map(|execution| {
+                    (
+                        execution.attempt_id().to_string(),
+                        execution.execution_intent().is_some(),
+                        execution
+                            .execution_intent()
+                            .and_then(hepta_memory::ExecutionIntent::effect_plan_hash)
+                            .is_some(),
+                        execution
+                            .execution_effect_ack()
+                            .map(hepta_memory::ExecutionEffectAck::ack_hash)
+                            .map(ToString::to_string),
+                    )
+                })
+                .ok_or_else(|| {
+                    HeptaError("tool dispatch lost execution receipt authority".into())
+                })?;
         OutcomeRecorder::new(self).finalize_tool_dispatch(&mut captured)?;
+        let terminal = self
+            .outcome_sink
+            .read_by_attempt(&attempt_id)
+            .map_err(|error| HeptaError(format!("terminal receipt readback failed: {error}")))?
+            .ok_or_else(|| {
+                HeptaError(format!(
+                    "terminal receipt readback missing for attempt {attempt_id}"
+                ))
+            })?;
+        let terminal_status = match terminal.receipt().status() {
+            OutcomeStatus::Succeeded => "succeeded".to_string(),
+            OutcomeStatus::Failed { error_code } => {
+                format!("failed:{error_code}")
+            }
+            OutcomeStatus::Cancelled { reason_code } => {
+                format!("cancelled:{reason_code}")
+            }
+            _ => "unknown".to_string(),
+        };
+        let execution_receipt = RuntimeExecutionReceipt {
+            attempt_id,
+            durable_intent_recorded,
+            effect_plan_recorded,
+            provider_effect_ack_hash,
+            terminal_receipt_id: terminal.receipt().id().to_string(),
+            terminal_receipt_hash: terminal.receipt().receipt_hash().to_string(),
+            terminal_outcome_hash: terminal.receipt().outcome_hash().to_string(),
+            terminal_evidence_hash: terminal.canonical_evidence_hash().to_string(),
+            terminal_status,
+        };
         let outward_error = captured.outward_error().cloned();
         let tool_result = captured.tool_result().cloned();
         if let Some(error) = outward_error {
@@ -439,12 +489,14 @@ impl RuntimeKernel {
             return Ok(RuntimeToolStep::TimedOut(RuntimeToolTimeout {
                 tool_name: tool_call.name.clone(),
                 tool_output_json,
+                execution_receipt,
                 final_text: tool_result.content.clone(),
             }));
         }
         Ok(RuntimeToolStep::Executed(RuntimeToolExecution {
             tool_name: tool_call.name.clone(),
             tool_output_json,
+            execution_receipt,
             tool_message: format_tool_message(&tool_result),
         }))
     }

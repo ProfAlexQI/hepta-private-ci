@@ -68,6 +68,87 @@ fn keyed_runtime_reaches_http_worker_dispatch() {
 }
 
 #[test]
+fn existing_action_surface_runs_read_only_runtime_kernel_canary_with_durable_receipt() {
+    let runtime_root = tempfile::tempdir().expect("runtime root");
+    let runtime = Arc::new(
+        NativeGatewayRuntime::bootstrap_for_test(runtime_root.path()).expect("keyed runtime"),
+    );
+    let pool = NativeGatewayConnectionPool::new(
+        test_gateway_options(false),
+        Arc::clone(&runtime),
+        1,
+        3,
+    )
+    .expect("worker pool");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+    let denied = preference_http_round_trip(
+        &pool,
+        &listener,
+        crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT,
+        &serde_json::json!({"dry_run": false}),
+    );
+    assert!(denied.0.starts_with("HTTP/1.1 400 Bad Request"));
+    assert_eq!(
+        denied.1["error"],
+        "runtime_kernel_canary_requires_exact_dry_run"
+    );
+
+    let first = preference_http_round_trip(
+        &pool,
+        &listener,
+        crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT,
+        &serde_json::json!({"dry_run": true}),
+    );
+    assert!(first.0.starts_with("HTTP/1.1 200 OK"));
+    assert_eq!(first.1["status"], "succeeded");
+    assert_eq!(first.1["action"], "runtime-kernel-canary");
+    assert_eq!(first.1["active_model_provider"], "demo");
+    assert_eq!(first.1["active_model"], "demo-chat");
+    assert_eq!(first.1["invoked_tool"], "echo");
+    assert_eq!(
+        first.1["provider_effect_ack_requirement"],
+        "not_applicable_read_only_tool"
+    );
+    assert_eq!(first.1["execution_receipt"]["durable_intent_recorded"], true);
+    assert_eq!(first.1["execution_receipt"]["effect_plan_recorded"], false);
+    assert!(
+        first.1["execution_receipt"]["provider_effect_ack_hash"].is_null()
+    );
+    assert_eq!(
+        first.1["execution_receipt"]["terminal_status"],
+        "succeeded"
+    );
+    assert_eq!(first.1["external_network_requested"], false);
+    assert_eq!(first.1["external_side_effects"], false);
+    assert_eq!(first.1["live_surface_expanded"], false);
+    assert_eq!(first.1["raw_request_body_exposed"], false);
+    let first_attempt = first.1["execution_receipt"]["attempt_id"]
+        .as_str()
+        .expect("attempt id");
+    assert!(
+        runtime
+            .terminal_receipt_recorded_for_test(first_attempt)
+            .expect("terminal receipt readback")
+    );
+
+    let second = preference_http_round_trip(
+        &pool,
+        &listener,
+        crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT,
+        &serde_json::json!({"dry_run": true}),
+    );
+    assert!(second.0.starts_with("HTTP/1.1 200 OK"));
+    assert_ne!(
+        second.1["execution_receipt"]["attempt_id"],
+        first.1["execution_receipt"]["attempt_id"]
+    );
+    assert_eq!(
+        second.1["request_binding_hash"],
+        first.1["request_binding_hash"]
+    );
+}
+
+#[test]
 fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_before_write() {
     use hepta_contracts::ContentHash;
     use hepta_intelligence::PreferenceIngressAuthenticationKey;

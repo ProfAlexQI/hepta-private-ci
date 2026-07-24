@@ -37,6 +37,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use ::hepta_contracts::OutcomeStatus;
 use hepta_core::AgentId;
 use hepta_core::ApprovalRequirement;
 use hepta_core::CorrelationId;

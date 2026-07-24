@@ -362,11 +362,11 @@ impl AuthorizedToolExecution {
         }
     }
 
-    pub(super) fn execution_intent(&self) -> Option<&ExecutionIntent> {
+    pub(crate) fn execution_intent(&self) -> Option<&ExecutionIntent> {
         self.execution_intent.as_ref()
     }
 
-    pub(super) fn execution_effect_ack(&self) -> Option<&ExecutionEffectAck> {
+    pub(crate) fn execution_effect_ack(&self) -> Option<&ExecutionEffectAck> {
         self.execution_effect_ack.as_ref()
     }
 
@@ -686,6 +686,19 @@ impl RuntimeKernel {
                 poisoned.into_inner().active_attempts.remove(attempt_id);
             }
         }
+    }
+
+    pub fn terminal_receipt_recorded(&self, attempt_id: &str) -> Result<bool, HeptaError> {
+        let attempt_id = attempt_id.trim();
+        if attempt_id.is_empty() {
+            return Err(HeptaError(
+                "terminal receipt attempt id must not be empty".into(),
+            ));
+        }
+        self.outcome_sink
+            .read_by_attempt(attempt_id)
+            .map(|record| record.is_some())
+            .map_err(|error| HeptaError(format!("terminal receipt readback failed: {error}")))
     }
 
     #[cfg(test)]

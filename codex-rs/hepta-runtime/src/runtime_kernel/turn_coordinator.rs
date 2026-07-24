@@ -100,6 +100,7 @@ impl TurnCoordinator<'_> {
         let mut conversation_messages = base_messages;
         let mut invoked_tool = None::<String>;
         let mut tool_output_json = None::<String>;
+        let mut execution_receipt = None::<RuntimeExecutionReceipt>;
         let mut final_text = String::new();
         let mut approval_required = None::<String>;
         let mut blocked_reason = None::<String>;
@@ -135,6 +136,7 @@ impl TurnCoordinator<'_> {
                             invoked_tool = Some(execution.tool_name.clone());
                         }
                         tool_output_json = execution.tool_output_json.clone();
+                        execution_receipt = Some(execution.execution_receipt);
                         conversation_messages.push(ModelMessage {
                             role: MessageRole::Tool,
                             content: execution.tool_message,
@@ -165,6 +167,7 @@ impl TurnCoordinator<'_> {
                             invoked_tool = Some(timeout.tool_name.clone());
                         }
                         tool_output_json = timeout.tool_output_json.clone();
+                        execution_receipt = Some(timeout.execution_receipt);
                         final_text = timeout.final_text;
                         break;
                     }
@@ -231,6 +234,7 @@ impl TurnCoordinator<'_> {
             active_model,
             invoked_tool,
             tool_output_json,
+            execution_receipt,
             final_text,
             recalled_memories: recalled.len(),
             approval_required,

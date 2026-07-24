@@ -1,4 +1,4 @@
-use super::*;
+use hepta_core::*;
 
 #[test]
 fn memory_query_roundtrips_through_json() {

@@ -103,8 +103,10 @@ use crate::provider_domain::ProviderChannelDryRunPlanResponse;
 use crate::provider_domain::ProviderReportContext;
 use crate::route_registry::*;
 use crate::runtime_composition::NativeGatewayRuntime;
+use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
 use crate::runtime_composition::RuntimeRequestPreflightReceipt;
+use crate::runtime_composition::runtime_kernel_canary_body_admitted;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
@@ -422,6 +424,33 @@ fn handle_native_gateway_connection(
             "application/json; charset=utf-8",
             response.body.as_bytes(),
         );
+    }
+    if method == "POST" && path == RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT {
+        if !runtime_kernel_canary_body_admitted(request_body) {
+            return write_http_response(
+                stream,
+                "400 Bad Request",
+                "application/json; charset=utf-8",
+                br#"{"error":"runtime_kernel_canary_requires_exact_dry_run"}"#,
+            );
+        }
+        return match runtime.execute_runtime_kernel_canary(&preflight.request_binding_hash) {
+            Ok(receipt) => write_http_response(
+                stream,
+                "200 OK",
+                "application/json; charset=utf-8",
+                json_or_error(&receipt).as_bytes(),
+            ),
+            Err(error) => {
+                eprintln!("RuntimeKernel canary failed: {error:#}");
+                write_http_response(
+                    stream,
+                    "503 Service Unavailable",
+                    "application/json; charset=utf-8",
+                    br#"{"error":"runtime_kernel_canary_failed"}"#,
+                )
+            }
+        };
     }
     if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path) {
         return write_http_response(stream, status, content_type, body);

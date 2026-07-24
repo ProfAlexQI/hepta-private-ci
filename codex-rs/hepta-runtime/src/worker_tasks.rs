@@ -2582,6 +2582,7 @@ impl RuntimeKernel {
                 })
                 .to_string(),
             ),
+            execution_receipt: None,
             final_text: format!(
                 "Autonomous coding worker completed multi-round loop: inspected {} target(s), executed {} real worker command(s) across 2 coding round(s), prepared review-gated patch/evidence handoff for task {}.",
                 inspection.readable_count,

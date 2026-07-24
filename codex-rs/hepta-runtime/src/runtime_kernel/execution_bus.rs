@@ -202,7 +202,7 @@ impl<'a> CapturedToolExecution<'a> {
         }
     }
 
-    pub(super) fn execution(&self) -> Option<&AuthorizedToolExecution> {
+    pub(crate) fn execution(&self) -> Option<&AuthorizedToolExecution> {
         self.execution.as_ref()
     }
 
