@@ -1,0 +1,2241 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v4_commit_shard",
+  "intake_id": "upstream-codex-intake-2026-07-24-r4",
+  "parent_manifest": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+  "category": "protocol_app_server",
+  "category_label": "协议/app-server",
+  "commit_count": 20,
+  "status_counts": {
+    "candidate": 11,
+    "deferred": 8,
+    "rejected": 1,
+    "imported": 0
+  },
+  "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+  "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+  "commit_inventory": [
+    {
+      "upstream_commit": "65ae4c26e088913176a50d6daeb742d00942caee",
+      "authored_at": "2026-07-22T12:36:11Z",
+      "author": "thomas",
+      "title": "Register the MCP 2026-07-28 feature flag (#34747)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Register the MCP 2026-07-28 feature flag”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Add the disabled-by-default, under-development `mcp_2026_07_28` feature. - Include the feature in the configuration schema and app-server experimental feature enablement API.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Register the MCP 2026-07-28 feature flag”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/config_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/lib.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "f69dc49b1579999b9788f9d3779fd180c6df67c7",
+      "authored_at": "2026-07-22T14:08:51Z",
+      "author": "jif",
+      "title": "Reduce app-server JSON serialization overhead (#34761)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "release_ci",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Reduce app-server JSON serialization overhead”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Decode `JSONRPCRequest` into `ClientRequest` without serializing the entire request back into an intermediate JSON value. - Define every client method's wire name explicitly and use it directly for request, response, and tracing method lookups. - Serialize outgoing transport messages directly to JSON strings instead of first building a `serde_json::Value`. ## Testing - Add regression coverage that compares direct request conversion with Serde decoding, including omitted and null parameters, legacy methods, and unknown methods. - Verify that direct outgoing-message serialization preserves the notification wire shape.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Reduce app-server JSON serialization overhead”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-transport/src/transport/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/app_server_tracing.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/message_processor.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "e370d23691fbdaa12a2bf017d7e6bc101cca9b5f",
+      "authored_at": "2026-07-22T14:45:15Z",
+      "author": "jif",
+      "title": "Reduce typed app-server request serialization overhead (#34766)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Reduce typed app-server request serialization overhead”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Use `ClientRequest::method_name()` directly when preparing typed request diagnostics for in-process and remote clients. - Allocate the owned method name only when constructing an error. - Remove the serialization-based method lookup and the redundant allocating `ClientRequest::method()` helper.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Reduce typed app-server request serialization overhead”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-client/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-client/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "80f3c3141e4dd421c861408a87703bad0cb09874",
+      "authored_at": "2026-07-22T15:26:38Z",
+      "author": "Eric Traut",
+      "title": "Include the final agent message in turn completion summaries (#34777)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "thread_history",
+        "tui"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-terminal-retry-authority",
+      "reason": "核心语义是“Include the final agent message in turn completion summaries”，属于协议/app-server；它与 Hepta V2 的终态权威、重试分类与丢增量后的 authoritative completion直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Streamed message deltas can be dropped when the transport is saturated, leaving clients with a truncated final response. ## What changed - Include the last non-empty final agent message in successful `turn/completed` notifications and mark the items as a summary. - Treat completed message content as authoritative in the TUI, repairing an incomplete stream while avoiding duplicate messages when `item/completed` was already received. - Continue backfilling full turn items for persisted `codex exec` threads when a completion contains only the summary view. ## Testing Added coverage for completion summaries, dropped stream deltas, duplicate item handling, and directive-only responses.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Include the final agent message in turn completion summaries”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：终态权威、重试分类与丢增量后的 authoritative completion。",
+      "changed_file_count": 15,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/thread_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/src/lib_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/tui/src/app/snapshots/codex_tui__app__tests__directive_only_completion_removes_streamed_directive.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/protocol.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/replay.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__live_app_server_turn_completion_repairs_dropped_message_deltas.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/streaming.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/app_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/transcript.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/turn_runtime.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "946ed315a484e052051d02b3e0274642da55dcf8",
+      "authored_at": "2026-07-22T18:34:46Z",
+      "author": "Adam Perry @ OpenAI",
+      "title": "Centralize SQLite connection configuration (#34808)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "tui"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-durable-state-roots",
+      "reason": "核心语义是“Centralize SQLite connection configuration”，属于协议/app-server；它与 Hepta V2 的keyed durable composition root、SQLite home 身份与单一状态配置直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add `SqliteConfig` to own the resolved SQLite home, runtime database paths, and shared read/write and read-only pool settings. - Pass the configuration through state and local thread-store consumers, replacing standalone path helpers and duplicated connection setup.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Centralize SQLite connection configuration”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：keyed durable composition root、SQLite home 身份与单一状态配置。",
+      "changed_file_count": 35,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/remote_thread_store.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/doctor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/doctor/thread_inventory.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/state_db_recovery.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/tests/debug_clear_memories.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/sqlite_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/state_db.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/bin/logs_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/migrations_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/backfill.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/logs.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/recovery_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/remote_control.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/sqlite.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/create_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/list_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/live_writer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/read_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/search_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/test_support.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history/read_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/update_thread_metadata.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/lib.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "08ae0fc0cef06a1b57d134019e924692e5be9ffe",
+      "authored_at": "2026-07-22T19:24:03Z",
+      "author": "pakrym-oai",
+      "title": "Consolidate thread startup around `StartThreadOptions` (#34814)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-multi-agent-lineage-continuity",
+      "reason": "核心语义是“Consolidate thread startup around `StartThreadOptions`”，属于协议/app-server；它与 Hepta V2 的多代理 lineage、world-state 与中断/唤醒连续性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add `StartThreadOptions::new` to provide the standard configuration for a new thread. - Make `ThreadManager::start_thread` the single thread-start entry point and migrate callers from the previous convenience methods. - Derive default environment selections when `environments` is `None`, while preserving explicit selections, including an empty list.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Consolidate thread startup around `StartThreadOptions`”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：多代理 lineage、world-state 与中断/唤醒连续性。",
+      "changed_file_count": 25,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/mcp_refresh.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/residency_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/prompt_debug.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/multi_agents_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/common/test_codex.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/agents_md.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/audio_truncation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/code_mode.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/compact_remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/git_enrichment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/hooks.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_tool_cache.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/search_tool.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/sqlite_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/subagent_notifications.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/agent/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/mcp-server/src/codex_tool_runner.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/memories/write/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-manager-sample/src/main.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "4ebd976312b9088b3c845724e08d79c9f77505f4",
+      "authored_at": "2026-07-22T19:34:54Z",
+      "author": "jiayuhuang-openai",
+      "title": "Support configurable realtime BEM channel prefixes (#34816)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Support configurable realtime BEM channel prefixes”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Route realtime V3 `bemTags` handoffs using `[ANALYSIS]`, `[COMMENTARY]`, and `[FINAL]` prefixes by default. - Add `codexResponseHandoffChannelPrefixes` to realtime start requests so clients can replace the accepted prefixes for individual channels. Each channel may accept multiple prefixes, and omitted channels retain their defaults. - Apply the configured prefixes to both complete and streamed handoff messages, without treating empty prefixes as matches. ## Testing - Cover request deserialization, default and custom routing, partial streamed prefixes, empty-prefix handling, and end-to-end V3 handoffs.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Support configurable realtime BEM channel prefixes”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 15,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/realtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/turn_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/experimental_api.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/realtime_conversation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/realtime_conversation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/realtime_conversation/bem.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/realtime_conversation/bem_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/realtime_conversation_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/compact_remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/realtime_conversation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/realtime_initial_items.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/protocol.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "400ee190c30d5e4a88549c070a2335311f0baa91",
+      "authored_at": "2026-07-22T22:45:59Z",
+      "author": "joeytrasatti-openai",
+      "title": "Add persisted thread pinning to the app server (#34840)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "tui",
+        "analytics_observability",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-thread-metadata-integrity",
+      "reason": "核心语义是“Add persisted thread pinning to the app server”，属于协议/app-server；它与 Hepta V2 的线程元数据持久化、筛选分页与 rollout 不变性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add `isPinned` to thread responses and allow `thread/metadata/update` to pin or unpin stored threads. - Add an `isPinned` filter to `thread/list`, including cursor-based pagination and combinations with relationship filters. - Persist pin state in SQLite without modifying rollout files, default existing threads to unpinned, and preserve pins through reconciliation and archive transitions. ## Testing - Cover protocol serialization, database migration and indexing, pin updates, filtered pagination, rollout reconciliation, and archive/unarchive behavior.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Add persisted thread pinning to the app server”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：线程元数据持久化、筛选分页与 rollout 不变性。",
+      "changed_file_count": 71,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/analytics_client_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/client_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListParams.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateParams.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadRollbackResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/Thread.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadListParams.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadMetadataUpdateParams.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-test-client/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_resume_redaction.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_summary.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/remote_thread_store.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_fork.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_metadata_update.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_unarchive.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/realtime_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/realtime_context_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/src/lib_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/recorder.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/recorder_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/state_db.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/state/migrations/0043_threads_is_pinned.sql"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/extract.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/migrations_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/model/thread_metadata.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/memories.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/test_support.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/in_memory.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/archive_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/helpers.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/list_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/read_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/search_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/unarchive_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/update_thread_metadata.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/types.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/loaded_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/thread_session_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app_server_session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/resume_picker.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/session_archive_commands.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "79500d3cc1c7e64e079f501bfd92231bb3d052e9",
+      "authored_at": "2026-07-22T23:22:58Z",
+      "author": "stevenlee-oai",
+      "title": "Remove first-party type from app metadata (#34844)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "plugin_apps",
+        "tui",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Remove first-party type from app metadata”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed Remove `first_party_type` from connector app metadata and the app-server v2 protocol. Update metadata conversion and merge paths, generated JSON and TypeScript schemas, and affected test fixtures to match.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Remove first-party type from app metadata”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 14,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/AppListUpdatedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/AppsListResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/AppMetadata.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/apps.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/app_info.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/app_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/app_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/connectors/src/app_info.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/connectors/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app_info.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "808d3c2702ce8eae007c457aa930e7c3b68dd5f6",
+      "authored_at": "2026-07-23T13:06:17Z",
+      "author": "jif",
+      "title": "Keep session defaults static during config batch writes (#34940)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "skills_catalog",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Keep session defaults static during config batch writes”，属于协议/app-server；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Treat batch writes containing only `model`, `model_reasoning_effort`, `plan_mode_reasoning_effort`, `service_tier`, or `personality` as defaults for future sessions, even when `reloadUserConfig` is requested. - Keep runtime config reloads and skill/plugin cache invalidation for other config changes, and document which settings remain session-static. - Preserve cached skill listings after session-default writes until a forced reload, with test coverage for each supported default.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Keep session defaults static during config batch writes”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 10,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigBatchWriteParams.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConfigBatchWriteParams.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/config_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/skills_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "ce803c45aed425b08b94d8e3c5fb7db0d2193568",
+      "authored_at": "2026-07-23T17:48:06Z",
+      "author": "charlesgong-openai",
+      "title": "Record externally completed agent config imports (#34981)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Record externally completed agent config imports”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Clients that complete an external agent config import outside the app server need a way to include the result in import history. ## What changed - Add `externalAgentConfig/import/recordHistory` to persist completed item results and return a generated import ID. - Store the optional provider ID for regular imports and expose it when reading import history. - Update the generated JSON and TypeScript protocol schemas for the new request, response, and history field. ## Testing - Cover recording and reading an externally completed import through the app-server protocol. - Cover provider ID persistence and updates in the state runtime.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Record externally completed agent config imports”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 22,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportHistoriesReadResponse.json"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportHistoryRecordParams.json"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportHistoryRecordResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportParams.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportHistory.ts"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportHistoryRecordParams.ts"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportHistoryRecordResponse.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportParams.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/external_agent_migration/processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/external_agent_migration/protocol.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/message_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/state/migrations/0044_external_agent_config_imports_provider_id.sql"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/external_agent_config_imports.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/external_agent_config_imports_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "0d4910331db5e5c6ec8e42f94d82119570801f95",
+      "authored_at": "2026-07-23T18:30:22Z",
+      "author": "stefanstokic-oai",
+      "title": "Preserve timestamps when importing external agent sessions (#34989)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "runtime_misc"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-multi-agent-lineage-continuity",
+      "reason": "核心语义是“Preserve timestamps when importing external agent sessions”，属于协议/app-server；它与 Hepta V2 的多代理 lineage、world-state 与中断/唤醒连续性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Imported sessions previously used the import time for their thread metadata, discarding the chronology recorded by the source session. ## What changed - Set `created_at` and `updated_at` from the earliest turn start and latest turn completion timestamps in the imported rollout. - Use the latest source timestamp for thread recency, while retaining the current time as a fallback when the rollout has no valid turn timestamps. ## Testing - Update the external agent import integration test to verify the persisted creation, update, and recency timestamps.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Preserve timestamps when importing external agent sessions”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：多代理 lineage、world-state 与中断/唤醒连续性。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/external_agent_migration/session_importer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "c769a053406985c1fc47281fb81171b7721a3687",
+      "authored_at": "2026-07-23T19:13:35Z",
+      "author": "Adam Perry @ OpenAI",
+      "title": "Honor the configured SQLite home across state consumers (#34994)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "sqlite_state",
+        "thread_history",
+        "tui",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-durable-state-roots",
+      "reason": "核心语义是“Honor the configured SQLite home across state consumers”，属于协议/app-server；它与 Hepta V2 的keyed durable composition root、SQLite home 身份与单一状态配置直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Codex and SQLite data can use separate home directories, but state consumers could reconstruct database paths from the Codex home instead of consistently using the resolved SQLite configuration. ## What changed - Pass `SqliteConfig` through the core, rollout, state runtime, and thread store instead of passing a directory and rebuilding the configuration downstream. - Use that shared configuration for state, logs, memories, goals, and paginated thread-history database access, including integrity checks and cleanup. - Reject state database handles whose SQLite configuration does not match the requesting store. ## Testing Add coverage with separate Codex and SQLite homes that verifies startup backfill, thread listing, and paginated history all use the configured SQLite directory.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Honor the configured SQLite home across state consumers”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：keyed durable composition root、SQLite home 身份与单一状态配置。",
+      "changed_file_count": 76,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/agent-graph-store/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/agent-graph-store/src/local.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-transport/src/transport/remote_control/enroll.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-transport/src/transport/remote_control/websocket.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/memory_reset.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/remote_control.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_archive.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_delete.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_fork.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_memory_mode_set.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_metadata_update.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/doctor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/doctor/thread_inventory.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/tests/debug_clear_memories.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-api/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-api/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/config_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/rollout.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/rollout_list_find.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/sqlite_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/goal/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/goal/tests/goal_extension_backend.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/memories/write/src/startup_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/compression_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/metadata_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/recorder.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/recorder_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/state_db.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/state_db_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout/src/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/audit.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/bin/logs_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/log_db.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/log_db_filter_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/backfill.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/external_agent_config_imports_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/goals.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/logs.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/memories.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/recovery_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/remote_control.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/runtime/threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-manager-sample/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/archive_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/create_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/delete_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/list_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/live_writer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/read_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/search_threads.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history/read_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/unarchive_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/update_thread_metadata.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests/advanced_reasoning_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests/safety_buffering.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests/session_lifecycle_requests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/helpers.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/session_resume.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "7bafdada8beaad9325ed69218f743f058e3598ab",
+      "authored_at": "2026-07-23T19:24:15Z",
+      "author": "Adam Perry @ OpenAI",
+      "title": "Separate Codex error details from retry metadata (#34996)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "approval_provenance",
+        "thread_history",
+        "analytics_observability",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-terminal-retry-authority",
+      "reason": "核心语义是“Separate Codex error details from retry metadata”，属于协议/app-server；它与 Hepta V2 的终态权威、重试分类与丢增量后的 authoritative completion直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Wrap `CodexErrorDetails` and an optional retry delay in `CodexErr`, allowing any mapped error to preserve server-provided retry timing. - Generate the payload-free `CodexErrKind` classification alongside the error details and reuse it for analytics. - Update error handling sites to inspect `CodexErr::details()` while preserving existing display, debug, protocol mapping, and retryability behavior. ## Testing - Add coverage for legacy debug formatting, error-specific retryability, and retry-delay propagation through API error mapping.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Separate Codex error details from retry metadata”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：终态权威、重试分类与丢增量后的 authoritative completion。",
+      "changed_file_count": 40,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/facts.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/request_errors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/turn_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/src/api_bridge.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/src/api_bridge_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/agent_resolver.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/execution.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/execution_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/legacy.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/residency.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/residency_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/registry.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/registry_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_model_fallback.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_remote_v2.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/responses_retry.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/responses_retry_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/compact.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_rollout_truncation_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/events.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/multi_agents/close_agent.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/multi_agents/wait.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/multi_agents_common.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/interrupt_agent.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/orchestrator.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/process_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/linux-sandbox/tests/suite/landlock.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/model-provider/src/amazon_bedrock/error.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/model-provider/src/amazon_bedrock/error_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/model-provider/src/auth.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/error.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/error_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "5b402270f926cd1f9288c24cddd27410400cabe6",
+      "authored_at": "2026-07-23T20:57:55Z",
+      "author": "kylepatel-oai",
+      "title": "Expose remote skill icon URLs through app server (#35012)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "plugin_apps",
+        "skills_catalog",
+        "tui",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Expose remote skill icon URLs through app server”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Add nullable `iconSmallUrl` and `iconLargeUrl` fields to the v2 `SkillInterface` protocol and generated schemas. - Populate the fields from remote plugin catalog metadata while returning null values for local skill interfaces. - Document the new `plugin/read` response fields. ## Testing - Extend the remote `plugin/read` test to verify both icon URLs are returned.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Expose remote skill icon URLs through app server”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 12,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/PluginReadResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/SkillsListResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/SkillInterface.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/catalog_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/plugins.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/bottom_pane/chat_composer.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "b834702b27b3403403f5d1cd8992960a1a6211a5",
+      "authored_at": "2026-07-23T21:13:11Z",
+      "author": "richardopenai",
+      "title": "Support incremental replay of updated thread items (#35013)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-thread-writer-replay-integrity",
+      "reason": "核心语义是“Support incremental replay of updated thread items”，属于协议/app-server；它与 Hepta V2 的单写者所有权、持久化变更序与精确增量回放直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Persisted item snapshots can be updated after their initial projection while retaining their creation order. Callers need a way to read those updates incrementally without replaying every item. ## What changed - Track the rollout ordinal of each item's latest snapshot separately from its creation ordinal. - Let thread-store callers filter items after an exclusive update watermark and sort pages by either creation or update ordinal. - Keep existing app-server reads creation-ordered, reject incremental reads across forked lineages, and preserve compatibility with older writers. ## Testing - Cover update-watermark filtering, pagination, sort directions, per-turn reads, cursor validation, forked lineages, migration compatibility, and refreshed item snapshots.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Support incremental replay of updated thread items”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：单写者所有权、持久化变更序与精确增量回放。",
+      "changed_file_count": 13,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/migrations_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/state/thread_history_migrations/0004_thread_items_updated_at_ordinal.sql"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/in_memory.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history/read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history/read_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history/segment_paging.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/types.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "41775559ca1ed253c2aa68db772a715cb348a9eb",
+      "authored_at": "2026-07-23T23:09:49Z",
+      "author": "rafael-oai",
+      "title": "Expose Browser Use requirements through the app server (#35033)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "tui",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Expose Browser Use requirements through the app server”，属于协议/app-server。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Parse the `browser_use.disable_auto_review` setting from layered `requirements.toml` configuration. - Return the setting as `browserUse.disableAutoReview` from `configRequirements/read` and publish it in the generated JSON and TypeScript schemas. ## Testing - Add an app-server RPC test covering the Browser Use requirement.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Expose Browser Use requirements through the app server”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：协议兼容、状态持久化与活动 composition。",
+      "changed_file_count": 16,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigRequirementsReadResponse.json"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/BrowserUseRequirements.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConfigRequirements.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/config_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/config_rpc.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/config_requirements.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/requirements_layers/stack.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/config_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/debug_config.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "4123bf61891636772eeed9a2387a6413645270d1",
+      "authored_at": "2026-07-23T23:50:13Z",
+      "author": "stevenlee-oai",
+      "title": "Track app/read request duration (#35048)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "plugin_apps",
+        "analytics_observability",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Track app/read request duration”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Record `codex.apps.read.duration_ms` when `app/read` returns a response. - Tag the duration by the request's `include_tools` value. - Move the `app/read` handler into its own request-processor module.",
+      "semantic_absorption_recommendation": "不单独移植“Track app/read request duration”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor/read.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "0dfa778dae6a94b2ff2c69176cbaf063a3bf18a1",
+      "authored_at": "2026-07-24T02:35:19Z",
+      "author": "Channing Conger",
+      "title": "Add WebSocket transport to the code-mode host (#35078)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "code_mode"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-remote-code-mode-boundary",
+      "reason": "核心语义是“Add WebSocket transport to the code-mode host”，属于协议/app-server；它与 Hepta V2 的远程 capability host、传输隔离与 app-server composition root直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add a `--listen` option that accepts `stdio`, `stdio://`, or a `ws://IP:PORT` endpoint, while retaining stdio as the default. - Serve the existing length-prefixed protocol in binary WebSocket messages, with isolated connections, shared host limits, and a `/readyz` endpoint. - Reject browser-origin handshakes and contain malformed frames to the affected connection. ## Testing - Cover listen URL parsing and complete-frame encoding and decoding. - Exercise readiness, cell execution, tool callbacks, large frames, concurrent connections, malformed frames, and origin rejection through the WebSocket listener.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Add WebSocket transport to the code-mode host”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：远程 capability host、传输隔离与 app-server composition root。",
+      "changed_file_count": 11,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-host/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-host/src/host_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-host/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-host/src/main.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/code-mode-host/src/transport.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/code-mode-host/src/transport_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/code-mode-host/tests/websocket.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-protocol/src/host/codec.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-protocol/src/host/codec_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-protocol/src/host/mod.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "f61b51ddd924643514b33234816a8a2772b1aec7",
+      "authored_at": "2026-07-24T04:32:21Z",
+      "author": "Channing Conger",
+      "title": "Support remote code-mode hosts in app-server (#35098)",
+      "primary_category": "protocol_app_server",
+      "primary_category_label": "协议/app-server",
+      "secondary_topics": [
+        "thread_history",
+        "code_mode",
+        "release_ci"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-remote-code-mode-boundary",
+      "reason": "核心语义是“Support remote code-mode hosts in app-server”，属于协议/app-server；它与 Hepta V2 的远程 capability host、传输隔离与 app-server composition root直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add `--code-mode-host ws://...` and `wss://...` support to `codex app-server`, gated by the `code_mode_host` feature. When omitted, app-server continues to start a local host. - Share one remote WebSocket connection across the process's threads, using the configured HTTP client's proxy and TLS policy and preserving the existing framed host protocol. - Reject invalid host URLs, bound WebSocket frame sizes, close connections cleanly, and return an error when a connection exceeds 1,024 pending delegate calls without disconnecting it. ## Testing - Cover CLI validation, WebSocket protocol execution and shutdown, connection sharing across app-server threads, and delegate-call capacity recovery.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Support remote code-mode hosts in app-server”中的 wire schema、状态转换和兼容行为，映射到 Hepta app-server/native-gateway/CLI composition；保留 Hepta owner 边界，生成契约 fixture、重启/并发测试和 readback receipt。关联目标：远程 capability host、传输隔离与 app-server composition root。",
+      "changed_file_count": 28,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/src/code_mode_host.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/src/code_mode_host_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/in_process.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/main_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/message_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/message_processor_tracing_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/tests/suite/v2/code_mode_host.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/remote_control.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-host/src/peer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode-protocol/src/host/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/remote_session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/remote_session/connection.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/remote_session/connection/driver/delegate_runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/remote_session/connection/driver_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/remote_session/connection/reader.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/code-mode/src/remote_session/connection/transport.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/code-mode/src/remote_session_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    }
+  ]
+}

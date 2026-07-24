@@ -1,0 +1,511 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v4",
+  "intake_id": "upstream-codex-intake-2026-07-24-r4",
+  "schema_evolution": {
+    "mode": "additive_versioned",
+    "predecessor_schema": "hepta_upstream_codex_current_intake_v3",
+    "compatibility": "R3 remains immutable; R4 adds explicit four-way categories, candidate state, per-commit files/reasons/transplant guidance, merge-base prohibition, and ordered semantic slices"
+  },
+  "state_model": [
+    "candidate",
+    "deferred",
+    "rejected",
+    "imported"
+  ],
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-22_R3.json",
+    "manifest_sha256": "4e0ad42fe7edc0f073d840457f48cf579befbbfd0abb73cc0845778f3122eca6",
+    "cutoff_head": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "preserved": true,
+    "modified_by_r4": false
+  },
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-24T05:42:39Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "commit_count": 97,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 744,
+    "net_insertions": 33356,
+    "net_deletions": 18923,
+    "commit_file_touches": 1208,
+    "local_head_observed": "be0cc2ae8cd84fa36098cc17d149dc651d6ba4f4",
+    "local_root": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+    "upstream_root": "59a180ddec4adaf9760972cdb1eb89f06a81be8b",
+    "merge_base": null,
+    "history_relationship": "no_merge_base_unrelated_roots",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_receipts",
+    "exact_sha_refetch_performed": true,
+    "fetch_command": "git fetch --refetch --no-tags upstream f61b51ddd924643514b33234816a8a2772b1aec7",
+    "remote_configuration_modified": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "33d5eaeddf0f4e69919df5dde501747ca1abbe10ab30ad3a192a2c64441a6469"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "edf243d8bcd9c047d8e03034dcc0090b83b996b6fadf8658fb5fc78e27fb5d15"
+    },
+    "normalized_commit_inventory_identity": {
+      "algorithm": "sha256(json_generate_sha_sorted_inventory)",
+      "digest": "279eaf925d7a23470b6ad3a37d68e60f3ed4c81ef1bbb44c5f259a7985dc9f52"
+    },
+    "normalized_file_surface_identity": {
+      "algorithm": "sha256(json_generate_path_sorted_surface)",
+      "digest": "164b64cbc09bb08676974bac32877313b7f77f594d0fc848dfb2d3d9f67b612b"
+    }
+  },
+  "classification_policy": {
+    "scope": "every commit in (R3 cutoff, upstream/main R4 head]",
+    "categories": {
+      "security": "安全",
+      "protocol_app_server": "协议/app-server",
+      "tools_apps_runtime": "工具/apps/runtime",
+      "tui_other": "TUI/其他"
+    },
+    "status_definitions": {
+      "candidate": "semantic behavior is applicable and assigned to an ordered review slice; no code import is claimed",
+      "deferred": "potentially applicable, but blocked by ownership, product-surface, dependency, or priority conditions",
+      "rejected": "not suitable as a standalone Hepta transplant, or already has a local semantic equivalent without upstream import provenance",
+      "imported": "requires source provenance plus a Hepta integration commit and behavioral test receipt"
+    },
+    "imported_evidence_requirement": [
+      "source provenance",
+      "Hepta integration commit",
+      "behavioral test receipt"
+    ],
+    "conservative_import_rule": "absence of all three evidence classes forces imported=false",
+    "bulk_source_transfer": "forbidden",
+    "notes": [
+      "candidate is not imported, integrated, enabled, or production-ready",
+      "semantic equivalence in the local tree is recorded as rejected/deferred unless a provenance receipt exists",
+      "all suggestions preserve Hepta V2 ownership boundaries and exact-admission/fail-closed rules"
+    ]
+  },
+  "classification_summary": {
+    "commit_count": 97,
+    "status_counts": {
+      "candidate": 41,
+      "deferred": 34,
+      "rejected": 22,
+      "imported": 0
+    },
+    "priority_counts": {
+      "P0": 16,
+      "P1": 23,
+      "P2": 36,
+      "none": 22
+    },
+    "category_counts": {
+      "tools_apps_runtime": 38,
+      "tui_other": 18,
+      "protocol_app_server": 20,
+      "security": 21
+    },
+    "category_status_counts": {
+      "security": {
+        "commit_count": 21,
+        "status_counts": {
+          "candidate": 13,
+          "deferred": 6,
+          "rejected": 2,
+          "imported": 0
+        }
+      },
+      "protocol_app_server": {
+        "commit_count": 20,
+        "status_counts": {
+          "candidate": 11,
+          "deferred": 8,
+          "rejected": 1,
+          "imported": 0
+        }
+      },
+      "tools_apps_runtime": {
+        "commit_count": 38,
+        "status_counts": {
+          "candidate": 17,
+          "deferred": 19,
+          "rejected": 2,
+          "imported": 0
+        }
+      },
+      "tui_other": {
+        "commit_count": 18,
+        "status_counts": {
+          "candidate": 0,
+          "deferred": 1,
+          "rejected": 17,
+          "imported": 0
+        }
+      }
+    },
+    "high_priority_commit_count": 39,
+    "high_priority_commits": [
+      "84d2b203ed58f8fad25a601ce2f9f6a753ae940a",
+      "fd51e505401b7b2da958edc269e4d7280be86bd5",
+      "64dc1c7a01b2aaa03701f08cf88b659c1a9737b3",
+      "32f4687b8c43fb4062405106e761f85983aa96cc",
+      "80f3c3141e4dd421c861408a87703bad0cb09874",
+      "c5779ed6bb2acd868eeaa372e8996e493d9ed556",
+      "a59a419afa3492c58eb3d4865bf8ab1fd8c68330",
+      "946ed315a484e052051d02b3e0274642da55dcf8",
+      "08ae0fc0cef06a1b57d134019e924692e5be9ffe",
+      "d7e8f4c3dccc1647c88330efa73e58030d0b164d",
+      "400ee190c30d5e4a88549c070a2335311f0baa91",
+      "0da13c6c993cbb6de3ce88591b316a40cbd411b1",
+      "44d76c6a6dd04fa2efc302b906ac8774267a1272",
+      "e497325a6a1743cfadeee41a6b5f05ebf7fd0221",
+      "808d3c2702ce8eae007c457aa930e7c3b68dd5f6",
+      "e19e65317a333ce725b18ac6f1e3bc904b74d2a1",
+      "34b935e3e57f5071917fae20471024fee4190c82",
+      "205d37a20f742b0bf8e191622bd07c43f567ea49",
+      "ad65f016ed0c91992fb175fa881a373cc460dd2a",
+      "5c94796dc9e88580fdf0b05ef9ce9d975a86e1a6",
+      "0d4910331db5e5c6ec8e42f94d82119570801f95",
+      "c769a053406985c1fc47281fb81171b7721a3687",
+      "265cd2e100ff091bee0e691a7e28b42e4eb56837",
+      "7bafdada8beaad9325ed69218f743f058e3598ab",
+      "b834702b27b3403403f5d1cd8992960a1a6211a5",
+      "5bdbd3ee90d746c3b8a040a53c434262ed07ee74",
+      "84fa68b429f12af1b4cdbb74c40a6fb1e74a30d3",
+      "1ee8f49175a91c8fbfb9e93310331dfc45fc0dbd",
+      "091e4a5d7c7a79d07b1254591ffcaac1d231d16b",
+      "9fc4e5a7aaf0d4da64e8bef74d2aac02c2d12c79",
+      "963316583b744e707d653a854b30e90d8dda8a78",
+      "d45055ae58ef495610688086c3b490d1721a11b2",
+      "fb4e6ba2f49278c49b33ced725964ace9d0f5c37",
+      "94ebae725e5e8f22b5d86773d9223047f57b6118",
+      "09241ae4db0f1eb25dfaedecf28d4b07dbd820a9",
+      "1d4b58f32d0b238e43adedc0f751812b974dc7bf",
+      "3947f0d0c3e255bade02e241c16cb43d284c0e65",
+      "0dfa778dae6a94b2ff2c69176cbaf063a3bf18a1",
+      "f61b51ddd924643514b33234816a8a2772b1aec7"
+    ]
+  },
+  "selective_semantic_transplant": {
+    "decision": "required",
+    "ordinary_merge_rebase": "forbidden_no_merge_base",
+    "direct_cherry_pick": "not_default; only possible after explicit per-commit equivalence and ownership review",
+    "ordered_slices": [
+      {
+        "order": 1,
+        "id": "r4-p0-durable-state-roots",
+        "priority": "P0",
+        "goal": "先统一 SQLite 配置与 home 身份，避免后续线程、回放和网关使用不同持久化根。",
+        "commits": [
+          "946ed315a484e052051d02b3e0274642da55dcf8",
+          "c769a053406985c1fc47281fb81171b7721a3687"
+        ],
+        "required_evidence": [
+          "single composition-root wiring",
+          "wrong-home negative test",
+          "restart/read-only recovery receipt"
+        ]
+      },
+      {
+        "order": 2,
+        "id": "r4-p0-egress-policy-route-integrity",
+        "priority": "P0",
+        "goal": "建立最终 HTTP/WS/registry 路由策略与 exec-server 回调的统一 fail-closed 出站边界。",
+        "commits": [
+          "ad65f016ed0c91992fb175fa881a373cc460dd2a",
+          "32f4687b8c43fb4062405106e761f85983aa96cc",
+          "265cd2e100ff091bee0e691a7e28b42e4eb56837",
+          "1ee8f49175a91c8fbfb9e93310331dfc45fc0dbd",
+          "d45055ae58ef495610688086c3b490d1721a11b2",
+          "94ebae725e5e8f22b5d86773d9223047f57b6118",
+          "09241ae4db0f1eb25dfaedecf28d4b07dbd820a9"
+        ],
+        "required_evidence": [
+          "redirect disabled test",
+          "proxy route identity test",
+          "policy callback timeout/deny test",
+          "reconnect preserves final policy"
+        ]
+      },
+      {
+        "order": 3,
+        "id": "r4-p0-capability-attribution-approval-continuity",
+        "priority": "P0",
+        "goal": "把 cwd/capability/plugin script provenance 从解析、审批、执行一直绑定到终态 receipt。",
+        "commits": [
+          "a59a419afa3492c58eb3d4865bf8ab1fd8c68330",
+          "5bdbd3ee90d746c3b8a040a53c434262ed07ee74",
+          "84fa68b429f12af1b4cdbb74c40a6fb1e74a30d3",
+          "9fc4e5a7aaf0d4da64e8bef74d2aac02c2d12c79"
+        ],
+        "required_evidence": [
+          "symlink/overlap/ambiguous command negative fixtures",
+          "approval payload hash continuity",
+          "terminal receipt provenance readback"
+        ]
+      },
+      {
+        "order": 4,
+        "id": "r4-p0-thread-writer-replay-integrity",
+        "priority": "P0",
+        "goal": "实现线程单写者所有权、archive/delete 全集合锁与 updated-item 精确增量回放。",
+        "commits": [
+          "5c94796dc9e88580fdf0b05ef9ce9d975a86e1a6",
+          "963316583b744e707d653a854b30e90d8dda8a78",
+          "b834702b27b3403403f5d1cd8992960a1a6211a5"
+        ],
+        "required_evidence": [
+          "two-process contention test",
+          "descendant archive/delete lock test",
+          "ordinal/update replay test",
+          "crash/reopen fail-closed receipt"
+        ]
+      },
+      {
+        "order": 5,
+        "id": "r4-p1-thread-metadata-integrity",
+        "priority": "P1",
+        "goal": "在不改写 rollout 内容的前提下持久化线程 pin 元数据，并保持筛选/分页兼容。",
+        "commits": [
+          "400ee190c30d5e4a88549c070a2335311f0baa91"
+        ],
+        "required_evidence": [
+          "metadata-only persistence",
+          "pin filter cursor pagination",
+          "rollout bytes unchanged"
+        ]
+      },
+      {
+        "order": 6,
+        "id": "r4-p1-terminal-retry-authority",
+        "priority": "P1",
+        "goal": "区分 retry metadata 与终态 authority，并用 completed summary 修复丢失增量。",
+        "commits": [
+          "64dc1c7a01b2aaa03701f08cf88b659c1a9737b3",
+          "80f3c3141e4dd421c861408a87703bad0cb09874",
+          "7bafdada8beaad9325ed69218f743f058e3598ab"
+        ],
+        "required_evidence": [
+          "previous_response_not_found retry test",
+          "retry delay preservation",
+          "dropped-delta authoritative completion test"
+        ]
+      },
+      {
+        "order": 7,
+        "id": "r4-p1-runtime-capability-snapshot",
+        "priority": "P1",
+        "goal": "让 MCP/Apps/deferred tools 使用 turn-frozen binding、原子发布与可恢复刷新。",
+        "commits": [
+          "84d2b203ed58f8fad25a601ce2f9f6a753ae940a",
+          "fd51e505401b7b2da958edc269e4d7280be86bd5",
+          "e497325a6a1743cfadeee41a6b5f05ebf7fd0221",
+          "808d3c2702ce8eae007c457aa930e7c3b68dd5f6",
+          "e19e65317a333ce725b18ac6f1e3bc904b74d2a1",
+          "34b935e3e57f5071917fae20471024fee4190c82",
+          "091e4a5d7c7a79d07b1254591ffcaac1d231d16b",
+          "1d4b58f32d0b238e43adedc0f751812b974dc7bf",
+          "3947f0d0c3e255bade02e241c16cb43d284c0e65"
+        ],
+        "required_evidence": [
+          "in-flight binding immutability",
+          "closed connection replacement",
+          "Apps refresh not overwritten",
+          "no duplicate deferred source"
+        ]
+      },
+      {
+        "order": 8,
+        "id": "r4-p1-multi-agent-lineage-continuity",
+        "priority": "P1",
+        "goal": "保证 thread start/fork、world-state、queued mail 与 import timestamp 的 lineage 连续。",
+        "commits": [
+          "08ae0fc0cef06a1b57d134019e924692e5be9ffe",
+          "c5779ed6bb2acd868eeaa372e8996e493d9ed556",
+          "d7e8f4c3dccc1647c88330efa73e58030d0b164d",
+          "0da13c6c993cbb6de3ce88591b316a40cbd411b1",
+          "44d76c6a6dd04fa2efc302b906ac8774267a1272",
+          "0d4910331db5e5c6ec8e42f94d82119570801f95"
+        ],
+        "required_evidence": [
+          "live-parent fork mode test",
+          "interrupt during startup preserves input",
+          "sleeping thread wake exactly once",
+          "world-state resume equivalence"
+        ]
+      },
+      {
+        "order": 9,
+        "id": "r4-p1-tool-exposure-controls",
+        "priority": "P1",
+        "goal": "把 sleep/update_plan 等工具暴露策略变成显式、可测试的 capability 配置。",
+        "commits": [
+          "205d37a20f742b0bf8e191622bd07c43f567ea49",
+          "fb4e6ba2f49278c49b33ced725964ace9d0f5c37"
+        ],
+        "required_evidence": [
+          "disabled tool absent from visible and registered sets",
+          "code-mode/direct-only matrix test"
+        ]
+      },
+      {
+        "order": 10,
+        "id": "r4-p1-remote-code-mode-boundary",
+        "priority": "P1-after-P0-network",
+        "goal": "仅在出站策略与 provenance P0 完成后，引入远程 code-mode host 的 WS composition。",
+        "commits": [
+          "0dfa778dae6a94b2ff2c69176cbaf063a3bf18a1",
+          "f61b51ddd924643514b33234816a8a2772b1aec7"
+        ],
+        "required_evidence": [
+          "origin rejection",
+          "malformed frame containment",
+          "shared connection isolation",
+          "proxy/TLS policy inheritance",
+          "disconnect fail-closed"
+        ]
+      },
+      {
+        "order": 11,
+        "id": "r4-p2-plugin-catalog-refresh",
+        "priority": "P2",
+        "goal": "最后处理远程插件目录按 scope 缓存与本地刷新等待，避免提前扩大活动插件面。",
+        "commits": [
+          "83ff1c2f809d810482be0bfda197f4f3f7abd697",
+          "4e0cee8030c4833baa6331b378101545accc9956"
+        ],
+        "required_evidence": [
+          "scope isolation",
+          "refresh completion ordering",
+          "stale cache fail-closed/readback"
+        ]
+      }
+    ],
+    "global_non_goals": [
+      "do not merge or rebase local Hepta with upstream Codex",
+      "do not bulk-copy upstream crate ownership or generated schemas",
+      "do not mark any commit imported without provenance/integration/test receipts",
+      "do not attach live transports or widen capability execution as part of intake documentation"
+    ]
+  },
+  "validation_contract": {
+    "expected_range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+    "expected_range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+    "expected_commit_count": 97,
+    "expected_merge_commit_count": 0,
+    "expected_net_changed_file_count": 744,
+    "expected_status_counts": {
+      "candidate": 41,
+      "deferred": 34,
+      "rejected": 22,
+      "imported": 0
+    },
+    "required_per_commit_fields": [
+      "upstream_commit",
+      "primary_category",
+      "status",
+      "reason",
+      "related_files",
+      "semantic_absorption_recommendation",
+      "imported"
+    ],
+    "write_scope_prefix": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4",
+    "predecessor_must_remain_sha256": "4e0ad42fe7edc0f073d840457f48cf579befbbfd0abb73cc0845778f3122eca6",
+    "required_artifacts": [
+      "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+      "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_SECURITY.json",
+      "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_PROTOCOL_APP_SERVER.json",
+      "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_TOOLS_APPS_RUNTIME.json",
+      "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_TUI_OTHER.json",
+      "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_FILE_SURFACE.json"
+    ],
+    "sharded_commit_count": 97,
+    "sharded_file_count": 744
+  },
+  "storage_layout": {
+    "mode": "sharded",
+    "reason": "keep each immutable intake artifact below patch/transport safety limits while preserving a complete machine-readable inventory",
+    "commit_inventory_inline": false,
+    "file_surface_inline": false,
+    "inventory_shards": [
+      {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_SECURITY.json",
+        "sha256": "32d1b2fb73abbecd18c7677bac5330c87f99917fb59bc3a7fde4516b017cbea8",
+        "bytes": 77059,
+        "lines": 1750,
+        "category": "security",
+        "commit_count": 21,
+        "status_counts": {
+          "candidate": 13,
+          "deferred": 6,
+          "rejected": 2,
+          "imported": 0
+        }
+      },
+      {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_PROTOCOL_APP_SERVER.json",
+        "sha256": "090f33912ca0947858466a3e725be4d230d1f216fba46de11d7acf6ccf1d8a69",
+        "bytes": 90385,
+        "lines": 2241,
+        "category": "protocol_app_server",
+        "commit_count": 20,
+        "status_counts": {
+          "candidate": 11,
+          "deferred": 8,
+          "rejected": 1,
+          "imported": 0
+        }
+      },
+      {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_TOOLS_APPS_RUNTIME.json",
+        "sha256": "29bbaee20b42666ddd4f058537ef9c50d2a71412f9ef1ed6a57dc154ae2e8793",
+        "bytes": 116383,
+        "lines": 2408,
+        "category": "tools_apps_runtime",
+        "commit_count": 38,
+        "status_counts": {
+          "candidate": 17,
+          "deferred": 19,
+          "rejected": 2,
+          "imported": 0
+        }
+      },
+      {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_TUI_OTHER.json",
+        "sha256": "37b0fb2e5930fc321c14caf5e3c60c83b3c8a4e249bf21cff40c780d155bc029",
+        "bytes": 51859,
+        "lines": 1158,
+        "category": "tui_other",
+        "commit_count": 18,
+        "status_counts": {
+          "candidate": 0,
+          "deferred": 1,
+          "rejected": 17,
+          "imported": 0
+        }
+      }
+    ],
+    "file_surface_shard": {
+      "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4_FILE_SURFACE.json",
+      "sha256": "332bedaa48b008ae142cdafa2f4402c8bbad645951fd703cdb19c9e75dbeef73",
+      "bytes": 74239,
+      "lines": 2991,
+      "file_count": 744
+    },
+    "reconstruction_order": [
+      "security",
+      "protocol_app_server",
+      "tools_apps_runtime",
+      "tui_other"
+    ],
+    "reconstruction_rule": "concatenate each category shard's commit_inventory, then sort by the upstream range order; file surface is stored in the dedicated shard"
+  }
+}

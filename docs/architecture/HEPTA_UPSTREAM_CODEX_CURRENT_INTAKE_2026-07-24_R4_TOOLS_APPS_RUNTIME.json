@@ -1,0 +1,2408 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v4_commit_shard",
+  "intake_id": "upstream-codex-intake-2026-07-24-r4",
+  "parent_manifest": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+  "category": "tools_apps_runtime",
+  "category_label": "工具/apps/runtime",
+  "commit_count": 38,
+  "status_counts": {
+    "candidate": 17,
+    "deferred": 19,
+    "rejected": 2,
+    "imported": 0
+  },
+  "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+  "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+  "commit_inventory": [
+    {
+      "upstream_commit": "33d394c69e23e8906e1d0b9a3807f10ea4b7c294",
+      "authored_at": "2026-07-22T10:42:45Z",
+      "author": "acrognale-oai",
+      "title": "Skip Git enrichment for prewarm and Guardian turns (#34728)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "approval_provenance",
+        "thread_history",
+        "multi_agent"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Skip Git enrichment for prewarm and Guardian turns”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Startup prewarms and Guardian review sessions do not need workspace Git metadata. Collecting it for those requests performs redundant work, while user turns still need a fresh view of the repository. ## What changed - Add a per-session Git enrichment policy. - Skip enrichment for startup prewarm, preview, and Guardian review turns. - Keep fresh enrichment enabled for regular sessions and one-shot delegated turns. ## Testing - Cover prewarm and Guardian requests omitting workspace metadata while subsequent user turns observe repository changes. - Cover concurrent repositories and worktrees retaining distinct metadata. - Verify concurrent enrichment is coalesced and canceled enrichment can be retried.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Skip Git enrichment for prewarm and Guardian turns”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 12,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/review_session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests/guardian_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/turn_metadata_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/tests/suite/git_enrichment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mod.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "6278742c418a2b3d3d29fd025dfdc13489a27987",
+      "authored_at": "2026-07-22T11:03:14Z",
+      "author": "felixxia-oai",
+      "title": "Preserve skill catalog entries under metadata pressure (#34732)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Preserve skill catalog entries under metadata pressure”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Long skill descriptions can consume the catalog's metadata budget before later skills are listed, hiding otherwise usable skills from the model. ## What changed - Reserve space for every skill's name and locator when those minimum lines fit. - Distribute the remaining token or character budget across descriptions in round-robin order. - Fall back to omitting entries only when the minimum catalog cannot fit. ## Testing Added extension and production-turn coverage that verifies moderate budget pressure keeps every catalog entry, shortens descriptions evenly, and avoids an omission marker.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Preserve skill catalog entries under metadata pressure”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/skills_extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "84d2b203ed58f8fad25a601ce2f9f6a753ae940a",
+      "authored_at": "2026-07-22T11:04:29Z",
+      "author": "jif",
+      "title": "Make MCP resource clients follow the latest runtime (#34733)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "mcp_runtime"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Make MCP resource clients follow the latest runtime”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Make `McpResourceClient` resolve resource operations and cache identity from the latest `McpRuntime` connection snapshot. - Remove step-bound resource clients from `McpBinding` and the associated per-binding client identity tracking.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Make MCP resource clients follow the latest runtime”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/binding.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/binding_clients.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/resource_client.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "fd51e505401b7b2da958edc269e4d7280be86bd5",
+      "authored_at": "2026-07-22T11:09:55Z",
+      "author": "jif",
+      "title": "Remove step-scoped data from extension contributors (#34734)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "approval_provenance",
+        "thread_history",
+        "mcp_runtime",
+        "skills_catalog",
+        "multi_agent"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Remove step-scoped data from extension contributors”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Remove the step-scoped `ExtensionData` argument from context, turn-input, and tool contributors. - Pass the host's optional `McpResourceClient` through `ThreadStartInput` so extensions can retain session capabilities explicitly. - Keep the MCP resource client in skills-owned session state for catalog loading and skill tools.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Remove step-scoped data from extension contributors”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 30,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/step_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/world_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/examples/enabled_extensions.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/examples/enabled_extensions/shared_state_extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/src/contributors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/src/contributors/context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/src/contributors/thread_lifecycle.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/src/contributors/world_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/extension-api/tests/registry.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/goal/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/goal/tests/goal_extension_backend.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/image-generation/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/memories/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/memories/src/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/web-search/src/extension.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "bd9a28a839d3dc4cf1facdf66cd02bb5732189e3",
+      "authored_at": "2026-07-22T11:49:14Z",
+      "author": "felixxia-oai",
+      "title": "Drop skill descriptions before omitting catalog entries (#34738)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Drop skill descriptions before omitting catalog entries”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed When even the minimum skill catalog exceeds its metadata budget, render each included entry without its description. This allows more skill names and locators to fit before the remaining entries are omitted. ## Testing Add coverage for extreme budget pressure and verify both the extension and production-turn catalogs omit descriptions while staying within budget.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Drop skill descriptions before omitting catalog entries”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/skills_extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "f21f98936ca365185bb6f6b97bc029e40aef314f",
+      "authored_at": "2026-07-22T12:22:40Z",
+      "author": "felixxia-oai",
+      "title": "Update skills budget tests for extension API changes (#34744)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Update skills budget tests for extension API changes”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Initialize the thread lifecycle input without an MCP resource client. - Call `contribute_thread_context` without the removed step-scoped data argument.",
+      "semantic_absorption_recommendation": "不单独移植“Update skills budget tests for extension API changes”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "2ffe8cd579c27fb3ece5c4725d7fff5477a15cc9",
+      "authored_at": "2026-07-22T12:34:52Z",
+      "author": "felixxia-oai",
+      "title": "Match core skill ordering in extension catalogs (#34746)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Match core skill ordering in extension catalogs”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Core-compatible catalog rendering needs to preserve the core renderer's skill priority, including when metadata budgets omit lower-priority entries. ## What changed - Carry each host skill's `SkillScope` into its catalog entry. - Under `CoreCompatible`, order visible skills by system, admin, repo, and user scope, then by name and prompt resource ID. - Preserve insertion order under `ExtensionCompatible`. ## Testing Add coverage for propagating host skill scope and for both rendering policies.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Match core skill ordering in extension catalogs”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 5,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/catalog.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/provider/host.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/skills/src/provider/host_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "64dc1c7a01b2aaa03701f08cf88b659c1a9737b3",
+      "authored_at": "2026-07-22T14:17:49Z",
+      "author": "jif",
+      "title": "Retry websocket requests when the previous response is missing (#34763)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-terminal-retry-authority",
+      "reason": "核心语义是“Retry websocket requests when the previous response is missing”，属于工具/apps/runtime；它与 Hepta V2 的终态权威、重试分类与丢增量后的 authoritative completion直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed Treat `previous_response_not_found` websocket errors as retryable so Codex can retry with the full request. Preserve the server-provided error message when available, with a fallback message that explains the retry.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Retry websocket requests when the previous response is missing”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：终态权威、重试分类与丢增量后的 authoritative completion。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/src/endpoint/responses_websocket.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "c5779ed6bb2acd868eeaa372e8996e493d9ed556",
+      "authored_at": "2026-07-22T16:05:52Z",
+      "author": "Owen Lin",
+      "title": "Use the live parent history mode when forking agents (#34779)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "thread_history",
+        "multi_agent"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-multi-agent-lineage-continuity",
+      "reason": "核心语义是“Use the live parent history mode when forking agents”，属于工具/apps/runtime；它与 Hepta V2 的多代理 lineage、world-state 与中断/唤醒连续性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Require the parent thread to be live before forking its history. - Read the history mode and multi-agent usage hints from that live parent so the fork loads and filters history using the active configuration. - Verify that forking a legacy parent keeps the child in legacy history mode.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Use the live parent history mode when forking agents”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：多代理 lineage、world-state 与中断/唤醒连续性。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control/spawn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/agent/control_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "fe6aa9d16c88b46df82d2c18fdc887e758871053",
+      "authored_at": "2026-07-22T16:15:47Z",
+      "author": "felixxia-oai",
+      "title": "Report skill catalog truncation during rendering (#34785)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Report skill catalog truncation during rendering”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Return a `SkillRenderReport` with total, included, and omitted skill counts, plus truncated description counts and character totals. - Keep fragment construction separate from rendering so callers can inspect the report even when the metadata budget is too small to emit a fragment. ## Testing - Cover partial description truncation, fully omitted entries, and catalogs whose omission marker does not fit the budget.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Report skill catalog truncation during rendering”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "66bd101fff6f0e7e05a594ec7bdb78b92f6b66d3",
+      "authored_at": "2026-07-22T16:45:17Z",
+      "author": "jif",
+      "title": "Avoid unnecessary post-sampling token estimates (#34789)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "sqlite_state"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Avoid unnecessary post-sampling token estimates”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why The post-sampling trace calculated an estimated token count even when only the always-on diagnostic and state log sinks were listening, adding unnecessary work after every sample. ## What changed - Move the estimate to a dedicated trace target and calculate it only when that event is enabled. - Disable the target for the always-on diagnostic and state log sinks while keeping it available to explicitly configured subscribers. ## Testing - Verify that the combined always-on subscribers do not enable the estimate event.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Avoid unnecessary post-sampling token estimates”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/feedback/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/log_db.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "f343d1237d8d360e8224997a846acde0b04a17cd",
+      "authored_at": "2026-07-22T17:32:42Z",
+      "author": "felixxia-oai",
+      "title": "Suppress omission notices in core-compatible skill catalogs (#34797)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Suppress omission notices in core-compatible skill catalogs”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Core-compatible skill catalog output should match the core renderer when the metadata budget omits entries. ## What changed - Emit the bounded-catalog omission notice only for `ExtensionCompatible` rendering. - Continue tracking omitted entries in `SkillRenderReport` for both policies, even when `CoreCompatible` produces no fragment because every entry is omitted. ## Testing Cover policy-specific omission notices and the case where no minimum skill line fits within the metadata budget.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Suppress omission notices in core-compatible skill catalogs”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "12c115d558b9fec378b4445636a327b05e7de8cc",
+      "authored_at": "2026-07-22T20:47:57Z",
+      "author": "jif",
+      "title": "Reduce cloning when building Responses requests (#34825)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Reduce cloning when building Responses requests”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Preparing Responses API requests rebuilt tool definitions as a generic JSON tree, and incremental WebSocket requests cloned their full item prefix for comparison. ## What changed - Serialize tool definitions into shared raw JSON that can be embedded directly in HTTP and WebSocket requests. - Compare incremental request prefixes in place while still ignoring internal message metadata. ## Testing - Verify raw tool JSON matches the existing value encoding. - Preserve the serialized WebSocket request payload.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Reduce cloning when building Responses requests”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 12,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/src/common.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/src/endpoint/responses_websocket.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-api/tests/clients.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/client_common_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tools/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tools/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tools/src/tool_spec.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tools/src/tool_spec_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "88f1cd9664d09b68909a258a061a662c1f099ce6",
+      "authored_at": "2026-07-22T21:30:00Z",
+      "author": "Ben Romano",
+      "title": "Flush analytics before in-process app server shutdown (#34831)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "analytics_observability"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Flush analytics before in-process app server shutdown”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why The in-process app server can shut down while analytics for a completed turn are still queued, preventing the completed-turn and accepted-line events from being delivered. ## What changed - Add a bounded analytics queue flush that waits for all preceding facts to be processed. - Flush analytics after the in-process runtime drains its outbound work and before acknowledging shutdown. - Extend the in-process shutdown timeout budgets to cover runtime draining and the best-effort analytics flush. ## Testing - Verify that the flush waits for preceding facts and is a no-op when analytics is disabled. - Verify that shutdown waits for delayed analytics delivery, including the completed-turn and accepted-line events produced by a file change.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Flush analytics before in-process app server shutdown”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 6,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/analytics_client_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/client_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-client/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/in_process.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/tests/suite/apply_patch.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "bd5b55e403e867f957e371840377cd284023f98c",
+      "authored_at": "2026-07-22T22:08:22Z",
+      "author": "Ben Romano",
+      "title": "Track compaction time in turn profiles (#34835)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "analytics_observability"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Track compaction time in turn profiles”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Add `compaction_ms` to turn profile facts and turn analytics events. - Measure manual and automatic compaction as an exclusive profile phase instead of including it in surrounding idle time. - Complete the profile and total turn duration from the same instant so their elapsed times remain consistent. ## Testing - Cover compaction phase accounting and profile-duration consistency. - Update turn event serialization coverage for `compaction_ms`.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Track compaction time in turn profiles”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 9,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/analytics_client_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/events.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/facts.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/reducer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/compact.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/turn_timing.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/turn_timing_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "d7e8f4c3dccc1647c88330efa73e58030d0b164d",
+      "authored_at": "2026-07-22T22:42:33Z",
+      "author": "Ahmed Ibrahim",
+      "title": "Preserve user input when MCP startup is interrupted (#34839)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "thread_history",
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-multi-agent-lineage-continuity",
+      "reason": "核心语义是“Preserve user input when MCP startup is interrupted”，属于工具/apps/runtime；它与 Hepta V2 的多代理 lineage、world-state 与中断/唤醒连续性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Interrupting a turn while MCP tools were still starting could abort before the submitted user input was recorded in conversation history. ## What changed - Build and retain the MCP tool list and tool router as part of each step snapshot, using the turn cancellation token during tool discovery. - Record turn hooks and submitted input when cancellation occurs during startup prewarming, pre-sampling compaction, or first-step capture. - Reuse the captured router for sampling, compaction, and prompt debugging so advertised and executable tools share the same request-scoped view. ## Testing Add coverage that interrupts each affected MCP startup phase and verifies that the user prompt remains in history before the turn-aborted marker.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Preserve user input when MCP startup is interrupted”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：多代理 lineage、world-state 与中断/唤醒连续性。",
+      "changed_file_count": 21,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_remote_request.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_remote_v2.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_remote_v2_attempt.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_token_budget.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/prompt_debug.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/step_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/world_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session_startup_prewarm.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/stream_events_utils_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/regular.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/rmcp_client.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "0da13c6c993cbb6de3ce88591b316a40cbd411b1",
+      "authored_at": "2026-07-22T23:24:49Z",
+      "author": "sayan-oai",
+      "title": "Track multi-agent mode in world state (#34845)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "sqlite_state",
+        "multi_agent"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-multi-agent-lineage-continuity",
+      "reason": "核心语义是“Track multi-agent mode in world state”，属于工具/apps/runtime；它与 Hepta V2 的多代理 lineage、world-state 与中断/唤醒连续性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Multi-agent mode instructions are durable model context and need to survive history changes without re-emitting unrelated setup hints. ## What changed - Add a `multi_agent_mode` world-state section that diffs, retains, and restores the effective mode instructions. - Persist mode changes in world-state snapshots while keeping the legacy `TurnContextItem.multi_agent_mode` field for reading older rollouts. - Keep initial mode instructions after the root-agent usage hint so the active mode takes precedence, and bound custom mode text before snapshotting it. ## Testing - Add snapshot coverage for mode transitions, retained history, and custom-text truncation. - Verify live mode changes preserve instruction ordering, avoid duplicating the usage hint, and record both modes in world state.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Track multi-agent mode in world state”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：多代理 lineage、world-state 与中断/唤醒连续性。",
+      "changed_file_count": 12,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/context/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/context/multi_agent_mode_instructions.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/context/world_state/mod.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/src/context/world_state/multi_agent_mode.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/src/context/world_state/multi_agent_mode_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/src/context/world_state/snapshots/codex_core__context__world_state__multi_agent_mode__tests__snapshots.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/context_manager/updates.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/world_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/multi_agent_mode.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/protocol.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "0f9fb40fa9c4cc4b1ed0d595ce3ba70468a0c87a",
+      "authored_at": "2026-07-22T23:48:18Z",
+      "author": "sayan-oai",
+      "title": "Allow custom providers to opt into standalone web search (#34846)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "thread_history",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Allow custom providers to opt into standalone web search”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Add the `supports_standalone_web_search` model-provider setting, defaulting to `false`, and preserve it in remote thread configuration. - Enable the standalone `web.run` tool for opted-in custom Responses providers when web search is enabled and the runtime provider supports it. - Send standalone search requests through the custom provider's endpoint and authentication. ## Testing - Cover opt-in, default-off, disabled-search, and unsupported-provider behavior. - Verify custom-provider search request routing and authorization through the app server.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Allow custom providers to opt into standalone web search”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 20,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/web_search.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/thread_config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/thread_config/proto/codex.thread_config.v1.proto"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/thread_config/proto/codex.thread_config.v1.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/thread_config/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/responses_headers.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/client_websockets.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/responses_lite.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/stream_error_allows_next_turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/stream_no_completed.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/web-search/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/login/src/auth_env_telemetry.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/model-provider-info/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/model-provider-info/src/model_provider_info_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/model-provider/src/provider.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "83ff1c2f809d810482be0bfda197f4f3f7abd697",
+      "authored_at": "2026-07-23T00:13:19Z",
+      "author": "brisebois-oai",
+      "title": "Cache remote plugin catalogs by scope (#34849)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "sqlite_state",
+        "plugin_apps",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "candidate",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": "r4-p2-plugin-catalog-refresh",
+      "reason": "核心语义是“Cache remote plugin catalogs by scope”，属于工具/apps/runtime；它与 Hepta V2 的插件目录缓存、刷新等待与可观察一致性直接相交，优先级为 P2。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Cache global, user, and workspace remote plugin catalogs on disk with a three-hour TTL and scope- and account-specific keys. - Serve cached catalogs from `plugin/list`, refresh stale entries in the background, and warm existing caches at app-server startup without blocking list requests. - Make `forceRefetch: true` bypass cached catalog data and replace an entry only after a successful fetch. - Invalidate user and workspace catalog caches after remote plugin sharing changes. ## Testing - Cover cache freshness, scope isolation, legacy global cache compatibility, identity requirements for private catalogs, forced refetches, and non-blocking startup refreshes.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Cache remote plugin catalogs by scope”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：插件目录缓存、刷新等待与可观察一致性。",
+      "changed_file_count": 9,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/plugins.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/remote/catalog_cache.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core-plugins/src/remote/catalog_cache_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/remote_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/state/src/migrations_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "0a0a9b6c8f2153205ee31eea8e5bbaeb9a3ef5f7",
+      "authored_at": "2026-07-23T00:40:46Z",
+      "author": "Won Park",
+      "title": "Disable image generation for Free-plan accounts (#34850)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "runtime_misc"
+      ],
+      "risk": "medium",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Disable image generation for Free-plan accounts”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed Skip registering the standalone `image_generation` tool when cached authentication identifies the account plan as Free. Leave the existing feature, provider capability, model modality, and authorization checks intact for other account plans.",
+      "semantic_absorption_recommendation": "不单独移植“Disable image generation for Free-plan accounts”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "b72079a2cfe4eea5ca7931776cd6030b36e8728b",
+      "authored_at": "2026-07-23T00:44:35Z",
+      "author": "stevenlee-oai",
+      "title": "Use batch metadata for plugin app summaries (#34851)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "plugin_apps",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Use batch metadata for plugin app summaries”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Load app metadata for plugin read and install responses through the authenticated batch API, splitting requests into batches of 100 and retaining cached metadata if a batch fails. - Preserve every declared app in plugin responses, using its ID as the fallback name and retaining categories from the plugin declaration when metadata is unavailable. - Add `isEnabled`, `disabledReason`, and `isReadOnly` to `AppToolSummary`, with defaults that keep legacy responses compatible. ## Testing - Cover plugin reads with more than 100 apps, partial batch failures, install-time authentication results, tool-state propagation, and legacy tool summaries.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Use batch metadata for plugin app summaries”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 15,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/AppsReadResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/AppToolSummary.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/apps.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/app_info.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/plugins.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/app_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_install.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/chatgpt/src/connectors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/connectors/src/metadata_store.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/connectors/src/metadata_store_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "44d76c6a6dd04fa2efc302b906ac8774267a1272",
+      "authored_at": "2026-07-23T00:49:18Z",
+      "author": "Boyang Niu",
+      "title": "Wake sleeping threads for queued agent mail (#34852)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "thread_history",
+        "multi_agent"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-multi-agent-lineage-continuity",
+      "reason": "核心语义是“Wake sleeping threads for queued agent mail”，属于工具/apps/runtime；它与 Hepta V2 的多代理 lineage、world-state 与中断/唤醒连续性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why An idle thread with an outstanding durable sleep must resume when agent work arrives, even when that message would normally remain queued without triggering a turn. ## What changed - Treat any pending mailbox message as wake-up work while a durable sleep is attached to the thread. - Keep requiring `trigger_turn` for idle threads that are not durably asleep. - Cover waking a sleeping root thread from queue-only agent mail and persisting the message in thread history.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Wake sleeping threads for queued agent mail”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：多代理 lineage、world-state 与中断/唤醒连续性。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/handlers.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/pending_input.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "4e0cee8030c4833baa6331b378101545accc9956",
+      "authored_at": "2026-07-23T05:33:37Z",
+      "author": "Cam moten",
+      "title": "Wait for local plugin cache refreshes in `plugin/list` (#34877)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "plugin_apps",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "candidate",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": "r4-p2-plugin-catalog-refresh",
+      "reason": "核心语义是“Wait for local plugin cache refreshes in `plugin/list`”，属于工具/apps/runtime；它与 Hepta V2 的插件目录缓存、刷新等待与可观察一致性直接相交，优先级为 P2。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Make `plugin/list` requests with `forceRefetch: true` wait for configured local plugin caches to finish reconciling before building the response. - Track marketplace plugin sources when deduplicating refreshes so source changes can trigger a reinstall even when the plugin version is unchanged. - Notify effective-plugin consumers when the awaited refresh changes the cache. ## Testing Added coverage showing that a forced local plugin listing returns an upgraded plugin from the same marketplace path only after the new version is installed and the superseded cache entry is removed.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Wait for local plugin cache refreshes in `plugin/list`”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：插件目录缓存、刷新等待与可观察一致性。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/plugins.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/manager.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "6e0455fdc4114ae5d14a88ec966c090208e71e0c",
+      "authored_at": "2026-07-23T06:08:18Z",
+      "author": "Eric Traut",
+      "title": "Set a default user agent for MCP HTTP requests (#34883)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Set a default user agent for MCP HTTP requests”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Send `codex-mcp-client/<version>` as the default user agent for streamable HTTP and OAuth requests. - Preserve user agents supplied through configured HTTP headers. ## Testing - Verify the default user agent on OAuth discovery, token refresh, and MCP initialization requests. - Verify that a configured user agent overrides the default.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Set a default user agent for MCP HTTP requests”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/utils.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/tests/streamable_http_oauth_startup.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/rmcp-client/tests/streamable_http_user_agent.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "4462b9deef211723b781b426f5e5d36a5777115f",
+      "authored_at": "2026-07-23T06:23:58Z",
+      "author": "rka-oai",
+      "title": "Allow disabling the multi-agent wait tool (#34887)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "multi_agent",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Allow disabling the multi-agent wait tool”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Add a default-on `features.multi_agent_v2.wait_agent_enabled` setting. - Omit `collaboration.wait_agent` from the tool plan when the setting is disabled, independently of `features.current_time_reminder.sleep_tool`. ## Testing - Cover configuration parsing and tool exposure with both clock sleep states.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Allow disabling the multi-agent wait tool”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 8,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/config_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/spawn_agent_description.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/feature_configs.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "e497325a6a1743cfadeee41a6b5f05ebf7fd0221",
+      "authored_at": "2026-07-23T11:22:58Z",
+      "author": "jif",
+      "title": "Centralize thread MCP state in `McpRuntime` (#34930)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "mcp_runtime",
+        "plugin_apps",
+        "skills_catalog",
+        "release_ci",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Centralize thread MCP state in `McpRuntime`”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Make `McpRuntime` own the published MCP configuration, connections, elicitation routing, and selected capability roots for a thread. - Capture immutable MCP bindings for model steps and tool calls so in-flight work keeps a consistent connection set and approval authority while refreshed state is published atomically. - Mark MCP state dirty when relevant configuration, plugins, environments, authentication, or elicitation capabilities change, then rebuild it before the next sampling request or out-of-band MCP operation. - Separate config reloads from server invalidation: `ReloadMcpConfig` applies resolved MCP inputs, while `RefreshMcpServers` requests reinitialization from the thread's latest state. ## Testing - Cover refreshed state visibility for existing turns, stable step bindings, current approval authority, cancelled refresh retries, resource-client reconciliation, and Apps recovery between sampling requests.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Centralize thread MCP state in `McpRuntime`”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 54,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/effective_plugin_change.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/mcp_refresh.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/account_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor/installed.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/config_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/mcp_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/binding.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/binding_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager/required.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/elicitation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/resource_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/rmcp_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-api/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/compact_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/connectors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/mcp.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/mcp_tool_call.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/mcp_tool_call_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/handlers.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mcp.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mcp_runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/step_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/state/service.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/state/turn.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resource_templates.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resources.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/mcp_resource/read_mcp_resource.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/request_plugin_install.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/common/apps_test_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_auth_refresh.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_tool_cache.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/request_plugin_install.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/protocol.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "48ebbf5334cbb65dd77ef372b4a7da3b0041964c",
+      "authored_at": "2026-07-23T11:27:44Z",
+      "author": "felixxia-oai",
+      "title": "Use the API plugin marketplace for Amazon Bedrock (#34931)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "plugin_apps"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Use the API plugin marketplace for Amazon Bedrock”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Amazon Bedrock configurations can operate without Codex auth, so auth mode alone cannot determine which curated plugin marketplace to expose. ## What changed - Pass the resolved model provider into plugin configuration. - Select `openai-api-curated` when the resolved provider is `amazon-bedrock`, while retaining API-key auth as a selection signal. - Cover provider overrides and app-server plugin listing without an `auth.json` file.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Use the API plugin marketplace for Amazon Bedrock”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 5,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/test_support.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "e19e65317a333ce725b18ac6f1e3bc904b74d2a1",
+      "authored_at": "2026-07-23T14:50:28Z",
+      "author": "jif",
+      "title": "Reuse MCP connections across runtime refreshes (#34952)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "plugin_apps",
+        "release_ci",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Reuse MCP connections across runtime refreshes”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Refreshing MCP runtime state should not restart an unchanged, ready server or relist its tools. ## What changed - Reconcile refreshed MCP configuration against the published connection set and reuse connections whose transport, environment, authentication, OAuth credentials, and client capabilities are unchanged. - Keep tool filters, timeouts, metadata, and plugin provenance in the published server view so those settings can change without reconnecting. - Update elicitation authority in place for reused connections, and reconnect when connection-defining inputs or live OAuth credentials change. ## Testing Added coverage for unchanged-server reuse, view-only and elicitation-policy updates, connection identity changes, OAuth credential changes, and avoiding redundant tool listing.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Reuse MCP connections across runtime refreshes”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 26,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor/installed.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/mcp_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/binding_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager/required.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/codex-mcp/src/connection_manager/resources.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/codex-mcp/src/connection_manager/startup.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/elicitation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/auth.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/rmcp_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/connectors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mcp.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/mcp/tests/hosted_apps_mcp.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/oauth.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/oauth/tests/persistor_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/rmcp_client.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "34b935e3e57f5071917fae20471024fee4190c82",
+      "authored_at": "2026-07-23T15:21:16Z",
+      "author": "jif",
+      "title": "Replace closed MCP connections during reconciliation (#34957)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "release_ci"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Replace closed MCP connections during reconciliation”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why MCP connection reconciliation can otherwise reuse a client after its service or underlying transport has stopped. ## What changed - Add `RmcpClient::is_closed` to report closed client, service, and transport states. - Exclude closed clients when selecting a reusable MCP connection so reconciliation starts a replacement. ## Testing - Add a reconciliation test that disconnects an in-process MCP transport and verifies that its connection is replaced.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Replace closed MCP connections during reconciliation”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/rmcp_client.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "7d748d3bbcbd640988813de962455f27c918abdf",
+      "authored_at": "2026-07-23T15:27:49Z",
+      "author": "Philipp Spiess",
+      "title": "Handle @ in local marketplace paths (#34959)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "plugin_apps"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Handle @ in local marketplace paths”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Relative local marketplace paths can contain `@`, but source parsing treated it as a Git ref separator. ## What changed - Skip `@` ref parsing when the marketplace source has local path syntax. - Cover adding a local marketplace from `./alice@example.com/marketplace` through the app-server API.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Handle @ in local marketplace paths”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/marketplace_add.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/marketplace_add/source.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "205d37a20f742b0bf8e191622bd07c43f567ea49",
+      "authored_at": "2026-07-23T16:14:42Z",
+      "author": "rka-oai",
+      "title": "Keep the sleep tool outside code mode (#34969)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "runtime_misc"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-tool-exposure-controls",
+      "reason": "核心语义是“Keep the sleep tool outside code mode”，属于工具/apps/runtime；它与 Hepta V2 的工具可见性和 capability surface 的显式配置边界直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Mark `clock.sleep` as `DirectModelOnly` so it remains directly callable in code-mode-only sessions without appearing in the nested code-mode tool surface. - Cover both code mode configurations with a tool-plan test that verifies the sleep tool's exposure and visibility.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Keep the sleep tool outside code mode”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：工具可见性和 capability surface 的显式配置边界。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/sleep.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "8d34c0667215f9ae4f8a11678e27752d8a4a120f",
+      "authored_at": "2026-07-23T17:46:27Z",
+      "author": "charlesgong-openai",
+      "title": "Infer the bundled Claude Code plugin marketplace (#34979)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "plugin_apps"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Infer the bundled Claude Code plugin marketplace”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Treat enabled plugins from `claude-code-plugins` as coming from `anthropics/claude-code` when no marketplace source is already known. - Preserve an explicitly discovered source instead of replacing it with the inferred source. ## Testing - Add a migration test covering inference from `enabledPlugins`.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Infer the bundled Claude Code plugin marketplace”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/external-agent-migration/src/service_tests/plugins/basics.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/external-agent-migration/src/source_cla.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "74e9d7efc416b1cb9f3ad10c70a91afbcb6d6a29",
+      "authored_at": "2026-07-23T18:50:19Z",
+      "author": "sayan-oai",
+      "title": "Allow omitting MCP tool prefixes per server (#34991)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "thread_history",
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Allow omitting MCP tool prefixes per server”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Accept a table form of `features.non_prefixed_mcp_tool_names` with an optional `server_names` list while preserving the existing boolean form. - Omit the legacy `mcp__` namespace prefix only for tools from selected MCP servers. When no server list is provided, the enabled feature continues to omit the prefix for every server. - Cover configuration resolution, tool normalization, and an MCP stdio round trip with selected servers.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Allow omitting MCP tool prefixes per server”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 15,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/tools.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/schema.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/config_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/rmcp_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/feature_configs.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-manager-sample/src/main.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "2c92af09cfc95d4190ffe8f86298ba65eebcf7d4",
+      "authored_at": "2026-07-23T19:38:53Z",
+      "author": "felixxia-oai",
+      "title": "Warn when skill catalogs exceed their context budget (#34997)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "skills_catalog"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Warn when skill catalogs exceed their context budget”，属于工具/apps/runtime。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Skill catalog rendering can shorten descriptions or omit enabled skills to fit the model context budget. Surface these reductions so users know when the model-visible catalog has lost detail. ## What changed - Emit a warning with the omitted skill count whenever entries do not fit. - Warn when description shortening averages more than 100 characters per skill. - Deduplicate executor catalog warnings across repeated world-state builds in a turn. ## Testing - Cover the description-shortening threshold and omission warning text. - Verify warnings through extension and production-turn catalogs, including per-turn deduplication.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Warn when skill catalogs exceed their context budget”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：capability 目录、运行时快照与工具生命周期。",
+      "changed_file_count": 7,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/skills_extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/render_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/src/world_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "091e4a5d7c7a79d07b1254591ffcaac1d231d16b",
+      "authored_at": "2026-07-23T23:04:17Z",
+      "author": "jif",
+      "title": "Preserve refreshed Apps tools across MCP runtime updates (#35028)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "plugin_apps",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Preserve refreshed Apps tools across MCP runtime updates”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why After a remote plugin install refreshes the Apps tool catalog, a later MCP runtime publication must not restore the catalog from the previous connection. ## What changed - Rebuild the MCP runtime with fresh connections when hard-refreshing Apps tools, using the latest desired runtime configuration. - Refresh the Apps catalog on the newly published connection so subsequent runtime updates retain it. ## Testing Extend the remote plugin install test to verify that both newly available and missing Apps tools remain consistent after an unrelated runtime configuration refresh.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Preserve refreshed Apps tools across MCP runtime updates”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mcp.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mcp_runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/request_plugin_install.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "fb4e6ba2f49278c49b33ced725964ace9d0f5c37",
+      "authored_at": "2026-07-24T00:00:37Z",
+      "author": "tongzhou wang",
+      "title": "Allow disabling the update_plan tool (#35054)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "thread_history",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-tool-exposure-controls",
+      "reason": "核心语义是“Allow disabling the update_plan tool”，属于工具/apps/runtime；它与 Hepta V2 的工具可见性和 capability surface 的显式配置边界直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add a default-on `tools.update_plan.enabled` configuration option. - Omit `update_plan` from the visible and registered tool sets when the option is disabled. ## Testing - Cover configuration resolution and tool registration for the disabled setting.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Allow disabling the update_plan tool”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：工具可见性和 capability surface 的显式配置边界。",
+      "changed_file_count": 7,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/config_toml.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/config_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-manager-sample/src/main.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "1d4b58f32d0b238e43adedc0f751812b974dc7bf",
+      "authored_at": "2026-07-24T01:14:46Z",
+      "author": "Ahmed Ibrahim",
+      "title": "Track deferred tool namespaces in world state (#35063)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "sqlite_state",
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Track deferred tool namespaces in world state”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add the disabled-by-default `deferred_tool_world_state` feature, which exposes deferred tool namespaces and their descriptions to the model in a `<tools>` world-state section. - Emit added and removed namespace updates as tool availability changes, bound the rendered context size, and persist nonempty state across thread resumes. - Omit empty tool state while retaining deferred tool discovery through `tool_search`. ## Testing - Cover initial, unchanged, removed, recovered, empty, and resumed namespace state, along with description truncation and rendered-size limits.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Track deferred tool namespaces in world state”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 16,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/context/world_state/mod.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/src/context/world_state/tools.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/src/context/world_state/tools_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/event_mapping.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/world_state.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/registry.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/router_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/common/context_snapshot.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/tests/suite/snapshots/all__suite__mcp_tool_exposure__deferred_tools_initial_unchanged_and_removed.snap"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/tests/suite/snapshots/all__suite__mcp_tool_exposure__deferred_tools_recover_during_sampling.snap"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core/tests/suite/snapshots/all__suite__mcp_tool_exposure__deferred_tools_resume_without_duplicate_update.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/protocol.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "3947f0d0c3e255bade02e241c16cb43d284c0e65",
+      "authored_at": "2026-07-24T01:17:44Z",
+      "author": "Ahmed Ibrahim",
+      "title": "Avoid duplicating deferred sources in tool search (#35065)",
+      "primary_category": "tools_apps_runtime",
+      "primary_category_label": "工具/apps/runtime",
+      "secondary_topics": [
+        "runtime_misc"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p1-runtime-capability-snapshot",
+      "reason": "核心语义是“Avoid duplicating deferred sources in tool search”，属于工具/apps/runtime；它与 Hepta V2 的turn-frozen capability/MCP snapshot、原子发布与刷新一致性直接相交，优先级为 P1。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Deferred tool world state already advertises the available tool sources, so repeating them in the `tool_search` description adds redundant context. ## What changed - Omit the source listing from `tool_search` when `DeferredToolWorldState` is enabled while preserving the tool discovery instructions. - Include the source-listing mode in the tool search handler cache key so the description is rebuilt when the feature state changes. ## Testing Added coverage for source omission, cache invalidation when the feature is toggled, and the resulting request payload.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Avoid duplicating deferred sources in tool search”中的 capability publication、turn snapshot、刷新或目录语义，映射到 Hepta capability bus/runtime snapshot，并继续由 kernel 控制可见性和执行授权；增加竞态、刷新和恢复测试。关联目标：turn-frozen capability/MCP snapshot、原子发布与刷新一致性。",
+      "changed_file_count": 5,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/tool_search.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/tool_search_spec.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/search_tool.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    }
+  ]
+}

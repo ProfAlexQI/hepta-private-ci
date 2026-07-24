@@ -1,0 +1,2991 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v4_file_surface_shard",
+  "intake_id": "upstream-codex-intake-2026-07-24-r4",
+  "parent_manifest": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+  "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+  "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+  "file_count": 744,
+  "identity": {
+    "algorithm": "sha256(json_generate_path_sorted_surface)",
+    "digest": "164b64cbc09bb08676974bac32877313b7f77f594d0fc848dfb2d3d9f67b612b"
+  },
+  "file_surface": [
+    {
+      "status": "M",
+      "path": ".bazelrc"
+    },
+    {
+      "status": "M",
+      "path": ".github/scripts/publish_r2_release.py"
+    },
+    {
+      "status": "M",
+      "path": ".github/scripts/run-argument-comment-lint-bazel.sh"
+    },
+    {
+      "status": "M",
+      "path": "BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "MODULE.bazel"
+    },
+    {
+      "status": "M",
+      "path": "MODULE.bazel.lock"
+    },
+    {
+      "status": "M",
+      "path": "README.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/Cargo.lock"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/agent-graph-store/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/agent-graph-store/src/local.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/analytics_client_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/client_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/events.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/facts.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/analytics/src/reducer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-client/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-client/src/remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/AppListUpdatedNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/AppsListResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/AppsReadResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigBatchWriteParams.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigRequirementsReadResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportHistoriesReadResponse.json"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportHistoryRecordParams.json"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportHistoryRecordResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ExternalAgentConfigImportParams.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/PluginReadResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/SkillsListResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListParams.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateParams.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadRollbackResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/AppMetadata.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/AppToolSummary.ts"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/BrowserUseRequirements.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConfigBatchWriteParams.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConfigRequirements.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportHistory.ts"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportHistoryRecordParams.ts"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportHistoryRecordResponse.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ExternalAgentConfigImportParams.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/SkillInterface.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/Thread.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadListParams.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadMetadataUpdateParams.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/item_builders.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/thread_history.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/apps.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/item.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/realtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-test-client/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/enroll.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/websocket.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/README.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/app_info.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/app_server_tracing.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/bin/exec_server.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/src/code_mode_host.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/src/code_mode_host_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/effective_plugin_change.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/extensions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/external_agent_migration/processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/external_agent_migration/protocol.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/external_agent_migration/session_importer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/in_process.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/main.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/main_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/mcp_refresh.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/message_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/message_processor_tracing_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/account_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/apps_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/apps_processor/installed.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/src/request_processors/apps_processor/installed_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/src/request_processors/apps_processor/read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/catalog_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/config_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/mcp_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/plugins.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/request_errors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_delete.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_resume_redaction.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/thread_summary.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/request_processors/turn_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/src/thread_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/common/config.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/tests/common/config_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/common/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/common/test_app_server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/auth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/conversation_summary.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/fuzzy_file_search.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/logging.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/account.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/app_installed.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/app_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/app_read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/client_metadata.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/tests/suite/v2/code_mode_host.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/command_exec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/compaction.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/config_rpc.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/current_time.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/dynamic_tools.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/executor_mcp.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/experimental_api.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/experimental_feature_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/app-server/tests/suite/v2/git_attribution.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/hooks_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/imagegen_extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/initialize.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/marketplace_add.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/marketplace_remove.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/marketplace_upgrade.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_resource.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_tool.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/memory_reset.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/model_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/model_provider_capabilities_read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/output_schema.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/permission_profile_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plan_item.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_install.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_share.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/rate_limit_reset_credits.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/rate_limits.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/realtime_conversation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/remote_control.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/remote_thread_store.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/request_permissions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/request_user_input.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/request_validation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/review.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/safety_check_downgrade.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/selected_environment.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/session_end.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/skills_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/sleep.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_archive.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_delete.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_fork.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_inject_items.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_loaded_list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_memory_mode_set.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_metadata_update.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_rollback.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_settings_update.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_shell_command.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_start.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_status.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_unarchive.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_interrupt.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_steer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/app-server/tests/suite/v2/web_search.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/chatgpt/src/connectors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/doctor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/doctor/thread_inventory.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/main.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/mcp_cmd.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/remote_control_cmd.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/src/state_db_recovery.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/tests/debug_clear_memories.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/cli/tests/login.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-host/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-host/src/host_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-host/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-host/src/main.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-host/src/peer.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/code-mode-host/src/transport.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/code-mode-host/src/transport_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/code-mode-host/tests/websocket.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-protocol/src/host/codec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-protocol/src/host/codec_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode-protocol/src/host/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/remote_session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/remote_session/connection.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/remote_session/connection/driver/delegate_runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/remote_session/connection/driver_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/remote_session/connection/reader.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/code-mode/src/remote_session/connection/transport.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/code-mode/src/remote_session_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/src/api_bridge.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/src/api_bridge_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/src/common.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/src/endpoint/responses_websocket.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-api/tests/clients.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/binding.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/binding_clients.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/binding_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/connection_manager/required.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/connection_manager/resources.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/codex-mcp/src/connection_manager/startup.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/elicitation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/mcp/auth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/mcp/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/resource_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/rmcp_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/codex-mcp/src/tools.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/config_requirements.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/config_toml.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/requirements_layers/stack.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/schema.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/thread_config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/thread_config/proto/codex.thread_config.v1.proto"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/thread_config/proto/codex.thread_config.v1.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/thread_config/remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/config/src/tui_keymap.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/connectors/src/app_info.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/connectors/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/connectors/src/metadata_store.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/connectors/src/metadata_store_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-api/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-api/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/marketplace_add/source.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/provider_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote/catalog_cache.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core-plugins/src/remote/catalog_cache_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/remote_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core-plugins/src/script_attribution.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core-plugins/src/script_attribution_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core-plugins/src/test_support.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/config.schema.json"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/agent_resolver.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control/execution.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control/execution_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control/legacy.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control/residency.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control/residency_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control/spawn.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/control_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/registry.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/agent/registry_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/client_common_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/codex_delegate.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/codex_delegate_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/codex_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_model_fallback.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_remote_request.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_remote_v2.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_remote_v2_attempt.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/compact_token_budget.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/config_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/config/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/connectors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/context/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/context/multi_agent_mode_instructions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/context/world_state/mod.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/src/context/world_state/multi_agent_mode.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/src/context/world_state/multi_agent_mode_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/src/context/world_state/snapshots/codex_core__context__world_state__multi_agent_mode__tests__snapshots.snap"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/src/context/world_state/tools.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/src/context/world_state/tools_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/context_manager/updates.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/environment_selection.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/event_mapping.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/guardian/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/guardian/review.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/guardian/review_session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/guardian/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/mcp.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/mcp_tool_call.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/mcp_tool_call_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/prompt_debug.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_context_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_conversation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_conversation/bem.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_conversation/bem_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/realtime_conversation_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/responses_retry.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/responses_retry_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/rollout.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/elicitation_holders_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/handlers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/mcp.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/mcp_runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/step_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/tests/guardian_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/turn.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/turn_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/turn_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session_rollout_init_error.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/session_startup_prewarm.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/state/service.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/state/turn.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/stream_events_utils_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tasks/compact.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tasks/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tasks/regular.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tasks/user_shell.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/thread_manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/thread_manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/thread_rollout_truncation_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/events.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resource_templates.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resources.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/read_mcp_resource.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents/close_agent.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents/wait.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_common.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/interrupt_agent.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/request_plugin_install.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/shell.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/sleep.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/tool_search.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/handlers/tool_search_spec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/network_approval.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/orchestrator.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/registry.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/router.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/router_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/apply_patch.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/shell.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/shell_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/runtimes/unified_exec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/sandboxing.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/sandboxing_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/spec_plan.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/tools/spec_plan_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/turn_metadata_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/turn_timing.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/turn_timing_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/async_watcher.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/async_watcher_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/mod_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/process_manager.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/src/unified_exec/process_manager_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/apps_test_server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/context_snapshot.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/common/test_codex.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/responses_headers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/agents_md.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/audio_truncation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/client_websockets.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/code_mode.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/compact_remote.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/tests/suite/git_enrichment.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/guardian_review.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/hooks.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mcp_auth_refresh.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mcp_tool_cache.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/multi_agent_mode.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/pending_input.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/plugins.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/prompt_debug_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/realtime_conversation.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/realtime_initial_items.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/request_plugin_install.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/responses_lite.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/rmcp_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/rollout_list_find.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/search_tool.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/skills_extension.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/tests/suite/snapshots/all__suite__mcp_tool_exposure__deferred_tools_initial_unchanged_and_removed.snap"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/tests/suite/snapshots/all__suite__mcp_tool_exposure__deferred_tools_recover_during_sampling.snap"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/core/tests/suite/snapshots/all__suite__mcp_tool_exposure__deferred_tools_resume_without_duplicate_update.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/spawn_agent_description.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/sqlite_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/stream_error_allows_next_turn.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/stream_no_completed.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/core/tests/suite/subagent_notifications.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/deny.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server-protocol/src/protocol.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/README.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client/http_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client/http_response_body_stream.rs"
+    },
+    {
+      "status": "R073",
+      "old_path": "codex-rs/exec-server/src/client/reqwest_http_client.rs",
+      "path": "codex-rs/exec-server/src/client/route_aware_http_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client_api.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client_recovery.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client_recovery_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client_transport.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/client_transport_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/connection.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/environment.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/environment_bootstrap.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/environment_bootstrap_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/environment_provider.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/environment_toml.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/local_process.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/network_policy_decisions.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/network_policy_decisions_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/process_sandbox.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/process_sandbox_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/relay.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/remote.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/remote/noise_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/remote_file_system_path_uri_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/rpc.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/rpc_server_requests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/src/rpc_server_requests_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/server/handler.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/server/handler/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/server/processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/server/transport.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/server/transport_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/src/trace_context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/testing/BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/testing/exec_server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/chatgpt_cloudflare_affinity.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/common/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/deferred_environment.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/environment.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/file_stream.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/health.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/http_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/http_request.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/tests/http_request_logging.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/relay.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec-server/tests/selected_capability_roots.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/tests/support/BUILD.bazel"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/tests/support/Cargo.toml"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/exec-server/tests/support/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec/src/lib_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec/tests/event_processor_with_json_output.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/exec/tests/suite/apply_patch.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/agent/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/examples/enabled_extensions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/examples/enabled_extensions/shared_state_extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors/context.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors/thread_lifecycle.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/src/contributors/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/extension-api/tests/registry.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/git-attribution/BUILD.bazel"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/git-attribution/Cargo.toml"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/git-attribution/src/git_attribution_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/git-attribution/src/lib.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/git-attribution/src/policy.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/git-attribution/src/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/goal/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/goal/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/goal/tests/goal_extension_backend.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/image-generation/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/mcp/tests/hosted_apps_mcp.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/memories/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/memories/src/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/catalog.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/provider/host.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/ext/skills/src/provider/host_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/render.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/render_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/src/world_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/skills/tests/skills_extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/ext/web-search/src/extension.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/service_tests/plugins/basics.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/external-agent-migration/src/source_cla.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/features/src/feature_configs.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/features/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/features/src/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/feedback/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/file-system/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/client_builder.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/route_aware_client_pool.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/http-client/src/route_aware_client_pool_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/linux-sandbox/tests/suite/landlock.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/login/src/auth_env_telemetry.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/mcp-server/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/mcp-server/src/codex_tool_runner.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/mcp-server/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/mcp-server/src/message_processor.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/mcp-server/tests/suite/codex_tool.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/memories/write/src/runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/memories/write/src/startup_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider-info/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider-info/src/model_provider_info_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider/src/amazon_bedrock/error.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider/src/amazon_bedrock/error_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider/src/auth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/model-provider/src/provider.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/prompts/templates/permissions/sandbox_mode/danger_full_access.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/prompts/templates/permissions/sandbox_mode/read_only.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/prompts/templates/permissions/sandbox_mode/workspace_write.md"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/approvals.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/config_types.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/error.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/error_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/items.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/legacy_events.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/protocol/src/protocol.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/src/oauth.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/src/oauth/tests/persistor_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/src/perform_oauth_login.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/src/rmcp_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/src/utils.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/tests/streamable_http_oauth_startup.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rmcp-client/tests/streamable_http_test_support.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/rmcp-client/tests/streamable_http_user_agent.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout-trace/src/protocol_event.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout-trace/src/protocol_event_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/compression_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/list.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/metadata_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/recorder.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/recorder_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/state_db.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/state_db_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/rollout/src/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/shell-command/src/parse_command.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/state/migrations/0043_threads_is_pinned.sql"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/state/migrations/0044_external_agent_config_imports_provider_id.sql"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/audit.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/bin/logs_client.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/extract.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/log_db.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/log_db_filter_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/migrations_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/model/thread_metadata.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/backfill.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/external_agent_config_imports.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/external_agent_config_imports_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/goals.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/logs.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/memories.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/recovery_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/remote_control.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/test_support.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/runtime/threads.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/state/src/sqlite.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/state/thread_history_migrations/0004_thread_items_updated_at_ordinal.sql"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-manager-sample/src/main.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/in_memory.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/archive_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/create_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/delete_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/helpers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/list_threads.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/live_writer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/read_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/search_threads.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/test_support.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history/read.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history/read_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history/segment_paging.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/thread_history_materialization_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/unarchive_thread.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/local/update_thread_metadata.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/thread-store/src/local/writer_lock.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/thread-store/src/local/writer_lock_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/store.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/thread-store/src/types.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tools/Cargo.toml"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tools/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tools/src/tool_spec.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tools/src/tool_spec_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/agent_status_feed_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/event_dispatch.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/input.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/loaded_threads.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/side.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/app/snapshots/codex_tui__app__tests__directive_only_completion_removes_streamed_directive.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/snapshots/codex_tui__app__tests__required_stream_reflow_during_capped_initial_replay.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/snapshots/codex_tui__app__tests__required_stream_reflow_during_capped_initial_replay_survives_transcript_overlay.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/tests/advanced_reasoning_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/tests/safety_buffering.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/tests/session_lifecycle_requests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/thread_events.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/thread_routing.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app/thread_session_state.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app_info.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/app_server_session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/auto_review_denials.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/bottom_pane/chat_composer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/bottom_pane/footer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/bottom_pane/mentions_v2/popup.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__default_unified_mention_popup.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__unified_mention_popup_falls_back_from_bound_plugin_on_right.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/interrupts.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/protocol.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/protocol_requests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/replay.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__live_app_server_turn_completion_repairs_dropped_message_deltas.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__side_context_label_preserves_status_line.snap"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__side_context_label_shows_hidden_side.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__side_context_label_shows_parent_status.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/streaming.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/app_server.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/exec_flow.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/guardian.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/helpers.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/mcp_startup.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/side.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/tests/status_and_layout.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/transcript.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/chatwidget/turn_runtime.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/custom_terminal.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/debug_config.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/history_cell/messages.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/history_cell/session.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__raw_mode_toggle_transcript.snap"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__single_line_command_over_highlight_limit_uses_plain_text_fallback.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/history_cell/tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/keymap.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/keymap_setup/actions.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/onboarding/auth.rs"
+    },
+    {
+      "status": "A",
+      "path": "codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__auth__tests__continue_in_browser_narrow_long_url.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/render/highlight.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/resume_picker.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/session_archive_commands.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/session_resume.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__inline_visualization__tests__agent_code_blocks_preserve_visualization_directive_literals.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__inline_visualization__tests__finalized_agent_cell_visualization_link.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/tui/src/tui/keyboard_modes.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/v8-poc/BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/websocket-client/src/dialer.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/websocket-client/src/dialer_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/websocket-client/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/identity.rs"
+    },
+    {
+      "status": "M",
+      "path": "codex-rs/windows-sandbox-rs/src/lib.rs"
+    },
+    {
+      "status": "M",
+      "path": "defs.bzl"
+    },
+    {
+      "status": "M",
+      "path": "patches/BUILD.bazel"
+    },
+    {
+      "status": "D",
+      "path": "patches/aws-lc-sys_memcmp_check.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/aws-lc-sys_windows_msvc_memcmp_probe.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/aws-lc-sys_windows_msvc_prebuilt_nasm.patch"
+    },
+    {
+      "status": "M",
+      "path": "patches/llvm_rusty_v8_custom_libcxx.patch"
+    },
+    {
+      "status": "M",
+      "path": "patches/ring_windows_msvc_include_dirs.patch"
+    },
+    {
+      "status": "M",
+      "path": "patches/rules_rs_build_script_deps_annotation.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rs_windows_exec_linker.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rs_windows_gnullvm_exec.patch"
+    },
+    {
+      "status": "A",
+      "path": "patches/rules_rust_build_script_tools_transition.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_bootstrap_process_wrapper_linker.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_build_script_runner_paths.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_exec_bin_target.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_exec_msvc_build_script_env.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_exec_rustc_dev_rlib.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_exec_std.patch"
+    },
+    {
+      "status": "D",
+      "path": "patches/rules_rust_windows_gnullvm_build_script.patch"
+    },
+    {
+      "status": "M",
+      "path": "patches/rules_rust_windows_msvc_direct_link_args.patch"
+    },
+    {
+      "status": "M",
+      "path": "patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch"
+    },
+    {
+      "status": "M",
+      "path": "scripts/install/install.ps1"
+    },
+    {
+      "status": "M",
+      "path": "scripts/install/install.sh"
+    },
+    {
+      "status": "M",
+      "path": "scripts/install/test_install_sh.py"
+    },
+    {
+      "status": "M",
+      "path": "third_party/v8/BUILD.bazel"
+    },
+    {
+      "status": "M",
+      "path": "tools/argument-comment-lint/lint_aspect.bzl"
+    }
+  ]
+}

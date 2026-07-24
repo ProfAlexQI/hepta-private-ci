@@ -1,0 +1,1750 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v4_commit_shard",
+  "intake_id": "upstream-codex-intake-2026-07-24-r4",
+  "parent_manifest": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+  "category": "security",
+  "category_label": "安全",
+  "commit_count": 21,
+  "status_counts": {
+    "candidate": 13,
+    "deferred": 6,
+    "rejected": 2,
+    "imported": 0
+  },
+  "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+  "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+  "commit_inventory": [
+    {
+      "upstream_commit": "ab816f3ca0fea858a4fc012e1bed826050d82961",
+      "authored_at": "2026-07-22T15:11:37Z",
+      "author": "jay",
+      "title": "Add the git attribution extension (#34769)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "release_ci"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Add the git attribution extension”，属于安全。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Add a `codex-git-attribution` context contributor that resolves the workspace's `commit_attribution_enabled` setting and supplies matching commit and pull request instructions through World State. - Cache resolved policy by authentication generation, recover from unauthorized responses, and fail disabled on timeouts or settings errors with deferred retries. - Handle enabled, disabled, and legacy attribution fragments so policy changes replace stale instructions without duplicating attribution. ## Testing - Cover World State transitions, policy resolution after unauthorized responses, and authentication changes during an in-flight settings request.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Add the git attribution extension”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：安全边界、授权身份与 fail-closed 行为。",
+      "changed_file_count": 8,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.toml"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/git-attribution/BUILD.bazel"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/git-attribution/Cargo.toml"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/git-attribution/src/git_attribution_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/git-attribution/src/lib.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/git-attribution/src/policy.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/ext/git-attribution/src/world_state.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "32f4687b8c43fb4062405106e761f85983aa96cc",
+      "authored_at": "2026-07-22T15:11:54Z",
+      "author": "viyatb-oai",
+      "title": "Enable exec-server network policy callbacks (#34770)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "approval_provenance",
+        "release_ci",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Enable exec-server network policy callbacks”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Let `exec-server` issue JSON-RPC requests to its client and correlate responses, with bounded concurrency, timeouts, and connection cleanup. - When `request_policy_decisions` is enabled, forward proxy policy requests with the process ID and network destination, then apply the client's allow, deny, or ask decision. - Fail closed for invalid inputs, unavailable or malformed responses, timeouts, process shutdown, and disconnects. Keep callbacks active while inherited process streams keep the proxy alive. ## Testing - Cover response correlation, request limits, timeouts, disconnect cleanup, validation boundaries, decision forwarding, and process lifecycle behavior.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Enable exec-server network policy callbacks”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 11,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client_recovery.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/local_process.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/src/network_policy_decisions.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/src/network_policy_decisions_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/process_sandbox.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/process_sandbox_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/rpc.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/src/rpc_server_requests.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/src/rpc_server_requests_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/processor.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "44436fd0759249f47da8bfc41e6cae12af5b56ee",
+      "authored_at": "2026-07-22T16:13:15Z",
+      "author": "jif",
+      "title": "Reject dynamic environments named `local` (#34784)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "runtime_misc"
+      ],
+      "risk": "medium",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "本地 exec-server 已存在对保留环境 ID `local` 的拒绝语义；没有该 upstream commit 的来源、集成与测试回执，因此不能记为 imported。为避免重复实现，本轮将该提交按语义等价候选拒绝，后续只补 equivalence receipt。",
+      "upstream_change_summary": "## Why `local` identifies the environment owned by `EnvironmentManager`, but dynamic remote environment registration previously allowed that ID to be replaced. ## What changed Reject `local` in the shared environment ID validator used by dynamic remote environment registration.",
+      "semantic_absorption_recommendation": "不复制 upstream 实现；对本地 `local` 保留名拒绝路径补一份与 upstream 负向行为等价的测试/回执，确认动态注册无法覆盖本地环境后关闭该项。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "a59a419afa3492c58eb3d4865bf8ab1fd8c68330",
+      "authored_at": "2026-07-22T18:31:19Z",
+      "author": "Adam Perry @ OpenAI",
+      "title": "Use path URIs in shell approval keys (#34806)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-capability-attribution-approval-continuity",
+      "reason": "核心语义是“Use path URIs in shell approval keys”，属于安全；它与 Hepta V2 的capability provenance 从命令解析贯穿审批、执行与 receipt直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Store the shell approval key's `cwd` as a `PathUri`, matching the URI representation used by approval actions. - Extend the approval-key test to verify both the URI-based working directory and environment scoping. ## Testing - Added `approval_key_uses_path_uri_and_includes_environment_id`.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Use path URIs in shell approval keys”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：capability provenance 从命令解析贯穿审批、执行与 receipt。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/shell.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/shell_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "06782eded78ff6e76d5139c2704988da99d2df42",
+      "authored_at": "2026-07-22T19:08:28Z",
+      "author": "rhan-oai",
+      "title": "Fix network access rendering in sandbox prompts (#34811)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "approval_provenance"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Fix network access rendering in sandbox prompts”，属于安全。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed Use the supported `{{ network_access }}` placeholder syntax in the built-in `danger-full-access`, `read-only`, and `workspace-write` sandbox templates so permission instructions render the active network access state.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Fix network access rendering in sandbox prompts”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：安全边界、授权身份与 fail-closed 行为。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/prompts/templates/permissions/sandbox_mode/danger_full_access.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/prompts/templates/permissions/sandbox_mode/read_only.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/prompts/templates/permissions/sandbox_mode/workspace_write.md"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "88eb3a2b8a925aaec939fadb9bb04a324926ae9d",
+      "authored_at": "2026-07-22T20:15:59Z",
+      "author": "jay",
+      "title": "Enable git attribution across Codex entry points (#34819)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "mcp_runtime"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Enable git attribution across Codex entry points”，属于安全。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Install the git attribution extension in the app server, MCP server, and `codex debug prompt-input` so authenticated workspace policy controls the commit and pull request attribution instructions sent to the model. - Resolve attribution settings from the process-level ChatGPT base URL, independent of per-thread or per-tool configuration overrides. - Treat git attribution as contextual developer content when mapping model events. ## Testing - Cover policy fetch retries, workspace switches, rollbacks, cold thread resumes with legacy instructions, MCP tool calls, and prompt-debug output.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Enable git attribution across Codex entry points”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：安全边界、授权身份与 fail-closed 行为。",
+      "changed_file_count": 21,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/extensions.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/mcp_refresh.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/message_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/common/test_app_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/account.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/tests/suite/v2/git_attribution.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/tests/login.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/event_mapping.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/prompt_debug.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/prompt_debug_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/git-attribution/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/ext/git-attribution/src/git_attribution_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/mcp-server/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/mcp-server/src/message_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/mcp-server/tests/suite/codex_tool.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "bbfc3f0152cf332d01547ddfac835409bc8ce485",
+      "authored_at": "2026-07-22T20:45:37Z",
+      "author": "Adam Perry @ OpenAI",
+      "title": "Normalize Guardian review cwd reuse keys (#34824)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "multi_agent"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Normalize Guardian review cwd reuse keys”，属于安全。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Store the spawned session's working directory as a `PathUri` in `GuardianReviewSessionReuseKey` so reuse comparisons use its canonical URI representation. - Assert that the reuse key contains the converted working directory.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Normalize Guardian review cwd reuse keys”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：安全边界、授权身份与 fail-closed 行为。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/review_session.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "9d823343026e600dab694e41865ed60613da31b6",
+      "authored_at": "2026-07-22T23:49:38Z",
+      "author": "Won Park",
+      "title": "Use Guardian model limits for review sessions (#34847)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "multi_agent"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Use Guardian model limits for review sessions”，属于安全。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Parent context-window and auto-compaction overrides may describe a different model than the one selected for Guardian review. ## What changed - Clear `model_context_window` and `model_auto_compact_token_limit` when the effective Guardian model differs from the parent model, allowing the review model's own limits to apply. - Preserve those overrides when Guardian uses the same effective model. ## Testing Add unit coverage for both model-selection paths and verify that a Guardian rollout records the selected review model's context window.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Use Guardian model limits for review sessions”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：安全边界、授权身份与 fail-closed 行为。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/review.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/guardian_review.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "ad65f016ed0c91992fb175fa881a373cc460dd2a",
+      "authored_at": "2026-07-23T17:39:55Z",
+      "author": "Celia Chen",
+      "title": "Honor disabled redirects in route-aware HTTP clients (#34978)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Honor disabled redirects in route-aware HTTP clients”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why With system-proxy-aware routing, `RouteAwareClientPool` handles redirects itself so each hop can resolve its own route. That manual path must also respect clients configured not to follow redirects. ## What changed - Add no-redirect constructors for standard and ChatGPT Cloudflare-cookie route-aware client pools. - Skip manual redirect handling when the underlying client builder has redirects disabled, returning the redirect response to the caller. ## Testing - Cover both outbound proxy policies and verify that a no-redirect pool returns the initial `302 Found` response after one request.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Honor disabled redirects in route-aware HTTP clients”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/http-client/src/client_builder.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/http-client/src/route_aware_client_pool.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/http-client/src/route_aware_client_pool_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "5c94796dc9e88580fdf0b05ef9ce9d975a86e1a6",
+      "authored_at": "2026-07-23T18:18:02Z",
+      "author": "Owen Lin",
+      "title": "Enforce single-writer ownership for paginated threads (#34986)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-thread-writer-replay-integrity",
+      "reason": "核心语义是“Enforce single-writer ownership for paginated threads”，属于安全；它与 Hepta V2 的单写者所有权、持久化变更序与精确增量回放直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Only one app-server process should keep a paginated thread open for writing at a time, while other processes must still be able to read it. ## What changed - Acquire a per-thread filesystem lock when creating or resuming a paginated thread, and retain it for the lifetime of the live recorder. - Reject a competing `thread/resume` request with JSON-RPC error `-32600` and release ownership when the writer is discarded, deleted, or shut down. - Remove stale lock files without disturbing active writers. ## Testing Added coverage for competing processes, ownership transfer after shutdown, stale-lock cleanup, and lock release during discard and deletion.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Enforce single-writer ownership for paginated threads”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：单写者所有权、持久化变更序与精确增量回放。",
+      "changed_file_count": 9,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session_rollout_init_error.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/delete_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/live_writer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/mod.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/thread-store/src/local/writer_lock.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/thread-store/src/local/writer_lock_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "265cd2e100ff091bee0e691a7e28b42e4eb56837",
+      "authored_at": "2026-07-23T19:14:49Z",
+      "author": "Celia Chen",
+      "title": "Initialize execution environments with the final HTTP policy (#34995)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "thread_history",
+        "mcp_runtime",
+        "plugin_apps",
+        "tui",
+        "release_ci"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Initialize execution environments with the final HTTP policy”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why The TUI must inspect the default execution environment before loading its final configuration. Initializing the environment manager at that point can give startup services the bootstrap HTTP policy instead of the effective policy after managed requirements are applied. ## What changed - Split environment discovery from manager construction so callers can inspect the default environment without starting remote connections. - Build the environment manager after final configuration loading and pass its resolved `HttpClientFactory` through all construction paths. - Add shared test support for managers that use the legacy default HTTP policy. ## Testing - Cover connection-free environment discovery and explicit HTTP policy propagation. - Verify TUI startup services use the final managed `respect_system_proxy` value.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Initialize execution environments with the final HTTP policy”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 31,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/mcp_cmd.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/provider_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/config/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/connectors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/environment_selection.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/prompt_debug.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/mcp_auth_refresh.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/src/environment_bootstrap.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/src/environment_bootstrap_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/deferred_environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/relay.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/selected_capability_roots.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/tests/support/BUILD.bazel"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/tests/support/Cargo.toml"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/tests/support/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/mcp-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-manager-sample/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/session_archive_commands.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "5bdbd3ee90d746c3b8a040a53c434262ed07ee74",
+      "authored_at": "2026-07-23T21:45:42Z",
+      "author": "Kyle Brown",
+      "title": "Add trusted plugin script attribution (#35016)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "plugin_apps"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-capability-attribution-approval-continuity",
+      "reason": "核心语义是“Add trusted plugin script attribution”，属于安全；它与 Hepta V2 的capability provenance 从命令解析贯穿审批、执行与 receipt直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Build a set of active, verified curated and remote plugin roots from loaded plugins. - Resolve direct and safely wrapped script commands to a plugin ID and normalized plugin-relative path. - Leave complex or ambiguous commands, local overrides, missing files, overlapping roots, and symlink escapes unattributed. - Add a shared validator for the safe cross-platform shape of serialized plugin-relative paths. ## Testing - Cover trusted-root selection, supported interpreters and shell wrappers, normalized paths, and fail-closed cases.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Add trusted plugin script attribution”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：capability provenance 从命令解析贯穿审批、执行与 receipt。",
+      "changed_file_count": 7,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/lib.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core-plugins/src/script_attribution.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/core-plugins/src/script_attribution_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/items.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/shell-command/src/parse_command.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "84fa68b429f12af1b4cdbb74c40a6fb1e74a30d3",
+      "authored_at": "2026-07-23T22:26:59Z",
+      "author": "Kyle Brown",
+      "title": "Attribute command executions to trusted plugin scripts (#35020)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "thread_history",
+        "plugin_apps",
+        "tui",
+        "analytics_observability",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-capability-attribution-approval-continuity",
+      "reason": "核心语义是“Attribute command executions to trusted plugin scripts”，属于安全；它与 Hepta V2 的capability provenance 从命令解析贯穿审批、执行与 receipt直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Resolve shell and unified-exec commands against the trusted plugin roots loaded for each turn. - Add optional `pluginId` and safe plugin-relative `scriptPath` fields to command execution items and legacy execution events, and propagate them through app-server notifications. - Include the attribution in command execution analytics while rejecting absolute, unsafe, and unattributed script paths. ## Testing - Cover attribution for cached curated and remote plugin scripts from command execution through core and app-server events. - Verify analytics serialization and unsafe-path filtering.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Attribute command executions to trusted plugin scripts”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：capability provenance 从命令解析贯穿审批、执行与 receipt。",
+      "changed_file_count": 52,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/analytics_client_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/events.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/analytics/src/reducer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadRollbackResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/item_builders.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/thread_history.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/item.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core-plugins/src/script_attribution.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tasks/user_shell.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/events.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/handlers/shell.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/async_watcher.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/async_watcher_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/process_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/process_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/tests/suite/plugins.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec/tests/event_processor_with_json_output.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/items.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/legacy_events.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/protocol.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout-trace/src/protocol_event.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout-trace/src/protocol_event_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/agent_status_feed_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests/safety_buffering.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/interrupts.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/app_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/exec_flow.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/helpers.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/status_and_layout.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "1ee8f49175a91c8fbfb9e93310331dfc45fc0dbd",
+      "authored_at": "2026-07-23T22:32:25Z",
+      "author": "Celia Chen",
+      "title": "Route exec-server HTTP through configured proxy policy (#35023)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "mcp_runtime",
+        "release_ci",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Route exec-server HTTP through configured proxy policy”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Delegated HTTP requests need to honor the same outbound proxy policy as the Codex process that starts the exec server. ## What changed - Pass the configured `HttpClientFactory` through local and remote exec-server startup and use route-aware client pools for delegated HTTP and local MCP requests. - Preserve per-request timeouts and follow-or-stop redirect behavior while keeping request URLs and sensitive response headers out of diagnostics. ## Testing - Cover configured system-proxy routing across the exec-server transport. - Cover both redirect policies and verify that success and failure logs do not expose request or response secrets.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Route exec-server HTTP through configured proxy policy”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 25,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/bin/exec_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/rmcp_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client/reqwest_http_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote/noise_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/handler.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/handler/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/transport.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/transport_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/testing/BUILD.bazel"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/testing/exec_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/common/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/http_request.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/exec-server/tests/http_request_logging.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/relay.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/http-client/src/route_aware_client_pool.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/perform_oauth_login.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "9fc4e5a7aaf0d4da64e8bef74d2aac02c2d12c79",
+      "authored_at": "2026-07-23T23:08:55Z",
+      "author": "Kyle Brown",
+      "title": "Preserve plugin attribution across command approvals (#35029)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "approval_provenance",
+        "thread_history",
+        "mcp_runtime",
+        "plugin_apps",
+        "multi_agent",
+        "tui",
+        "release_ci",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-capability-attribution-approval-continuity",
+      "reason": "核心语义是“Preserve plugin attribution across command approvals”，属于安全；它与 Hepta V2 的capability provenance 从命令解析贯穿审批、执行与 receipt直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Add optional `plugin_id` and `script_path` fields to execution approval and guardian assessment events. - Propagate validated plugin attribution through delegated approvals, guardian-reviewed command items, app-server notifications, thread history, and rollout traces. - Preserve attribution on both started and completed command items, including declined commands. ## Testing - Extend core, app-server, thread-history, and rollout-trace tests to cover plugin attribution propagation and serialization.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Preserve plugin attribution across command approvals”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：capability provenance 从命令解析贯穿审批、执行与 receipt。",
+      "changed_file_count": 23,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/item_builders.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server-protocol/src/protocol/thread_history.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/bespoke_event_handling.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/review.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/elicitation_holders_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/network_approval.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/shell.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/unified_exec.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/mcp-server/src/codex_tool_runner.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/approvals.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout-trace/src/protocol_event.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rollout-trace/src/protocol_event_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/auto_review_denials.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/protocol_requests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/guardian.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/mcp_startup.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "963316583b744e707d653a854b30e90d8dda8a78",
+      "authored_at": "2026-07-23T23:09:20Z",
+      "author": "Owen Lin",
+      "title": "Enforce writer ownership for thread archive and deletion (#35031)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "sqlite_state",
+        "thread_history",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-thread-writer-replay-integrity",
+      "reason": "核心语义是“Enforce writer ownership for thread archive and deletion”，属于安全；它与 Hepta V2 的单写者所有权、持久化变更序与精确增量回放直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Paginated threads allow only one app-server process to write at a time. Archive and delete operations must not mutate a thread or its spawned descendants while another process owns any of them. ## What changed - Acquire paginated writer locks for the full archive or deletion set before changing rollout files, including descendants whose rollout has not materialized yet. - Add a batch archive store operation so ownership conflicts are detected before any thread in the subtree is archived. - Return ownership conflicts as JSON-RPC invalid-request errors and document the behavior. ## Testing - Cover archive and deletion conflicts for owned threads and descendants, including unmaterialized rollouts. - Verify deletion still removes rollouts with unreadable metadata.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Enforce writer ownership for thread archive and deletion”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：单写者所有权、持久化变更序与精确增量回放。",
+      "changed_file_count": 12,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/README.md"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_delete.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_archive.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_delete.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/archive_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/delete_thread.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/local/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/store.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/thread-store/src/types.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "d45055ae58ef495610688086c3b490d1721a11b2",
+      "authored_at": "2026-07-23T23:17:56Z",
+      "author": "Celia Chen",
+      "title": "Route environment registry requests through the shared HTTP client (#35034)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Route environment registry requests through the shared HTTP client”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Noise environment registry requests need to follow the exec server's effective outbound proxy policy without exposing registry URLs or response headers in HTTP diagnostics. ## What changed - Build the registry client from the supplied `HttpClientFactory` and use a route-aware API client with redirects and request logging disabled. - Defer construction of the Noise connection provider until the outbound HTTP policy is available. - Map route-aware request failures into registry errors while retaining timeout detection across response body reads. ## Testing Add coverage for system-proxy routing, sensitive registry metadata redaction, stalled response-body timeouts, and prepared Noise configuration validation.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Route environment registry requests through the shared HTTP client”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 7,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client_recovery.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment_bootstrap_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote/noise_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/http-client/src/route_aware_client_pool.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "b115de97d710ebb6984a0d91080c6d19d9b7017a",
+      "authored_at": "2026-07-23T23:30:31Z",
+      "author": "iceweasel-oai",
+      "title": "Preserve Windows sandbox proxy settings in guardian sessions (#35036)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "approval_provenance",
+        "thread_history",
+        "multi_agent"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Preserve Windows sandbox proxy settings in guardian sessions”，属于安全。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## Why Guardian review commands can run without the proxy-port environment used to configure the parent session. Reconciling persistent Windows sandbox settings for those commands can discard the parent's proxy configuration. ## What changed - Add a session-level Windows sandbox proxy-settings mode and use `Preserve` for guardian review sessions while keeping `Reconcile` as the default. - Carry the mode through unified exec and the exec-server sandbox context to Windows process launches. - In preserve mode, reuse the proxy settings recorded by the existing sandbox setup marker. ## Testing Added coverage for guardian session configuration, exec-server transport, and preserving an existing setup marker when proxy-port environment variables are absent.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Preserve Windows sandbox proxy settings in guardian sessions”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：安全边界、授权身份与 fail-closed 行为。",
+      "changed_file_count": 23,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/codex_delegate_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/guardian/review_session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/mod.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/session.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/tests/guardian_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/session/turn_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/thread_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/apply_patch.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/runtimes/unified_exec.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/sandboxing.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/tools/sandboxing_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/mod_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/process_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/src/unified_exec/process_manager_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server-protocol/src/protocol.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/process_sandbox.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/process_sandbox_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/file-system/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/protocol/src/config_types.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/windows-sandbox-rs/src/identity.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/windows-sandbox-rs/src/lib.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "bb24b67d330946d8f30023cdcc5e9b3d2cdc73f5",
+      "authored_at": "2026-07-23T23:55:09Z",
+      "author": "Won Park",
+      "title": "Register the Guardian V2 feature flag (#35049)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "approval_provenance",
+        "multi_agent",
+        "protocol_schema"
+      ],
+      "risk": "medium",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Register the Guardian V2 feature flag”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Add `GuardianV2` to the feature registry for automatic approval reviews. - Expose it as `features.guardianv2` in the configuration schema. - Keep the under-development feature disabled by default.",
+      "semantic_absorption_recommendation": "不单独移植“Register the Guardian V2 feature flag”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/features/src/lib.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "94ebae725e5e8f22b5d86773d9223047f57b6118",
+      "authored_at": "2026-07-24T00:11:39Z",
+      "author": "Celia Chen",
+      "title": "Route exec-server WebSockets through configured proxies (#35056)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "network_proxy_policy",
+        "mcp_runtime"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Route exec-server WebSockets through configured proxies”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## Why Remote environment connections need to honor Codex's effective outbound proxy policy, including when a rendezvous connection reconnects. ## What changed - Pass the configured `HttpClientFactory` into remote environment transports and use `WebSocketConnector` for exec-server and rendezvous WebSockets. - Resolve proxy routes asynchronously so these connections can use the configured system proxy. - Add connector options that preserve Tungstenite's default TLS behavior and enable `TCP_NODELAY` for latency-sensitive rendezvous traffic. ## Testing - Verify prepared remote environments connect through a configured system proxy. - Verify initial and reconnected encrypted relay peers use the system proxy. - Cover default TLS selection and opt-in `TCP_NODELAY` behavior in the WebSocket client.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Route exec-server WebSockets through configured proxies”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 24,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client_api.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client_transport.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client_transport_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/connection.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment_bootstrap.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment_bootstrap_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment_provider.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment_toml.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/relay.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote_file_system_path_uri_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/handler/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/file_stream.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/http_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/relay.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/tests/streamable_http_test_support.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/websocket-client/src/dialer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/websocket-client/src/dialer_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/websocket-client/src/lib.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "09241ae4db0f1eb25dfaedecf28d4b07dbd820a9",
+      "authored_at": "2026-07-24T00:46:29Z",
+      "author": "Celia Chen",
+      "title": "Decouple exec-server HTTP from reqwest types (#35059)",
+      "primary_category": "security",
+      "primary_category_label": "安全",
+      "secondary_topics": [
+        "mcp_runtime",
+        "protocol_schema"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "hepta_v2_high_priority": true,
+      "candidate_slice": "r4-p0-egress-policy-route-integrity",
+      "reason": "核心语义是“Decouple exec-server HTTP from reqwest types”，属于安全；它与 Hepta V2 的kernel 出站授权、代理/重定向策略与 provider effect fail-closed直接相交，优先级为 P0。当前没有可核验的来源移植、集成提交和行为测试回执，所以只能标为 candidate，不能标为 imported。",
+      "upstream_change_summary": "## What changed - Rename `ReqwestHttpClient` to `RouteAwareHttpClient` to reflect that delegated HTTP uses Codex's shared route-aware transport. - Use `codex_http_client` response and error types plus transport-neutral `http` and `url` types, removing the exec server's direct `reqwest` dependency. ## Testing - Cover fragment stripping and Unicode hostname normalization for delegated HTTP requests.",
+      "semantic_absorption_recommendation": "按 selective semantic transplant 抽取“Decouple exec-server HTTP from reqwest types”中的安全不变量、失败分类和负向测试，映射到 Hepta kernel/runtime 的 exact admission、effect policy 与 receipt 链；保持 fail-closed，不直接 cherry-pick 上游 owner/layout。关联目标：kernel 出站授权、代理/重定向策略与 provider effect fail-closed。",
+      "changed_file_count": 18,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/runtime.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/deny.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client/http_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client/http_response_body_stream.rs"
+        },
+        {
+          "status": "R091",
+          "old_path": "codex-rs/exec-server/src/client/reqwest_http_client.rs",
+          "path": "codex-rs/exec-server/src/client/route_aware_http_client.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/client_recovery_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/remote.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/server/handler.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/src/trace_context.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/chatgpt_cloudflare_affinity.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/health.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/http_request.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/exec-server/tests/http_request_logging.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/rmcp-client/src/perform_oauth_login.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    }
+  ]
+}

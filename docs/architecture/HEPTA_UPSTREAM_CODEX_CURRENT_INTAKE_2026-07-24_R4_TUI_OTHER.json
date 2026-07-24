@@ -1,0 +1,1158 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v4_commit_shard",
+  "intake_id": "upstream-codex-intake-2026-07-24-r4",
+  "parent_manifest": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R4.json",
+  "category": "tui_other",
+  "category_label": "TUI/其他",
+  "commit_count": 18,
+  "status_counts": {
+    "candidate": 0,
+    "deferred": 1,
+    "rejected": 17,
+    "imported": 0
+  },
+  "range_start_exclusive": "9fc715c0861c956c894a91890b78dc05b304ba29",
+  "range_end_inclusive": "f61b51ddd924643514b33234816a8a2772b1aec7",
+  "commit_inventory": [
+    {
+      "upstream_commit": "667b6bbaf12187619f51f9fec6329755dce72f64",
+      "authored_at": "2026-07-22T10:48:12Z",
+      "author": "zsol-openai",
+      "title": "Publish stable installer aliases to R2 (#34729)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "release_ci"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Publish stable installer aliases to R2”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Publish `install.sh` and `install.ps1` from stable release assets to the mutable `codex/install.sh` and `codex/install.ps1` R2 keys. - Require both installer assets and verify each uploaded object's size, SHA-256 metadata, and CRC64 checksum before completing publication. - Leave prerelease publication unchanged.",
+      "semantic_absorption_recommendation": "不单独移植“Publish stable installer aliases to R2”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": ".github/scripts/publish_r2_release.py"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "9ee63da142121a57e5fe478ecb3aee822d5d003e",
+      "authored_at": "2026-07-22T15:23:55Z",
+      "author": "Eric Traut",
+      "title": "Size unified mention popups to visible results (#34771)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "plugin_apps",
+        "tui"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Size unified mention popups to visible results”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Size the unified mention popup from its filtered row count, while keeping a one-row minimum and the existing maximum. - Update composer snapshots to cover the compact layout when only one mention result is visible.",
+      "semantic_absorption_recommendation": "不单独移植“Size unified mention popups to visible results”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/bottom_pane/mentions_v2/popup.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__default_unified_mention_popup.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__unified_mention_popup_falls_back_from_bound_plugin_on_right.snap"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "c00e2e851cd80191319d3a9146cfcff36b7c3b29",
+      "authored_at": "2026-07-22T15:24:13Z",
+      "author": "Eric Traut",
+      "title": "Normalize whitespace-only lines in agent messages (#34772)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "thread_history",
+        "tui"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Normalize whitespace-only lines in agent messages”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed Apply the existing whitespace-only line normalization to both streaming and finalized agent Markdown. Blank lines now discard indentation and stale hyperlinks while preserving their line style.",
+      "semantic_absorption_recommendation": "不单独移植“Normalize whitespace-only lines in agent messages”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 6,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/snapshots/codex_tui__app__tests__required_stream_reflow_during_capped_initial_replay.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/snapshots/codex_tui__app__tests__required_stream_reflow_during_capped_initial_replay_survives_transcript_overlay.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/history_cell/messages.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__raw_mode_toggle_transcript.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__inline_visualization__tests__agent_code_blocks_preserve_visualization_directive_literals.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__inline_visualization__tests__finalized_agent_cell_visualization_link.snap"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "730ec920032ba6bd16c97106616fb53cda8ae96b",
+      "authored_at": "2026-07-22T15:24:33Z",
+      "author": "Eric Traut",
+      "title": "Clamp session headers to narrow terminal widths (#34775)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "thread_history",
+        "tui"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Clamp session headers to narrow terminal widths”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## Why Session header rows can exceed the available inner width when the terminal is narrow, causing the bordered header to render wider than its requested width. ## What changed Truncate each session header row to the available inner width and append an ellipsis when content overflows. ## Testing Add a snapshot test for a 44-column session header and assert that every rendered line matches the requested width.",
+      "semantic_absorption_recommendation": "不单独移植“Clamp session headers to narrow terminal widths”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/history_cell/session.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/history_cell/tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "ff8d521ba1097c07cec8b1aaa6e0242db9628a7b",
+      "authored_at": "2026-07-22T15:28:46Z",
+      "author": "Eric Traut",
+      "title": "Coalesce wrapped OSC 8 hyperlinks in the TUI terminal (#34778)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "tui"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Coalesce wrapped OSC 8 hyperlinks in the TUI terminal”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Track adjacent cells with the same OSC 8 destination and emit a single hyperlink around their visible text. - Close active hyperlinks before non-link content and at the end of a draw. - Cover a production-length browser authentication URL at narrow terminal width, including the remote-login guidance and cancellation footer.",
+      "semantic_absorption_recommendation": "不单独移植“Coalesce wrapped OSC 8 hyperlinks in the TUI terminal”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/custom_terminal.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/onboarding/auth.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__auth__tests__continue_in_browser_narrow_long_url.snap"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "cc559bb971e74abfd581d9ebe3911e4564b66b9d",
+      "authored_at": "2026-07-22T16:11:04Z",
+      "author": "zbarsky-openai",
+      "title": "Upgrade Bazel Rust and LLVM dependencies (#34781)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "release_ci"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Upgrade Bazel Rust and LLVM dependencies”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Upgrade `rules_rs` from `0.0.58` to `0.0.96` and LLVM from `0.7.9` to `0.8.11`, updating extension paths, platform constraints, and compatibility patches for the current APIs. - Add native `windows-gnullvm` execution support for the argument-comment lint toolchain while retaining MSVC execution for existing cross-target builds. - Build `aws-lc-sys` through the Bazel Central Registry `aws-lc` module and `rules_rs` integration, removing the replaced crate-specific patches.",
+      "semantic_absorption_recommendation": "不单独移植“Upgrade Bazel Rust and LLVM dependencies”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 26,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "BUILD.bazel"
+        },
+        {
+          "status": "M",
+          "path": "MODULE.bazel"
+        },
+        {
+          "status": "M",
+          "path": "MODULE.bazel.lock"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/v8-poc/BUILD.bazel"
+        },
+        {
+          "status": "M",
+          "path": "defs.bzl"
+        },
+        {
+          "status": "M",
+          "path": "patches/BUILD.bazel"
+        },
+        {
+          "status": "D",
+          "path": "patches/aws-lc-sys_memcmp_check.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/aws-lc-sys_windows_msvc_memcmp_probe.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/aws-lc-sys_windows_msvc_prebuilt_nasm.patch"
+        },
+        {
+          "status": "M",
+          "path": "patches/llvm_rusty_v8_custom_libcxx.patch"
+        },
+        {
+          "status": "M",
+          "path": "patches/ring_windows_msvc_include_dirs.patch"
+        },
+        {
+          "status": "M",
+          "path": "patches/rules_rs_build_script_deps_annotation.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rs_windows_exec_linker.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rs_windows_gnullvm_exec.patch"
+        },
+        {
+          "status": "A",
+          "path": "patches/rules_rust_build_script_tools_transition.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_bootstrap_process_wrapper_linker.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_build_script_runner_paths.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_exec_bin_target.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_exec_msvc_build_script_env.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_exec_rustc_dev_rlib.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_exec_std.patch"
+        },
+        {
+          "status": "D",
+          "path": "patches/rules_rust_windows_gnullvm_build_script.patch"
+        },
+        {
+          "status": "M",
+          "path": "patches/rules_rust_windows_msvc_direct_link_args.patch"
+        },
+        {
+          "status": "M",
+          "path": "patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch"
+        },
+        {
+          "status": "M",
+          "path": "third_party/v8/BUILD.bazel"
+        },
+        {
+          "status": "M",
+          "path": "tools/argument-comment-lint/lint_aspect.bzl"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "10cc57c95c2c8f1d01c8deaa75efb29b099d9c28",
+      "authored_at": "2026-07-22T16:25:42Z",
+      "author": "pakrym-oai",
+      "title": "Simplify app-server integration test setup (#34786)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "thread_history",
+        "mcp_runtime",
+        "plugin_apps",
+        "skills_catalog",
+        "analytics_observability",
+        "protocol_schema"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Simplify app-server integration test setup”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Add typed helpers for initialized app-server instances, JSON-RPC requests, responses, notifications, and thread startup. - Add a composable `MockResponsesConfig` builder while preserving the existing mock config writers. - Migrate the app-server integration suite to the shared helpers, removing repeated request ID management, deserialization, initialization, and config assembly. ## Testing - Add unit coverage for composing mock provider, feature, and extra config, and for compatibility of the existing mock config writer.",
+      "semantic_absorption_recommendation": "不单独移植“Simplify app-server integration test setup”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 78,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/common/config.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/tests/common/config_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/common/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/common/test_app_server.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/auth.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/conversation_summary.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/fuzzy_file_search.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/logging.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/account.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/app_installed.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/app_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/app_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/client_metadata.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/command_exec.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/compaction.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/config_rpc.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/current_time.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/dynamic_tools.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/executor_mcp.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/experimental_api.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/experimental_feature_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/hooks_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/imagegen_extension.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/initialize.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/marketplace_add.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/marketplace_remove.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/marketplace_upgrade.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/mcp_resource.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/mcp_tool.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/memory_reset.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/model_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/model_provider_capabilities_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/output_schema.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/permission_profile_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plan_item.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_install.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_share.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/rate_limit_reset_credits.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/rate_limits.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/realtime_conversation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/remote_control.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/remote_thread_store.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/request_permissions.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/request_user_input.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/request_validation.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/review.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/safety_check_downgrade.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/selected_environment.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/session_end.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/skills_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/sleep.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_archive.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_delete.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_fork.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_inject_items.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_loaded_list.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_memory_mode_set.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_metadata_update.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_rollback.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_settings_update.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_shell_command.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_start.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_status.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_unarchive.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_interrupt.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/turn_steer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/tests/suite/v2/web_search.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "2c49493b5b6bfcd3efbd83ae6031492296908c63",
+      "authored_at": "2026-07-22T17:12:47Z",
+      "author": "mandal-OAI",
+      "title": "Remove obsolete step store from git attribution tests (#34795)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "approval_provenance"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Remove obsolete step store from git attribution tests”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "Update the git attribution test helper to construct `WorldStateContributionInput` without the removed `step_store` field.",
+      "semantic_absorption_recommendation": "不单独移植“Remove obsolete step store from git attribution tests”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/ext/git-attribution/src/git_attribution_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "5381edb133075143839efb73de4f8695cf6332d0",
+      "authored_at": "2026-07-22T17:28:18Z",
+      "author": "Eric Traut",
+      "title": "Skip syntax highlighting for lines over 4 KiB (#34796)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "thread_history",
+        "tui"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Skip syntax highlighting for lines over 4 KiB”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## Why Very long individual lines can make syntax highlighting consume excessive CPU or memory even when the overall input remains below the existing size and line-count limits. ## What changed - Fall back to plain, unstyled text when any input line exceeds 4 KiB. - Keep the existing 512 KiB total-size and 10,000-line guardrails. ## Testing - Cover highlighting fallback and text preservation for a long single-line Bash command. - Snapshot rendering of a command that exceeds the per-line limit.",
+      "semantic_absorption_recommendation": "不单独移植“Skip syntax highlighting for lines over 4 KiB”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 3,
+      "related_files": [
+        {
+          "status": "A",
+          "path": "codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__single_line_command_over_highlight_limit_uses_plain_text_fallback.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/history_cell/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/render/highlight.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "7fd7a2f9a26d2d745b102ecf6754f599043c260e",
+      "authored_at": "2026-07-22T20:28:32Z",
+      "author": "Channing Conger",
+      "title": "Run code-mode tests in non-Windows Bazel CI (#34823)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "code_mode",
+        "release_ci"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Run code-mode tests in non-Windows Bazel CI”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Remove the code-mode skip filter from the shared Bazel CI configuration so Linux and macOS run the full code-mode integration suite. - Keep the hidden dynamic-tool callback and ConPTY Ctrl-C tests excluded on Windows, where they currently time out or cannot reliably interrupt foreground processes. - Preserve those exclusions in the Windows cross-build configuration alongside its PowerShell parser-process exclusion.",
+      "semantic_absorption_recommendation": "不单独移植“Run code-mode tests in non-Windows Bazel CI”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": ".bazelrc"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "b5748e6e3cbc3c9831f84aa016486721b4923d1c",
+      "authored_at": "2026-07-22T20:58:55Z",
+      "author": "zbarsky-openai",
+      "title": "Remove Windows Bazel lint toolchain overrides (#34827)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "release_ci"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Remove Windows Bazel lint toolchain overrides”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Stop forcing the `local_windows_msvc` host platform for Windows `argument-comment-lint` builds. - Stop selecting the Rust linker preference explicitly. - Continue skipping incompatible explicit targets on Windows.",
+      "semantic_absorption_recommendation": "不单独移植“Remove Windows Bazel lint toolchain overrides”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": ".github/scripts/run-argument-comment-lint-bazel.sh"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "39a2438d16514d0d6f88105d17b0f747994af487",
+      "authored_at": "2026-07-23T09:16:41Z",
+      "author": "zsol-openai",
+      "title": "Prefer releases.openai.com in standalone installers (#34910)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "release_ci"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Prefer releases.openai.com in standalone installers”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Make the shell and PowerShell installers download release metadata and assets from `releases.openai.com` by default, with bounded request timeouts. - Fall back to GitHub Releases when metadata is unusable, required assets are missing, or downloaded assets fail checksum or manifest validation. - Document `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false` for opting out of the default release source. ## Testing - Cover default-source installation, malformed and incomplete metadata, version mismatches, corrupt assets, invalid checksums, incomplete manifests, and GitHub fallback failures in the shell installer tests.",
+      "semantic_absorption_recommendation": "不单独移植“Prefer releases.openai.com in standalone installers”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "README.md"
+        },
+        {
+          "status": "M",
+          "path": "scripts/install/install.ps1"
+        },
+        {
+          "status": "M",
+          "path": "scripts/install/install.sh"
+        },
+        {
+          "status": "M",
+          "path": "scripts/install/test_install_sh.py"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "9e1f43dc2da77b0b25bb30bf60d6b5db34afc954",
+      "authored_at": "2026-07-23T15:34:49Z",
+      "author": "jif",
+      "title": "Move MCP connection helpers into the test module (#34962)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "mcp_runtime"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Move MCP connection helpers into the test module”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "Keep the `McpConnectionSet` test constructors and accessors alongside the connection manager tests instead of defining test-only helpers in the production module.",
+      "semantic_absorption_recommendation": "不单独移植“Move MCP connection helpers into the test module”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "62ba648136c7e60b9380c40b60cb553a7d8eb1ab",
+      "authored_at": "2026-07-23T19:51:56Z",
+      "author": "Eric Traut",
+      "title": "Make TUI turn interrupts nonblocking (#35000)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "thread_history",
+        "tui"
+      ],
+      "risk": "low",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Make TUI turn interrupts nonblocking”，属于TUI/其他。它有潜在价值，但当前依赖的上游 owner/API/产品面尚未在 Hepta 活动 composition 中闭合，或优先级低于已选 P0/P1 切片；保留为 deferred，不进行源码级移植。",
+      "upstream_change_summary": "## What changed - Dispatch app-server turn interrupts in the background so the TUI can keep processing thread events while an interrupt is pending. - Coalesce repeated interrupt requests for the same active turn and clear the pending state when the turn completes or the thread closes. - Preserve the retry for stale active-turn IDs, surface interrupt failures as warning notifications instead of exiting the TUI, and reset backtrack state whenever an interrupt is handled. ## Testing - Add an app-server integration test covering nonblocking event handling, repeated-request coalescing, and pending-state cleanup. - Verify that interrupting without an active turn clears backtrack state.",
+      "semantic_absorption_recommendation": "暂存为语义参考；依赖闭合后再抽取“Make TUI turn interrupts nonblocking”的最小行为或测试思想；只有当 Hepta 对应 TUI/构建/发布面成为活动 owner 时才实现，不能借此引入上游整套 UI 或发布治理。",
+      "changed_file_count": 5,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests/safety_buffering.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/thread_events.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/thread_routing.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app_server_session.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "7d4b417cd1542412c13cdcf4492a12952d7e29bb",
+      "authored_at": "2026-07-23T20:57:44Z",
+      "author": "Eric Traut",
+      "title": "Keep side conversations open when switching threads (#35011)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "thread_history",
+        "tui",
+        "protocol_schema"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Keep side conversations open when switching threads”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Add a configurable `toggle_side_conversation` TUI action, bound to `ctrl-/` by default, to switch between a side conversation and its parent without closing either. - Show the active binding in the footer and distinguish switching from closing with `ctrl-c`. - Allow starting a replacement side conversation from the parent, while cleaning up the previous side thread and preserving it if cleanup fails. - Clean up retained side conversations when shutting down the current thread. ## Testing - Cover shortcut remapping, conflicts, and compatibility with existing `ctrl-/` and `ctrl-7` bindings. - Cover side-thread replacement and footer states for both the parent and side conversation.",
+      "semantic_absorption_recommendation": "不单独移植“Keep side conversations open when switching threads”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 20,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/config/src/tui_keymap.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/core/config.schema.json"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/event_dispatch.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/input.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/side.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/app/thread_routing.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/bottom_pane/footer.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__side_context_label_preserves_status_line.snap"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__side_context_label_shows_hidden_side.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__side_context_label_shows_parent_status.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/chatwidget/tests/side.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/keymap.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/keymap_setup/actions.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "ceb2ffb793b7b990b435e70b4d71ee86eba823c4",
+      "authored_at": "2026-07-23T21:25:33Z",
+      "author": "Matthew Zeng",
+      "title": "Align installed app duration metrics with the legacy baseline (#35015)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "plugin_apps",
+        "analytics_observability",
+        "protocol_schema"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Align installed app duration metrics with the legacy baseline”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## Why The snapshot-backed `apps/installed` duration metric needs dimensions that can be compared with the legacy `app/list` baseline. ## What changed - Label snapshot-backed duration samples with `path=installed` and add the legacy-compatible `reload` dimension alongside the detailed refresh fields. - Record duration samples only for successful responses so failed requests do not enter the success latency distribution. ## Testing Added unit coverage for the duration metric dimensions on refreshed and non-refreshed requests, and for omitting samples on failed requests.",
+      "semantic_absorption_recommendation": "不单独移植“Align installed app duration metrics with the legacy baseline”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 2,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor/installed.rs"
+        },
+        {
+          "status": "A",
+          "path": "codex-rs/app-server/src/request_processors/apps_processor/installed_tests.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "fe0d472c4c3a5e1c5163808446e904cb4c20fc54",
+      "authored_at": "2026-07-23T22:29:27Z",
+      "author": "Felipe Coury",
+      "title": "Adapt keyboard event reporting to the terminal (#35021)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "tui"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Adapt keyboard event reporting to the terminal”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## Why Reporting key event types can leak an exit-shortcut release into the parent shell in iTerm2 and can cause tmux's `xterm` extended-key format to lose Shift+Enter. ## What changed - Select keyboard enhancement flags using the detected terminal and tmux extended-key format. - Disable event-type reporting for iTerm2 and tmux's `xterm` format while retaining alternate-key reporting. - Preserve event-type reporting for other terminals and tmux's `csi-u` format so repeat events remain distinguishable. ## Testing Added unit coverage for iTerm2, Kitty, unknown terminals, and both tmux extended-key formats.",
+      "semantic_absorption_recommendation": "不单独移植“Adapt keyboard event reporting to the terminal”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 1,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/tui/src/tui/keyboard_modes.rs"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    },
+    {
+      "upstream_commit": "f47f28cd0d3da65d22711d43d1eb498893f5a735",
+      "authored_at": "2026-07-24T01:30:14Z",
+      "author": "Adam Perry @ OpenAI",
+      "title": "Fix Bazel test configuration for platform-specific data (#35067)",
+      "primary_category": "tui_other",
+      "primary_category_label": "TUI/其他",
+      "secondary_topics": [
+        "approval_provenance",
+        "release_ci"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "none",
+      "hepta_v2_high_priority": false,
+      "candidate_slice": null,
+      "reason": "核心语义是“Fix Bazel test configuration for platform-specific data”，主要服务上游专有发布、测试维护、指标或非 Hepta 活动 TUI/账户策略。单独移植不能提高 V2 信任闭环，且会扩大维护面，因此拒绝独立吸收；这不表示 imported。",
+      "upstream_change_summary": "## What changed - Include CLI snapshot files in Bazel test runfiles. - Restrict the Windows sandbox binary test target to Windows. - Label boolean and optional arguments in the affected CLI tests.",
+      "semantic_absorption_recommendation": "不单独移植“Fix Bazel test configuration for platform-specific data”。若某个已批准父切片确实依赖它，只携带最小 fixture、测试 helper 或兼容断言，不复制上游发布/TUI/指标所有权。",
+      "changed_file_count": 4,
+      "related_files": [
+        {
+          "status": "M",
+          "path": "codex-rs/cli/BUILD.bazel"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/main.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/cli/src/remote_control_cmd.rs"
+        },
+        {
+          "status": "M",
+          "path": "codex-rs/windows-sandbox-rs/BUILD.bazel"
+        }
+      ],
+      "imported": false,
+      "imported_evidence": null,
+      "integrated": false,
+      "tested_in_hepta": false
+    }
+  ]
+}
