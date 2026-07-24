@@ -1,0 +1,13 @@
+[package]
+name = "hepta-contracts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]

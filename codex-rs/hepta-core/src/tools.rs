@@ -63,6 +63,10 @@ pub struct ToolSchema {
 pub struct ToolContext {
     pub session_id: Option<SessionId>,
     pub correlation_id: Option<CorrelationId>,
+    /// Exact execution attempt owning the provider invocation.
+    pub execution_attempt_id: Option<String>,
+    /// Stable replay key derived from a durable pre-dispatch execution intent.
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

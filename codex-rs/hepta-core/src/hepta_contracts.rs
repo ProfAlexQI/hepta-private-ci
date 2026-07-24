@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+pub use ::hepta_contracts::*;
 use serde::Deserialize;
 use serde::Serialize;
 

@@ -81,6 +81,7 @@ members = [
     "utils/absolute-path",
     "utils/cargo-bin",
     "git-utils",
+    "hepta-contracts",
     "hepta-core",
     "hepta-cli",
     "hepta-native-gateway",
@@ -182,6 +183,7 @@ codex-install-context = { path = "install-context" }
 codex-file-search = { path = "file-search" }
 codex-file-watcher = { path = "file-watcher" }
 codex-git-utils = { path = "git-utils" }
+hepta-contracts = { path = "hepta-contracts" }
 hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }
 hepta-native-gateway = { path = "hepta-native-gateway" }
@@ -368,6 +370,7 @@ schemars = "0.8.22"
 seccompiler = "0.5.0"
 semver = "1.0"
 sentry = "0.46.0"
+same-file = "1.0.6"
 serde = "1"
 serde_ignored = "0.1.14"
 serde_json = "1"
