@@ -223,10 +223,12 @@ pub async fn get_state_db(config: &impl RolloutConfigView) -> Option<StateDbHand
         );
         return None;
     }
-    let runtime =
-        match codex_state::StateRuntime::init(sqlite.clone(), config.model_provider_id().to_string())
-            .await
-        {
+    let runtime = match codex_state::StateRuntime::init(
+        sqlite.clone(),
+        config.model_provider_id().to_string(),
+    )
+    .await
+    {
         Ok(runtime) => runtime,
         Err(_) => {
             codex_state::record_fallback(

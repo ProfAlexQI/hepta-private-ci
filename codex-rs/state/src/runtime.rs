@@ -110,7 +110,12 @@ impl StateRuntime {
         sqlite: impl Into<SqliteConfig>,
         default_provider: String,
     ) -> anyhow::Result<Arc<Self>> {
-        Self::init_inner(sqlite.into(), default_provider, /*telemetry_override*/ None).await
+        Self::init_inner(
+            sqlite.into(),
+            default_provider,
+            /*telemetry_override*/ None,
+        )
+        .await
     }
 
     #[cfg(test)]
@@ -119,12 +124,7 @@ impl StateRuntime {
         default_provider: String,
         telemetry_override: &dyn DbTelemetry,
     ) -> anyhow::Result<Arc<Self>> {
-        Self::init_inner(
-            sqlite.into(),
-            default_provider,
-            Some(telemetry_override),
-        )
-        .await
+        Self::init_inner(sqlite.into(), default_provider, Some(telemetry_override)).await
     }
 
     async fn init_inner(
@@ -137,9 +137,14 @@ impl StateRuntime {
         let logs_migrator = runtime_logs_migrator();
         let state_path = sqlite.state_db_path();
         let logs_path = sqlite.logs_db_path();
-        let pool =
-            match open_state_sqlite(&sqlite, &state_path, &state_migrator, telemetry_override).await
-            {
+        let pool = match open_state_sqlite(
+            &sqlite,
+            &state_path,
+            &state_migrator,
+            telemetry_override,
+        )
+        .await
+        {
             Ok(db) => Arc::new(db),
             Err(err) => {
                 warn!("failed to open state db at {}: {err}", state_path.display());
@@ -351,8 +356,8 @@ pub async fn sqlite_integrity_check(path: &Path) -> anyhow::Result<Vec<String>> 
 
 #[cfg(test)]
 mod tests {
-    use super::StateRuntime;
     use super::SqliteConfig;
+    use super::StateRuntime;
     use super::open_state_sqlite;
     use super::runtime_state_migrator;
     use super::sqlite_integrity_check;
