@@ -376,6 +376,43 @@
         "exact_pair_path_redirection",
         "HEPTA_REPO_ROOT_binding"
       ]
+    },
+    {
+      "batch_id": "terminal_delivery_status_consolidation_v1",
+      "migration_parent_commit": "5a7f5f4bbb8cab76980a329e84bd7b1a838c7ec4",
+      "migration_commit": "e6d6f2ee9cc4df8ee2fbf275cb1c69141a92a387",
+      "newly_migrated_pair_count": 6,
+      "migrated_pair_count": 1282,
+      "remaining_legacy_pair_count": 0,
+      "post_migration_catalog_sha256": "00bf24df2176238acdc855164c9cf7556e028ba9dadf134f907f0f63a384ebf0",
+      "post_migration_exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+      "gate_count": 1982,
+      "report_count": 1283,
+      "exact_pair_count": 1282,
+      "template_pair_count": 33,
+      "captured_compatibility_pair_count": 1249,
+      "existing_template_output_byte_parity_count": 66,
+      "pre_migration_content_snapshot_ready": true,
+      "compatibility_payload_all_hash_verified": true,
+      "all_exact_pairs_thin_wrappers": true,
+      "report_execution_sample_ready": true,
+      "gate_execution_sample_ready": true,
+      "receipt_state_machine_derived": true,
+      "script_execution_side_effects_observed": false,
+      "provider_invoked": false,
+      "model_invoked": false,
+      "credentials_read": false,
+      "production_state_mutated": false,
+      "service_restarted": false,
+      "captured_payload_source_hash_binding_count": 2498,
+      "migrated_ids": [
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-public-status-final-index",
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-public-status-readback",
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-final-index",
+        "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-readback",
+        "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-final-ack-final-index-delivery-receipt-terminal-status",
+        "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-final-index-delivery-receipt-public-status"
+      ]
     }
   ]
 }

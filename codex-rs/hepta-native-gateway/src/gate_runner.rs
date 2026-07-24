@@ -335,6 +335,17 @@ struct ShellPairMigrationSpec {
     public_status_gate: Option<String>,
     public_status_doc: Option<String>,
     source_file_prefix: Option<String>,
+    source_file_key: Option<String>,
+    final_ack_source_file_key: Option<String>,
+    terminal_status_gate_source_file_key: Option<String>,
+    terminal_status_doc_source_file_key: Option<String>,
+    status_source_file_key: Option<String>,
+    status_gate_source_file_key: Option<String>,
+    status_doc_source_file_key: Option<String>,
+    source_report_display_path: Option<String>,
+    acknowledgement_profile: Option<String>,
+    local_gate: Option<String>,
+    static_match_case_sensitive: Option<bool>,
     missing_source_gate_message: Option<String>,
     missing_architecture_note_message: Option<String>,
     missing_terminal_status_gate_message: Option<String>,
@@ -393,6 +404,17 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "receipt_state": spec.receipt_state,
             "side_effect_boundary": spec.side_effect_boundary,
             "source_report": spec.source_report,
+            "source_report_display_path": spec.source_report_display_path,
+            "source_file_key": spec.source_file_key,
+            "final_ack_source_file_key": spec.final_ack_source_file_key,
+            "terminal_status_gate_source_file_key": spec.terminal_status_gate_source_file_key,
+            "terminal_status_doc_source_file_key": spec.terminal_status_doc_source_file_key,
+            "status_source_file_key": spec.status_source_file_key,
+            "status_gate_source_file_key": spec.status_gate_source_file_key,
+            "status_doc_source_file_key": spec.status_doc_source_file_key,
+            "acknowledgement_profile": spec.acknowledgement_profile,
+            "local_gate": spec.local_gate,
+            "static_match_case_sensitive": spec.static_match_case_sensitive,
             "report_path": spec.report_path,
             "blocker_count": spec.blocker_count,
             "captured_shell_compatibility": spec.template == "captured_shell_compat_v1",
@@ -678,13 +700,13 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 spec.architecture_title.as_deref(),
                 spec.public_status_gate.as_deref(),
                 spec.public_status_doc.as_deref(),
-                spec.source_file_prefix.as_deref(),
                 spec.missing_source_gate_message.as_deref(),
                 spec.missing_architecture_note_message.as_deref(),
                 spec.missing_public_status_gate_message.as_deref(),
                 spec.missing_public_status_doc_message.as_deref(),
             ];
             if spec.attachment_blocker_count.is_none_or(|count| count == 0)
+                || spec.source_file_prefix.is_none()
                 || required_template_fields
                     .iter()
                     .any(|field| field.is_none_or(|value| value.trim().is_empty()))
@@ -698,16 +720,16 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         if spec.template == "signing_public_status_readback" {
             let required_template_fields = [
                 spec.readback_mode.as_deref(),
-                spec.source_file_prefix.as_deref(),
                 spec.source_gate.as_deref(),
                 spec.architecture_note.as_deref(),
                 spec.architecture_title.as_deref(),
                 spec.missing_source_gate_message.as_deref(),
                 spec.missing_architecture_note_message.as_deref(),
             ];
-            if required_template_fields
-                .iter()
-                .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+            if spec.source_file_prefix.is_none()
+                || required_template_fields
+                    .iter()
+                    .any(|field| field.is_none_or(|value| value.trim().is_empty()))
             {
                 anyhow::bail!(
                     "Hepta migrated public-status readback pair {} has empty template fields",
@@ -717,16 +739,16 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         }
         if spec.template == "signing_public_status_final_index" {
             let required_template_fields = [
-                spec.source_file_prefix.as_deref(),
                 spec.source_gate.as_deref(),
                 spec.architecture_note.as_deref(),
                 spec.architecture_title.as_deref(),
                 spec.missing_source_gate_message.as_deref(),
                 spec.missing_architecture_note_message.as_deref(),
             ];
-            if required_template_fields
-                .iter()
-                .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+            if spec.source_file_prefix.is_none()
+                || required_template_fields
+                    .iter()
+                    .any(|field| field.is_none_or(|value| value.trim().is_empty()))
             {
                 anyhow::bail!(
                     "Hepta migrated public-status final-index pair {} has empty template fields",

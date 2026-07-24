@@ -262,7 +262,12 @@ fn shell_snapshot_matches_the_append_only_parity_ledger() {
         .values()
         .filter(|spec| spec.template == "captured_shell_compat_v1")
         .collect::<Vec<_>>();
-    assert_eq!(captured_specs.len(), 1255);
+    assert_eq!(
+        captured_specs.len(),
+        latest["captured_compatibility_pair_count"]
+            .as_u64()
+            .expect("captured compatibility pair count") as usize
+    );
     for spec in captured_specs {
         let input = input_entries.get(&spec.id).expect("captured pair input");
         assert_eq!(
