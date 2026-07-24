@@ -6,8 +6,8 @@
     "branch": "main",
     "remote_ref": "refs/heads/main",
     "tracking_ref": "refs/remotes/upstream/main",
-    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r8",
-    "expected_head": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2"
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r9",
+    "expected_head": "000d2540ad73996f3589ae178bfe447bfd67cef2"
   },
   "network_receipt": {
     "schema_version": "hepta_upstream_network_freshness_receipt_v1",
@@ -245,6 +245,107 @@
           "scope": "closeable_shutdown_refresh_gate_and_single_owner_module",
           "non_claims": [
             "Explicit shutdown-gate closure and structural coordinator consolidation remain deferred."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r9",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R9.json",
+        "sha256": "e8b28c20790abe02a9af0f59fb48eec172298799427d655e5ac23ed3fff64564",
+        "range_start_exclusive": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+        "range_end_inclusive": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r9"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R9_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
+        "sha256": "3ca38cacd447ca1a3cf326a2167f0658179ac885aad399ce708f9c6a70f2e877",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "634a998d8aaeaf5f535e04d8475b17a62e7043a7",
+          "local_commit": "fb25fbaba289b354b508ad30aa2d78eac200cade",
+          "scope": "broken_pipe_preserves_completed_hook_output",
+          "non_claims": [
+            "Only stdin BrokenPipe is tolerated; other hook input write failures remain errors."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+          "local_commit": "fb25fbaba289b354b508ad30aa2d78eac200cade",
+          "scope": "published_current_global_mcp_elicitation_authority",
+          "non_claims": [
+            "Per-connector configuration-layer reviewer overrides are not absorbed."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "3645a4397c4889ea483a3b9a61ad7cf5921aa384",
+          "local_commit": "fb25fbaba289b354b508ad30aa2d78eac200cade",
+          "scope": "loaded_thread_refresh_after_successful_mcp_oauth",
+          "non_claims": [
+            "Refreshing loaded threads does not close the thread-start publication race."
+          ]
+        },
+        {
+          "kind": "absorption",
+          "upstream_commit": "5a1c54fc2110b1299c80e949425044dff478da25",
+          "local_commit": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+          "scope": "host_skill_path_alias_compaction_under_metadata_budget",
+          "non_claims": [
+            "No equivalence is claimed for the absent ext/skills provider."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "7c71783135b020e8f4db3fa26dc4319901c260b5",
+          "scope": "executor_skill_list_read_authority",
+          "non_claims": [
+            "Executor skill tools are not exposed locally."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "fe8500c0a00eaddda49b68e6ade818a93b58dfb5",
+          "scope": "executor_skill_resource_read_authority",
+          "non_claims": [
+            "No executor resource-read authority is available."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5dd992acd3f5242196ec690bb462e0d2687b485d",
+          "scope": "typed_extension_warning_production_and_thread_delivery",
+          "non_claims": [
+            "No extension warning route was imported."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "5a1c54fc2110b1299c80e949425044dff478da25",
+          "scope": "ext_skills_host_provider_alias_and_fragment_rendering",
+          "non_claims": [
+            "The existing host renderer does not imply extension-provider equivalence."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "3645a4397c4889ea483a3b9a61ad7cf5921aa384",
+          "scope": "mcp_runtime_invalidation_during_thread_startup",
+          "non_claims": [
+            "Loaded-thread refresh does not close the startup window."
+          ]
+        },
+        {
+          "kind": "deferral",
+          "upstream_commit": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+          "scope": "connector_specific_mcp_reviewer_resolution_from_current_config_layers",
+          "non_claims": [
+            "Global current authority is absorbed; per-connector reviewer parity is not."
           ]
         }
       ]

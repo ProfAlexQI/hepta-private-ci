@@ -1,0 +1,310 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "upstream-codex-r9-semantic-absorption-2026-07-24",
+  "recorded_at": "2026-07-24T16:05:36Z",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R9.json",
+    "manifest_sha256": "e8b28c20790abe02a9af0f59fb48eec172298799427d655e5ac23ed3fff64564",
+    "commit": "5495b0af073d7b236e532794b4d0ce4a2de57c19",
+    "range_start_exclusive": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+    "range_end_inclusive": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "integration_mode": "selective_semantic_transplant_with_authority_prerequisite_deferrals",
+  "absorptions": [
+    {
+      "lane": "hooks_runtime",
+      "upstream_commit": "634a998d8aaeaf5f535e04d8475b17a62e7043a7",
+      "upstream_title": "Preserve output from hooks that exit before reading stdin (#35194)",
+      "disposition": "semantic_transplant",
+      "scope": "broken_pipe_preserves_completed_hook_output",
+      "hepta_commit": "fb25fbaba289b354b508ad30aa2d78eac200cade",
+      "production_behavior_preexisting": false,
+      "production_code_modified": true,
+      "semantic_mapping": "The local hook runner now treats only stdin BrokenPipe as compatible with a child that already exited, preserving captured stdout and the child's exit status. Every other stdin write failure still kills the child and returns an execution error.",
+      "core_files": [
+        "codex-rs/hooks/src/engine/command_runner.rs",
+        "codex-rs/hooks/src/engine/command_runner_tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-hooks fast_exiting_hook_preserves_stdout_when_stdin_is_not_consumed",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "A fast hook preserves completed stdout while a one-megabyte stdin write observes BrokenPipe."
+        },
+        {
+          "command": "cargo test -p codex-hooks",
+          "result": "passed",
+          "tests_passed": 111,
+          "tests_failed": 0,
+          "assertion": "The full hooks package retains its existing execution and parsing behavior."
+        }
+      ],
+      "non_claims": [
+        "No byte-for-byte source import is claimed.",
+        "Only BrokenPipe is tolerated; other write errors are not reclassified."
+      ]
+    },
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+      "upstream_title": "Use current MCP authority for elicitation reviews (#35205)",
+      "disposition": "bounded_semantic_transplant",
+      "scope": "published_current_global_mcp_elicitation_authority",
+      "hepta_commit": "fb25fbaba289b354b508ad30aa2d78eac200cade",
+      "production_behavior_preexisting": false,
+      "production_code_modified": true,
+      "semantic_mapping": "The published local MCP connection manager now owns the exact approval policy, effective permission profile, and reviewer selection used to create or refresh it. Reused elicitation reviewers read that published authority instead of an older active turn, apply Never and granular denials before Guardian routing, and retain the empty-form auto-approval rule under a Disabled permission profile.",
+      "core_files": [
+        "codex-rs/protocol/src/protocol.rs",
+        "codex-rs/app-server/src/mcp_refresh.rs",
+        "codex-rs/core/src/guardian/mod.rs",
+        "codex-rs/core/src/guardian/review.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/turn_context.rs",
+        "codex-rs/core/src/state/service.rs",
+        "codex-rs/core/src/session/tests.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core explicit_refresh_publishes_current_mcp_elicitation_authority",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "A stale active turn cannot override refreshed Never, Disabled, and AutoReview authority."
+        },
+        {
+          "command": "cargo test -p codex-core mcp_refresh",
+          "result": "passed",
+          "tests_passed": 4,
+          "tests_failed": 0,
+          "assertion": "Cancellation, supersession, invalid configuration, and frozen-auth refresh behavior remain intact."
+        }
+      ],
+      "non_claims": [
+        "The local configuration model does not yet implement upstream per-connector configuration-layer reviewer overrides.",
+        "The local manager is not the upstream centralized immutable McpRuntime type.",
+        "Thread-start refresh invalidation is recorded separately as deferred scope."
+      ]
+    },
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "3645a4397c4889ea483a3b9a61ad7cf5921aa384",
+      "upstream_title": "Refresh MCP runtimes across thread startup (#35204)",
+      "disposition": "partial_semantic_transplant",
+      "scope": "loaded_thread_refresh_after_successful_mcp_oauth",
+      "hepta_commit": "fb25fbaba289b354b508ad30aa2d78eac200cade",
+      "production_behavior_preexisting": false,
+      "production_code_modified": true,
+      "semantic_mapping": "Successful explicit MCP OAuth and silent plugin OAuth now queue the existing best-effort refresh across every loaded local thread before completion is reported. Failed OAuth does not queue a refresh. The local implementation deliberately does not claim the upstream startup-window invalidation contract.",
+      "core_files": [
+        "codex-rs/app-server/src/request_processors/mcp_processor.rs",
+        "codex-rs/app-server/src/request_processors/plugins.rs",
+        "codex-rs/app-server/src/mcp_refresh.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-app-server mcp_refresh",
+          "result": "passed",
+          "tests_passed": 2,
+          "tests_failed": 0,
+          "assertion": "The best-effort refresh helper attempts every loaded thread and strict planning failures remain visible."
+        }
+      ],
+      "non_claims": [
+        "No centralized runtime/source epoch was added.",
+        "A thread crossing startup publication can still miss an invalidation.",
+        "The successful OAuth call sites are compile-checked but do not yet have a dedicated end-to-end refresh assertion."
+      ]
+    },
+    {
+      "lane": "skill_extensions",
+      "upstream_commit": "5a1c54fc2110b1299c80e949425044dff478da25",
+      "upstream_title": "Compact host skill paths under metadata pressure (#35172)",
+      "disposition": "existing_semantic_equivalent",
+      "scope": "host_skill_path_alias_compaction_under_metadata_budget",
+      "hepta_commit": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+      "production_behavior_preexisting": true,
+      "production_code_modified": false,
+      "semantic_mapping": "The local core-skills renderer already computes stable root aliases, emits a skill-roots table, selects the aliased form only when it improves the bounded render, and preserves skill identity and relative paths. This covers the host-rendering behavior without importing the absent ext/skills provider.",
+      "core_files": [
+        "codex-rs/core-skills/src/render.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core-skills outcome_rendering_uses_aliases_when_they_allow_more_skills_to_fit",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "Aliases are selected only when they permit more skills to fit the metadata budget."
+        }
+      ],
+      "non_claims": [
+        "No equivalence is claimed for upstream ext/skills provider, catalog, fragment, or warning rendering.",
+        "The upstream commit was not cherry-picked."
+      ]
+    }
+  ],
+  "deferrals": [
+    {
+      "lane": "skill_extensions",
+      "upstream_commit": "7c71783135b020e8f4db3fa26dc4319901c260b5",
+      "upstream_title": "Expose executor skills through skill tools (#35184)",
+      "disposition": "deferred_executor_skill_authority_architecture",
+      "scope": "executor_skill_list_read_authority",
+      "hepta_commit": null,
+      "reason": "The local tree has no ext/skills crate, no skills.list or skills.read tools, and no per-step ToolContributor contract carrying selected executor capability roots. Direct transplantation would widen session-global filesystem authority without a precise selection lifetime.",
+      "missing_prerequisites": [
+        "local skill provider, catalog, fragment, and tool ownership boundary",
+        "per-step selected executor capability roots",
+        "exact package confinement for list, body, and resource reads",
+        "bounded and paginated results with stale cursor rejection",
+        "explicit resource access metadata",
+        "zero-authority tests for unselected and stale executor skills"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "Executor skill tools are not exposed locally.",
+        "P0 priority is an architecture requirement, not an enablement claim."
+      ]
+    },
+    {
+      "lane": "skill_extensions",
+      "upstream_commit": "fe8500c0a00eaddda49b68e6ade818a93b58dfb5",
+      "upstream_title": "Enable resource reads for explicit executor skills (#35198)",
+      "disposition": "deferred_executor_skill_resource_authority_architecture",
+      "scope": "executor_skill_resource_read_authority",
+      "hepta_commit": null,
+      "reason": "The local tree has no ext/skills crate, no explicit executor-skill selection lifetime, and no resource declaration or package-confinement contract. Resource reads cannot be added safely as a standalone tool patch.",
+      "missing_prerequisites": [
+        "accepted executor skill list and read authority contract",
+        "exact package confinement for resource paths",
+        "explicit resource access metadata",
+        "bounded reads and stale capability rejection",
+        "zero-authority tests for unselected resources"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "No executor resource-read authority is available.",
+        "No resource path is exposed through session-global selection."
+      ]
+    },
+    {
+      "lane": "skill_extensions",
+      "upstream_commit": "5dd992acd3f5242196ec690bb462e0d2687b485d",
+      "upstream_title": "Route extension warnings to app-server threads (#35168)",
+      "disposition": "deferred_extension_warning_delivery",
+      "scope": "typed_extension_warning_production_and_thread_delivery",
+      "hepta_commit": null,
+      "reason": "The warning producers and event capabilities belong to upstream ext/skills, which is absent locally. Adding only the app-server route would create a dead or unowned event surface.",
+      "missing_prerequisites": [
+        "local skill-extension warning producer",
+        "typed extension event capability",
+        "thread-scoped delivery ownership",
+        "deduplication and lifecycle tests"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "No extension warning route was imported."
+      ]
+    },
+    {
+      "lane": "skill_extensions",
+      "upstream_commit": "5a1c54fc2110b1299c80e949425044dff478da25",
+      "upstream_title": "Compact host skill paths under metadata pressure (#35172)",
+      "disposition": "deferred_extension_provider_rendering",
+      "scope": "ext_skills_host_provider_alias_and_fragment_rendering",
+      "hepta_commit": null,
+      "reason": "Only the host-side core-skills behavior has a local equivalent. The upstream provider, catalog, fragments, and extension rendering layer do not exist locally.",
+      "missing_prerequisites": [
+        "accepted local ext/skills architecture",
+        "one canonical alias contract shared by host and executor providers",
+        "metadata budget parity tests across provider boundaries"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "The existing host renderer does not imply extension-provider equivalence."
+      ]
+    },
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "3645a4397c4889ea483a3b9a61ad7cf5921aa384",
+      "upstream_title": "Refresh MCP runtimes across thread startup (#35204)",
+      "disposition": "deferred_thread_start_refresh_window",
+      "scope": "mcp_runtime_invalidation_during_thread_startup",
+      "hepta_commit": null,
+      "reason": "The upstream solution registers centralized runtimes during session creation. Hepta still pushes refresh config into session-owned managers and has no authoritative runtime/source epoch to invalidate before publication.",
+      "missing_prerequisites": [
+        "centralized long-lived MCP runtime owner",
+        "monotonic source or configuration generation",
+        "starting-runtime registration before asynchronous publication",
+        "race test covering invalidation between registration and publish"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "Loaded-thread refresh does not close the startup window."
+      ]
+    },
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+      "upstream_title": "Use current MCP authority for elicitation reviews (#35205)",
+      "disposition": "deferred_per_connector_reviewer_layers",
+      "scope": "connector_specific_mcp_reviewer_resolution_from_current_config_layers",
+      "hepta_commit": null,
+      "reason": "Hepta's current configuration model publishes one global reviewer selection with the manager and lacks the upstream layer resolver for server and connector-specific reviewer overrides.",
+      "missing_prerequisites": [
+        "typed current configuration-layer snapshot",
+        "server and connector identity mapping",
+        "deterministic reviewer precedence",
+        "tests proving stale layer snapshots cannot route reviews"
+      ],
+      "tests_run": false,
+      "non_claims": [
+        "Global current authority is absorbed; per-connector reviewer parity is not."
+      ]
+    }
+  ],
+  "rejections": [
+    {
+      "lane": "test_reliability",
+      "upstream_commit": "1a817bb95d942d4ca93f6ed09c97968713ff6d2a",
+      "upstream_title": "Wait for reloaded worker completion in the resume test (#35175)",
+      "disposition": "rejected_not_applicable",
+      "reason": "The corresponding local worker-resume test and fixture are absent.",
+      "production_behavior_modified": false
+    },
+    {
+      "lane": "test_reliability",
+      "upstream_commit": "5f6a2c3adb159f606b13f4dd6b057d8a3431a1d1",
+      "upstream_title": "Make the Apps recovery exposure test deterministic (#35196)",
+      "disposition": "rejected_not_applicable",
+      "reason": "The corresponding local Apps recovery fixture and exposure test are absent.",
+      "production_behavior_modified": false
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 3,
+    "fully_absorbed_commit_count": 1,
+    "bounded_absorption_commit_count": 1,
+    "partial_absorption_commit_count": 1,
+    "existing_semantic_equivalent_count": 1,
+    "deferred_commit_count": 6,
+    "rejected_commit_count": 2,
+    "all_r9_candidates_absorbed": false,
+    "executor_skill_authority_available": false,
+    "thread_start_refresh_window_closed": false,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}

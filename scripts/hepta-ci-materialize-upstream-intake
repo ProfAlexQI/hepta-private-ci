@@ -20,6 +20,8 @@ EXPECTED_R7_REF="refs/remotes/upstream/hepta-intake-20260724-r7"
 EXPECTED_R7_SHA="f201c30c52a35f819262865a53df94b6f4ea7a50"
 EXPECTED_R8_REF="refs/remotes/upstream/hepta-intake-20260724-r8"
 EXPECTED_R8_SHA="c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2"
+EXPECTED_R9_REF="refs/remotes/upstream/hepta-intake-20260724-r9"
+EXPECTED_R9_SHA="000d2540ad73996f3589ae178bfe447bfd67cef2"
 
 usage() {
   echo "usage: scripts/hepta-ci-materialize-upstream-intake <verify|materialize>" >&2
@@ -49,6 +51,8 @@ load_contract() {
     --arg r7_sha "$EXPECTED_R7_SHA" \
     --arg r8_ref "$EXPECTED_R8_REF" \
     --arg r8_sha "$EXPECTED_R8_SHA" \
+    --arg r9_ref "$EXPECTED_R9_REF" \
+    --arg r9_sha "$EXPECTED_R9_SHA" \
     '
       .upstream_intake == {
         url:$url,
@@ -61,7 +65,8 @@ load_contract() {
           {role:"current_r5",ref:$r5_ref,sha:$r5_sha},
           {role:"current_r6",ref:$r6_ref,sha:$r6_sha},
           {role:"current_r7",ref:$r7_ref,sha:$r7_sha},
-          {role:"current_r8",ref:$r8_ref,sha:$r8_sha}
+          {role:"current_r8",ref:$r8_ref,sha:$r8_sha},
+          {role:"current_r9",ref:$r9_ref,sha:$r9_sha}
         ]
       }
     ' "$CONTRACT" >/dev/null; then
@@ -175,8 +180,8 @@ case "$1" in
 esac
 
 jq -n \
-  --arg schema hepta_ci_upstream_intake_v6 \
+  --arg schema hepta_ci_upstream_intake_v7 \
   --arg status ready \
   --arg url "$url" \
   --argjson refs "$(jq -c '.upstream_intake.refs' "$CONTRACT")" \
-  '{schema:$schema,status:$status,url:$url,refs:$refs,exact_fetch_only:true,historical_refs_preserved:true,current_r4_ref_materialized:true,current_r5_ref_materialized:true,current_r6_ref_materialized:true,current_r7_ref_materialized:true,current_r8_ref_materialized:true,merge_performed:false,checkout_performed:false,push_performed:false}'
+  '{schema:$schema,status:$status,url:$url,refs:$refs,exact_fetch_only:true,historical_refs_preserved:true,current_r4_ref_materialized:true,current_r5_ref_materialized:true,current_r6_ref_materialized:true,current_r7_ref_materialized:true,current_r8_ref_materialized:true,current_r9_ref_materialized:true,merge_performed:false,checkout_performed:false,push_performed:false}'

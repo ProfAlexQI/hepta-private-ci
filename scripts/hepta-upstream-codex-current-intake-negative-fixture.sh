@@ -10,7 +10,8 @@ R5_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R5
 R6_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R6.json"
 R7_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R7.json"
 R8_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R8.json"
-fixture_dir="$(mktemp -d /tmp/hepta-current-intake-r8-negative.XXXXXX)"
+R9_MANIFEST="docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R9.json"
+fixture_dir="$(mktemp -d /tmp/hepta-current-intake-r9-negative.XXXXXX)"
 trap 'rm -rf "$fixture_dir"' EXIT
 
 expect_denied() {
@@ -76,6 +77,8 @@ expect_denied_with_message stale_r7_ref "R7 ref does not match the pinned frozen
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_REF=refs/remotes/upstream/main
 expect_denied_with_message stale_r8_ref "R8 ref does not match the pinned frozen ref" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R8_REF=refs/remotes/upstream/main
+expect_denied_with_message stale_r9_ref "R9 ref does not match the pinned frozen ref" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_REF=refs/remotes/upstream/main
 expect_denied r4_head_mismatch \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R4_HEAD=9fc715c0861c956c894a91890b78dc05b304ba29
 expect_denied r5_head_mismatch \
@@ -86,6 +89,8 @@ expect_denied_with_message r7_head_mismatch "R7 head does not match the pinned c
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_HEAD=6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899
 expect_denied_with_message r8_head_mismatch "R8 head does not match the pinned cutoff" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R8_HEAD=f201c30c52a35f819262865a53df94b6f4ea7a50
+expect_denied_with_message r9_head_mismatch "R9 head does not match the pinned cutoff" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_HEAD=c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2
 expect_denied manifest_override_without_fixture_opt_in \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R5_MANIFEST="$fixture_dir/r5-untrusted.json"
 expect_denied_with_message r6_manifest_override_without_fixture_opt_in "R6 manifest override requires explicit fixture opt-in" \
@@ -94,6 +99,8 @@ expect_denied_with_message r7_manifest_override_without_fixture_opt_in "R7 manif
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R7_MANIFEST="$fixture_dir/r7-untrusted.json"
 expect_denied_with_message r8_manifest_override_without_fixture_opt_in "R8 manifest override requires explicit fixture opt-in" \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R8_MANIFEST="$fixture_dir/r8-untrusted.json"
+expect_denied_with_message r9_manifest_override_without_fixture_opt_in "R9 manifest override requires explicit fixture opt-in" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-untrusted.json"
 
 jq '.predecessor_intake.manifest_sha256="0000000000000000000000000000000000000000000000000000000000000000"' "$R5_MANIFEST" >"$fixture_dir/r5-predecessor-hash.json"
 expect_denied r5_predecessor_hash_mismatch \
@@ -235,8 +242,43 @@ expect_denied_with_message r8_incomplete_file_surface "R8 manifest contract drif
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
   HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R8_MANIFEST="$fixture_dir/r8-incomplete-files.json"
 
+jq '.predecessor_intake.manifest_sha256="0000000000000000000000000000000000000000000000000000000000000000"' "$R9_MANIFEST" >"$fixture_dir/r9-predecessor-hash.json"
+expect_denied_with_message r9_predecessor_hash_mismatch "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-predecessor-hash.json"
+
+jq '.observation.range_identity.digest="0000000000000000000000000000000000000000000000000000000000000000"' "$R9_MANIFEST" >"$fixture_dir/r9-range-hash.json"
+expect_denied_with_message r9_range_hash_mismatch "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-range-hash.json"
+
+jq 'del(.commit_inventory[0])' "$R9_MANIFEST" >"$fixture_dir/r9-incomplete-commits.json"
+expect_denied_with_message r9_incomplete_commit_inventory "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-incomplete-commits.json"
+
+jq '.commit_inventory += [.commit_inventory[0]]' "$R9_MANIFEST" >"$fixture_dir/r9-duplicate-commit.json"
+expect_denied_with_message r9_duplicate_commit_inventory "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-duplicate-commit.json"
+
+jq '.commit_inventory[0].status="imported" | .commit_inventory[0].imported=true | .commit_inventory[0].imported_evidence={local_commit:"0000000000000000000000000000000000000000"} | .classification_summary.status_counts={candidate:4,deferred:2,rejected:2,imported:1}' "$R9_MANIFEST" >"$fixture_dir/r9-imported.json"
+expect_denied_with_message r9_false_import_claim "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-imported.json"
+
+jq '.claims.live_enablement_performed=true' "$R9_MANIFEST" >"$fixture_dir/r9-live-claim.json"
+expect_denied_with_message r9_false_live_claim "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-live-claim.json"
+
+jq 'del(.commit_inventory[0].related_files[0])' "$R9_MANIFEST" >"$fixture_dir/r9-incomplete-files.json"
+expect_denied_with_message r9_incomplete_file_surface "R9 manifest contract drifted" \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_ALLOW_FIXTURE_MANIFEST=1 \
+  HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_R9_MANIFEST="$fixture_dir/r9-incomplete-files.json"
+
 jq -n '{
-  schema:"hepta_upstream_codex_current_intake_negative_fixture_v8",
+  schema:"hepta_upstream_codex_current_intake_negative_fixture_v9",
   status:"ready",
   r3_historical_integrity_preserved:true,
   stale_r4_ref_denied:true,
@@ -244,6 +286,7 @@ jq -n '{
   stale_or_floating_r6_ref_denied:true,
   stale_or_floating_r7_ref_denied:true,
   stale_or_floating_r8_ref_denied:true,
+  stale_or_floating_r9_ref_denied:true,
   cutoff_sha_mismatch_denied:true,
   untrusted_manifest_override_denied:true,
   predecessor_hash_mismatch_denied:true,
