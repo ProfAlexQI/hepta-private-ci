@@ -3,6 +3,7 @@ use codex_core::CodexThread;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
 use codex_protocol::ThreadId;
+use codex_protocol::protocol::McpElicitationAuthority;
 use codex_protocol::protocol::McpServerRefreshConfig;
 use codex_protocol::protocol::Op;
 use std::io;
@@ -77,6 +78,11 @@ async fn build_refresh_config(
             config.mcp_oauth_credentials_store_mode,
         )
         .map_err(io::Error::other)?,
+        elicitation_authority: Some(McpElicitationAuthority {
+            approval_policy: config.permissions.approval_policy.value(),
+            permission_profile: config.permissions.effective_permission_profile(),
+            approvals_reviewer: config.approvals_reviewer,
+        }),
     })
 }
 

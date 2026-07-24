@@ -766,10 +766,14 @@ impl Session {
             .unwrap_or_else(|| session_configuration.cwd.clone());
         let per_turn_config = Self::build_per_turn_config(&session_configuration, cwd.clone());
         {
-            let mcp_connection_manager = self.services.mcp_connection_manager.read().await;
-            mcp_connection_manager.set_approval_policy(&session_configuration.approval_policy);
-            mcp_connection_manager
-                .set_permission_profile(session_configuration.permission_profile());
+            let mut mcp_connection_manager = self.services.mcp_connection_manager.write().await;
+            mcp_connection_manager.update_elicitation_authority(
+                codex_protocol::protocol::McpElicitationAuthority {
+                    approval_policy: session_configuration.approval_policy.value(),
+                    permission_profile: session_configuration.permission_profile(),
+                    approvals_reviewer: session_configuration.approvals_reviewer,
+                },
+            );
         }
 
         let model_info = self

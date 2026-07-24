@@ -324,6 +324,7 @@ impl Session {
         turn_context: &TurnContext,
         configured_mcp_servers: Option<HashMap<String, McpServerConfig>>,
         store_mode: OAuthCredentialsStoreMode,
+        elicitation_authority: Option<codex_protocol::protocol::McpElicitationAuthority>,
         elicitation_reviewer: Option<ElicitationReviewerHandle>,
         expected_explicit_generation: Option<u64>,
     ) -> McpRefreshPublication {
@@ -335,6 +336,15 @@ impl Session {
         };
         let auth_changes = self.services.auth_manager.auth_change_receiver();
         let config = self.get_config().await;
+        let elicitation_authority = elicitation_authority.unwrap_or_else(|| {
+            codex_protocol::protocol::McpElicitationAuthority {
+                approval_policy: config.permissions.approval_policy.value(),
+                permission_profile: config.permissions.effective_permission_profile(),
+                approvals_reviewer: config.approvals_reviewer,
+            }
+        });
+        let approval_policy =
+            codex_config::Constrained::allow_any(elicitation_authority.approval_policy);
         let mcp_config = config
             .to_mcp_config(self.services.plugins_manager.as_ref())
             .await;
@@ -368,10 +378,10 @@ impl Session {
             &mcp_servers,
             store_mode,
             auth_statuses,
-            &turn_context.approval_policy,
+            &approval_policy,
             turn_context.sub_id.clone(),
             self.get_tx_event(),
-            turn_context.permission_profile(),
+            elicitation_authority.permission_profile.clone(),
             mcp_runtime_environment,
             config.codex_home.to_path_buf(),
             codex_apps_tools_cache_key(auth_snapshot.auth()),
@@ -488,7 +498,11 @@ impl Session {
             warn!("MCP refresh replacement lost unpublished parts before publication");
             return McpRefreshPublication::Failed;
         };
-        let mut old_manager = manager.publish(refreshed_manager, auth_snapshot.binding());
+        let mut old_manager = manager.publish(
+            refreshed_manager,
+            auth_snapshot.binding(),
+            elicitation_authority,
+        );
         let old_cancel_token = std::mem::replace(&mut *startup_token, cancel_token);
         if old_cancel_token.is_cancelled() {
             startup_token.cancel();
@@ -515,64 +529,74 @@ impl Session {
         let _refresh_owner = self.mcp_server_refresh_lock.lock().await;
         loop {
             let intent = { self.mcp_server_refresh_state.lock().await.pending() };
-            let (configured_mcp_servers, store_mode, expected_generation) = match intent {
-                Some(intent) => {
-                    let McpServerRefreshConfig {
-                        mcp_servers,
-                        mcp_oauth_credentials_store_mode,
-                    } = intent.config;
-                    let mcp_servers = match serde_json::from_value::<HashMap<String, McpServerConfig>>(
-                        mcp_servers,
-                    ) {
-                        Ok(servers) => servers,
-                        Err(err) => {
-                            warn!("failed to parse MCP server refresh config: {err}");
-                            return;
-                        }
-                    };
-                    let store_mode = match serde_json::from_value::<OAuthCredentialsStoreMode>(
-                        mcp_oauth_credentials_store_mode,
-                    ) {
-                        Ok(mode) => mode,
-                        Err(err) => {
-                            warn!("failed to parse MCP OAuth refresh config: {err}");
-                            return;
-                        }
-                    };
-                    (Some(mcp_servers), store_mode, Some(intent.generation))
-                }
-                None => {
-                    let Some(auth_snapshot) = crate::state::FrozenMcpAuthSnapshot::capture(
-                        self.services.auth_manager.as_ref(),
-                    )
-                    .await
-                    else {
-                        warn!("failed to capture current auth before MCP refresh");
-                        return;
-                    };
-                    if self
-                        .services
-                        .mcp_connection_manager
-                        .read()
-                        .await
-                        .auth_matches(&auth_snapshot.binding())
-                    {
-                        return;
+            let (configured_mcp_servers, store_mode, elicitation_authority, expected_generation) =
+                match intent {
+                    Some(intent) => {
+                        let McpServerRefreshConfig {
+                            mcp_servers,
+                            mcp_oauth_credentials_store_mode,
+                            elicitation_authority,
+                        } = intent.config;
+                        let mcp_servers = match serde_json::from_value::<
+                            HashMap<String, McpServerConfig>,
+                        >(mcp_servers)
+                        {
+                            Ok(servers) => servers,
+                            Err(err) => {
+                                warn!("failed to parse MCP server refresh config: {err}");
+                                return;
+                            }
+                        };
+                        let store_mode = match serde_json::from_value::<OAuthCredentialsStoreMode>(
+                            mcp_oauth_credentials_store_mode,
+                        ) {
+                            Ok(mode) => mode,
+                            Err(err) => {
+                                warn!("failed to parse MCP OAuth refresh config: {err}");
+                                return;
+                            }
+                        };
+                        (
+                            Some(mcp_servers),
+                            store_mode,
+                            elicitation_authority,
+                            Some(intent.generation),
+                        )
                     }
-                    let config = self.get_config().await;
-                    (
-                        None,
-                        config.mcp_oauth_credentials_store_mode,
-                        /*expected_generation*/ None,
-                    )
-                }
-            };
+                    None => {
+                        let Some(auth_snapshot) = crate::state::FrozenMcpAuthSnapshot::capture(
+                            self.services.auth_manager.as_ref(),
+                        )
+                        .await
+                        else {
+                            warn!("failed to capture current auth before MCP refresh");
+                            return;
+                        };
+                        if self
+                            .services
+                            .mcp_connection_manager
+                            .read()
+                            .await
+                            .auth_matches(&auth_snapshot.binding())
+                        {
+                            return;
+                        }
+                        let config = self.get_config().await;
+                        (
+                            None,
+                            config.mcp_oauth_credentials_store_mode,
+                            None,
+                            None,
+                        )
+                    }
+                };
 
             match self
                 .refresh_mcp_servers_inner(
                     turn_context,
                     configured_mcp_servers,
                     store_mode,
+                    elicitation_authority,
                     elicitation_reviewer.clone(),
                     expected_generation,
                 )
@@ -599,6 +623,7 @@ impl Session {
                     turn_context,
                     Some(mcp_servers.clone()),
                     store_mode,
+                    None,
                     elicitation_reviewer.clone(),
                     None,
                 )
@@ -638,7 +663,46 @@ async fn review_guardian_mcp_elicitation(
         return Ok(None);
     };
 
-    if !crate::guardian::routes_approval_to_guardian(turn_context.as_ref()) {
+    let elicitation_authority = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .elicitation_authority()
+        .clone();
+    let approval_policy = elicitation_authority.approval_policy;
+    match approval_policy {
+        AskForApproval::Never => {
+            if codex_mcp::mcp_permission_prompt_is_auto_approved(
+                approval_policy,
+                &elicitation_authority.permission_profile,
+                codex_mcp::McpPermissionPromptAutoApproveContext::default(),
+            ) && matches!(
+                &request.elicitation,
+                CreateElicitationRequestParams::FormElicitationParams {
+                    requested_schema,
+                    ..
+                } if requested_schema.properties.is_empty()
+            ) {
+                return Ok(Some(ElicitationResponse {
+                    action: ElicitationAction::Accept,
+                    content: Some(serde_json::json!({})),
+                    meta: None,
+                }));
+            }
+            return Ok(Some(mcp_elicitation_decline_without_message()));
+        }
+        AskForApproval::Granular(config) if !config.allows_mcp_elicitations() => {
+            return Ok(Some(mcp_elicitation_decline_without_message()));
+        }
+        AskForApproval::OnRequest | AskForApproval::UnlessTrusted | AskForApproval::Granular(_) => {
+        }
+        AskForApproval::OnFailure => return Ok(None),
+    }
+    if !crate::guardian::routes_approval_policy_to_guardian(
+        approval_policy,
+        elicitation_authority.approvals_reviewer,
+    ) {
         return Ok(None);
     }
 

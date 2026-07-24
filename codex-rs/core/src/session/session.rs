@@ -4,6 +4,7 @@ use codex_protocol::SessionId;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::permissions::FileSystemPath;
 use codex_protocol::permissions::FileSystemSpecialPath;
+use codex_protocol::protocol::McpElicitationAuthority;
 use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TurnEnvironmentSelection;
@@ -994,6 +995,11 @@ impl Session {
                             config.permissions.permission_profile(),
                         ),
                         initial_mcp_auth_binding,
+                        McpElicitationAuthority {
+                            approval_policy: config.permissions.approval_policy.value(),
+                            permission_profile: config.permissions.effective_permission_profile(),
+                            approvals_reviewer: config.approvals_reviewer,
+                        },
                     ),
                 )),
                 mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -1274,8 +1280,15 @@ impl Session {
                 let Ok((mcp_connection_manager, cancel_token)) = replacement.take() else {
                     anyhow::bail!("startup MCP replacement lost unpublished parts");
                 };
-                let mut old_manager =
-                    manager_guard.publish(mcp_connection_manager, auth_snapshot.binding());
+                let mut old_manager = manager_guard.publish(
+                    mcp_connection_manager,
+                    auth_snapshot.binding(),
+                    McpElicitationAuthority {
+                        approval_policy: session_configuration.approval_policy.value(),
+                        permission_profile: session_configuration.permission_profile(),
+                        approvals_reviewer: session_configuration.approvals_reviewer,
+                    },
+                );
                 let old_cancel_token = std::mem::replace(&mut *cancel_guard, cancel_token);
                 if old_cancel_token.is_cancelled() {
                     cancel_guard.cancel();

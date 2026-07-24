@@ -367,7 +367,15 @@ async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
         .mcp_connection_manager
         .write()
         .await
-        .publish(replacement, auth_binding);
+        .publish(
+            replacement,
+            auth_binding,
+            codex_protocol::protocol::McpElicitationAuthority {
+                approval_policy: turn.approval_policy.value(),
+                permission_profile: turn.permission_profile(),
+                approvals_reviewer: turn.config.approvals_reviewer,
+            },
+        );
     old_manager.shutdown().await;
 
     let result = router

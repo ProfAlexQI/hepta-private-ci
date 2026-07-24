@@ -1747,6 +1747,7 @@ async fn explicit_refresh_reinitializes_the_same_apps_transport() -> anyhow::Res
         mcp_oauth_credentials_store_mode: serde_json::to_value(
             fixture.config.mcp_oauth_credentials_store_mode,
         )?,
+        elicitation_authority: None,
     };
     mount_sse_once(
         &responses_server,

@@ -1267,6 +1267,11 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context: 
                 .await
                 .expect("capture MCP auth snapshot")
                 .binding(),
+            codex_protocol::protocol::McpElicitationAuthority {
+                approval_policy: turn_context.approval_policy.value(),
+                permission_profile: turn_context.permission_profile(),
+                approvals_reviewer: turn_context.config.approvals_reviewer,
+            },
         );
 }
 

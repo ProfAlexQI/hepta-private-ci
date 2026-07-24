@@ -163,6 +163,15 @@ pub struct W3cTraceContext {
 pub struct McpServerRefreshConfig {
     pub mcp_servers: Value,
     pub mcp_oauth_credentials_store_mode: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elicitation_authority: Option<McpElicitationAuthority>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
+pub struct McpElicitationAuthority {
+    pub approval_policy: AskForApproval,
+    pub permission_profile: PermissionProfile,
+    pub approvals_reviewer: ApprovalsReviewer,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]

@@ -4346,6 +4346,11 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
                     .await
                     .expect("capture MCP auth snapshot")
                     .binding(),
+                codex_protocol::protocol::McpElicitationAuthority {
+                    approval_policy: config.permissions.approval_policy.value(),
+                    permission_profile: config.permissions.effective_permission_profile(),
+                    approvals_reviewer: config.approvals_reviewer,
+                },
             ),
         )),
         mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -6224,6 +6229,11 @@ where
                     .await
                     .expect("capture MCP auth snapshot")
                     .binding(),
+                codex_protocol::protocol::McpElicitationAuthority {
+                    approval_policy: config.permissions.approval_policy.value(),
+                    permission_profile: config.permissions.effective_permission_profile(),
+                    approvals_reviewer: config.approvals_reviewer,
+                },
             ),
         )),
         mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -6433,6 +6443,7 @@ async fn explicit_refresh_rebuilds_mcp_connections_on_each_next_turn() {
     let refresh_config = McpServerRefreshConfig {
         mcp_servers: json!({}),
         mcp_oauth_credentials_store_mode,
+        elicitation_authority: None,
     };
     super::handlers::refresh_mcp_servers(&session, refresh_config.clone()).await;
 
@@ -6473,6 +6484,77 @@ async fn explicit_refresh_rebuilds_mcp_connections_on_each_next_turn() {
 }
 
 #[tokio::test]
+async fn explicit_refresh_publishes_current_mcp_elicitation_authority() {
+    let (session, old_turn, _rx) = make_session_and_context_with_rx().await;
+    assert_ne!(old_turn.approval_policy.value(), AskForApproval::Never);
+    assert_eq!(old_turn.config.approvals_reviewer, ApprovalsReviewer::User);
+    session
+        .spawn_task(
+            Arc::clone(&old_turn),
+            Vec::new(),
+            NeverEndingTask {
+                kind: TaskKind::Regular,
+                listen_to_cancellation_token: true,
+            },
+        )
+        .await;
+
+    let authority = codex_protocol::protocol::McpElicitationAuthority {
+        approval_policy: AskForApproval::Never,
+        permission_profile: PermissionProfile::Disabled,
+        approvals_reviewer: ApprovalsReviewer::AutoReview,
+    };
+    super::handlers::refresh_mcp_servers(
+        &session,
+        McpServerRefreshConfig {
+            mcp_servers: json!({}),
+            mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+                .expect("serialize store mode"),
+            elicitation_authority: Some(authority.clone()),
+        },
+    )
+    .await;
+    session
+        .refresh_mcp_servers_if_requested(&old_turn, None)
+        .await;
+
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .elicitation_authority(),
+        &authority
+    );
+    let response = session
+        .mcp_elicitation_reviewer()
+        .review(codex_mcp::ElicitationReviewRequest {
+            server_name: "browser-use".to_string(),
+            request_id: rmcp::model::NumberOrString::Number(7),
+            elicitation: rmcp::model::CreateElicitationRequestParams::FormElicitationParams {
+                meta: None,
+                message: "Allow origin?".to_string(),
+                requested_schema: rmcp::model::ElicitationSchema::builder()
+                    .build()
+                    .expect("schema should build"),
+            },
+        })
+        .await
+        .expect("elicitation review should succeed");
+    assert_eq!(
+        response,
+        Some(ElicitationResponse {
+            action: ElicitationAction::Accept,
+            content: Some(json!({})),
+            meta: None,
+        })
+    );
+
+    session.abort_all_tasks(TurnAbortReason::Interrupted).await;
+}
+
+#[tokio::test]
 async fn cancelled_explicit_mcp_refresh_preserves_intent_until_publication() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     let old_token = session.mcp_startup_cancellation_token().await;
@@ -6486,6 +6568,7 @@ async fn cancelled_explicit_mcp_refresh_preserves_intent_until_publication() {
         mcp_servers: json!({}),
         mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
             .expect("serialize store mode"),
+        elicitation_authority: None,
     };
     super::handlers::refresh_mcp_servers(&session, refresh_config).await;
     let intent_generation = session
@@ -6569,6 +6652,7 @@ async fn rapid_explicit_mcp_refresh_only_publishes_latest_generation() {
         mcp_servers: json!({}),
         mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
             .expect("serialize store mode"),
+        elicitation_authority: None,
     };
     super::handlers::refresh_mcp_servers(&session, refresh_config.clone()).await;
 
@@ -6624,6 +6708,7 @@ async fn invalid_explicit_mcp_refresh_remains_replaceable_without_busy_loop() {
             mcp_servers: json!("invalid"),
             mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
                 .expect("serialize store mode"),
+            elicitation_authority: None,
         },
     )
     .await;
@@ -6646,6 +6731,7 @@ async fn invalid_explicit_mcp_refresh_remains_replaceable_without_busy_loop() {
             mcp_servers: json!({}),
             mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
                 .expect("serialize store mode"),
+            elicitation_authority: None,
         },
     )
     .await;
@@ -6806,6 +6892,7 @@ async fn stale_auth_generation_does_not_publish_mcp_manager() {
             mcp_servers: json!({}),
             mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
                 .expect("serialize store mode"),
+            elicitation_authority: None,
         },
     )
     .await;

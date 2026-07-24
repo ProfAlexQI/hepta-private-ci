@@ -1344,6 +1344,8 @@ impl PluginRequestProcessor {
             let callback_url = config.mcp_oauth_callback_url.clone();
             let outgoing = Arc::clone(&self.outgoing);
             let notification_name = name.clone();
+            let thread_manager = Arc::clone(&self.thread_manager);
+            let config_manager = self.config_manager.clone();
 
             tokio::spawn(async move {
                 let oauth_client_id = server.oauth_client_id();
@@ -1384,6 +1386,10 @@ impl PluginRequestProcessor {
                     Ok(()) => (true, None),
                     Err(err) => (false, Some(err.to_string())),
                 };
+                if success {
+                    crate::mcp_refresh::queue_best_effort_refresh(&thread_manager, &config_manager)
+                        .await;
+                }
 
                 let notification = ServerNotification::McpServerOauthLoginCompleted(
                     McpServerOauthLoginCompletedNotification {

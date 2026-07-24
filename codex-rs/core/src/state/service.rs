@@ -29,6 +29,7 @@ use codex_login::auth::AuthManagerSnapshot;
 use codex_mcp::McpConnectionManager;
 use codex_models_manager::manager::SharedModelsManager;
 use codex_otel::SessionTelemetry;
+use codex_protocol::protocol::McpElicitationAuthority;
 use codex_rollout::state_db::StateDbHandle;
 use codex_rollout_trace::ThreadTraceContext;
 use codex_thread_store::LiveThread;
@@ -134,14 +135,20 @@ fn constant_time_optional_fingerprint_eq(
 pub(crate) struct PublishedMcpConnectionManager {
     generation: u64,
     auth_binding: McpAuthBinding,
+    elicitation_authority: McpElicitationAuthority,
     manager: McpConnectionManager,
 }
 
 impl PublishedMcpConnectionManager {
-    pub(crate) fn new(manager: McpConnectionManager, auth_binding: McpAuthBinding) -> Self {
+    pub(crate) fn new(
+        manager: McpConnectionManager,
+        auth_binding: McpAuthBinding,
+        elicitation_authority: McpElicitationAuthority,
+    ) -> Self {
         Self {
             generation: 0,
             auth_binding,
+            elicitation_authority,
             manager,
         }
     }
@@ -154,13 +161,31 @@ impl PublishedMcpConnectionManager {
         self.auth_binding.matches(auth_binding)
     }
 
+    pub(crate) fn elicitation_authority(&self) -> &McpElicitationAuthority {
+        &self.elicitation_authority
+    }
+
+    pub(crate) fn update_elicitation_authority(
+        &mut self,
+        elicitation_authority: McpElicitationAuthority,
+    ) {
+        let approval_policy =
+            codex_config::Constrained::allow_any(elicitation_authority.approval_policy);
+        self.manager.set_approval_policy(&approval_policy);
+        self.manager
+            .set_permission_profile(elicitation_authority.permission_profile.clone());
+        self.elicitation_authority = elicitation_authority;
+    }
+
     pub(crate) fn publish(
         &mut self,
         manager: McpConnectionManager,
         auth_binding: McpAuthBinding,
+        elicitation_authority: McpElicitationAuthority,
     ) -> McpConnectionManager {
         self.generation = self.generation.saturating_add(1);
         self.auth_binding = auth_binding;
+        self.elicitation_authority = elicitation_authority;
         std::mem::replace(&mut self.manager, manager)
     }
 }

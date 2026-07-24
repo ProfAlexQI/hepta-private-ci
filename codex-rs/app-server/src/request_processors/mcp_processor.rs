@@ -171,12 +171,18 @@ impl McpRequestProcessor {
         let authorization_url = handle.authorization_url().to_string();
         let notification_name = name.clone();
         let outgoing = Arc::clone(&self.outgoing);
+        let thread_manager = Arc::clone(&self.thread_manager);
+        let config_manager = self.config_manager.clone();
 
         tokio::spawn(async move {
             let (success, error) = match handle.wait().await {
                 Ok(()) => (true, None),
                 Err(err) => (false, Some(err.to_string())),
             };
+            if success {
+                crate::mcp_refresh::queue_best_effort_refresh(&thread_manager, &config_manager)
+                    .await;
+            }
 
             let notification = ServerNotification::McpServerOauthLoginCompleted(
                 McpServerOauthLoginCompletedNotification {
