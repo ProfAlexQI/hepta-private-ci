@@ -26,15 +26,15 @@
     },
     "test": {
       "by_kind": {
-        "expect": 4346,
+        "expect": 4349,
         "panic": 64,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 301
       },
-      "fingerprints_sha256": "3de45c3b22cf8a6ee05eecdad5bc02f6f2972f24129b2e7c9bd51777abf4a52c",
-      "total": 4711
+      "fingerprints_sha256": "bfe060a17845b2e4ad0eeca8f63389c2c90b169387d1a8fbaa6550ac16f82a05",
+      "total": 4714
     }
   },
   "limitations": [
@@ -99,18 +99,6 @@
       "kind": "expect",
       "path": "codex-rs/hepta-runtime/src/work_graph_terminal_task_result_enforcement_gap_closure_preview.rs",
       "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "startup_config_fatal",
-      "content_sha256": "057d221e9d6af78fa22320e5888993670b725a8a5db604410c6d97146fb87044",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "15a5c7e112ae600bdfab74ea4824aa8707be1fbd928116cb214c940d39b488e2",
-      "kind": "unwrap",
-      "path": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
-      "rationale": "Gate specification validation unwraps optional implementation metadata after correlated shape checks in operator tooling.",
       "risk": "medium",
       "source_class": "production"
     },
@@ -379,18 +367,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "startup_config_fatal",
-      "content_sha256": "f52252caa28df13e93891484f248769608fed57cc2b31e5e82b3fd1ffef4fe0d",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "4e34259efd27a6aec35b2add5b95588df43cbadc82e78e5b6bff236ff5539912",
-      "kind": "unwrap",
-      "path": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
-      "rationale": "Gate specification validation unwraps optional implementation metadata after correlated shape checks in operator tooling.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "701e16096b4b215fac27f89845ecf14b3c856d361827c1930821b970bfa7af6f",
       "disposition": "accepted_invariant",
@@ -412,18 +388,6 @@
       "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "startup_config_fatal",
-      "content_sha256": "78b45cd0f990ce7c276ab29421e988f208ff72bcb55656c3d454d83a76e00a49",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "71bd2a5444d2ec29662e46534d7be5f09e9d944101920a80dcf31e1190863fc9",
-      "kind": "unwrap",
-      "path": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
-      "rationale": "Gate specification validation unwraps optional implementation metadata after correlated shape checks in operator tooling.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -715,18 +679,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "startup_config_fatal",
-      "content_sha256": "af8912f7f3ef598f3f0bc7e26cdd1b02fb5ec3a8ae1c964d15a028bd854bc56b",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "c1d0d9a3ce02b90ab7af9023a06ccc7ea558bd23ce78f61bb9081e0e3180490a",
-      "kind": "unwrap",
-      "path": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
-      "rationale": "Gate specification validation unwraps optional implementation metadata after correlated shape checks in operator tooling.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "9040522120a1c62bb415b96b8916c6cda78c39ac62b73e79dfe5c1b90dde8d5a",
       "disposition": "accepted_invariant",
@@ -919,18 +871,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "startup_config_fatal",
-      "content_sha256": "1d92bd336723aad4fc817cbb1e1761badd9828ab4578e31e008a2ea41427e810",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "f47016b8f890f9e267f2fd12c78dffdfee28e76283d0837b4c5b5e1fc437b1df",
-      "kind": "unwrap",
-      "path": "codex-rs/hepta-native-gateway/src/gate_runner.rs",
-      "rationale": "Gate specification validation unwraps optional implementation metadata after correlated shape checks in operator tooling.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "9767dece53befd075e6bce95c54e1605c45d7dc9940cb01a488f22c8a8706b83",
       "disposition": "accepted_invariant",
@@ -997,29 +937,29 @@
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4382,
+      "expect": 4385,
       "panic": 74,
       "todo": 0,
       "unimplemented": 0,
       "unreachable": 26,
-      "unwrap": 306
+      "unwrap": 301
     },
     "by_risk": {
       "accepted": 47,
       "excluded_nonproduction": 0,
       "high": 0,
       "low": 0,
-      "medium": 30,
-      "test_only": 4711,
+      "medium": 25,
+      "test_only": 4714,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
       "generated_build": 0,
-      "production": 77,
-      "test": 4711
+      "production": 72,
+      "test": 4714
     },
-    "classification_sha256": "80c0b8d8f67c66ef59587b8ca0dfd097a3ccdac456b8b8b5b6b4300f14f8442f",
-    "total": 4788
+    "classification_sha256": "e182bd409c8bf2084a7286f3678ee53b71df59b5a89a1b46e9c4317531e27f21",
+    "total": 4786
   }
 }

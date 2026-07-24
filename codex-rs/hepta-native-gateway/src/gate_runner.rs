@@ -359,6 +359,9 @@ struct ShellPairMigrationSpec {
     gate_implementation: Option<String>,
     gate_source_sha256: Option<String>,
     gate_implementation_sha256: Option<String>,
+    retired_gate_implementation: Option<String>,
+    retired_gate_source_sha256: Option<String>,
+    retired_gate_implementation_sha256: Option<String>,
     report_implementation: Option<String>,
     report_source_sha256: Option<String>,
     report_implementation_sha256: Option<String>,
@@ -420,6 +423,9 @@ pub(crate) fn migrated_pair_spec_json(id: &str) -> Result<Option<String>> {
             "captured_shell_compatibility": spec.template == "captured_shell_compat_v1",
             "gate_source_sha256": spec.gate_source_sha256,
             "gate_implementation_sha256": spec.gate_implementation_sha256,
+            "retired_gate_implementation": spec.retired_gate_implementation,
+            "retired_gate_source_sha256": spec.retired_gate_source_sha256,
+            "retired_gate_implementation_sha256": spec.retired_gate_implementation_sha256,
             "report_source_sha256": spec.report_source_sha256,
             "report_implementation_sha256": spec.report_implementation_sha256,
             "report_execution_performed": false,
@@ -494,6 +500,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         if !matches!(
             spec.template.as_str(),
             "captured_shell_compat_v1"
+                | "legacy_workgraph_projection_v1"
                 | "signing_final_ack_readback"
                 | "signing_final_ack_final_index"
                 | "signing_terminal_status_attachment"
@@ -519,8 +526,10 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
             );
         }
         if !spec.source_report.starts_with("scripts/")
-            || (spec.template != "captured_shell_compat_v1"
-                && !spec.source_report.ends_with("-report.sh"))
+            || (!matches!(
+                spec.template.as_str(),
+                "captured_shell_compat_v1" | "legacy_workgraph_projection_v1"
+            ) && !spec.source_report.ends_with("-report.sh"))
         {
             anyhow::bail!(
                 "Hepta migrated gate pair {} has invalid source report: {}",
@@ -613,9 +622,58 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                     spec.id
                 );
             }
-            if spec.source_report != *spec.report_implementation.as_ref().unwrap() {
+            if spec.report_implementation.as_deref() != Some(spec.source_report.as_str()) {
                 anyhow::bail!(
                     "Hepta captured-shell pair {} source report is not its compatibility payload",
+                    spec.id
+                );
+            }
+        }
+        if spec.template == "legacy_workgraph_projection_v1" {
+            let required_compatibility_fields = [
+                spec.retired_gate_implementation.as_deref(),
+                spec.retired_gate_source_sha256.as_deref(),
+                spec.retired_gate_implementation_sha256.as_deref(),
+                spec.report_implementation.as_deref(),
+                spec.report_source_sha256.as_deref(),
+                spec.report_implementation_sha256.as_deref(),
+            ];
+            if required_compatibility_fields
+                .iter()
+                .any(|field| field.is_none_or(|value| value.trim().is_empty()))
+                || !spec
+                    .retired_gate_implementation
+                    .as_deref()
+                    .is_some_and(|path| {
+                        path.starts_with("scripts/lib/hepta-gate-pair-compat-v1/")
+                            && path.ends_with(".gate")
+                    })
+                || !spec.report_implementation.as_deref().is_some_and(|path| {
+                    path.starts_with("scripts/lib/hepta-gate-pair-compat-v1/")
+                        && path.ends_with(".report")
+                })
+                || !spec
+                    .retired_gate_source_sha256
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                || !spec
+                    .retired_gate_implementation_sha256
+                    .as_deref()
+                    .is_some_and(is_sha256)
+                || !spec.report_source_sha256.as_deref().is_some_and(is_sha256)
+                || !spec
+                    .report_implementation_sha256
+                    .as_deref()
+                    .is_some_and(is_sha256)
+            {
+                anyhow::bail!(
+                    "Hepta legacy WorkGraph pair {} has invalid retirement fields",
+                    spec.id
+                );
+            }
+            if spec.report_implementation.as_deref() != Some(spec.source_report.as_str()) {
+                anyhow::bail!(
+                    "Hepta legacy WorkGraph pair {} source report is not its compatibility payload",
                     spec.id
                 );
             }
@@ -789,19 +847,37 @@ fn validate_migrated_pairs(
         }
         validate_thin_wrapper(&expected_gate, "gate", id)?;
         validate_thin_wrapper(&expected_report, "report", id)?;
-        if spec.template == "captured_shell_compat_v1" {
-            for (kind, relative_path, expected_sha) in [
-                (
-                    "gate",
-                    spec.gate_implementation.as_deref().unwrap(),
-                    spec.gate_implementation_sha256.as_deref().unwrap(),
-                ),
-                (
-                    "report",
-                    spec.report_implementation.as_deref().unwrap(),
-                    spec.report_implementation_sha256.as_deref().unwrap(),
-                ),
-            ] {
+        if matches!(
+            spec.template.as_str(),
+            "captured_shell_compat_v1" | "legacy_workgraph_projection_v1"
+        ) {
+            let report_implementation = spec
+                .report_implementation
+                .as_deref()
+                .with_context(|| format!("missing captured Hepta report payload binding: {id}"))?;
+            let report_implementation_sha256 = spec
+                .report_implementation_sha256
+                .as_deref()
+                .with_context(|| format!("missing captured Hepta report payload SHA-256: {id}"))?;
+            let mut implementations = vec![(
+                "report",
+                report_implementation,
+                report_implementation_sha256,
+            )];
+            if spec.template == "captured_shell_compat_v1" {
+                let gate_implementation =
+                    spec.gate_implementation.as_deref().with_context(|| {
+                        format!("missing captured Hepta gate payload binding: {id}")
+                    })?;
+                let gate_implementation_sha256 = spec
+                    .gate_implementation_sha256
+                    .as_deref()
+                    .with_context(|| {
+                        format!("missing captured Hepta gate payload SHA-256: {id}")
+                    })?;
+                implementations.push(("gate", gate_implementation, gate_implementation_sha256));
+            }
+            for (kind, relative_path, expected_sha) in implementations {
                 let implementation = fs::canonicalize(repo_root.join(relative_path))
                     .with_context(|| format!("missing captured Hepta {kind} payload: {id}"))?;
                 if !implementation.starts_with(&scripts_root) {

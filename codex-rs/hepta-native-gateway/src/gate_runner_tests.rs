@@ -154,6 +154,27 @@ fn migrated_pair_specs_use_the_receipt_state_machine() {
     assert_eq!(value["template"], "signing_final_ack_readback");
     assert_eq!(value["receipt_state"], "terminal");
     assert_eq!(value["report_execution_performed"], false);
+
+    let id = "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview";
+    let value: serde_json::Value = serde_json::from_str(
+        &migrated_pair_spec_json(id)
+            .expect("legacy WorkGraph pair lookup")
+            .expect("legacy WorkGraph pair json"),
+    )
+    .expect("legacy WorkGraph pair value");
+    assert_eq!(value["template"], "legacy_workgraph_projection_v1");
+    assert!(
+        value["retired_gate_implementation"]
+            .as_str()
+            .is_some_and(|path| path.ends_with(".gate"))
+    );
+    assert_eq!(
+        value["retired_gate_implementation_sha256"]
+            .as_str()
+            .map(str::len),
+        Some(64)
+    );
+    assert_eq!(value["report_execution_performed"], false);
 }
 
 #[test]
