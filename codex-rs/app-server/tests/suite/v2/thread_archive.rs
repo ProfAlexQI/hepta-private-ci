@@ -23,6 +23,7 @@ use codex_core::ARCHIVED_SESSIONS_SUBDIR;
 use codex_core::find_archived_thread_path_by_id_str;
 use codex_core::find_thread_path_by_id_str;
 use codex_protocol::ThreadId;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_state::DirectionalThreadSpawnEdgeStatus;
 use codex_state::StateRuntime;
 use pretty_assertions::assert_eq;
@@ -31,6 +32,88 @@ use tempfile::TempDir;
 use tokio::time::timeout;
 
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[tokio::test]
+async fn thread_archive_rejects_owned_unmaterialized_paginated_descendant() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+    let parent_id = create_fake_rollout(
+        codex_home.path(),
+        "2025-01-01T00-00-00",
+        "2025-01-01T00:00:00Z",
+        "parent",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let parent_thread_id = ThreadId::from_string(&parent_id)?;
+
+    let mut owner = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, owner.initialize()).await??;
+    let start_id = owner
+        .send_thread_start_request(ThreadStartParams {
+            history_mode: Some(ThreadHistoryMode::Paginated),
+            ..Default::default()
+        })
+        .await?;
+    let start_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        owner.read_stream_until_response_message(RequestId::Integer(start_id)),
+    )
+    .await??;
+    let ThreadStartResponse { thread: child, .. } =
+        to_response::<ThreadStartResponse>(start_response)?;
+    let child_thread_id = ThreadId::from_string(&child.id)?;
+
+    let state_db =
+        StateRuntime::init(codex_home.path().to_path_buf(), "mock_provider".into()).await?;
+    state_db
+        .upsert_thread_spawn_edge(
+            parent_thread_id,
+            child_thread_id,
+            DirectionalThreadSpawnEdgeStatus::Open,
+        )
+        .await?;
+
+    let mut other = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, other.initialize()).await??;
+    let archive_id = other
+        .send_thread_archive_request(ThreadArchiveParams {
+            thread_id: parent_id.clone(),
+        })
+        .await?;
+    let error: JSONRPCError = timeout(
+        DEFAULT_READ_TIMEOUT,
+        other.read_stream_until_error_message(RequestId::Integer(archive_id)),
+    )
+    .await??;
+    assert_eq!(error.error.code, -32600);
+    assert_eq!(
+        error.error.message,
+        format!("thread {} already has an active writer", child.id)
+    );
+    assert!(
+        find_thread_path_by_id_str(codex_home.path(), &parent_id, /*state_db_ctx*/ None)
+            .await?
+            .is_some(),
+        "ownership conflict must not archive the parent"
+    );
+
+    drop(owner);
+
+    let archive_id = other
+        .send_thread_archive_request(ThreadArchiveParams {
+            thread_id: parent_id,
+        })
+        .await?;
+    let archive_response: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        other.read_stream_until_response_message(RequestId::Integer(archive_id)),
+    )
+    .await??;
+    let _: ThreadArchiveResponse = to_response(archive_response)?;
+    Ok(())
+}
 
 #[tokio::test]
 async fn thread_archive_requires_materialized_rollout() -> Result<()> {

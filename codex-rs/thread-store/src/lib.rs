@@ -23,6 +23,7 @@ pub use local::LocalThreadStoreConfig;
 pub use store::ThreadStore;
 pub use types::AppendThreadItemsParams;
 pub use types::ArchiveThreadParams;
+pub use types::ArchiveThreadsParams;
 pub use types::ClearableField;
 pub use types::CreateThreadParams;
 pub use types::GitInfoPatch;
