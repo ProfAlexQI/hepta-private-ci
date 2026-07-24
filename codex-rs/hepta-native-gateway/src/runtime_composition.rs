@@ -46,6 +46,28 @@ pub(crate) struct RuntimeRequestPreflightReceipt {
     pub(crate) terminal_receipt_recorded: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RuntimeTelegramDrainPreflightReceipt {
+    pub(crate) request_binding_hash: String,
+    pub(crate) live_read_authorized: bool,
+    pub(crate) model_invocation_authorized: bool,
+    pub(crate) send_authorized: bool,
+    pub(crate) durable_intent_recorded: bool,
+}
+
+#[derive(Debug)]
+pub(crate) enum RuntimeTelegramDrainAdmissionError {
+    ExactAuthorityUnavailable,
+}
+
+impl fmt::Display for RuntimeTelegramDrainAdmissionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("telegram_runtime_admission.exact_authority_unavailable")
+    }
+}
+
+impl std::error::Error for RuntimeTelegramDrainAdmissionError {}
+
 pub(crate) struct NativePostRuntimeGateInputs {
     pub(crate) real_handler_enabled: bool,
     pub(crate) operator_approval_enabled: bool,
@@ -66,6 +88,22 @@ impl RuntimeRequestPreflightReceipt {
         NativePostRuntimeGateInputs {
             real_handler_enabled: configured_enablement && exact_effect_authority,
             operator_approval_enabled: configured_approval && exact_effect_authority,
+        }
+    }
+}
+
+impl RuntimeTelegramDrainPreflightReceipt {
+    pub(crate) fn require_live_pipeline_authority(
+        &self,
+    ) -> std::result::Result<(), RuntimeTelegramDrainAdmissionError> {
+        if self.live_read_authorized
+            && self.model_invocation_authorized
+            && self.send_authorized
+            && self.durable_intent_recorded
+        {
+            Ok(())
+        } else {
+            Err(RuntimeTelegramDrainAdmissionError::ExactAuthorityUnavailable)
         }
     }
 }
@@ -233,6 +271,42 @@ impl NativeGatewayRuntime {
         })
     }
 
+    pub(crate) fn preflight_telegram_drain(
+        &self,
+        next_update_offset: Option<i64>,
+    ) -> Result<RuntimeTelegramDrainPreflightReceipt> {
+        let session_id = self
+            .kernel
+            .active_session_id()
+            .map_err(|error| anyhow::anyhow!("attached RuntimeKernel session failed: {error}"))?;
+        let model = self
+            .kernel
+            .model_selection_for_session(&session_id)
+            .map_err(|error| anyhow::anyhow!("attached RuntimeKernel model failed: {error}"))?
+            .active;
+        let mut hasher = Sha256::new();
+        for value in [
+            b"hepta-native-gateway-telegram-drain-v1".as_slice(),
+            next_update_offset
+                .map(|offset| offset.to_string())
+                .unwrap_or_default()
+                .as_bytes(),
+            session_id.as_bytes(),
+            model.provider.as_bytes(),
+            model.model.as_bytes(),
+        ] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value);
+        }
+        Ok(RuntimeTelegramDrainPreflightReceipt {
+            request_binding_hash: format!("{:x}", hasher.finalize()),
+            live_read_authorized: false,
+            model_invocation_authorized: false,
+            send_authorized: false,
+            durable_intent_recorded: false,
+        })
+    }
+
     pub(crate) const fn outcome_mode(&self) -> &'static str {
         self.outcome_mode.as_str()
     }
@@ -362,6 +436,17 @@ mod tests {
                 .expect_err("mutation method must fail closed")
                 .to_string()
                 .contains("unsupported HTTP method")
+        );
+        let telegram = bootstrap
+            .preflight_telegram_drain(Some(42))
+            .expect("telegram preflight");
+        assert!(!telegram.request_binding_hash.is_empty());
+        assert_eq!(
+            telegram
+                .require_live_pipeline_authority()
+                .expect_err("telegram live pipeline must remain quarantined")
+                .to_string(),
+            "telegram_runtime_admission.exact_authority_unavailable"
         );
         drop(bootstrap);
 

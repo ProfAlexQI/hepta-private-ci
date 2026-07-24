@@ -212,6 +212,7 @@ pub async fn run_native_gateway(
         if native_telegram::spawn_telegram_poll_loop_if_enabled(
             true,
             options.telegram_plugin_poll_ms,
+            Arc::clone(&runtime),
         )
         .is_some()
         {

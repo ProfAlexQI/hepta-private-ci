@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::thread;
@@ -120,6 +121,8 @@ use sha2::Digest;
 use sha2::Sha256;
 #[cfg(feature = "codex-in-process-runner")]
 use tokio::runtime::Handle;
+
+use crate::runtime_composition::NativeGatewayRuntime;
 
 const LEGACY_RUNTIME_SLUG: &str = "openclaw";
 const LEGACY_CONFIG_FILE_NAME: &str = "openclaw.json";
@@ -245,7 +248,7 @@ pub(crate) fn telegram_send_plan_status(requested: bool) -> NativeTelegramSendPl
 }
 
 pub(crate) fn telegram_drain_once_status(requested: bool) -> NativeTelegramDrainOnceStatus {
-    telegram_drain_once_status_with_gates(requested, telegram_gateway_gate_summary())
+    telegram_drain_once_status_with_gates(requested, telegram_gateway_gate_summary(), None)
 }
 
 pub(crate) fn telegram_poll_loop_status(
@@ -340,6 +343,7 @@ fn telegram_production_readiness_status_from_parts(
 pub(crate) fn spawn_telegram_poll_loop_if_enabled(
     requested: bool,
     poll_ms: u64,
+    runtime: Arc<NativeGatewayRuntime>,
 ) -> Option<thread::JoinHandle<()>> {
     if !telegram_poll_loop_should_spawn(
         requested,
@@ -350,14 +354,18 @@ pub(crate) fn spawn_telegram_poll_loop_if_enabled(
     }
 
     Some(thread::spawn(move || {
-        run_telegram_poll_loop(requested, poll_ms)
+        run_telegram_poll_loop(requested, poll_ms, runtime)
     }))
 }
 
-fn run_telegram_poll_loop(requested: bool, poll_ms: u64) {
+fn run_telegram_poll_loop(requested: bool, poll_ms: u64, runtime: Arc<NativeGatewayRuntime>) {
     let poll_ms = telegram_poll_loop_interval_ms_policy(poll_ms);
     loop {
-        let status = telegram_drain_once_status(requested);
+        let status = telegram_drain_once_status_with_gates(
+            requested,
+            telegram_gateway_gate_summary(),
+            Some(runtime.as_ref()),
+        );
         observe_telegram_live_soak(&status);
         if matches!(status.status, "attention") {
             eprintln!(
@@ -390,12 +398,8 @@ pub(crate) fn telegram_delivery_ledger_status(
 fn telegram_drain_once_status_with_gates(
     requested: bool,
     gates: NativeTelegramGatewayGateSummary,
+    runtime: Option<&NativeGatewayRuntime>,
 ) -> NativeTelegramDrainOnceStatus {
-    let config = if requested {
-        load_telegram_config_status()
-    } else {
-        NativeTelegramConfigStatus::disabled()
-    };
     let preflight = plan_telegram_drain_once_preflight(NativeTelegramDrainOncePreflightInput {
         requested,
         gates: &gates,
@@ -409,7 +413,42 @@ fn telegram_drain_once_status_with_gates(
     let mut send_execution = preflight.send_execution;
     let mut model_execution = preflight.model_execution;
     let execution_plan = preflight.execution_plan;
-    let status_probe_executes_pipeline = preflight.status_probe_executes_pipeline;
+    let runtime_cursor_status = preflight
+        .status_probe_executes_pipeline
+        .then(|| telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH)));
+    let runtime_admission_error = if preflight.status_probe_executes_pipeline {
+        match runtime {
+            Some(runtime) => runtime
+                .preflight_telegram_drain(
+                    runtime_cursor_status
+                        .as_ref()
+                        .and_then(|status| status.next_update_offset),
+                )
+                .and_then(|receipt| {
+                    receipt
+                        .require_live_pipeline_authority()
+                        .map_err(anyhow::Error::from)
+                })
+                .err()
+                .map(|error| error.to_string()),
+            None => Some("telegram_runtime_admission.runtime_unavailable".to_string()),
+        }
+    } else {
+        None
+    };
+    let status_probe_executes_pipeline =
+        preflight.status_probe_executes_pipeline && runtime_admission_error.is_none();
+    let config = if !requested {
+        NativeTelegramConfigStatus::disabled()
+    } else if runtime_admission_error.is_some() {
+        NativeTelegramConfigStatus::error(
+            None,
+            false,
+            "runtime admission denied before Telegram config or token observation".to_string(),
+        )
+    } else {
+        load_telegram_config_status()
+    };
     let mut status = preflight.status;
     let mut error = preflight.error;
     let mut bot_api_ok = None;
@@ -418,9 +457,12 @@ fn telegram_drain_once_status_with_gates(
     let mut live_read_started = false;
     let mut external_network_read = false;
 
-    if status_probe_executes_pipeline {
-        let cursor_status =
-            telegram_cursor_status_from_path(Path::new(TELEGRAM_INGRESS_CURSOR_PATH));
+    if let Some(runtime_admission_error) = runtime_admission_error {
+        status = "attention";
+        error = Some(runtime_admission_error);
+    }
+
+    if status_probe_executes_pipeline && let Some(cursor_status) = runtime_cursor_status {
         get_updates_offset = cursor_status.next_update_offset;
         let shell_readiness =
             plan_telegram_drain_once_shell_readiness(NativeTelegramDrainOnceShellReadinessInput {
@@ -1574,7 +1616,7 @@ mod tests {
             readiness_summary_invokes_model: false,
             readiness_summary_sends_message: false,
         };
-        let status = telegram_drain_once_status_with_gates(true, gates);
+        let status = telegram_drain_once_status_with_gates(true, gates, None);
         assert_eq!(status.status, "gated");
         assert_eq!(
             status.execution_plan.first_missing_gate,
@@ -1636,7 +1678,7 @@ mod tests {
             readiness_summary_invokes_model: false,
             readiness_summary_sends_message: false,
         };
-        let status = telegram_drain_once_status_with_gates(true, gates);
+        let status = telegram_drain_once_status_with_gates(true, gates, None);
         assert_eq!(status.status, "gated");
         assert!(!status.execution_plan.all_required_gates_enabled);
         assert_eq!(
@@ -1666,6 +1708,46 @@ mod tests {
         assert!(!status.raw_response_text_exposed);
         assert!(!status.raw_token_exposed);
         assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
+    }
+
+    #[test]
+    fn drain_once_with_all_environment_gates_denies_without_runtime_authority() {
+        let gates = NativeTelegramGatewayGateSummary {
+            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
+            delivery_approval_gate_enabled: true,
+            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
+            live_read_gate_enabled: true,
+            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
+            model_turn_gate_enabled: true,
+            send_gate_env: TELEGRAM_SEND_GATE_ENV,
+            send_gate_enabled: true,
+            readiness_summary_performs_live_read: false,
+            readiness_summary_invokes_model: false,
+            readiness_summary_sends_message: false,
+        };
+
+        let status = telegram_drain_once_status_with_gates(true, gates, None);
+
+        assert_eq!(status.status, "attention");
+        assert_eq!(
+            status.error.as_deref(),
+            Some("telegram_runtime_admission.runtime_unavailable")
+        );
+        assert_eq!(
+            status.config.error.as_deref(),
+            Some("runtime admission denied before Telegram config or token observation")
+        );
+        assert!(!status.config.raw_token_exposed);
+        assert!(!status.live_read_started);
+        assert!(!status.model_turn_started);
+        assert!(!status.send_started);
+        assert!(!status.cursor_written);
+        assert!(!status.external_network_read);
+        assert!(!status.external_network_write);
+        assert!(!status.external_send);
+        assert!(!status.model_execution.session_runner_invoked);
+        assert!(!status.send_execution.send_attempted);
+        assert!(!status.send_execution.cursor_written);
     }
 
     #[test]
