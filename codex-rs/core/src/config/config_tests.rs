@@ -21,6 +21,7 @@ use codex_config::config_toml::RealtimeTransport;
 use codex_config::config_toml::RealtimeWsMode;
 use codex_config::config_toml::RealtimeWsVersion;
 use codex_config::config_toml::ToolsToml;
+use codex_config::config_toml::UpdatePlanToolConfig;
 use codex_config::loader::project_trust_key;
 use codex_config::permissions_toml::FilesystemPermissionToml;
 use codex_config::permissions_toml::FilesystemPermissionsToml;
@@ -395,7 +396,13 @@ web_search = true
     )
     .expect("TOML deserialization should succeed");
 
-    assert_eq!(cfg.tools, Some(ToolsToml { web_search: None }));
+    assert_eq!(
+        cfg.tools,
+        Some(ToolsToml {
+            web_search: None,
+            update_plan: None,
+        })
+    );
 }
 
 #[test]
@@ -408,7 +415,51 @@ web_search = false
     )
     .expect("TOML deserialization should succeed");
 
-    assert_eq!(cfg.tools, Some(ToolsToml { web_search: None }));
+    assert_eq!(
+        cfg.tools,
+        Some(ToolsToml {
+            web_search: None,
+            update_plan: None,
+        })
+    );
+}
+
+#[test]
+fn tools_update_plan_defaults_to_enabled() {
+    let cfg: ConfigToml = toml::from_str(
+        r#"
+[tools.update_plan]
+"#,
+    )
+    .expect("TOML deserialization should succeed");
+
+    assert_eq!(
+        cfg.tools,
+        Some(ToolsToml {
+            web_search: None,
+            update_plan: Some(UpdatePlanToolConfig { enabled: true }),
+        })
+    );
+}
+
+#[tokio::test]
+async fn load_config_resolves_update_plan_enabled() {
+    let config_toml: ConfigToml = toml::from_str(
+        r#"
+[tools.update_plan]
+enabled = false
+"#,
+    )
+    .expect("TOML deserialization should succeed");
+    let config = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config from update_plan settings");
+
+    assert!(!config.update_plan_enabled);
 }
 
 #[test]
@@ -7946,6 +7997,7 @@ async fn test_precedence_fixture_with_o3_profile() -> std::io::Result<()> {
             forced_login_method: None,
             web_search_mode: Constrained::allow_any(WebSearchMode::Cached),
             web_search_config: None,
+            update_plan_enabled: true,
             use_experimental_unified_exec_tool: !cfg!(windows),
             background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
             ghost_snapshot: GhostSnapshotConfig::default(),
@@ -8397,6 +8449,7 @@ async fn test_precedence_fixture_with_gpt3_profile() -> std::io::Result<()> {
         forced_login_method: None,
         web_search_mode: Constrained::allow_any(WebSearchMode::Cached),
         web_search_config: None,
+        update_plan_enabled: true,
         use_experimental_unified_exec_tool: !cfg!(windows),
         background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
         ghost_snapshot: GhostSnapshotConfig::default(),
@@ -8562,6 +8615,7 @@ async fn test_precedence_fixture_with_zdr_profile() -> std::io::Result<()> {
         forced_login_method: None,
         web_search_mode: Constrained::allow_any(WebSearchMode::Cached),
         web_search_config: None,
+        update_plan_enabled: true,
         use_experimental_unified_exec_tool: !cfg!(windows),
         background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
         ghost_snapshot: GhostSnapshotConfig::default(),
@@ -8712,6 +8766,7 @@ async fn test_precedence_fixture_with_gpt5_profile() -> std::io::Result<()> {
         forced_login_method: None,
         web_search_mode: Constrained::allow_any(WebSearchMode::Cached),
         web_search_config: None,
+        update_plan_enabled: true,
         use_experimental_unified_exec_tool: !cfg!(windows),
         background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
         ghost_snapshot: GhostSnapshotConfig::default(),

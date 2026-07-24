@@ -2600,6 +2600,9 @@
     "ToolsToml": {
       "additionalProperties": false,
       "properties": {
+        "update_plan": {
+          "$ref": "#/definitions/UpdatePlanToolConfig"
+        },
         "web_search": {
           "allOf": [
             {
@@ -3910,6 +3913,16 @@
             }
           ],
           "description": "Repeat yank operator to yank the whole line (`yy`)."
+        }
+      },
+      "type": "object"
+    },
+    "UpdatePlanToolConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
         }
       },
       "type": "object"

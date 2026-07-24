@@ -940,6 +940,9 @@ pub struct Config {
     /// Additional parameters for the web search tool when it is enabled.
     pub web_search_config: Option<WebSearchConfig>,
 
+    /// Whether to register the update_plan tool.
+    pub update_plan_enabled: bool,
+
     /// If set to `true`, used only the experimental unified exec tool.
     pub use_experimental_unified_exec_tool: bool,
 
@@ -1916,6 +1919,14 @@ fn resolve_tool_suggest_config(
     config_layer_stack: &ConfigLayerStack,
 ) -> ToolSuggestConfig {
     resolve_tool_suggest_config_from_config(config_toml.tool_suggest.as_ref(), config_layer_stack)
+}
+
+fn resolve_update_plan_enabled(config_toml: &ConfigToml) -> bool {
+    config_toml
+        .tools
+        .as_ref()
+        .and_then(|tools| tools.update_plan.as_ref())
+        .is_none_or(|config| config.enabled)
 }
 
 pub(crate) fn resolve_tool_suggest_config_from_layer_stack(
@@ -2905,6 +2916,7 @@ impl Config {
         let web_search_mode = resolve_web_search_mode(&cfg, &config_profile, &features)
             .unwrap_or(WebSearchMode::Cached);
         let web_search_config = resolve_web_search_config(&cfg, &config_profile);
+        let update_plan_enabled = resolve_update_plan_enabled(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg, &config_profile);
         let apps_mcp_path_override = if features.enabled(Feature::AppsMcpPathOverride) {
             let base = apps_mcp_path_override_toml_config(cfg.features.as_ref());
@@ -3503,6 +3515,7 @@ impl Config {
             forced_login_method,
             web_search_mode: constrained_web_search_mode.value,
             web_search_config,
+            update_plan_enabled,
             use_experimental_unified_exec_tool,
             background_terminal_max_timeout,
             ghost_snapshot,

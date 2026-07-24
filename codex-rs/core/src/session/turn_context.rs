@@ -217,6 +217,7 @@ impl TurnContext {
         .with_web_search_capability(provider_capabilities.web_search)
         .with_unified_exec_shell_mode(self.tools_config.unified_exec_shell_mode.clone())
         .with_web_search_config(self.tools_config.web_search_config.clone())
+        .with_update_plan_enabled(config.update_plan_enabled)
         .with_allow_login_shell(self.tools_config.allow_login_shell)
         .with_environment_mode(self.tools_config.environment_mode)
         .with_spawn_agent_usage_hint(config.multi_agent_v2.usage_hint_enabled)
@@ -537,6 +538,7 @@ impl Session {
             main_execve_wrapper_exe,
         )
         .with_web_search_config(per_turn_config.web_search_config.clone())
+        .with_update_plan_enabled(per_turn_config.update_plan_enabled)
         .with_allow_login_shell(per_turn_config.permissions.allow_login_shell)
         .with_environment_mode(ToolEnvironmentMode::from_count(
             environments.turn_environments.len(),

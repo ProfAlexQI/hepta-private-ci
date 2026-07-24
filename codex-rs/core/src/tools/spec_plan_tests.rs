@@ -185,6 +185,86 @@ fn extension_tools_do_not_replace_builtin_tools() {
 }
 
 #[test]
+fn update_plan_tool_respects_config_gate() {
+    let model_info = model_info();
+    let available_models = Vec::new();
+    let enabled_config = ToolsConfig::new(&ToolsConfigParams {
+        model_info: &model_info,
+        available_models: &available_models,
+        features: &Features::with_defaults(),
+        image_generation_tool_auth_allowed: true,
+        web_search_mode: Some(WebSearchMode::Cached),
+        session_source: SessionSource::Cli,
+        permission_profile: &PermissionProfile::Disabled,
+        windows_sandbox_level: WindowsSandboxLevel::Disabled,
+    });
+    let (enabled_tools, enabled_registry) = build_specs(
+        &enabled_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &[],
+    );
+    let update_plan_name = ToolName::plain("update_plan");
+
+    assert_contains_tool_names(&enabled_tools, &["update_plan"]);
+    assert!(enabled_registry.has_tool(&update_plan_name));
+
+    let disabled_config = enabled_config.with_update_plan_enabled(false);
+    let (disabled_tools, disabled_registry) = build_specs(
+        &disabled_config,
+        /*mcp_tools*/ None,
+        /*deferred_mcp_tools*/ None,
+        &[],
+    );
+
+    assert_lacks_tool_name(&disabled_tools, "update_plan");
+    assert!(!disabled_registry.has_tool(&update_plan_name));
+}
+
+#[cfg(feature = "code-mode-v8")]
+#[test]
+fn disabled_update_plan_stays_outside_code_mode_matrix() {
+    for (code_mode, code_mode_only) in [(false, false), (true, false), (true, true)] {
+        let model_info = model_info();
+        let mut features = Features::with_defaults();
+        if code_mode {
+            features.enable(Feature::CodeMode);
+        }
+        if code_mode_only {
+            features.enable(Feature::CodeModeOnly);
+        }
+        let available_models = Vec::new();
+        let tools_config = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            available_models: &available_models,
+            features: &features,
+            image_generation_tool_auth_allowed: true,
+            web_search_mode: Some(WebSearchMode::Cached),
+            session_source: SessionSource::Cli,
+            permission_profile: &PermissionProfile::Disabled,
+            windows_sandbox_level: WindowsSandboxLevel::Disabled,
+        })
+        .with_update_plan_enabled(false);
+
+        let (tools, registry) = build_specs(
+            &tools_config,
+            /*mcp_tools*/ None,
+            /*deferred_mcp_tools*/ None,
+            &[],
+        );
+
+        assert_lacks_tool_name(&tools, "update_plan");
+        assert!(!registry.has_tool(&ToolName::plain("update_plan")));
+        if code_mode {
+            let ToolSpec::Freeform(exec) = find_tool(&tools, "exec") else {
+                panic!("expected code mode exec tool");
+            };
+            assert!(!exec.description.contains("update_plan"));
+        }
+    }
+}
+
+#[test]
 fn test_full_toolset_specs_for_gpt5_codex_unified_exec_web_search() {
     let model_info = model_info();
     let mut features = Features::with_defaults();

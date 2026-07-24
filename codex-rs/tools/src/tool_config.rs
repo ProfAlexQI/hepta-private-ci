@@ -109,6 +109,7 @@ pub struct ToolsConfig {
     pub search_tool: bool,
     pub namespace_tools: bool,
     pub tool_suggest: bool,
+    pub update_plan_enabled: bool,
     pub exec_permission_approvals_enabled: bool,
     pub request_permissions_tool_enabled: bool,
     pub code_mode_enabled: bool,
@@ -248,6 +249,7 @@ impl ToolsConfig {
             search_tool: include_search_tool,
             namespace_tools: true,
             tool_suggest: include_tool_suggest,
+            update_plan_enabled: true,
             exec_permission_approvals_enabled,
             request_permissions_tool_enabled,
             code_mode_enabled: include_code_mode,
@@ -295,6 +297,11 @@ impl ToolsConfig {
         if !web_search {
             self.web_search_mode = None;
         }
+        self
+    }
+
+    pub fn with_update_plan_enabled(mut self, update_plan_enabled: bool) -> Self {
+        self.update_plan_enabled = update_plan_enabled;
         self
     }
 

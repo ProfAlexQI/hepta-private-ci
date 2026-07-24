@@ -420,7 +420,9 @@ fn collect_tool_executors(
         executors.push(Arc::new(ReadMcpResourceHandler));
     }
 
-    executors.push(Arc::new(PlanHandler));
+    if config.update_plan_enabled {
+        executors.push(Arc::new(PlanHandler));
+    }
     if config.goal_tools {
         executors.push(Arc::new(GetGoalHandler));
         executors.push(Arc::new(CreateGoalHandler));
