@@ -35,6 +35,7 @@ use crate::tools::sandboxing::ToolError;
 use crate::tools::sandboxing::ToolRuntime;
 use crate::tools::sandboxing::managed_network_for_sandbox_permissions;
 use crate::tools::sandboxing::with_cached_approval;
+use base64::Engine;
 use codex_network_proxy::NetworkProxy;
 use codex_protocol::exec_output::ExecToolCallOutput;
 use codex_protocol::models::AdditionalPermissionProfile;
@@ -44,6 +45,7 @@ use codex_shell_command::powershell::prefix_powershell_script_with_utf8;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
+use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct ShellRequest {
@@ -84,11 +86,52 @@ pub struct ShellRuntime {
     backend: ShellRuntimeBackend,
 }
 
+const OPAQUE_APPROVAL_PATH_URI_PREFIX: &str = "file:///%00/bad/path/";
+
+#[derive(serde::Serialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[serde(transparent)]
+struct ApprovalPathUri(String);
+
+impl ApprovalPathUri {
+    fn from_abs_path(path: &AbsolutePathBuf) -> Self {
+        if let Ok(uri) = Url::from_file_path(path.as_path())
+            && !uri.path().contains("%00")
+        {
+            return Self(uri.to_string());
+        }
+
+        #[cfg(unix)]
+        let path_bytes = {
+            use std::os::unix::ffi::OsStrExt;
+            path.as_path().as_os_str().as_bytes().to_vec()
+        };
+        #[cfg(windows)]
+        let path_bytes = {
+            use std::os::windows::ffi::OsStrExt;
+            path.as_path()
+                .as_os_str()
+                .encode_wide()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>()
+        };
+        #[cfg(not(any(unix, windows)))]
+        let path_bytes = path
+            .as_path()
+            .as_os_str()
+            .to_string_lossy()
+            .as_bytes()
+            .to_vec();
+
+        let encoded_path = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(path_bytes);
+        Self(format!("{OPAQUE_APPROVAL_PATH_URI_PREFIX}{encoded_path}"))
+    }
+}
+
 #[derive(serde::Serialize, Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct ApprovalKey {
     environment_id: String,
     command: Vec<String>,
-    cwd: AbsolutePathBuf,
+    cwd: ApprovalPathUri,
     sandbox_permissions: SandboxPermissions,
     additional_permissions: Option<AdditionalPermissionProfile>,
 }
@@ -123,7 +166,7 @@ impl Approvable<ShellRequest> for ShellRuntime {
         vec![ApprovalKey {
             environment_id: req.environment_id.clone(),
             command: canonicalize_command_for_approval(&req.command),
-            cwd: req.cwd.clone(),
+            cwd: ApprovalPathUri::from_abs_path(&req.cwd),
             sandbox_permissions: req.sandbox_permissions,
             additional_permissions: req.additional_permissions.clone(),
         }]
