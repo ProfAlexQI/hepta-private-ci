@@ -1,4 +1,4 @@
-use super::*;
+use hepta_core::*;
 
 #[test]
 fn context_memory_eval_harness_seed_is_payload_light_and_non_activating() {

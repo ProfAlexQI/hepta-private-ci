@@ -20,12 +20,10 @@ fn sample_transcript_entry(sequence: u64, content: &str) -> TranscriptEntry {
 mod context_plane_activation;
 mod context_plane_operator_packet;
 mod context_plane_status;
-mod eval_harness;
 mod provider_plane;
 mod query;
 mod recall_core;
 mod recall_inspection;
-mod recall_memory;
 mod recall_quality;
 mod recall_summary;
 mod restore_impact;
