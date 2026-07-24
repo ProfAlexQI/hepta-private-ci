@@ -99,6 +99,48 @@ pub struct NativeTelegramSendExecutionInput<'a> {
     pub send_retry_backoff: Duration,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TelegramSendMaterialError {
+    ModelOutput,
+    ReplyTarget,
+    NextUpdateOffset,
+    ValidToken,
+}
+
+impl TelegramSendMaterialError {
+    fn message(self) -> &'static str {
+        match self {
+            Self::ModelOutput => {
+                "Telegram send preflight invariant violated: model output is missing"
+            }
+            Self::ReplyTarget => {
+                "Telegram send preflight invariant violated: reply target is missing"
+            }
+            Self::NextUpdateOffset => {
+                "Telegram send preflight invariant violated: next-update offset is missing"
+            }
+            Self::ValidToken => {
+                "Telegram send preflight invariant violated: valid Bot API token is missing"
+            }
+        }
+    }
+}
+
+fn telegram_send_material<'a>(
+    model_output: Option<&'a str>,
+    reply_target: Option<&'a NativeTelegramReplyTargetMaterial>,
+    candidate_next_update_offset: Option<i64>,
+    token: Option<&'a str>,
+) -> Result<(&'a str, &'a NativeTelegramReplyTargetMaterial, i64, &'a str), TelegramSendMaterialError>
+{
+    Ok((
+        model_output.ok_or(TelegramSendMaterialError::ModelOutput)?,
+        reply_target.ok_or(TelegramSendMaterialError::ReplyTarget)?,
+        candidate_next_update_offset.ok_or(TelegramSendMaterialError::NextUpdateOffset)?,
+        token.ok_or(TelegramSendMaterialError::ValidToken)?,
+    ))
+}
+
 pub fn telegram_get_updates_query(
     limit: usize,
     offset: Option<i64>,
@@ -313,14 +355,16 @@ where
     if !preflight.execution_can_attempt_send {
         return report;
     };
-    let model_output = model_output.expect("send preflight requires non-empty model output");
-    let reply_target = input
-        .reply_target
-        .expect("send preflight requires reply target");
-    let candidate_next_update_offset = input
-        .candidate_next_update_offset
-        .expect("send preflight requires next-update offset");
-    let token = token.expect("send preflight requires valid Bot API token");
+    let (model_output, reply_target, candidate_next_update_offset, token) =
+        match telegram_send_material(
+            model_output,
+            input.reply_target,
+            input.candidate_next_update_offset,
+            token,
+        ) {
+            Ok(material) => material,
+            Err(error) => return report.with_attention_error(error.message().to_string()),
+        };
 
     report = report.with_delivery_ledger_write_attempted();
     let enqueued_record = telegram_delivery_lifecycle_record(
@@ -571,6 +615,7 @@ mod tests {
     use super::MAX_TELEGRAM_TYPING_KEEPALIVE_INTERVAL_MS;
     use super::NativeTelegramSendExecutionInput;
     use super::TELEGRAM_ALLOWED_UPDATES;
+    use super::TelegramSendMaterialError;
     use super::execute_telegram_send_after_model_output;
     use super::telegram_bot_token_shape_ok;
     use super::telegram_call_get_updates_once;
@@ -586,6 +631,7 @@ mod tests {
     use super::telegram_redact_token_like_text;
     use super::telegram_send_chat_action_request_body;
     use super::telegram_send_error_is_transient;
+    use super::telegram_send_material;
     use super::telegram_send_max_attempts_policy;
     use super::telegram_send_message_request_body;
     use super::telegram_send_min_interval_policy;
@@ -923,6 +969,33 @@ mod tests {
         assert!(!report.cursor_written);
         assert!(!cursor_path.exists());
         assert!(!delivery_ledger_path.exists());
+    }
+
+    #[test]
+    fn send_materialization_fails_closed_on_each_preflight_invariant() {
+        let reply_target = NativeTelegramReplyTargetMaterial {
+            chat_id: 6476198178,
+            reply_to_message_id: Some(11),
+            raw_identifiers_exposed: false,
+        };
+        let token = "123456:ABCDEFGHIJKLMNOPQRSTUVWX";
+
+        assert!(matches!(
+            telegram_send_material(None, Some(&reply_target), Some(50), Some(token)),
+            Err(TelegramSendMaterialError::ModelOutput)
+        ));
+        assert!(matches!(
+            telegram_send_material(Some("output"), None, Some(50), Some(token)),
+            Err(TelegramSendMaterialError::ReplyTarget)
+        ));
+        assert!(matches!(
+            telegram_send_material(Some("output"), Some(&reply_target), None, Some(token)),
+            Err(TelegramSendMaterialError::NextUpdateOffset)
+        ));
+        assert!(matches!(
+            telegram_send_material(Some("output"), Some(&reply_target), Some(50), None),
+            Err(TelegramSendMaterialError::ValidToken)
+        ));
     }
 
     #[test]

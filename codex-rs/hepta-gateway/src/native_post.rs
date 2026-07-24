@@ -89,6 +89,30 @@ pub use hepta_runtime::native_post_store_capacity_check_required;
 pub use hepta_runtime::native_post_store_effect_projection;
 pub use hepta_runtime::native_post_store_write_attempt_required;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativePostPersistenceInvariantError {
+    MissingPendingRecord,
+}
+
+impl NativePostPersistenceInvariantError {
+    fn code(self) -> &'static str {
+        match self {
+            Self::MissingPendingRecord => "native_post_execution_store_pending_record_missing",
+        }
+    }
+}
+
+fn native_post_record_for_store_write(
+    store_write_attempted: bool,
+    pending_record: Option<&NativePostExecutionStoreRecord>,
+) -> Result<Option<&NativePostExecutionStoreRecord>, NativePostPersistenceInvariantError> {
+    match (store_write_attempted, pending_record) {
+        (true, None) => Err(NativePostPersistenceInvariantError::MissingPendingRecord),
+        (true, Some(record)) => Ok(Some(record)),
+        (false, _) => Ok(None),
+    }
+}
+
 pub fn native_post_plan_report(
     spec: &NativePostPlanRouteSpec,
     parameter: Option<&str>,
@@ -361,23 +385,21 @@ pub fn native_post_real_handler_harness(
         store_capacity_ok,
         store_capacity_check_error,
     );
-    let (store_write_succeeded, store_write_report, store_write_error) = if store_write_attempted {
-        match persist_native_post_execution_store_record(
-            store_root,
-            pending_record
-                .as_ref()
-                .expect("pending record exists before store write"),
-        ) {
-            Ok(report) => (true, Some(report), None),
-            Err(_error) => (
-                false,
-                None,
-                Some("native_post_execution_store_write_failed"),
-            ),
-        }
-    } else {
-        (false, None, None)
-    };
+    let (store_write_succeeded, store_write_report, store_write_error) =
+        match native_post_record_for_store_write(store_write_attempted, pending_record.as_ref()) {
+            Ok(Some(record)) => {
+                match persist_native_post_execution_store_record(store_root, record) {
+                    Ok(report) => (true, Some(report), None),
+                    Err(_error) => (
+                        false,
+                        None,
+                        Some("native_post_execution_store_write_failed"),
+                    ),
+                }
+            }
+            Ok(None) => (false, None, None),
+            Err(error) => (false, None, Some(error.code())),
+        };
     let observation = NativePostRealHandlerObservation {
         duplicate_check_performed,
         duplicate_found,
@@ -603,9 +625,11 @@ fn native_post_now_unix_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::NativePostPersistenceInvariantError;
     use super::native_post_plan_kind_has_real_handler;
     use super::native_post_plan_parameter;
     use super::native_post_plan_route_specs;
+    use super::native_post_record_for_store_write;
 
     #[test]
     fn native_post_route_contracts_cover_real_handler_candidates() {
@@ -758,6 +782,18 @@ mod tests {
             true,
             true,
             Some("native_post_store_capacity_check_failed")
+        ));
+    }
+
+    #[test]
+    fn native_post_store_write_fails_closed_without_pending_record() {
+        assert!(matches!(
+            native_post_record_for_store_write(true, None),
+            Err(NativePostPersistenceInvariantError::MissingPendingRecord)
+        ));
+        assert!(matches!(
+            native_post_record_for_store_write(false, None),
+            Ok(None)
         ));
     }
 
