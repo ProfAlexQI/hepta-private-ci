@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 #[test]
 fn snapshot_inspection_bundle_drift_impact_matches_report_helper() {

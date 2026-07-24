@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 #[test]
 fn snapshot_inspection_health_is_ready_when_bundle_is_clean_and_aligned() {

@@ -991,8 +991,8 @@
     "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 1375,
-    "paths_and_classes_sha256": "c23d4a97e093e05182df5159580a533078ae86993a8c33f6d1e6a294c3720ce9"
+    "file_count": 1374,
+    "paths_and_classes_sha256": "65a23e5175c3d727483c43b9627f92257f601723806f0622337f5f4b91ed488e"
   },
   "summary": {
     "actionable_high_risk_production_fingerprints": [],

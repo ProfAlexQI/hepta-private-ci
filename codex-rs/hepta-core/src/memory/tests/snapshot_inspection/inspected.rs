@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 #[test]
 fn snapshot_inspection_bundle_keeps_manifests_and_integrity_reports_aligned() {

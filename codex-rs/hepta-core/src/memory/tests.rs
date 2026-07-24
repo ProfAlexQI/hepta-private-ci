@@ -30,6 +30,11 @@ mod restore_preview;
 mod restore_readiness;
 mod session;
 mod snapshot;
-mod snapshot_inspection;
+mod snapshot_inspection {
+    mod audit;
+    mod drift;
+    mod health;
+    mod inspected;
+}
 mod store;
 mod transcript;
