@@ -1,0 +1,110 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "record_id": "upstream-codex-r7-semantic-absorption-2026-07-24",
+  "recorded_at": "2026-07-24T10:55:10Z",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R7.json",
+    "manifest_sha256": "63d15fc05f42605dceeb29899cb357f664ec99e691d24b8d296a0033c359feee",
+    "commit": "ac5d3988e462fcbac9b9349d01ef40ba6579dad5",
+    "range_start_exclusive": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+    "range_end_inclusive": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "integration_mode": "existing_narrow_semantic_equivalence_with_fail_closed_prerequisite_deferral",
+  "absorptions": [
+    {
+      "lane": "tools_apps_runtime",
+      "upstream_commit": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+      "upstream_title": "Reconnect MCP servers on explicit refresh (#35151)",
+      "disposition": "existing_semantic_equivalent",
+      "scope": "explicit_refresh_rebuilds_configured_connections",
+      "hepta_commit": "c3d57839b0c1cc41e98db346e9535d2e5daa7d9c",
+      "production_behavior_preexisting": true,
+      "production_code_modified": false,
+      "semantic_mapping": "Hepta's explicit refresh queues a complete configuration for the next turn. Every consumed request constructs a new McpConnectionManager without a previous-manager reuse input, atomically swaps it into the session, cancels the preceding startup generation, and shuts down the old manager. The upstream stale-connection bug therefore does not exist on this narrow local path.",
+      "core_files": [
+        "codex-rs/core/src/session/handlers.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/codex-mcp/src/connection_manager.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/tests/suite/rmcp_client.rs"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "cargo test -p codex-core explicit_refresh_rebuilds_mcp_connections_on_each_next_turn",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "Two consecutive explicit refresh requests each cancel the preceding startup token and install a fresh uncancelled generation."
+        },
+        {
+          "command": "cargo test -p codex-core --test all explicit_refresh_reinitializes_the_same_apps_transport",
+          "result": "passed",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "assertion": "A real Apps Streamable HTTP transport receives a second initialize request after an explicit same-configuration refresh."
+        }
+      ],
+      "package_fix_evidence": [
+        {
+          "command": "just fix -p codex-core",
+          "result": "passed"
+        },
+        {
+          "command": "just fmt",
+          "result": "passed_with_stable_toolchain_imports_granularity_warnings"
+        }
+      ],
+      "non_claims": [
+        "An idle thread does not immediately replace its MCP manager; the queued refresh is consumed at the next turn boundary.",
+        "A cancelled or failed replacement does not restore the consumed refresh intent.",
+        "Hepta does not implement upstream ordinary-update connection reuse because it does not yet own the published McpRuntime architecture.",
+        "This equivalence does not absorb the R6 published-runtime, authentication-generation, or same-generation exposure and execution prerequisites."
+      ]
+    }
+  ],
+  "deferrals": [
+    {
+      "lane": "security_tools_apps_runtime",
+      "upstream_commit": "f201c30c52a35f819262865a53df94b6f4ea7a50",
+      "upstream_title": "Reconnect MCP servers on explicit refresh (#35151)",
+      "disposition": "deferred_prerequisite_unavailable",
+      "scope": "cancellation_safe_generation_bound_runtime_replacement",
+      "hepta_commit": null,
+      "reason": "The full upstream commit also preserves a reconnect request when a runtime replacement is cancelled and assumes the R6 published immutable runtime. Hepta still lacks serialized refresh ownership, desired and applied generations, authoritative authentication generation, immutable publication, and a generation-bound tool catalog plus executing client. Directly copying the AtomicBool reconnect flag would place ownership in the wrong layer and would not close stale-credential or mixed-generation races.",
+      "missing_prerequisites": [
+        "published immutable McpRuntime snapshot",
+        "serialized refresh ownership and generation",
+        "recoverable refresh intent across cancellation and parse or startup failure",
+        "latest desired configuration and environment snapshot",
+        "authoritative authentication generation",
+        "generation-bound tool catalog and executing MCP client",
+        "publication-ready completion signal"
+      ],
+      "required_behavioral_tests": [
+        "An idle-thread refresh denies new calls through the old generation until the replacement is ready.",
+        "Cancellation at every replacement await point preserves the refresh intent and eventually reconnects.",
+        "Concurrent explicit, configuration, and authentication refreshes publish only the highest valid generation.",
+        "Account rotation or logout cannot emit the prior Authorization header or expose the prior account's catalog.",
+        "Tool exposure and execution resolve through one immutable client and catalog generation.",
+        "Invalid configuration and startup failure have explicit fail-closed behavior."
+      ],
+      "tests_run": false
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 0,
+    "existing_semantic_equivalent_count": 1,
+    "deferred_commit_count": 1,
+    "all_r7_candidates_absorbed": false,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
