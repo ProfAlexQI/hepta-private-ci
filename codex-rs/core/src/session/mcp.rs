@@ -582,12 +582,7 @@ impl Session {
                             return;
                         }
                         let config = self.get_config().await;
-                        (
-                            None,
-                            config.mcp_oauth_credentials_store_mode,
-                            None,
-                            None,
-                        )
+                        (None, config.mcp_oauth_credentials_store_mode, None, None)
                     }
                 };
 
