@@ -195,8 +195,9 @@ pub async fn run_native_gateway(
     }
     runtime.validate_readiness()?;
     println!(
-        "Hepta Architecture V2 runtime composition ready: durable_outcomes={} live_gateway_mutations=false",
-        runtime.outcome_mode()
+        "Hepta Architecture V2 runtime composition ready: durable_outcomes={} durable_preferences={} authenticated_preference_plan_and_commit=true transport_confidentiality_claimed=false live_gateway_effect_mutations=false",
+        runtime.outcome_mode(),
+        runtime.preference_mode(),
     );
     let runtime = Arc::new(runtime);
 
@@ -389,6 +390,38 @@ fn handle_native_gateway_connection(
     let preflight = runtime
         .preflight_request(method, path, request_body)
         .map_err(|error| anyhow::anyhow!("RuntimeKernel request preflight failed: {error}"))?;
+    if preflight.request_binding_hash.is_empty()
+        || preflight.disposition
+            != if method == "GET" {
+                RuntimeRequestDisposition::ReadOnlyDispatch
+            } else {
+                RuntimeRequestDisposition::PlanOnlyQuarantine
+            }
+        || preflight.mutation_authorized
+        || preflight.durable_intent_recorded
+        || preflight.provider_effect_ack_recorded
+        || preflight.terminal_receipt_recorded
+    {
+        return write_http_response(
+            stream,
+            "503 Service Unavailable",
+            "application/json; charset=utf-8",
+            br#"{"error":"runtime request preflight invalid"}"#,
+        );
+    }
+    if let Some(response) = runtime.route_preference_ingress(
+        method,
+        path,
+        request_body,
+        &preflight.request_binding_hash,
+    ) {
+        return write_http_response(
+            stream,
+            response.status,
+            "application/json; charset=utf-8",
+            response.body.as_bytes(),
+        );
+    }
     if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path) {
         return write_http_response(stream, status, content_type, body);
     }

@@ -115,7 +115,7 @@ assert_test_inventory "Architecture V2 explicit-preference reducer" 8 \
   codex-rs/hepta-intelligence/src/preference_feedback/tests.rs
 budgeted_cargo_test architecture-v2-preference-feedback "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
   --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence explicit_preference_
-assert_test_inventory "Architecture V2 trusted preference feedback" 5 \
+assert_test_inventory "Architecture V2 trusted preference feedback" 9 \
   '.*' \
   codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs
 budgeted_cargo_test architecture-v2-trusted-preference-feedback \

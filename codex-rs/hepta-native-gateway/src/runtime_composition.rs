@@ -9,31 +9,22 @@ use hepta_memory::DurableIntegrityKey;
 use hepta_runtime::RuntimeKernel;
 use sha2::Digest;
 use sha2::Sha256;
-use zeroize::Zeroizing;
 
-#[cfg(unix)]
-use std::fs::File;
-#[cfg(unix)]
-use std::fs::OpenOptions;
-#[cfg(unix)]
-use std::io::Read;
-#[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
+use crate::preference_ingress::NativePreferenceIngress;
+use crate::preference_ingress::NativePreferenceIngressConfig;
+use crate::preference_ingress::PreferenceHttpResponse;
+#[cfg(all(test, unix))]
+use crate::secure_key_file::PRIVATE_FILE_MODE;
+use crate::secure_key_file::read_private_key;
 
 const OUTCOME_DATABASE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_DATABASE";
 const INTEGRITY_KEY_FILE_ENV: &str = "HEPTA_RUNTIME_INTEGRITY_KEY_FILE";
 const OUTCOME_MODE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_MODE";
 const OPEN_EXISTING_MODE: &str = "open-existing";
 const BOOTSTRAP_NEW_MODE: &str = "bootstrap-new";
-#[cfg(unix)]
-const PRIVATE_FILE_MODE: u32 = 0o600;
-const ENCODED_KEY_BYTES: usize = 64;
-const ENCODED_KEY_WITH_NEWLINE_BYTES: usize = ENCODED_KEY_BYTES + 1;
-
 pub struct NativeGatewayRuntime {
     kernel: RuntimeKernel,
+    preference_ingress: NativePreferenceIngress,
     outcome_mode: RuntimeOutcomeMode,
 }
 
@@ -85,6 +76,7 @@ impl fmt::Debug for NativeGatewayRuntime {
             .debug_struct("NativeGatewayRuntime")
             .field("outcome_mode", &self.outcome_mode.as_str())
             .field("integrity_key", &"[REDACTED]")
+            .field("preference_ingress", &self.preference_ingress)
             .finish_non_exhaustive()
     }
 }
@@ -138,12 +130,31 @@ impl RuntimeCompositionConfig {
 }
 
 impl NativeGatewayRuntime {
+    /// Builds the fail-closed service composition from secure files.
+    ///
+    /// In addition to the keyed RuntimeKernel variables, `--serve-ui` requires
+    /// `HEPTA_PREFERENCE_DATABASE`, `HEPTA_PREFERENCE_INTEGRITY_KEY_FILE`, and
+    /// `HEPTA_PREFERENCE_INGRESS_AUTH_KEY_FILE`. Preference storage defaults to
+    /// `open-existing`; explicit first boot uses
+    /// `HEPTA_PREFERENCE_STORE_MODE=bootstrap-new`.
+    ///
+    /// Both preference endpoints require distinct domain-separated HMAC
+    /// proofs. The native gateway defaults to loopback, but its clear HTTP
+    /// transport makes no confidentiality claim; the existing explicit
+    /// non-loopback lab override is not a secure deployment mode.
     pub fn from_env() -> Result<Self> {
-        Self::open(RuntimeCompositionConfig::from_env()?)
+        Self::open(
+            RuntimeCompositionConfig::from_env()?,
+            NativePreferenceIngressConfig::from_env()?,
+        )
     }
 
-    fn open(config: RuntimeCompositionConfig) -> Result<Self> {
+    fn open(
+        config: RuntimeCompositionConfig,
+        preference_config: NativePreferenceIngressConfig,
+    ) -> Result<Self> {
         let integrity_key = read_integrity_key(&config.integrity_key_file)?;
+        let prepared_preference = NativePreferenceIngress::prepare(preference_config)?;
         let kernel = match config.outcome_mode {
             RuntimeOutcomeMode::OpenExisting => {
                 RuntimeKernel::open_with_durable_outcomes(&config.outcome_database, integrity_key)
@@ -159,8 +170,10 @@ impl NativeGatewayRuntime {
                 config.outcome_mode.as_str()
             )
         })?;
+        let preference_ingress = NativePreferenceIngress::open(prepared_preference)?;
         Ok(Self {
             kernel,
+            preference_ingress,
             outcome_mode: config.outcome_mode,
         })
     }
@@ -168,8 +181,10 @@ impl NativeGatewayRuntime {
     pub(crate) fn validate_readiness(&self) -> Result<()> {
         self.kernel
             .model_selection()
-            .map(|_| ())
-            .map_err(|error| anyhow::anyhow!("attached RuntimeKernel readiness failed: {error}"))
+            .map_err(|error| anyhow::anyhow!("attached RuntimeKernel readiness failed: {error}"))?;
+        self.preference_ingress
+            .validate_readiness()
+            .context("attached trusted preference ingress readiness failed")
     }
 
     pub(crate) fn preflight_request(
@@ -222,6 +237,21 @@ impl NativeGatewayRuntime {
         self.outcome_mode.as_str()
     }
 
+    pub(crate) const fn preference_mode(&self) -> &'static str {
+        self.preference_ingress.mode()
+    }
+
+    pub(crate) fn route_preference_ingress(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Option<PreferenceHttpResponse> {
+        self.preference_ingress
+            .route_http(method, path, body, request_binding_hash)
+    }
+
     #[cfg(all(test, unix))]
     pub(crate) fn bootstrap_for_test(root: &Path) -> Result<Self> {
         use std::fs;
@@ -234,11 +264,14 @@ impl NativeGatewayRuntime {
             b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
         )?;
         fs::set_permissions(&key, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
-        Self::open(RuntimeCompositionConfig {
-            outcome_database: root.join("outcomes.sqlite3"),
-            integrity_key_file: key,
-            outcome_mode: RuntimeOutcomeMode::BootstrapNew,
-        })
+        Self::open(
+            RuntimeCompositionConfig {
+                outcome_database: root.join("outcomes.sqlite3"),
+                integrity_key_file: key,
+                outcome_mode: RuntimeOutcomeMode::BootstrapNew,
+            },
+            NativePreferenceIngressConfig::bootstrap_for_test(root)?,
+        )
     }
 }
 
@@ -253,88 +286,9 @@ fn required_absolute_path(env_name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-#[cfg(unix)]
 fn read_integrity_key(path: &Path) -> Result<DurableIntegrityKey> {
-    if !path.is_absolute() {
-        anyhow::bail!("{INTEGRITY_KEY_FILE_ENV} must be an absolute path");
-    }
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-        .open(path)
-        .context("open RuntimeKernel integrity key file")?;
-    validate_private_key_file(&file)?;
-    let mut encoded = Zeroizing::new(Vec::with_capacity(ENCODED_KEY_WITH_NEWLINE_BYTES));
-    file.by_ref()
-        .take((ENCODED_KEY_WITH_NEWLINE_BYTES + 1) as u64)
-        .read_to_end(&mut encoded)
-        .context("read RuntimeKernel integrity key file")?;
-    decode_integrity_key(&encoded)
-}
-
-#[cfg(not(unix))]
-fn read_integrity_key(_path: &Path) -> Result<DurableIntegrityKey> {
-    anyhow::bail!("keyed RuntimeKernel composition requires Unix secure-file semantics")
-}
-
-#[cfg(unix)]
-fn validate_private_key_file(file: &File) -> Result<()> {
-    let metadata = file
-        .metadata()
-        .context("inspect opened RuntimeKernel integrity key file")?;
-    if !metadata.file_type().is_file() {
-        anyhow::bail!("RuntimeKernel integrity key must be a regular file");
-    }
-    let effective_uid = effective_uid();
-    if metadata.uid() != effective_uid {
-        anyhow::bail!("RuntimeKernel integrity key must be owned by the effective user");
-    }
-    if metadata.nlink() != 1 {
-        anyhow::bail!("RuntimeKernel integrity key must have exactly one hard link");
-    }
-    let mode = metadata.mode() & 0o7777;
-    if mode != PRIVATE_FILE_MODE {
-        anyhow::bail!("RuntimeKernel integrity key must have mode 0o600");
-    }
-    if !matches!(
-        metadata.len() as usize,
-        ENCODED_KEY_BYTES | ENCODED_KEY_WITH_NEWLINE_BYTES
-    ) {
-        anyhow::bail!("RuntimeKernel integrity key must contain 64 lowercase hex bytes");
-    }
-    Ok(())
-}
-
-fn decode_integrity_key(encoded: &[u8]) -> Result<DurableIntegrityKey> {
-    let encoded = match encoded {
-        value if value.len() == ENCODED_KEY_BYTES => value,
-        value
-            if value.len() == ENCODED_KEY_WITH_NEWLINE_BYTES
-                && value[ENCODED_KEY_BYTES] == b'\n' =>
-        {
-            &value[..ENCODED_KEY_BYTES]
-        }
-        _ => anyhow::bail!("RuntimeKernel integrity key must be canonical lowercase hex"),
-    };
-    let mut bytes = [0_u8; 32];
-    for (index, pair) in encoded.chunks_exact(2).enumerate() {
-        bytes[index] = (decode_hex_nibble(pair[0])? << 4) | decode_hex_nibble(pair[1])?;
-    }
-    Ok(DurableIntegrityKey::from_bytes(bytes))
-}
-
-fn decode_hex_nibble(value: u8) -> Result<u8> {
-    match value {
-        b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
-        _ => anyhow::bail!("RuntimeKernel integrity key must be canonical lowercase hex"),
-    }
-}
-
-#[cfg(unix)]
-fn effective_uid() -> u32 {
-    // SAFETY: `geteuid` has no preconditions and reads process credentials.
-    unsafe { libc::geteuid() }
+    let bytes = read_private_key(path, INTEGRITY_KEY_FILE_ENV, "RuntimeKernel integrity")?;
+    Ok(DurableIntegrityKey::from_bytes(*bytes))
 }
 
 #[cfg(all(test, unix))]
@@ -364,11 +318,19 @@ mod tests {
             b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n",
         );
 
-        let bootstrap = NativeGatewayRuntime::open(RuntimeCompositionConfig {
-            outcome_database: database_path.clone(),
-            integrity_key_file: key_path.clone(),
-            outcome_mode: RuntimeOutcomeMode::BootstrapNew,
-        })
+        let preference_root = root.path().join("preference");
+        fs::create_dir(&preference_root).expect("preference root");
+        fs::set_permissions(&preference_root, fs::Permissions::from_mode(0o700))
+            .expect("set preference root permissions");
+        let bootstrap = NativeGatewayRuntime::open(
+            RuntimeCompositionConfig {
+                outcome_database: database_path.clone(),
+                integrity_key_file: key_path.clone(),
+                outcome_mode: RuntimeOutcomeMode::BootstrapNew,
+            },
+            NativePreferenceIngressConfig::bootstrap_for_test(&preference_root)
+                .expect("preference config"),
+        )
         .expect("bootstrap keyed runtime");
         bootstrap.validate_readiness().expect("bootstrap readiness");
         let read = bootstrap
@@ -403,11 +365,19 @@ mod tests {
         );
         drop(bootstrap);
 
-        let opened = NativeGatewayRuntime::open(RuntimeCompositionConfig {
-            outcome_database: database_path,
-            integrity_key_file: key_path,
-            outcome_mode: RuntimeOutcomeMode::OpenExisting,
-        })
+        let opened = NativeGatewayRuntime::open(
+            RuntimeCompositionConfig {
+                outcome_database: database_path,
+                integrity_key_file: key_path,
+                outcome_mode: RuntimeOutcomeMode::OpenExisting,
+            },
+            NativePreferenceIngressConfig {
+                database: preference_root.join("preferences.sqlite3"),
+                integrity_key_file: preference_root.join("preference-integrity.key"),
+                authentication_key_file: preference_root.join("preference-authentication.key"),
+                mode: crate::preference_ingress::PreferenceStoreMode::OpenExisting,
+            },
+        )
         .expect("open keyed runtime");
         assert_eq!(opened.outcome_mode(), OPEN_EXISTING_MODE);
         opened.validate_readiness().expect("open readiness");
@@ -434,10 +404,13 @@ mod tests {
 
     #[test]
     fn keyed_runtime_rejects_noncanonical_key_encoding() {
-        let error = decode_integrity_key(
+        let root = tempdir().expect("tempdir");
+        let key_path = root.path().join("runtime.key");
+        write_key(
+            &key_path,
             b"000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
-        )
-        .expect_err("uppercase key must fail");
+        );
+        let error = read_integrity_key(&key_path).expect_err("uppercase key must fail");
         assert!(error.to_string().contains("canonical lowercase hex"));
     }
 }

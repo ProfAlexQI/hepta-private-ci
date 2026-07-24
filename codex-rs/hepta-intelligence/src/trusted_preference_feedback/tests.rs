@@ -475,6 +475,159 @@ async fn composed_authority_rejects_source_drift_before_authentication_or_cas() 
     Ok(())
 }
 
+#[tokio::test]
+async fn durable_hmac_ingress_plans_without_writing_then_commits_exactly_once() -> TestResult {
+    let directory = tempfile::tempdir()?;
+    let database_path = directory.path().join("live-preference.sqlite3");
+    let source = source_ref("live-http");
+    let ingress = DurableHmacTrustedPreferenceIngress::bootstrap_new(
+        &database_path,
+        durable_integrity_key(0x81),
+        PreferenceIngressAuthenticationKey::from_bytes([0x82; 32]),
+        source.clone(),
+    )
+    .await?;
+    let parts = challenge_parts("live-http");
+    let preference = parts.preference.clone();
+    let subject = parts.subject.clone();
+    let planning_proof = sign_preference_ingress_challenge_plan(
+        &PreferenceIngressAuthenticationKey::from_bytes([0x82; 32]),
+        &parts,
+        ingress.source_binding(),
+        &ingress.reducer_binding()?,
+    )?;
+    let plan = ingress.plan_challenge(parts, planning_proof).await?;
+    assert_eq!(ingress.read_document(&preference, &subject).await?, None);
+    let proof = sign_preference_ingress_challenge(
+        &PreferenceIngressAuthenticationKey::from_bytes([0x82; 32]),
+        plan.challenge_hash(),
+    )?;
+
+    let outcome = ingress.commit(plan.into_input(), proof.clone()).await?;
+    assert!(outcome.committed_now());
+    assert_eq!(outcome.source(), &source);
+    let committed = ingress
+        .read_document(&preference, &subject)
+        .await?
+        .expect("committed preference document");
+    assert_eq!(committed.state().revision(), Revision::new(1));
+
+    let stale = challenge_input("live-http", committed_genesis("live-http"));
+    let error = ingress
+        .commit(stale, proof)
+        .await
+        .expect_err("stale replay must fail closed");
+    assert!(matches!(
+        error,
+        PreferenceIngressCommitError::Authority(PreferenceAuthorityError::Cas(
+            PreferenceCasError::StateConflict { .. }
+        ))
+    ));
+    assert_eq!(
+        ingress
+            .read_document(&preference, &subject)
+            .await?
+            .expect("unchanged committed preference")
+            .state(),
+        committed.state()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn invalid_hmac_never_initializes_genesis_and_invalid_source_never_creates_store()
+-> TestResult {
+    let directory = tempfile::tempdir()?;
+    let invalid_database = directory.path().join("invalid-source.sqlite3");
+    assert!(
+        PreferenceFeedbackSourceRef::try_new(
+            PrincipalId::new(""),
+            Revision::new(1),
+            ContentHash::new("sha256:invalid"),
+        )
+        .is_err()
+    );
+    assert!(!invalid_database.exists());
+
+    let database_path = directory.path().join("wrong-proof.sqlite3");
+    let ingress = DurableHmacTrustedPreferenceIngress::bootstrap_new(
+        &database_path,
+        durable_integrity_key(0x83),
+        PreferenceIngressAuthenticationKey::from_bytes([0x84; 32]),
+        source_ref("wrong-proof"),
+    )
+    .await?;
+    let parts = challenge_parts("wrong-proof");
+    let preference = parts.preference.clone();
+    let subject = parts.subject.clone();
+    let wrong_planning_proof = sign_preference_ingress_challenge_plan(
+        &PreferenceIngressAuthenticationKey::from_bytes([0x85; 32]),
+        &parts,
+        ingress.source_binding(),
+        &ingress.reducer_binding()?,
+    )?;
+    assert!(matches!(
+        ingress
+            .plan_challenge(parts.clone(), wrong_planning_proof)
+            .await,
+        Err(PreferenceAuthorityError::Authentication(_))
+    ));
+    assert_eq!(ingress.read_document(&preference, &subject).await?, None);
+    let planning_proof = sign_preference_ingress_challenge_plan(
+        &PreferenceIngressAuthenticationKey::from_bytes([0x84; 32]),
+        &parts,
+        ingress.source_binding(),
+        &ingress.reducer_binding()?,
+    )?;
+    let plan = ingress.plan_challenge(parts, planning_proof).await?;
+    let preference = plan.input().request().preference().clone();
+    let subject = plan.input().request().subject().clone();
+    let wrong_proof = sign_preference_ingress_challenge(
+        &PreferenceIngressAuthenticationKey::from_bytes([0x85; 32]),
+        plan.challenge_hash(),
+    )?;
+    assert!(matches!(
+        ingress.commit(plan.into_input(), wrong_proof).await,
+        Err(PreferenceIngressCommitError::Authority(
+            PreferenceAuthorityError::Authentication(_)
+        ))
+    ));
+    assert_eq!(ingress.read_document(&preference, &subject).await?, None);
+    Ok(())
+}
+
+fn challenge_parts(label: &str) -> ExplicitPreferenceFeedbackChallengeInputParts {
+    let genesis = committed_genesis(label);
+    ExplicitPreferenceFeedbackChallengeInputParts {
+        transition_id: PreferenceTransitionId::new(format!("transition:{label}")),
+        evidence_id: PreferenceEvidenceId::new(format!("evidence:{label}")),
+        signal: ExplicitPreferenceSignal::Accepted,
+        receipt: hepta_contracts::ReceiptRef::new(
+            ReceiptId::new(format!("receipt:{label}")),
+            ContentHash::new(format!("sha256:receipt-{label}")),
+        ),
+        session_binding_hash: ContentHash::new(format!("sha256:session-{label}")),
+        subject: genesis.subject().clone(),
+        preference: genesis.preference().clone(),
+        target: genesis.target().clone(),
+    }
+}
+
+fn committed_genesis(label: &str) -> crate::PreferenceAccumulator {
+    explicit_preference_genesis(
+        PrincipalId::new(format!("subject:{label}")),
+        PreferenceId::new(format!("preference:{label}")),
+        target(label),
+    )
+}
+
+fn challenge_input(
+    label: &str,
+    genesis: crate::PreferenceAccumulator,
+) -> ExplicitPreferenceFeedbackInput {
+    input(label, &genesis, genesis.target().clone())
+}
+
 fn input(
     label: &str,
     genesis: &crate::PreferenceAccumulator,

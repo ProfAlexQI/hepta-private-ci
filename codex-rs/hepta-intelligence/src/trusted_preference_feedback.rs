@@ -1,8 +1,9 @@
 //! Trusted explicit-preference source and reducer adapter.
 //!
 //! This module provides a transport-neutral HMAC source over the complete
-//! memory-owned challenge. Telegram, HTTP, gateway, and runtime input remain
-//! unattached until a composition root supplies a private key and proof.
+//! memory-owned challenge plus a keyed durable ingress authority. A live
+//! transport still has to provide strict parsing, secure key loading, and an
+//! exact source binding; there is no allow-all source.
 
 use std::fmt;
 use std::path::Path;
@@ -42,6 +43,7 @@ use crate::EXPLICIT_PREFERENCE_REDUCER_VERSION;
 use crate::ExplicitPreferenceSignal;
 use crate::ExplicitPreferenceTarget;
 use crate::PreferenceReductionError;
+use crate::explicit_preference_genesis;
 use crate::reduce_explicit_preference;
 
 /// Stable identity of the deterministic explicit-preference reducer.
@@ -49,6 +51,8 @@ pub const EXPLICIT_PREFERENCE_REDUCER_ID: &str = "hepta.intelligence.explicit-pr
 
 const PREFERENCE_INGRESS_MAC_DOMAIN: &[u8] =
     b"hepta.intelligence.preference-ingress.hmac-sha256.v1";
+const PREFERENCE_INGRESS_PLAN_MAC_DOMAIN: &[u8] =
+    b"hepta.intelligence.preference-ingress.plan.hmac-sha256.v1";
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -162,16 +166,11 @@ impl TrustedPreferenceFeedbackSource for HmacTrustedPreferenceFeedbackSource {
                 "trusted_preference_ingress.source_binding_mismatch",
             ));
         }
-        let mut mac = preference_ingress_mac(&self.key)?;
-        update_ingress_mac_frame(
-            &mut mac,
-            challenge.authority().evidence_hash().as_str().as_bytes(),
-        );
-        mac.verify_slice(&self.proof.0).map_err(|_| {
-            PreferenceFeedbackAuthenticationError::new(
-                "trusted_preference_ingress.proof_verification_failed",
-            )
-        })
+        verify_preference_ingress_proof(
+            &self.key,
+            &self.proof,
+            challenge.authority().evidence_hash(),
+        )
     }
 }
 
@@ -199,6 +198,263 @@ pub fn sign_preference_ingress_challenge(
     let mut proof = [0_u8; 32];
     proof.copy_from_slice(&mac.finalize().into_bytes());
     Ok(PreferenceIngressProof(proof))
+}
+
+/// Signs one no-write challenge-planning request before durable state is read.
+///
+/// This proof uses a separate HMAC domain from the memory-owned commit
+/// challenge. It binds every caller field plus the exact source and reducer.
+pub fn sign_preference_ingress_challenge_plan(
+    key: &PreferenceIngressAuthenticationKey,
+    parts: &ExplicitPreferenceFeedbackChallengeInputParts,
+    source: &PreferenceFeedbackSourceRef,
+    reducer: &PreferenceReducerRef,
+) -> Result<PreferenceIngressProof, PreferenceFeedbackAuthenticationError> {
+    let mac = preference_ingress_plan_mac(key, parts, source, reducer)?;
+    let mut proof = [0_u8; 32];
+    proof.copy_from_slice(&mac.finalize().into_bytes());
+    Ok(PreferenceIngressProof(proof))
+}
+
+/// Typed denial from the durable HMAC ingress boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PreferenceIngressCommitError {
+    /// Memory authority, reducer, authentication, or storage denied the call.
+    Authority(PreferenceAuthorityError),
+    /// The exact transition had already committed and live replay is denied.
+    ReplayDenied,
+}
+
+impl PreferenceIngressCommitError {
+    /// Returns the underlying authority error when this is not a replay denial.
+    pub fn authority(&self) -> Option<&PreferenceAuthorityError> {
+        match self {
+            Self::Authority(error) => Some(error),
+            Self::ReplayDenied => None,
+        }
+    }
+}
+
+impl fmt::Display for PreferenceIngressCommitError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Authority(error) => error.fmt(formatter),
+            Self::ReplayDenied => formatter.write_str("trusted preference ingress replay denied"),
+        }
+    }
+}
+
+impl std::error::Error for PreferenceIngressCommitError {}
+
+impl From<PreferenceAuthorityError> for PreferenceIngressCommitError {
+    fn from(error: PreferenceAuthorityError) -> Self {
+        Self::Authority(error)
+    }
+}
+
+/// Long-lived keyed authority used by an authenticated live transport.
+///
+/// Proof verification happens before genesis initialization or any CAS write.
+/// The store is durable and keyed independently from the ingress HMAC key.
+pub struct DurableHmacTrustedPreferenceIngress {
+    store: DurablePreferenceStore,
+    source: PreferenceFeedbackSourceRef,
+    authentication_key: PreferenceIngressAuthenticationKey,
+}
+
+impl fmt::Debug for DurableHmacTrustedPreferenceIngress {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DurableHmacTrustedPreferenceIngress")
+            .field("source", &self.source)
+            .field("authentication_key", &"[REDACTED]")
+            .finish_non_exhaustive()
+    }
+}
+
+impl DurableHmacTrustedPreferenceIngress {
+    /// Exclusively bootstraps a keyed durable live-ingress store.
+    pub async fn bootstrap_new(
+        path: impl AsRef<Path>,
+        integrity_key: DurableIntegrityKey,
+        authentication_key: PreferenceIngressAuthenticationKey,
+        source: PreferenceFeedbackSourceRef,
+    ) -> Result<Self, PreferenceAuthorityError> {
+        validate_preference_source_binding(&source)?;
+        let store = DurablePreferenceStore::bootstrap_new_keyed(path, integrity_key).await?;
+        Ok(Self {
+            store,
+            source,
+            authentication_key,
+        })
+    }
+
+    /// Opens an existing keyed durable live-ingress store.
+    pub async fn open_existing(
+        path: impl AsRef<Path>,
+        integrity_key: DurableIntegrityKey,
+        authentication_key: PreferenceIngressAuthenticationKey,
+        source: PreferenceFeedbackSourceRef,
+    ) -> Result<Self, PreferenceAuthorityError> {
+        validate_preference_source_binding(&source)?;
+        let store = DurablePreferenceStore::open_existing_keyed(path, integrity_key).await?;
+        Ok(Self {
+            store,
+            source,
+            authentication_key,
+        })
+    }
+
+    /// Returns the exact source identity pinned for the authority lifetime.
+    pub fn source_binding(&self) -> &PreferenceFeedbackSourceRef {
+        &self.source
+    }
+
+    /// Returns the exact deterministic reducer binding covered by each proof.
+    pub fn reducer_binding(&self) -> Result<PreferenceReducerRef, PreferenceAuthorityError> {
+        Ok(TrustedExplicitPreferenceReducer::try_new()?
+            .binding()
+            .clone())
+    }
+
+    /// Authenticates and plans a no-write challenge against exact durable state.
+    ///
+    /// The domain-separated planning proof is verified before any state read.
+    pub async fn plan_challenge(
+        &self,
+        parts: ExplicitPreferenceFeedbackChallengeInputParts,
+        proof: PreferenceIngressProof,
+    ) -> Result<PlannedPreferenceIngressChallenge, PreferenceAuthorityError> {
+        let reducer = self.reducer_binding()?;
+        verify_preference_ingress_plan_proof(
+            &self.authentication_key,
+            &proof,
+            &parts,
+            &self.source,
+            &reducer,
+        )
+        .map_err(PreferenceAuthorityError::Authentication)?;
+        let genesis = explicit_preference_genesis(
+            parts.subject.clone(),
+            parts.preference.clone(),
+            parts.target.clone(),
+        );
+        let expected_previous = self
+            .store
+            .read_document(&parts.preference, &parts.subject)
+            .await?
+            .map(|document| document.state().clone())
+            .unwrap_or_else(|| genesis.state().clone());
+        let input = parts.try_into_input(expected_previous)?;
+        let challenge_hash =
+            explicit_preference_feedback_challenge_hash(&input, self.source.clone())?;
+        Ok(PlannedPreferenceIngressChallenge {
+            input,
+            challenge_hash,
+        })
+    }
+
+    /// Verifies one proof, initializes exact genesis if needed, then attempts CAS.
+    ///
+    /// Invalid proofs are rejected before genesis initialization or any write.
+    /// Exact transition replay is also denied rather than reported as success.
+    pub async fn commit(
+        &self,
+        input: ExplicitPreferenceFeedbackInput,
+        proof: PreferenceIngressProof,
+    ) -> Result<PreferenceAuthorityCommitOutcome, PreferenceIngressCommitError> {
+        let challenge_hash =
+            explicit_preference_feedback_challenge_hash(&input, self.source.clone())?;
+        verify_preference_ingress_proof(&self.authentication_key, &proof, &challenge_hash)
+            .map_err(PreferenceAuthorityError::Authentication)?;
+
+        let genesis = explicit_preference_genesis(
+            input.request().subject().clone(),
+            input.request().preference().clone(),
+            input.target().clone(),
+        );
+        let current = self
+            .store
+            .read_document(input.request().preference(), input.request().subject())
+            .await
+            .map_err(PreferenceAuthorityError::from)?;
+        let current_state = current
+            .as_ref()
+            .map(PreferenceStateDocument::state)
+            .unwrap_or_else(|| genesis.state());
+        if current_state != input.request().expected_previous() {
+            return Err(PreferenceAuthorityError::from(
+                hepta_memory::PreferenceCasError::StateConflict {
+                    preference: input.request().preference().clone(),
+                    subject: input.request().subject().clone(),
+                    expected: input.request().expected_previous().clone(),
+                    actual: current_state.clone(),
+                },
+            )
+            .into());
+        }
+        self.store
+            .get_or_init_genesis(
+                input.request().preference().clone(),
+                input.request().subject().clone(),
+                PreferenceStateDocument::new(
+                    genesis.state().clone(),
+                    genesis.reducer_version(),
+                    genesis.canonical_payload(),
+                ),
+            )
+            .await
+            .map_err(PreferenceAuthorityError::from)?;
+
+        let source = BorrowedHmacTrustedPreferenceFeedbackSource {
+            source: &self.source,
+            key: &self.authentication_key,
+            proof: &proof,
+        };
+        let outcome =
+            advance_trusted_explicit_preference_durable(&self.store, &source, input).await?;
+        if !outcome.committed_now() {
+            return Err(PreferenceIngressCommitError::ReplayDenied);
+        }
+        Ok(outcome)
+    }
+
+    /// Reads the exact durable state for audit or challenge reconciliation.
+    pub async fn read_document(
+        &self,
+        preference: &PreferenceId,
+        subject: &PrincipalId,
+    ) -> Result<Option<PreferenceStateDocument>, PreferenceAuthorityError> {
+        self.store
+            .read_document(preference, subject)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+struct BorrowedHmacTrustedPreferenceFeedbackSource<'a> {
+    source: &'a PreferenceFeedbackSourceRef,
+    key: &'a PreferenceIngressAuthenticationKey,
+    proof: &'a PreferenceIngressProof,
+}
+
+impl TrustedPreferenceFeedbackSource for BorrowedHmacTrustedPreferenceFeedbackSource<'_> {
+    fn source(&self) -> PreferenceFeedbackSourceRef {
+        self.source.clone()
+    }
+
+    fn authenticate(
+        &self,
+        challenge: &TrustedPreferenceFeedbackChallenge<'_>,
+    ) -> Result<(), PreferenceFeedbackAuthenticationError> {
+        if challenge.authority().source() != self.source {
+            return Err(PreferenceFeedbackAuthenticationError::new(
+                "trusted_preference_ingress.source_binding_mismatch",
+            ));
+        }
+        verify_preference_ingress_proof(self.key, self.proof, challenge.authority().evidence_hash())
+    }
 }
 
 /// Keyed, non-live composition root for trusted durable preference feedback.
@@ -335,6 +591,70 @@ pub struct ExplicitPreferenceFeedbackInputParts {
     pub target: ExplicitPreferenceTarget,
     /// Exact state required before the feedback may advance.
     pub expected_previous: PreferenceState,
+}
+
+/// No-write challenge inputs whose exact prior state is resolved by the store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExplicitPreferenceFeedbackChallengeInputParts {
+    /// Identity reserved for the resulting transition.
+    pub transition_id: PreferenceTransitionId,
+    /// Identity reserved for immutable feedback evidence.
+    pub evidence_id: PreferenceEvidenceId,
+    /// Explicit accepted or rejected signal.
+    pub signal: ExplicitPreferenceSignal,
+    /// Exact execution receipt addressed by the feedback.
+    pub receipt: ReceiptRef,
+    /// Digest binding the authenticated feedback session.
+    pub session_binding_hash: ContentHash,
+    /// Claimed subject that the source must authenticate.
+    pub subject: PrincipalId,
+    /// Exact preference identity.
+    pub preference: PreferenceId,
+    /// Exact closed target.
+    pub target: ExplicitPreferenceTarget,
+}
+
+impl ExplicitPreferenceFeedbackChallengeInputParts {
+    fn try_into_input(
+        self,
+        expected_previous: PreferenceState,
+    ) -> Result<ExplicitPreferenceFeedbackInput, PreferenceAuthorityError> {
+        ExplicitPreferenceFeedbackInput::try_new(ExplicitPreferenceFeedbackInputParts {
+            transition_id: self.transition_id,
+            evidence_id: self.evidence_id,
+            signal: self.signal,
+            receipt: self.receipt,
+            session_binding_hash: self.session_binding_hash,
+            subject: self.subject,
+            preference: self.preference,
+            target: self.target,
+            expected_previous,
+        })
+    }
+}
+
+/// Exact no-write challenge planned from the current keyed durable state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedPreferenceIngressChallenge {
+    input: ExplicitPreferenceFeedbackInput,
+    challenge_hash: ContentHash,
+}
+
+impl PlannedPreferenceIngressChallenge {
+    /// Returns the complete input whose bindings were hashed by Memory.
+    pub fn input(&self) -> &ExplicitPreferenceFeedbackInput {
+        &self.input
+    }
+
+    /// Returns the Memory-owned exact challenge digest to authenticate.
+    pub fn challenge_hash(&self) -> &ContentHash {
+        &self.challenge_hash
+    }
+
+    /// Consumes the plan and returns its complete commit input.
+    pub fn into_input(self) -> ExplicitPreferenceFeedbackInput {
+        self.input
+    }
 }
 
 impl ExplicitPreferenceFeedbackInput {
@@ -599,6 +919,87 @@ fn preference_ingress_mac(
     })?;
     update_ingress_mac_frame(&mut mac, PREFERENCE_INGRESS_MAC_DOMAIN);
     Ok(mac)
+}
+
+fn preference_ingress_plan_mac(
+    key: &PreferenceIngressAuthenticationKey,
+    parts: &ExplicitPreferenceFeedbackChallengeInputParts,
+    source: &PreferenceFeedbackSourceRef,
+    reducer: &PreferenceReducerRef,
+) -> Result<HmacSha256, PreferenceFeedbackAuthenticationError> {
+    let mut mac = HmacSha256::new_from_slice(key.0.as_ref()).map_err(|_| {
+        PreferenceFeedbackAuthenticationError::new(
+            "trusted_preference_ingress.key_length_unsupported",
+        )
+    })?;
+    update_ingress_mac_frame(&mut mac, PREFERENCE_INGRESS_PLAN_MAC_DOMAIN);
+    update_ingress_mac_frame(&mut mac, source.identity().as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, &source.revision().get().to_be_bytes());
+    update_ingress_mac_frame(&mut mac, source.content_hash().as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, reducer.identity().as_bytes());
+    update_ingress_mac_frame(&mut mac, reducer.version().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.transition_id.as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.evidence_id.as_str().as_bytes());
+    update_ingress_mac_frame(
+        &mut mac,
+        match parts.signal {
+            ExplicitPreferenceSignal::Accepted => b"accepted",
+            ExplicitPreferenceSignal::Rejected => b"rejected",
+        },
+    );
+    update_ingress_mac_frame(&mut mac, parts.receipt.id().as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.receipt.receipt_hash().as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.session_binding_hash.as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.subject.as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.preference.as_str().as_bytes());
+    update_ingress_mac_frame(&mut mac, parts.target.binding_hash().as_str().as_bytes());
+    Ok(mac)
+}
+
+fn verify_preference_ingress_plan_proof(
+    key: &PreferenceIngressAuthenticationKey,
+    proof: &PreferenceIngressProof,
+    parts: &ExplicitPreferenceFeedbackChallengeInputParts,
+    source: &PreferenceFeedbackSourceRef,
+    reducer: &PreferenceReducerRef,
+) -> Result<(), PreferenceFeedbackAuthenticationError> {
+    preference_ingress_plan_mac(key, parts, source, reducer)?
+        .verify_slice(&proof.0)
+        .map_err(|_| {
+            PreferenceFeedbackAuthenticationError::new(
+                "trusted_preference_ingress.plan_proof_verification_failed",
+            )
+        })
+}
+
+fn verify_preference_ingress_proof(
+    key: &PreferenceIngressAuthenticationKey,
+    proof: &PreferenceIngressProof,
+    challenge_hash: &ContentHash,
+) -> Result<(), PreferenceFeedbackAuthenticationError> {
+    let mut mac = preference_ingress_mac(key)?;
+    update_ingress_mac_frame(&mut mac, challenge_hash.as_str().as_bytes());
+    mac.verify_slice(&proof.0).map_err(|_| {
+        PreferenceFeedbackAuthenticationError::new(
+            "trusted_preference_ingress.proof_verification_failed",
+        )
+    })
+}
+
+fn validate_preference_source_binding(
+    source: &PreferenceFeedbackSourceRef,
+) -> Result<(), PreferenceAuthorityError> {
+    if source.identity().as_str().is_empty() {
+        return Err(PreferenceAuthorityError::EmptyBinding {
+            field: "feedback_source.identity",
+        });
+    }
+    if source.content_hash().as_str().is_empty() {
+        return Err(PreferenceAuthorityError::EmptyBinding {
+            field: "feedback_source.content_hash",
+        });
+    }
+    Ok(())
 }
 
 fn update_ingress_mac_frame(mac: &mut HmacSha256, value: &[u8]) {

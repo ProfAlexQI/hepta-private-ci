@@ -157,11 +157,13 @@ verify_trusted_preference_feedback_boundary() {
   local memory_tests="codex-rs/hepta-memory/src/preference_authority/tests.rs"
   local intelligence_authority="codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
   local intelligence_tests="codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs"
+  local native_ingress="codex-rs/hepta-native-gateway/src/preference_ingress.rs"
+  local native_secure_key="codex-rs/hepta-native-gateway/src/secure_key_file.rs"
   local source requirement
 
   for source in \
     "$memory_authority" "$memory_types" "$memory_canonical" "$memory_tests" \
-    "$intelligence_authority" "$intelligence_tests"
+    "$intelligence_authority" "$intelligence_tests" "$native_ingress" "$native_secure_key"
   do
     [[ -f "$ROOT/$source" ]] || {
       echo "Architecture V2 trusted preference source is missing: $source" >&2
@@ -226,6 +228,14 @@ verify_trusted_preference_feedback_boundary() {
 
   for requirement in \
     'pub trait TrustedPreferenceFeedbackSource' \
+    'pub struct HmacTrustedPreferenceFeedbackSource' \
+    'impl TrustedPreferenceFeedbackSource for HmacTrustedPreferenceFeedbackSource' \
+    'impl TrustedPreferenceFeedbackSource for BorrowedHmacTrustedPreferenceFeedbackSource' \
+    'pub struct DurableHmacTrustedPreferenceIngress' \
+    'PREFERENCE_INGRESS_PLAN_MAC_DOMAIN' \
+    'sign_preference_ingress_challenge_plan(' \
+    'verify_preference_ingress_proof(' \
+    'mac.verify_slice(&proof.0)' \
     'pub struct TrustedExplicitPreferenceReducer' \
     'pub struct DurableTrustedPreferenceFeedbackAuthority<S>' \
     'DurablePreferenceStore::bootstrap_new_keyed(path, integrity_key)' \
@@ -244,14 +254,59 @@ verify_trusted_preference_feedback_boundary() {
       return 1
     }
   done
-  if grep -Fq 'impl TrustedPreferenceFeedbackSource for' "$ROOT/$intelligence_authority"; then
-    echo "Architecture V2 trusted preference adapter exposes a production source implementation" >&2
+  if grep -Fq 'DurablePreferenceStore::bootstrap_new(' "$ROOT/$intelligence_authority" ||
+    grep -Fq 'DurablePreferenceStore::open_existing(' "$ROOT/$intelligence_authority"
+  then
+    echo "Architecture V2 trusted preference adapter is incomplete: unkeyed durable store open" >&2
+    return 1
+  fi
+  local unexpected_source_impl
+  unexpected_source_impl="$(
+    grep -F 'impl TrustedPreferenceFeedbackSource for' "$ROOT/$intelligence_authority" |
+      grep -Fv 'impl TrustedPreferenceFeedbackSource for HmacTrustedPreferenceFeedbackSource' |
+      grep -Fv 'impl TrustedPreferenceFeedbackSource for BorrowedHmacTrustedPreferenceFeedbackSource' || true
+  )"
+  if [[ -n "$unexpected_source_impl" ]]; then
+    echo "Architecture V2 trusted preference adapter exposes a non-HMAC source implementation" >&2
+    echo "$unexpected_source_impl" >&2
     return 1
   fi
 
+  for requirement in \
+    'pub(crate) const PREFERENCE_CHALLENGE_ENDPOINT: &str = "/api/v2/preferences/challenge"' \
+    'pub(crate) const PREFERENCE_COMMIT_ENDPOINT: &str = "/api/v2/preferences/commit"' \
+    'PreferenceChallengeHttpEnvelope' \
+    'trusted_preference_ingress.plan_proof_encoding_invalid' \
+    'PreferenceIngressProof::from_hex(&request.proof)' \
+    'request.commit.source != SourceBinding::from_ref(self.authority.source_binding())' \
+    'request.commit.reducer != ReducerBinding::from_ref(&reducer)' \
+    'challenge_hash.as_str() != request.commit.challenge_hash' \
+    'transport_confidentiality_claimed: false' \
+    'runtime_effect_authority_claimed: false' \
+    '#[serde(deny_unknown_fields)]'
+  do
+    grep -Fq "$requirement" "$ROOT/$native_ingress" || {
+      echo "Architecture V2 native trusted preference ingress is incomplete: $requirement" >&2
+      return 1
+    }
+  done
+  for requirement in \
+    'libc::O_CLOEXEC | libc::O_NOFOLLOW' \
+    'metadata.file_type().is_file()' \
+    'metadata.uid() != effective_uid()' \
+    'metadata.nlink() != 1' \
+    'mode != PRIVATE_FILE_MODE' \
+    'Zeroizing<[u8; 32]>'
+  do
+    grep -Fq "$requirement" "$ROOT/$native_secure_key" || {
+      echo "Architecture V2 native trusted preference key boundary is incomplete: $requirement" >&2
+      return 1
+    }
+  done
+
   hepta_v2_assert_test_inventory "Architecture V2 preference authority" 6 '.*' \
     "$ROOT/$memory_tests"
-  hepta_v2_assert_test_inventory "Architecture V2 trusted preference feedback" 5 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 trusted preference feedback" 9 '.*' \
     "$ROOT/$intelligence_tests"
 }
 
@@ -491,7 +546,7 @@ verify_v2_test_inventories() {
     "$ROOT/codex-rs/hepta-intelligence/src/intuition_planner/tests.rs"
   hepta_v2_assert_test_inventory "Architecture V2 explicit-preference reducer" 8 '.*' \
     "$ROOT/codex-rs/hepta-intelligence/src/preference_feedback/tests.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 trusted preference feedback" 5 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 trusted preference feedback" 9 '.*' \
     "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs"
   hepta_v2_assert_test_inventory "Architecture V2 preference authority" 6 '.*' \
     "$ROOT/codex-rs/hepta-memory/src/preference_authority/tests.rs"
@@ -1767,7 +1822,7 @@ verify() {
   verify_production_durable_composition
   verify_durable_outcome_boundary
 
-  echo '{"schema":"hepta_architecture_v2_dependency_boundary_v1","status":"ready","contract_boundary":"hepta-contracts","contract_dependencies":0,"compatibility_shell":"hepta-core","forbidden_reverse_edges":46,"live_preference_authority":"unattached","trusted_preference_feedback_authority":"keyed-composed-transport-unattached","trusted_preference_transport":"unattached","trusted_preference_authority_composition":"keyed-durable-pinned-source","legacy_intuition_feedback_owner":"hepta-intelligence","legacy_intuition_planner_owner":"hepta-intelligence","capability_manifest_owner":"runtime-catalog-adapter","exact_admission_owner":"hepta-kernel","runtime_self_admission":"forbidden","identity_sealed_write_path":"retained-openat","process_write_reservation":"identity-global","cross_process_write_reservation":"advisory-prefix-identity-lock","exact_dispatch_selector":"executor-capability","production_tool_descriptor_inventory":41,"test_tool_descriptor_inventory":42,"production_exec_process":"quarantined","quarantined_process_descriptor":"high-non-read-only-destructive","production_disk_junk_audit":"test-only","backup_prune_deletion":"release-quarantined","mutation_transaction_evidence":"generalized-set","mutation_install_durability":"atomic-ambiguous-effect-recorded","provider_effect_plan":"pre-dispatch-canonical","provider_effect_ack":"durable-exact-before-terminal","provider_effect_recovery":"read-only-fail-closed","live_tts_effect":"private-byte-stage-before-intent-durable-ack","sealed_read_capability":"retained-fd-captured-bytes","production_unsealed_reads":"quarantined","production_live_native_mutations":"exact-receipt-quarantined","production_live_native_mutation_inventory":20,"production_outcome_composition":"durable-keyed-only","durable_schema":5,"durable_compatibility_schema":4,"durable_row_integrity":"hmac-sha256-v1","durable_integrity_key":"external-caller-supplied","durable_rollback_resistance":"external-monotonic-anchor-required","execution_intent_stage":"before-provider-invocation","execution_intent_terminal_resolution":"atomic-with-outcome-record","execution_intent_idempotency_domain":"v3","execution_intent_row_schema":4,"strict_terminal_evidence_field_inventory":80,"durable_sidecar_validation":"bounded-identity-recheck","durable_sidecar_validation_attempts":4,"test_inventory_binding":"test-attribute-plus-target-function","contracts_test_inventory":11,"intelligence_neuron_test_inventory":4,"intelligence_tool_candidate_test_inventory":4,"intelligence_feedback_test_inventory":4,"intelligence_planner_test_inventory":8,"intelligence_preference_test_inventory":8,"intelligence_trusted_preference_test_inventory":5,"memory_preference_authority_test_inventory":6,"memory_preference_test_inventory":35,"memory_durable_preference_test_inventory":19,"memory_durable_opening_security_test_inventory":7,"memory_durable_sidecar_lifecycle_test_inventory":2,"memory_outcome_test_inventory":50,"memory_durable_outcome_test_inventory":29,"memory_effect_ack_test_inventory":4,"memory_execution_intent_test_inventory":9,"memory_pending_outcome_intent_test_inventory":3,"memory_sync_outcome_writer_test_inventory":13,"runtime_neuron_test_inventory":8,"runtime_exact_safety_test_inventory":10,"runtime_execution_lease_test_inventory":5,"runtime_outcome_receipt_test_inventory":4,"runtime_outcome_flow_test_inventory":8,"runtime_outcome_sink_test_inventory":19,"runtime_provider_idempotency_test_inventory":2,"runtime_provider_effect_test_inventory":2,"runtime_resource_reservation_test_inventory":4,"runtime_capability_descriptor_test_inventory":4,"runtime_symlink_reservation_test_inventory":4,"runtime_process_reservation_test_inventory":8,"runtime_dispatch_selector_test_inventory":3,"runtime_native_mutation_test_inventory":8,"runtime_sealed_read_test_inventory":9,"runtime_cross_process_write_lock_test_inventory":4,"runtime_process_control_test_inventory":2,"runtime_maintenance_test_inventory":7,"durable_outcome_sink":"keyed-producer-intent-journal-exact-reconciliation","durable_outcome_database_open":"keyed-bootstrap-new-or-identity-bound-existing-private-filesystem","durable_preference_database_open":"bootstrap-new-or-existing-private-filesystem-keyed-capable"}'
+  echo '{"schema":"hepta_architecture_v2_dependency_boundary_v1","status":"ready","contract_boundary":"hepta-contracts","contract_dependencies":0,"compatibility_shell":"hepta-core","forbidden_reverse_edges":46,"live_preference_authority":"authenticated-native-http","trusted_preference_feedback_authority":"keyed-composed-live-hmac","trusted_preference_transport":"native-http-challenge-commit","trusted_preference_authority_composition":"keyed-durable-pinned-hmac-source","legacy_intuition_feedback_owner":"hepta-intelligence","legacy_intuition_planner_owner":"hepta-intelligence","capability_manifest_owner":"runtime-catalog-adapter","exact_admission_owner":"hepta-kernel","runtime_self_admission":"forbidden","identity_sealed_write_path":"retained-openat","process_write_reservation":"identity-global","cross_process_write_reservation":"advisory-prefix-identity-lock","exact_dispatch_selector":"executor-capability","production_tool_descriptor_inventory":41,"test_tool_descriptor_inventory":42,"production_exec_process":"quarantined","quarantined_process_descriptor":"high-non-read-only-destructive","production_disk_junk_audit":"test-only","backup_prune_deletion":"release-quarantined","mutation_transaction_evidence":"generalized-set","mutation_install_durability":"atomic-ambiguous-effect-recorded","provider_effect_plan":"pre-dispatch-canonical","provider_effect_ack":"durable-exact-before-terminal","provider_effect_recovery":"read-only-fail-closed","live_tts_effect":"private-byte-stage-before-intent-durable-ack","sealed_read_capability":"retained-fd-captured-bytes","production_unsealed_reads":"quarantined","production_live_native_mutations":"exact-receipt-quarantined","production_live_native_mutation_inventory":20,"production_outcome_composition":"durable-keyed-only","durable_schema":5,"durable_compatibility_schema":4,"durable_row_integrity":"hmac-sha256-v1","durable_integrity_key":"external-caller-supplied","durable_rollback_resistance":"external-monotonic-anchor-required","execution_intent_stage":"before-provider-invocation","execution_intent_terminal_resolution":"atomic-with-outcome-record","execution_intent_idempotency_domain":"v3","execution_intent_row_schema":4,"strict_terminal_evidence_field_inventory":80,"durable_sidecar_validation":"bounded-identity-recheck","durable_sidecar_validation_attempts":4,"test_inventory_binding":"test-attribute-plus-target-function","contracts_test_inventory":11,"intelligence_neuron_test_inventory":4,"intelligence_tool_candidate_test_inventory":4,"intelligence_feedback_test_inventory":4,"intelligence_planner_test_inventory":8,"intelligence_preference_test_inventory":8,"intelligence_trusted_preference_test_inventory":9,"memory_preference_authority_test_inventory":6,"memory_preference_test_inventory":35,"memory_durable_preference_test_inventory":19,"memory_durable_opening_security_test_inventory":7,"memory_durable_sidecar_lifecycle_test_inventory":2,"memory_outcome_test_inventory":50,"memory_durable_outcome_test_inventory":29,"memory_effect_ack_test_inventory":4,"memory_execution_intent_test_inventory":9,"memory_pending_outcome_intent_test_inventory":3,"memory_sync_outcome_writer_test_inventory":13,"runtime_neuron_test_inventory":8,"runtime_exact_safety_test_inventory":10,"runtime_execution_lease_test_inventory":5,"runtime_outcome_receipt_test_inventory":4,"runtime_outcome_flow_test_inventory":8,"runtime_outcome_sink_test_inventory":19,"runtime_provider_idempotency_test_inventory":2,"runtime_provider_effect_test_inventory":2,"runtime_resource_reservation_test_inventory":4,"runtime_capability_descriptor_test_inventory":4,"runtime_symlink_reservation_test_inventory":4,"runtime_process_reservation_test_inventory":8,"runtime_dispatch_selector_test_inventory":3,"runtime_native_mutation_test_inventory":8,"runtime_sealed_read_test_inventory":9,"runtime_cross_process_write_lock_test_inventory":4,"runtime_process_control_test_inventory":2,"runtime_maintenance_test_inventory":7,"durable_outcome_sink":"keyed-producer-intent-journal-exact-reconciliation","durable_outcome_database_open":"keyed-bootstrap-new-or-identity-bound-existing-private-filesystem","durable_preference_database_open":"bootstrap-new-or-existing-private-filesystem-keyed-capable"}'
 }
 
 expect_fixture_denied() {
@@ -1821,6 +1876,10 @@ self_test() (
   done
   cp "$ROOT/codex-rs/hepta-runtime/src/lib.rs" \
     "$fixture/codex-rs/hepta-runtime/src/lib.rs"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/preference_ingress.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/preference_ingress.rs"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/secure_key_file.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/secure_key_file.rs"
   mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
@@ -2288,6 +2347,20 @@ PY
   cp "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs" \
     "$fixture/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
 
+  printf '\nimpl TrustedPreferenceFeedbackSource for AllowAllPreferenceSource {}\n' >> \
+    "$fixture/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
+  expect_fixture_denied "$fixture" \
+    "Architecture V2 trusted preference adapter exposes a non-HMAC source implementation"
+  cp "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs" \
+    "$fixture/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
+
+  perl -0pi -e 's/mac\.verify_slice\(&proof\.0\)/Ok(())/' \
+    "$fixture/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
+  expect_fixture_denied "$fixture" \
+    "Architecture V2 trusted preference adapter is incomplete"
+  cp "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs" \
+    "$fixture/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
+
   perl -0pi -e 's/match sink\.record_execution_effect_ack\(&ack\)/match sink.record_untracked_effect(&ack)/' \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/provider_effect.rs"
   expect_fixture_denied "$fixture" \
@@ -2382,7 +2455,7 @@ PY
   expect_fixture_denied "$fixture" \
     "Architecture V2 sealed read provider reopened an authorized path"
 
-  echo '{"schema":"hepta_architecture_v2_dependency_boundary_self_test_v1","status":"ready","negative_fixtures":60,"test_attribute_function_pairing_enforced":true,"production_exec_process_quarantine_enforced":true,"process_metadata_enforced":true,"release_backup_prune_quarantine_enforced":true,"generalized_mutation_transaction_evidence_enforced":true,"atomic_mutation_ambiguity_enforced":true,"execution_intent_before_provider_enforced":true,"atomic_outcome_intent_resolution_enforced":true,"exact_provider_identity_enforced":true,"candidate_reference_digest_enforced":true,"trusted_preference_authority_enforced":true,"trusted_preference_composition_enforced":true,"trusted_preference_race_pin_enforced":true,"provider_effect_ack_enforced":true,"live_tts_staging_enforced":true,"fixed_tts_adapter_path_enforced":true,"tts_option_terminator_enforced":true,"strict_terminal_field_inventory_enforced":true,"strict_terminal_hash_enforced":true,"release_disk_audit_quarantine_enforced":true,"live_native_mutation_quarantine_enforced":true,"cross_process_write_lock_enforced":true,"sealed_read_capability_enforced":true,"sealed_read_production_quarantine_enforced":true,"sealed_read_provider_reopen_denied":true,"production_durable_composition_enforced":true,"durable_keyed_integrity_enforced":true,"durable_producer_intent_journal_enforced":true,"durable_opening_filesystem_enforced":true,"durable_sidecar_identity_recheck_enforced":true}'
+  echo '{"schema":"hepta_architecture_v2_dependency_boundary_self_test_v1","status":"ready","negative_fixtures":62,"test_attribute_function_pairing_enforced":true,"production_exec_process_quarantine_enforced":true,"process_metadata_enforced":true,"release_backup_prune_quarantine_enforced":true,"generalized_mutation_transaction_evidence_enforced":true,"atomic_mutation_ambiguity_enforced":true,"execution_intent_before_provider_enforced":true,"atomic_outcome_intent_resolution_enforced":true,"exact_provider_identity_enforced":true,"candidate_reference_digest_enforced":true,"trusted_preference_authority_enforced":true,"trusted_preference_composition_enforced":true,"trusted_preference_hmac_only_enforced":true,"trusted_preference_unauthenticated_source_denied":true,"trusted_preference_race_pin_enforced":true,"provider_effect_ack_enforced":true,"live_tts_staging_enforced":true,"fixed_tts_adapter_path_enforced":true,"tts_option_terminator_enforced":true,"strict_terminal_field_inventory_enforced":true,"strict_terminal_hash_enforced":true,"release_disk_audit_quarantine_enforced":true,"live_native_mutation_quarantine_enforced":true,"cross_process_write_lock_enforced":true,"sealed_read_capability_enforced":true,"sealed_read_production_quarantine_enforced":true,"sealed_read_provider_reopen_denied":true,"production_durable_composition_enforced":true,"durable_keyed_integrity_enforced":true,"durable_producer_intent_journal_enforced":true,"durable_opening_filesystem_enforced":true,"durable_sidecar_identity_recheck_enforced":true}'
 )
 
 [[ $# -eq 1 ]] || usage

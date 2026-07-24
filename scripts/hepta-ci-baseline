@@ -139,7 +139,7 @@ run_rust_backend() {
   budgeted_cargo ci-hepta-intelligence-preference-feedback-tests 600 \
     cargo test --locked --manifest-path "$MANIFEST" -q \
       -p hepta-intelligence explicit_preference_
-  assert_test_inventory "Architecture V2 trusted preference feedback" 5 \
+  assert_test_inventory "Architecture V2 trusted preference feedback" 9 \
     '.*' \
     "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs"
   budgeted_cargo ci-hepta-intelligence-trusted-preference-feedback-tests 600 \

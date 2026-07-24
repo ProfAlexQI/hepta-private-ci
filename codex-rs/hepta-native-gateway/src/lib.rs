@@ -6,9 +6,11 @@ mod gateway_options;
 mod http_transport;
 mod native_gateway;
 mod native_telegram;
+mod preference_ingress;
 mod provider_domain;
 mod route_registry;
 mod runtime_composition;
+mod secure_key_file;
 mod ui_domain;
 
 pub use canonical_manifest::canonical_manifest_json;

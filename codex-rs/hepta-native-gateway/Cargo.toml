@@ -21,7 +21,9 @@ anyhow = { workspace = true }
 codex-arg0 = { workspace = true, optional = true }
 codex-exec = { workspace = true, optional = true }
 hepta-core = { workspace = true }
+hepta-contracts = { workspace = true }
 hepta-gateway = { workspace = true }
+hepta-intelligence = { workspace = true }
 hepta-memory = { workspace = true }
 hepta-runtime = { workspace = true }
 libc = { workspace = true }
