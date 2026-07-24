@@ -35,11 +35,15 @@ app-server-test-client *args:
     cargo build -p codex-cli --bin hepta
     cargo run -p codex-app-server-test-client -- --hepta-bin ./target/debug/hepta "$@"
 
-# Format Rust and Python SDK code.
+# Format the repository-native Just and Rust sources.
 fmt:
-    cargo fmt -- --config imports_granularity=Item 2>/dev/null
-    uv run --frozen --project ../sdk/python --extra dev ruff check --fix --fix-only ../sdk/python
-    uv run --frozen --project ../sdk/python --extra dev ruff format ../sdk/python
+    just --unstable --fmt
+    cargo fmt -- --config imports_granularity=Item
+
+# Check repository-native Just and Rust formatting without modifying files.
+fmt-check:
+    just --unstable --fmt --check
+    cargo fmt -- --config imports_granularity=Item --check
 
 fix *args:
     cargo clippy --fix --tests --allow-dirty "$@"

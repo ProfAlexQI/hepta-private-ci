@@ -21,6 +21,7 @@ require_tool() {
 }
 
 verify_contract() {
+  require_tool awk
   require_tool git
   require_tool jq
   require_tool shasum
@@ -37,6 +38,16 @@ verify_contract() {
       dependency_mode:"compiled_not_linted",
       command:["rustup","run","1.93.0","cargo","clippy","--locked","--offline","--manifest-path","codex-rs/Cargo.toml","--all-targets","--no-deps","-p","hepta-cli","--","-D","warnings"],
       safety:{locked:true,offline:true,no_live:true,no_source_or_lockfile_write:true,build_artifact_write:true,no_dependency_install:true}
+    }
+    and .ci_v2_lint == {
+      status:"supported",
+      tool:"cargo-clippy",
+      entrypoint:"scripts/hepta-ci-baseline rust-backend",
+      budget_name:"ci-hepta-v2-crates-clippy",
+      max_seconds:1200,
+      selected_packages:["hepta-intelligence","hepta-memory","hepta-runtime"],
+      dependency_mode:"compiled_not_linted",
+      command:["cargo","clippy","--locked","--manifest-path","codex-rs/Cargo.toml","-q","-p","hepta-intelligence","-p","hepta-memory","-p","hepta-runtime","--tests","--no-deps","--","-D","warnings"]
     }
     and .toolchain == {channel:"1.93.0",required_components:["clippy"]}
     and .evidence.receipt_schema == "hepta_safe_lint_security_execution_receipt_v1"
@@ -68,6 +79,42 @@ verify_contract() {
   grep -Fq 'scripts/hepta-safe-lint-security-baseline" run' "$ROOT/scripts/hepta-ci-baseline"
   grep -Fq 'components: rustfmt, clippy' "$ROOT/.github/workflows/hepta-ci.yml"
   grep -Fq 'run: scripts/hepta-ci-baseline rust-backend' "$ROOT/.github/workflows/hepta-ci.yml"
+
+  local v2_ci_clippy_block expected_v2_ci_clippy_block
+  if [[ "$(
+    grep -Ec '^[[:space:]]+budgeted_cargo ci-hepta-v2-crates-clippy[[:space:]]' \
+      "$ROOT/scripts/hepta-ci-baseline"
+  )" != 1 ]]; then
+    echo "Hepta Architecture V2 CI Clippy freeze must have exactly one budgeted command" >&2
+    return 1
+  fi
+  v2_ci_clippy_block="$(
+    awk '
+      $0 == "  budgeted_cargo ci-hepta-v2-crates-clippy 1200 \\" {
+        capture = 1
+      }
+      capture {
+        print
+      }
+      capture && $0 == "      --tests --no-deps -- -D warnings" {
+        exit
+      }
+    ' "$ROOT/scripts/hepta-ci-baseline"
+  )"
+  expected_v2_ci_clippy_block="$(
+    cat <<'EOF'
+  budgeted_cargo ci-hepta-v2-crates-clippy 1200 \
+    cargo clippy --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence \
+      -p hepta-memory \
+      -p hepta-runtime \
+      --tests --no-deps -- -D warnings
+EOF
+  )"
+  if [[ "$v2_ci_clippy_block" != "$expected_v2_ci_clippy_block" ]]; then
+    echo "Hepta Architecture V2 CI Clippy command drifted from its safe-lint freeze" >&2
+    return 1
+  fi
 }
 
 report_contract() {
@@ -140,7 +187,13 @@ self_test() (
     "$fixture/scripts/hepta-ci-baseline"
   expect_fixture_denied "$fixture"
 
-  echo '{"schema":"hepta_safe_lint_security_baseline_self_test_v1","status":"ready","command_drift_denied":true,"scope_drift_denied":true,"lock_drift_denied":true,"toolchain_drift_denied":true,"false_ci_promotion_denied":true,"false_security_promotion_denied":true,"missing_ci_entrypoint_denied":true}'
+  make_fixture v2-ci-clippy-drift
+  perl -0pi -e \
+    's/--tests --no-deps -- -D warnings/--tests -- -D warnings/' \
+    "$fixture/scripts/hepta-ci-baseline"
+  expect_fixture_denied "$fixture"
+
+  echo '{"schema":"hepta_safe_lint_security_baseline_self_test_v1","status":"ready","command_drift_denied":true,"scope_drift_denied":true,"lock_drift_denied":true,"toolchain_drift_denied":true,"false_ci_promotion_denied":true,"false_security_promotion_denied":true,"missing_ci_entrypoint_denied":true,"v2_ci_clippy_drift_denied":true}'
 )
 
 validate_local_lane() {

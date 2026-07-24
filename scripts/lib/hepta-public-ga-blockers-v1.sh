@@ -10,6 +10,7 @@ hepta_expected_public_ga_blockers_json() {
     "channel_live_delivery_not_operator_approved",
     "release_artifact_pack_not_operator_approved",
     "external_public_release_not_operator_approved",
-    "control_ui_live_truth_not_available_on_active_legacy_schema"
+    "control_ui_live_truth_not_available_on_active_legacy_schema",
+    "control_ui_product_behavior_evidence_not_bound"
   ]'
 }

@@ -17,6 +17,7 @@ SCHEMA = "hepta_panic_debt_inventory_v2"
 SCANNER_VERSION = 1
 DEFAULT_ROOTS = [
     "codex-rs/hepta-cli",
+    "codex-rs/hepta-contracts",
     "codex-rs/hepta-core",
     "codex-rs/hepta-gateway",
     "codex-rs/hepta-intelligence",
@@ -64,7 +65,10 @@ def expected_scope() -> dict[str, Any]:
         "rust_files": "all *.rs recursively under each root",
         "only_ignored_path_component": "target",
         "production": "src Rust except test files and items requiring cfg(test)",
-        "test": "tests paths, *_tests.rs/tests.rs files, and items requiring cfg(test)",
+        "test": (
+            "tests paths, *_tests.rs/tests.rs/test_support.rs files, "
+            "and items requiring cfg(test)"
+        ),
         "generated_build": "build.rs",
         "fixture": "paths with a fixtures or generated component",
     }
@@ -257,7 +261,11 @@ def path_source_class(relative_path: str) -> str:
         return "generated_build"
     if "fixtures" in parts or "generated" in parts:
         return "fixture"
-    if "tests" in parts or path.name == "tests.rs" or path.name.endswith("_tests.rs"):
+    if (
+        "tests" in parts
+        or path.name in {"tests.rs", "test_support.rs"}
+        or path.name.endswith("_tests.rs")
+    ):
         return "test"
     if "src" in parts:
         return "production"

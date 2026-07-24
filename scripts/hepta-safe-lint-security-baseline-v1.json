@@ -43,13 +43,45 @@
       "no_dependency_install": true
     }
   },
+  "ci_v2_lint": {
+    "status": "supported",
+    "tool": "cargo-clippy",
+    "entrypoint": "scripts/hepta-ci-baseline rust-backend",
+    "budget_name": "ci-hepta-v2-crates-clippy",
+    "max_seconds": 1200,
+    "selected_packages": [
+      "hepta-intelligence",
+      "hepta-memory",
+      "hepta-runtime"
+    ],
+    "dependency_mode": "compiled_not_linted",
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "--manifest-path",
+      "codex-rs/Cargo.toml",
+      "-q",
+      "-p",
+      "hepta-intelligence",
+      "-p",
+      "hepta-memory",
+      "-p",
+      "hepta-runtime",
+      "--tests",
+      "--no-deps",
+      "--",
+      "-D",
+      "warnings"
+    ]
+  },
   "bindings": {
     "rust_toolchain_path": "codex-rs/rust-toolchain.toml",
     "rust_toolchain_sha256": "3e0fa7308a423309995753182d075dfff3e4bd6b891871c3f3b947f3e97699be",
     "cargo_lock_path": "codex-rs/Cargo.lock",
-    "cargo_lock_sha256": "0cbf16c0668168a51c4fc9b083a0d39d3e898b0dea5c91f5c00eda04f334e098",
+    "cargo_lock_sha256": "efe28119c12e677d474619edbad8d936322068cb0f52b67505b30069d9e788fc",
     "workspace_manifest_path": "codex-rs/Cargo.toml",
-    "workspace_manifest_sha256": "fb922c1e9c5a172505213f8040b82e6f927d01a3974104581e74538a0da7ea3a",
+    "workspace_manifest_sha256": "2681ba1813ddc978508f0ad811c352923f5a9018d0e80cdbbe8e05874dad2fe4",
     "package_manifest_path": "codex-rs/hepta-cli/Cargo.toml",
     "package_manifest_sha256": "7b3c9883e60a335070273fb3a653aebb4c3e7aba7be9bc224bdc52a66f5300d3"
   },

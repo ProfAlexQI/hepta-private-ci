@@ -26,15 +26,15 @@
     },
     "test": {
       "by_kind": {
-        "expect": 3594,
-        "panic": 47,
+        "expect": 4278,
+        "panic": 64,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
-        "unwrap": 300
+        "unwrap": 301
       },
-      "fingerprints_sha256": "457bc58b5da6ef0cd2c3a086588bdac3df120bca370e2f3e23152f5bb39dddb2",
-      "total": 3941
+      "fingerprints_sha256": "a6095cb62336438b3f9cfa3be862f93f12a8f9134e437b1a8c8645601f9f6844",
+      "total": 4643
     }
   },
   "limitations": [
@@ -727,18 +727,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "concurrency_task",
-      "content_sha256": "ef5fd22e7bdf19e1c8e671b11d10d80475e8bdf330cdf6f6cdd70e5f342b328e",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "bd7b9a251356d1c96bf725da6dabd0176f6b8ec794f191cbee92eb20470c8b28",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/runtime_kernel/types.rs",
-      "rationale": "Mutable runtime session state asserts that a just-inserted binding remains present.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "request_runtime_path",
       "content_sha256": "57176ff2136947cfc84fadbf067086e1dbffa3dca6914e8d9f97403abcbf797e",
       "disposition": "actionable",
@@ -1048,6 +1036,7 @@
     "production": "src Rust except test files and items requiring cfg(test)",
     "roots": [
       "codex-rs/hepta-cli",
+      "codex-rs/hepta-contracts",
       "codex-rs/hepta-core",
       "codex-rs/hepta-gateway",
       "codex-rs/hepta-intelligence",
@@ -1059,11 +1048,11 @@
       "codex-rs/hepta-runtime"
     ],
     "rust_files": "all *.rs recursively under each root",
-    "test": "tests paths, *_tests.rs/tests.rs files, and items requiring cfg(test)"
+    "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 1257,
-    "paths_and_classes_sha256": "27ac899974c7457ed64f3735fdb41001d8c5321b5d9cb8db835d19e6cabf5011"
+    "file_count": 1370,
+    "paths_and_classes_sha256": "9f0c667988c53d69cf38f08ce3fc9666f938af0095535149d613ded1f73f4d70"
   },
   "summary": {
     "actionable_high_risk_production_fingerprints": [
@@ -1074,29 +1063,29 @@
       "de438ec4d403b65830d1cf4ffe075519670e0b5dd9eeb839aed05510822f6c88"
     ],
     "by_kind": {
-      "expect": 3636,
-      "panic": 57,
+      "expect": 4319,
+      "panic": 74,
       "todo": 0,
       "unimplemented": 0,
       "unreachable": 26,
-      "unwrap": 305
+      "unwrap": 306
     },
     "by_risk": {
       "accepted": 47,
       "excluded_nonproduction": 0,
       "high": 5,
       "low": 0,
-      "medium": 31,
-      "test_only": 3941,
+      "medium": 30,
+      "test_only": 4643,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
       "generated_build": 0,
-      "production": 83,
-      "test": 3941
+      "production": 82,
+      "test": 4643
     },
-    "classification_sha256": "93c9175cdd0906c3f93852fe6cb5abdd9b8f53313c50f754d76b7c67a034f2ae",
-    "total": 4024
+    "classification_sha256": "bf3a75ffd93e7ac8a6186cccf954f54689df674474be035363356771829c46a7",
+    "total": 4725
   }
 }

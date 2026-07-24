@@ -29,6 +29,15 @@ require_tree_package() {
   fi
 }
 
+reject_tree_package() {
+  local tree_file="$1"
+  local package_name="$2"
+  if grep -Eq "^${package_name} v" "$tree_file"; then
+    echo "unexpected ${package_name} in ${tree_file}" >&2
+    exit 1
+  fi
+}
+
 reject_core_package() {
   local package_name="$1"
   if grep -Eq "^${package_name} v" "$core_tree"; then
@@ -37,18 +46,21 @@ reject_core_package() {
   fi
 }
 
-for package_name in hepta-gateway hepta-runtime hepta-intelligence hepta-kernel hepta-memory hepta-plugins; do
+for package_name in hepta-contracts hepta-gateway hepta-runtime hepta-intelligence hepta-kernel hepta-memory; do
   require_tree_package "$cli_tree" "$package_name"
 done
 
-for package_name in hepta-intelligence hepta-kernel hepta-memory hepta-plugins; do
+for package_name in hepta-contracts hepta-intelligence hepta-kernel hepta-memory; do
   require_tree_package "$runtime_tree" "$package_name"
 done
 
+reject_tree_package "$cli_tree" hepta-plugins
+reject_tree_package "$runtime_tree" hepta-plugins
 reject_core_package hepta-intelligence
 reject_core_package hepta-memory
 reject_core_package hepta-runtime
 reject_core_package hepta-kernel
+reject_core_package hepta-plugins
 
 source scripts/lib/hepta-route-parity-native-report-fixture.sh
 
@@ -141,6 +153,7 @@ report="$(jq -n \
     hepta_core_direct_memory_intelligence_dependency_count:0,
     hepta_core_dependency_boundary_ready:true,
     runtime_memory_intelligence_dependencies_ready:true,
+    plugin_dependency_quarantine_ready:true,
     memory_capability_endpoint:"/api/hepta-memory-capability-absorption-inventory",
     memory_surface_count:$memory.surface_count,
     absorbed_or_represented_count:$memory.absorbed_or_represented_count,

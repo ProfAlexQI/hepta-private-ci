@@ -1,0 +1,41 @@
+{
+  "schema_version": "hepta_state_machine_gate_families_v1",
+  "receipt_state_machine": [
+    "precondition",
+    "denial",
+    "receipt",
+    "persistence",
+    "retention",
+    "terminal"
+  ],
+  "template": "json_projection_denial_triplet_v1",
+  "families": [
+    {
+      "id": "packet-acceptance-receipt",
+      "executor": "scripts/hepta-packet-acceptance-receipt-gate-runner",
+      "spec_file": "scripts/hepta-packet-acceptance-receipt-gate-specs-v1.json",
+      "spec_schema": "hepta_packet_acceptance_receipt_gate_specs_v1",
+      "validation_schema": "hepta_packet_acceptance_receipt_gate_specs_validation_v1",
+      "spec_count": 3,
+      "fixed_surface_count": null
+    },
+    {
+      "id": "artifact-signing-receipt",
+      "executor": "scripts/hepta-artifact-signing-receipt-gate-runner",
+      "spec_file": "scripts/hepta-artifact-signing-receipt-gate-specs-v1.json",
+      "spec_schema": "hepta_artifact_signing_receipt_gate_specs_v1",
+      "validation_schema": "hepta_artifact_signing_receipt_gate_specs_validation_v1",
+      "spec_count": 3,
+      "fixed_surface_count": 18
+    },
+    {
+      "id": "operator-identity-session-replay-reinstatement",
+      "executor": "scripts/hepta-operator-identity-session-replay-reinstatement-gate-runner",
+      "spec_file": "scripts/hepta-operator-identity-session-replay-reinstatement-gate-specs-v1.json",
+      "spec_schema": "hepta_operator_identity_session_replay_reinstatement_gate_specs_v1",
+      "validation_schema": "hepta_operator_identity_session_replay_reinstatement_gate_specs_validation_v1",
+      "spec_count": 3,
+      "fixed_surface_count": 18
+    }
+  ]
+}

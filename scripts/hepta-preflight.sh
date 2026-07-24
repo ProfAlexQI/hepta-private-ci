@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 
 REPO_ROOT="$PWD"
 source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
+source "$REPO_ROOT/scripts/lib/hepta-v2-test-inventory.sh"
 
 MANIFEST="${HEPTA_MANIFEST:-${HEPTA_CODEX_MANIFEST:-codex-rs/Cargo.toml}}"
 NATIVE_MANIFEST="${HEPTA_NATIVE_MANIFEST:-apps/hepta-native/Cargo.toml}"
@@ -36,6 +37,10 @@ budgeted_cargo_test() {
     -- cargo test "$@"
 }
 
+assert_test_inventory() {
+  hepta_v2_assert_test_inventory "$@"
+}
+
 HEPTA_PREFLIGHT_CREATED_JSON_REPORT_CAPTURE_CACHE_DIR=0
 if [[ "${HEPTA_JSON_REPORT_CAPTURE_CACHE:-1}" != "0" \
   && -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" ]]; then
@@ -54,17 +59,271 @@ PREFLIGHT_RELEASE_TARGET_DIR="$(
 # hepta-preflight-resume: prelude-end
 
 echo "[hepta-preflight] fmt"
-cargo fmt --all --manifest-path "$MANIFEST" -- --check
+just fmt-check
 
 echo "[hepta-preflight] cargo check"
 cargo check --offline --manifest-path "$MANIFEST" -q \
+  -p hepta-contracts \
   -p hepta-core \
   -p hepta-intelligence \
+  -p hepta-kernel \
   -p hepta-memory \
   -p hepta-plugins \
   -p hepta-runtime \
   -p hepta-gateway \
   -p hepta-cli --bin hepta
+
+echo "[hepta-preflight] Architecture V2 contract boundary tests"
+assert_test_inventory "Architecture V2 stable contracts" 11 '.*' \
+  codex-rs/hepta-contracts/tests/stable_contracts.rs
+budgeted_cargo_test architecture-v2-contracts "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-contracts
+cargo clippy --offline --manifest-path "$MANIFEST" -q \
+  -p hepta-contracts --tests -- -D warnings
+echo "[hepta-preflight] Architecture V2 crate lint gates"
+cargo clippy --offline --manifest-path "$MANIFEST" -q \
+  -p hepta-intelligence \
+  -p hepta-memory \
+  -p hepta-runtime \
+  --tests --no-deps -- -D warnings
+
+echo "[hepta-preflight] Architecture V2 cognition/orchestration regression gates"
+assert_test_inventory "Architecture V2 intelligence neuron activation" 4 '.*' \
+  codex-rs/hepta-intelligence/src/neuron_activation/tests.rs
+budgeted_cargo_test architecture-v2-neuron-activation "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence neuron_activation
+assert_test_inventory "Architecture V2 tool candidate" 4 '.*' \
+  codex-rs/hepta-intelligence/src/tool_candidate.rs
+budgeted_cargo_test architecture-v2-tool-candidate "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence tool_candidate
+assert_test_inventory "Architecture V2 intuition feedback learner" 4 \
+  '.*' \
+  codex-rs/hepta-intelligence/src/intuition_feedback_learning/tests.rs
+budgeted_cargo_test architecture-v2-intuition-feedback-learning \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence \
+  intuition_feedback_learning
+assert_test_inventory "Architecture V2 intuition planner" 8 \
+  '.*' \
+  codex-rs/hepta-intelligence/src/intuition_planner/tests.rs
+budgeted_cargo_test architecture-v2-intuition-planner \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence \
+  intuition_planner
+assert_test_inventory "Architecture V2 explicit-preference reducer" 8 \
+  '.*' \
+  codex-rs/hepta-intelligence/src/preference_feedback/tests.rs
+budgeted_cargo_test architecture-v2-preference-feedback "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence explicit_preference_
+assert_test_inventory "Architecture V2 trusted preference feedback" 5 \
+  '.*' \
+  codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs
+budgeted_cargo_test architecture-v2-trusted-preference-feedback \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-intelligence \
+  trusted_preference_feedback
+assert_test_inventory "Architecture V2 kernel safety gate" 12 \
+  '.*' \
+  codex-rs/hepta-kernel/src/safety_gate/tests.rs \
+  codex-rs/hepta-kernel/src/safety_gate/admission_tests.rs
+budgeted_cargo_test architecture-v2-kernel-safety-gate "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-kernel safety_gate
+assert_test_inventory "Architecture V2 preference authority" 6 \
+  '.*' \
+  codex-rs/hepta-memory/src/preference_authority/tests.rs
+budgeted_cargo_test architecture-v2-preference-authority \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-memory \
+  preference_authority
+assert_test_inventory "Architecture V2 preference-CAS" 35 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/preference_cas.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/document.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_concurrency.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_opening.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/fixtures.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/legacy.rs
+assert_test_inventory "Architecture V2 durable preference-CAS" 19 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_concurrency.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_opening.rs \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs
+assert_test_inventory "Architecture V2 durable opening security" 7 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs
+assert_test_inventory "Architecture V2 durable sidecar lifecycle" 2 \
+  'unlinked_open_sidecar_.*' \
+  codex-rs/hepta-memory/src/durable/opening/filesystem.rs
+budgeted_cargo_test architecture-v2-durable-sidecar-lifecycle \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-memory \
+  unlinked_open_sidecar_
+budgeted_cargo_test architecture-v2-preference-cas "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-memory preference_cas
+assert_test_inventory "Architecture V2 outcome-store" 50 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/outcome_store.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/durable.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs
+assert_test_inventory "Architecture V2 durable outcome-store" 29 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/outcome_store/durable.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs \
+  codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs
+assert_test_inventory "Architecture V2 durable effect ACK" 4 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs
+assert_test_inventory "Architecture V2 durable execution intent" 9 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs
+assert_test_inventory "Architecture V2 sync durable outcome writer" 13 \
+  '.*' \
+  codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs
+budgeted_cargo_test architecture-v2-outcome-store "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-memory outcome_store
+assert_test_inventory "Architecture V2 runtime neuron hydration" 8 \
+  "$HEPTA_V2_RUNTIME_NEURON_TEST_PATTERN" \
+  codex-rs/hepta-runtime/src/query/tests.rs
+budgeted_cargo_test architecture-v2-runtime-neuron-activation \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib neuron_activation
+assert_test_inventory "Architecture V2 outcome-receipt" 4 \
+  'architecture_v2_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_terminal_outcome.rs
+budgeted_cargo_test architecture-v2-runtime-outcome-receipt \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_outcome_receipt_tests
+assert_test_inventory "Architecture V2 outcome-flow" 8 \
+  'architecture_v2_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_outcome_flow.rs
+budgeted_cargo_test architecture-v2-runtime-outcome-flow \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_outcome_flow_tests
+assert_test_inventory "Architecture V2 runtime outcome sink" 19 \
+  '.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/tests.rs
+budgeted_cargo_test architecture-v2-runtime-outcome-sink \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  'outcome_sink::tests'
+assert_test_inventory "Architecture V2 provider idempotency" 2 \
+  'architecture_v2_provider_idempotency_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_provider_idempotency.rs
+budgeted_cargo_test architecture-v2-runtime-provider-idempotency \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_provider_idempotency_
+assert_test_inventory "Architecture V2 exact-safety" 10 \
+  'architecture_v2_exact_(safety|admission)_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_exact_safety.rs
+budgeted_cargo_test architecture-v2-runtime-exact-safety \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_exact_
+assert_test_inventory "Architecture V2 execution-lease" 5 \
+  'architecture_v2_execution_lease_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_execution_lease.rs
+budgeted_cargo_test architecture-v2-runtime-execution-lease \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_execution_lease_
+assert_test_inventory "Architecture V2 resource-reservation" 4 \
+  'architecture_v2_resource_reservation_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_resource_reservation.rs
+budgeted_cargo_test architecture-v2-runtime-resource-reservation \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_resource_reservation_
+assert_test_inventory "Architecture V2 capability-descriptor" 4 \
+  'architecture_v2_capability_descriptor_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_capability_descriptor.rs
+budgeted_cargo_test architecture-v2-runtime-capability-descriptor \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_capability_descriptor_
+assert_test_inventory "Architecture V2 symlink-reservation" 4 \
+  'architecture_v2_symlink_reservation_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_symlink_reservation.rs
+budgeted_cargo_test architecture-v2-runtime-symlink-reservation \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_symlink_reservation_
+assert_test_inventory "Architecture V2 process-reservation" 8 \
+  'architecture_v2_process_reservation_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_process_reservation.rs
+budgeted_cargo_test architecture-v2-runtime-process-reservation \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_process_reservation_
+assert_test_inventory "Architecture V2 cross-process write lock" 4 \
+  '.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/cross_process_write_lock.rs
+budgeted_cargo_test architecture-v2-runtime-cross-process-write-lock \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  'cross_process_write_lock::tests'
+assert_test_inventory "Architecture V2 dispatch-selector" 3 \
+  'architecture_v2_dispatch_selector_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_dispatch_selector.rs
+budgeted_cargo_test architecture-v2-runtime-dispatch-selector \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_dispatch_selector_
+assert_test_inventory "Architecture V2 native-mutation" 8 \
+  'architecture_v2_native_mutation_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_native_mutation.rs
+budgeted_cargo_test architecture-v2-runtime-native-mutation \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_native_mutation_
+assert_test_inventory "Architecture V2 provider-effect ACK" 2 \
+  'architecture_v2_provider_effect_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_provider_effect.rs
+budgeted_cargo_test architecture-v2-runtime-provider-effect \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_provider_effect_
+assert_test_inventory "Architecture V2 sealed-read" 9 \
+  'architecture_v2_sealed_read_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_sealed_read.rs
+budgeted_cargo_test architecture-v2-runtime-sealed-read \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_sealed_read_
+assert_test_inventory "Architecture V2 process-control" 2 \
+  'architecture_v2_process_control_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_process_control.rs
+budgeted_cargo_test architecture-v2-runtime-process-control \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_process_control_
+assert_test_inventory "Architecture V2 maintenance-mutation" 7 \
+  'architecture_v2_maintenance_.*' \
+  codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_maintenance_mutation.rs
+budgeted_cargo_test architecture-v2-runtime-maintenance-mutation \
+  "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+  --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib \
+  architecture_v2_maintenance_
+for turn_coordinator_test in \
+  generic_read_only_tool_call_runs_through_tool_loop \
+  medium_risk_tool_requires_approval_until_granted \
+  quarantined_exec_intent_never_enters_the_production_tool_loop \
+  returns_and_validates_structured_tool_output \
+  exposes_sessions_memory_and_history_snapshots
+do
+  budgeted_cargo_test "architecture-v2-${turn_coordinator_test}" \
+    "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
+    --offline --manifest-path "$MANIFEST" -q -p hepta-runtime --lib "$turn_coordinator_test"
+done
 
 echo "[hepta-preflight] adapter behavior-equivalence gate"
 budgeted_cargo_test adapter-runtime-behavior-equivalence "$HEPTA_FOCUSED_TEST_MAX_SECONDS" \
@@ -1767,6 +2026,9 @@ scripts/hepta-json-report-capture-migration-inventory-gate.sh
 echo "[hepta-preflight] route gate dynamic count regression gate"
 scripts/hepta-route-gate-dynamic-count-regression-gate.sh
 
+echo "[hepta-preflight] state-machine gate runner self-test"
+scripts/hepta-state-machine-gate-runner-self-test
+
 echo "[hepta-preflight] suffix-ladder freeze"
 scripts/check-hepta-suffix-ladder-freeze.sh
 
@@ -1820,6 +2082,16 @@ scripts/hepta-watchdog-provenance-self-test.sh
 echo "[hepta-preflight] architecture hard budget verify/self-test"
 scripts/hepta-architecture-budget verify
 scripts/hepta-architecture-budget self-test
+
+echo "[hepta-preflight] safe lint and panic debt baseline verify/self-tests"
+scripts/hepta-safe-lint-security-baseline verify
+scripts/hepta-safe-lint-security-baseline self-test
+scripts/hepta-panic-debt-baseline verify
+scripts/hepta-panic-debt-baseline self-test
+
+echo "[hepta-preflight] Architecture V2 dependency boundary verify/self-test"
+scripts/hepta-v2-architecture-boundary verify
+scripts/hepta-v2-architecture-boundary self-test
 
 echo "[hepta-preflight] runtime crate-root source-set compatibility self-test"
 scripts/hepta-runtime-crate-root-source-set-self-test

@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MANIFEST="$ROOT/codex-rs/Cargo.toml"
+source "$ROOT/scripts/lib/hepta-v2-test-inventory.sh"
 
 usage() {
   echo "usage: scripts/hepta-ci-baseline <contract|contract-self-test|static|nightly-static|rust-backend|full-workspace>" >&2
@@ -34,6 +35,8 @@ run_static() {
   cd "$ROOT"
   run_static_gate architecture-budget-verify scripts/hepta-architecture-budget verify
   run_static_gate architecture-budget-self-test scripts/hepta-architecture-budget self-test
+  run_static_gate architecture-v2-boundary-verify scripts/hepta-v2-architecture-boundary verify
+  run_static_gate architecture-v2-boundary-self-test scripts/hepta-v2-architecture-boundary self-test
   run_static_gate safe-lint-security-verify scripts/hepta-safe-lint-security-baseline verify
   run_static_gate safe-lint-security-self-test scripts/hepta-safe-lint-security-baseline self-test
   run_static_gate panic-debt-verify scripts/hepta-panic-debt-baseline verify
@@ -44,6 +47,7 @@ run_static() {
   run_static_gate terminal-coverage-inventory scripts/hepta-preflight-terminal-coverage-inventory-gate.sh
   run_static_gate terminal-coverage-diagnostic scripts/hepta-preflight-terminal-coverage-diagnostic-contract-gate.sh
   run_static_gate jq-conditional-route-summary scripts/hepta-jq-conditional-route-summary-self-test
+  run_static_gate state-machine-gate-runner scripts/hepta-state-machine-gate-runner-self-test
   run_static_gate runtime-export-source-set scripts/hepta-runtime-crate-root-source-set-self-test
   run_static_gate immutable-release-provenance scripts/hepta-immutable-release-tree self-test
   run_static_gate active-binary-consistency scripts/hepta-active-binary-consistency-self-test.sh
@@ -70,8 +74,12 @@ budgeted_cargo() {
     -- "$@"
 }
 
+assert_test_inventory() {
+  hepta_v2_assert_test_inventory "$@"
+}
+
 run_rust_backend() {
-  require_tools cargo git perl shasum
+  require_tools cargo git perl rg shasum
   assert_lockfiles_clean
   budgeted_cargo ci-rustfmt 300 \
     cargo fmt --all --manifest-path "$MANIFEST" -- --check
@@ -79,13 +87,251 @@ run_rust_backend() {
     "$ROOT/scripts/hepta-safe-lint-security-baseline" run
   budgeted_cargo ci-backend-check 2400 \
     cargo check --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-contracts \
       -p hepta-core \
+      -p hepta-intelligence \
+      -p hepta-kernel \
       -p hepta-memory \
       -p hepta-plugins \
       -p hepta-runtime \
       -p hepta-gateway \
       -p hepta-native-gateway \
       -p hepta-cli --bin hepta
+  assert_test_inventory "Architecture V2 stable contracts" 11 '.*' \
+    "$ROOT/codex-rs/hepta-contracts/tests/stable_contracts.rs"
+  budgeted_cargo ci-hepta-contracts-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-contracts
+  budgeted_cargo ci-hepta-contracts-clippy 600 \
+    cargo clippy --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-contracts --tests -- -D warnings
+  budgeted_cargo ci-hepta-v2-crates-clippy 1200 \
+    cargo clippy --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence \
+      -p hepta-memory \
+      -p hepta-runtime \
+      --tests --no-deps -- -D warnings
+  assert_test_inventory "Architecture V2 intelligence neuron activation" 4 '.*' \
+    "$ROOT/codex-rs/hepta-intelligence/src/neuron_activation/tests.rs"
+  budgeted_cargo ci-hepta-intelligence-neuron-activation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence neuron_activation
+  assert_test_inventory "Architecture V2 tool candidate" 4 '.*' \
+    "$ROOT/codex-rs/hepta-intelligence/src/tool_candidate.rs"
+  budgeted_cargo ci-hepta-intelligence-tool-candidate-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence tool_candidate
+  assert_test_inventory "Architecture V2 intuition feedback learner" 4 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-intelligence/src/intuition_feedback_learning/tests.rs"
+  budgeted_cargo ci-hepta-intelligence-intuition-feedback-learning-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence intuition_feedback_learning
+  assert_test_inventory "Architecture V2 intuition planner" 8 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-intelligence/src/intuition_planner/tests.rs"
+  budgeted_cargo ci-hepta-intelligence-intuition-planner-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence intuition_planner
+  assert_test_inventory "Architecture V2 explicit-preference reducer" 8 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-intelligence/src/preference_feedback/tests.rs"
+  budgeted_cargo ci-hepta-intelligence-preference-feedback-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence explicit_preference_
+  assert_test_inventory "Architecture V2 trusted preference feedback" 5 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs"
+  budgeted_cargo ci-hepta-intelligence-trusted-preference-feedback-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-intelligence trusted_preference_feedback
+  assert_test_inventory "Architecture V2 kernel safety gate" 12 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-kernel/src/safety_gate/tests.rs" \
+    "$ROOT/codex-rs/hepta-kernel/src/safety_gate/admission_tests.rs"
+  budgeted_cargo ci-hepta-kernel-safety-gate-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-kernel safety_gate
+  assert_test_inventory "Architecture V2 preference authority" 6 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/preference_authority/tests.rs"
+  budgeted_cargo ci-hepta-memory-preference-authority-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-memory preference_authority
+  assert_test_inventory "Architecture V2 preference-CAS" 35 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/document.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_concurrency.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_opening.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/fixtures.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/legacy.rs"
+  assert_test_inventory "Architecture V2 durable preference-CAS" 19 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_concurrency.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_opening.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs"
+  assert_test_inventory "Architecture V2 durable opening security" 7 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs"
+  assert_test_inventory "Architecture V2 durable sidecar lifecycle" 2 \
+    'unlinked_open_sidecar_.*' \
+    "$ROOT/codex-rs/hepta-memory/src/durable/opening/filesystem.rs"
+  budgeted_cargo ci-hepta-memory-durable-sidecar-lifecycle-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-memory unlinked_open_sidecar_
+  budgeted_cargo ci-hepta-memory-preference-cas-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-memory preference_cas
+  assert_test_inventory "Architecture V2 outcome-store" 50 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/durable.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs"
+  assert_test_inventory "Architecture V2 durable outcome-store" 29 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/durable.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs"
+  assert_test_inventory "Architecture V2 durable effect ACK" 4 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs"
+  assert_test_inventory "Architecture V2 durable execution intent" 9 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs"
+  assert_test_inventory "Architecture V2 sync durable outcome writer" 13 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs"
+  budgeted_cargo ci-hepta-memory-outcome-store-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-memory outcome_store
+  assert_test_inventory "Architecture V2 runtime neuron hydration" 8 \
+    "$HEPTA_V2_RUNTIME_NEURON_TEST_PATTERN" \
+    "$ROOT/codex-rs/hepta-runtime/src/query/tests.rs"
+  budgeted_cargo ci-hepta-runtime-neuron-activation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib neuron_activation
+  assert_test_inventory "Architecture V2 outcome-receipt" 4 \
+    'architecture_v2_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_terminal_outcome.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-outcome-receipt-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_outcome_receipt_tests
+  assert_test_inventory "Architecture V2 outcome-flow" 8 \
+    'architecture_v2_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_outcome_flow.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-outcome-flow-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_outcome_flow_tests
+  assert_test_inventory "Architecture V2 runtime outcome sink" 19 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/tests.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-outcome-sink-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib 'outcome_sink::tests'
+  assert_test_inventory "Architecture V2 provider idempotency" 2 \
+    'architecture_v2_provider_idempotency_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_provider_idempotency.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-provider-idempotency-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_provider_idempotency_
+  assert_test_inventory "Architecture V2 exact-safety" 10 \
+    'architecture_v2_exact_(safety|admission)_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_exact_safety.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-exact-safety-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_exact_
+  assert_test_inventory "Architecture V2 execution-lease" 5 \
+    'architecture_v2_execution_lease_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_execution_lease.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-execution-lease-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_execution_lease_
+  assert_test_inventory "Architecture V2 resource-reservation" 4 \
+    'architecture_v2_resource_reservation_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_resource_reservation.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-resource-reservation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_resource_reservation_
+  assert_test_inventory "Architecture V2 capability-descriptor" 4 \
+    'architecture_v2_capability_descriptor_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_capability_descriptor.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-capability-descriptor-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_capability_descriptor_
+  assert_test_inventory "Architecture V2 symlink-reservation" 4 \
+    'architecture_v2_symlink_reservation_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_symlink_reservation.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-symlink-reservation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_symlink_reservation_
+  assert_test_inventory "Architecture V2 process-reservation" 8 \
+    'architecture_v2_process_reservation_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_process_reservation.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-process-reservation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_process_reservation_
+  assert_test_inventory "Architecture V2 cross-process write lock" 4 \
+    '.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/cross_process_write_lock.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-cross-process-write-lock-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib 'cross_process_write_lock::tests'
+  assert_test_inventory "Architecture V2 dispatch-selector" 3 \
+    'architecture_v2_dispatch_selector_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_dispatch_selector.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-dispatch-selector-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_dispatch_selector_
+  assert_test_inventory "Architecture V2 native-mutation" 8 \
+    'architecture_v2_native_mutation_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_native_mutation.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-native-mutation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_native_mutation_
+  assert_test_inventory "Architecture V2 provider-effect ACK" 2 \
+    'architecture_v2_provider_effect_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_provider_effect.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-provider-effect-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_provider_effect_
+  assert_test_inventory "Architecture V2 sealed-read" 9 \
+    'architecture_v2_sealed_read_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_sealed_read.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-sealed-read-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_sealed_read_
+  assert_test_inventory "Architecture V2 process-control" 2 \
+    'architecture_v2_process_control_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_process_control.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-process-control-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_process_control_
+  assert_test_inventory "Architecture V2 maintenance-mutation" 7 \
+    'architecture_v2_maintenance_.*' \
+    "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_maintenance_mutation.rs"
+  budgeted_cargo ci-hepta-runtime-architecture-v2-maintenance-mutation-tests 600 \
+    cargo test --locked --manifest-path "$MANIFEST" -q \
+      -p hepta-runtime --lib architecture_v2_maintenance_
+  local turn_coordinator_test
+  for turn_coordinator_test in \
+    generic_read_only_tool_call_runs_through_tool_loop \
+    medium_risk_tool_requires_approval_until_granted \
+    quarantined_exec_intent_never_enters_the_production_tool_loop \
+    returns_and_validates_structured_tool_output \
+    exposes_sessions_memory_and_history_snapshots
+  do
+    budgeted_cargo "ci-hepta-runtime-${turn_coordinator_test}" 600 \
+      cargo test --locked --manifest-path "$MANIFEST" -q \
+        -p hepta-runtime --lib "$turn_coordinator_test"
+  done
   budgeted_cargo ci-hepta-native-gateway-tests 2400 \
     cargo test --locked --manifest-path "$MANIFEST" -q \
       -p hepta-native-gateway

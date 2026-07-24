@@ -53,6 +53,38 @@ reject_literal() {
   fi
 }
 
+normalized_v2_inventory() {
+  local file="$1"
+  local line call
+  while IFS= read -r line; do
+    [[ "$line" == *'assert_test_inventory "Architecture V2 '* ]] || continue
+    call="$line"
+    while [[ "$line" == *'\' ]]; do
+      IFS= read -r line
+      call+=" $line"
+    done
+    printf '%s\n' "$call"
+  done <"$file" \
+    | sed -E 's#"\$ROOT/([^"]+)"#\1#g; s/[[:space:]]+//g'
+}
+
+verify_v2_inventory_parity() {
+  local ci_inventory preflight_inventory
+  ci_inventory="$(normalized_v2_inventory "$ROOT/scripts/hepta-ci-baseline")"
+  preflight_inventory="$(normalized_v2_inventory "$ROOT/scripts/hepta-preflight.sh")"
+  if [[ "$ci_inventory" != "$preflight_inventory" ]]; then
+    echo "Hepta CI and full preflight Architecture V2 test inventories drifted" >&2
+    diff -u \
+      <(printf '%s\n' "$preflight_inventory") \
+      <(printf '%s\n' "$ci_inventory") >&2 || true
+    return 1
+  fi
+  [[ "$(printf '%s\n' "$ci_inventory" | grep -c '^assert_test_inventory')" == 36 ]] || {
+    echo "Hepta Architecture V2 test inventory family count drifted" >&2
+    return 1
+  }
+}
+
 verify_contract() {
   command -v jq >/dev/null || {
     echo "missing Hepta CI contract tool: jq" >&2
@@ -176,6 +208,7 @@ verify_contract() {
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "successful platform receipt promotion eligibility"
 
   require_literal "$full" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
+  require_literal "$full" "components: rustfmt, clippy" "full preflight V2 Clippy component"
   require_literal "$full" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned full preflight Cargo cache action"
   require_exact_literal "$full" "          persist-credentials: false" "full checkout credential isolation"
   require_literal "$full" '${{ github.job }}' "full job-bound Cargo cache key"
@@ -189,6 +222,7 @@ verify_contract() {
   require_literal "$full" "HEPTA_PREFLIGHT_RELEASE=0" "release opt-out"
   require_literal "$full" "HEPTA_PREFLIGHT_NATIVE=1" "explicit native profile"
   require_literal "$full" "HEPTA_PREFLIGHT_RELEASE=1" "explicit release profile"
+  verify_v2_inventory_parity
 
   local action_ref
   while IFS= read -r action_ref; do
@@ -219,6 +253,7 @@ self_test() (
   cp "$ROOT/scripts/hepta-ci-baseline" "$tmp/scripts/hepta-ci-baseline"
   cp "$ROOT/scripts/hepta-ci-baseline-contract" "$tmp/scripts/hepta-ci-baseline-contract"
   cp "$ROOT/scripts/hepta-ci-materialize-upstream-intake" "$tmp/scripts/hepta-ci-materialize-upstream-intake"
+  cp "$ROOT/scripts/hepta-preflight.sh" "$tmp/scripts/hepta-preflight.sh"
 
   HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null
 
@@ -260,6 +295,15 @@ self_test() (
     echo "Hepta CI contract self-test accepted false safe lint CI evidence promotion" >&2
     return 1
   fi
+
+  perl -0pi -e \
+    's/Architecture V2 provider-effect ACK" 2/Architecture V2 provider-effect ACK" 3/' \
+    "$tmp/scripts/hepta-ci-baseline"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted V2 inventory drift" >&2
+    return 1
+  fi
+  cp "$ROOT/scripts/hepta-ci-baseline" "$tmp/scripts/hepta-ci-baseline"
 
   printf '\n      - run: git fetch upstream main\n' >>"$tmp/$full_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
@@ -357,7 +401,7 @@ self_test() (
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,missing_r3_ref_denied:true,misdirected_r3_ref_denied:true,misdirected_r3_ref_not_overwritten:true,clean_checkout_r3_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
 
 [[ $# -eq 1 ]] || usage

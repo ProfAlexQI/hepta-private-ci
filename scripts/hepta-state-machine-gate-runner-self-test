@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+FAMILY_FILE="$ROOT/scripts/hepta-state-machine-gate-families-v1.json"
+
+jq -e '
+  .schema_version == "hepta_state_machine_gate_families_v1"
+  and .template == "json_projection_denial_triplet_v1"
+  and (.families | length) == 3
+  and ([.families[].spec_count] | add) == 9
+  and ([.families[].fixed_surface_count] == [null, 18, 18])
+' "$FAMILY_FILE" >/dev/null
+
+while IFS=$'\t' read -r family_id executor validation_schema spec_count; do
+  output="$("$ROOT/$executor" --validate)"
+  jq -e \
+    --arg schema "$validation_schema" \
+    --argjson spec_count "$spec_count" '
+      .schema == $schema
+      and .status == "ready"
+      and .family_count == 1
+      and .spec_count == $spec_count
+    ' <<<"$output" >/dev/null
+  [[ "$(wc -l < "$ROOT/$executor" | tr -d ' ')" -le 6 ]]
+  grep -F 'hepta-state-machine-gate-runner' "$ROOT/$executor" >/dev/null
+done < <(
+  jq -r '.families[] | [.id, .executor, .validation_schema, .spec_count] | @tsv' "$FAMILY_FILE"
+)
+
+jq -e '
+  [.families[].spec_file] as $files
+  | ($files | length) == 3
+  and ($files | unique | length) == 3
+' "$FAMILY_FILE" >/dev/null
+
+echo "hepta-state-machine-gate-runner-self-test: PASS"

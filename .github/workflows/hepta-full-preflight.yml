@@ -43,7 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
         with:
           toolchain: 1.93.0
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Cache Cargo inputs and preflight targets
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
@@ -55,7 +55,7 @@ jobs:
             apps/hepta-native/target
           key: ${{ runner.os }}-hepta-full-v1-${{ github.job }}-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/rust-toolchain.toml', 'apps/hepta-native/Cargo.lock') }}
       - name: Install preflight tools
-        run: brew install jq ripgrep
+        run: brew install jq ripgrep just
       - name: Verify workflow contract
         run: scripts/hepta-ci-baseline contract
       - name: Materialize frozen upstream intake refs
