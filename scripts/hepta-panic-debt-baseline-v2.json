@@ -26,15 +26,15 @@
     },
     "test": {
       "by_kind": {
-        "expect": 4278,
+        "expect": 4330,
         "panic": 64,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 301
       },
-      "fingerprints_sha256": "a6095cb62336438b3f9cfa3be862f93f12a8f9134e437b1a8c8645601f9f6844",
-      "total": 4643
+      "fingerprints_sha256": "68ca188da5a11f193fec5fc9ca91577b876a83d6e4665f2c43192e3db6d35427",
+      "total": 4695
     }
   },
   "limitations": [
@@ -391,30 +391,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "0f822ffeaf14098396191c31e68d6de99df1ab97f3091561e1b77542dbecda44",
-      "disposition": "actionable",
-      "duplicate_ordinal": 1,
-      "fingerprint": "4fd9d4a4590e00e762478c58694b3b8803ae0fd8f93e0415100b2fc3df6217df",
-      "kind": "expect",
-      "path": "codex-rs/hepta-gateway/src/telegram_transport.rs",
-      "rationale": "Telegram send execution asserts request values after a separate preflight decision; planner drift could panic a live send path.",
-      "risk": "high",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "a40c4b7c8c969084d4a4d8a4a7220cb7d523f58a13e3a10d14f9a70aa3a4346a",
-      "disposition": "actionable",
-      "duplicate_ordinal": 1,
-      "fingerprint": "502de1b7615d43a99c53bdf0cd291490a74d38285b5addf9f9aacce72f0c8bd2",
-      "kind": "expect",
-      "path": "codex-rs/hepta-gateway/src/telegram_transport.rs",
-      "rationale": "Telegram send execution asserts request values after a separate preflight decision; planner drift could panic a live send path.",
-      "risk": "high",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "701e16096b4b215fac27f89845ecf14b3c856d361827c1930821b970bfa7af6f",
       "disposition": "accepted_invariant",
@@ -436,18 +412,6 @@
       "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "dc1aa90e767e4249a8b27d865fa0fd54c023ac83fff5476ba8436bea39868156",
-      "disposition": "actionable",
-      "duplicate_ordinal": 1,
-      "fingerprint": "65035c2fb122aa79f01fb469567239d0b0e932ea34950e7034c012fd535d277a",
-      "kind": "expect",
-      "path": "codex-rs/hepta-gateway/src/telegram_transport.rs",
-      "rationale": "Telegram send execution asserts request values after a separate preflight decision; planner drift could panic a live send path.",
-      "risk": "high",
       "source_class": "production"
     },
     {
@@ -727,18 +691,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "57176ff2136947cfc84fadbf067086e1dbffa3dca6914e8d9f97403abcbf797e",
-      "disposition": "actionable",
-      "duplicate_ordinal": 1,
-      "fingerprint": "bec8b72e0993142b82f9a7f80cfb5011f03eb1b63d2a6344461d0bc656433258",
-      "kind": "expect",
-      "path": "codex-rs/hepta-gateway/src/telegram_transport.rs",
-      "rationale": "Telegram send execution asserts request values after a separate preflight decision; planner drift could panic a live send path.",
-      "risk": "high",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "1e7bde3762d509c6bafd060c8da9b9b45ce6a26cbef633f618800bd1e505cb81",
       "disposition": "accepted_invariant",
@@ -856,18 +808,6 @@
       "path": "codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_readback_preview.rs",
       "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
       "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "persistence_serialization",
-      "content_sha256": "143907a8cc9f10c190f9ff51b60eaa8327a01cc8d4f900ea65ed3b8c1ac2f84e",
-      "disposition": "actionable",
-      "duplicate_ordinal": 1,
-      "fingerprint": "de438ec4d403b65830d1cf4ffe075519670e0b5dd9eeb839aed05510822f6c88",
-      "kind": "expect",
-      "path": "codex-rs/hepta-gateway/src/native_post.rs",
-      "rationale": "Persistence on a production native-post request path asserts a pending record derived through separate admission predicates.",
-      "risk": "high",
       "source_class": "production"
     },
     {
@@ -1051,19 +991,13 @@
     "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 1370,
-    "paths_and_classes_sha256": "9f0c667988c53d69cf38f08ce3fc9666f938af0095535149d613ded1f73f4d70"
+    "file_count": 1373,
+    "paths_and_classes_sha256": "b0cdb511c526138a2a27724ebb1ba8b23667112fbf4ab71acbc2b3377564f9e6"
   },
   "summary": {
-    "actionable_high_risk_production_fingerprints": [
-      "4fd9d4a4590e00e762478c58694b3b8803ae0fd8f93e0415100b2fc3df6217df",
-      "502de1b7615d43a99c53bdf0cd291490a74d38285b5addf9f9aacce72f0c8bd2",
-      "65035c2fb122aa79f01fb469567239d0b0e932ea34950e7034c012fd535d277a",
-      "bec8b72e0993142b82f9a7f80cfb5011f03eb1b63d2a6344461d0bc656433258",
-      "de438ec4d403b65830d1cf4ffe075519670e0b5dd9eeb839aed05510822f6c88"
-    ],
+    "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4319,
+      "expect": 4366,
       "panic": 74,
       "todo": 0,
       "unimplemented": 0,
@@ -1073,19 +1007,19 @@
     "by_risk": {
       "accepted": 47,
       "excluded_nonproduction": 0,
-      "high": 5,
+      "high": 0,
       "low": 0,
       "medium": 30,
-      "test_only": 4643,
+      "test_only": 4695,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
       "generated_build": 0,
-      "production": 82,
-      "test": 4643
+      "production": 77,
+      "test": 4695
     },
-    "classification_sha256": "bf3a75ffd93e7ac8a6186cccf954f54689df674474be035363356771829c46a7",
-    "total": 4725
+    "classification_sha256": "80c0b8d8f67c66ef59587b8ca0dfd097a3ccdac456b8b8b5b6b4300f14f8442f",
+    "total": 4772
   }
 }
