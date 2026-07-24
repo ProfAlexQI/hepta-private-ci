@@ -16,11 +16,20 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+mod safety_gate;
 mod telegram_config;
 mod telegram_cursor;
 mod telegram_production_guard;
 mod telegram_transport;
 
+pub use safety_gate::HeptaKernelAdmissionEvidence;
+pub use safety_gate::HeptaKernelExactCandidateBinding;
+pub use safety_gate::HeptaKernelPolicyEvidence;
+pub use safety_gate::HeptaKernelSafetyAdmission;
+pub use safety_gate::HeptaKernelSafetyAuthorization;
+pub use safety_gate::HeptaKernelSafetyGate;
+pub use safety_gate::HeptaKernelSafetyGateError;
+pub use safety_gate::admission_reason;
 pub use telegram_config::HeptaKernelTelegramConfigMetadata;
 pub use telegram_config::HeptaKernelTelegramConfigStatus;
 pub use telegram_config::HeptaKernelTelegramConfigStatusInput;
