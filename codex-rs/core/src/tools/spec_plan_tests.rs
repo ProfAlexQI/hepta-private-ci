@@ -24,6 +24,7 @@ use crate::tools::handlers::shell_spec::create_write_stdin_tool;
 use crate::tools::handlers::shell_spec::request_permissions_tool_description;
 use crate::tools::handlers::view_image_spec::ViewImageToolOptions;
 use crate::tools::handlers::view_image_spec::create_view_image_tool;
+use crate::tools::registry::ToolExposure;
 use crate::tools::registry::ToolRegistry;
 use codex_app_server_protocol::AppInfo;
 use codex_extension_api::ToolCall as ExtensionToolCall;
@@ -51,6 +52,7 @@ use codex_tools::JsonSchema;
 use codex_tools::JsonSchemaPrimitiveType;
 use codex_tools::JsonSchemaType;
 use codex_tools::REQUEST_PLUGIN_INSTALL_TOOL_NAME;
+use codex_tools::ResponsesApiNamespace;
 use codex_tools::ResponsesApiNamespaceTool;
 use codex_tools::ResponsesApiTool;
 use codex_tools::ResponsesApiWebSearchFilters;
@@ -77,20 +79,29 @@ fn extension_tool_executor(
     name: &str,
     description: &str,
 ) -> Arc<dyn ToolExecutor<ExtensionToolCall>> {
+    extension_tool_executor_with_exposure(ToolName::plain(name), description, ToolExposure::Direct)
+}
+
+fn extension_tool_executor_with_exposure(
+    tool_name: ToolName,
+    description: &str,
+    exposure: ToolExposure,
+) -> Arc<dyn ToolExecutor<ExtensionToolCall>> {
     struct SpecOnlyExtensionExecutor {
-        name: String,
+        tool_name: ToolName,
         description: String,
+        exposure: ToolExposure,
     }
 
     #[async_trait::async_trait]
     impl ToolExecutor<ExtensionToolCall> for SpecOnlyExtensionExecutor {
         fn tool_name(&self) -> ToolName {
-            ToolName::plain(self.name.as_str())
+            self.tool_name.clone()
         }
 
         fn spec(&self) -> Option<ToolSpec> {
-            Some(ToolSpec::Function(ResponsesApiTool {
-                name: self.name.clone(),
+            let tool = ResponsesApiTool {
+                name: self.tool_name.name.clone(),
                 description: self.description.clone(),
                 strict: true,
                 parameters: JsonSchema::object(
@@ -103,7 +114,19 @@ fn extension_tool_executor(
                 ),
                 output_schema: None,
                 defer_loading: None,
-            }))
+            };
+            Some(match &self.tool_name.namespace {
+                Some(namespace) => ToolSpec::Namespace(ResponsesApiNamespace {
+                    name: namespace.clone(),
+                    description: format!("Tools in the {namespace} namespace."),
+                    tools: vec![ResponsesApiNamespaceTool::Function(tool)],
+                }),
+                None => ToolSpec::Function(tool),
+            })
+        }
+
+        fn exposure(&self) -> ToolExposure {
+            self.exposure
         }
 
         async fn handle(
@@ -115,8 +138,9 @@ fn extension_tool_executor(
     }
 
     Arc::new(SpecOnlyExtensionExecutor {
-        name: name.to_string(),
+        tool_name,
         description: description.to_string(),
+        exposure,
     })
 }
 
@@ -2245,6 +2269,91 @@ fn code_mode_augments_builtin_tool_descriptions_with_typed_sample() {
         description,
         "View a local image from the filesystem (only use if given a full filepath by the user, and the image isn't already attached to the thread context within <image ...> tags).\n\nexec tool declaration:\n```ts\ndeclare const tools: { view_image(args: {\n  // Local filesystem path to an image file\n  path: string;\n}): Promise<{\n  // Image detail hint returned by view_image. Returns `high` for default resized behavior or `original` when original resolution is preserved.\n  detail: \"high\" | \"original\";\n  // Data URL for the loaded image.\n  image_url: string;\n}>; };\n```"
     );
+}
+
+#[cfg(feature = "code-mode-v8")]
+#[test]
+fn direct_model_only_namespaced_capability_stays_direct_and_outside_code_mode() {
+    for code_mode_only in [false, true] {
+        let model_info = model_info();
+        let mut features = Features::with_defaults();
+        features.enable(Feature::CodeMode);
+        if code_mode_only {
+            features.enable(Feature::CodeModeOnly);
+        }
+        let available_models = Vec::new();
+        let tools_config = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            available_models: &available_models,
+            features: &features,
+            image_generation_tool_auth_allowed: true,
+            web_search_mode: Some(WebSearchMode::Cached),
+            session_source: SessionSource::Cli,
+            permission_profile: &PermissionProfile::Disabled,
+            windows_sandbox_level: WindowsSandboxLevel::Disabled,
+        });
+        let current_time_name = ToolName::namespaced("clock", "curr_time");
+        let sleep_name = ToolName::namespaced("clock", "sleep");
+        let extension_tool_executors = vec![
+            extension_tool_executor_with_exposure(
+                current_time_name.clone(),
+                "Read the current time.",
+                ToolExposure::Direct,
+            ),
+            extension_tool_executor_with_exposure(
+                sleep_name.clone(),
+                "Pause execution.",
+                ToolExposure::DirectModelOnly,
+            ),
+        ];
+
+        let (tools, registry) = build_specs_with_inputs_for_test(
+            &tools_config,
+            /*mcp_tools*/ None,
+            /*deferred_mcp_tools*/ None,
+            /*discoverable_tools*/ None,
+            &extension_tool_executors,
+            &[],
+        );
+
+        assert_eq!(
+            (
+                registry.tool_exposure(&current_time_name),
+                registry.tool_exposure(&sleep_name),
+            ),
+            (
+                Some(ToolExposure::Direct),
+                Some(ToolExposure::DirectModelOnly),
+            )
+        );
+        assert_eq!(
+            namespace_function_names(&tools, "clock"),
+            if code_mode_only {
+                vec!["sleep".to_string()]
+            } else {
+                vec!["curr_time".to_string(), "sleep".to_string()]
+            }
+        );
+
+        let ToolSpec::Freeform(exec) = find_tool(&tools, "exec") else {
+            panic!("expected code mode exec tool");
+        };
+        assert!(!exec.description.contains("clock_sleep"));
+        if code_mode_only {
+            assert!(exec.description.contains("clock_curr_time"));
+        } else {
+            assert!(
+                find_namespace_function_tool(&tools, "clock", "curr_time")
+                    .description
+                    .contains("clock_curr_time")
+            );
+            assert!(
+                !find_namespace_function_tool(&tools, "clock", "sleep")
+                    .description
+                    .contains("clock_sleep")
+            );
+        }
+    }
 }
 
 #[cfg(feature = "code-mode-v8")]

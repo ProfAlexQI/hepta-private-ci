@@ -132,22 +132,26 @@ fn build_model_visible_specs_and_registry(
     let mut specs = Vec::new();
     let mut seen_tool_names = HashSet::new();
     for executor in &executors {
-        if !seen_tool_names.insert(executor.tool_name()) {
+        let tool_name = executor.tool_name();
+        if !seen_tool_names.insert(tool_name.clone()) {
             continue;
         }
-        if executor.exposure().is_direct()
+        let exposure = executor.exposure();
+        if exposure.is_direct()
+            && !is_hidden_by_code_mode_only(config, &tool_name, exposure)
             && let Some(spec) = executor.spec()
         {
-            specs.push(spec_for_model_request(config, executor.exposure(), spec));
+            specs.push(spec_for_model_request(config, &tool_name, exposure, spec));
         }
     }
-    specs.extend(hosted_specs);
+    specs.extend(hosted_specs.into_iter().filter(|spec| {
+        !is_hidden_by_code_mode_only(config, &ToolName::plain(spec.name()), ToolExposure::Direct)
+    }));
 
     let registry = ToolRegistry::from_tools(executors);
     let model_visible_specs = merge_into_namespaces(specs)
         .into_iter()
         .filter(|spec| config.namespace_tools || !matches!(spec, ToolSpec::Namespace(_)))
-        .filter(|spec| !is_hidden_by_code_mode_only(config, &registry, spec))
         .collect();
 
     (model_visible_specs, registry)
@@ -155,18 +159,21 @@ fn build_model_visible_specs_and_registry(
 
 fn spec_for_model_request(
     config: &ToolsConfig,
+    tool_name: &ToolName,
     exposure: ToolExposure,
     spec: ToolSpec,
 ) -> ToolSpec {
     #[cfg(feature = "code-mode-v8")]
     if config.code_mode_enabled
         && exposure != ToolExposure::DirectModelOnly
-        && codex_code_mode::is_code_mode_nested_tool(spec.name())
+        && codex_code_mode::is_code_mode_nested_tool(&codex_tools::code_mode_name_for_tool_name(
+            tool_name,
+        ))
     {
         return codex_tools::augment_tool_spec_for_code_mode(spec);
     }
 
-    let _ = (config, exposure);
+    let _ = (config, tool_name, exposure);
     spec
 }
 
@@ -217,26 +224,22 @@ fn agent_type_description(config: &ToolsConfig, default_agent_type_description: 
 
 fn is_hidden_by_code_mode_only(
     config: &ToolsConfig,
-    registry: &ToolRegistry,
-    spec: &ToolSpec,
+    tool_name: &ToolName,
+    exposure: ToolExposure,
 ) -> bool {
     #[cfg(not(feature = "code-mode-v8"))]
     {
-        let _ = (config, registry, spec);
+        let _ = (config, tool_name, exposure);
         false
     }
 
     #[cfg(feature = "code-mode-v8")]
     {
-        if !config.code_mode_only_enabled || !codex_code_mode::is_code_mode_nested_tool(spec.name())
-        {
-            return false;
-        }
-
-        let exposure = registry
-            .tool_exposure(&ToolName::plain(spec.name()))
-            .unwrap_or(ToolExposure::Direct);
-        exposure != ToolExposure::DirectModelOnly
+        config.code_mode_only_enabled
+            && exposure != ToolExposure::DirectModelOnly
+            && codex_code_mode::is_code_mode_nested_tool(
+                &codex_tools::code_mode_name_for_tool_name(tool_name),
+            )
     }
 }
 
