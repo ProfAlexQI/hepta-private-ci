@@ -228,18 +228,17 @@ fn add_sample_graph_links(atoms: &mut [MemoryUnit]) {
         .iter()
         .find(|atom| atom.kind == MemoryUnitKind::TaskFact)
         .map(|atom| atom.id.clone());
-    if let Some(task_id) = task_id {
-        if let Some(preference) = atoms
+    if let Some(task_id) = task_id
+        && let Some(preference) = atoms
             .iter_mut()
             .find(|atom| atom.kind == MemoryUnitKind::Preference)
-        {
-            preference.links.push(hepta_core::MemoryLink {
-                target_id: task_id,
-                kind: MemoryLinkKind::WorkflowAdjacency,
-                weight_ppm: 700_000,
-                reason: "preference drives atom-pipeline implementation priority".into(),
-            });
-        }
+    {
+        preference.links.push(hepta_core::MemoryLink {
+            target_id: task_id,
+            kind: MemoryLinkKind::WorkflowAdjacency,
+            weight_ppm: 700_000,
+            reason: "preference drives atom-pipeline implementation priority".into(),
+        });
     }
 }
 

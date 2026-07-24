@@ -240,7 +240,7 @@ fn prompt_context_nodes_from_hits(recall_hits: &[HybridRecallHit]) -> Vec<Memory
                     .map(citation_for_source_span)
                     .unwrap_or_else(|| "source:unknown".into()),
                 summary: truncate_summary(&hit.summary, 140),
-                score_ppm: (hit.scores.final_score.max(0.0).min(1.0) * 1_000_000.0) as u32,
+                score_ppm: (hit.scores.final_score.clamp(0.0, 1.0) * 1_000_000.0) as u32,
             }
         })
         .collect()

@@ -5,6 +5,8 @@
 //! feedback policy, routing/eval fixtures, and eventually the semantic router,
 //! feedback learner, neuron lifecycle, and intuition planner.
 
+mod intuition_feedback_learning;
+mod intuition_planner;
 mod memory_activation_cutover_gate;
 mod memory_atom_pipeline;
 mod memory_hybrid_recall;
@@ -20,6 +22,10 @@ mod memory_runtime_handoff;
 mod memory_runtime_store_readback;
 mod memory_temporal_graph;
 mod memory_turn_dispatch_gate;
+mod neuron_activation;
+mod preference_feedback;
+mod tool_candidate;
+mod trusted_preference_feedback;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -44,6 +50,8 @@ use hepta_core::TopicShiftKind;
 use serde::Deserialize;
 use serde::Serialize;
 
+pub use intuition_feedback_learning::*;
+pub use intuition_planner::*;
 pub use memory_activation_cutover_gate::*;
 pub use memory_atom_pipeline::*;
 pub use memory_hybrid_recall::*;
@@ -59,6 +67,10 @@ pub use memory_runtime_handoff::*;
 pub use memory_runtime_store_readback::*;
 pub use memory_temporal_graph::*;
 pub use memory_turn_dispatch_gate::*;
+pub use neuron_activation::*;
+pub use preference_feedback::*;
+pub use tool_candidate::*;
+pub use trusted_preference_feedback::*;
 
 pub const GOLDEN_EVAL_SESSION_ID: &str = "hepta-golden-intelligence-eval";
 pub const STRESS_EVAL_SESSION_ID: &str = "hepta-stress-intelligence-eval";

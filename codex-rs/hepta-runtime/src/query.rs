@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use hepta_core::ApprovalRequirement;
 use hepta_core::ContextRecallAvailability;
 use hepta_core::ContextRecallBundle;
 use hepta_core::ContextRecallItem;
@@ -27,14 +26,11 @@ use hepta_core::NeuronCompressionReport;
 use hepta_core::NeuronId;
 use hepta_core::NeuronLink;
 use hepta_core::NeuronLinkKind;
-use hepta_core::RiskTier;
 use hepta_core::SessionId;
-use hepta_core::SkillActivationDecision;
 use hepta_core::SkillPrior;
 use hepta_core::TopicActivationScore;
 use hepta_core::TopicGraphEdgeKind;
 use hepta_core::TopicId;
-use hepta_core::TopicLabel;
 use hepta_core::TopicRoutingDecision;
 use hepta_core::TopicSession;
 use hepta_core::TopicSessionStatus;
@@ -46,8 +42,13 @@ use hepta_core::TranscriptQueryReport;
 use hepta_core::TranscriptRange;
 use hepta_core::TranscriptSpanRef;
 use hepta_core::WorkflowPrior;
+use hepta_intelligence::INTUITION_FEEDBACK_LEARNER_COUNT_KEY as FEEDBACK_LEARNER_COUNT_KEY;
 use hepta_intelligence::IntuitionCalibrationFeedbackSummary;
 use hepta_intelligence::IntuitionCalibrationTargetSummary;
+use hepta_intelligence::IntuitionCapabilityView;
+use hepta_intelligence::IntuitionPlan;
+use hepta_intelligence::IntuitionPlanInput;
+use hepta_intelligence::IntuitionPolicyBinding;
 use hepta_intelligence::LearnedSemanticRouterEvidence;
 use hepta_intelligence::MemoryKgAdapterClientReport;
 use hepta_intelligence::MemoryKgAdapterConfigEnvReport;
@@ -67,24 +68,26 @@ use hepta_intelligence::MemoryKgShadowRankComparisonReport;
 use hepta_intelligence::MemoryKgShadowRankDriftReport;
 use hepta_intelligence::MemoryKgShadowRankReport;
 use hepta_intelligence::MemoryKgWriteCandidateReport;
-use hepta_intelligence::SEMANTIC_ROUTER_LAST_SIGNAL_KEY;
+use hepta_intelligence::NeuronActivationEvidenceCounts;
+use hepta_intelligence::NeuronActivationInput;
 use hepta_intelligence::SEMANTIC_ROUTER_LEARNED_KEY;
-use hepta_intelligence::SEMANTIC_ROUTER_NET_DELTA_KEY;
 use hepta_intelligence::TopicAwareModelFeedbackOutcome;
 use hepta_intelligence::TopicAwareModelFeedbackRecord;
 use hepta_intelligence::TopicAwareModelFeedbackSummary;
 use hepta_intelligence::TopicRouteShellPatch;
-use hepta_intelligence::compute_intuition_feedback_delta;
+use hepta_intelligence::apply_intuition_feedback_to_topic_sessions;
+use hepta_intelligence::compute_neuron_activations;
+use hepta_intelligence::estimate_intuition_feedback_confidence;
 use hepta_intelligence::evaluate_intelligence_semantic_expectations;
 use hepta_intelligence::format_intuition_feedback_outcome;
 use hepta_intelligence::intuition_calibration_feedback_summary;
 use hepta_intelligence::intuition_calibration_skill_targets;
 use hepta_intelligence::intuition_calibration_workflow_targets;
 use hepta_intelligence::intuition_feedback_confidence_shift;
+use hepta_intelligence::intuition_feedback_weight_delta;
 use hepta_intelligence::is_learned_feedback_contrast_case;
 use hepta_intelligence::learned_feedback_contrast_expected_signal_direction;
 use hepta_intelligence::learned_feedback_contrast_focus;
-use hepta_intelligence::learned_semantic_terms_for_feedback;
 use hepta_intelligence::memory_atom_pipeline_sample_report;
 use hepta_intelligence::memory_kg_adapter_client_report;
 use hepta_intelligence::memory_kg_adapter_config_env_report;
@@ -105,6 +108,8 @@ use hepta_intelligence::memory_kg_shadow_rank_drift_report;
 use hepta_intelligence::memory_kg_shadow_rank_report;
 use hepta_intelligence::memory_kg_write_candidate_report;
 use hepta_intelligence::neuron_lifecycle_health_summary;
+use hepta_intelligence::plan_intuition;
+use hepta_intelligence::reduce_intuition_feedback_neurons;
 use hepta_intelligence::semantic_score_from_counts;
 use hepta_intelligence::summarize_topic_aware_model_feedback;
 use serde::Deserialize;
@@ -114,7 +119,6 @@ use crate::EventRecord;
 use crate::MemorySnapshot;
 use crate::RuntimeKernel;
 use crate::SessionSnapshot;
-use crate::ToolDescriptor;
 
 pub const TURN_CONTEXT_RECALL_SELECTED_SNIPPET_ENVELOPE_VERSION: u32 = 1;
 
@@ -226,10 +230,6 @@ pub(crate) const PROVENANCE_INTUITION_NEURON_LIMIT: usize = 3;
 pub(crate) const PROVENANCE_INTUITION_SKILL_LIMIT: usize = 3;
 const LOW_TRUST_RANKED_ITEM_CONFIDENCE_THRESHOLD: f32 = 0.50;
 const LOW_RECENCY_RANKED_ITEM_RECENCY_THRESHOLD: f32 = 0.50;
-const FEEDBACK_LEARNER_COUNT_KEY: &str = "feedback.learning.count";
-const FEEDBACK_LEARNER_NET_DELTA_KEY: &str = "feedback.learning.net_weight_delta";
-const FEEDBACK_LEARNER_LAST_OUTCOME_KEY: &str = "feedback.learning.last_outcome";
-
 use self::topic_graph::bootstrap_topic_graph_edge;
 #[cfg(test)]
 use self::topic_graph::bootstrap_topic_graph_edge_count;
@@ -240,15 +240,11 @@ use self::topic_graph::hydrate_topic_session_graph_edges;
 use self::topic_graph::project_topic_sessions_with_graph_edges;
 use self::topic_graph::upsert_bootstrap_topic_graph_edge;
 
-mod bootstrap_neuron_activation_summary;
-mod bootstrap_neuron_activation_support;
-mod bootstrap_neuron_propagation;
 mod context_recall_provider_rollup;
 mod context_recall_selected_snippet_envelope;
 mod context_recall_support;
 mod context_recall_turn_handoff;
 mod event_digest_rollup;
-mod neuron_activation_overview_support;
 mod session_activity_rollup;
 mod topic_graph;
 mod transcript_query_rollup;
@@ -950,13 +946,6 @@ struct BootstrapTopicGraphRouteCandidate {
     reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct BootstrapNeuronSeed {
-    topic_session: TopicSession,
-    neuron: HeptaNeuron,
-    direct_score: f32,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RuntimeTranscriptQueryOverview {
     pub report: TranscriptQueryReport,
@@ -1332,25 +1321,16 @@ impl RuntimeKernel {
         if user_intent.trim().is_empty() {
             return Err(HeptaError("user intent cannot be empty".into()));
         }
-        let weight_delta = match outcome {
-            IntuitionFeedbackOutcome::Accepted => 0.12,
-            IntuitionFeedbackOutcome::ExecutedSuccess => 0.18,
-            IntuitionFeedbackOutcome::Corrected => 0.04,
-            IntuitionFeedbackOutcome::Ignored => -0.03,
-            IntuitionFeedbackOutcome::Rejected => -0.18,
-            IntuitionFeedbackOutcome::ExecutedFailed => -0.22,
-            IntuitionFeedbackOutcome::UserOverride => -0.10,
-            IntuitionFeedbackOutcome::ToolFailed => -0.08,
-            IntuitionFeedbackOutcome::UnsafeBlocked => -0.16,
-        };
+        let weight_delta = intuition_feedback_weight_delta(outcome);
         let created_at_unix_ms = current_unix_ms()?;
-        let confidence_before = self.estimate_intuition_feedback_confidence(
-            session_id,
-            skill_id,
-            workflow_id,
+        let records = self.intuition_feedback_for_session(session_id)?;
+        let confidence_before = estimate_intuition_feedback_confidence(
+            &records,
             &source_topic_ids,
             &source_neuron_ids,
-        )?;
+            skill_id,
+            workflow_id,
+        );
         let confidence_after = (confidence_before + weight_delta).clamp(0.0, 1.0);
         let record = IntuitionFeedbackRecord {
             decision_id: Some(format!(
@@ -1384,7 +1364,19 @@ impl RuntimeKernel {
             created_at_unix_ms,
         };
         self.push_intuition_feedback_record(record.clone())?;
-        self.apply_intuition_feedback_learning(session_id, &record)?;
+        {
+            let mut guard = self
+                .topic_session_state
+                .lock()
+                .map_err(|_| HeptaError("topic session state mutex poisoned".into()))?;
+            apply_intuition_feedback_to_topic_sessions(session_id, &record, &mut guard.sessions);
+        }
+        let updated_neurons = reduce_intuition_feedback_neurons(
+            session_id,
+            &record,
+            self.stored_neurons_for_session(session_id)?,
+        );
+        self.upsert_neurons_for_session(session_id, updated_neurons)?;
         Ok(record)
     }
 
@@ -1451,179 +1443,6 @@ impl RuntimeKernel {
     ) -> Result<Vec<TopicAwareModelFeedbackSummary>, HeptaError> {
         let records = self.model_router_feedback_for_session(session_id)?;
         Ok(summarize_topic_aware_model_feedback(&records))
-    }
-
-    fn estimate_intuition_feedback_confidence(
-        &self,
-        session_id: &str,
-        skill_id: Option<&str>,
-        workflow_id: Option<&str>,
-        source_topic_ids: &[TopicId],
-        source_neuron_ids: &[NeuronId],
-    ) -> Result<f32, HeptaError> {
-        let records = self.intuition_feedback_for_session(session_id)?;
-        let topic_id = source_topic_ids.first();
-        let neuron_id = source_neuron_ids.first();
-        let delta =
-            compute_intuition_feedback_delta(&records, topic_id, neuron_id, skill_id, workflow_id);
-
-        Ok((0.50 + delta).clamp(0.0, 1.0))
-    }
-
-    fn apply_intuition_feedback_learning(
-        &self,
-        session_id: &str,
-        record: &IntuitionFeedbackRecord,
-    ) -> Result<(), HeptaError> {
-        let learned_terms = learned_semantic_terms_for_feedback(record);
-        self.apply_feedback_learning_to_topic_sessions(session_id, record, &learned_terms)?;
-        self.apply_feedback_learning_to_neurons(session_id, record, &learned_terms)?;
-        Ok(())
-    }
-
-    fn apply_feedback_learning_to_topic_sessions(
-        &self,
-        session_id: &str,
-        record: &IntuitionFeedbackRecord,
-        learned_terms: &[String],
-    ) -> Result<(), HeptaError> {
-        let source_topic_ids = record
-            .source_topic_ids
-            .iter()
-            .map(|topic_id| topic_id.0.as_str())
-            .collect::<BTreeSet<_>>();
-        let mut guard = self
-            .topic_session_state
-            .lock()
-            .map_err(|_| HeptaError("topic session state mutex poisoned".into()))?;
-
-        for topic_session in guard.sessions.iter_mut().filter(|topic_session| {
-            topic_session
-                .linked_surface_session_ids
-                .iter()
-                .any(|linked| linked.0 == session_id)
-                && (source_topic_ids.is_empty()
-                    || source_topic_ids.contains(topic_session.topic_id.0.as_str())
-                    || matches!(topic_session.status, TopicSessionStatus::Active))
-        }) {
-            bootstrap_planner::merge_bootstrap_topic_session_semantic_hints(
-                &mut topic_session.entities,
-                learned_terms,
-            );
-            increment_entity_usize(&mut topic_session.entities, FEEDBACK_LEARNER_COUNT_KEY, 1);
-            accumulate_entity_f32(
-                &mut topic_session.entities,
-                FEEDBACK_LEARNER_NET_DELTA_KEY,
-                record.weight_delta,
-            );
-            accumulate_entity_f32(
-                &mut topic_session.entities,
-                SEMANTIC_ROUTER_NET_DELTA_KEY,
-                record.weight_delta,
-            );
-            topic_session.entities.insert(
-                FEEDBACK_LEARNER_LAST_OUTCOME_KEY.into(),
-                format_intuition_feedback_outcome(record.outcome).into(),
-            );
-            topic_session
-                .entities
-                .insert(SEMANTIC_ROUTER_LEARNED_KEY.into(), "true".into());
-            if let Some(term) = learned_terms.first() {
-                topic_session
-                    .entities
-                    .insert(SEMANTIC_ROUTER_LAST_SIGNAL_KEY.into(), term.clone());
-            }
-        }
-
-        Ok(())
-    }
-
-    fn apply_feedback_learning_to_neurons(
-        &self,
-        session_id: &str,
-        record: &IntuitionFeedbackRecord,
-        learned_terms: &[String],
-    ) -> Result<(), HeptaError> {
-        let source_topic_ids = record
-            .source_topic_ids
-            .iter()
-            .map(|topic_id| topic_id.0.as_str())
-            .collect::<BTreeSet<_>>();
-        let source_neuron_ids = record
-            .source_neuron_ids
-            .iter()
-            .map(|neuron_id| neuron_id.0.as_str())
-            .collect::<BTreeSet<_>>();
-        let mut updated = Vec::new();
-
-        for mut neuron in self.stored_neurons_for_session(session_id)? {
-            let target_neuron = source_neuron_ids.contains(neuron.neuron_id.0.as_str());
-            let target_topic = source_topic_ids.contains(neuron.topic_id.0.as_str());
-            if !target_neuron && !target_topic {
-                continue;
-            }
-
-            let confidence_delta = record.weight_delta * 0.35;
-            let freshness_delta = record.weight_delta * 0.25;
-            neuron.confidence = (neuron.confidence + confidence_delta).clamp(0.0, 1.0);
-            neuron.freshness = (neuron.freshness + freshness_delta).clamp(0.0, 1.0);
-            neuron.staleness_score = (neuron.staleness_score - freshness_delta).clamp(0.0, 1.0);
-            neuron.neuron_revision = neuron.neuron_revision.saturating_add(1);
-            neuron.last_refresh_reason = Some(format!(
-                "feedback-learning:{}:{:+.2}",
-                format_intuition_feedback_outcome(record.outcome),
-                record.weight_delta,
-            ));
-            neuron.source_evidence_digest.get_or_insert_with(|| {
-                format!(
-                    "feedback:{}:{}",
-                    session_id,
-                    record.decision_id.as_deref().unwrap_or("untracked")
-                )
-            });
-            increment_entity_usize(&mut neuron.entity_state, FEEDBACK_LEARNER_COUNT_KEY, 1);
-            accumulate_entity_f32(
-                &mut neuron.entity_state,
-                FEEDBACK_LEARNER_NET_DELTA_KEY,
-                record.weight_delta,
-            );
-            neuron
-                .entity_state
-                .insert(SEMANTIC_ROUTER_LEARNED_KEY.into(), "true".into());
-            if !learned_terms.is_empty() {
-                neuron.entity_state.insert(
-                    SEMANTIC_ROUTER_LAST_SIGNAL_KEY.into(),
-                    learned_terms
-                        .iter()
-                        .take(4)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(","),
-                );
-            }
-            if record.weight_delta > 0.0 {
-                let preference = format!(
-                    "feedback-confirmed:{}",
-                    record
-                        .skill_id
-                        .as_deref()
-                        .or(record.workflow_id.as_deref())
-                        .unwrap_or("intuition")
-                );
-                if !neuron.stable_preferences.contains(&preference) {
-                    neuron.stable_preferences.push(preference);
-                }
-            } else if let Some(reason) = record.reason.as_deref() {
-                let open_loop = format!("feedback-review:{}", reason);
-                if !neuron.open_loops.contains(&open_loop) {
-                    neuron.open_loops.push(open_loop);
-                }
-            }
-
-            updated.push(neuron);
-        }
-
-        self.upsert_neurons_for_session(session_id, updated)
     }
 
     pub fn provenance_overview(
@@ -2820,18 +2639,20 @@ impl RuntimeKernel {
             Vec::new()
         };
 
-        let activations = neuron_activation_overview_support::build_bootstrap_activations(
+        let activations = compute_neuron_activations(NeuronActivationInput {
             query_text,
-            &topic_sessions.topic_sessions,
-            &compressed_neurons,
-            &routing.decision.active_topic_session_ids,
-            &routing.decision.activation_scores,
-            recent_entry_count,
-            transcript_matched_count,
-            durable_memory_hit_count,
-            summary_hit_count,
-            neuron_limit,
-        );
+            topic_sessions: &topic_sessions.topic_sessions,
+            neurons: &compressed_neurons,
+            active_topic_session_ids: &routing.decision.active_topic_session_ids,
+            activation_scores: &routing.decision.activation_scores,
+            evidence_counts: NeuronActivationEvidenceCounts {
+                recent_entry_count,
+                transcript_matched_count,
+                durable_memory_hit_count,
+                summary_hit_count,
+            },
+            limit: neuron_limit,
+        });
 
         Ok(RuntimeNeuronActivationOverview {
             session_id: session_id.to_string(),
@@ -3135,6 +2956,15 @@ impl RuntimeKernel {
         };
         let active_model = self.model_selection()?.active;
         let registered_tools = self.tools.descriptors();
+        let capabilities = registered_tools
+            .iter()
+            .map(|tool| IntuitionCapabilityView {
+                name: tool.name.clone(),
+                risk_tier: tool.risk_tier,
+                execution_metadata: tool.execution_metadata,
+                default_approval_requirement: tool.default_approval_requirement,
+            })
+            .collect::<Vec<_>>();
         let policy_bindings = registered_tools
             .iter()
             .map(|tool| {
@@ -3145,8 +2975,8 @@ impl RuntimeKernel {
                         tool_name: tool.name.clone(),
                         risk_tier: tool.risk_tier,
                     })
-                    .map(|decision| IntuitionToolPolicyBinding {
-                        tool_name: tool.name.clone(),
+                    .map(|decision| IntuitionPolicyBinding {
+                        capability_name: tool.name.clone(),
                         requirement: decision.requirement,
                         reason: decision.reason,
                         matched_rule_id: decision.matched_rule_id,
@@ -3155,25 +2985,19 @@ impl RuntimeKernel {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| HeptaError(err.0))?;
         let intuition_feedback = self.intuition_feedback_for_session(session_id)?;
-        let workflow_priors = build_bootstrap_workflow_priors(
+        let IntuitionPlan {
+            workflow_priors,
+            skill_decisions,
+        } = plan_intuition(IntuitionPlanInput {
             user_intent,
-            &routing.decision.activation_scores,
-            &activation.activations,
-            &compressed_neurons,
-            &intuition_feedback,
-            skill_limit,
-        );
-        let skill_decisions = build_bootstrap_skill_decisions(
-            user_intent,
-            &routing.decision.activation_scores,
-            &activation.activations,
-            &compressed_neurons,
-            &workflow_priors,
-            &intuition_feedback,
-            &registered_tools,
-            &policy_bindings,
-            skill_limit,
-        );
+            topic_scores: &routing.decision.activation_scores,
+            activations: &activation.activations,
+            compressed_neurons: &compressed_neurons,
+            intuition_feedback: &intuition_feedback,
+            capabilities: &capabilities,
+            policy_bindings: &policy_bindings,
+            limit: skill_limit,
+        });
         let suggested_skill_count = skill_decisions.len();
         let bundle = IntuitionBundle {
             request: IntuitionRequest {
@@ -3459,71 +3283,6 @@ fn compute_bootstrap_topic_score(
     }
 }
 
-fn compute_bootstrap_propagated_score(source_direct_score: f32, link_strength: f32) -> f32 {
-    (source_direct_score * link_strength * 0.20).min(0.18)
-}
-
-fn compute_bootstrap_inhibition_score(source_direct_score: f32, link_strength: f32) -> f32 {
-    (source_direct_score * link_strength * 0.26).min(0.22)
-}
-
-fn collect_bootstrap_direct_seeds(
-    topic_sessions: &[TopicSession],
-    compressed_neurons: &[HeptaNeuron],
-    active_topic_session_ids: &[String],
-    activation_scores: &[TopicActivationScore],
-    recent_entry_count: usize,
-    transcript_matched_count: usize,
-    durable_memory_hit_count: usize,
-    summary_hit_count: usize,
-) -> Vec<BootstrapNeuronSeed> {
-    let mut topic_session_by_id = topic_sessions
-        .iter()
-        .cloned()
-        .map(|topic_session| (topic_session.topic_session_id.clone(), topic_session))
-        .collect::<BTreeMap<_, _>>();
-    let neuron_by_topic_id = compressed_neurons
-        .iter()
-        .cloned()
-        .map(|neuron| (neuron.topic_id.0.clone(), neuron))
-        .collect::<BTreeMap<_, _>>();
-
-    active_topic_session_ids
-        .iter()
-        .filter_map(|active_id| topic_session_by_id.remove(active_id))
-        .filter_map(|topic_session| {
-            let neuron = neuron_by_topic_id.get(&topic_session.topic_id.0)?.clone();
-            let direct_score = activation_scores
-                .iter()
-                .find(|score| score.topic_id == topic_session.topic_id)
-                .map(|score| score.score)
-                .unwrap_or_else(|| {
-                    compute_bootstrap_direct_score(
-                        recent_entry_count,
-                        transcript_matched_count,
-                        durable_memory_hit_count,
-                        summary_hit_count,
-                    )
-                });
-            (direct_score > 0.0).then_some(BootstrapNeuronSeed {
-                topic_session,
-                neuron,
-                direct_score,
-            })
-        })
-        .collect()
-}
-
-fn build_bootstrap_neuron_activation(
-    seed: &BootstrapNeuronSeed,
-    direct_seeds: &[BootstrapNeuronSeed],
-    inhibition_marker: Option<&'static str>,
-) -> NeuronActivation {
-    let sources =
-        bootstrap_neuron_activation_support::collect(seed, direct_seeds, inhibition_marker);
-    bootstrap_neuron_activation_summary::build(seed, sources)
-}
-
 fn aggregate_intuition_transcript_spans(
     decision: &TopicRoutingDecision,
     activations: &[NeuronActivation],
@@ -3564,24 +3323,6 @@ fn apply_topic_route_shell_patch(
     if let Some(suffix) = patch.explanation_suffix.as_deref() {
         route.explanation = format!("{}; {}", route.explanation, suffix);
     }
-}
-
-fn increment_entity_usize(entities: &mut BTreeMap<String, String>, key: &str, amount: usize) {
-    let next = entities
-        .get(key)
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(0)
-        .saturating_add(amount);
-    entities.insert(key.to_string(), next.to_string());
-}
-
-fn accumulate_entity_f32(entities: &mut BTreeMap<String, String>, key: &str, amount: f32) {
-    let next = entities
-        .get(key)
-        .and_then(|value| value.parse::<f32>().ok())
-        .unwrap_or(0.0)
-        + amount;
-    entities.insert(key.to_string(), format!("{next:.4}"));
 }
 
 fn runtime_intuition_calibration_target(
@@ -3636,691 +3377,6 @@ fn validate_probability_metric(name: &str, value: Option<f32>) -> Result<(), Hep
         }
     }
     Ok(())
-}
-
-fn build_bootstrap_workflow_priors(
-    user_intent: &str,
-    topic_scores: &[TopicActivationScore],
-    activations: &[NeuronActivation],
-    compressed_neurons: &[HeptaNeuron],
-    intuition_feedback: &[IntuitionFeedbackRecord],
-    limit: usize,
-) -> Vec<WorkflowPrior> {
-    if limit == 0 {
-        return Vec::new();
-    }
-
-    topic_scores
-        .iter()
-        .take(limit)
-        .map(|score| {
-            let neuron_score = activations
-                .iter()
-                .find(|activation| activation.topic_id == score.topic_id)
-                .map(|activation| activation.final_score)
-                .unwrap_or(score.score);
-            let neuron = compressed_neurons
-                .iter()
-                .find(|neuron| neuron.topic_id == score.topic_id);
-            let neuron_prior = neuron.and_then(|neuron| neuron.workflow_priors.first());
-            let neuron_policy = neuron
-                .map(|neuron| neuron.compression_policy_version.as_str())
-                .filter(|policy| !policy.trim().is_empty())
-                .unwrap_or("none");
-            let ranked_workflow = rank_intuition_workflow_candidate(
-                user_intent,
-                score,
-                neuron_prior,
-                &default_intuition_workflow_registry(),
-            );
-            let base_score = neuron_prior
-                .map(|prior| ((score.score + neuron_score + prior.score) / 3.0).clamp(0.0, 1.0))
-                .unwrap_or_else(|| ((score.score + neuron_score) / 2.0).clamp(0.0, 1.0));
-            let feedback_delta = compute_intuition_feedback_delta(
-                intuition_feedback,
-                Some(&score.topic_id),
-                neuron.map(|neuron| &neuron.neuron_id),
-                None,
-                Some(&ranked_workflow.workflow_id),
-            );
-
-            WorkflowPrior {
-                workflow_id: ranked_workflow.workflow_id,
-                score: (base_score + ranked_workflow.rank_bonus + feedback_delta).clamp(0.0, 1.0),
-                exists_in_registry: ranked_workflow.registry_binding.exists_in_registry,
-                missing_capability: ranked_workflow.registry_binding.missing_capability,
-                requires_confirmation: ranked_workflow.registry_binding.requires_confirmation,
-                action_mode: ranked_workflow.registry_binding.action_mode,
-                source_topic_ids: vec![score.topic_id.clone()],
-                source_neuron_ids: neuron
-                    .map(|neuron| vec![neuron.neuron_id.clone()])
-                    .unwrap_or_default(),
-                reason: Some(format!(
-                    "workflow registry ranked a prior for topic '{}' (routing {:.2}, neuron {:.2}, registry_rank {:.2}, prior {}, feedback {:+.2}, neuron_policy {}, {})",
-                    score.topic_label.0,
-                    score.score,
-                    neuron_score,
-                    ranked_workflow.registry_affinity,
-                    neuron_prior
-                        .map(|prior| format!("{:.2}", prior.score))
-                        .unwrap_or_else(|| "none".into()),
-                    feedback_delta,
-                    neuron_policy,
-                    ranked_workflow.registry_binding.reason,
-                )),
-            }
-        })
-        .collect()
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct WorkflowDescriptor {
-    workflow_id: &'static str,
-    label: &'static str,
-    keywords: &'static [&'static str],
-    requires_confirmation: bool,
-    action_mode: IntuitionActionMode,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct RankedIntuitionWorkflowCandidate {
-    workflow_id: String,
-    registry_binding: IntuitionWorkflowRegistryBinding,
-    registry_affinity: f32,
-    rank_bonus: f32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct IntuitionWorkflowRegistryBinding {
-    exists_in_registry: bool,
-    missing_capability: Option<String>,
-    requires_confirmation: bool,
-    action_mode: IntuitionActionMode,
-    reason: String,
-}
-
-fn default_intuition_workflow_registry() -> Vec<WorkflowDescriptor> {
-    vec![
-        WorkflowDescriptor {
-            workflow_id: "workflow:memory-review",
-            label: "Memory and provenance review",
-            keywords: &[
-                "memory",
-                "recall",
-                "context",
-                "provenance",
-                "adaptive",
-                "remember",
-            ],
-            requires_confirmation: false,
-            action_mode: IntuitionActionMode::Prepare,
-        },
-        WorkflowDescriptor {
-            workflow_id: "workflow:engineering-change",
-            label: "Engineering implementation lane",
-            keywords: &[
-                "rust",
-                "worker",
-                "pipeline",
-                "implementation",
-                "code",
-                "router",
-                "neuron",
-                "intelligence",
-                "hepta",
-                "lane",
-                "agent",
-            ],
-            requires_confirmation: false,
-            action_mode: IntuitionActionMode::Prepare,
-        },
-        WorkflowDescriptor {
-            workflow_id: "workflow:file-inspection",
-            label: "File inspection and evidence gathering",
-            keywords: &[
-                "read",
-                "inspect",
-                "open",
-                "show",
-                "cat",
-                "file",
-                "architecture",
-            ],
-            requires_confirmation: false,
-            action_mode: IntuitionActionMode::Prepare,
-        },
-        WorkflowDescriptor {
-            workflow_id: "workflow:file-change",
-            label: "File mutation planning",
-            keywords: &[
-                "write",
-                "create",
-                "append",
-                "overwrite",
-                "save",
-                "edit",
-                "patch",
-                "release notes",
-            ],
-            requires_confirmation: true,
-            action_mode: IntuitionActionMode::SuggestOnly,
-        },
-        WorkflowDescriptor {
-            workflow_id: "workflow:tool-smoke-test",
-            label: "Low-risk tool smoke test",
-            keywords: &["echo", "repeat", "smoke test", "test tool"],
-            requires_confirmation: false,
-            action_mode: IntuitionActionMode::Prepare,
-        },
-    ]
-}
-
-fn rank_intuition_workflow_candidate(
-    user_intent: &str,
-    score: &TopicActivationScore,
-    neuron_prior: Option<&WorkflowPrior>,
-    registry: &[WorkflowDescriptor],
-) -> RankedIntuitionWorkflowCandidate {
-    if let Some(prior) =
-        neuron_prior.filter(|prior| !prior.workflow_id.starts_with("workflow-bootstrap:"))
-    {
-        let binding = bind_intuition_workflow_to_registry(&prior.workflow_id, registry);
-        return RankedIntuitionWorkflowCandidate {
-            workflow_id: prior.workflow_id.clone(),
-            registry_affinity: if binding.exists_in_registry { 1.0 } else { 0.0 },
-            rank_bonus: if binding.exists_in_registry {
-                0.10
-            } else {
-                0.0
-            },
-            registry_binding: binding,
-        };
-    }
-
-    let mut candidates = registry
-        .iter()
-        .map(|descriptor| {
-            let affinity = score_workflow_descriptor_for_intent(descriptor, user_intent, score);
-            (descriptor, affinity)
-        })
-        .filter(|(_, affinity)| *affinity > 0.0)
-        .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| {
-        right
-            .1
-            .total_cmp(&left.1)
-            .then_with(|| left.0.workflow_id.cmp(right.0.workflow_id))
-    });
-
-    if let Some((descriptor, affinity)) = candidates.first() {
-        let binding = bind_intuition_workflow_to_registry(descriptor.workflow_id, registry);
-        return RankedIntuitionWorkflowCandidate {
-            workflow_id: descriptor.workflow_id.to_string(),
-            registry_binding: binding,
-            registry_affinity: *affinity,
-            rank_bonus: (affinity * 0.10).min(0.10),
-        };
-    }
-
-    let fallback_id = neuron_prior
-        .map(|prior| prior.workflow_id.clone())
-        .unwrap_or_else(|| format!("workflow-bootstrap:{}", score.topic_id.0));
-    RankedIntuitionWorkflowCandidate {
-        workflow_id: fallback_id.clone(),
-        registry_binding: bind_intuition_workflow_to_registry(&fallback_id, registry),
-        registry_affinity: 0.0,
-        rank_bonus: 0.0,
-    }
-}
-
-fn score_workflow_descriptor_for_intent(
-    descriptor: &WorkflowDescriptor,
-    user_intent: &str,
-    score: &TopicActivationScore,
-) -> f32 {
-    let haystack = format!(
-        "{} {} {}",
-        user_intent.to_ascii_lowercase(),
-        score.topic_label.0.to_ascii_lowercase(),
-        score.matched_terms.join(" ").to_ascii_lowercase(),
-    );
-    let matched_count = descriptor
-        .keywords
-        .iter()
-        .filter(|keyword| haystack.contains(**keyword))
-        .count();
-    if matched_count == 0 {
-        0.0
-    } else {
-        ((matched_count as f32) * 0.18 + score.score * 0.20).min(1.0)
-    }
-}
-
-fn bind_intuition_workflow_to_registry(
-    workflow_id: &str,
-    registry: &[WorkflowDescriptor],
-) -> IntuitionWorkflowRegistryBinding {
-    if let Some(descriptor) = registry
-        .iter()
-        .find(|descriptor| descriptor.workflow_id == workflow_id)
-    {
-        return IntuitionWorkflowRegistryBinding {
-            exists_in_registry: true,
-            missing_capability: None,
-            requires_confirmation: descriptor.requires_confirmation,
-            action_mode: descriptor.action_mode,
-            reason: format!(
-                "bound to workflow registry entry '{}' ({}, action={}, requires_confirmation={})",
-                descriptor.workflow_id,
-                descriptor.label,
-                format_intuition_action_mode(descriptor.action_mode),
-                descriptor.requires_confirmation,
-            ),
-        };
-    }
-
-    IntuitionWorkflowRegistryBinding {
-        exists_in_registry: false,
-        missing_capability: Some("workflow_registry_binding_pending".into()),
-        requires_confirmation: true,
-        action_mode: IntuitionActionMode::SuggestOnly,
-        reason: format!(
-            "no workflow registry entry matched '{}'; prior remains suggest-only",
-            workflow_id,
-        ),
-    }
-}
-
-fn build_bootstrap_skill_decisions(
-    user_intent: &str,
-    topic_scores: &[TopicActivationScore],
-    activations: &[NeuronActivation],
-    compressed_neurons: &[HeptaNeuron],
-    workflow_priors: &[WorkflowPrior],
-    intuition_feedback: &[IntuitionFeedbackRecord],
-    registered_tools: &[ToolDescriptor],
-    policy_bindings: &[IntuitionToolPolicyBinding],
-    limit: usize,
-) -> Vec<SkillActivationDecision> {
-    if limit == 0 {
-        return Vec::new();
-    }
-
-    topic_scores
-        .iter()
-        .enumerate()
-        .take(limit)
-        .map(|(index, score)| {
-            let matching_activation = activations
-                .iter()
-                .find(|activation| activation.topic_id == score.topic_id);
-            let neuron_ids = matching_activation
-                .map(|activation| vec![activation.neuron_id.clone()])
-                .unwrap_or_default();
-            let workflow_id = workflow_priors
-                .iter()
-                .find(|prior| prior.source_topic_ids.contains(&score.topic_id))
-                .or_else(|| workflow_priors.get(index))
-                .map(|prior| prior.workflow_id.clone());
-            let neuron = compressed_neurons
-                .iter()
-                .find(|neuron| neuron.topic_id == score.topic_id);
-            let skill_prior = neuron.and_then(|neuron| neuron.skill_priors.first());
-            let neuron_policy = neuron
-                .map(|neuron| neuron.compression_policy_version.as_str())
-                .filter(|policy| !policy.trim().is_empty())
-                .unwrap_or("none");
-            let activation_score = matching_activation
-                .map(|activation| ((score.score + activation.final_score) / 2.0).clamp(0.0, 1.0))
-                .unwrap_or(score.score);
-            let base_skill_score = skill_prior
-                .map(|prior| ((activation_score + prior.score) / 2.0).clamp(0.0, 1.0))
-                .unwrap_or(activation_score);
-            let preferred_skill_id = skill_prior
-                .map(|prior| prior.skill_id.clone())
-                .unwrap_or_else(|| format!("skill-bootstrap:{}:followup", score.topic_id.0));
-            let ranked_skill = rank_intuition_skill_candidate(
-                &preferred_skill_id,
-                user_intent,
-                &score.topic_label,
-                registered_tools,
-                policy_bindings,
-            );
-            let skill_id = ranked_skill.skill_id;
-            let registry_binding = ranked_skill.registry_binding;
-            let feedback_delta = compute_intuition_feedback_delta(
-                intuition_feedback,
-                Some(&score.topic_id),
-                neuron.map(|neuron| &neuron.neuron_id),
-                Some(&skill_id),
-                workflow_id.as_deref(),
-            );
-            let skill_score = (base_skill_score + ranked_skill.rank_bonus + feedback_delta)
-                .clamp(0.0, 1.0);
-
-            SkillActivationDecision {
-                skill_id,
-                workflow_id,
-                score: skill_score,
-                exists_in_registry: registry_binding.exists_in_registry,
-                missing_capability: registry_binding.missing_capability,
-                risk_tier: registry_binding.risk_tier,
-                requires_confirmation: registry_binding.requires_confirmation,
-                action_mode: registry_binding.action_mode,
-                source_topic_ids: vec![score.topic_id.clone()],
-                source_neuron_ids: neuron_ids,
-                reason: Some(format!(
-                    "policy-aware intuition ranked a follow-up skill for topic '{}' (routing {:.2}, activation {:.2}, skill {:.2}, registry_rank {:.2}, policy_rank {:.2}, feedback {:+.2}{}, neuron_policy {}, {})",
-                    score.topic_label.0,
-                    score.score,
-                    activation_score,
-                    skill_score,
-                    ranked_skill.registry_affinity,
-                    ranked_skill.policy_affinity,
-                    feedback_delta,
-                    skill_prior
-                        .map(|prior| format!(", compressed neuron prior {:.2}", prior.score))
-                        .unwrap_or_default(),
-                    neuron_policy,
-                    registry_binding.reason,
-                )),
-            }
-        })
-        .collect()
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct IntuitionSkillRegistryBinding {
-    exists_in_registry: bool,
-    missing_capability: Option<String>,
-    risk_tier: Option<RiskTier>,
-    policy_requirement: ApprovalRequirement,
-    requires_confirmation: bool,
-    action_mode: IntuitionActionMode,
-    reason: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct RankedIntuitionSkillCandidate {
-    skill_id: String,
-    registry_binding: IntuitionSkillRegistryBinding,
-    registry_affinity: f32,
-    policy_affinity: f32,
-    rank_bonus: f32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct IntuitionToolPolicyBinding {
-    tool_name: String,
-    requirement: ApprovalRequirement,
-    reason: String,
-    matched_rule_id: Option<String>,
-}
-
-fn rank_intuition_skill_candidate(
-    preferred_skill_id: &str,
-    user_intent: &str,
-    topic_label: &TopicLabel,
-    registered_tools: &[ToolDescriptor],
-    policy_bindings: &[IntuitionToolPolicyBinding],
-) -> RankedIntuitionSkillCandidate {
-    if let Some(tool) = find_registered_tool_for_skill_id(preferred_skill_id, registered_tools) {
-        let policy = find_policy_binding_for_tool(&tool.name, policy_bindings);
-        let registry_binding =
-            bind_intuition_skill_to_runtime_registry(&tool.name, registered_tools, policy);
-        let policy_affinity = policy_requirement_affinity(registry_binding.policy_requirement());
-        return RankedIntuitionSkillCandidate {
-            skill_id: tool.name.clone(),
-            registry_binding,
-            registry_affinity: 1.0,
-            policy_affinity,
-            rank_bonus: (0.08 + policy_affinity * 0.04).min(0.12),
-        };
-    }
-
-    let mut candidates = registered_tools
-        .iter()
-        .filter_map(|tool| {
-            let registry_affinity =
-                score_registered_tool_for_intent(tool, user_intent, topic_label);
-            (registry_affinity > 0.0).then(|| {
-                let policy = find_policy_binding_for_tool(&tool.name, policy_bindings);
-                let policy_affinity = policy
-                    .map(|policy| policy_requirement_affinity(policy.requirement))
-                    .unwrap_or_else(|| {
-                        policy_requirement_affinity(tool.default_approval_requirement)
-                    });
-                let safety_affinity = safety_affinity_for_tool(tool);
-                let total = registry_affinity + policy_affinity * 0.18 + safety_affinity * 0.12;
-                (tool, policy, registry_affinity, policy_affinity, total)
-            })
-        })
-        .collect::<Vec<_>>();
-
-    candidates.sort_by(|left, right| {
-        right
-            .4
-            .total_cmp(&left.4)
-            .then_with(|| left.0.name.cmp(&right.0.name))
-    });
-
-    if let Some((tool, policy, registry_affinity, policy_affinity, _)) = candidates.first() {
-        let registry_binding =
-            bind_intuition_skill_to_runtime_registry(&tool.name, registered_tools, *policy);
-        return RankedIntuitionSkillCandidate {
-            skill_id: tool.name.clone(),
-            registry_binding,
-            registry_affinity: *registry_affinity,
-            policy_affinity: *policy_affinity,
-            rank_bonus: (registry_affinity * 0.08 + policy_affinity * 0.04).min(0.12),
-        };
-    }
-
-    RankedIntuitionSkillCandidate {
-        skill_id: preferred_skill_id.to_string(),
-        registry_binding: bind_intuition_skill_to_runtime_registry(
-            preferred_skill_id,
-            registered_tools,
-            None,
-        ),
-        registry_affinity: 0.0,
-        policy_affinity: 0.0,
-        rank_bonus: 0.0,
-    }
-}
-
-fn bind_intuition_skill_to_runtime_registry(
-    skill_id: &str,
-    registered_tools: &[ToolDescriptor],
-    policy_binding: Option<&IntuitionToolPolicyBinding>,
-) -> IntuitionSkillRegistryBinding {
-    if let Some(tool) = find_registered_tool_for_skill_id(skill_id, registered_tools) {
-        let requirement = policy_binding
-            .map(|binding| binding.requirement)
-            .unwrap_or(tool.default_approval_requirement);
-        let requires_confirmation = requirement != ApprovalRequirement::None;
-        let action_mode = if requires_confirmation {
-            IntuitionActionMode::SuggestOnly
-        } else if tool.execution_metadata.read_only && tool.execution_metadata.idempotent {
-            IntuitionActionMode::Prepare
-        } else {
-            IntuitionActionMode::SuggestOnly
-        };
-
-        return IntuitionSkillRegistryBinding {
-            exists_in_registry: true,
-            missing_capability: None,
-            risk_tier: Some(tool.risk_tier),
-            policy_requirement: requirement,
-            requires_confirmation,
-            action_mode,
-            reason: format!(
-                "bound to runtime tool registry entry '{}' (risk={}, approval={}, policy_rule={}, policy_reason=\"{}\")",
-                tool.name,
-                format_skill_registry_risk_tier(tool.risk_tier),
-                format_approval_requirement(requirement),
-                policy_binding
-                    .and_then(|binding| binding.matched_rule_id.as_deref())
-                    .unwrap_or("default"),
-                summarize_line(
-                    policy_binding
-                        .map(|binding| binding.reason.as_str())
-                        .unwrap_or("tool default approval requirement"),
-                    72,
-                ),
-            ),
-        };
-    }
-
-    IntuitionSkillRegistryBinding {
-        exists_in_registry: false,
-        missing_capability: Some("bootstrap_skill_registry_binding_pending".into()),
-        risk_tier: Some(RiskTier::Low),
-        policy_requirement: ApprovalRequirement::Ask,
-        requires_confirmation: true,
-        action_mode: IntuitionActionMode::SuggestOnly,
-        reason: format!(
-            "no runtime registry entry matched skill '{}'; suggestion remains gated",
-            skill_id,
-        ),
-    }
-}
-
-impl IntuitionSkillRegistryBinding {
-    fn policy_requirement(&self) -> ApprovalRequirement {
-        self.policy_requirement
-    }
-}
-
-fn find_policy_binding_for_tool<'a>(
-    tool_name: &str,
-    policy_bindings: &'a [IntuitionToolPolicyBinding],
-) -> Option<&'a IntuitionToolPolicyBinding> {
-    policy_bindings
-        .iter()
-        .find(|binding| binding.tool_name == tool_name)
-}
-
-fn policy_requirement_affinity(requirement: ApprovalRequirement) -> f32 {
-    match requirement {
-        ApprovalRequirement::None => 1.0,
-        ApprovalRequirement::Ask => 0.55,
-        ApprovalRequirement::Deny => 0.05,
-    }
-}
-
-fn safety_affinity_for_tool(tool: &ToolDescriptor) -> f32 {
-    let mut score = 0.0_f32;
-    if tool.execution_metadata.read_only {
-        score += 0.45;
-    }
-    if tool.execution_metadata.idempotent {
-        score += 0.35;
-    }
-    if !tool.execution_metadata.destructive {
-        score += 0.20;
-    }
-    score.min(1.0)
-}
-
-fn find_registered_tool_for_skill_id<'a>(
-    skill_id: &str,
-    registered_tools: &'a [ToolDescriptor],
-) -> Option<&'a ToolDescriptor> {
-    let normalized = normalize_skill_tool_selector(skill_id);
-    registered_tools.iter().find(|tool| tool.name == normalized)
-}
-
-fn normalize_skill_tool_selector(skill_id: &str) -> &str {
-    skill_id
-        .strip_prefix("tool:")
-        .or_else(|| skill_id.strip_prefix("skill-tool:"))
-        .or_else(|| skill_id.strip_prefix("runtime-tool:"))
-        .unwrap_or(skill_id)
-}
-
-fn score_registered_tool_for_intent(
-    tool: &ToolDescriptor,
-    user_intent: &str,
-    topic_label: &TopicLabel,
-) -> f32 {
-    let intent_haystack = format!(
-        "{} {}",
-        user_intent.to_ascii_lowercase(),
-        topic_label.0.to_ascii_lowercase(),
-    );
-
-    match tool.name.as_str() {
-        "read_file"
-            if contains_any(
-                &intent_haystack,
-                &["read", "inspect", "open", "show", "cat"],
-            ) =>
-        {
-            if intent_haystack.contains("file") || intent_haystack.contains("path") {
-                1.0
-            } else {
-                0.62
-            }
-        }
-        "write_file"
-            if contains_any(
-                &intent_haystack,
-                &[
-                    "write",
-                    "save",
-                    "create",
-                    "append",
-                    "overwrite",
-                    "edit",
-                    "patch",
-                ],
-            ) =>
-        {
-            if intent_haystack.contains("file") || intent_haystack.contains("path") {
-                1.0
-            } else {
-                0.66
-            }
-        }
-        "echo"
-            if contains_any(
-                &intent_haystack,
-                &["echo", "repeat", "smoke test", "test tool"],
-            ) =>
-        {
-            0.82
-        }
-        _ => 0.0,
-    }
-}
-
-fn contains_any(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| haystack.contains(needle))
-}
-
-fn format_approval_requirement(requirement: ApprovalRequirement) -> &'static str {
-    match requirement {
-        ApprovalRequirement::None => "none",
-        ApprovalRequirement::Ask => "ask",
-        ApprovalRequirement::Deny => "deny",
-    }
-}
-
-fn format_skill_registry_risk_tier(risk_tier: RiskTier) -> &'static str {
-    match risk_tier {
-        RiskTier::Low => "low",
-        RiskTier::Medium => "medium",
-        RiskTier::High => "high",
-    }
-}
-
-fn format_intuition_action_mode(mode: IntuitionActionMode) -> &'static str {
-    match mode {
-        IntuitionActionMode::SuggestOnly => "suggest_only",
-        IntuitionActionMode::Prepare => "prepare",
-        IntuitionActionMode::ExecuteAllowed => "execute_allowed",
-    }
 }
 
 fn compress_bootstrap_topic_sessions_to_neuron(
@@ -4862,164 +3918,6 @@ fn upsert_bootstrap_neuron_link(links: &mut Vec<NeuronLink>, candidate: NeuronLi
     }
 
     links.push(candidate);
-}
-
-fn record_bootstrap_neuron_link(
-    source_topic_session: &TopicSession,
-    link_kind: NeuronLinkKind,
-    link_reason: &str,
-    source_topic_session_ids: &mut Vec<String>,
-    source_neuron_ids: &mut Vec<NeuronId>,
-    source_link_kinds: &mut Vec<NeuronLinkKind>,
-    source_link_reasons: &mut Vec<String>,
-) {
-    bootstrap_neuron_propagation::record_source_link(
-        source_topic_session,
-        link_kind,
-        link_reason,
-        source_topic_session_ids,
-        source_neuron_ids,
-        source_link_kinds,
-        source_link_reasons,
-    );
-}
-
-fn infer_bootstrap_propagation_link(
-    source: &TopicSession,
-    target: &TopicSession,
-    co_active: bool,
-) -> Option<(NeuronLinkKind, f32, String)> {
-    if let Some(edge) = bootstrap_topic_graph_edge(source, &target.topic_session_id) {
-        let (kind, reason) = match edge.kind {
-            TopicGraphEdgeKind::CoActivation => (
-                NeuronLinkKind::WorkflowAdjacency,
-                format!(
-                    "bootstrap stored co-activation edge into '{}' strength {:.2}",
-                    target.topic_label.0, edge.weight,
-                ),
-            ),
-            TopicGraphEdgeKind::SplitComponent => (
-                NeuronLinkKind::TemporalContinuation,
-                format!(
-                    "bootstrap stored split-component edge into '{}' strength {:.2}",
-                    target.topic_label.0, edge.weight,
-                ),
-            ),
-            TopicGraphEdgeKind::MergedInto | TopicGraphEdgeKind::HasComponent => (
-                NeuronLinkKind::CausalDependency,
-                format!(
-                    "bootstrap stored merge-component edge into '{}' strength {:.2}",
-                    target.topic_label.0, edge.weight,
-                ),
-            ),
-            _ => (
-                NeuronLinkKind::SemanticSimilarity,
-                format!(
-                    "bootstrap stored {} edge into '{}' strength {:.2}",
-                    bootstrap_topic_graph_edge_relation(&edge),
-                    target.topic_label.0,
-                    edge.weight,
-                ),
-            ),
-        };
-        return Some((kind, edge.weight.min(0.46), reason));
-    }
-
-    let overlap = topic_session_label_overlap(source, target);
-
-    if co_active {
-        let strength = (0.24 + overlap * 0.16).min(0.38);
-        let reason = if overlap > 0.0 {
-            format!(
-                "bootstrap co-routed adjacency with semantic overlap {:.2}",
-                overlap,
-            )
-        } else {
-            "bootstrap co-routed adjacency from the same mixed turn".to_string()
-        };
-        return Some((NeuronLinkKind::WorkflowAdjacency, strength, reason));
-    }
-
-    (overlap >= 0.25).then(|| {
-        (
-            NeuronLinkKind::SemanticSimilarity,
-            (0.22 + overlap * 0.24).min(0.42),
-            format!("bootstrap semantic overlap {:.2}", overlap),
-        )
-    })
-}
-
-fn infer_bootstrap_inhibition_link(
-    source: &TopicSession,
-    target: &TopicSession,
-    marker: &'static str,
-) -> Option<(f32, String)> {
-    let overlap = topic_session_label_overlap(source, target);
-    let strength = (0.30 + overlap * 0.18).min(0.48);
-
-    Some((
-        strength,
-        if overlap > 0.0 {
-            format!(
-                "bootstrap contrast '{}' suppressed secondary topic with overlap {:.2}",
-                marker, overlap,
-            )
-        } else {
-            format!(
-                "bootstrap contrast '{}' suppressed secondary topic from the same routed turn",
-                marker,
-            )
-        },
-    ))
-}
-
-fn infer_bootstrap_neuron_propagation_link(
-    source: &BootstrapNeuronSeed,
-    target: &BootstrapNeuronSeed,
-    co_active: bool,
-) -> Option<(NeuronLinkKind, f32, String)> {
-    bootstrap_neuron_propagation::infer_link(source, target, co_active)
-}
-
-fn infer_bootstrap_neuron_inhibition_link(
-    source: &BootstrapNeuronSeed,
-    target: &BootstrapNeuronSeed,
-    marker: &'static str,
-) -> Option<(f32, String)> {
-    if let Some(link) = source
-        .neuron
-        .links
-        .iter()
-        .find(|link| link.target_neuron_id == target.neuron.neuron_id)
-        .filter(|link| {
-            matches!(
-                link.kind,
-                NeuronLinkKind::Conflict | NeuronLinkKind::Inhibition
-            )
-        })
-    {
-        let relation = link
-            .relation
-            .as_deref()
-            .unwrap_or("compressed_neuron_conflict");
-        return Some((
-            link.strength.min(0.48),
-            format!(
-                "bootstrap contrast '{}' followed compressed neuron inhibition '{}' into '{}' strength {:.2}",
-                marker, relation, target.neuron.topic_label.0, link.strength,
-            ),
-        ));
-    }
-
-    infer_bootstrap_inhibition_link(&source.topic_session, &target.topic_session, marker)
-}
-
-fn detect_bootstrap_inhibition_marker(query_text: Option<&str>) -> Option<&'static str> {
-    let lower = query_text?.to_ascii_lowercase();
-
-    [" but not ", " instead of ", " rather than ", " except "]
-        .into_iter()
-        .find(|marker| lower.contains(marker))
 }
 
 fn detect_bootstrap_merge_marker(query_text: Option<&str>) -> Option<&'static str> {

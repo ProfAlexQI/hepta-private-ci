@@ -1,7 +1,9 @@
+    use hepta_core::ApprovalRequirement;
     use hepta_core::EventKind;
     use hepta_core::MemoryRecord;
     use hepta_core::MemoryScope;
     use hepta_core::MessageRole;
+    use hepta_core::RiskTier;
 
     use super::*;
 
