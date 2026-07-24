@@ -7194,10 +7194,12 @@ dependencies = [
  "hepta-core",
  "hepta-kg",
  "hepta-memory",
+ "hmac",
  "serde",
  "sha2",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

@@ -9,8 +9,10 @@ hepta-contracts.workspace = true
 hepta-core.workspace = true
 hepta-kg.workspace = true
 hepta-memory.workspace = true
+hmac.workspace = true
 serde = { workspace = true, features = ["derive"] }
 sha2.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

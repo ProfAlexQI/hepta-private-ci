@@ -143,6 +143,112 @@ fn source_denial_or_binding_mismatch_leaves_preference_unchanged() -> TestResult
 }
 
 #[test]
+fn hmac_ingress_proof_authenticates_the_memory_owned_challenge() -> TestResult {
+    let store = InMemoryPreferenceStore::default();
+    let target = target("authenticated-ingress");
+    let genesis = explicit_preference_genesis(
+        PrincipalId::new("subject:alice"),
+        PreferenceId::new("preference:tool-choice"),
+        target.clone(),
+    );
+    store.get_or_init_genesis(
+        genesis.preference().clone(),
+        genesis.subject().clone(),
+        PreferenceStateDocument::new(
+            genesis.state().clone(),
+            EXPLICIT_PREFERENCE_REDUCER_VERSION,
+            genesis.canonical_payload(),
+        ),
+    )?;
+    let input = input("authenticated-ingress", &genesis, target);
+    let source = source_ref("authenticated-ingress");
+    let client_key = PreferenceIngressAuthenticationKey::from_bytes([0x31; 32]);
+    let challenge_hash = explicit_preference_feedback_challenge_hash(&input, source.clone())?;
+    let proof = sign_preference_ingress_challenge(&client_key, &challenge_hash)?;
+    let ingress = HmacTrustedPreferenceFeedbackSource::new(
+        source.clone(),
+        PreferenceIngressAuthenticationKey::from_bytes([0x31; 32]),
+        PreferenceIngressProof::from_hex(&proof.to_hex())?,
+    );
+
+    let outcome = advance_trusted_explicit_preference(&store, &ingress, input)?;
+
+    assert!(outcome.committed_now());
+    assert_eq!(outcome.source(), &source);
+    Ok(())
+}
+
+#[test]
+fn hmac_ingress_rejects_wrong_key_tampering_and_noncanonical_proofs() -> TestResult {
+    assert_eq!(
+        PreferenceIngressProof::from_hex(&"A".repeat(64)),
+        Err(PreferenceFeedbackAuthenticationError::new(
+            "trusted_preference_ingress.proof_encoding_invalid"
+        ))
+    );
+
+    let store = InMemoryPreferenceStore::default();
+    let target = target("authenticated-ingress-denial");
+    let genesis = explicit_preference_genesis(
+        PrincipalId::new("subject:alice"),
+        PreferenceId::new("preference:tool-choice"),
+        target.clone(),
+    );
+    let genesis_document = PreferenceStateDocument::new(
+        genesis.state().clone(),
+        EXPLICIT_PREFERENCE_REDUCER_VERSION,
+        genesis.canonical_payload(),
+    );
+    store.get_or_init_genesis(
+        genesis.preference().clone(),
+        genesis.subject().clone(),
+        genesis_document.clone(),
+    )?;
+    let signed_input = input("signed-ingress", &genesis, target.clone());
+    let source = source_ref("authenticated-ingress-denial");
+    let challenge_hash =
+        explicit_preference_feedback_challenge_hash(&signed_input, source.clone())?;
+    let proof = sign_preference_ingress_challenge(
+        &PreferenceIngressAuthenticationKey::from_bytes([0x41; 32]),
+        &challenge_hash,
+    )?;
+    let wrong_key_source = HmacTrustedPreferenceFeedbackSource::new(
+        source.clone(),
+        PreferenceIngressAuthenticationKey::from_bytes([0x42; 32]),
+        proof.clone(),
+    );
+    assert_eq!(
+        advance_trusted_explicit_preference(&store, &wrong_key_source, signed_input)
+            .expect_err("a wrong ingress key must fail closed"),
+        PreferenceAuthorityError::Authentication(PreferenceFeedbackAuthenticationError::new(
+            "trusted_preference_ingress.proof_verification_failed"
+        ))
+    );
+
+    let exact_key_source = HmacTrustedPreferenceFeedbackSource::new(
+        source,
+        PreferenceIngressAuthenticationKey::from_bytes([0x41; 32]),
+        proof,
+    );
+    assert_eq!(
+        advance_trusted_explicit_preference(
+            &store,
+            &exact_key_source,
+            input("tampered-ingress", &genesis, target),
+        )
+        .expect_err("a proof for a different challenge must fail closed"),
+        PreferenceAuthorityError::Authentication(PreferenceFeedbackAuthenticationError::new(
+            "trusted_preference_ingress.proof_verification_failed"
+        ))
+    );
+    assert_eq!(
+        store.read_document(genesis.preference(), genesis.subject())?,
+        Some(genesis_document)
+    );
+    Ok(())
+}
+
+#[test]
 fn reducer_version_and_payload_fail_before_any_cas_mutation() -> TestResult {
     let target = target("echo");
     let genesis = explicit_preference_genesis(

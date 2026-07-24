@@ -171,6 +171,7 @@ pub use preference_authority::PreferenceFeedbackRequestParts;
 pub use preference_authority::PreferenceFeedbackSourceRef;
 pub use preference_authority::PreferenceReducerRef;
 pub use preference_authority::PreferenceReductionDraft;
+pub use preference_authority::plan_preference_feedback_challenge;
 pub use preference_cas::DurablePreferenceStore;
 pub use preference_cas::InMemoryPreferenceStore;
 pub use preference_cas::PreferenceCasError;

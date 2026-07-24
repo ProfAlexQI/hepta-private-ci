@@ -1,9 +1,10 @@
 //! Trusted explicit-preference source and reducer adapter.
 //!
-//! No source implementation is provided here. In particular, Telegram, HTTP,
-//! gateway, and runtime input remain unattached. A future composition root must
-//! supply a source that authenticates the complete memory-owned challenge.
+//! This module provides a transport-neutral HMAC source over the complete
+//! memory-owned challenge. Telegram, HTTP, gateway, and runtime input remain
+//! unattached until a composition root supplies a private key and proof.
 
+use std::fmt;
 use std::path::Path;
 
 use hepta_contracts::ContentHash;
@@ -31,6 +32,11 @@ use hepta_memory::PreferenceGenesisOutcome;
 use hepta_memory::PreferenceReducerRef;
 use hepta_memory::PreferenceReductionDraft;
 use hepta_memory::PreferenceStateDocument;
+use hepta_memory::plan_preference_feedback_challenge;
+use hmac::Hmac;
+use hmac::Mac;
+use sha2::Sha256;
+use zeroize::Zeroizing;
 
 use crate::EXPLICIT_PREFERENCE_REDUCER_VERSION;
 use crate::ExplicitPreferenceSignal;
@@ -40,6 +46,160 @@ use crate::reduce_explicit_preference;
 
 /// Stable identity of the deterministic explicit-preference reducer.
 pub const EXPLICIT_PREFERENCE_REDUCER_ID: &str = "hepta.intelligence.explicit-preference.reducer";
+
+const PREFERENCE_INGRESS_MAC_DOMAIN: &[u8] =
+    b"hepta.intelligence.preference-ingress.hmac-sha256.v1";
+
+type HmacSha256 = Hmac<Sha256>;
+
+/// Non-cloneable authentication key for one trusted preference ingress.
+pub struct PreferenceIngressAuthenticationKey(Zeroizing<[u8; 32]>);
+
+impl PreferenceIngressAuthenticationKey {
+    /// Constructs an exact 256-bit ingress authentication key.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(Zeroizing::new(bytes))
+    }
+}
+
+impl fmt::Debug for PreferenceIngressAuthenticationKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("PreferenceIngressAuthenticationKey")
+            .field(&"[REDACTED]")
+            .finish()
+    }
+}
+
+/// Canonical HMAC proof over one memory-owned preference challenge.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PreferenceIngressProof([u8; 32]);
+
+impl PreferenceIngressProof {
+    /// Parses one canonical lowercase hexadecimal proof.
+    pub fn from_hex(encoded: &str) -> Result<Self, PreferenceFeedbackAuthenticationError> {
+        if encoded.len() != 64 {
+            return Err(PreferenceFeedbackAuthenticationError::new(
+                "trusted_preference_ingress.proof_encoding_invalid",
+            ));
+        }
+        let mut bytes = [0_u8; 32];
+        for (index, pair) in encoded.as_bytes().chunks_exact(2).enumerate() {
+            let Some(high) = decode_ingress_hex_nibble(pair[0]) else {
+                return Err(PreferenceFeedbackAuthenticationError::new(
+                    "trusted_preference_ingress.proof_encoding_invalid",
+                ));
+            };
+            let Some(low) = decode_ingress_hex_nibble(pair[1]) else {
+                return Err(PreferenceFeedbackAuthenticationError::new(
+                    "trusted_preference_ingress.proof_encoding_invalid",
+                ));
+            };
+            bytes[index] = (high << 4) | low;
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Encodes the proof for an authenticated transport envelope.
+    pub fn to_hex(&self) -> String {
+        encode_ingress_hex(&self.0)
+    }
+}
+
+impl fmt::Debug for PreferenceIngressProof {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("PreferenceIngressProof")
+            .field(&"[REDACTED]")
+            .finish()
+    }
+}
+
+/// Per-request trusted source that verifies a proof inside memory authentication.
+///
+/// The HMAC is checked against the challenge evidence hash minted by Memory,
+/// so it covers the source, reducer, transition, evidence, receipt, session,
+/// subject, preference, target, and exact previous-state bindings.
+pub struct HmacTrustedPreferenceFeedbackSource {
+    source: PreferenceFeedbackSourceRef,
+    key: PreferenceIngressAuthenticationKey,
+    proof: PreferenceIngressProof,
+}
+
+impl HmacTrustedPreferenceFeedbackSource {
+    /// Binds one source identity, secret key, and caller-supplied proof.
+    pub fn new(
+        source: PreferenceFeedbackSourceRef,
+        key: PreferenceIngressAuthenticationKey,
+        proof: PreferenceIngressProof,
+    ) -> Self {
+        Self { source, key, proof }
+    }
+}
+
+impl fmt::Debug for HmacTrustedPreferenceFeedbackSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HmacTrustedPreferenceFeedbackSource")
+            .field("source", &self.source)
+            .field("key", &"[REDACTED]")
+            .field("proof", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl TrustedPreferenceFeedbackSource for HmacTrustedPreferenceFeedbackSource {
+    fn source(&self) -> PreferenceFeedbackSourceRef {
+        self.source.clone()
+    }
+
+    fn authenticate(
+        &self,
+        challenge: &TrustedPreferenceFeedbackChallenge<'_>,
+    ) -> Result<(), PreferenceFeedbackAuthenticationError> {
+        if challenge.authority().source() != &self.source {
+            return Err(PreferenceFeedbackAuthenticationError::new(
+                "trusted_preference_ingress.source_binding_mismatch",
+            ));
+        }
+        let mut mac = preference_ingress_mac(&self.key)?;
+        update_ingress_mac_frame(
+            &mut mac,
+            challenge.authority().evidence_hash().as_str().as_bytes(),
+        );
+        mac.verify_slice(&self.proof.0).map_err(|_| {
+            PreferenceFeedbackAuthenticationError::new(
+                "trusted_preference_ingress.proof_verification_failed",
+            )
+        })
+    }
+}
+
+/// Plans the exact evidence hash that a trusted ingress client must sign.
+pub fn explicit_preference_feedback_challenge_hash(
+    input: &ExplicitPreferenceFeedbackInput,
+    source: PreferenceFeedbackSourceRef,
+) -> Result<ContentHash, PreferenceAuthorityError> {
+    let reducer = TrustedExplicitPreferenceReducer::try_new()?;
+    let challenge = plan_preference_feedback_challenge(
+        input.request.clone(),
+        source,
+        reducer.binding().clone(),
+    )?;
+    Ok(challenge.evidence_hash().clone())
+}
+
+/// Signs one planned challenge hash for a trusted transport envelope.
+pub fn sign_preference_ingress_challenge(
+    key: &PreferenceIngressAuthenticationKey,
+    challenge_hash: &ContentHash,
+) -> Result<PreferenceIngressProof, PreferenceFeedbackAuthenticationError> {
+    let mut mac = preference_ingress_mac(key)?;
+    update_ingress_mac_frame(&mut mac, challenge_hash.as_str().as_bytes());
+    let mut proof = [0_u8; 32];
+    proof.copy_from_slice(&mac.finalize().into_bytes());
+    Ok(PreferenceIngressProof(proof))
+}
 
 /// Keyed, non-live composition root for trusted durable preference feedback.
 ///
@@ -426,6 +586,41 @@ fn reduction_error_code(error: &PreferenceReductionError) -> &'static str {
         PreferenceReductionError::CounterOverflow(ExplicitPreferenceSignal::Rejected) => {
             "explicit_preference.rejected_counter_overflow"
         }
+    }
+}
+
+fn preference_ingress_mac(
+    key: &PreferenceIngressAuthenticationKey,
+) -> Result<HmacSha256, PreferenceFeedbackAuthenticationError> {
+    let mut mac = HmacSha256::new_from_slice(key.0.as_ref()).map_err(|_| {
+        PreferenceFeedbackAuthenticationError::new(
+            "trusted_preference_ingress.key_length_unsupported",
+        )
+    })?;
+    update_ingress_mac_frame(&mut mac, PREFERENCE_INGRESS_MAC_DOMAIN);
+    Ok(mac)
+}
+
+fn update_ingress_mac_frame(mac: &mut HmacSha256, value: &[u8]) {
+    mac.update(&(value.len() as u64).to_be_bytes());
+    mac.update(value);
+}
+
+fn encode_ingress_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
+}
+
+fn decode_ingress_hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        _ => None,
     }
 }
 

@@ -33,6 +33,21 @@ pub use types::PreferenceFeedbackSourceRef;
 pub use types::PreferenceReducerRef;
 pub use types::PreferenceReductionDraft;
 
+/// Plans the exact memory-owned authentication challenge without mutating state.
+///
+/// Trusted ingress clients may use the returned evidence hash as the payload
+/// for a transport authentication proof. Only a later authority advance can
+/// authenticate the challenge and attempt the single CAS transition.
+pub fn plan_preference_feedback_challenge(
+    request: PreferenceFeedbackRequest,
+    source: PreferenceFeedbackSourceRef,
+    reducer: PreferenceReducerRef,
+) -> Result<PreferenceFeedbackChallenge, PreferenceAuthorityError> {
+    source.validate()?;
+    reducer.validate()?;
+    Ok(PreferenceFeedbackChallenge::new(request, source, reducer))
+}
+
 impl InMemoryPreferenceStore {
     /// Authenticates, reduces, and attempts exactly one in-memory CAS advance.
     pub fn advance_preference_with_authority<A, R>(
