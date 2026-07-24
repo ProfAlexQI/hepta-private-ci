@@ -1,0 +1,442 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v9",
+  "intake_id": "upstream-codex-intake-2026-07-24-r9",
+  "predecessor_intake": {
+    "manifest_path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-24_R8.json",
+    "manifest_sha256": "60833a3504bca61ed33f527d6bc9315193540b839650e92280eeedb6cf10dba3",
+    "cutoff_head": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+    "preserved": true,
+    "modified_by_r9": false
+  },
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-24T15:49:12Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+    "range_start_exclusive": "c8957bbf0f79fa29c5e08b8c0b942c12ea3893f2",
+    "range_end_inclusive": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+    "commit_count": 9,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 56,
+    "net_insertions": 2439,
+    "net_deletions": 303,
+    "commit_file_touches": 68,
+    "local_head_observed": "1f7d3548f1356a9e46cbd020f01401a66c50a4a8",
+    "local_root": "461c3d74c57ce988eedeeaeba0e9c9261b36b8d4",
+    "upstream_root": "59a180ddec4adaf9760972cdb1eb89f06a81be8b",
+    "merge_base": null,
+    "history_relationship": "no_merge_base_unrelated_roots",
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream 000d2540ad73996f3589ae178bfe447bfd67cef2:refs/remotes/upstream/hepta-intake-20260724-r9",
+    "range_identity": {
+      "algorithm": "sha256(git_rev_list_reverse_range_lf)",
+      "digest": "9b8b35976e482e8628f08ec1c40b412fc9f114dc80c577bb429d58ed2db960f8"
+    },
+    "file_surface_identity": {
+      "algorithm": "sha256(c_locale_sorted_name_status_lf)",
+      "digest": "30c2d4cf04cd64d547843e61249f52ec5d505a4bc0f1746da8f48e0257fd3c2f"
+    },
+    "commit_identity": {
+      "algorithm": "sha256(git_log_reverse_sha_authored_at_title_lf)",
+      "digest": "e420afa25ff20a16c40bb06abf43344644db97ad6b1459b74d881aa10e9cb1b3"
+    },
+    "normalized_commit_inventory_identity": {
+      "algorithm": "sha256(jq_canonical_sorted_commit_inventory)",
+      "digest": "18eb5611f0d7090aae76aa20278e033f65553d25d94250a4559c5cab8213a3a9"
+    },
+    "related_path_inventory_identity": {
+      "algorithm": "sha256(c_locale_sorted_unique_related_paths_lf)",
+      "digest": "2f78b6bf411fa297a2850b52f3d197c985c34297f547dba72c9b3ad7fbdb4a17"
+    }
+  },
+  "classification_summary": {
+    "commit_count": 9,
+    "status_counts": {
+      "candidate": 4,
+      "deferred": 3,
+      "rejected": 2,
+      "imported": 0
+    },
+    "priority_counts": {
+      "P0": 3,
+      "P1": 2,
+      "P2": 2,
+      "P3": 2
+    },
+    "category_counts": {
+      "skill_extensions": 4,
+      "test_reliability": 2,
+      "hooks_runtime": 1,
+      "tools_apps_runtime": 2
+    }
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "5dd992acd3f5242196ec690bb462e0d2687b485d",
+      "authored_at": "2026-07-24T12:22:39Z",
+      "title": "Route extension warnings to app-server threads (#35168)",
+      "primary_category": "skill_extensions",
+      "secondary_topics": [
+        "extension_events",
+        "warning_delivery",
+        "app_server_threads"
+      ],
+      "risk": "medium",
+      "status": "deferred",
+      "hepta_v2_priority": "P2",
+      "candidate_slice": "r9-p2-extension-warning-delivery",
+      "reason": "The warning route is valuable, but the source commit is built on the upstream ext/skills event surface that does not exist in the local architecture.",
+      "semantic_absorption_recommendation": "Introduce warning ownership only after a local skill-extension provider and typed event boundary exist; do not graft app-server delivery onto absent producers.",
+      "changed_file_count": 15,
+      "related_files": [
+        "codex-rs/app-server/src/extensions.rs",
+        "codex-rs/app-server/src/request_processors/thread_lifecycle.rs",
+        "codex-rs/app-server/src/thread_state.rs",
+        "codex-rs/app-server/tests/suite/v2/executor_skills.rs",
+        "codex-rs/core/tests/suite/skills_extension.rs",
+        "codex-rs/ext/extension-api/src/capabilities/events.rs",
+        "codex-rs/ext/extension-api/src/capabilities/mod.rs",
+        "codex-rs/ext/extension-api/src/lib.rs",
+        "codex-rs/ext/extension-api/tests/registry.rs",
+        "codex-rs/ext/goal/tests/goal_extension_backend.rs",
+        "codex-rs/ext/skills/src/extension.rs",
+        "codex-rs/ext/skills/src/lib.rs",
+        "codex-rs/ext/skills/src/tools/list.rs",
+        "codex-rs/ext/skills/src/warnings.rs",
+        "codex-rs/ext/skills/tests/skills_extension.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "5a1c54fc2110b1299c80e949425044dff478da25",
+      "authored_at": "2026-07-24T12:53:33Z",
+      "title": "Compact host skill paths under metadata pressure (#35172)",
+      "primary_category": "skill_extensions",
+      "secondary_topics": [
+        "skill_metadata_budget",
+        "path_aliases",
+        "host_provider"
+      ],
+      "risk": "medium",
+      "status": "candidate",
+      "hepta_v2_priority": "P2",
+      "candidate_slice": "r9-p2-host-skill-path-compaction",
+      "reason": "Bounded skill metadata must preserve discoverability without repeating long host paths under context pressure.",
+      "semantic_absorption_recommendation": "Retain the local core-skills alias-table implementation as the host-side semantic equivalent, while deferring upstream ext/skills provider rendering until that architecture exists locally.",
+      "changed_file_count": 8,
+      "related_files": [
+        "codex-rs/core-skills/src/model.rs",
+        "codex-rs/ext/skills/src/catalog.rs",
+        "codex-rs/ext/skills/src/fragments.rs",
+        "codex-rs/ext/skills/src/provider/host.rs",
+        "codex-rs/ext/skills/src/provider/host_tests.rs",
+        "codex-rs/ext/skills/src/render.rs",
+        "codex-rs/ext/skills/src/render_tests.rs",
+        "codex-rs/ext/skills/tests/skills_extension.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "1a817bb95d942d4ca93f6ed09c97968713ff6d2a",
+      "authored_at": "2026-07-24T12:59:45Z",
+      "title": "Wait for reloaded worker completion in the resume test (#35175)",
+      "primary_category": "test_reliability",
+      "secondary_topics": [
+        "multi_agent_resume",
+        "test_synchronization"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "P3",
+      "candidate_slice": null,
+      "reason": "The stabilized upstream resume test and its worker fixture are absent locally, so the change has no applicable production or test target.",
+      "semantic_absorption_recommendation": "Do not create a synthetic local analogue solely to claim intake coverage.",
+      "changed_file_count": 1,
+      "related_files": [
+        "codex-rs/core/tests/suite/multi_agent_resume.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "7c71783135b020e8f4db3fa26dc4319901c260b5",
+      "authored_at": "2026-07-24T13:40:16Z",
+      "title": "Expose executor skills through skill tools (#35184)",
+      "primary_category": "skill_extensions",
+      "secondary_topics": [
+        "executor_skills",
+        "skills_list",
+        "skills_read",
+        "step_authority"
+      ],
+      "risk": "critical",
+      "status": "deferred",
+      "hepta_v2_priority": "P0",
+      "candidate_slice": "r9-p0-executor-skill-authority",
+      "reason": "The behavior introduces a new model-visible authority surface and depends on ext/skills, per-step tool contribution, and selected executor capability roots that are absent locally.",
+      "semantic_absorption_recommendation": "Design the local authority contract first: exact selected roots, package confinement, bounded list/read results, stable resource metadata, and stale-selection rejection. Do not expose executor files through the current session-global contributor API.",
+      "changed_file_count": 22,
+      "related_files": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/app-server/tests/suite/v2/executor_skills.rs",
+        "codex-rs/app-server/tests/suite/v2/mcp_resource.rs",
+        "codex-rs/core-skills/src/render.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/src/tools/router.rs",
+        "codex-rs/core/src/tools/router_tests.rs",
+        "codex-rs/ext/extension-api/src/contributors.rs",
+        "codex-rs/ext/skills/Cargo.toml",
+        "codex-rs/ext/skills/src/catalog.rs",
+        "codex-rs/ext/skills/src/extension.rs",
+        "codex-rs/ext/skills/src/provider.rs",
+        "codex-rs/ext/skills/src/provider/executor.rs",
+        "codex-rs/ext/skills/src/provider/orchestrator.rs",
+        "codex-rs/ext/skills/src/render.rs",
+        "codex-rs/ext/skills/src/shadow_selection_experiment.rs",
+        "codex-rs/ext/skills/src/tools/list.rs",
+        "codex-rs/ext/skills/src/tools/mod.rs",
+        "codex-rs/ext/skills/src/tools/read.rs",
+        "codex-rs/ext/skills/tests/executor_file_system_authority.rs",
+        "codex-rs/ext/skills/tests/skills_extension.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "634a998d8aaeaf5f535e04d8475b17a62e7043a7",
+      "authored_at": "2026-07-24T14:32:21Z",
+      "title": "Preserve output from hooks that exit before reading stdin (#35194)",
+      "primary_category": "hooks_runtime",
+      "secondary_topics": [
+        "broken_pipe",
+        "stdout_preservation",
+        "fast_exit"
+      ],
+      "risk": "high",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r9-p1-hook-broken-pipe-output",
+      "reason": "A fast hook may validly publish stdout before consuming stdin; treating the resulting BrokenPipe as the primary failure discards valid output.",
+      "semantic_absorption_recommendation": "Ignore only BrokenPipe from the stdin writer, preserve all other write failures, and prove that a large input cannot erase completed hook stdout.",
+      "changed_file_count": 2,
+      "related_files": [
+        "codex-rs/hooks/src/engine/command_runner.rs",
+        "codex-rs/hooks/src/engine/command_runner_tests.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "5f6a2c3adb159f606b13f4dd6b057d8a3431a1d1",
+      "authored_at": "2026-07-24T14:35:21Z",
+      "title": "Make the Apps recovery exposure test deterministic (#35196)",
+      "primary_category": "test_reliability",
+      "secondary_topics": [
+        "apps_recovery",
+        "test_server",
+        "determinism"
+      ],
+      "risk": "low",
+      "status": "rejected",
+      "hepta_v2_priority": "P3",
+      "candidate_slice": null,
+      "reason": "The exact upstream Apps recovery fixture and exposure test are absent locally.",
+      "semantic_absorption_recommendation": "Retain local test behavior; revisit only if the corresponding upstream fixture is later adopted.",
+      "changed_file_count": 2,
+      "related_files": [
+        "codex-rs/core/tests/common/apps_test_server.rs",
+        "codex-rs/core/tests/suite/mcp_tool_exposure.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "fe8500c0a00eaddda49b68e6ade818a93b58dfb5",
+      "authored_at": "2026-07-24T14:43:14Z",
+      "title": "Enable resource reads for explicit executor skills (#35198)",
+      "primary_category": "skill_extensions",
+      "secondary_topics": [
+        "executor_skill_resources",
+        "explicit_selection",
+        "resource_authority"
+      ],
+      "risk": "critical",
+      "status": "deferred",
+      "hepta_v2_priority": "P0",
+      "candidate_slice": "r9-p0-executor-skill-authority",
+      "reason": "Resource reads widen the executor-skill authority surface and rely on the same absent ext/skills and per-step selection architecture as the preceding exposure commit.",
+      "semantic_absorption_recommendation": "Treat resource access as part of the same exact-authority design, with package confinement, bounded reads, resource declarations, and stale capability rejection.",
+      "changed_file_count": 4,
+      "related_files": [
+        "codex-rs/app-server/tests/suite/v2/executor_skills.rs",
+        "codex-rs/ext/skills/src/extension.rs",
+        "codex-rs/ext/skills/src/fragments.rs",
+        "codex-rs/ext/skills/src/tools/read.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "3645a4397c4889ea483a3b9a61ad7cf5921aa384",
+      "authored_at": "2026-07-24T14:59:43Z",
+      "title": "Refresh MCP runtimes across thread startup (#35204)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "mcp_runtime",
+        "startup_race",
+        "oauth_refresh",
+        "thread_manager"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P1",
+      "candidate_slice": "r9-p1-mcp-runtime-refresh-window",
+      "reason": "Credential and effective-plugin changes must invalidate both loaded threads and runtimes crossing their startup publication window.",
+      "semantic_absorption_recommendation": "Immediately refresh loaded local threads after successful OAuth, but defer the startup-window contract until Hepta has a centralized MCP runtime/source epoch rather than session-local config pushes.",
+      "changed_file_count": 8,
+      "related_files": [
+        "codex-rs/app-server/src/effective_plugin_change.rs",
+        "codex-rs/app-server/src/mcp_refresh.rs",
+        "codex-rs/app-server/src/request_processors/account_processor.rs",
+        "codex-rs/app-server/src/request_processors/mcp_processor.rs",
+        "codex-rs/app-server/src/request_processors/plugins.rs",
+        "codex-rs/core/src/session/mcp_prewarm.rs",
+        "codex-rs/core/src/thread_manager.rs",
+        "codex-rs/core/src/thread_manager_tests.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    },
+    {
+      "upstream_commit": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+      "authored_at": "2026-07-24T15:10:54Z",
+      "title": "Use current MCP authority for elicitation reviews (#35205)",
+      "primary_category": "tools_apps_runtime",
+      "secondary_topics": [
+        "mcp_elicitation",
+        "current_authority",
+        "guardian_routing",
+        "fail_closed"
+      ],
+      "risk": "critical",
+      "status": "candidate",
+      "hepta_v2_priority": "P0",
+      "candidate_slice": "r9-p0-current-mcp-authority",
+      "reason": "A long-lived elicitation reviewer must not decide under the stale approval policy, permission profile, or reviewer selection captured by an older active turn.",
+      "semantic_absorption_recommendation": "Bind reviews to the latest published local MCP manager authority, apply Never and granular denials before Guardian routing, and retain a deferral for upstream per-connector layer overrides not represented by the local configuration model.",
+      "changed_file_count": 6,
+      "related_files": [
+        "codex-rs/codex-mcp/src/runtime.rs",
+        "codex-rs/core/src/guardian/mod.rs",
+        "codex-rs/core/src/guardian/review.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/thread_manager.rs"
+      ],
+      "imported": false,
+      "imported_evidence": null
+    }
+  ],
+  "selective_semantic_transplant": {
+    "ordinary_merge_rebase": "forbidden_no_merge_base",
+    "direct_cherry_pick": "not_default",
+    "ordered_slices": [
+      {
+        "order": 1,
+        "id": "r9-p0-executor-skill-authority",
+        "commits": [
+          "7c71783135b020e8f4db3fa26dc4319901c260b5",
+          "fe8500c0a00eaddda49b68e6ade818a93b58dfb5"
+        ],
+        "required_evidence": [
+          "selected executor roots are bound to one step authority",
+          "list and read are package-confined and bounded",
+          "resource access is explicitly declared",
+          "stale capability and pagination cursors fail closed",
+          "no session-global executor filesystem exposure"
+        ]
+      },
+      {
+        "order": 2,
+        "id": "r9-p0-current-mcp-authority",
+        "commits": [
+          "000d2540ad73996f3589ae178bfe447bfd67cef2"
+        ],
+        "required_evidence": [
+          "a reused reviewer reads the latest published authority",
+          "Never and granular MCP denials occur before Guardian routing",
+          "empty-form auto-approval remains permission-profile bound",
+          "an old active turn cannot restore stale authority"
+        ]
+      },
+      {
+        "order": 3,
+        "id": "r9-p1-hook-broken-pipe-output",
+        "commits": [
+          "634a998d8aaeaf5f535e04d8475b17a62e7043a7"
+        ],
+        "required_evidence": [
+          "BrokenPipe alone does not erase completed hook output",
+          "other stdin write errors remain failures",
+          "large input reproduces the fast-exit race deterministically"
+        ]
+      },
+      {
+        "order": 4,
+        "id": "r9-p1-mcp-runtime-refresh-window",
+        "commits": [
+          "3645a4397c4889ea483a3b9a61ad7cf5921aa384"
+        ],
+        "required_evidence": [
+          "successful OAuth invalidates every loaded thread",
+          "a runtime crossing startup publication is invalidated",
+          "failed OAuth does not publish a refresh",
+          "refresh remains best effort across independent threads"
+        ]
+      },
+      {
+        "order": 5,
+        "id": "r9-p2-extension-warning-and-path-compaction",
+        "commits": [
+          "5dd992acd3f5242196ec690bb462e0d2687b485d",
+          "5a1c54fc2110b1299c80e949425044dff478da25"
+        ],
+        "required_evidence": [
+          "host path aliases preserve skill identity under budget pressure",
+          "extension warnings have one typed producer and thread-scoped delivery owner",
+          "metadata compaction cannot widen filesystem authority"
+        ]
+      },
+      {
+        "order": 6,
+        "id": "r9-p3-upstream-test-stabilization",
+        "commits": [
+          "1a817bb95d942d4ca93f6ed09c97968713ff6d2a",
+          "5f6a2c3adb159f606b13f4dd6b057d8a3431a1d1"
+        ],
+        "required_evidence": [
+          "the corresponding upstream fixture exists locally before any transplant",
+          "no production behavior is inferred from test-only changes"
+        ]
+      }
+    ]
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
