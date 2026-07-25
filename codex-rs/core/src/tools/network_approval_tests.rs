@@ -10,8 +10,16 @@ use core_test_support::test_path_buf;
 use pretty_assertions::assert_eq;
 use tokio_util::sync::CancellationToken;
 
-#[tokio::test]
-async fn pending_approvals_are_deduped_per_host_protocol_and_port() {
+fn pending_key(host: HostApprovalKey, turn: &str, execution: &str) -> PendingHostApprovalKey {
+    PendingHostApprovalKey {
+        host,
+        turn_id: turn.to_string(),
+        execution_id: Some(execution.to_string()),
+    }
+}
+
+#[test]
+fn pending_approvals_are_deduped_within_one_execution() {
     let service = NetworkApprovalService::default();
     let key = HostApprovalKey {
         host: "example.com".to_string(),
@@ -19,16 +27,17 @@ async fn pending_approvals_are_deduped_per_host_protocol_and_port() {
         port: 443,
     };
 
-    let (first, first_is_owner) = service.get_or_create_pending_approval(key.clone()).await;
-    let (second, second_is_owner) = service.get_or_create_pending_approval(key).await;
+    let key = pending_key(key, "turn-1", "execution-1");
+    let (first, first_is_owner) = service.get_or_create_pending_approval(key.clone());
+    let (second, second_is_owner) = service.get_or_create_pending_approval(key);
 
     assert!(first_is_owner);
     assert!(!second_is_owner);
     assert!(Arc::ptr_eq(&first, &second));
 }
 
-#[tokio::test]
-async fn pending_approvals_do_not_dedupe_across_ports() {
+#[test]
+fn pending_approvals_do_not_dedupe_across_ports() {
     let service = NetworkApprovalService::default();
     let first_key = HostApprovalKey {
         host: "example.com".to_string(),
@@ -41,12 +50,63 @@ async fn pending_approvals_do_not_dedupe_across_ports() {
         port: 8443,
     };
 
-    let (first, first_is_owner) = service.get_or_create_pending_approval(first_key).await;
-    let (second, second_is_owner) = service.get_or_create_pending_approval(second_key).await;
+    let (first, first_is_owner) =
+        service.get_or_create_pending_approval(pending_key(first_key, "turn-1", "execution-1"));
+    let (second, second_is_owner) =
+        service.get_or_create_pending_approval(pending_key(second_key, "turn-1", "execution-1"));
 
     assert!(first_is_owner);
     assert!(second_is_owner);
     assert!(!Arc::ptr_eq(&first, &second));
+}
+
+#[test]
+fn pending_approvals_do_not_dedupe_across_execution_or_turn() {
+    let service = NetworkApprovalService::default();
+    let host = HostApprovalKey {
+        host: "example.com".to_string(),
+        protocol: "https",
+        port: 443,
+    };
+    let (first, first_owner) =
+        service.get_or_create_pending_approval(pending_key(host.clone(), "turn-1", "execution-1"));
+    let (second, second_owner) =
+        service.get_or_create_pending_approval(pending_key(host.clone(), "turn-1", "execution-2"));
+    let (third, third_owner) =
+        service.get_or_create_pending_approval(pending_key(host, "turn-2", "execution-1"));
+
+    assert!(first_owner && second_owner && third_owner);
+    assert!(!Arc::ptr_eq(&first, &second));
+    assert!(!Arc::ptr_eq(&first, &third));
+}
+
+#[tokio::test]
+async fn abandoned_owner_denies_waiters_and_cancels_execution() {
+    let service = NetworkApprovalService::default();
+    let key = pending_key(
+        HostApprovalKey {
+            host: "example.com".to_string(),
+            protocol: "https",
+            port: 443,
+        },
+        "turn-1",
+        "execution-1",
+    );
+    let (pending, is_owner) = service.get_or_create_pending_approval(key.clone());
+    assert!(is_owner);
+    let cancellation = CancellationToken::new();
+    let owner = PendingHostApprovalOwner::new(
+        &service,
+        key,
+        Arc::clone(&pending),
+        Some(cancellation.clone()),
+    );
+    let waiter = tokio::spawn(async move { pending.wait_for_decision().await });
+
+    drop(owner);
+
+    assert_eq!(waiter.await.expect("waiter"), PendingApprovalDecision::Deny);
+    assert!(cancellation.is_cancelled());
 }
 
 #[tokio::test]
@@ -158,9 +218,7 @@ async fn pending_waiters_receive_owner_decision() {
         tokio::spawn(async move { pending.wait_for_decision().await })
     };
 
-    pending
-        .set_decision(PendingApprovalDecision::AllowOnce)
-        .await;
+    pending.set_decision(PendingApprovalDecision::AllowOnce);
 
     let decision = waiter.await.expect("waiter should complete");
     assert_eq!(decision, PendingApprovalDecision::AllowOnce);
@@ -364,6 +422,27 @@ async fn deferred_finish_reuses_denial_result_after_first_consumer() {
 
     assert!(matches!(first, ToolError::Rejected(message) if message == "network denied"));
     assert!(matches!(second, ToolError::Rejected(message) if message == "network denied"));
+}
+
+#[tokio::test]
+async fn deferred_finish_fails_closed_when_owner_disappears_without_an_outcome() {
+    let service = NetworkApprovalService::default();
+    let cancellation_token = CancellationToken::new();
+    cancellation_token.cancel();
+    let deferred = DeferredNetworkApproval {
+        registration_id: "abandoned-registration".to_string(),
+        cancellation_token,
+        finish_outcome: Arc::new(OnceCell::new()),
+    };
+
+    let err = deferred
+        .finish(&service)
+        .await
+        .expect_err("an abandoned approval must fail closed");
+
+    assert!(
+        matches!(err, ToolError::Rejected(message) if message == ABANDONED_NETWORK_APPROVAL_MESSAGE)
+    );
 }
 
 #[tokio::test]

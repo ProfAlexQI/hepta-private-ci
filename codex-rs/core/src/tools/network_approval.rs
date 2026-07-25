@@ -3,13 +3,14 @@ use crate::guardian::GuardianNetworkAccessTrigger;
 use crate::guardian::guardian_rejection_message;
 use crate::guardian::guardian_timeout_message;
 use crate::guardian::new_guardian_review_id;
-use crate::guardian::review_approval_request;
+use crate::guardian::review_approval_request_with_cancel;
 use crate::guardian::routes_approval_to_guardian;
 use crate::hook_runtime::run_permission_request_hooks;
 use crate::network_policy_decision::denied_network_policy_message;
 use crate::session::session::Session;
 use crate::tools::sandboxing::PermissionRequestPayload;
 use crate::tools::sandboxing::ToolError;
+use codex_analytics::GuardianApprovalRequestSource;
 use codex_hooks::PermissionRequestDecision;
 use codex_network_proxy::BlockedRequest;
 use codex_network_proxy::BlockedRequestObserver;
@@ -31,6 +32,8 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::Mutex as SyncMutex;
+use std::sync::OnceLock as SyncOnceLock;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::OnceCell;
@@ -38,6 +41,9 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
+
+const ABANDONED_NETWORK_APPROVAL_MESSAGE: &str =
+    "network approval was cancelled before a decision was returned";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NetworkApprovalMode {
@@ -79,6 +85,13 @@ impl DeferredNetworkApproval {
             .get_or_init(|| async { service.finish_call_outcome(&self.registration_id).await })
             .await
             .clone();
+        let outcome = outcome.or_else(|| {
+            self.cancellation_token.is_cancelled().then(|| {
+                NetworkApprovalOutcome::DeniedByPolicy(
+                    ABANDONED_NETWORK_APPROVAL_MESSAGE.to_string(),
+                )
+            })
+        });
         network_approval_outcome_to_result(outcome)
     }
 }
@@ -123,6 +136,13 @@ struct HostApprovalKey {
     host: String,
     protocol: &'static str,
     port: u16,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct PendingHostApprovalKey {
+    host: HostApprovalKey,
+    turn_id: String,
+    execution_id: Option<String>,
 }
 
 impl HostApprovalKey {
@@ -188,14 +208,14 @@ impl PendingApprovalDecision {
 }
 
 struct PendingHostApproval {
-    decision: Mutex<Option<PendingApprovalDecision>>,
+    decision: SyncOnceLock<PendingApprovalDecision>,
     notify: Notify,
 }
 
 impl PendingHostApproval {
     fn new() -> Self {
         Self {
-            decision: Mutex::new(None),
+            decision: SyncOnceLock::new(),
             notify: Notify::new(),
         }
     }
@@ -203,19 +223,17 @@ impl PendingHostApproval {
     async fn wait_for_decision(&self) -> PendingApprovalDecision {
         loop {
             let notified = self.notify.notified();
-            if let Some(decision) = *self.decision.lock().await {
-                return decision;
+            if let Some(decision) = self.decision.get() {
+                return *decision;
             }
             notified.await;
         }
     }
 
-    async fn set_decision(&self, decision: PendingApprovalDecision) {
-        {
-            let mut current = self.decision.lock().await;
-            *current = Some(decision);
+    fn set_decision(&self, decision: PendingApprovalDecision) {
+        if self.decision.set(decision).is_ok() {
+            self.notify.notify_waiters();
         }
-        self.notify.notify_waiters();
     }
 }
 
@@ -235,16 +253,88 @@ struct NetworkApprovalCallState {
 
 pub(crate) struct NetworkApprovalService {
     calls: Mutex<NetworkApprovalCallState>,
-    pending_host_approvals: Mutex<HashMap<HostApprovalKey, Arc<PendingHostApproval>>>,
+    pending_host_approvals: SyncMutex<HashMap<PendingHostApprovalKey, Arc<PendingHostApproval>>>,
+    session_policy_commit_lock: Mutex<()>,
     session_approved_hosts: Mutex<HashSet<HostApprovalKey>>,
     session_denied_hosts: Mutex<HashSet<HostApprovalKey>>,
+}
+
+struct PendingHostApprovalOwner<'a> {
+    service: &'a NetworkApprovalService,
+    key: PendingHostApprovalKey,
+    pending: Arc<PendingHostApproval>,
+    execution_cancellation: Option<CancellationToken>,
+    decision_on_drop: PendingApprovalDecision,
+    completed: bool,
+}
+
+impl<'a> PendingHostApprovalOwner<'a> {
+    fn new(
+        service: &'a NetworkApprovalService,
+        key: PendingHostApprovalKey,
+        pending: Arc<PendingHostApproval>,
+        execution_cancellation: Option<CancellationToken>,
+    ) -> Self {
+        Self {
+            service,
+            key,
+            pending,
+            execution_cancellation,
+            decision_on_drop: PendingApprovalDecision::Deny,
+            completed: false,
+        }
+    }
+
+    fn set_decision_on_drop(&mut self, decision: PendingApprovalDecision) {
+        self.decision_on_drop = decision;
+    }
+
+    fn complete(mut self, decision: PendingApprovalDecision) {
+        self.cancel_execution_if_denied(decision);
+        self.publish_and_remove(decision);
+        self.completed = true;
+    }
+
+    fn cancel_execution_if_denied(&self, decision: PendingApprovalDecision) {
+        if matches!(decision, PendingApprovalDecision::Deny)
+            && let Some(cancellation) = &self.execution_cancellation
+        {
+            cancellation.cancel();
+        }
+    }
+
+    fn publish_and_remove(&self, decision: PendingApprovalDecision) {
+        let mut approvals = self
+            .service
+            .pending_host_approvals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if approvals
+            .get(&self.key)
+            .is_some_and(|current| Arc::ptr_eq(current, &self.pending))
+        {
+            approvals.remove(&self.key);
+        }
+        drop(approvals);
+        self.pending.set_decision(decision);
+    }
+}
+
+impl Drop for PendingHostApprovalOwner<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.cancel_execution_if_denied(self.decision_on_drop);
+            self.publish_and_remove(self.decision_on_drop);
+        }
+    }
 }
 
 impl Default for NetworkApprovalService {
     fn default() -> Self {
         Self {
             calls: Mutex::new(NetworkApprovalCallState::default()),
-            pending_host_approvals: Mutex::new(HashMap::new()),
+            pending_host_approvals: SyncMutex::new(HashMap::new()),
+            session_policy_commit_lock: Mutex::new(()),
             session_approved_hosts: Mutex::new(HashSet::new()),
             session_denied_hosts: Mutex::new(HashSet::new()),
         }
@@ -255,6 +345,7 @@ impl NetworkApprovalService {
     /// Replace the target session's approval cache with the source session's
     /// currently approved hosts.
     pub(crate) async fn sync_session_approved_hosts_to(&self, other: &Self) {
+        let _commit_guard = self.session_policy_commit_lock.lock().await;
         let approved_hosts = self.session_approved_hosts.lock().await.clone();
         let mut other_approved_hosts = other.session_approved_hosts.lock().await;
         other_approved_hosts.clear();
@@ -299,11 +390,18 @@ impl NetworkApprovalService {
         None
     }
 
-    async fn get_or_create_pending_approval(
+    async fn has_active_calls(&self) -> bool {
+        !self.calls.lock().await.active_calls.is_empty()
+    }
+
+    fn get_or_create_pending_approval(
         &self,
-        key: HostApprovalKey,
+        key: PendingHostApprovalKey,
     ) -> (Arc<PendingHostApproval>, bool) {
-        let mut pending = self.pending_host_approvals.lock().await;
+        let mut pending = self
+            .pending_host_approvals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(existing) = pending.get(&key).cloned() {
             return (existing, false);
         }
@@ -401,8 +499,13 @@ impl NetworkApprovalService {
             NetworkProtocol::Socks5Udp => NetworkApprovalProtocol::Socks5Udp,
         };
         let key = HostApprovalKey::from_request(&request, protocol);
+        let owner_call = self.resolve_single_active_call().await;
+        if owner_call.is_none() && self.has_active_calls().await {
+            return NetworkDecision::deny(REASON_NOT_ALLOWED);
+        }
 
         {
+            let _commit_guard = self.session_policy_commit_lock.lock().await;
             let denied_hosts = self.session_denied_hosts.lock().await;
             if denied_hosts.contains(&key) {
                 return NetworkDecision::deny(REASON_NOT_ALLOWED);
@@ -416,50 +519,67 @@ impl NetworkApprovalService {
             }
         }
 
-        let (pending, is_owner) = self.get_or_create_pending_approval(key.clone()).await;
+        let Some(turn_context) = Self::active_turn_context(session.as_ref()).await else {
+            self.record_outcome_for_single_active_call(NetworkApprovalOutcome::DeniedByPolicy(
+                format!(
+                    "Network access to \"{}\" was blocked by policy.",
+                    Self::format_network_target(key.protocol, request.host.as_str(), key.port)
+                ),
+            ))
+            .await;
+            return NetworkDecision::deny(REASON_NOT_ALLOWED);
+        };
+        let pending_key = PendingHostApprovalKey {
+            host: key.clone(),
+            turn_id: owner_call
+                .as_ref()
+                .map_or_else(|| turn_context.sub_id.clone(), |call| call.turn_id.clone()),
+            execution_id: owner_call.as_ref().map(|call| call.registration_id.clone()),
+        };
+        let (pending, is_owner) = self.get_or_create_pending_approval(pending_key.clone());
         if !is_owner {
             return pending.wait_for_decision().await.to_network_decision();
         }
+        let mut pending_owner = PendingHostApprovalOwner::new(
+            self,
+            pending_key,
+            Arc::clone(&pending),
+            owner_call
+                .as_ref()
+                .map(|call| call.cancellation_token.clone()),
+        );
 
         let target = Self::format_network_target(key.protocol, request.host.as_str(), key.port);
         let policy_denial_message =
             format!("Network access to \"{target}\" was blocked by policy.");
         let prompt_reason = format!("{} is not in the allowed_domains", request.host);
 
-        let Some(turn_context) = Self::active_turn_context(session.as_ref()).await else {
-            pending.set_decision(PendingApprovalDecision::Deny).await;
-            self.pending_host_approvals.lock().await.remove(&key);
-            self.record_outcome_for_single_active_call(NetworkApprovalOutcome::DeniedByPolicy(
-                policy_denial_message,
-            ))
-            .await;
-            return NetworkDecision::deny(REASON_NOT_ALLOWED);
-        };
         if !permission_profile_allows_network_approval_flow(&turn_context.permission_profile()) {
-            pending.set_decision(PendingApprovalDecision::Deny).await;
-            self.pending_host_approvals.lock().await.remove(&key);
             self.record_outcome_for_single_active_call(NetworkApprovalOutcome::DeniedByPolicy(
                 policy_denial_message,
             ))
             .await;
+            pending_owner.complete(PendingApprovalDecision::Deny);
             return NetworkDecision::deny(REASON_NOT_ALLOWED);
         }
         if !allows_network_approval_flow(turn_context.approval_policy.value()) {
-            pending.set_decision(PendingApprovalDecision::Deny).await;
-            self.pending_host_approvals.lock().await.remove(&key);
             self.record_outcome_for_single_active_call(NetworkApprovalOutcome::DeniedByPolicy(
                 policy_denial_message,
             ))
             .await;
+            pending_owner.complete(PendingApprovalDecision::Deny);
             return NetworkDecision::deny(REASON_NOT_ALLOWED);
         }
 
-        let owner_call = self.resolve_single_active_call().await;
         let network_approval_context = NetworkApprovalContext {
             host: request.host.clone(),
             protocol,
         };
         let guardian_approval_id = Self::approval_id_for_key(&key);
+        let hook_approval_id = owner_call.as_ref().map_or_else(
+            || guardian_approval_id.clone(),
+            |call| format!("{guardian_approval_id}#{}", call.registration_id),
+        );
         let prompt_command = vec!["network-access".to_string(), target.clone()];
         let command = owner_call
             .as_ref()
@@ -467,18 +587,14 @@ impl NetworkApprovalService {
         if let Some(permission_request_decision) = run_permission_request_hooks(
             &session,
             &turn_context,
-            &guardian_approval_id,
+            &hook_approval_id,
             PermissionRequestPayload::bash(command, Some(format!("network-access {target}"))),
         )
         .await
         {
             match permission_request_decision {
                 PermissionRequestDecision::Allow => {
-                    pending
-                        .set_decision(PendingApprovalDecision::AllowOnce)
-                        .await;
-                    let mut pending_approvals = self.pending_host_approvals.lock().await;
-                    pending_approvals.remove(&key);
+                    pending_owner.complete(PendingApprovalDecision::AllowOnce);
                     return NetworkDecision::Allow;
                 }
                 PermissionRequestDecision::Deny { message } => {
@@ -489,9 +605,7 @@ impl NetworkApprovalService {
                         )
                         .await;
                     }
-                    pending.set_decision(PendingApprovalDecision::Deny).await;
-                    let mut pending_approvals = self.pending_host_approvals.lock().await;
-                    pending_approvals.remove(&key);
+                    pending_owner.complete(PendingApprovalDecision::Deny);
                     return NetworkDecision::deny(REASON_NOT_ALLOWED);
                 }
             }
@@ -499,7 +613,9 @@ impl NetworkApprovalService {
         let use_guardian = routes_approval_to_guardian(&turn_context);
         let guardian_review_id = use_guardian.then(new_guardian_review_id);
         let approval_decision = if let Some(review_id) = guardian_review_id.clone() {
-            review_approval_request(
+            let review_cancel = CancellationToken::new();
+            let _review_cancel_guard = review_cancel.clone().drop_guard();
+            review_approval_request_with_cancel(
                 &session,
                 &turn_context,
                 review_id,
@@ -515,6 +631,8 @@ impl NetworkApprovalService {
                     trigger: owner_call.as_ref().map(|call| call.trigger.clone()),
                 },
                 Some(policy_denial_message.clone()),
+                GuardianApprovalRequestSource::MainTurn,
+                review_cancel,
             )
             .await
         } else {
@@ -522,7 +640,7 @@ impl NetworkApprovalService {
             session
                 .request_command_approval(
                     turn_context.as_ref(),
-                    guardian_approval_id,
+                    format!("{guardian_approval_id}#{}", Uuid::new_v4()),
                     /*approval_id*/ None,
                     /*environment_id*/ None,
                     prompt_command,
@@ -537,12 +655,33 @@ impl NetworkApprovalService {
                 .await
         };
 
+        let _session_policy_commit_guard = if matches!(
+            &approval_decision,
+            ReviewDecision::Approved
+                | ReviewDecision::ApprovedExecpolicyAmendment { .. }
+                | ReviewDecision::ApprovedForSession
+                | ReviewDecision::NetworkPolicyAmendment { .. }
+        ) {
+            Some(self.session_policy_commit_lock.lock().await)
+        } else {
+            None
+        };
         let mut cache_session_deny = false;
         let resolved = match approval_decision {
             ReviewDecision::Approved | ReviewDecision::ApprovedExecpolicyAmendment { .. } => {
-                PendingApprovalDecision::AllowOnce
+                if self.session_denied_hosts.lock().await.contains(&key) {
+                    PendingApprovalDecision::Deny
+                } else {
+                    PendingApprovalDecision::AllowOnce
+                }
             }
-            ReviewDecision::ApprovedForSession => PendingApprovalDecision::AllowForSession,
+            ReviewDecision::ApprovedForSession => {
+                if self.session_denied_hosts.lock().await.contains(&key) {
+                    PendingApprovalDecision::Deny
+                } else {
+                    PendingApprovalDecision::AllowForSession
+                }
+            }
             ReviewDecision::NetworkPolicyAmendment {
                 network_policy_amendment,
             } => match network_policy_amendment.action {
@@ -551,6 +690,10 @@ impl NetworkApprovalService {
                         .persist_network_policy_amendment(
                             &network_policy_amendment,
                             &network_approval_context,
+                            || {
+                                pending_owner
+                                    .set_decision_on_drop(PendingApprovalDecision::AllowForSession);
+                            },
                         )
                         .await
                     {
@@ -581,6 +724,9 @@ impl NetworkApprovalService {
                         .persist_network_policy_amendment(
                             &network_policy_amendment,
                             &network_approval_context,
+                            || {
+                                pending_owner.set_decision_on_drop(PendingApprovalDecision::Deny);
+                            },
                         )
                         .await
                     {
@@ -664,10 +810,7 @@ impl NetworkApprovalService {
             denied_hosts.insert(key.clone());
         }
 
-        pending.set_decision(resolved).await;
-        let mut pending_approvals = self.pending_host_approvals.lock().await;
-        pending_approvals.remove(&key);
-
+        pending_owner.complete(resolved);
         resolved.to_network_decision()
     }
 }
