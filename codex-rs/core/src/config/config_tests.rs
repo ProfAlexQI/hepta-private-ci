@@ -3609,6 +3609,62 @@ fn filter_plugin_mcp_servers_by_allowlist_enforces_plugin_and_identity_rules() {
 }
 
 #[test]
+fn filter_plugin_mcp_servers_without_any_allowlist_preserves_all_servers() {
+    let original_servers = HashMap::from([
+        ("server-a".to_string(), stdio_mcp("cmd-a")),
+        ("server-b".to_string(), http_mcp("https://example.com/b")),
+    ]);
+    let requirements = Sourced::new(
+        BTreeMap::from([(
+            "sites@openai-bundled".to_string(),
+            codex_config::PluginRequirementsToml { mcp_servers: None },
+        )]),
+        RequirementSource::LegacyManagedConfigTomlFromMdm,
+    );
+
+    for plugin_name in ["sites@openai-bundled", "sample@test"] {
+        let mut servers = original_servers.clone();
+        filter_plugin_mcp_servers_by_requirements(plugin_name, &mut servers, Some(&requirements));
+        assert_eq!(servers, original_servers);
+    }
+}
+
+#[test]
+fn filter_plugin_mcp_servers_by_explicit_empty_allowlist_blocks_all() {
+    let mut servers = HashMap::from([
+        ("server-a".to_string(), stdio_mcp("cmd-a")),
+        ("server-b".to_string(), http_mcp("https://example.com/b")),
+    ]);
+    let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
+    let requirements = Sourced::new(
+        BTreeMap::from([(
+            "sample@test".to_string(),
+            codex_config::PluginRequirementsToml {
+                mcp_servers: Some(BTreeMap::new()),
+            },
+        )]),
+        source.clone(),
+    );
+
+    filter_plugin_mcp_servers_by_requirements("sample@test", &mut servers, Some(&requirements));
+
+    let reason = Some(McpServerDisabledReason::Requirements { source });
+    assert_eq!(
+        servers
+            .iter()
+            .map(|(name, server)| (
+                name.clone(),
+                (server.enabled, server.disabled_reason.clone())
+            ))
+            .collect::<HashMap<String, (bool, Option<McpServerDisabledReason>)>>(),
+        HashMap::from([
+            ("server-a".to_string(), (false, reason.clone())),
+            ("server-b".to_string(), (false, reason)),
+        ])
+    );
+}
+
+#[test]
 fn filter_plugin_mcp_servers_by_allowlist_blocks_unlisted_plugin() {
     let mut servers = HashMap::from([("server-a".to_string(), stdio_mcp("cmd-a"))]);
     let source = RequirementSource::CloudRequirements;
