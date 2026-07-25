@@ -1,0 +1,51 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v10",
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-25T03:11:46Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+    "range_start_exclusive": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+    "range_end_inclusive": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+    "commit_count": 16,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 159,
+    "net_insertions": 5972,
+    "net_deletions": 887,
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream 4c43465133428898aa84f0bfc02c306ed65fb66a:refs/remotes/upstream/hepta-intake-20260725-r10"
+  },
+  "commit_inventory": [
+    {"upstream_commit":"a177013eb055f16fcc9cd07308877ca36c88ede1","title":"Refresh managed MCP requirements for active threads (#35213)","status":"absorbed","hepta_v2_priority":"P0"},
+    {"upstream_commit":"58b427722857117ac3e702b9eb406d47616022e2","title":"Refresh MCP config independently across threads (#35216)","status":"existing_semantic_equivalent","hepta_v2_priority":"P0"},
+    {"upstream_commit":"05f000263b2b2528cc9ca2a100270da9c6bf2fed","title":"Support paginated thread forks (#35220)","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"99744cfe04806ebaa1e5d08e3e790070f852472b","title":"Avoid persisting non-local threads for hook transcripts (#35221)","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"544007d006d869b4af03a205f6a94a9f2b022051","title":"Support the ent26 enterprise plan (#35238)","status":"deferred","hepta_v2_priority":"P3"},
+    {"upstream_commit":"89a3b89c4c1d1afaaa93b6669c9e4e03247f8a99","title":"Route MCP auth discovery through runtime HTTP clients (#35239)","status":"absorbed","hepta_v2_priority":"P0"},
+    {"upstream_commit":"1811b67a84952b8ebbd0605a0388e02a18453eb8","title":"Support ephemeral forks of paginated threads (#35251)","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"32329b289d05eb6a3f8e35c267ceb25ba46716a2","title":"Expose workspace plugin publish capability (#35254)","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"07fd04abb199fa4c3a1530873ec69e938061a615","title":"Propagate remote plugin IDs to skill metadata (#35261)","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"0d2a0aa76ba8cabb468501a04d050834ec2ef80d","title":"Track remote plugin IDs in skill invocation analytics (#35262)","status":"deferred","hepta_v2_priority":"P2"},
+    {"upstream_commit":"a4535884169be8da2f81b8a4debecbd4dc11aa97","title":"Sign bundled macOS helper binaries (#35264)","status":"deferred","hepta_v2_priority":"P3"},
+    {"upstream_commit":"cba0e2701c9e3e67a877a16dbbd7a577d477a630","title":"Allow disabling the in-process code-mode host fallback (#35266)","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"63fe5a6b71d45dfff24a6a1e5da0699e054f145d","title":"Harden network approval cancellation and concurrency (#35267)","status":"absorbed","hepta_v2_priority":"P0"},
+    {"upstream_commit":"25b6fc9bbc49bbec12e8d38ceee550fc07cbc60d","title":"Include code-mode tool names in Responses Lite metadata (#35271)","status":"deferred","hepta_v2_priority":"P2"},
+    {"upstream_commit":"c3e926e61cb234fc180d8896bdb9655b58c3e735","title":"Trace remote exec-server connection setup (#35275)","status":"deferred","hepta_v2_priority":"P2"},
+    {"upstream_commit":"4c43465133428898aa84f0bfc02c306ed65fb66a","title":"Skip plugin MCP filtering when no allowlists are configured (#35280)","status":"absorbed","hepta_v2_priority":"P0"}
+  ],
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}

@@ -135,6 +135,11 @@
         "role": "current_r9",
         "ref": "refs/remotes/upstream/hepta-intake-20260724-r9",
         "sha": "000d2540ad73996f3589ae178bfe447bfd67cef2"
+      },
+      {
+        "role": "current_r10",
+        "ref": "refs/remotes/upstream/hepta-intake-20260725-r10",
+        "sha": "4c43465133428898aa84f0bfc02c306ed65fb66a"
       }
     ]
   },
