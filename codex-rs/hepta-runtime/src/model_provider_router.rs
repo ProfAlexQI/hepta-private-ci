@@ -491,7 +491,7 @@ impl ModelProviderRouter {
                 provider.provider_id == provider_id && provider.capability == capability
             })
             .cloned()
-            .expect("registered provider should exist");
+            .ok_or_else(|| HeptaError("registered provider missing after local upsert".into()))?;
         push_event(
             &mut router,
             "provider_registered",

@@ -212,7 +212,7 @@ impl HeptaConfigStore {
             .iter()
             .find(|entry| entry.path == path)
             .cloned()
-            .expect("entry should exist after upsert");
+            .ok_or_else(|| HeptaError("config entry missing after local upsert".into()))?;
         push_event(
             &mut store,
             "config_entry_upserted",

@@ -432,20 +432,17 @@ fn work_graph_append_only_store_operator_review_side_effect_lock_readback_plans_
 ) -> Vec<WorkGraphOperatorReviewSideEffectLockReadbackPlanPreview> {
     packets
         .iter()
-        .map(|packet| {
+        .filter_map(|packet| {
             let lock_plan = lock_plans
                 .iter()
-                .find(|plan| plan.source_surface_id == packet.source_surface_id)
-                .expect("side-effect lock plan must exist for packet source");
+                .find(|plan| plan.source_surface_id == packet.source_surface_id)?;
             let approval_boundary = approval_boundaries
                 .iter()
-                .find(|boundary| boundary.source_surface_id == packet.source_surface_id)
-                .expect("approval evidence boundary must exist for packet source");
+                .find(|boundary| boundary.source_surface_id == packet.source_surface_id)?;
             let readback_boundary = readback_boundaries
                 .iter()
-                .find(|boundary| boundary.source_surface_id == packet.source_surface_id)
-                .expect("readback boundary must exist for packet source");
-            WorkGraphOperatorReviewSideEffectLockReadbackPlanPreview {
+                .find(|boundary| boundary.source_surface_id == packet.source_surface_id)?;
+            Some(WorkGraphOperatorReviewSideEffectLockReadbackPlanPreview {
                 id: readback_plan_id(packet.source_surface_id),
                 source_surface_id: packet.source_surface_id,
                 source_category: packet.source_category,
@@ -463,7 +460,7 @@ fn work_graph_append_only_store_operator_review_side_effect_lock_readback_plans_
                 establishes_side_effect_lock: false,
                 mutates_store: false,
                 writes_wal: false,
-            }
+            })
         })
         .collect()
 }

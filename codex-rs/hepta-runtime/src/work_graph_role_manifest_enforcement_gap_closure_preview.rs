@@ -198,11 +198,10 @@ pub fn work_graph_role_manifest_enforcement_gap_closure_plans()
     let adapters = work_graph_role_manifest_adapter_previews();
     role_manifest_blocked_source_decisions()
         .into_iter()
-        .map(|decision| {
+        .filter_map(|decision| {
             let adapter = adapters
                 .iter()
-                .find(|adapter| adapter.source_surface_id == decision.source_surface_id)
-                .expect("role manifest adapter for blocked source");
+                .find(|adapter| adapter.source_surface_id == decision.source_surface_id)?;
             closure_plan(decision, adapter)
         })
         .collect()
@@ -441,16 +440,15 @@ fn role_manifest_blocked_source_decisions()
 fn closure_plan(
     decision: WorkGraphSchedulerAdmissionRerunSourceDecisionPreview,
     adapter: &WorkGraphRoleManifestAdapterPreview,
-) -> WorkGraphRoleManifestClosurePlanPreview {
+) -> Option<WorkGraphRoleManifestClosurePlanPreview> {
     let role_blocker_id = decision
         .residual_source_blocker_ids
         .iter()
         .copied()
-        .find(|blocker| blocker.contains("role_manifest_not_enforced"))
-        .expect("role manifest residual blocker");
+        .find(|blocker| blocker.contains("role_manifest_not_enforced"))?;
     let source_surface_id = decision.source_surface_id;
 
-    WorkGraphRoleManifestClosurePlanPreview {
+    Some(WorkGraphRoleManifestClosurePlanPreview {
         closure_plan_id: format!("role_manifest_closure_plan:{source_surface_id}"),
         source_surface_id,
         source_category: decision.source_category,
@@ -476,7 +474,7 @@ fn closure_plan(
         starts_work: false,
         spawns_agent: false,
         writes_store: false,
-    }
+    })
 }
 
 fn capability_ids_for(projected_role_kind: &str) -> Vec<&'static str> {
@@ -485,7 +483,7 @@ fn capability_ids_for(projected_role_kind: &str) -> Vec<&'static str> {
         "batch_worker_role" => vec!["agent_delegation", "code_editing", "verification"],
         "runtime_worker_role" => vec!["code_editing", "verification", "scheduler_control"],
         "external_handoff_role" => vec!["external_handoff_proposal", "research", "verification"],
-        other => panic!("unknown projected role kind: {other}"),
+        _ => Vec::new(),
     }
 }
 
@@ -495,7 +493,7 @@ fn tool_permission_mode_ids_for(projected_role_kind: &str) -> Vec<&'static str> 
             vec!["preview", "read_only", "approval_required"]
         }
         "runtime_worker_role" => vec!["read_only", "write_scoped", "approval_required"],
-        other => panic!("unknown projected role kind: {other}"),
+        _ => Vec::new(),
     }
 }
 

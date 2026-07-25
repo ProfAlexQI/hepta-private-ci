@@ -207,7 +207,7 @@ pub fn work_graph_store_idempotency_guard_gap_closure_application_plans()
 -> Vec<WorkGraphStoreIdempotencyGuardApplicationPlanPreview> {
     work_graph_store_idempotency_guard_gap_closure_readback_plans()
         .into_iter()
-        .map(application_plan)
+        .filter_map(application_plan)
         .collect()
 }
 
@@ -373,9 +373,9 @@ impl WorkGraphStoreIdempotencyGuardGapClosureApplicationPreviewSideEffects {
 
 fn application_plan(
     readback_plan: WorkGraphStoreIdempotencyGuardReadbackPlanPreview,
-) -> WorkGraphStoreIdempotencyGuardApplicationPlanPreview {
-    let probe_binding = probe_binding_for_source(readback_plan.source_surface_id);
-    WorkGraphStoreIdempotencyGuardApplicationPlanPreview {
+) -> Option<WorkGraphStoreIdempotencyGuardApplicationPlanPreview> {
+    let probe_binding = probe_binding_for_source(readback_plan.source_surface_id)?;
+    Some(WorkGraphStoreIdempotencyGuardApplicationPlanPreview {
         application_plan_id: application_plan_id_for_source(readback_plan.source_surface_id),
         readback_plan_id: readback_plan.id,
         source_surface_id: readback_plan.source_surface_id,
@@ -397,7 +397,7 @@ fn application_plan(
         persists_state_store_guard: false,
         enables_append_only_store: false,
         enforces_projection: false,
-    }
+    })
 }
 
 fn source_outcome(
@@ -474,11 +474,10 @@ fn blocker(
 
 fn probe_binding_for_source(
     source_surface_id: &str,
-) -> WorkGraphStoreIdempotencyGuardProbeBindingReadbackAssertionPreview {
+) -> Option<WorkGraphStoreIdempotencyGuardProbeBindingReadbackAssertionPreview> {
     work_graph_store_idempotency_guard_probe_binding_readback_assertions()
         .into_iter()
         .find(|assertion| assertion.source_surface_id == source_surface_id)
-        .unwrap_or_else(|| panic!("missing probe binding assertion for {source_surface_id}"))
 }
 
 fn application_plan_ids(

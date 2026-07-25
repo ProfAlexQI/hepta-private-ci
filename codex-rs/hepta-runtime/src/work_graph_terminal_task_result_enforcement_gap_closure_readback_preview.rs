@@ -403,22 +403,20 @@ pub fn work_graph_terminal_task_result_enforcement_gap_closure_readback_blockers
             "scheduler_admission_or_role_manifest_residuals_not_enforced",
             "high",
             affected_sources(&plans, |plan| {
-                closure_plan_for_readback(plan)
-                    .residual_source_blocker_ids
-                    .iter()
-                    .any(|blocker| {
+                closure_plan_for_readback(plan).is_some_and(|closure| {
+                    closure.residual_source_blocker_ids.iter().any(|blocker| {
                         blocker.ends_with("_admission_not_enforced")
                             || blocker.contains("role_manifest_not_enforced")
                     })
+                })
             }),
             affected_plan_ids(&plans, |plan| {
-                closure_plan_for_readback(plan)
-                    .residual_source_blocker_ids
-                    .iter()
-                    .any(|blocker| {
+                closure_plan_for_readback(plan).is_some_and(|closure| {
+                    closure.residual_source_blocker_ids.iter().any(|blocker| {
                         blocker.ends_with("_admission_not_enforced")
                             || blocker.contains("role_manifest_not_enforced")
                     })
+                })
             }),
             "admission and role-manifest residual blockers remain separate gates after TaskResult readback",
         ),
@@ -606,16 +604,10 @@ fn affected_plan_ids(
 
 fn closure_plan_for_readback(
     readback_plan: &WorkGraphTerminalTaskResultEnforcementGapClosureReadbackPlanPreview,
-) -> WorkGraphTerminalTaskResultEnforcementGapClosurePlanPreview {
+) -> Option<WorkGraphTerminalTaskResultEnforcementGapClosurePlanPreview> {
     work_graph_terminal_task_result_enforcement_gap_closure_plans()
         .into_iter()
         .find(|plan| plan.id == readback_plan.closure_plan_id)
-        .unwrap_or_else(|| {
-            panic!(
-                "missing terminal TaskResult closure plan {}",
-                readback_plan.closure_plan_id
-            )
-        })
 }
 
 fn readback_id_for_source(source_surface_id: &str) -> String {

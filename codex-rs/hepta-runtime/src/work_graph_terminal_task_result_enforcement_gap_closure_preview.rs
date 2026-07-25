@@ -253,16 +253,18 @@ pub fn work_graph_terminal_task_result_enforcement_gap_closure_plans()
 
     work_graph_terminal_task_result_enforcement_gap_source_decisions()
         .into_iter()
-        .map(|decision| {
+        .filter_map(|decision| {
             let wrapper = wrappers
                 .iter()
-                .find(|wrapper| wrapper.source_surface_id == decision.source_surface_id)
-                .expect("terminal TaskResult wrapper for blocker source");
+                .find(|wrapper| wrapper.source_surface_id == decision.source_surface_id)?;
             let readback_plan = readback_plans
                 .iter()
-                .find(|plan| plan.source_surface_id == decision.source_surface_id)
-                .expect("terminal TaskResult readback plan for blocker source");
-            terminal_task_result_closure_plan(&decision, wrapper, readback_plan)
+                .find(|plan| plan.source_surface_id == decision.source_surface_id)?;
+            Some(terminal_task_result_closure_plan(
+                &decision,
+                wrapper,
+                readback_plan,
+            ))
         })
         .collect()
 }

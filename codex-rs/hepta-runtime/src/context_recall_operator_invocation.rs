@@ -169,7 +169,13 @@ impl RuntimeKernel {
             return Ok(blocked_command_report(&request, target, blockers));
         }
 
-        let target = target.expect("unsupported target handled above");
+        let Some(target) = target else {
+            return Ok(blocked_command_report(
+                &request,
+                None,
+                vec!["unsupported_target"],
+            ));
+        };
         let report = self
             .run_context_recall_operator_invocation(ContextRecallOperatorInvocationRequest {
                 target,
@@ -206,7 +212,10 @@ impl RuntimeKernel {
                                     WorkerTaskContextRecallOperatorSchedulerKind::Due
                                 }
                                 ContextRecallOperatorInvocationTarget::MultiAgentReady => {
-                                    unreachable!("multi-agent target handled by outer match")
+                                    return Err(HeptaError(
+                                        "multi-agent target reached worker scheduler routing"
+                                            .into(),
+                                    ));
                                 }
                             },
                             channel_id: request.channel_id.clone(),

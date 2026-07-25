@@ -1988,10 +1988,8 @@ impl RuntimeKernel {
             session_id: session_id.to_string(),
             path_gates: Vec::new(),
         });
-        state
-            .sessions
-            .last_mut()
-            .expect("capability binding inserted")
+        let inserted_index = state.sessions.len() - 1;
+        &mut state.sessions[inserted_index]
     }
 
     fn resolve_model_for_session_from_state(

@@ -55,18 +55,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "1d8a29fecefcb9cd7500f899fdbcce3a2200d5811ac0a2981e3cb57369d1a9a6",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "052069341cf1870081f81b0824662bb44dce106743db3d8b98855311ca5d46fd",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_application_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "0267a95576e397cc18b18ec62abe4612807c6c52ddc454407e2dc42dd2fc0c04",
       "disposition": "accepted_invariant",
@@ -91,18 +79,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "1256de98ace7a75e87537ca915dde109420f4811c2f1cd660a7bd1e69cef7d8f",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "0bc9d2b573ac46e38fb7a52abf856f2dd0273d7243939ddf9f4d7857a1c28455",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_terminal_task_result_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "1f5e0c445bab0dcbe3ca28eb0e7c2197c1960d7ef51688024824bae2abaffb11",
       "disposition": "accepted_invariant",
@@ -124,18 +100,6 @@
       "path": "codex-rs/hepta-runtime/src/runtime_kernel/provider_support.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "aa9e579ee5e3a21136c5c35532da8476f26ceba51e7c2bcc070b6cb84c1ad061",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "210a8ca3b3ec7c0c114dd008bf2544fba31cb27ae57af7e3ea4b4e56320f4ee0",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_terminal_task_result_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -235,42 +199,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "8b67fced7be1c8cd408d9c1799b6740b2e794d049d37f57203cb50ef0b5fad05",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "346eb878276d0cbf7029e46f43cca386dbeaaea7d4b0882c4a2cd0c5a798923c",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_terminal_task_result_enforcement_gap_closure_readback_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "24bd0384229e5e3f202c53780b9da1fbb5104b20d7a20cc4f033ef9026d28134",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "350c4d86a5d1ff55c314d93d893a48d13f1a57501de3c6e8e5d73f3ed69b0a07",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/context_recall_operator_invocation.rs",
-      "rationale": "Operator-command dispatch relies on earlier target validation and exhaustive outer routing on a runtime request path.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "d2e6fc5ba6fa91ecc48818bc9d3c6facb7653596c6d295c105a5b39d1c0fe76c",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "36af1bc96764c2c68f851d28a3dc65938472a69bfa446b29fc1643f516ded49e",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "987bf0607ae8214f9390c8044ea2e3a7459f67ebf94aec4ac8740d80bbc7ac79",
       "disposition": "accepted_invariant",
@@ -280,18 +208,6 @@
       "path": "codex-rs/hepta-runtime/src/controlled_live_readiness_audit.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "2be33075d7b4dddfa943f73254ad6a114d1ff81f5e73142d68fe5ec69627202e",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "3e0db10b3d4394197ee35d162e5dd725ae54de6f7ff0d074cb252b84f6c41f49",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_append_only_store_operator_review_side_effect_lock_readback_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -328,18 +244,6 @@
       "path": "codex-rs/hepta-core/src/memory_kernel.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "295087772c8b0ac535a7cbbe862ed9f6f314f0c85b434e0ee9506730646ea159",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "4838fc0fa668d63fd883d900c7474971f55f5880e5327f3b658d2f0da243d424",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_role_manifest_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -415,18 +319,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "b90c8238b7c93a31305eb245bc07979a7cec29ff3f16cbb63dae1999653d5658",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "790649fac73c69d6767d4e5da293775e2f3e7bd297f523dcce84bea3b14bc491",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_scheduler_admission_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "cf95f3dcfec95e1af9020675a639ec1e2e8daeeaf8bab5a23ffd41e01ca26108",
       "disposition": "accepted_invariant",
@@ -448,30 +340,6 @@
       "path": "codex-rs/hepta-runtime/src/wg_deep_td7_receipt_retention_readback_ack_replay_preview.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "a72fd2ad0d7d14c8e0b9284264b7dcfa3cb1b2dc9515405ecc25b7b4c7b091b5",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "7f90e5149aac0d52f420a33e83789b4af5edf106486e615bbb735fdf678081de",
-      "kind": "unreachable",
-      "path": "codex-rs/hepta-runtime/src/context_recall_operator_invocation.rs",
-      "rationale": "Operator-command dispatch relies on earlier target validation and exhaustive outer routing on a runtime request path.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "persistence_serialization",
-      "content_sha256": "ead07afb6ddc9bd9ffea312c15431572fb0c738686d8e94d810116d7b1a74cb2",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "816aaa914aeac2815dffb9ee0c1aecfafb3e3a064329ce2f6c267b5ac9702de2",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/topic_neuron.rs",
-      "rationale": "A persisted runtime store asserts that a record exists immediately after insert or upsert mutation.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -499,42 +367,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "354a649f22666a6c2dbeb00ae9c117db3418914a8b98e85cf3e4ce3ee59c4578",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "879166ce25c6a5879e140df57f96958c498103937f47b9dec11b55c5477e22e9",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_role_manifest_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "b44da9d3b0fb34aab1831f5fde8f61ed54378b53672a3f5ce1f3bd8f5bdb3273",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "8c175e2af5dc97a0a837c213ed415c80eb44a9b290b44c6a9a722c0fd3f5615c",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_append_only_store_operator_review_side_effect_lock_readback_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "concurrency_task",
-      "content_sha256": "0c31065a31132c1c9e404993b3e6c1c67060c5d424f80794d80354385b11a0c3",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "8e08489ad1128f1e279f28cdc4de4b9ba9355f030befc539749148ab949164f0",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/runtime_kernel/context_turn_ops.rs",
-      "rationale": "Mutable runtime session state asserts that a just-inserted binding remains present.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "47c11bc530a4818f942c65fac2ac12d4b973da16620ee0bd1bdbf9afb5cb3dd4",
       "disposition": "accepted_invariant",
@@ -544,30 +376,6 @@
       "path": "codex-rs/hepta-runtime/src/wg_deep_td8_receipt_retention_readback_ack_preview.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "67cfc192490fc034fe7ccad070f1162d58281cbd2c28794412a9d698087cf160",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "9262be08accc4fd2ffb06b8297d4d51e6a3b0fdbd675559570a156ec26c78510",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_role_manifest_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "13fa2c103c0184be3ef37cc1299f00af324068d1139fb638e62f131df17346a0",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "a2584d34d1fd6cf42532b58ff6bdf3a8c2509b9e0d3b8e7d2d2225115e8d22cd",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_scheduler_admission_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -619,42 +427,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "persistence_serialization",
-      "content_sha256": "ee101b78b3bc5c9fcf10ebd37941b68f7fccaaf26abda0b31f4015ba65ebaf10",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "b95250ab9234a58f5c6b55dac61fe573e6115d99f24c192778d57775ee197ddd",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/config_store.rs",
-      "rationale": "A persisted runtime store asserts that a record exists immediately after insert or upsert mutation.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "8b67fced7be1c8cd408d9c1799b6740b2e794d049d37f57203cb50ef0b5fad05",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "ba72a9fc8a67b564097041144123233c101b433e1967a6fd8afd1fc1fa686600",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_terminal_task_result_enforcement_gap_closure_application_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "persistence_serialization",
-      "content_sha256": "cafd2cd40404b116dfe3609958b72c7afab58257f528898f0c99fb6739c2e782",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "bb44f2ccf6dc1a159bd890fed856849df7c13ed828395aa869906139b715d624",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/model_provider_router.rs",
-      "rationale": "A persisted runtime store asserts that a record exists immediately after insert or upsert mutation.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "1e7bde3762d509c6bafd060c8da9b9b45ce6a26cbef633f618800bd1e505cb81",
       "disposition": "accepted_invariant",
@@ -703,18 +475,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "f3b7a40271bfc48c9a69f6378ee3cd57d95b0381e9d67f26f73093e3afef408b",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "d5274228bfb10c78912290cadc1c1c67565cfc3f540cb9750cc70a6a12495bcd",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_role_manifest_enforcement_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "399d3c34cecd37611138146bab69a0e2cffb4633331428baf983becf4b395f05",
       "disposition": "accepted_invariant",
@@ -739,54 +499,6 @@
       "source_class": "production"
     },
     {
-      "boundary": "request_runtime_path",
-      "content_sha256": "1452793d32856cabeb95ab3644848ba00fb4ec290c95a23074f152c5cf8c4913",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "d954599cdce5fea74ef18f110fd4f91213e5ec4bbc8dbd95bb45dafe578b9136",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "97853186262b28da2f549b968bf2830458d563e2798f7bf565e86d6b8a449c99",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "dc1ec2bdda566b80e2331e497bdd447436620c927c36ded54638c8b86d31bfd2",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_readback_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "372f1a44eb111c641a8948dfbd91f1dafce75833d8e640ed737cf07136814a7c",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "deffa532ea2a22c4d062024bb4ae26b7d43d68dd0c74b232b68409e2d24f0c0e",
-      "kind": "expect",
-      "path": "codex-rs/hepta-runtime/src/work_graph_append_only_store_operator_review_side_effect_lock_readback_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "9b020d0d1d2554b6da3d294a6f820a2fdf132b7d462106a9c3d47b237ff25076",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "dff361ca90b451a9f0b69c8dffbfe4f06ec18120149ad8dc9fd87f223b540637",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_store_idempotency_guard_gap_closure_readback_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
-      "source_class": "production"
-    },
-    {
       "boundary": "trusted_static_invariant",
       "content_sha256": "d31fcd89d5b562eaf7ea6050e235f4cfad729496be4320a3f3940fc695521df0",
       "disposition": "accepted_invariant",
@@ -796,18 +508,6 @@
       "path": "codex-rs/hepta-native-gateway/src/native_gateway/activation_memory_reports.rs",
       "rationale": "Internal value is constructed or selected from the same bounded static structure before this assertion.",
       "risk": "accepted",
-      "source_class": "production"
-    },
-    {
-      "boundary": "request_runtime_path",
-      "content_sha256": "9a49740084ac9aeb6a8191374859b2df5e875d41ce24d4b29c29b4c225aa9361",
-      "disposition": "planned_debt",
-      "duplicate_ordinal": 1,
-      "fingerprint": "e03b39ff416345b804bf40e4356d6766892ca975cb69bf0f1981e49bddd2e25b",
-      "kind": "panic",
-      "path": "codex-rs/hepta-runtime/src/work_graph_terminal_task_result_enforcement_gap_closure_application_preview.rs",
-      "rationale": "Operator preview/readback construction assumes IDs remain synchronized across separately built in-memory registries.",
-      "risk": "medium",
       "source_class": "production"
     },
     {
@@ -937,11 +637,11 @@
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4331,
-      "panic": 74,
+      "expect": 4317,
+      "panic": 64,
       "todo": 0,
       "unimplemented": 0,
-      "unreachable": 26,
+      "unreachable": 25,
       "unwrap": 301
     },
     "by_risk": {
@@ -949,17 +649,17 @@
       "excluded_nonproduction": 0,
       "high": 0,
       "low": 0,
-      "medium": 25,
+      "medium": 0,
       "test_only": 4660,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
       "generated_build": 0,
-      "production": 72,
+      "production": 47,
       "test": 4660
     },
-    "classification_sha256": "e182bd409c8bf2084a7286f3678ee53b71df59b5a89a1b46e9c4317531e27f21",
-    "total": 4732
+    "classification_sha256": "3bb78c7743f34af6d6b5b3f1fda4f06719cd3107f6a57d4fef953c3b9938a838",
+    "total": 4707
   }
 }

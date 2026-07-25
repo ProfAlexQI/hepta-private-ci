@@ -227,7 +227,7 @@ pub fn work_graph_terminal_task_result_enforcement_gap_closure_application_plans
 -> Vec<WorkGraphTerminalTaskResultEnforcementApplicationPlanPreview> {
     work_graph_terminal_task_result_enforcement_gap_closure_readback_plans()
         .into_iter()
-        .map(application_plan)
+        .filter_map(application_plan)
         .collect()
 }
 
@@ -360,22 +360,20 @@ pub fn work_graph_terminal_task_result_enforcement_gap_closure_application_block
             "scheduler_admission_or_role_manifest_residuals_not_enforced",
             "high",
             affected_sources(&plans, |plan| {
-                closure_plan_for_application(plan)
-                    .residual_source_blocker_ids
-                    .iter()
-                    .any(|blocker| {
+                closure_plan_for_application(plan).is_some_and(|closure| {
+                    closure.residual_source_blocker_ids.iter().any(|blocker| {
                         blocker.ends_with("_admission_not_enforced")
                             || blocker.contains("role_manifest_not_enforced")
                     })
+                })
             }),
             application_plan_ids(&plans, |plan| {
-                closure_plan_for_application(plan)
-                    .residual_source_blocker_ids
-                    .iter()
-                    .any(|blocker| {
+                closure_plan_for_application(plan).is_some_and(|closure| {
+                    closure.residual_source_blocker_ids.iter().any(|blocker| {
                         blocker.ends_with("_admission_not_enforced")
                             || blocker.contains("role_manifest_not_enforced")
                     })
+                })
             }),
             "preserve scheduler admission and role-manifest blockers as separate gates after TaskResult rerun",
         ),
@@ -444,36 +442,38 @@ impl WorkGraphTerminalTaskResultEnforcementGapClosureApplicationPreviewSideEffec
 
 fn application_plan(
     readback_plan: WorkGraphTerminalTaskResultEnforcementGapClosureReadbackPlanPreview,
-) -> WorkGraphTerminalTaskResultEnforcementApplicationPlanPreview {
-    let closure_plan = closure_plan_for_readback(&readback_plan);
-    WorkGraphTerminalTaskResultEnforcementApplicationPlanPreview {
-        application_plan_id: application_plan_id_for_source(readback_plan.source_surface_id),
-        readback_plan_id: readback_plan.id,
-        closure_plan_id: readback_plan.closure_plan_id,
-        source_surface_id: readback_plan.source_surface_id,
-        source_category: closure_plan.source_category,
-        wrapper_id: readback_plan.wrapper_id,
-        terminal_source_kind: closure_plan.terminal_source_kind,
-        enforcement_binding_id: readback_plan.enforcement_binding_id,
-        readback_probe_binding_id: readback_plan.readback_probe_binding_id,
-        wrapper_readback_plan_id: readback_plan.wrapper_readback_plan_id,
-        expected_evidence_contract_id: readback_plan.expected_evidence_contract_id,
-        application_scope: "terminal_task_result_runtime_enforcement_binding",
-        required_wire_fields: readback_plan.required_wire_fields,
-        required_collection_assertion_ids: readback_plan.required_collection_assertion_ids,
-        drift_detector_ids: readback_plan.drift_detector_ids,
-        terminal_source_blocker_ids: closure_plan.terminal_source_blocker_ids,
-        application_state: "preview_application_defined_terminal_task_result_enforcement_not_attached",
-        readback_verified_by_preview: true,
-        applies_to_runtime: false,
-        attaches_runtime_wrapper: false,
-        executes_wrapper: false,
-        persists_task_result: false,
-        enables_task_result_enforcement: false,
-        enables_append_only_store: false,
-        enforces_projection: false,
-        mutates_store: false,
-    }
+) -> Option<WorkGraphTerminalTaskResultEnforcementApplicationPlanPreview> {
+    let closure_plan = closure_plan_for_readback(&readback_plan)?;
+    Some(
+        WorkGraphTerminalTaskResultEnforcementApplicationPlanPreview {
+            application_plan_id: application_plan_id_for_source(readback_plan.source_surface_id),
+            readback_plan_id: readback_plan.id,
+            closure_plan_id: readback_plan.closure_plan_id,
+            source_surface_id: readback_plan.source_surface_id,
+            source_category: closure_plan.source_category,
+            wrapper_id: readback_plan.wrapper_id,
+            terminal_source_kind: closure_plan.terminal_source_kind,
+            enforcement_binding_id: readback_plan.enforcement_binding_id,
+            readback_probe_binding_id: readback_plan.readback_probe_binding_id,
+            wrapper_readback_plan_id: readback_plan.wrapper_readback_plan_id,
+            expected_evidence_contract_id: readback_plan.expected_evidence_contract_id,
+            application_scope: "terminal_task_result_runtime_enforcement_binding",
+            required_wire_fields: readback_plan.required_wire_fields,
+            required_collection_assertion_ids: readback_plan.required_collection_assertion_ids,
+            drift_detector_ids: readback_plan.drift_detector_ids,
+            terminal_source_blocker_ids: closure_plan.terminal_source_blocker_ids,
+            application_state: "preview_application_defined_terminal_task_result_enforcement_not_attached",
+            readback_verified_by_preview: true,
+            applies_to_runtime: false,
+            attaches_runtime_wrapper: false,
+            executes_wrapper: false,
+            persists_task_result: false,
+            enables_task_result_enforcement: false,
+            enables_append_only_store: false,
+            enforces_projection: false,
+            mutates_store: false,
+        },
+    )
 }
 
 fn source_outcome(
@@ -574,30 +574,18 @@ fn application_plan_ids(
 
 fn closure_plan_for_readback(
     readback_plan: &WorkGraphTerminalTaskResultEnforcementGapClosureReadbackPlanPreview,
-) -> WorkGraphTerminalTaskResultEnforcementGapClosurePlanPreview {
+) -> Option<WorkGraphTerminalTaskResultEnforcementGapClosurePlanPreview> {
     work_graph_terminal_task_result_enforcement_gap_closure_plans()
         .into_iter()
         .find(|plan| plan.id == readback_plan.closure_plan_id)
-        .unwrap_or_else(|| {
-            panic!(
-                "missing terminal TaskResult closure plan {}",
-                readback_plan.closure_plan_id
-            )
-        })
 }
 
 fn closure_plan_for_application(
     application_plan: &WorkGraphTerminalTaskResultEnforcementApplicationPlanPreview,
-) -> WorkGraphTerminalTaskResultEnforcementGapClosurePlanPreview {
+) -> Option<WorkGraphTerminalTaskResultEnforcementGapClosurePlanPreview> {
     work_graph_terminal_task_result_enforcement_gap_closure_plans()
         .into_iter()
         .find(|plan| plan.id == application_plan.closure_plan_id)
-        .unwrap_or_else(|| {
-            panic!(
-                "missing terminal TaskResult closure plan {}",
-                application_plan.closure_plan_id
-            )
-        })
 }
 
 fn application_plan_id_for_source(source_surface_id: &str) -> String {

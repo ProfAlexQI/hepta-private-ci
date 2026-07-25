@@ -216,17 +216,17 @@ pub fn work_graph_store_idempotency_guard_gap_closure_plans()
         .filter(|decision| {
             decision.rerun_enforcement_decision == "deny_missing_store_idempotency_guard"
         })
-        .map(|decision| {
-            let adapter = adapter_for_source(decision.source_surface_id);
-            let replay_key = replay_key_for_adapter(&adapter);
-            closure_plan(
+        .filter_map(|decision| {
+            let adapter = adapter_for_source(decision.source_surface_id)?;
+            let replay_key = replay_key_for_adapter(&adapter)?;
+            Some(closure_plan(
                 closure_plan_id_for_source(decision.source_surface_id),
                 decision.source_surface_id,
                 decision.source_category,
                 decision.rerun_enforcement_decision,
                 adapter,
                 replay_key,
-            )
+            ))
         })
         .collect()
 }
@@ -235,15 +235,15 @@ pub fn work_graph_store_idempotency_guard_gap_candidate_guards()
 -> Vec<WorkGraphStoreIdempotencyCandidateGuardPreview> {
     work_graph_store_idempotency_guard_gap_closure_plans()
         .iter()
-        .map(|plan| {
-            let adapter = adapter_for_source(plan.source_surface_id);
-            let replay_key = replay_key_for_adapter(&adapter);
-            candidate_guard(
+        .filter_map(|plan| {
+            let adapter = adapter_for_source(plan.source_surface_id)?;
+            let replay_key = replay_key_for_adapter(&adapter)?;
+            Some(candidate_guard(
                 plan.candidate_guard_id,
                 plan.source_surface_id,
                 adapter.id,
                 replay_key,
-            )
+            ))
         })
         .collect()
 }
@@ -253,10 +253,10 @@ pub fn work_graph_store_idempotency_guard_gap_bindings()
     let existing_guards = work_graph_state_store_idempotency_guards();
     work_graph_store_idempotency_guard_gap_closure_plans()
         .iter()
-        .map(|plan| {
-            let adapter = adapter_for_source(plan.source_surface_id);
-            let replay_key = replay_key_for_adapter(&adapter);
-            WorkGraphStoreIdempotencyGuardBindingPreview {
+        .filter_map(|plan| {
+            let adapter = adapter_for_source(plan.source_surface_id)?;
+            let replay_key = replay_key_for_adapter(&adapter)?;
+            Some(WorkGraphStoreIdempotencyGuardBindingPreview {
                 id: guard_binding_id_for_source(plan.source_surface_id),
                 source_surface_id: plan.source_surface_id,
                 candidate_guard_id: plan.candidate_guard_id,
@@ -271,7 +271,7 @@ pub fn work_graph_store_idempotency_guard_gap_bindings()
                 requires_task_result_wrapper: adapter.requires_task_result_wrapper,
                 closure_state: "candidate_guard_defined_state_store_binding_not_applied",
                 no_runtime_application: true,
-            }
+            })
         })
         .collect()
 }
@@ -385,25 +385,18 @@ impl WorkGraphStoreIdempotencyGuardGapClosurePreviewSideEffects {
     }
 }
 
-fn adapter_for_source(source_surface_id: &str) -> WorkGraphIdempotencySourceAdapterPreview {
+fn adapter_for_source(source_surface_id: &str) -> Option<WorkGraphIdempotencySourceAdapterPreview> {
     work_graph_idempotency_readback_source_adapters()
         .into_iter()
         .find(|adapter| adapter.source_surface_id == source_surface_id)
-        .unwrap_or_else(|| panic!("missing idempotency readback adapter for {source_surface_id}"))
 }
 
 fn replay_key_for_adapter(
     adapter: &WorkGraphIdempotencySourceAdapterPreview,
-) -> WorkGraphReplayKeyContractPreview {
+) -> Option<WorkGraphReplayKeyContractPreview> {
     work_graph_idempotency_readback_replay_key_contracts()
         .into_iter()
         .find(|contract| contract.id == adapter.replay_key_contract_id)
-        .unwrap_or_else(|| {
-            panic!(
-                "missing replay key contract {} for {}",
-                adapter.replay_key_contract_id, adapter.source_surface_id
-            )
-        })
 }
 
 fn probes_for_source(source_surface_id: &str) -> Vec<WorkGraphSourceReadbackProbeContractPreview> {

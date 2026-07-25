@@ -193,11 +193,10 @@ pub fn work_graph_scheduler_admission_enforcement_gap_closure_plans()
 
     scheduler_admission_blocked_source_decisions()
         .into_iter()
-        .map(|decision| {
+        .filter_map(|decision| {
             let adapter = adapters
                 .iter()
-                .find(|adapter| adapter.source_surface_id == decision.source_surface_id)
-                .expect("scheduler admission controller adapter for blocked source");
+                .find(|adapter| adapter.source_surface_id == decision.source_surface_id)?;
             closure_plan(
                 decision,
                 adapter,
@@ -449,15 +448,14 @@ fn closure_plan(
     admission_check_ids: Vec<&'static str>,
     admission_decision_ids: Vec<&'static str>,
     required_evidence_fields: Vec<&'static str>,
-) -> WorkGraphSchedulerAdmissionClosurePlanPreview {
+) -> Option<WorkGraphSchedulerAdmissionClosurePlanPreview> {
     let scheduler_blocker_id = decision
         .residual_source_blocker_ids
         .iter()
         .copied()
-        .find(|blocker| blocker.ends_with("_admission_not_enforced"))
-        .expect("scheduler admission residual blocker");
+        .find(|blocker| blocker.ends_with("_admission_not_enforced"))?;
 
-    WorkGraphSchedulerAdmissionClosurePlanPreview {
+    Some(WorkGraphSchedulerAdmissionClosurePlanPreview {
         closure_plan_id: format!(
             "scheduler_admission_closure_plan:{}",
             decision.source_surface_id
@@ -485,7 +483,7 @@ fn closure_plan(
         writes_store: false,
         mutates_idempotency_index: false,
         records_approval: false,
-    }
+    })
 }
 
 fn required_evidence_fields(

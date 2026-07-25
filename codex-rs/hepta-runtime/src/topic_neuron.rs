@@ -150,7 +150,7 @@ impl TopicNeuronStore {
             .iter()
             .find(|topic| topic.topic_id == topic_id)
             .cloned()
-            .expect("observed topic should exist");
+            .ok_or_else(|| HeptaError("observed topic missing after local upsert".into()))?;
         self.save(&mut store, now)?;
         Ok(TopicNeuronObserveReport {
             store_path: self.path_display(),

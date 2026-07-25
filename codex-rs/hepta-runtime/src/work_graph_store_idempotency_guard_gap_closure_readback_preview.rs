@@ -242,9 +242,9 @@ pub fn work_graph_store_idempotency_guard_gap_closure_readback_plans()
 -> Vec<WorkGraphStoreIdempotencyGuardReadbackPlanPreview> {
     work_graph_store_idempotency_guard_gap_closure_plans()
         .into_iter()
-        .map(|plan| {
-            let guard = guard_for_plan(&plan);
-            readback_plan(&plan, &guard)
+        .filter_map(|plan| {
+            let guard = guard_for_plan(&plan)?;
+            Some(readback_plan(&plan, &guard))
         })
         .collect()
 }
@@ -312,21 +312,21 @@ pub fn work_graph_store_idempotency_guard_collection_ref_readback_assertions()
 -> Vec<WorkGraphStoreIdempotencyGuardCollectionRefReadbackAssertionPreview> {
     work_graph_store_idempotency_guard_gap_bindings()
         .into_iter()
-        .map(
-            |binding| WorkGraphStoreIdempotencyGuardCollectionRefReadbackAssertionPreview {
-                id: collection_ref_assertion_id_for_source(binding.source_surface_id),
-                source_surface_id: binding.source_surface_id,
-                candidate_guard_id: binding.candidate_guard_id,
-                required_collection_count: binding.expected_collection_ids.len(),
-                expected_collection_ids: binding.expected_collection_ids,
-                required_readback_probe_contract_ids: probe_binding_for_source(
-                    binding.source_surface_id,
-                )
-                .readback_probe_contract_ids,
-                expected_guard_binding_state: binding.closure_state,
-                mutates_store: false,
-            },
-        )
+        .filter_map(|binding| {
+            let probe_binding = probe_binding_for_source(binding.source_surface_id)?;
+            Some(
+                WorkGraphStoreIdempotencyGuardCollectionRefReadbackAssertionPreview {
+                    id: collection_ref_assertion_id_for_source(binding.source_surface_id),
+                    source_surface_id: binding.source_surface_id,
+                    candidate_guard_id: binding.candidate_guard_id,
+                    required_collection_count: binding.expected_collection_ids.len(),
+                    expected_collection_ids: binding.expected_collection_ids,
+                    required_readback_probe_contract_ids: probe_binding.readback_probe_contract_ids,
+                    expected_guard_binding_state: binding.closure_state,
+                    mutates_store: false,
+                },
+            )
+        })
         .collect()
 }
 
@@ -493,20 +493,18 @@ fn blocker(
 
 fn guard_for_plan(
     plan: &WorkGraphStoreIdempotencyGuardClosurePlanPreview,
-) -> WorkGraphStoreIdempotencyCandidateGuardPreview {
+) -> Option<WorkGraphStoreIdempotencyCandidateGuardPreview> {
     work_graph_store_idempotency_guard_gap_candidate_guards()
         .into_iter()
         .find(|guard| guard.id == plan.candidate_guard_id)
-        .unwrap_or_else(|| panic!("missing candidate guard {}", plan.candidate_guard_id))
 }
 
 fn probe_binding_for_source(
     source_surface_id: &str,
-) -> WorkGraphStoreIdempotencyGuardProbeBindingPreview {
+) -> Option<WorkGraphStoreIdempotencyGuardProbeBindingPreview> {
     work_graph_store_idempotency_guard_gap_probe_bindings()
         .into_iter()
         .find(|binding| binding.source_surface_id == source_surface_id)
-        .unwrap_or_else(|| panic!("missing guard probe binding for {source_surface_id}"))
 }
 
 fn store_guard_gap_source_surface_ids() -> Vec<&'static str> {
