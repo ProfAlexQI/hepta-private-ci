@@ -174,13 +174,18 @@ verify_contract() {
           role:"current_r9",
           ref:"refs/remotes/upstream/hepta-intake-20260724-r9",
           sha:"000d2540ad73996f3589ae178bfe447bfd67cef2"
+        },
+        {
+          role:"current_r10",
+          ref:"refs/remotes/upstream/hepta-intake-20260725-r10",
+          sha:"4c43465133428898aa84f0bfc02c306ed65fb66a"
         }
       ]
     }
     and .upstream_truth == {
       capability_version:1,
       registry:"docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
-      registry_sha256:"55ee34e4ae88daf26bfa36a1b227853030a978ff66a709e8158da7a562cfaec4",
+      registry_sha256:"f3ec3723b59f216c6ba6061bca99649fb9b8a046eef0fe38d5c06af02b842179",
       ci_job:"upstream-truth",
       semantic_command:"scripts/hepta-upstream-truth-gate verify-semantic",
       self_test_command:"scripts/hepta-upstream-truth-gate self-test",

@@ -6,8 +6,8 @@
     "branch": "main",
     "remote_ref": "refs/heads/main",
     "tracking_ref": "refs/remotes/upstream/main",
-    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260724-r9",
-    "expected_head": "000d2540ad73996f3589ae178bfe447bfd67cef2"
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260725-r10",
+    "expected_head": "4c43465133428898aa84f0bfc02c306ed65fb66a"
   },
   "network_receipt": {
     "schema_version": "hepta_upstream_network_freshness_receipt_v1",
@@ -348,6 +348,39 @@
             "Global current authority is absorbed; per-connector reviewer parity is not."
           ]
         }
+      ]
+    },
+    {
+      "id": "r10",
+      "source_intake": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-25_R10.json",
+        "sha256": "ab19d870d0d7332270b06ff1aabc90f278292fc294d69adceab47dba53176c65",
+        "range_start_exclusive": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+        "range_end_inclusive": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+        "frozen_ref": "refs/remotes/upstream/hepta-intake-20260725-r10"
+      },
+      "record": {
+        "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R10_SEMANTIC_ABSORPTION_RECORD_2026-07-25.json",
+        "sha256": "a2d87c8a419a505ef2b5d5af3ecaa6eaf551dabb6ac2f8dd1622bc2dcdab1f92",
+        "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+      },
+      "disposition_bindings": [
+        {"kind":"absorption","upstream_commit":"a177013eb055f16fcc9cd07308877ca36c88ede1","local_commit":"7d166521d93ac4524ebd0dbeed55b99794559dc9","scope":"managed_mcp_requirements_active_thread_refresh","non_claims":["Thread-start invalidation remains deferred."]},
+        {"kind":"absorption","upstream_commit":"58b427722857117ac3e702b9eb406d47616022e2","local_commit":"7d166521d93ac4524ebd0dbeed55b99794559dc9","scope":"independent_best_effort_mcp_refresh_per_loaded_thread","non_claims":["Failed or unloaded threads are not durably queued."]},
+        {"kind":"absorption","upstream_commit":"89a3b89c4c1d1afaaa93b6669c9e4e03247f8a99","local_commit":"66d703e0a7c71e7cdfcdaa47be938a17463bb0f9","scope":"mcp_auth_discovery_runtime_http_client_snapshot_parity","non_claims":["Existing runtime secret custody is unchanged."]},
+        {"kind":"absorption","upstream_commit":"63fe5a6b71d45dfff24a6a1e5da0699e054f145d","local_commit":"01638884a369bff157c2d2c5993f7df7e67dd80c","scope":"network_approval_execution_ownership_cancellation_and_cache_serialization","non_claims":["No identity beyond turn and execution is claimed."]},
+        {"kind":"absorption","upstream_commit":"4c43465133428898aa84f0bfc02c306ed65fb66a","local_commit":"4b4553b788f994ce29ab0bb19046ec06c149d5bf","scope":"plugin_mcp_filter_preserves_servers_without_allowlists","non_claims":["Explicit empty allowlists still deny all."]},
+        {"kind":"deferral","upstream_commit":"05f000263b2b2528cc9ca2a100270da9c6bf2fed","scope":"paginated_thread_fork_history_and_cursor_consistency","non_claims":["No paginated fork behavior is absorbed."]},
+        {"kind":"deferral","upstream_commit":"99744cfe04806ebaa1e5d08e3e790070f852472b","scope":"non_local_hook_transcript_ephemerality","non_claims":["Non-local transcripts are not claimed persistence-free."]},
+        {"kind":"deferral","upstream_commit":"544007d006d869b4af03a205f6a94a9f2b022051","scope":"ent26_enterprise_plan_identity","non_claims":["Hepta does not advertise ent26 support."]},
+        {"kind":"deferral","upstream_commit":"1811b67a84952b8ebbd0605a0388e02a18453eb8","scope":"ephemeral_paginated_thread_fork_ownership","non_claims":["No ephemeral paginated fork is exposed."]},
+        {"kind":"deferral","upstream_commit":"32329b289d05eb6a3f8e35c267ceb25ba46716a2","scope":"workspace_plugin_publish_capability","non_claims":["No workspace publication capability is advertised."]},
+        {"kind":"deferral","upstream_commit":"07fd04abb199fa4c3a1530873ec69e938061a615","scope":"remote_plugin_identity_in_skill_metadata","non_claims":["Remote plugin IDs are not propagated into skill metadata."]},
+        {"kind":"deferral","upstream_commit":"0d2a0aa76ba8cabb468501a04d050834ec2ef80d","scope":"remote_plugin_identity_in_skill_invocation_analytics","non_claims":["Analytics do not claim remote plugin attribution."]},
+        {"kind":"deferral","upstream_commit":"a4535884169be8da2f81b8a4debecbd4dc11aa97","scope":"bundled_macos_helper_signing","non_claims":["No helper binary was signed or published."]},
+        {"kind":"deferral","upstream_commit":"cba0e2701c9e3e67a877a16dbbd7a577d477a630","scope":"code_mode_in_process_fallback_disablement","non_claims":["Upstream fallback policy parity is not claimed."]},
+        {"kind":"deferral","upstream_commit":"25b6fc9bbc49bbec12e8d38ceee550fc07cbc60d","scope":"responses_lite_code_mode_tool_name_metadata","non_claims":["Responses Lite metadata parity is not claimed."]},
+        {"kind":"deferral","upstream_commit":"c3e926e61cb234fc180d8896bdb9655b58c3e735","scope":"remote_exec_server_connection_tracing","non_claims":["Remote connection trace parity is not claimed."]}
       ]
     }
   ],

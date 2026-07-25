@@ -1,0 +1,117 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-25_R10.json",
+    "manifest_sha256": "ab19d870d0d7332270b06ff1aabc90f278292fc294d69adceab47dba53176c65",
+    "commit": "56a9180d6d9afed21cf2674a127c4ba5b74d4c2a",
+    "range_start_exclusive": "000d2540ad73996f3589ae178bfe447bfd67cef2",
+    "range_end_inclusive": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "absorptions": [
+    {
+      "upstream_commit": "a177013eb055f16fcc9cd07308877ca36c88ede1",
+      "upstream_title": "Refresh managed MCP requirements for active threads (#35213)",
+      "disposition": "semantic_transplant",
+      "scope": "managed_mcp_requirements_active_thread_refresh",
+      "hepta_commit": "7d166521d93ac4524ebd0dbeed55b99794559dc9",
+      "semantic_mapping": "Each loaded thread now receives a typed current Config snapshot whose MCP servers, managed requirements, plugin requirements, OAuth store mode, and Hepta elicitation authority are refreshed together while the thread model remains unchanged.",
+      "core_files": ["codex-rs/app-server/src/mcp_refresh.rs", "codex-rs/core/src/codex_thread.rs", "codex-rs/core/src/session/tests.rs"],
+      "behavioral_evidence": [{"command":"cargo test -p codex-core managed_mcp_requirements_refresh_without_model_drift","result":"passed"},{"command":"cargo test -p codex-app-server mcp_refresh","result":"passed"}],
+      "non_claims": ["The thread-start MCP invalidation window deferred in R9 is not closed by loaded-thread refresh."]
+    },
+    {
+      "upstream_commit": "58b427722857117ac3e702b9eb406d47616022e2",
+      "upstream_title": "Refresh MCP config independently across threads (#35216)",
+      "disposition": "existing_semantic_equivalent",
+      "scope": "independent_best_effort_mcp_refresh_per_loaded_thread",
+      "hepta_commit": "7d166521d93ac4524ebd0dbeed55b99794559dc9",
+      "semantic_mapping": "The pre-existing per-thread best-effort refresh loop isolates send failures; the R10 transplant retains that isolation while widening the refreshed snapshot to managed requirements.",
+      "core_files": ["codex-rs/app-server/src/mcp_refresh.rs"],
+      "behavioral_evidence": [{"command":"cargo test -p codex-app-server mcp_refresh","result":"passed"}],
+      "non_claims": ["No claim is made that failed or unloaded threads are durably queued for later refresh."]
+    },
+    {
+      "upstream_commit": "89a3b89c4c1d1afaaa93b6669c9e4e03247f8a99",
+      "upstream_title": "Route MCP auth discovery through runtime HTTP clients (#35239)",
+      "disposition": "semantic_transplant",
+      "scope": "mcp_auth_discovery_runtime_http_client_snapshot_parity",
+      "hepta_commit": "66d703e0a7c71e7cdfcdaa47be938a17463bb0f9",
+      "semantic_mapping": "OAuth discovery and auth status now resolve the same server placement and runtime HTTP client configuration used by the MCP runtime across app-server, CLI, connectors, plugins, skill dependencies, startup, and refresh paths.",
+      "core_files": ["codex-rs/rmcp-client/src/auth_status.rs", "codex-rs/codex-mcp/src/mcp/auth.rs", "codex-rs/app-server/src/request_processors/mcp_processor.rs"],
+      "behavioral_evidence": [{"command":"cargo test -p codex-mcp auth","result":"passed; 6 tests"},{"command":"cargo test -p codex-app-server runtime_http_client","result":"passed; 2 tests"}],
+      "non_claims": ["Runtime proxy credentials remain governed by their existing configuration and secret providers."]
+    },
+    {
+      "upstream_commit": "63fe5a6b71d45dfff24a6a1e5da0699e054f145d",
+      "upstream_title": "Harden network approval cancellation and concurrency (#35267)",
+      "disposition": "semantic_transplant",
+      "scope": "network_approval_execution_ownership_cancellation_and_cache_serialization",
+      "hepta_commit": "01638884a369bff157c2d2c5993f7df7e67dd80c",
+      "semantic_mapping": "Pending approvals bind host, protocol, port, turn, and execution; owner drop denies waiters and cancels the owning execution; allow and deny cache mutation is serialized under the effective policy callback.",
+      "core_files": ["codex-rs/core/src/tools/network_approval.rs", "codex-rs/core/src/tools/network_approval_tests.rs"],
+      "behavioral_evidence": [{"command":"cargo test -p codex-core network_approval","result":"passed; 20 tests"}],
+      "non_claims": ["The approval key does not claim identity beyond the current turn and execution identifiers."]
+    },
+    {
+      "upstream_commit": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+      "upstream_title": "Skip plugin MCP filtering when no allowlists are configured (#35280)",
+      "disposition": "semantic_transplant",
+      "scope": "plugin_mcp_filter_preserves_servers_without_allowlists",
+      "hepta_commit": "4b4553b788f994ce29ab0bb19046ec06c149d5bf",
+      "semantic_mapping": "Plugin MCP servers are preserved when no allowlist layer is configured, while an explicitly configured empty allowlist remains a deny-all boundary.",
+      "core_files": ["codex-rs/core/src/config/mod.rs", "codex-rs/core/src/config/config_tests.rs"],
+      "behavioral_evidence": [{"command":"cargo test -p codex-core plugin_mcp_allowlist","result":"passed; 4 tests"}],
+      "non_claims": ["An explicit empty allowlist is not treated as absence and still denies every plugin MCP server."]
+    }
+  ],
+  "deferrals": [
+    {
+      "upstream_commit":"05f000263b2b2528cc9ca2a100270da9c6bf2fed","upstream_title":"Support paginated thread forks (#35220)","disposition":"deferred_paginated_thread_history_contract","scope":"paginated_thread_fork_history_and_cursor_consistency","reason":"Hepta does not yet expose a paginated remote-thread fork surface with a canonical cursor and history ownership contract.","missing_prerequisites":["typed remote-thread pagination cursor","fork ownership and transcript consistency tests"],"tests_run":false,"hepta_commit":null,"non_claims":["No paginated thread-fork behavior is absorbed."]
+    },
+    {
+      "upstream_commit":"99744cfe04806ebaa1e5d08e3e790070f852472b","upstream_title":"Avoid persisting non-local threads for hook transcripts (#35221)","disposition":"deferred_non_local_transcript_persistence_boundary","scope":"non_local_hook_transcript_ephemerality","reason":"The local hook transcript path lacks a typed local-versus-remote thread provenance boundary that can be proven before persistence.","missing_prerequisites":["thread provenance owner type","negative persistence tests for non-local transcripts"],"tests_run":false,"hepta_commit":null,"non_claims":["Non-local hook transcripts are not claimed to be persistence-free."]
+    },
+    {
+      "upstream_commit":"544007d006d869b4af03a205f6a94a9f2b022051","upstream_title":"Support the ent26 enterprise plan (#35238)","disposition":"deferred_product_plan_mapping","scope":"ent26_enterprise_plan_identity","reason":"No local product entitlement requirement or authoritative plan mapping has been approved for ent26.","missing_prerequisites":["product entitlement decision","authoritative plan mapping fixture"],"tests_run":false,"hepta_commit":null,"non_claims":["Hepta does not advertise ent26 plan support."]
+    },
+    {
+      "upstream_commit":"1811b67a84952b8ebbd0605a0388e02a18453eb8","upstream_title":"Support ephemeral forks of paginated threads (#35251)","disposition":"deferred_ephemeral_paginated_fork_contract","scope":"ephemeral_paginated_thread_fork_ownership","reason":"This leaf depends on the deferred paginated fork cursor, history, and provenance contracts.","missing_prerequisites":["paginated thread fork contract","ephemeral transcript lifetime authority"],"tests_run":false,"hepta_commit":null,"non_claims":["No ephemeral paginated fork behavior is exposed."]
+    },
+    {
+      "upstream_commit":"32329b289d05eb6a3f8e35c267ceb25ba46716a2","upstream_title":"Expose workspace plugin publish capability (#35254)","disposition":"deferred_workspace_publish_authority","scope":"workspace_plugin_publish_capability","reason":"Publishing is an external write and requires a workspace capability owner, reviewer policy, and receipt model absent locally.","missing_prerequisites":["workspace publish authority owner","review and terminal publication receipt"],"tests_run":false,"hepta_commit":null,"non_claims":["No workspace plugin publication capability is advertised."]
+    },
+    {
+      "upstream_commit":"07fd04abb199fa4c3a1530873ec69e938061a615","upstream_title":"Propagate remote plugin IDs to skill metadata (#35261)","disposition":"deferred_remote_plugin_skill_identity","scope":"remote_plugin_identity_in_skill_metadata","reason":"The local tree lacks the ext/skills provider and canonical remote plugin identity chain required to prevent stale or forged metadata.","missing_prerequisites":["canonical remote plugin identity owner","ext/skills provider metadata boundary","stale identity rejection tests"],"tests_run":false,"hepta_commit":null,"non_claims":["Remote plugin IDs are not propagated into local skill metadata."]
+    },
+    {
+      "upstream_commit":"0d2a0aa76ba8cabb468501a04d050834ec2ef80d","upstream_title":"Track remote plugin IDs in skill invocation analytics (#35262)","disposition":"deferred_remote_plugin_analytics_identity","scope":"remote_plugin_identity_in_skill_invocation_analytics","reason":"Analytics must consume the same canonical identity as skill invocation and therefore follows the deferred metadata identity chain.","missing_prerequisites":["canonical remote plugin identity propagation","analytics privacy and cardinality review"],"tests_run":false,"hepta_commit":null,"non_claims":["Invocation analytics do not claim remote plugin attribution."]
+    },
+    {
+      "upstream_commit":"a4535884169be8da2f81b8a4debecbd4dc11aa97","upstream_title":"Sign bundled macOS helper binaries (#35264)","disposition":"deferred_release_signing_authority","scope":"bundled_macos_helper_signing","reason":"Signing requires approved release identities, secret custody, and a publication pipeline; this task does not authorize release operations.","missing_prerequisites":["approved signing identity","secret custody and CI signing policy","signed artifact verification"],"tests_run":false,"hepta_commit":null,"non_claims":["No helper binary was signed or published."]
+    },
+    {
+      "upstream_commit":"cba0e2701c9e3e67a877a16dbbd7a577d477a630","upstream_title":"Allow disabling the in-process code-mode host fallback (#35266)","disposition":"deferred_code_mode_fallback_policy","scope":"code_mode_in_process_fallback_disablement","reason":"The local code-mode fallback surface needs an ingress inventory and compatibility decision before changing availability semantics.","missing_prerequisites":["code-mode fallback ingress inventory","fail-closed compatibility tests"],"tests_run":false,"hepta_commit":null,"non_claims":["The in-process fallback is not claimed to be disableable under the upstream contract."]
+    },
+    {
+      "upstream_commit":"25b6fc9bbc49bbec12e8d38ceee550fc07cbc60d","upstream_title":"Include code-mode tool names in Responses Lite metadata (#35271)","disposition":"deferred_responses_lite_tool_metadata","scope":"responses_lite_code_mode_tool_name_metadata","reason":"Metadata exposure depends on the unresolved code-mode host policy and requires a bounded disclosure review.","missing_prerequisites":["code-mode host policy","metadata disclosure and size tests"],"tests_run":false,"hepta_commit":null,"non_claims":["Responses Lite metadata does not claim upstream code-mode tool-name parity."]
+    },
+    {
+      "upstream_commit":"c3e926e61cb234fc180d8896bdb9655b58c3e735","upstream_title":"Trace remote exec-server connection setup (#35275)","disposition":"deferred_remote_exec_trace_contract","scope":"remote_exec_server_connection_tracing","reason":"The local remote execution path needs a privacy-reviewed trace schema and stable connection lifecycle before importing observability fields.","missing_prerequisites":["remote execution trace schema","sensitive endpoint redaction tests"],"tests_run":false,"hepta_commit":null,"non_claims":["No remote exec-server connection trace parity is claimed."]
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 4,
+    "existing_semantic_equivalent_count": 1,
+    "deferred_commit_count": 11,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
