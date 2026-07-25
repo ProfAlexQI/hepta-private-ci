@@ -5,7 +5,9 @@ pub use auth::McpOAuthScopesSource;
 pub use auth::ResolvedMcpOAuthScopes;
 pub use auth::compute_auth_statuses;
 pub use auth::discover_supported_scopes;
+pub use auth::discover_supported_scopes_with_http_client;
 pub use auth::oauth_login_support;
+pub use auth::oauth_login_support_with_http_client;
 pub use auth::resolve_oauth_scopes;
 pub use auth::should_retry_without_scopes;
 
@@ -262,6 +264,7 @@ pub async fn read_mcp_resource(
         mcp_servers.iter(),
         config.mcp_oauth_credentials_store_mode,
         auth,
+        runtime_environment.clone(),
     )
     .await;
     let (tx_event, rx_event) = unbounded();
@@ -329,6 +332,7 @@ pub async fn collect_mcp_server_status_snapshot_with_detail(
         mcp_servers.iter(),
         config.mcp_oauth_credentials_store_mode,
         auth,
+        runtime_environment.clone(),
     )
     .await;
 

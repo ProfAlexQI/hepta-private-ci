@@ -9,7 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
+use anyhow::bail;
+use codex_config::McpServerConfig;
 use codex_exec_server::Environment;
+use codex_exec_server::HttpClient;
+use codex_exec_server::ReqwestHttpClient;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::SandboxPolicy;
 
@@ -56,6 +61,23 @@ impl McpRuntimeEnvironment {
 
     pub(crate) fn fallback_cwd(&self) -> PathBuf {
         self.fallback_cwd.clone()
+    }
+
+    /// Resolve the HTTP capability from the same placement decision used when
+    /// starting the MCP transport.
+    pub fn http_client_for_server(&self, server: &McpServerConfig) -> Result<Arc<dyn HttpClient>> {
+        match server.experimental_environment.as_deref() {
+            None | Some("local") => Ok(Arc::new(ReqwestHttpClient)),
+            Some("remote") => {
+                if !self.environment.is_remote() {
+                    bail!("remote MCP server requires a remote environment");
+                }
+                Ok(self.environment.get_http_client())
+            }
+            Some(environment) => {
+                bail!("unsupported experimental_environment `{environment}` for MCP server")
+            }
+        }
     }
 }
 

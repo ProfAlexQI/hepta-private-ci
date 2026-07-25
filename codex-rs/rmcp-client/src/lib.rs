@@ -11,9 +11,12 @@ mod rmcp_client;
 mod stdio_server_launcher;
 mod utils;
 
+pub use auth_status::OAuthDiscoveryTimeout;
 pub use auth_status::StreamableHttpOAuthDiscovery;
 pub use auth_status::determine_streamable_http_auth_status;
+pub use auth_status::determine_streamable_http_auth_status_with_http_client;
 pub use auth_status::discover_streamable_http_oauth;
+pub use auth_status::discover_streamable_http_oauth_with_http_client;
 pub use auth_status::supports_oauth_login;
 pub use codex_protocol::protocol::McpAuthStatus;
 pub use in_process_transport::InProcessTransportFactory;

@@ -9,7 +9,7 @@ use codex_config::types::McpServerConfig;
 use codex_core_plugins::remote::is_valid_remote_plugin_id;
 use codex_core_plugins::remote::validate_remote_plugin_id;
 use codex_mcp::McpOAuthLoginSupport;
-use codex_mcp::oauth_login_support;
+use codex_mcp::oauth_login_support_with_http_client;
 use codex_mcp::should_retry_without_scopes;
 use codex_rmcp_client::perform_oauth_login_silent;
 
@@ -1321,8 +1321,28 @@ impl PluginRequestProcessor {
         config: &Config,
         plugin_mcp_servers: HashMap<String, McpServerConfig>,
     ) {
+        let environment_manager = self.thread_manager.environment_manager();
+        let runtime_environment = McpRuntimeEnvironment::new(
+            environment_manager
+                .default_environment()
+                .unwrap_or_else(|| environment_manager.local_environment()),
+            config.cwd.to_path_buf(),
+        );
         for (name, server) in plugin_mcp_servers {
-            let oauth_config = match oauth_login_support(&server.transport).await {
+            let http_client = match runtime_environment.http_client_for_server(&server) {
+                Ok(http_client) => http_client,
+                Err(err) => {
+                    warn!("failed to resolve runtime HTTP client for plugin MCP {name}: {err}");
+                    continue;
+                }
+            };
+            let oauth_config = match oauth_login_support_with_http_client(
+                &server.transport,
+                http_client,
+                OAuthDiscoveryTimeout::Requested,
+            )
+            .await
+            {
                 McpOAuthLoginSupport::Supported(config) => config,
                 McpOAuthLoginSupport::Unsupported => continue,
                 McpOAuthLoginSupport::Unknown(err) => {

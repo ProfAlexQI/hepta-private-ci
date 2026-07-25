@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use codex_config::ConfigEditsBuilder;
 use codex_config::McpServerConfig;
@@ -22,10 +23,12 @@ use crate::skills::model::SkillToolDependency;
 use codex_mcp::ElicitationReviewerHandle;
 use codex_mcp::McpOAuthLoginSupport;
 use codex_mcp::McpPermissionPromptAutoApproveContext;
+use codex_mcp::McpRuntimeEnvironment;
 use codex_mcp::mcp_permission_prompt_is_auto_approved;
-use codex_mcp::oauth_login_support;
+use codex_mcp::oauth_login_support_with_http_client;
 use codex_mcp::resolve_oauth_scopes;
 use codex_mcp::should_retry_without_scopes;
+use codex_rmcp_client::OAuthDiscoveryTimeout;
 
 const SKILL_MCP_DEPENDENCY_PROMPT_ID: &str = "skill_mcp_dependency_install";
 const MCP_DEPENDENCY_OPTION_INSTALL: &str = "Install";
@@ -136,8 +139,35 @@ pub(crate) async fn maybe_install_mcp_dependencies(
         return;
     }
 
+    let runtime_environment = match turn_context.environments.primary() {
+        Some(turn_environment) => McpRuntimeEnvironment::new(
+            Arc::clone(&turn_environment.environment),
+            turn_environment.cwd.to_path_buf(),
+        ),
+        None => McpRuntimeEnvironment::new(
+            sess.services
+                .environment_manager
+                .default_environment()
+                .unwrap_or_else(|| sess.services.environment_manager.local_environment()),
+            #[allow(deprecated)]
+            turn_context.cwd.to_path_buf(),
+        ),
+    };
     for (name, server_config) in added {
-        let oauth_config = match oauth_login_support(&server_config.transport).await {
+        let http_client = match runtime_environment.http_client_for_server(&server_config) {
+            Ok(http_client) => http_client,
+            Err(err) => {
+                warn!("failed to resolve runtime HTTP client for dependency {name}: {err}");
+                continue;
+            }
+        };
+        let oauth_config = match oauth_login_support_with_http_client(
+            &server_config.transport,
+            http_client,
+            OAuthDiscoveryTimeout::Requested,
+        )
+        .await
+        {
             McpOAuthLoginSupport::Supported(config) => config,
             McpOAuthLoginSupport::Unsupported => continue,
             McpOAuthLoginSupport::Unknown(err) => {

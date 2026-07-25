@@ -1,17 +1,22 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Result;
 use codex_config::McpServerConfig;
 use codex_config::McpServerTransportConfig;
 use codex_config::types::OAuthCredentialsStoreMode;
+use codex_exec_server::HttpClient;
 use codex_login::CodexAuth;
 use codex_protocol::protocol::McpAuthStatus;
+use codex_rmcp_client::OAuthDiscoveryTimeout;
 use codex_rmcp_client::OAuthProviderError;
-use codex_rmcp_client::determine_streamable_http_auth_status;
+use codex_rmcp_client::determine_streamable_http_auth_status_with_http_client;
 use codex_rmcp_client::discover_streamable_http_oauth;
+use codex_rmcp_client::discover_streamable_http_oauth_with_http_client;
 use futures::future::join_all;
 use tracing::warn;
 
+use crate::runtime::McpRuntimeEnvironment;
 use crate::server::EffectiveMcpServer;
 
 use super::CODEX_APPS_MCP_SERVER_NAME;
@@ -80,10 +85,58 @@ pub async fn oauth_login_support(transport: &McpServerTransportConfig) -> McpOAu
     }
 }
 
+pub async fn oauth_login_support_with_http_client(
+    transport: &McpServerTransportConfig,
+    http_client: Arc<dyn HttpClient>,
+    discovery_timeout: OAuthDiscoveryTimeout,
+) -> McpOAuthLoginSupport {
+    let McpServerTransportConfig::StreamableHttp {
+        url,
+        bearer_token_env_var,
+        http_headers,
+        env_http_headers,
+    } = transport
+    else {
+        return McpOAuthLoginSupport::Unsupported;
+    };
+    if bearer_token_env_var.is_some() {
+        return McpOAuthLoginSupport::Unsupported;
+    }
+    match discover_streamable_http_oauth_with_http_client(
+        url,
+        http_headers.clone(),
+        env_http_headers.clone(),
+        http_client,
+        discovery_timeout,
+    )
+    .await
+    {
+        Ok(Some(discovery)) => McpOAuthLoginSupport::Supported(McpOAuthLoginConfig {
+            url: url.clone(),
+            http_headers: http_headers.clone(),
+            env_http_headers: env_http_headers.clone(),
+            discovered_scopes: discovery.scopes_supported,
+        }),
+        Ok(None) => McpOAuthLoginSupport::Unsupported,
+        Err(err) => McpOAuthLoginSupport::Unknown(err),
+    }
+}
+
 pub async fn discover_supported_scopes(
     transport: &McpServerTransportConfig,
 ) -> Option<Vec<String>> {
     match oauth_login_support(transport).await {
+        McpOAuthLoginSupport::Supported(config) => config.discovered_scopes,
+        McpOAuthLoginSupport::Unsupported | McpOAuthLoginSupport::Unknown(_) => None,
+    }
+}
+
+pub async fn discover_supported_scopes_with_http_client(
+    transport: &McpServerTransportConfig,
+    http_client: Arc<dyn HttpClient>,
+    discovery_timeout: OAuthDiscoveryTimeout,
+) -> Option<Vec<String>> {
+    match oauth_login_support_with_http_client(transport, http_client, discovery_timeout).await {
         McpOAuthLoginSupport::Supported(config) => config.discovered_scopes,
         McpOAuthLoginSupport::Unsupported | McpOAuthLoginSupport::Unknown(_) => None,
     }
@@ -132,6 +185,7 @@ pub async fn compute_auth_statuses<'a, I>(
     servers: I,
     store_mode: OAuthCredentialsStoreMode,
     auth: Option<&CodexAuth>,
+    runtime_environment: McpRuntimeEnvironment,
 ) -> HashMap<String, McpAuthStatusEntry>
 where
     I: IntoIterator<Item = (&'a String, &'a EffectiveMcpServer)>,
@@ -139,6 +193,7 @@ where
     let futures = servers.into_iter().map(|(name, server)| {
         let name = name.clone();
         let config = server.configured_config().cloned();
+        let runtime_environment = runtime_environment.clone();
         let has_runtime_auth = name == CODEX_APPS_MCP_SERVER_NAME
             && auth.is_some_and(CodexAuth::uses_codex_backend)
             && config.as_ref().is_some_and(|config| {
@@ -155,7 +210,15 @@ where
         async move {
             let auth_status = match config.as_ref() {
                 Some(config) => {
-                    match compute_auth_status(&name, config, store_mode, has_runtime_auth).await {
+                    match compute_auth_status(
+                        &name,
+                        config,
+                        store_mode,
+                        has_runtime_auth,
+                        runtime_environment,
+                    )
+                    .await
+                    {
                         Ok(status) => status,
                         Err(error) => {
                             warn!(
@@ -183,6 +246,7 @@ async fn compute_auth_status(
     config: &McpServerConfig,
     store_mode: OAuthCredentialsStoreMode,
     has_runtime_auth: bool,
+    runtime_environment: McpRuntimeEnvironment,
 ) -> Result<McpAuthStatus> {
     if !config.enabled {
         return Ok(McpAuthStatus::Unsupported);
@@ -200,13 +264,16 @@ async fn compute_auth_status(
             http_headers,
             env_http_headers,
         } => {
-            determine_streamable_http_auth_status(
+            let http_client = runtime_environment.http_client_for_server(config)?;
+            determine_streamable_http_auth_status_with_http_client(
                 server_name,
                 url,
                 bearer_token_env_var.as_deref(),
                 http_headers.clone(),
                 env_http_headers.clone(),
                 store_mode,
+                http_client,
+                OAuthDiscoveryTimeout::LOCAL,
             )
             .await
         }

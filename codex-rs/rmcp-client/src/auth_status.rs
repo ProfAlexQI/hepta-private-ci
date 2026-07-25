@@ -1,8 +1,14 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Error;
 use anyhow::Result;
+use codex_exec_server::HttpClient;
+use codex_exec_server::HttpHeader;
+use codex_exec_server::HttpRequestParams;
 use codex_protocol::protocol::McpAuthStatus;
 use reqwest::Client;
 use reqwest::StatusCode;
@@ -18,8 +24,30 @@ use crate::utils::build_default_headers;
 use codex_config::types::OAuthCredentialsStoreMode;
 
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUESTED_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const OAUTH_DISCOVERY_HEADER: &str = "MCP-Protocol-Version";
 const OAUTH_DISCOVERY_VERSION: &str = "2024-11-05";
+static NEXT_DISCOVERY_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
+
+/// Timeout policy for OAuth metadata discovery through a runtime HTTP client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OAuthDiscoveryTimeout {
+    /// Preserve the OAuth implementation's requested discovery budget.
+    Requested,
+    /// Cap discovery requests at the supplied duration.
+    Capped(Duration),
+}
+
+impl OAuthDiscoveryTimeout {
+    pub const LOCAL: Self = Self::Capped(DISCOVERY_TIMEOUT);
+
+    fn duration(self) -> Duration {
+        match self {
+            Self::Requested => REQUESTED_DISCOVERY_TIMEOUT,
+            Self::Capped(duration) => duration,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamableHttpOAuthDiscovery {
@@ -60,6 +88,51 @@ pub async fn determine_streamable_http_auth_status(
     }
 }
 
+/// Determine auth status through the same runtime-selected HTTP client used by
+/// the MCP transport.
+#[allow(clippy::too_many_arguments)]
+pub async fn determine_streamable_http_auth_status_with_http_client(
+    server_name: &str,
+    url: &str,
+    bearer_token_env_var: Option<&str>,
+    http_headers: Option<HashMap<String, String>>,
+    env_http_headers: Option<HashMap<String, String>>,
+    store_mode: OAuthCredentialsStoreMode,
+    http_client: Arc<dyn HttpClient>,
+    discovery_timeout: OAuthDiscoveryTimeout,
+) -> Result<McpAuthStatus> {
+    if bearer_token_env_var.is_some() {
+        return Ok(McpAuthStatus::BearerToken);
+    }
+
+    let default_headers = build_default_headers(http_headers.clone(), env_http_headers.clone())?;
+    if default_headers.contains_key(AUTHORIZATION) {
+        return Ok(McpAuthStatus::BearerToken);
+    }
+    if has_oauth_tokens(server_name, url, store_mode)? {
+        return Ok(McpAuthStatus::OAuth);
+    }
+
+    match discover_streamable_http_oauth_with_http_client(
+        url,
+        http_headers,
+        env_http_headers,
+        http_client,
+        discovery_timeout,
+    )
+    .await
+    {
+        Ok(Some(_)) => Ok(McpAuthStatus::NotLoggedIn),
+        Ok(None) => Ok(McpAuthStatus::Unsupported),
+        Err(error) => {
+            debug!(
+                "failed to detect OAuth support for MCP server `{server_name}` at {url}: {error:?}"
+            );
+            Ok(McpAuthStatus::Unsupported)
+        }
+    }
+}
+
 /// Attempt to determine whether a streamable HTTP MCP server advertises OAuth login.
 pub async fn supports_oauth_login(url: &str) -> Result<bool> {
     Ok(discover_streamable_http_oauth(
@@ -76,6 +149,92 @@ pub async fn discover_streamable_http_oauth(
 ) -> Result<Option<StreamableHttpOAuthDiscovery>> {
     let default_headers = build_default_headers(http_headers, env_http_headers)?;
     discover_streamable_http_oauth_with_headers(url, &default_headers).await
+}
+
+pub async fn discover_streamable_http_oauth_with_http_client(
+    url: &str,
+    http_headers: Option<HashMap<String, String>>,
+    env_http_headers: Option<HashMap<String, String>>,
+    http_client: Arc<dyn HttpClient>,
+    discovery_timeout: OAuthDiscoveryTimeout,
+) -> Result<Option<StreamableHttpOAuthDiscovery>> {
+    let default_headers = build_default_headers(http_headers, env_http_headers)?;
+    discover_streamable_http_oauth_with_runtime_client(
+        url,
+        &default_headers,
+        http_client,
+        discovery_timeout,
+    )
+    .await
+}
+
+async fn discover_streamable_http_oauth_with_runtime_client(
+    url: &str,
+    default_headers: &HeaderMap,
+    http_client: Arc<dyn HttpClient>,
+    discovery_timeout: OAuthDiscoveryTimeout,
+) -> Result<Option<StreamableHttpOAuthDiscovery>> {
+    let base_url = Url::parse(url)?;
+    let mut headers = default_headers
+        .iter()
+        .map(|(name, value)| {
+            Ok(HttpHeader {
+                name: name.as_str().to_string(),
+                value: value.to_str()?.to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    headers.push(HttpHeader {
+        name: OAUTH_DISCOVERY_HEADER.to_string(),
+        value: OAUTH_DISCOVERY_VERSION.to_string(),
+    });
+    let timeout_ms = u64::try_from(discovery_timeout.duration().as_millis()).unwrap_or(u64::MAX);
+    let mut last_error: Option<Error> = None;
+
+    for candidate_path in discovery_paths(base_url.path()) {
+        let mut discovery_url = base_url.clone();
+        discovery_url.set_path(&candidate_path);
+        let request_id = NEXT_DISCOVERY_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let response = match http_client
+            .http_request(HttpRequestParams {
+                method: "GET".to_string(),
+                url: discovery_url.to_string(),
+                headers: headers.clone(),
+                body: None,
+                timeout_ms: Some(timeout_ms),
+                request_id: format!("mcp-oauth-discovery-{request_id}"),
+                stream_response: false,
+            })
+            .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                last_error = Some(err.into());
+                continue;
+            }
+        };
+        if response.status != StatusCode::OK.as_u16() {
+            continue;
+        }
+        let metadata =
+            match serde_json::from_slice::<OAuthDiscoveryMetadata>(&response.body.into_inner()) {
+                Ok(metadata) => metadata,
+                Err(err) => {
+                    last_error = Some(err.into());
+                    continue;
+                }
+            };
+        if metadata.authorization_endpoint.is_some() && metadata.token_endpoint.is_some() {
+            return Ok(Some(StreamableHttpOAuthDiscovery {
+                scopes_supported: normalize_scopes(metadata.scopes_supported),
+            }));
+        }
+    }
+
+    if let Some(err) = last_error {
+        debug!("OAuth discovery requests failed for {url}: {err:?}");
+    }
+    Ok(None)
 }
 
 async fn discover_streamable_http_oauth_with_headers(
@@ -197,15 +356,62 @@ mod tests {
     use axum::Json;
     use axum::Router;
     use axum::routing::get;
+    use codex_exec_server::ExecServerError;
+    use codex_exec_server::HttpRequestResponse;
+    use codex_exec_server::HttpResponseBodyStream;
+    use futures::future::BoxFuture;
     use pretty_assertions::assert_eq;
     use serial_test::serial;
     use std::collections::HashMap;
     use std::ffi::OsString;
+    use std::sync::Mutex;
     use tokio::task::JoinHandle;
 
     struct TestServer {
         url: String,
         handle: JoinHandle<()>,
+    }
+
+    #[derive(Default)]
+    struct RecordingHttpClient {
+        timeout_ms: Mutex<Vec<Option<u64>>>,
+    }
+
+    impl HttpClient for RecordingHttpClient {
+        fn http_request(
+            &self,
+            params: HttpRequestParams,
+        ) -> BoxFuture<'_, Result<HttpRequestResponse, ExecServerError>> {
+            self.timeout_ms
+                .lock()
+                .expect("timeout recorder lock should not be poisoned")
+                .push(params.timeout_ms);
+            Box::pin(async {
+                Ok(HttpRequestResponse {
+                    status: StatusCode::OK.as_u16(),
+                    headers: Vec::new(),
+                    body: serde_json::to_vec(&serde_json::json!({
+                        "authorization_endpoint": "https://example.com/authorize",
+                        "token_endpoint": "https://example.com/token",
+                        "scopes_supported": ["read"]
+                    }))
+                    .expect("serialize discovery response")
+                    .into(),
+                })
+            })
+        }
+
+        fn http_request_stream(
+            &self,
+            _params: HttpRequestParams,
+        ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>>
+        {
+            Box::pin(async {
+                Err(ExecServerError::HttpRequest(
+                    "unexpected streamed discovery request".to_string(),
+                ))
+            })
+        }
     }
 
     impl Drop for TestServer {
@@ -237,6 +443,54 @@ mod tests {
             url: format!("http://{address}/mcp"),
             handle,
         }
+    }
+
+    #[tokio::test]
+    async fn routed_discovery_uses_runtime_client_and_capped_timeout() {
+        let http_client = Arc::new(RecordingHttpClient::default());
+
+        let discovery = discover_streamable_http_oauth_with_http_client(
+            "https://example.com/mcp",
+            None,
+            None,
+            http_client.clone(),
+            OAuthDiscoveryTimeout::LOCAL,
+        )
+        .await
+        .expect("routed discovery should succeed")
+        .expect("OAuth metadata should be discovered");
+
+        assert_eq!(discovery.scopes_supported, Some(vec!["read".to_string()]));
+        assert_eq!(
+            *http_client
+                .timeout_ms
+                .lock()
+                .expect("timeout recorder lock should not be poisoned"),
+            vec![Some(5_000)]
+        );
+    }
+
+    #[tokio::test]
+    async fn routed_discovery_preserves_requested_timeout_budget() {
+        let http_client = Arc::new(RecordingHttpClient::default());
+
+        let discovery = discover_streamable_http_oauth_with_http_client(
+            "https://example.com/mcp",
+            None,
+            None,
+            http_client.clone(),
+            OAuthDiscoveryTimeout::Requested,
+        )
+        .await;
+
+        assert!(matches!(discovery, Ok(Some(_))));
+        assert_eq!(
+            *http_client
+                .timeout_ms
+                .lock()
+                .expect("timeout recorder lock should not be poisoned"),
+            vec![Some(30_000)]
+        );
     }
 
     struct EnvVarGuard {

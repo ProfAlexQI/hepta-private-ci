@@ -130,6 +130,20 @@ impl McpRequestProcessor {
                 "No MCP server named '{name}' found."
             )));
         };
+        let environment_manager = self.thread_manager.environment_manager();
+        let runtime_environment = McpRuntimeEnvironment::new(
+            environment_manager
+                .default_environment()
+                .unwrap_or_else(|| environment_manager.local_environment()),
+            config.cwd.to_path_buf(),
+        );
+        let http_client = runtime_environment
+            .http_client_for_server(server)
+            .map_err(|err| {
+                internal_error(format!(
+                    "failed to resolve runtime HTTP client for MCP server '{name}': {err}"
+                ))
+            })?;
 
         let (url, http_headers, env_http_headers) = match &server.transport {
             McpServerTransportConfig::StreamableHttp {
@@ -146,7 +160,12 @@ impl McpRequestProcessor {
         };
 
         let discovered_scopes = if scopes.is_none() && server.scopes.is_none() {
-            discover_supported_scopes(&server.transport).await
+            discover_supported_scopes_with_http_client(
+                &server.transport,
+                http_client,
+                OAuthDiscoveryTimeout::Requested,
+            )
+            .await
         } else {
             None
         };

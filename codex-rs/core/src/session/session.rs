@@ -1156,10 +1156,26 @@ impl Session {
                     .await;
                 let mcp_servers =
                     codex_mcp::effective_mcp_servers(&mcp_config, auth_snapshot.auth());
+                let mcp_runtime_environment = match turn_environment.as_ref() {
+                    Some(turn_environment) => McpRuntimeEnvironment::new(
+                        Arc::clone(&turn_environment.environment),
+                        turn_environment.cwd.to_path_buf(),
+                    ),
+                    None => McpRuntimeEnvironment::new(
+                        sess.services
+                            .environment_manager
+                            .default_environment()
+                            .unwrap_or_else(|| {
+                                sess.services.environment_manager.local_environment()
+                            }),
+                        session_configuration.cwd.to_path_buf(),
+                    ),
+                };
                 let auth_statuses = compute_auth_statuses(
                     mcp_servers.iter(),
                     config.mcp_oauth_credentials_store_mode,
                     auth_snapshot.auth(),
+                    mcp_runtime_environment.clone(),
                 )
                 .await;
                 let tool_plugin_provenance = codex_mcp::tool_plugin_provenance(&mcp_config);
@@ -1177,21 +1193,6 @@ impl Session {
                 let enabled_mcp_server_count =
                     mcp_servers.values().filter(|server| server.enabled()).count();
                 let required_mcp_server_count = required_mcp_servers.len();
-                let mcp_runtime_environment = match turn_environment.as_ref() {
-                    Some(turn_environment) => McpRuntimeEnvironment::new(
-                        Arc::clone(&turn_environment.environment),
-                        turn_environment.cwd.to_path_buf(),
-                    ),
-                    None => McpRuntimeEnvironment::new(
-                        sess.services
-                            .environment_manager
-                            .default_environment()
-                            .unwrap_or_else(|| {
-                                sess.services.environment_manager.local_environment()
-                            }),
-                        session_configuration.cwd.to_path_buf(),
-                    ),
-                };
                 let (mcp_connection_manager, cancel_token) = McpConnectionManager::new(
                     &mcp_servers,
                     config.mcp_oauth_credentials_store_mode,

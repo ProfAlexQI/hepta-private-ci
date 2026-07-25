@@ -252,6 +252,12 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_environment_manager(
         mcp_servers.iter(),
         config.mcp_oauth_credentials_store_mode,
         auth.as_ref(),
+        McpRuntimeEnvironment::new(
+            environment_manager
+                .default_environment()
+                .unwrap_or_else(|| environment_manager.local_environment()),
+            config.cwd.to_path_buf(),
+        ),
     )
     .await;
 

@@ -358,8 +358,6 @@ impl Session {
         );
         let host_owned_codex_apps_enabled =
             host_owned_codex_apps_enabled(&mcp_config, auth_snapshot.auth());
-        let auth_statuses =
-            compute_auth_statuses(mcp_servers.iter(), store_mode, auth_snapshot.auth()).await;
         let mcp_runtime_environment = match turn_context.environments.primary() {
             Some(turn_environment) => McpRuntimeEnvironment::new(
                 Arc::clone(&turn_environment.environment),
@@ -374,6 +372,13 @@ impl Session {
                 turn_context.cwd.to_path_buf(),
             ),
         };
+        let auth_statuses = compute_auth_statuses(
+            mcp_servers.iter(),
+            store_mode,
+            auth_snapshot.auth(),
+            mcp_runtime_environment.clone(),
+        )
+        .await;
         let (refreshed_manager, cancel_token) = McpConnectionManager::new(
             &mcp_servers,
             store_mode,

@@ -15,14 +15,18 @@ use codex_core::config::edit::ConfigEditsBuilder;
 use codex_core::config::find_codex_home;
 use codex_core::config::load_global_mcp_servers;
 use codex_core_plugins::PluginsManager;
+use codex_exec_server::EnvironmentManager;
+use codex_exec_server::ExecServerRuntimePaths;
 use codex_mcp::McpOAuthLoginSupport;
+use codex_mcp::McpRuntimeEnvironment;
 use codex_mcp::ResolvedMcpOAuthScopes;
 use codex_mcp::compute_auth_statuses;
-use codex_mcp::discover_supported_scopes;
-use codex_mcp::oauth_login_support;
+use codex_mcp::discover_supported_scopes_with_http_client;
+use codex_mcp::oauth_login_support_with_http_client;
 use codex_mcp::resolve_oauth_scopes;
 use codex_mcp::should_retry_without_scopes;
 use codex_protocol::protocol::McpAuthStatus;
+use codex_rmcp_client::OAuthDiscoveryTimeout;
 use codex_rmcp_client::delete_oauth_tokens;
 use codex_rmcp_client::perform_oauth_login;
 use codex_utils_cli::CliConfigOverrides;
@@ -316,6 +320,8 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
         oauth_resource: None,
         tools: HashMap::new(),
     };
+    let runtime_environment = runtime_environment_for_config(&config).await?;
+    let http_client = runtime_environment.http_client_for_server(&new_entry)?;
 
     servers.insert(name.clone(), new_entry);
 
@@ -327,7 +333,13 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
 
     println!("Added global MCP server '{name}'.");
 
-    match oauth_login_support(&transport).await {
+    match oauth_login_support_with_http_client(
+        &transport,
+        http_client,
+        OAuthDiscoveryTimeout::Requested,
+    )
+    .await
+    {
         McpOAuthLoginSupport::Supported(oauth_config) => {
             println!("Detected OAuth support. Starting OAuth flow…");
             let resolved_scopes = resolve_oauth_scopes(
@@ -421,8 +433,15 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
     };
 
     let explicit_scopes = (!scopes.is_empty()).then_some(scopes);
+    let runtime_environment = runtime_environment_for_config(&config).await?;
+    let http_client = runtime_environment.http_client_for_server(server)?;
     let discovered_scopes = if explicit_scopes.is_none() && server.scopes.is_none() {
-        discover_supported_scopes(&server.transport).await
+        discover_supported_scopes_with_http_client(
+            &server.transport,
+            http_client,
+            OAuthDiscoveryTimeout::Requested,
+        )
+        .await
     } else {
         None
     };
@@ -490,6 +509,7 @@ async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) ->
     )));
     let mcp_servers = mcp_manager.configured_servers(&config).await;
     let effective_mcp_servers = mcp_manager.effective_servers(&config, /*auth*/ None).await;
+    let runtime_environment = runtime_environment_for_config(&config).await?;
 
     let mut entries: Vec<_> = mcp_servers.iter().collect();
     entries.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -497,6 +517,7 @@ async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) ->
         effective_mcp_servers.iter(),
         config.mcp_oauth_credentials_store_mode,
         /*auth*/ None,
+        runtime_environment,
     )
     .await;
 
@@ -732,6 +753,21 @@ async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) ->
     }
 
     Ok(())
+}
+
+async fn runtime_environment_for_config(config: &Config) -> Result<McpRuntimeEnvironment> {
+    let local_runtime_paths = ExecServerRuntimePaths::from_optional_paths(
+        config.codex_self_exe.clone(),
+        config.codex_linux_sandbox_exe.clone(),
+    )?;
+    let environment_manager =
+        EnvironmentManager::from_codex_home(config.codex_home.clone(), local_runtime_paths).await?;
+    Ok(McpRuntimeEnvironment::new(
+        environment_manager
+            .default_environment()
+            .unwrap_or_else(|| environment_manager.local_environment()),
+        config.cwd.to_path_buf(),
+    ))
 }
 
 async fn run_get(config_overrides: &CliConfigOverrides, get_args: GetArgs) -> Result<()> {
