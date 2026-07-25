@@ -37,19 +37,33 @@ attempt_log_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-browser-smoke.XXX
 runtime_fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-runtime.XXXXXX")"
 runtime_database="$runtime_fixture_dir/outcomes.sqlite3"
 runtime_key_file="$runtime_fixture_dir/integrity.key"
+preference_database="$runtime_fixture_dir/preferences.sqlite3"
+preference_integrity_key_file="$runtime_fixture_dir/preference-integrity.key"
+preference_auth_key_file="$runtime_fixture_dir/preference-auth.key"
 chmod 700 "$runtime_fixture_dir"
 (umask 077; printf '%s' '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' >"$runtime_key_file")
+(umask 077; printf '%s' '202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f' >"$preference_integrity_key_file")
+(umask 077; printf '%s' '404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f' >"$preference_auth_key_file")
 chmod 600 "$runtime_key_file"
+chmod 600 "$preference_integrity_key_file" "$preference_auth_key_file"
 
 start_server() {
   local outcome_mode="bootstrap-new"
   if [[ -e "$runtime_database" ]]; then
     outcome_mode="open-existing"
   fi
+  local preference_mode="bootstrap-new"
+  if [[ -e "$preference_database" ]]; then
+    preference_mode="open-existing"
+  fi
   : >"$SERVER_LOG"
   HEPTA_RUNTIME_OUTCOME_DATABASE="$runtime_database" \
     HEPTA_RUNTIME_INTEGRITY_KEY_FILE="$runtime_key_file" \
     HEPTA_RUNTIME_OUTCOME_MODE="$outcome_mode" \
+    HEPTA_PREFERENCE_DATABASE="$preference_database" \
+    HEPTA_PREFERENCE_INTEGRITY_KEY_FILE="$preference_integrity_key_file" \
+    HEPTA_PREFERENCE_INGRESS_AUTH_KEY_FILE="$preference_auth_key_file" \
+    HEPTA_PREFERENCE_STORE_MODE="$preference_mode" \
     cargo run --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta -- --serve-ui "$BIND_ADDR" \
     >"$SERVER_LOG" 2>&1 &
   server_pid="$!"
