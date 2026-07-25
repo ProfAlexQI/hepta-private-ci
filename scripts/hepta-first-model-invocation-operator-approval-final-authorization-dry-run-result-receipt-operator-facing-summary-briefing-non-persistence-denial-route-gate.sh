@@ -47,7 +47,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_operator_facing_summary_briefing_non_persistence_denial_no_delivery_no_provider_model_invocation' \
   "operator-facing summary/briefing execution mode"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_operator_facing_summary_briefing_non_persistence_denial_endpoint_blocks_delivery_and_invocation_side_effects' \
+  'first_model_invocation_denial_routes_are_data_driven_and_side_effect_free' \
   "focused operator-facing summary/briefing unit test"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '"action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_final_operator_acknowledgement_non_acceptance_denial"' \
@@ -55,7 +55,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 
 TEST_LOG="$(mktemp /tmp/hepta-first-model-invocation-final-authorization-dry-run-result-receipt-operator-summary-briefing-route-tests.XXXXXX)"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
-  hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_operator_facing_summary_briefing_non_persistence_denial_endpoint_blocks_delivery_and_invocation_side_effects \
+  first_model_invocation_denial_routes_are_data_driven_and_side_effect_free \
   -- --nocapture >"$TEST_LOG"
 
 live_route_status="skipped"

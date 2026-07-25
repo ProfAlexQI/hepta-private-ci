@@ -47,7 +47,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
   'first_model_invocation_operator_approval_acceptance_artifact_precondition_no_provider_model_invocation' \
   "first model invocation approval artifact precondition execution mode"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
-  'hepta_first_model_invocation_operator_approval_acceptance_artifact_precondition_endpoint_blocks_missing_artifact_without_invocation_side_effects' \
+  'first_model_invocation_denial_routes_are_data_driven_and_side_effect_free' \
   "focused first model invocation approval artifact precondition unit test"
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
   '"action": "first_model_invocation_operator_approval_nonce_session_command_binding_preflight"' \
@@ -55,7 +55,7 @@ require_source_text "$NATIVE_GATEWAY_SOURCE" \
 
 TEST_LOG="$(mktemp /tmp/hepta-first-model-invocation-approval-artifact-precondition-route-tests.XXXXXX)"
 cargo test --offline --manifest-path "$MANIFEST" -q -p hepta-native-gateway --lib \
-  hepta_first_model_invocation_operator_approval_acceptance_artifact_precondition_endpoint_blocks_missing_artifact_without_invocation_side_effects \
+  first_model_invocation_denial_routes_are_data_driven_and_side_effect_free \
   -- --nocapture >"$TEST_LOG"
 
 live_route_status="skipped"
