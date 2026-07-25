@@ -482,6 +482,18 @@ impl CodexThread {
         self.codex.session.refresh_runtime_config(next_config).await;
     }
 
+    /// Refresh MCP configuration and managed requirements without reloading unrelated settings.
+    pub async fn refresh_mcp_config(
+        &self,
+        next_config: crate::config::Config,
+        refresh_config: codex_protocol::protocol::McpServerRefreshConfig,
+    ) {
+        self.codex
+            .session
+            .refresh_mcp_config(next_config, refresh_config)
+            .await;
+    }
+
     pub async fn environment_selections(&self) -> Vec<TurnEnvironmentSelection> {
         self.codex.thread_environment_selections().await
     }

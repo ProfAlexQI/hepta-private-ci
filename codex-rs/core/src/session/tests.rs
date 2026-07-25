@@ -1698,6 +1698,94 @@ async fn record_initial_history_new_defers_initial_context_until_first_turn() {
 }
 
 #[tokio::test]
+async fn refresh_mcp_config_replaces_managed_requirements_without_changing_model() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let server = serde_json::from_value::<McpServerConfig>(json!({
+        "url": "https://example.com/mcp",
+        "enabled": true
+    }))
+    .expect("valid test MCP server");
+    let requirement = serde_json::from_value::<codex_config::McpServerRequirement>(json!({
+        "identity": { "url": "https://example.com/mcp" }
+    }))
+    .expect("valid managed MCP requirement");
+    let plugin_requirements = std::collections::BTreeMap::from([(
+        "example-plugin".to_string(),
+        codex_config::PluginRequirementsToml {
+            mcp_servers: Some(std::collections::BTreeMap::from([(
+                "beta".to_string(),
+                requirement,
+            )])),
+        },
+    )]);
+
+    let original_model = session.get_config().await.model.clone();
+    let mut next_config = session.get_config().await.as_ref().clone();
+    next_config.model = Some("must-not-replace-active-model".to_string());
+    next_config.mcp_servers = codex_config::Constrained::normalized(
+        HashMap::from([("beta".to_string(), server.clone())]),
+        |mut servers: HashMap<String, McpServerConfig>| {
+            servers.retain(|name, _| name == "beta");
+            servers
+        },
+    )
+    .expect("valid refreshed MCP constraints");
+    let mut requirements = next_config.config_layer_stack.requirements().clone();
+    requirements.plugins = Some(Sourced::new(
+        plugin_requirements.clone(),
+        RequirementSource::LegacyManagedConfigTomlFromMdm,
+    ));
+    let mut requirements_toml = next_config.config_layer_stack.requirements_toml().clone();
+    requirements_toml.plugins = Some(plugin_requirements.clone());
+    let layers = next_config
+        .config_layer_stack
+        .get_layers(
+            ConfigLayerStackOrdering::LowestPrecedenceFirst,
+            /*include_disabled*/ true,
+        )
+        .into_iter()
+        .cloned()
+        .collect();
+    next_config.config_layer_stack = ConfigLayerStack::new(layers, requirements, requirements_toml)
+        .expect("managed MCP and plugin requirements");
+    let refresh_config = McpServerRefreshConfig {
+        mcp_servers: json!({}),
+        mcp_oauth_credentials_store_mode: serde_json::to_value(
+            next_config.mcp_oauth_credentials_store_mode,
+        )
+        .expect("serialize store mode"),
+        elicitation_authority: None,
+    };
+
+    session
+        .refresh_mcp_config(next_config, refresh_config)
+        .await;
+
+    let config = session.get_config().await;
+    assert_eq!(config.model, original_model);
+    let mut managed_servers = config.mcp_servers.clone();
+    managed_servers
+        .set(HashMap::from([
+            ("alpha".to_string(), server.clone()),
+            ("beta".to_string(), server.clone()),
+        ]))
+        .expect("apply refreshed managed MCP constraints");
+    assert_eq!(
+        managed_servers.get(),
+        &HashMap::from([("beta".to_string(), server.clone())])
+    );
+    assert_eq!(
+        config
+            .config_layer_stack
+            .requirements()
+            .plugins
+            .as_ref()
+            .map(|requirements| &requirements.value),
+        Some(&plugin_requirements)
+    );
+}
+
+#[tokio::test]
 async fn resumed_history_injects_initial_context_on_first_context_update_only() {
     let (session, turn_context) = make_session_and_context().await;
     let (rollout_items, mut expected) = sample_rollout(&session, &turn_context).await;

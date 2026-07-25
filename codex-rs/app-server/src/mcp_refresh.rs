@@ -2,10 +2,8 @@ use crate::config_manager::ConfigManager;
 use codex_core::CodexThread;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
-use codex_protocol::ThreadId;
 use codex_protocol::protocol::McpElicitationAuthority;
 use codex_protocol::protocol::McpServerRefreshConfig;
-use codex_protocol::protocol::Op;
 use std::io;
 use std::sync::Arc;
 use tracing::warn;
@@ -23,12 +21,12 @@ pub(crate) async fn queue_strict_refresh(
             .get_thread(thread_id)
             .await
             .map_err(|err| io::Error::other(format!("failed to load thread {thread_id}: {err}")))?;
-        let config =
-            build_refresh_config(thread_manager, config_manager, thread.config().await).await?;
-        refreshes.push((thread_id, thread, config));
+        let plan =
+            build_refresh_plan(thread_manager, config_manager, thread.config().await).await?;
+        refreshes.push((thread, plan));
     }
-    for (thread_id, thread, config) in refreshes {
-        queue_refresh(thread_id, thread, config).await?;
+    for (thread, plan) in refreshes {
+        apply_refresh(thread, plan).await;
     }
     Ok(())
 }
@@ -45,26 +43,28 @@ pub(crate) async fn queue_best_effort_refresh(
                 continue;
             }
         };
-        let config =
-            match build_refresh_config(thread_manager, config_manager, thread.config().await).await
-            {
-                Ok(config) => config,
+        let plan =
+            match build_refresh_plan(thread_manager, config_manager, thread.config().await).await {
+                Ok(plan) => plan,
                 Err(err) => {
                     warn!("failed to build MCP refresh config for thread {thread_id}: {err}");
                     continue;
                 }
             };
-        if let Err(err) = queue_refresh(thread_id, thread, config).await {
-            warn!("{err}");
-        }
+        apply_refresh(thread, plan).await;
     }
 }
 
-async fn build_refresh_config(
+struct McpRefreshPlan {
+    thread_config: Config,
+    runtime_config: McpServerRefreshConfig,
+}
+
+async fn build_refresh_plan(
     thread_manager: &ThreadManager,
     config_manager: &ConfigManager,
     thread_config: Arc<Config>,
-) -> io::Result<McpServerRefreshConfig> {
+) -> io::Result<McpRefreshPlan> {
     let config = config_manager
         .load_latest_config_for_thread(thread_config.as_ref())
         .await?;
@@ -72,7 +72,7 @@ async fn build_refresh_config(
         .mcp_manager()
         .configured_servers(&config)
         .await;
-    Ok(McpServerRefreshConfig {
+    let runtime_config = McpServerRefreshConfig {
         mcp_servers: serde_json::to_value(mcp_servers).map_err(io::Error::other)?,
         mcp_oauth_credentials_store_mode: serde_json::to_value(
             config.mcp_oauth_credentials_store_mode,
@@ -83,23 +83,21 @@ async fn build_refresh_config(
             permission_profile: config.permissions.effective_permission_profile(),
             approvals_reviewer: config.approvals_reviewer,
         }),
+    };
+    Ok(McpRefreshPlan {
+        thread_config: config,
+        runtime_config,
     })
 }
 
-async fn queue_refresh(
-    thread_id: ThreadId,
-    thread: Arc<CodexThread>,
-    config: McpServerRefreshConfig,
-) -> io::Result<()> {
+async fn apply_refresh(thread: Arc<CodexThread>, plan: McpRefreshPlan) {
+    let McpRefreshPlan {
+        thread_config,
+        runtime_config,
+    } = plan;
     thread
-        .submit(Op::RefreshMcpServers { config })
-        .await
-        .map(|_| ())
-        .map_err(|err| {
-            io::Error::other(format!(
-                "failed to queue MCP refresh for thread {thread_id}: {err}"
-            ))
-        })
+        .refresh_mcp_config(thread_config, runtime_config)
+        .await;
 }
 
 #[cfg(test)]

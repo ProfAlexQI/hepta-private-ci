@@ -1515,6 +1515,27 @@ impl Session {
         }
     }
 
+    pub(crate) async fn refresh_mcp_config(
+        &self,
+        next_config: Config,
+        refresh_config: McpServerRefreshConfig,
+    ) {
+        {
+            let mut state = self.state.lock().await;
+            let mut config = (*state.session_configuration.original_config_do_not_use).clone();
+            config.config_layer_stack = next_config
+                .config_layer_stack
+                .with_user_layer_from(&config.config_layer_stack);
+            config.mcp_servers = next_config.mcp_servers;
+            config.mcp_oauth_credentials_store_mode = next_config.mcp_oauth_credentials_store_mode;
+            state.session_configuration.original_config_do_not_use = Arc::new(config);
+        }
+        self.mcp_server_refresh_state
+            .lock()
+            .await
+            .request(refresh_config);
+    }
+
     fn emit_config_changed_contributors(
         &self,
         previous_config: Option<&Config>,
