@@ -413,6 +413,45 @@
         "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-final-ack-final-index-delivery-receipt-terminal-status",
         "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-terminal-status-final-index-delivery-receipt-public-status"
       ]
+    },
+    {
+      "batch_id": "legacy_workgraph_projection_consolidation_v1",
+      "migration_parent_commit": "e630054ac5894996a92ab1761a34df9a34032544",
+      "migration_commit": "afb99b554c7f187f881e1b1900fae3c39613583e",
+      "newly_migrated_pair_count": 8,
+      "migrated_pair_count": 1282,
+      "remaining_legacy_pair_count": 0,
+      "post_migration_catalog_sha256": "00bf24df2176238acdc855164c9cf7556e028ba9dadf134f907f0f63a384ebf0",
+      "post_migration_exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+      "gate_count": 1982,
+      "report_count": 1283,
+      "exact_pair_count": 1282,
+      "template_pair_count": 41,
+      "captured_compatibility_pair_count": 1241,
+      "existing_template_output_byte_parity_count": 82,
+      "pre_migration_content_snapshot_ready": true,
+      "compatibility_payload_all_hash_verified": true,
+      "all_exact_pairs_thin_wrappers": true,
+      "report_execution_sample_ready": true,
+      "gate_execution_sample_ready": true,
+      "receipt_state_machine_derived": true,
+      "script_execution_side_effects_observed": false,
+      "provider_invoked": false,
+      "model_invoked": false,
+      "credentials_read": false,
+      "production_state_mutated": false,
+      "service_restarted": false,
+      "captured_payload_source_hash_binding_count": 2482,
+      "migrated_ids": [
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview",
+        "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview"
+      ]
     }
   ]
 }

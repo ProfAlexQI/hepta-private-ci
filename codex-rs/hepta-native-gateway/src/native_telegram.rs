@@ -123,6 +123,7 @@ use sha2::Sha256;
 use tokio::runtime::Handle;
 
 use crate::runtime_composition::NativeGatewayRuntime;
+use crate::runtime_composition::RuntimeTelegramReceiveAuthority;
 
 const LEGACY_RUNTIME_SLUG: &str = "openclaw";
 const LEGACY_CONFIG_FILE_NAME: &str = "openclaw.json";
@@ -171,7 +172,7 @@ static TELEGRAM_LIVE_SOAK_OBSERVATION: OnceLock<Mutex<NativeTelegramLiveSoakObse
 
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
     let config = if requested {
-        load_telegram_config_status()
+        load_telegram_config_metadata_status()
     } else {
         NativeTelegramConfigStatus::disabled()
     };
@@ -188,7 +189,9 @@ pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTel
 pub(crate) fn telegram_receive_once_status(
     requested: bool,
     limit: usize,
+    authority: &RuntimeTelegramReceiveAuthority,
 ) -> NativeTelegramReceiveOnceStatus {
+    let _request_binding_hash = authority.request_binding_hash();
     telegram_receive_once_status_with_gate(requested, limit, env_truthy(TELEGRAM_LIVE_READ_ENV))
 }
 
@@ -209,7 +212,7 @@ pub(crate) fn telegram_model_turn_plan_status(
     requested: bool,
 ) -> NativeTelegramModelTurnPlanStatus {
     let config = if requested {
-        load_telegram_config_status()
+        load_telegram_config_metadata_status()
     } else {
         NativeTelegramConfigStatus::disabled()
     };
@@ -228,7 +231,7 @@ fn telegram_model_bridge_status_with_gate(
     model_turn_gate_enabled: bool,
 ) -> NativeTelegramModelBridgeStatus {
     let config = if requested {
-        load_telegram_config_status()
+        load_telegram_config_metadata_status()
     } else {
         NativeTelegramConfigStatus::disabled()
     };
@@ -447,7 +450,7 @@ fn telegram_drain_once_status_with_gates(
             "runtime admission denied before Telegram config or token observation".to_string(),
         )
     } else {
-        load_telegram_config_status()
+        load_telegram_execution_config_status()
     };
     let mut status = preflight.status;
     let mut error = preflight.error;
@@ -671,7 +674,7 @@ fn telegram_send_plan_status_with_gate(
     send_gate_enabled: bool,
 ) -> NativeTelegramSendPlanStatus {
     let config = if requested {
-        load_telegram_config_status()
+        load_telegram_config_metadata_status()
     } else {
         NativeTelegramConfigStatus::disabled()
     };
@@ -689,7 +692,7 @@ fn telegram_receive_once_status_with_gate(
     live_read_gate_enabled: bool,
 ) -> NativeTelegramReceiveOnceStatus {
     let limit = telegram_receive_limit_policy(limit);
-    let config = load_telegram_config_status();
+    let config = load_telegram_execution_config_status();
     let transport_plan = telegram_transport_plan_for_config_status(&config);
     let cursor_plan = NativeTelegramCursorPlan::ready();
 
@@ -787,14 +790,14 @@ fn telegram_receive_once_status_with_gate(
     }
 }
 
-fn load_telegram_config_status() -> NativeTelegramConfigStatus {
+fn load_telegram_config_metadata_status() -> NativeTelegramConfigStatus {
     let Some(config_path) = resolve_private_hepta_runtime_config_path() else {
         return NativeTelegramConfigStatus::missing(
             "Hepta private Telegram config not found".to_string(),
         );
     };
 
-    match load_telegram_config_status_from_path(&config_path) {
+    match load_telegram_config_metadata_status_from_path(&config_path) {
         Ok(status) => status,
         Err(error) => NativeTelegramConfigStatus::error(
             Some(config_path.display().to_string()),
@@ -804,7 +807,55 @@ fn load_telegram_config_status() -> NativeTelegramConfigStatus {
     }
 }
 
-fn load_telegram_config_status_from_path(
+fn load_telegram_config_metadata_status_from_path(
+    path: &Path,
+) -> Result<NativeTelegramConfigStatus, String> {
+    let file_metadata = fs::metadata(path)
+        .map_err(|error| format!("failed to inspect Hepta private Telegram config: {error}"))?;
+    if !file_metadata.is_file() {
+        return Err("Hepta private Telegram config is not a regular file".to_string());
+    }
+
+    Ok(build_native_telegram_config_status(
+        NativeTelegramConfigStatusInput {
+            config_path: Some(path.display().to_string()),
+            config_found: true,
+            enabled: false,
+            dm_policy: "unobserved".to_string(),
+            group_policy: "unobserved".to_string(),
+            allow_from_count: 0,
+            group_count: 0,
+            token_source: "config_content_unobserved",
+            token_secret_ref_present: false,
+            token_secret_provider: None,
+            token_secret_id_present: false,
+            token_file_present: false,
+            token_file_mode_0600: false,
+            token_file_security_ready: false,
+            token_shape_ok: false,
+            error: None,
+        },
+    ))
+}
+
+fn load_telegram_execution_config_status() -> NativeTelegramConfigStatus {
+    let Some(config_path) = resolve_private_hepta_runtime_config_path() else {
+        return NativeTelegramConfigStatus::missing(
+            "Hepta private Telegram config not found".to_string(),
+        );
+    };
+
+    match load_telegram_execution_config_status_from_path(&config_path) {
+        Ok(status) => status,
+        Err(error) => NativeTelegramConfigStatus::error(
+            Some(config_path.display().to_string()),
+            config_path.is_file(),
+            redact_token_like_text(&error),
+        ),
+    }
+}
+
+fn load_telegram_execution_config_status_from_path(
     path: &Path,
 ) -> Result<NativeTelegramConfigStatus, String> {
     let raw = fs::read_to_string(path)
@@ -1493,7 +1544,8 @@ mod tests {
         )
         .expect("write config");
 
-        let status = load_telegram_config_status_from_path(&config_path).expect("load config");
+        let status =
+            load_telegram_execution_config_status_from_path(&config_path).expect("load config");
         assert!(status.enabled);
         assert_eq!(status.token_source, "secret_file");
         assert!(status.token_shape_ok);
@@ -1505,6 +1557,22 @@ mod tests {
         let serialized = serde_json::to_string(&status).expect("serialize");
         assert!(!serialized.contains("abcdefghijklmnopqrstuvwxyz"));
         assert!(serialized.contains("\"raw_token_exposed\":false"));
+    }
+
+    #[test]
+    fn telegram_metadata_status_never_reads_config_or_secret_contents() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let config_path = temp.path().join("openclaw.json");
+        fs::write(&config_path, "sentinel-inline-secret-not-json").expect("write sentinel");
+        let status = load_telegram_config_metadata_status_from_path(&config_path).expect("status");
+        assert_eq!(status.token_source, "config_content_unobserved");
+        assert!(!status.token_shape_ok);
+        assert!(!status.binding_ready);
+        assert!(
+            !serde_json::to_string(&status)
+                .expect("serialize")
+                .contains("sentinel-inline-secret-not-json")
+        );
     }
 
     #[cfg(not(unix))]

@@ -107,6 +107,11 @@ use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
 use crate::runtime_composition::RuntimeRequestPreflightReceipt;
 use crate::runtime_composition::runtime_kernel_canary_body_admitted;
+use crate::runtime_ingress::TELEGRAM_RECEIVE_ONCE_ENDPOINT;
+#[cfg(test)]
+use crate::runtime_ingress::runtime_ingress_kind;
+use crate::runtime_ingress::runtime_preflight_matches;
+use crate::runtime_ingress::telegram_receive_once_response;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
@@ -452,6 +457,16 @@ fn handle_native_gateway_connection(
             }
         };
     }
+    if method == "GET" && path == TELEGRAM_RECEIVE_ONCE_ENDPOINT {
+        let response =
+            telegram_receive_once_response(Some(runtime), options.with_telegram_plugin, 20);
+        return write_http_response(
+            stream,
+            response.status,
+            "application/json; charset=utf-8",
+            response.body.as_bytes(),
+        );
+    }
     if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path) {
         return write_http_response(stream, status, content_type, body);
     }
@@ -488,6 +503,7 @@ fn route_native_gateway_request_with_body(
         } else {
             RuntimeRequestDisposition::PlanOnlyQuarantine
         },
+        ingress_kind: runtime_ingress_kind(method, path),
         mutation_authorized: false,
         durable_intent_recorded: false,
         provider_effect_ack_recorded: false,
@@ -503,13 +519,7 @@ fn route_native_gateway_request_with_preflight(
     request_body: Option<&str>,
     preflight: &RuntimeRequestPreflightReceipt,
 ) -> (&'static str, &'static str, String) {
-    let expected_disposition = if method == "GET" {
-        RuntimeRequestDisposition::ReadOnlyDispatch
-    } else {
-        RuntimeRequestDisposition::PlanOnlyQuarantine
-    };
-    if preflight.request_binding_hash.is_empty()
-        || preflight.disposition != expected_disposition
+    if !runtime_preflight_matches(method, path, preflight)
         || preflight.mutation_authorized
         || preflight.durable_intent_recorded
         || preflight.provider_effect_ack_recorded
@@ -3045,16 +3055,6 @@ fn route_native_gateway_request_with_preflight(
                     "200 OK",
                     "application/json; charset=utf-8",
                     json_or_error(&telegram_plugin),
-                );
-            }
-            "/api/telegram-receive-once" => {
-                return (
-                    "200 OK",
-                    "application/json; charset=utf-8",
-                    json_or_error(&native_telegram::telegram_receive_once_status(
-                        options.with_telegram_plugin,
-                        20,
-                    )),
                 );
             }
             "/api/telegram-model-turn-plan" => {

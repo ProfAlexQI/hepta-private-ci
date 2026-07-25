@@ -301,38 +301,7 @@
         assert_eq!(value["raw_response_text_exposed"], false);
         assert_eq!(value["raw_token_exposed"], false);
         assert_eq!(value["poll_loop_status"]["worker_spawned_by_status"], false);
-        assert_eq!(
-            value["production_guards"]["retry_transient_send_errors"],
-            true
-        );
-    }
-
-    #[test]
-    fn telegram_live_soak_status_alias_matches_primary_endpoint() {
-        let options = NativeGatewayOptions {
-            bind_addr: "127.0.0.1:7373".to_string(),
-            with_telegram_plugin: true,
-            telegram_plugin_poll_ms: 1500,
-        };
-        let primary = route_native_gateway_request("GET", TELEGRAM_LIVE_SOAK_ENDPOINT, &options);
-        let alias =
-            route_native_gateway_request("GET", TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT, &options);
-
-        assert_eq!(primary.0, "200 OK");
-        assert_eq!(alias.0, "200 OK");
-        assert_eq!(primary.1, alias.1);
-
-        let primary_json: serde_json::Value =
-            serde_json::from_str(&primary.2).expect("primary live soak json");
-        let alias_json: serde_json::Value =
-            serde_json::from_str(&alias.2).expect("alias live soak json");
-        assert_eq!(alias_json["endpoint"], TELEGRAM_LIVE_SOAK_ENDPOINT);
-        assert_eq!(alias_json["side_effect_free"], true);
-        assert_eq!(alias_json["raw_token_exposed"], false);
-        assert_eq!(
-            primary_json["production_guards"],
-            alias_json["production_guards"]
-        );
+        assert_eq!(value["production_guards"]["retry_transient_send_errors"], true);
     }
 
     #[test]
@@ -1497,40 +1466,6 @@
             value["forbidden_real_side_effects"]["gateway_mutation_performed"],
             false
         );
-    }
-
-    #[test]
-    fn hepta_codex_engine_adapter_boundary_compatibility_alias_routes_to_hepta_named_report() {
-        let options = NativeGatewayOptions {
-            bind_addr: "127.0.0.1:7373".to_string(),
-            with_telegram_plugin: true,
-            telegram_plugin_poll_ms: 1500,
-        };
-        let (status, content_type, body) = route_native_gateway_request(
-            "GET",
-            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
-            &options,
-        );
-        assert_eq!(status, "200 OK");
-        assert_eq!(content_type, "application/json; charset=utf-8");
-
-        let value: serde_json::Value =
-            serde_json::from_str(&body).expect("engine adapter compatibility alias json");
-        assert_eq!(
-            value["canonical_endpoint"],
-            HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
-        );
-        assert_eq!(
-            value["transition_alias_endpoint"],
-            HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT
-        );
-        assert_eq!(
-            value["source_command"],
-            HEPTA_ENGINE_ADAPTER_BOUNDARY_SOURCE_COMMAND
-        );
-        assert_eq!(value["hepta_named_route_alias_ready"], true);
-        assert_eq!(value["transition_alias_retained"], true);
-        assert_eq!(value["boundary_ready"], true);
     }
 
     #[test]

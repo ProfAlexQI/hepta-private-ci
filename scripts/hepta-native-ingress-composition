@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_NATIVE_INGRESS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+
+usage() {
+  echo "usage: scripts/hepta-native-ingress-composition <verify|self-test>" >&2
+  exit 2
+}
+
+require_literal() {
+  local file="$1"
+  local literal="$2"
+  local message="$3"
+  grep -Fq "$literal" "$ROOT/$file" || {
+    echo "$message: $file" >&2
+    return 1
+  }
+}
+
+deny_literal() {
+  local file="$1"
+  local literal="$2"
+  local message="$3"
+  if grep -Fq "$literal" "$ROOT/$file"; then
+    echo "$message: $file" >&2
+    return 1
+  fi
+}
+
+verify() {
+  local registry="codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  local runtime="codex-rs/hepta-native-gateway/src/runtime_composition.rs"
+  local gateway="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+  local telegram="codex-rs/hepta-native-gateway/src/native_telegram.rs"
+  local source
+  for source in "$registry" "$runtime" "$gateway" "$telegram"; do
+    [[ -f "$ROOT/$source" ]] || {
+      echo "native ingress composition source missing: $source" >&2
+      return 1
+    }
+  done
+
+  require_literal "$registry" \
+    '("GET", TELEGRAM_RECEIVE_ONCE_ENDPOINT) => RuntimeIngressKind::CredentialedNetworkRead' \
+    "Telegram receive is not classified as a credentialed network read"
+  require_literal "$registry" \
+    '("POST", _) => RuntimeIngressKind::MutationPlan' \
+    "native POST fallback is not classified as a mutation plan"
+  require_literal "$runtime" \
+    'pub(crate) struct RuntimeTelegramReceiveAuthority {' \
+    "request-bound Telegram read authority is missing"
+  require_literal "$runtime" \
+    'pub(crate) fn authorize_telegram_receive(' \
+    "RuntimeKernel Telegram read authorization is missing"
+  require_literal "$runtime" \
+    'if receipt.live_read_authorized && receipt.durable_intent_recorded {' \
+    "Telegram read authorization is not intent-bound"
+  require_literal "$gateway" \
+    'telegram_receive_once_response(Some(runtime), options.with_telegram_plugin, 20)' \
+    "Telegram receive dispatch bypasses RuntimeKernel authorization"
+  require_literal "$registry" \
+    'let authority = match runtime.authorize_telegram_receive() {' \
+    "Telegram receive admission bypasses RuntimeKernel authorization"
+  require_literal "$registry" \
+    '"external_network_read": false,' \
+    "Telegram denial does not attest zero network reads"
+  require_literal "$registry" \
+    'telegram_receive_once_status(requested, limit, &authority)' \
+    "Telegram receive execution lacks its authority witness"
+  require_literal "$telegram" \
+    'authority: &RuntimeTelegramReceiveAuthority,' \
+    "Telegram receive implementation does not require exact authority"
+  require_literal "$telegram" \
+    'load_telegram_config_metadata_status()' \
+    "Telegram status is not isolated to configuration metadata"
+  require_literal "$telegram" \
+    'load_telegram_execution_config_status()' \
+    "authorized Telegram execution cannot load its secret configuration"
+  deny_literal "$telegram" \
+    'telegram_receive_once_status(requested: bool, limit: usize)' \
+    "legacy unauthorised Telegram receive signature remains"
+
+  local metadata_loader
+  metadata_loader="$(perl -0ne 'print $1 if /(fn load_telegram_config_metadata_status_from_path\(.*?)(?=fn load_telegram_execution_config_status\()/s' "$ROOT/$telegram")"
+  [[ -n "$metadata_loader" ]] || {
+    echo "Telegram metadata-only loader body cannot be inspected" >&2
+    return 1
+  }
+  if grep -Eq 'read_to_string|serde_json::from_str|read_secure_telegram_secret_file|env::var' \
+    <<<"$metadata_loader"; then
+    echo "Telegram metadata status reads config or secret contents" >&2
+    return 1
+  fi
+
+  local call_count
+  call_count="$(rg -n 'telegram_receive_once_status\(' "$ROOT/codex-rs/hepta-native-gateway/src" \
+    --glob '*.rs' | wc -l | tr -d ' ')"
+  [[ "$call_count" == 2 ]] || {
+    echo "unexpected Telegram receive definition/call inventory: $call_count" >&2
+    return 1
+  }
+
+  echo '{"schema":"hepta.native-ingress-composition.v1","status":"ready","credentialed_network_reads":1,"mutation_fallback":"plan_only"}'
+}
+
+self_test() {
+  local fixture
+  fixture="$(mktemp -d)"
+  trap 'rm -rf "$fixture"' RETURN
+  mkdir -p "$fixture/codex-rs/hepta-native-gateway/src"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs} \
+    "$fixture/codex-rs/hepta-native-gateway/src/"
+
+  HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null
+  perl -0pi -e 's/RuntimeIngressKind::CredentialedNetworkRead/RuntimeIngressKind::MetadataRead/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
+    echo "native ingress composition self-test accepted a downgraded network ingress" >&2
+    return 1
+  fi
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  perl -0pi -e 's/telegram_receive_once_status\(requested, limit, &authority\)/telegram_receive_once_status(requested, limit, \/\* authority removed \*\/)/g' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
+    echo "native ingress composition self-test accepted an authority-free dispatch" >&2
+    return 1
+  fi
+  echo '{"schema":"hepta.native-ingress-composition-self-test.v1","status":"ready","negative_fixtures":2}'
+}
+
+case "${1:-}" in
+  verify) verify ;;
+  self-test) self_test ;;
+  *) usage ;;
+esac

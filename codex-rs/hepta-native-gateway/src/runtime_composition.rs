@@ -15,6 +15,8 @@ use sha2::Sha256;
 use crate::preference_ingress::NativePreferenceIngress;
 use crate::preference_ingress::NativePreferenceIngressConfig;
 use crate::preference_ingress::PreferenceHttpResponse;
+use crate::runtime_ingress::RuntimeIngressKind;
+use crate::runtime_ingress::runtime_ingress_kind;
 #[cfg(all(test, unix))]
 use crate::secure_key_file::PRIVATE_FILE_MODE;
 use crate::secure_key_file::read_private_key;
@@ -61,10 +63,21 @@ pub(crate) enum RuntimeRequestDisposition {
 pub(crate) struct RuntimeRequestPreflightReceipt {
     pub(crate) request_binding_hash: String,
     pub(crate) disposition: RuntimeRequestDisposition,
+    pub(crate) ingress_kind: RuntimeIngressKind,
     pub(crate) mutation_authorized: bool,
     pub(crate) durable_intent_recorded: bool,
     pub(crate) provider_effect_ack_recorded: bool,
     pub(crate) terminal_receipt_recorded: bool,
+}
+
+pub(crate) struct RuntimeTelegramReceiveAuthority {
+    request_binding_hash: String,
+}
+
+impl RuntimeTelegramReceiveAuthority {
+    pub(crate) fn request_binding_hash(&self) -> &str {
+        &self.request_binding_hash
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -295,11 +308,22 @@ impl NativeGatewayRuntime {
         Ok(RuntimeRequestPreflightReceipt {
             request_binding_hash: format!("{:x}", hasher.finalize()),
             disposition,
+            ingress_kind: runtime_ingress_kind(method, path),
             mutation_authorized: false,
             durable_intent_recorded: false,
             provider_effect_ack_recorded: false,
             terminal_receipt_recorded: false,
         })
+    }
+
+    pub(crate) fn authorize_telegram_receive(&self) -> Result<RuntimeTelegramReceiveAuthority> {
+        let receipt = self.preflight_telegram_drain(/*next_update_offset*/ None)?;
+        if receipt.live_read_authorized && receipt.durable_intent_recorded {
+            return Ok(RuntimeTelegramReceiveAuthority {
+                request_binding_hash: receipt.request_binding_hash,
+            });
+        }
+        anyhow::bail!("telegram_runtime_admission.exact_read_authority_unavailable")
     }
 
     pub(crate) fn preflight_telegram_drain(

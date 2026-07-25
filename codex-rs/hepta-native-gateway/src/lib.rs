@@ -10,6 +10,7 @@ mod preference_ingress;
 mod provider_domain;
 mod route_registry;
 mod runtime_composition;
+mod runtime_ingress;
 mod secure_key_file;
 mod ui_domain;
 
