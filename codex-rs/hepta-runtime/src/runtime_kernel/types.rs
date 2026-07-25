@@ -5,6 +5,7 @@ pub struct RuntimeKernel {
     policy: ConfigurablePolicyEngine,
     approval_state: Arc<Mutex<ApprovalState>>,
     context_revision_state: Arc<Mutex<ContextRevisionState>>,
+    attached_preference_context_state: Arc<Mutex<AttachedPreferenceContextState>>,
     execution_lease_registry: Arc<Mutex<ExecutionLeaseRegistry>>,
     execution_outcome_state: Arc<Mutex<ExecutionOutcomeState>>,
     outcome_sink: runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,

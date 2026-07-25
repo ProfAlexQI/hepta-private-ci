@@ -3328,37 +3328,21 @@ async fn exposes_sessions_memory_and_history_snapshots() {
     assert_eq!(history[0].input, "tool:history probe");
 }
 
-#[tokio::test]
-async fn sessions_materialize_fresh_active_session() {
+#[test]
+fn fresh_active_session_is_consistent_across_control_plane_views() {
     let runtime = RuntimeKernel::new();
-
     let sessions = runtime.sessions().expect("sessions should load");
-
-    assert_eq!(sessions.len(), 1);
-    assert_eq!(sessions[0].session_id, "session-main");
-    assert!(sessions[0].is_active);
-}
-
-#[tokio::test]
-async fn active_session_snapshot_materializes_fresh_active_session() {
-    let runtime = RuntimeKernel::new();
-
     let session = runtime
         .active_session_snapshot()
         .expect("active session snapshot should load");
-
-    assert_eq!(session.session_id, "session-main");
-    assert!(session.is_active);
-}
-
-#[tokio::test]
-async fn session_activity_overview_counts_fresh_active_session() {
-    let runtime = RuntimeKernel::new();
-
     let overview = runtime
         .session_activity_overview(0, 0)
         .expect("session activity overview should load");
-
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_id, "session-main");
+    assert!(sessions[0].is_active);
+    assert_eq!(session.session_id, "session-main");
+    assert!(session.is_active);
     assert_eq!(overview.sessions.len(), 1);
     assert_eq!(overview.active_sessions, 1);
     assert_eq!(overview.archived_sessions, 0);
@@ -3419,76 +3403,24 @@ async fn doctor_reports_provider_probes_and_integrity_checks() {
         .await
         .expect("doctor summary should succeed");
 
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("Hepta doctor: warn"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("- topic sessions: 1"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("- topic graph edges: 0"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| { line.contains("- active topic sessions with transcript provenance: ") })
-    );
-    assert!(
-        summary.iter().any(|line| {
-            line.contains("- active topic sessions missing transcript provenance: ")
-        })
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| { line.contains("- active session recall transcript evidence spans: ") })
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| { line.contains("- active session recall omitted items: 0") })
-    );
-    assert!(
-        summary.iter().any(|line| {
-            line.contains("- active session intuition transcript evidence spans: ")
-        })
-    );
-    assert!(
-        summary.iter().any(|line| {
-            line.contains("- active session intuition foreground topic sessions: 1")
-        })
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("demo: ok via demo/demo-chat"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("mock-ollama: ok via mock-ollama/local-chat"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("history session references: ok"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| line.contains("runtime snapshot roundtrip: ok"))
-    );
-    assert!(
-        summary
-            .iter()
-            .any(|line| { line.contains("topic sessions carry transcript provenance: ok") })
-    );
+    for needle in [
+        "Hepta doctor: warn",
+        "- topic sessions: 1",
+        "- topic graph edges: 0",
+        "- active topic sessions with transcript provenance: ",
+        "- active topic sessions missing transcript provenance: ",
+        "- active session recall transcript evidence spans: ",
+        "- active session recall omitted items: 0",
+        "- active session intuition transcript evidence spans: ",
+        "- active session intuition foreground topic sessions: 1",
+        "demo: ok via demo/demo-chat",
+        "mock-ollama: ok via mock-ollama/local-chat",
+        "history session references: ok",
+        "runtime snapshot roundtrip: ok",
+        "topic sessions carry transcript provenance: ok",
+    ] {
+        assert!(summary.iter().any(|line| line.contains(needle)), "{needle}");
+    }
 }
 
 #[tokio::test]

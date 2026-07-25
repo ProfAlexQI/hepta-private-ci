@@ -142,12 +142,18 @@ verify_non_live_preference_authority() {
     echo "Architecture V2 runtime context freezer is missing: $context_freezer" >&2
     return 1
   }
-  if ! grep -Fqx \
-    '    let preference_stamp = revisions.stamp(session_id, "preference:unattached", preference_hash)?;' \
-    "$ROOT/$context_freezer"; then
-    echo "Architecture V2 runtime preference must remain explicitly unattached" >&2
-    return 1
-  fi
+  for requirement in \
+    'let attached_preference = runtime' \
+    '.attached_preference_context_state' \
+    '.get(session_id);' \
+    'Some(stamp) => stamp,' \
+    '"preference:unattached",'
+  do
+    grep -Fq "$requirement" "$ROOT/$context_freezer" || {
+      echo "Architecture V2 runtime preference attachment is incomplete: $requirement" >&2
+      return 1
+    }
+  done
 }
 
 verify_trusted_preference_feedback_boundary() {
@@ -2108,10 +2114,10 @@ PY
     "Architecture V2 non-live preference authority consumer detected"
 
   : >"$fixture/codex-rs/hepta-gateway/src/lib.rs"
-  perl -0pi -e 's/preference:unattached/preference:attached/' \
+  perl -0pi -e 's/Some\(stamp\) => stamp/Some(_stamp) => revisions.stamp(session_id, "preference:unattached", preference_hash)?/' \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
   expect_fixture_denied "$fixture" \
-    "Architecture V2 runtime preference must remain explicitly unattached"
+    "Architecture V2 runtime preference attachment is incomplete"
 
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"

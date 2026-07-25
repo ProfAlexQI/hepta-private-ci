@@ -20,6 +20,7 @@ use crate::PolicyDecision;
 use crate::RiskTier;
 use crate::RuntimeKernel;
 use crate::SessionId;
+use crate::runtime_preference_context::reset_attached_preference_context;
 use admission::admit_exact_tool_candidate;
 use hepta_contracts::AuthorizationId;
 use hepta_contracts::PrincipalId;
@@ -27,7 +28,6 @@ use hepta_intelligence::ToolCandidateProposalInput;
 use hepta_intelligence::propose_tool_candidate;
 use hepta_kernel::HeptaKernelSafetyAuthorization;
 use hepta_kernel::HeptaKernelSafetyGate;
-
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct SafetyGateClient;
 
@@ -302,6 +302,8 @@ impl SafetyGateClient {
             .lock()
             .map_err(|_| HeptaError("context revision state mutex poisoned".into()))?;
         revisions.remove_session(session_id);
+        drop(revisions);
+        reset_attached_preference_context(runtime, Some(session_id))?;
         Ok(())
     }
 
@@ -311,6 +313,8 @@ impl SafetyGateClient {
             .lock()
             .map_err(|_| HeptaError("context revision state mutex poisoned".into()))?;
         revisions.clear();
+        drop(revisions);
+        reset_attached_preference_context(runtime, None)?;
         Ok(())
     }
 }

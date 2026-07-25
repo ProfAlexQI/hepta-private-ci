@@ -5,6 +5,7 @@ use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
 use crate::runtime_composition::RuntimeRequestPreflightReceipt;
+use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENDPOINT;
 
 pub(crate) const TELEGRAM_RECEIVE_ONCE_ENDPOINT: &str = "/api/telegram-receive-once";
 
@@ -66,6 +67,7 @@ pub(crate) fn runtime_ingress_kind(method: &str, path: &str) -> RuntimeIngressKi
         ("POST", PREFERENCE_CHALLENGE_ENDPOINT) => RuntimeIngressKind::AuthenticatedPreferencePlan,
         ("POST", PREFERENCE_COMMIT_ENDPOINT) => RuntimeIngressKind::AuthenticatedPreferenceCommit,
         ("POST", RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT) => RuntimeIngressKind::RuntimeKernelCanary,
+        ("POST", RUNTIME_MUTATION_CANARY_ENDPOINT) => RuntimeIngressKind::MutationPlan,
         ("POST", _) => RuntimeIngressKind::MutationPlan,
         _ => RuntimeIngressKind::MetadataRead,
     }

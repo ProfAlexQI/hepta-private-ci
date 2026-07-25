@@ -182,6 +182,9 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
     )
     .expect("worker pool");
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+    let (_, session_binding_hash) = runtime
+        .preference_session_binding()
+        .expect("runtime preference session binding");
     let challenge_request = serde_json::json!({
         "transition_id": "transition:http-live",
         "evidence_id": "evidence:http-live",
@@ -190,7 +193,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
             "id": "receipt:http-live",
             "hash": "sha256:receipt-http-live"
         },
-        "session_binding_hash": "sha256:session-http-live",
+        "session_binding_hash": session_binding_hash,
         "subject": "subject:http-live",
         "preference": "preference:http-live",
         "target": {
@@ -243,7 +246,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
     );
     assert_eq!(
         denied_plan_tamper.1["error"],
-        "trusted_preference_ingress.authentication_denied"
+        "trusted_preference_ingress.runtime_session_binding_mismatch"
     );
     let mut uppercase_plan = challenge_envelope.clone();
     let uppercase_planning_proof = uppercase_plan["proof"]
@@ -357,7 +360,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
     assert!(denied_tamper.0.starts_with("HTTP/1.1 403 Forbidden"));
     assert_eq!(
         denied_tamper.1["error"],
-        "trusted_preference_ingress.challenge_binding_mismatch"
+        "trusted_preference_ingress.runtime_session_binding_mismatch"
     );
 
     let committed = preference_http_round_trip(
@@ -370,6 +373,17 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
     assert_eq!(committed.1["committed_now"], true);
     assert_eq!(committed.1["committed_next"]["revision"], 1);
     assert_eq!(committed.1["runtime_effect_authority_claimed"], false);
+    let attached = runtime
+        .authenticated_preference_context_for_test()
+        .expect("attached preference lookup")
+        .expect("authenticated preference context");
+    assert_eq!(attached.revision().get(), 1);
+    assert_eq!(
+        attached.content_hash().as_str(),
+        committed.1["committed_next"]["content_hash"]
+            .as_str()
+            .expect("committed preference hash")
+    );
 
     let replay = preference_http_round_trip(
         &pool,

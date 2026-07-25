@@ -161,10 +161,11 @@ pub(crate) fn freeze_tool_inputs(
     )?;
 
     let frozen_manifest = freeze_capability_manifest(runtime, tool_name)?;
-    let preference_hash = framed_hash(
-        "hepta.runtime.preference-context.v1",
-        &[("attachment", b"unattached")],
-    );
+    let attached_preference = runtime
+        .attached_preference_context_state
+        .lock()
+        .map_err(|_| HeptaError("attached preference context mutex poisoned".into()))?
+        .get(session_id);
     let metacontrol_hash = hash_json(
         "hepta.runtime.tool-metacontrol.v1",
         serde_json::to_value(decision)
@@ -184,7 +185,17 @@ pub(crate) fn freeze_tool_inputs(
     let policy_stamp = revisions.stamp(session_id, "policy", policy_hash)?;
     let catalog_stamp =
         revisions.stamp(session_id, "catalog", frozen_manifest.catalog_hash.clone())?;
-    let preference_stamp = revisions.stamp(session_id, "preference:unattached", preference_hash)?;
+    let preference_stamp = match attached_preference {
+        Some(stamp) => stamp,
+        None => revisions.stamp(
+            session_id,
+            "preference:unattached",
+            framed_hash(
+                "hepta.runtime.preference-context.v1",
+                &[("attachment", b"unattached")],
+            ),
+        )?,
+    };
     drop(revisions);
 
     let observation = ObservationRef::new(

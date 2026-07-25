@@ -275,13 +275,16 @@ impl NativePreferenceIngress {
         path: &str,
         body: Option<&str>,
         request_binding_hash: &str,
+        expected_session_binding_hash: &str,
     ) -> Option<PreferenceHttpResponse> {
         let result = match (method, path) {
-            ("POST", PREFERENCE_CHALLENGE_ENDPOINT) => {
-                Some(self.handle_challenge(body, request_binding_hash))
-            }
+            ("POST", PREFERENCE_CHALLENGE_ENDPOINT) => Some(self.handle_challenge(
+                body,
+                request_binding_hash,
+                expected_session_binding_hash,
+            )),
             ("POST", PREFERENCE_COMMIT_ENDPOINT) => {
-                Some(self.handle_commit(body, request_binding_hash))
+                Some(self.handle_commit(body, request_binding_hash, expected_session_binding_hash))
             }
             ("GET", PREFERENCE_CHALLENGE_ENDPOINT | PREFERENCE_COMMIT_ENDPOINT) => {
                 Some(PreferenceHttpResponse::error(
@@ -298,6 +301,7 @@ impl NativePreferenceIngress {
         &self,
         body: Option<&str>,
         request_binding_hash: &str,
+        expected_session_binding_hash: &str,
     ) -> PreferenceHttpResponse {
         let envelope = match parse_body::<PreferenceChallengeHttpEnvelope>(body) {
             Ok(envelope) => envelope,
@@ -313,6 +317,12 @@ impl NativePreferenceIngress {
             }
         };
         let request = envelope.request;
+        if request.session_binding_hash != expected_session_binding_hash {
+            return PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.runtime_session_binding_mismatch",
+            );
+        }
         let parts = match request.clone().try_into_parts() {
             Ok(parts) => parts,
             Err(code) => return PreferenceHttpResponse::error("422 Unprocessable Entity", code),
@@ -365,11 +375,18 @@ impl NativePreferenceIngress {
         &self,
         body: Option<&str>,
         request_binding_hash: &str,
+        expected_session_binding_hash: &str,
     ) -> PreferenceHttpResponse {
         let request = match parse_body::<PreferenceCommitHttpRequest>(body) {
             Ok(request) => request,
             Err(code) => return PreferenceHttpResponse::error("400 Bad Request", code),
         };
+        if request.commit.request.session_binding_hash != expected_session_binding_hash {
+            return PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.runtime_session_binding_mismatch",
+            );
+        }
         if request.commit.source != SourceBinding::from_ref(self.authority.source_binding()) {
             return PreferenceHttpResponse::error(
                 "403 Forbidden",
@@ -422,7 +439,8 @@ impl NativePreferenceIngress {
                 );
             }
         };
-        PreferenceHttpResponse::json(
+        let committed_state = outcome.commit().document().state();
+        let mut response = PreferenceHttpResponse::json(
             "200 OK",
             &PreferenceCommitHttpResponse {
                 schema: RESPONSE_SCHEMA,
@@ -436,9 +454,14 @@ impl NativePreferenceIngress {
                 committed_now: outcome.committed_now(),
                 transition_id: outcome.transition_id().as_str(),
                 evidence_hash: outcome.evidence().evidence_hash().as_str(),
-                committed_next: StateBinding::from_state(outcome.commit().document().state()),
+                committed_next: StateBinding::from_state(committed_state),
             },
-        )
+        );
+        response.preference_context = Some(RevisionStamp::new(
+            committed_state.revision(),
+            committed_state.content_hash().clone(),
+        ));
+        response
     }
 }
 
@@ -494,6 +517,7 @@ impl PreferenceAsyncExecutor {
 pub(crate) struct PreferenceHttpResponse {
     pub(crate) status: &'static str,
     pub(crate) body: String,
+    pub(crate) preference_context: Option<RevisionStamp>,
 }
 
 impl PreferenceHttpResponse {
@@ -502,7 +526,11 @@ impl PreferenceHttpResponse {
         T: Serialize,
     {
         match serde_json::to_string(value) {
-            Ok(body) => Self { status, body },
+            Ok(body) => Self {
+                status,
+                body,
+                preference_context: None,
+            },
             Err(_) => Self::error(
                 "500 Internal Server Error",
                 "trusted_preference_ingress.response_encoding_failed",

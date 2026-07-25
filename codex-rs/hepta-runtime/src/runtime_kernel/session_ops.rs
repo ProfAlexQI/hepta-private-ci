@@ -14,6 +14,39 @@
 /// let _runtime: RuntimeKernel = Default::default();
 /// ```
 impl RuntimeKernel {
+    /// Returns the exact authenticated preference state currently attached to
+    /// one runtime session, if composition has supplied one.
+    pub fn authenticated_preference_context(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<::hepta_contracts::RevisionStamp>, HeptaError> {
+        self.attached_preference_context_state
+            .lock()
+            .map_err(|_| HeptaError("attached preference context mutex poisoned".into()))
+            .map(|state| state.get(session_id.trim()))
+    }
+
+    /// Attaches an already authenticated preference CAS state to one runtime
+    /// session. Composition owners must verify the authority before calling.
+    pub fn attach_authenticated_preference_context(
+        &self,
+        session_id: &str,
+        stamp: ::hepta_contracts::RevisionStamp,
+    ) -> Result<(), HeptaError> {
+        let session_id = session_id.trim();
+        if session_id.is_empty() || stamp.content_hash().as_str().is_empty() {
+            return Err(HeptaError(
+                "authenticated preference context requires exact session and hash".into(),
+            ));
+        }
+        self.ensure_session_record_sync(session_id)?;
+        self.attached_preference_context_state
+            .lock()
+            .map_err(|_| HeptaError("attached preference context mutex poisoned".into()))?
+            .attach(session_id, stamp);
+        Ok(())
+    }
+
     /// Constructs an ephemeral runtime whose outcome receipts live in memory.
     ///
     /// This compatibility constructor exists only in unit-test builds.
@@ -66,6 +99,9 @@ impl RuntimeKernel {
             policy: ConfigurablePolicyEngine::default(),
             approval_state: Arc::new(Mutex::new(ApprovalState::default())),
             context_revision_state: Arc::new(Mutex::new(ContextRevisionState::default())),
+            attached_preference_context_state: Arc::new(Mutex::new(
+                AttachedPreferenceContextState::default(),
+            )),
             execution_lease_registry: Arc::new(Mutex::new(ExecutionLeaseRegistry::default())),
             execution_outcome_state: Arc::new(Mutex::new(ExecutionOutcomeState::default())),
             outcome_sink,

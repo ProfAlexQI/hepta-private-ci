@@ -33,8 +33,11 @@ verify() {
   local runtime="codex-rs/hepta-native-gateway/src/runtime_composition.rs"
   local gateway="codex-rs/hepta-native-gateway/src/native_gateway.rs"
   local telegram="codex-rs/hepta-native-gateway/src/native_telegram.rs"
+  local mutation="codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
+  local preference="codex-rs/hepta-native-gateway/src/preference_ingress.rs"
+  local freezer="codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
   local source
-  for source in "$registry" "$runtime" "$gateway" "$telegram"; do
+  for source in "$registry" "$runtime" "$gateway" "$telegram" "$mutation" "$preference" "$freezer"; do
     [[ -f "$ROOT/$source" ]] || {
       echo "native ingress composition source missing: $source" >&2
       return 1
@@ -81,6 +84,34 @@ verify() {
     'telegram_receive_once_status(requested: bool, limit: usize)' \
     "legacy unauthorised Telegram receive signature remains"
 
+  require_literal "$registry" \
+    '("POST", RUNTIME_MUTATION_CANARY_ENDPOINT) => RuntimeIngressKind::MutationPlan' \
+    "runtime mutation canary is not classified as a mutation"
+  require_literal "$gateway" \
+    'if !runtime_mutation_enabled() {' \
+    "runtime mutation canary is not default-off"
+  require_literal "$mutation" \
+    '#[serde(deny_unknown_fields)]' \
+    "runtime mutation body does not reject unknown authority inputs"
+  for evidence in \
+    '!receipt.durable_intent_recorded' \
+    '!receipt.effect_plan_recorded' \
+    'receipt.provider_effect_ack_hash.is_none()' \
+    'receipt.terminal_status != "succeeded"'
+  do
+    require_literal "$mutation" "$evidence" \
+      "runtime mutation canary omits lifecycle evidence"
+  done
+  require_literal "$preference" \
+    'if request.session_binding_hash != expected_session_binding_hash {' \
+    "preference authority is not bound to the active runtime session"
+  require_literal "$runtime" \
+    '.attach_authenticated_preference_context(&session_id, stamp)' \
+    "authenticated preference state is not attached to RuntimeKernel"
+  require_literal "$freezer" \
+    'Some(stamp) => stamp,' \
+    "frozen context does not consume attached preference state"
+
   local metadata_loader
   metadata_loader="$(perl -0ne 'print $1 if /(fn load_telegram_config_metadata_status_from_path\(.*?)(?=fn load_telegram_execution_config_status\()/s' "$ROOT/$telegram")"
   [[ -n "$metadata_loader" ]] || {
@@ -101,16 +132,18 @@ verify() {
     return 1
   }
 
-  echo '{"schema":"hepta.native-ingress-composition.v1","status":"ready","credentialed_network_reads":1,"mutation_fallback":"plan_only"}'
+  echo '{"schema":"hepta.native-ingress-composition.v1","status":"ready","credentialed_network_reads":1,"mutation_fallback":"plan_only","default_off_real_mutations":1,"authenticated_preference_context":"attached"}'
 }
 
 self_test() {
   local fixture
   fixture="$(mktemp -d)"
   trap 'rm -rf "$fixture"' RETURN
-  mkdir -p "$fixture/codex-rs/hepta-native-gateway/src"
-  cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs} \
+  mkdir -p "$fixture/codex-rs/hepta-native-gateway/src" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs,runtime_mutation.rs,preference_ingress.rs} \
     "$fixture/codex-rs/hepta-native-gateway/src/"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/"
 
   HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null
   perl -0pi -e 's/RuntimeIngressKind::CredentialedNetworkRead/RuntimeIngressKind::MetadataRead/' \
@@ -127,7 +160,23 @@ self_test() {
     echo "native ingress composition self-test accepted an authority-free dispatch" >&2
     return 1
   fi
-  echo '{"schema":"hepta.native-ingress-composition-self-test.v1","status":"ready","negative_fixtures":2}'
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  perl -0pi -e 's/!receipt\.durable_intent_recorded/false/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
+  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
+    echo "native ingress composition self-test accepted mutation without durable intent" >&2
+    return 1
+  fi
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_mutation.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
+  perl -0pi -e 's/Some\(stamp\) => stamp/Some(_stamp) => revisions.stamp(session_id, "preference:unattached", framed_hash("hepta.runtime.preference-context.v1", &[]))?/' \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
+  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
+    echo "native ingress composition self-test accepted discarded preference authority" >&2
+    return 1
+  fi
+  echo '{"schema":"hepta.native-ingress-composition-self-test.v1","status":"ready","negative_fixtures":4}'
 }
 
 case "${1:-}" in

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_contracts::RevisionStamp;
 use hepta_memory::DurableIntegrityKey;
 use hepta_runtime::RuntimeExecutionReceipt;
 use hepta_runtime::RuntimeKernel;
@@ -17,6 +18,7 @@ use crate::preference_ingress::NativePreferenceIngressConfig;
 use crate::preference_ingress::PreferenceHttpResponse;
 use crate::runtime_ingress::RuntimeIngressKind;
 use crate::runtime_ingress::runtime_ingress_kind;
+use crate::runtime_mutation::RuntimeMutationCanaryReceipt;
 #[cfg(all(test, unix))]
 use crate::secure_key_file::PRIVATE_FILE_MODE;
 use crate::secure_key_file::read_private_key;
@@ -377,8 +379,64 @@ impl NativeGatewayRuntime {
         body: Option<&str>,
         request_binding_hash: &str,
     ) -> Option<PreferenceHttpResponse> {
-        self.preference_ingress
-            .route_http(method, path, body, request_binding_hash)
+        let (session_id, session_binding_hash) = match self.preference_session_binding() {
+            Ok(binding) => binding,
+            Err(_) => {
+                return Some(PreferenceHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"trusted_preference_ingress.runtime_session_unavailable"}"#
+                        .to_string(),
+                    preference_context: None,
+                });
+            }
+        };
+        let mut response = self.preference_ingress.route_http(
+            method,
+            path,
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        )?;
+        if let Some(stamp) = response.preference_context.take()
+            && self
+                .kernel
+                .attach_authenticated_preference_context(&session_id, stamp)
+                .is_err()
+        {
+            return Some(PreferenceHttpResponse {
+                status: "503 Service Unavailable",
+                body: r#"{"error":"trusted_preference_ingress.runtime_attachment_failed"}"#
+                    .to_string(),
+                preference_context: None,
+            });
+        }
+        Some(response)
+    }
+
+    pub(crate) fn preference_session_binding(&self) -> Result<(String, String)> {
+        let session_id = self
+            .kernel
+            .active_session_id()
+            .map_err(|error| anyhow::anyhow!("active preference session unavailable: {error}"))?;
+        let mut hasher = Sha256::new();
+        for value in [
+            b"hepta-native-preference-session-binding-v1".as_slice(),
+            session_id.as_bytes(),
+        ] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value);
+        }
+        Ok((session_id, format!("sha256:{:x}", hasher.finalize())))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn authenticated_preference_context_for_test(
+        &self,
+    ) -> Result<Option<RevisionStamp>> {
+        let session_id = self.kernel.active_session_id()?;
+        self.kernel
+            .authenticated_preference_context(&session_id)
+            .map_err(Into::into)
     }
 
     pub(crate) fn execute_runtime_kernel_canary(
@@ -436,6 +494,14 @@ impl NativeGatewayRuntime {
             live_surface_expanded: false,
             raw_request_body_exposed: false,
         })
+    }
+
+    pub(crate) fn execute_runtime_mutation_canary(
+        &self,
+        request_binding_hash: &str,
+        idempotency_key: &str,
+    ) -> Result<RuntimeMutationCanaryReceipt> {
+        crate::runtime_mutation::execute(&self.kernel, request_binding_hash, idempotency_key)
     }
 
     #[cfg(all(test, unix))]

@@ -725,7 +725,8 @@ self_test_first_model_invocation_test_family_split() {
   [[ -f "$family_file" ]]
   rg -Fq 'mod first_model_invocation_tests {' "$parent_file"
   rg -Fq 'include!("tests/first_model_invocation.rs");' "$parent_file"
-  [[ "$(rg -c '^[[:space:]]*#\[test\]' "$family_file")" == 17 ]]
+  [[ "$(rg -c '^[[:space:]]*#\[test\]' "$family_file")" == 1 ]]
+  [[ "$(rg -o 'HEPTA_FIRST_MODEL_[A-Z0-9_]+_ENDPOINT' "$family_file" | sort -u | wc -l | tr -d ' ')" == 17 ]]
 }
 
 self_test_report_dag_budget() (
@@ -765,7 +766,7 @@ self_test() {
   self_test_first_model_invocation_test_family_split
   scripts/hepta-budgeted-test self-test >/dev/null
   self_test_report_dag_budget
-  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"whole_tree_budgets_enforced":true,"giant_file_budgets_enforced":true,"architecture_v2_slice_budgets_enforced":true,"first_model_invocation_test_family_split_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true}'
+  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"whole_tree_budgets_enforced":true,"giant_file_budgets_enforced":true,"architecture_v2_slice_budgets_enforced":true,"first_model_invocation_data_matrix_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true}'
 }
 
 case "${1:-verify}" in

@@ -26,15 +26,15 @@
     },
     "test": {
       "by_kind": {
-        "expect": 4350,
+        "expect": 4295,
         "panic": 64,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 301
       },
-      "fingerprints_sha256": "661cd9cffec9f7792fa53b55caef6cc3c6191724c8614305d725b97e3c8fa609",
-      "total": 4715
+      "fingerprints_sha256": "9ce83a86908ef0100ff87cd5ea823ff0724c7b1bff460d31af57472d2faaffd6",
+      "total": 4660
     }
   },
   "limitations": [
@@ -931,13 +931,13 @@
     "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 1375,
-    "paths_and_classes_sha256": "4cf1063f8b677467c8b9cb0c85319526ed37716cd0c2ef2e437b53b515325e93"
+    "file_count": 1377,
+    "paths_and_classes_sha256": "ddafef9cf44224187769b5e79970aace105d088cf9595af4109b3f1eec0e89ad"
   },
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4386,
+      "expect": 4331,
       "panic": 74,
       "todo": 0,
       "unimplemented": 0,
@@ -950,16 +950,16 @@
       "high": 0,
       "low": 0,
       "medium": 25,
-      "test_only": 4715,
+      "test_only": 4660,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
       "generated_build": 0,
       "production": 72,
-      "test": 4715
+      "test": 4660
     },
     "classification_sha256": "e182bd409c8bf2084a7286f3678ee53b71df59b5a89a1b46e9c4317531e27f21",
-    "total": 4787
+    "total": 4732
   }
 }

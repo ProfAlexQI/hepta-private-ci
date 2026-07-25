@@ -112,6 +112,10 @@ use crate::runtime_ingress::TELEGRAM_RECEIVE_ONCE_ENDPOINT;
 use crate::runtime_ingress::runtime_ingress_kind;
 use crate::runtime_ingress::runtime_preflight_matches;
 use crate::runtime_ingress::telegram_receive_once_response;
+use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENDPOINT;
+use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENV;
+use crate::runtime_mutation::body_admitted as runtime_mutation_body_admitted;
+use crate::runtime_mutation::enabled as runtime_mutation_enabled;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
@@ -453,6 +457,46 @@ fn handle_native_gateway_connection(
                     "503 Service Unavailable",
                     "application/json; charset=utf-8",
                     br#"{"error":"runtime_kernel_canary_failed"}"#,
+                )
+            }
+        };
+    }
+    if method == "POST" && path == RUNTIME_MUTATION_CANARY_ENDPOINT {
+        if !runtime_mutation_enabled() {
+            return write_http_response(
+                stream,
+                "403 Forbidden",
+                "application/json; charset=utf-8",
+                format!(
+                    r#"{{"error":"runtime_mutation_canary.disabled","required_gate":"{RUNTIME_MUTATION_CANARY_ENV}","durable_intent_recorded":false,"provider_effect_ack_recorded":false,"terminal_receipt_recorded":false,"filesystem_mutated":false}}"#
+                )
+                .as_bytes(),
+            );
+        }
+        let Some(idempotency_key) = runtime_mutation_body_admitted(request_body) else {
+            return write_http_response(
+                stream,
+                "400 Bad Request",
+                "application/json; charset=utf-8",
+                br#"{"error":"runtime_mutation_canary.exact_confirmation_required"}"#,
+            );
+        };
+        return match runtime
+            .execute_runtime_mutation_canary(&preflight.request_binding_hash, &idempotency_key)
+        {
+            Ok(receipt) => write_http_response(
+                stream,
+                "200 OK",
+                "application/json; charset=utf-8",
+                json_or_error(&receipt).as_bytes(),
+            ),
+            Err(error) => {
+                eprintln!("RuntimeKernel mutation canary failed: {error:#}");
+                write_http_response(
+                    stream,
+                    "503 Service Unavailable",
+                    "application/json; charset=utf-8",
+                    br#"{"error":"runtime_mutation_canary.failed"}"#,
                 )
             }
         };

@@ -1004,6 +1004,8 @@ mod runtime_kernel {
     pub(super) mod terminal_outcome;
 }
 
+mod runtime_preference_context;
+
 use runtime_kernel::approval_state::ApprovalGrant;
 use runtime_kernel::approval_state::ApprovalState;
 use runtime_kernel::approval_state::CandidateApproval;
@@ -1015,6 +1017,7 @@ use runtime_kernel::execution_bus::ExecutionBus;
 use runtime_kernel::execution_lease::ExecutionLeaseRegistry;
 use runtime_kernel::outcome_recorder::OutcomeRecorder;
 use runtime_kernel::safety_gate_client::SafetyGateClient;
+use runtime_preference_context::AttachedPreferenceContextState;
 
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");
