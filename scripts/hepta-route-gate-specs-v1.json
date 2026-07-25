@@ -66,7 +66,7 @@
           "route_constant": "HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_REPLAY_IDEMPOTENCY_DENIAL_ENDPOINT",
           "report_function": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_report",
           "execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_no_provider_model_invocation",
-          "focused_test": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_replay_idempotency_denial_endpoint_blocks_replay_and_invocation_side_effects",
+          "focused_test": "first_model_invocation_denial_routes_are_data_driven_and_side_effect_free",
           "test_log_stem": "hepta-first-model-invocation-final-authorization-dry-run-result-receipt-replay-idempotency-route-tests",
           "next_action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial",
           "report_fields": {
@@ -203,7 +203,7 @@
           "route_constant": "HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_ORDERING_MONOTONICITY_DENIAL_ENDPOINT",
           "report_function": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_report",
           "execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_no_provider_model_invocation",
-          "focused_test": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_ordering_monotonicity_denial_endpoint_blocks_ordering_and_invocation_side_effects",
+          "focused_test": "first_model_invocation_denial_routes_are_data_driven_and_side_effect_free",
           "test_log_stem": "hepta-first-model-invocation-final-authorization-dry-run-result-receipt-ordering-monotonicity-route-tests",
           "next_action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial",
           "report_fields": {
@@ -316,7 +316,7 @@
           "route_constant": "HEPTA_FIRST_MODEL_INVOCATION_OPERATOR_APPROVAL_FINAL_AUTHORIZATION_DRY_RUN_RESULT_RECEIPT_CANCELLATION_SUPERSESSION_DENIAL_ENDPOINT",
           "report_function": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_report",
           "execution_mode": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_no_provider_model_invocation",
-          "focused_test": "hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_cancellation_supersession_denial_endpoint_blocks_cancellation_and_invocation_side_effects",
+          "focused_test": "first_model_invocation_denial_routes_are_data_driven_and_side_effect_free",
           "test_log_stem": "hepta-first-model-invocation-final-authorization-dry-run-result-receipt-cancellation-supersession-route-tests",
           "next_action": "first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_audit_immutable_evidence_denial",
           "report_fields": {

@@ -29,7 +29,7 @@ NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"
 ENDPOINT="/api/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial"
 SOURCE_COMMAND="/hepta-first-model-invocation-operator-approval-final-authorization-dry-run-result-receipt-terminal-public-claim-status-exposure-denial --json"
-FOCUSED_TEST="hepta_first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_endpoint_blocks_public_status_exposure_and_authority"
+FOCUSED_TEST="first_model_invocation_denial_routes_are_data_driven_and_side_effect_free"
 CANARY_MODE="first_model_invocation_operator_approval_final_authorization_dry_run_result_receipt_terminal_public_claim_status_exposure_denial_no_status_exposure_no_public_claim_no_release_no_artifact_no_provider_model_invocation"
 
 require_source_text "$NATIVE_GATEWAY_SOURCE" \
