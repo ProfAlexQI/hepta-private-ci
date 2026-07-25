@@ -84,6 +84,15 @@
     "ci_job": "rust-backend",
     "entrypoint": "scripts/hepta-dependency-security scan"
   },
+  "gate_compatibility_debt": {
+    "capability_version": 1,
+    "contract": "scripts/hepta-gate-compat-debt-v1.json",
+    "counts_may_only_improve": true,
+    "registered_payloads_hash_bound": true,
+    "ci_job": "static",
+    "verify_entrypoint": "scripts/hepta-gate-compat-debt verify",
+    "self_test_entrypoint": "scripts/hepta-gate-compat-debt self-test"
+  },
   "full_workflow": {
     "path": ".github/workflows/hepta-full-preflight.yml",
     "allowed_events": [

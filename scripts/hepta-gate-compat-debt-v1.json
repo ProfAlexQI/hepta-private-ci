@@ -1,0 +1,26 @@
+{
+  "schema_version": "hepta_gate_compat_debt_v1",
+  "status": "bounded_migration_debt",
+  "registry": {
+    "path": "scripts/hepta-gate-pair-specs-v1.json",
+    "sha256": "98498e6dc1061900b2d01c34f84058d63d51d4a6fd7226451efd9a598d36a59f"
+  },
+  "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v1",
+  "ceilings": {
+    "pair_count": 1282,
+    "captured_shell_pair_count": 1241,
+    "legacy_workgraph_pair_count": 8,
+    "compatibility_payload_count": 2516,
+    "unregistered_payload_count": 26
+  },
+  "floors": {
+    "declarative_pair_count": 33
+  },
+  "migration_policy": {
+    "counts_may_only_improve": true,
+    "registered_payloads_are_sha256_bound": true,
+    "public_entrypoints_remain_thin_wrappers": true,
+    "unregistered_payloads_must_not_grow": true,
+    "removal_requires_reference_graph_proof": true
+  }
+}

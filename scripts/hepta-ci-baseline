@@ -43,6 +43,8 @@ run_static() {
   run_static_gate safe-lint-security-self-test scripts/hepta-safe-lint-security-baseline self-test
   run_static_gate dependency-security-verify scripts/hepta-dependency-security verify
   run_static_gate dependency-security-self-test scripts/hepta-dependency-security self-test
+  run_static_gate gate-compat-debt-verify scripts/hepta-gate-compat-debt verify
+  run_static_gate gate-compat-debt-self-test scripts/hepta-gate-compat-debt self-test
   run_static_gate panic-debt-verify scripts/hepta-panic-debt-baseline verify
   run_static_gate panic-debt-self-test scripts/hepta-panic-debt-baseline self-test
   run_static_gate suffix-ladder-freeze scripts/check-hepta-suffix-ladder-freeze.sh

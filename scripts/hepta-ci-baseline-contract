@@ -136,6 +136,15 @@ verify_contract() {
       ci_job:"rust-backend",
       entrypoint:"scripts/hepta-dependency-security scan"
     }
+    and .gate_compatibility_debt == {
+      capability_version:1,
+      contract:"scripts/hepta-gate-compat-debt-v1.json",
+      counts_may_only_improve:true,
+      registered_payloads_hash_bound:true,
+      ci_job:"static",
+      verify_entrypoint:"scripts/hepta-gate-compat-debt verify",
+      self_test_entrypoint:"scripts/hepta-gate-compat-debt self-test"
+    }
     and .upstream_intake == {
       url:"https://github.com/openai/codex.git",
       materialize_command:"scripts/hepta-ci-materialize-upstream-intake materialize",
@@ -249,6 +258,8 @@ verify_contract() {
   require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-safe-lint-security-baseline" run' "safe lint/security baseline execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-dependency-security" scan' "dependency security execution"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-gate-compat-debt verify' "gate compatibility debt verification"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-gate-compat-debt self-test' "gate compatibility debt self-test"
   require_literal "$baseline" "cargo install cargo-audit --version 0.22.2 --locked" "pinned cargo-audit installation"
   require_literal "$baseline" "cargo install cargo-deny --version 0.20.2 --locked" "pinned cargo-deny installation"
   require_literal "$baseline" "run: scripts/hepta-dependency-security materialize-db" "pinned advisory database materialization"
