@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(test)]
 use hepta_contracts::RevisionStamp;
 use hepta_memory::DurableIntegrityKey;
 use hepta_runtime::RuntimeExecutionReceipt;
