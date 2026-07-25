@@ -49,6 +49,9 @@ verify() {
   for file in codex-rs/hepta-native-gateway/src/native_gateway/*.rs; do
     verify_file_max "$file" 59000
   done
+  for file in codex-rs/hepta-native-gateway/src/native_gateway/*/*.rs; do
+    verify_file_max "$file" 13000
+  done
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway/tests.rs 54515
   verify_file_max \
     codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs \
@@ -56,7 +59,7 @@ verify() {
   verify_total_max 180500 \
     codex-rs/hepta-native-gateway/src/native_gateway.rs \
     codex-rs/hepta-native-gateway/src/native_gateway/*.rs \
-    codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs
+    codex-rs/hepta-native-gateway/src/native_gateway/*/*.rs
 
   verify_file_max codex-rs/hepta-kernel/src/lib.rs 11600
   verify_file_max codex-rs/hepta-kernel/src/telegram_config.rs 350
