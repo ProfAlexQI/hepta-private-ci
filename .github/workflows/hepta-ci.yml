@@ -111,6 +111,12 @@ jobs:
           key: ${{ runner.os }}-hepta-ci-v1-${{ github.job }}-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock') }}
       - name: Fetch the locked backend graph
         run: cargo fetch --locked --manifest-path codex-rs/Cargo.toml
+      - name: Install pinned dependency security tools
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+      - name: Materialize pinned RustSec advisory database
+        run: scripts/hepta-dependency-security materialize-db
       - name: Run bounded backend checks and tests
         env:
           CARGO_NET_OFFLINE: "true"

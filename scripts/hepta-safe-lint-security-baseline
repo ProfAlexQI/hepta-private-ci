@@ -55,9 +55,14 @@ verify_contract() {
     and .evidence.local_execution == {status:"configured_not_verified",requires_clean_source:true,requires_main_backend_lane_lock:true}
     and .evidence.ci_execution == {status:"configured_not_verified",workflow:".github/workflows/hepta-ci.yml",job:"rust-backend",entrypoint:"scripts/hepta-safe-lint-security-baseline run"}
     and .evidence.promotion == {configured_capability_is_execution_evidence:false,successful_bound_receipt_required:true,lint_success_is_security_findings_evidence:false}
-    and .security.dependency_vulnerability_scan.status == "unsupported"
-    and .security.dependency_vulnerability_scan.tools == [{id:"cargo-audit",status:"unavailable_not_pinned"},{id:"cargo-deny",status:"unavailable_not_pinned"}]
-    and (.security.dependency_vulnerability_scan.reason | type == "string" and length > 0)
+    and .security.dependency_vulnerability_scan == {
+      status:"supported",
+      entrypoint:"scripts/hepta-dependency-security scan",
+      tools:[{id:"cargo-audit",status:"pinned",version:"0.22.2"},{id:"cargo-deny",status:"pinned",version:"0.20.2"}],
+      advisory_database_commit:"1abf7a8c1822223a38e99f652bc232071c44a86d",
+      scan_network_disabled:true,
+      receipt_schema:"hepta_dependency_security_receipt_v1"
+    }
     and .security.findings == {status:"not_assessed",count:null}
   ' "$CONTRACT" >/dev/null
 
@@ -270,7 +275,7 @@ run_lint() {
         execution:{command:$command,locked:true,offline:true,no_live:true,no_source_or_lockfile_write:true,build_artifact_write:true,exit_code:$exit_code,success:$success},
         scope:{selected_packages:["hepta-cli"],all_targets:true,dependencies_linted:false},
         lint_findings:{status:(if $success then "no_denied_warnings" else "lint_failed" end),count:(if $success then 0 else null end)},
-        security_findings:{status:"not_assessed",count:null,reason:"no pinned repository-native vulnerability scanner or offline advisory database is available"},
+        security_findings:{status:"not_assessed",count:null,reason:"dependency security is verified by a separate hash-bound receipt"},
         promotion:{lint_execution_evidence:$success,security_findings_evidence:false}
       }
     '

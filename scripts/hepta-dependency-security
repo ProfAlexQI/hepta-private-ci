@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${HEPTA_DEPENDENCY_SECURITY_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
+CONTRACT="${HEPTA_DEPENDENCY_SECURITY_CONTRACT:-$ROOT/scripts/hepta-dependency-security-v1.json}"
+CACHE_ROOT="${HEPTA_DEPENDENCY_SECURITY_CACHE_ROOT:-$ROOT/.hepta/security}"
+AUDIT_BIN="${HEPTA_CARGO_AUDIT:-cargo-audit}"
+DENY_BIN="${HEPTA_CARGO_DENY:-cargo-deny}"
+DB_PATH="$CACHE_ROOT/advisory-db"
+
+usage() {
+  echo "usage: scripts/hepta-dependency-security <verify|materialize-db|scan OUTPUT_DIR|self-test>" >&2
+  exit 2
+}
+
+sha256_file() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+contract_value() {
+  jq -er "$1" "$CONTRACT"
+}
+
+verify_contract() {
+  command -v git >/dev/null
+  command -v jq >/dev/null
+  command -v shasum >/dev/null
+  jq -e '
+    .schema == "hepta_dependency_security_contract_v1"
+    and .status == "ready"
+    and .tools == [
+      {id:"cargo-audit",version:"0.22.2",install:"cargo install cargo-audit --version 0.22.2 --locked"},
+      {id:"cargo-deny",version:"0.20.2",install:"cargo install cargo-deny --version 0.20.2 --locked"}
+    ]
+    and .advisory_database == {
+      repository:"https://github.com/RustSec/advisory-db.git",
+      commit:"1abf7a8c1822223a38e99f652bc232071c44a86d",
+      network_used_only_for_exact_materialization:true,
+      scan_fetch_disabled:true
+    }
+    and .scans.audit == {network:false,deny_vulnerabilities:true,output:"cargo-audit.json"}
+    and .scans.deny == {network:false,checks:["bans","licenses","sources"],output:"cargo-deny.jsonl"}
+    and .claims.configured_capability_is_execution_evidence == false
+    and .claims.successful_bound_receipt_required == true
+    and .claims.vulnerability_exceptions_are_hash_bound == true
+    and .claims.deployment == false
+    and .claims.publication == false
+  ' "$CONTRACT" >/dev/null
+  while IFS=$'\t' read -r relative expected; do
+    [[ -f "$ROOT/$relative" ]]
+    [[ "$(sha256_file "$ROOT/$relative")" == "$expected" ]] || {
+      echo "Hepta dependency-security input hash drift: $relative" >&2
+      return 1
+    }
+  done < <(jq -r '.inputs[] | [.path,.sha256] | @tsv' "$CONTRACT")
+}
+
+verify_tools() {
+  local audit_version deny_version
+  audit_version="$($AUDIT_BIN --version)"
+  deny_version="$($DENY_BIN --version)"
+  [[ "$audit_version" == "cargo-audit $(contract_value '.tools[] | select(.id=="cargo-audit") | .version')" ]]
+  [[ "$deny_version" == "cargo-deny $(contract_value '.tools[] | select(.id=="cargo-deny") | .version')" ]]
+}
+
+verify_db() {
+  local expected
+  expected="$(contract_value '.advisory_database.commit')"
+  [[ -d "$DB_PATH/.git" ]]
+  [[ "$(git -C "$DB_PATH" rev-parse HEAD)" == "$expected" ]]
+  [[ -z "$(git -C "$DB_PATH" status --short)" ]]
+}
+
+materialize_db() {
+  local expected repository
+  expected="$(contract_value '.advisory_database.commit')"
+  repository="$(contract_value '.advisory_database.repository')"
+  if [[ -d "$DB_PATH/.git" ]]; then
+    verify_db
+    return
+  fi
+  [[ ! -e "$DB_PATH" ]] || {
+    echo "Hepta dependency-security advisory path exists without a Git repository: $DB_PATH" >&2
+    return 1
+  }
+  mkdir -p "$CACHE_ROOT"
+  git init "$DB_PATH" >/dev/null
+  git -C "$DB_PATH" remote add origin "$repository"
+  git -C "$DB_PATH" fetch --depth 1 origin "$expected"
+  git -C "$DB_PATH" checkout --detach FETCH_HEAD >/dev/null
+  verify_db
+}
+
+scan() {
+  local output_dir="$1" audit_output deny_output receipt
+  [[ "$output_dir" == /* ]] || {
+    echo "Hepta dependency-security output directory must be absolute" >&2
+    return 1
+  }
+  verify_tools
+  verify_db
+  mkdir -p "$output_dir"
+  audit_output="$output_dir/cargo-audit.json"
+  deny_output="$output_dir/cargo-deny.jsonl"
+  receipt="$output_dir/dependency-security-receipt.json"
+  (
+    cd "$ROOT/codex-rs"
+    "$AUDIT_BIN" audit --db "$DB_PATH" --no-fetch --file Cargo.lock --json >"$audit_output"
+    "$DENY_BIN" --manifest-path Cargo.toml --config deny.toml --frozen --format json \
+      check bans licenses sources >"$deny_output" 2>&1
+  )
+  jq -n \
+    --arg audit_version "$($AUDIT_BIN --version)" \
+    --arg deny_version "$($DENY_BIN --version)" \
+    --arg db_commit "$(git -C "$DB_PATH" rev-parse HEAD)" \
+    --arg lock_sha "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
+    --argjson vulnerabilities "$(jq '.vulnerabilities.count' "$audit_output")" \
+    --argjson warnings "$(jq '[.warnings[]?[]?] | length' "$audit_output")" \
+    '{schema:"hepta_dependency_security_receipt_v1",status:(if $vulnerabilities == 0 then "ready" else "blocked" end),tools:{cargo_audit:$audit_version,cargo_deny:$deny_version},advisory_database_commit:$db_commit,cargo_lock_sha256:$lock_sha,vulnerability_count:$vulnerabilities,warning_count:$warnings,network_used_during_scan:false,deployment:false,publication:false}' \
+    >"$receipt"
+  jq -e '.status == "ready" and .vulnerability_count == 0' "$receipt" >/dev/null
+  cat "$receipt"
+}
+
+self_test() {
+  verify_contract
+  if HEPTA_DEPENDENCY_SECURITY_CONTRACT=/dev/null "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted an invalid contract" >&2
+    return 1
+  fi
+  jq -n '{schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:1}'
+}
+
+[[ $# -ge 1 ]] || usage
+case "$1" in
+  verify)
+    [[ $# -eq 1 ]] || usage
+    verify_contract
+    ;;
+  materialize-db)
+    [[ $# -eq 1 ]] || usage
+    verify_contract
+    materialize_db
+    ;;
+  scan)
+    [[ $# -eq 2 ]] || usage
+    verify_contract
+    scan "$2"
+    ;;
+  self-test)
+    [[ $# -eq 1 ]] || usage
+    self_test
+    ;;
+  *) usage ;;
+esac

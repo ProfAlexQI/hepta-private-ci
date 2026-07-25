@@ -41,6 +41,8 @@ run_static() {
   run_static_gate native-ingress-composition-self-test scripts/hepta-native-ingress-composition self-test
   run_static_gate safe-lint-security-verify scripts/hepta-safe-lint-security-baseline verify
   run_static_gate safe-lint-security-self-test scripts/hepta-safe-lint-security-baseline self-test
+  run_static_gate dependency-security-verify scripts/hepta-dependency-security verify
+  run_static_gate dependency-security-self-test scripts/hepta-dependency-security self-test
   run_static_gate panic-debt-verify scripts/hepta-panic-debt-baseline verify
   run_static_gate panic-debt-self-test scripts/hepta-panic-debt-baseline self-test
   run_static_gate suffix-ladder-freeze scripts/check-hepta-suffix-ladder-freeze.sh
@@ -81,12 +83,13 @@ assert_test_inventory() {
 }
 
 run_rust_backend() {
-  require_tools cargo git perl rg shasum
+  require_tools cargo cargo-audit cargo-deny git jq perl rg shasum
   assert_lockfiles_clean
   budgeted_cargo ci-rustfmt 300 \
     cargo fmt --all --manifest-path "$MANIFEST" -- --check
   budgeted_cargo ci-safe-lint-security-baseline 1200 \
     "$ROOT/scripts/hepta-safe-lint-security-baseline" run
+  "$ROOT/scripts/hepta-dependency-security" scan "$ROOT/artifacts/dependency-security" >/dev/null
   budgeted_cargo ci-backend-check 2400 \
     cargo check --locked --manifest-path "$MANIFEST" -q \
       -p hepta-contracts \

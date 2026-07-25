@@ -74,6 +74,16 @@
     "ci_job": "rust-backend",
     "entrypoint": "scripts/hepta-safe-lint-security-baseline run"
   },
+  "dependency_security": {
+    "capability_version": 1,
+    "contract": "scripts/hepta-dependency-security-v1.json",
+    "configured_capability": "supported",
+    "tools_pinned": true,
+    "advisory_database_pinned": true,
+    "scan_network_disabled": true,
+    "ci_job": "rust-backend",
+    "entrypoint": "scripts/hepta-dependency-security scan"
+  },
   "full_workflow": {
     "path": ".github/workflows/hepta-full-preflight.yml",
     "allowed_events": [

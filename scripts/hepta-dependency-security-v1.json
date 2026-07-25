@@ -1,0 +1,38 @@
+{
+  "schema": "hepta_dependency_security_contract_v1",
+  "status": "ready",
+  "tools": [
+    {
+      "id": "cargo-audit",
+      "version": "0.22.2",
+      "install": "cargo install cargo-audit --version 0.22.2 --locked"
+    },
+    {
+      "id": "cargo-deny",
+      "version": "0.20.2",
+      "install": "cargo install cargo-deny --version 0.20.2 --locked"
+    }
+  ],
+  "advisory_database": {
+    "repository": "https://github.com/RustSec/advisory-db.git",
+    "commit": "1abf7a8c1822223a38e99f652bc232071c44a86d",
+    "network_used_only_for_exact_materialization": true,
+    "scan_fetch_disabled": true
+  },
+  "inputs": {
+    "cargo_lock": {"path":"codex-rs/Cargo.lock","sha256":"6cc8d915b3282797295b69a561b2d34ba81ae57dbe90ab225934f134b69f7a5e"},
+    "deny_config": {"path":"codex-rs/deny.toml","sha256":"f42ae0c73978e5aa305ae24a397e7c27d44bda6d04f3645a77bb04bb4b0246d3"},
+    "audit_config": {"path":"codex-rs/.cargo/audit.toml","sha256":"d6125a68e7e61ffc415ced8b240dff71129b7877b27fb9c69d2d7c74d64b0700"}
+  },
+  "scans": {
+    "audit": {"network":false,"deny_vulnerabilities":true,"output":"cargo-audit.json"},
+    "deny": {"network":false,"checks":["bans","licenses","sources"],"output":"cargo-deny.jsonl"}
+  },
+  "claims": {
+    "configured_capability_is_execution_evidence": false,
+    "successful_bound_receipt_required": true,
+    "vulnerability_exceptions_are_hash_bound": true,
+    "deployment": false,
+    "publication": false
+  }
+}

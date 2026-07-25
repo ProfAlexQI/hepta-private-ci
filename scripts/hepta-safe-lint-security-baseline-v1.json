@@ -79,7 +79,7 @@
     "rust_toolchain_path": "codex-rs/rust-toolchain.toml",
     "rust_toolchain_sha256": "3e0fa7308a423309995753182d075dfff3e4bd6b891871c3f3b947f3e97699be",
     "cargo_lock_path": "codex-rs/Cargo.lock",
-    "cargo_lock_sha256": "e7f2e4ee8a57d47b4570f3aa292cba9b7e0d44ee14fdfda69517c3f2064c940a",
+    "cargo_lock_sha256": "6cc8d915b3282797295b69a561b2d34ba81ae57dbe90ab225934f134b69f7a5e",
     "workspace_manifest_path": "codex-rs/Cargo.toml",
     "workspace_manifest_sha256": "2681ba1813ddc978508f0ad811c352923f5a9018d0e80cdbbe8e05874dad2fe4",
     "package_manifest_path": "codex-rs/hepta-cli/Cargo.toml",
@@ -113,18 +113,23 @@
   },
   "security": {
     "dependency_vulnerability_scan": {
-      "status": "unsupported",
+      "status": "supported",
+      "entrypoint": "scripts/hepta-dependency-security scan",
       "tools": [
         {
           "id": "cargo-audit",
-          "status": "unavailable_not_pinned"
+          "status": "pinned",
+          "version": "0.22.2"
         },
         {
           "id": "cargo-deny",
-          "status": "unavailable_not_pinned"
+          "status": "pinned",
+          "version": "0.20.2"
         }
       ],
-      "reason": "no pinned repository-native vulnerability scanner or offline advisory database is available"
+      "advisory_database_commit": "1abf7a8c1822223a38e99f652bc232071c44a86d",
+      "scan_network_disabled": true,
+      "receipt_schema": "hepta_dependency_security_receipt_v1"
     },
     "findings": {
       "status": "not_assessed",
