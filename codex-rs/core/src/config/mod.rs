@@ -8,6 +8,8 @@ use crate::windows_sandbox::WindowsSandboxLevelExt;
 use crate::windows_sandbox::resolve_windows_sandbox_mode;
 use crate::windows_sandbox::resolve_windows_sandbox_private_desktop;
 use codex_config::CloudRequirementsLoader;
+use codex_config::ConfigGeneration;
+use codex_config::ConfigGenerationSource;
 use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
 use codex_config::ConfigLayerStackOrdering;
@@ -556,6 +558,11 @@ pub enum ThreadStoreConfig {
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
+    /// Runtime provenance frozen before the effective configuration was
+    /// loaded. This is intentionally absent from `config.toml` and protocol
+    /// serialization.
+    config_generation: ConfigGeneration,
+
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
     pub config_layer_stack: ConfigLayerStack,
@@ -1075,6 +1082,7 @@ pub struct ConfigBuilder {
     cloud_requirements: CloudRequirementsLoader,
     thread_config_loader: Option<Arc<dyn ThreadConfigLoader>>,
     fallback_cwd: Option<PathBuf>,
+    config_generation_source: ConfigGenerationSource,
 }
 
 impl ConfigBuilder {
@@ -1121,9 +1129,23 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn config_generation_source(
+        mut self,
+        config_generation_source: ConfigGenerationSource,
+    ) -> Self {
+        self.config_generation_source = config_generation_source;
+        self
+    }
+
     pub async fn build(self) -> std::io::Result<Config> {
+        // Freeze before any asynchronous config reads begin. A source
+        // invalidation racing the load must make this snapshot stale rather
+        // than silently relabeling its contents with the newer generation.
+        let config_generation = self.config_generation_source.freeze();
         // Keep the large config-loading future off small runtime thread stacks.
-        Box::pin(self.build_inner()).await
+        let mut config = Box::pin(self.build_inner()).await?;
+        config.bind_config_generation(config_generation);
+        Ok(config)
     }
 
     async fn build_inner(self) -> std::io::Result<Config> {
@@ -1136,6 +1158,7 @@ impl ConfigBuilder {
             cloud_requirements,
             thread_config_loader,
             fallback_cwd,
+            config_generation_source: _,
         } = self;
         let codex_home = match codex_home {
             Some(codex_home) => AbsolutePathBuf::from_absolute_path(codex_home)?,
@@ -1242,6 +1265,16 @@ impl ConfigBuilder {
 }
 
 impl Config {
+    pub fn config_generation(&self) -> &ConfigGeneration {
+        &self.config_generation
+    }
+
+    /// Binds runtime provenance captured by the loader that produced this
+    /// effective config. It does not alter any serialized configuration field.
+    pub fn bind_config_generation(&mut self, config_generation: ConfigGeneration) {
+        self.config_generation = config_generation;
+    }
+
     pub fn legacy_sandbox_policy(&self) -> SandboxPolicy {
         self.permissions.legacy_sandbox_policy(self.cwd.as_path())
     }
@@ -1393,7 +1426,7 @@ impl Config {
             .effective_config()
             .try_into()
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
-        Self::load_config_with_layer_stack(
+        let mut config = Self::load_config_with_layer_stack(
             LOCAL_FS.as_ref(),
             cfg,
             ConfigOverrides {
@@ -1403,7 +1436,9 @@ impl Config {
             refreshed_config.codex_home.clone(),
             config_layer_stack,
         )
-        .await
+        .await?;
+        config.bind_config_generation(refreshed_config.config_generation.clone());
+        Ok(config)
     }
 
     /// This is the preferred way to create an instance of [Config].
@@ -3368,6 +3403,7 @@ impl Config {
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
+            config_generation: ConfigGeneration::default(),
             model,
             service_tier,
             review_model,

@@ -18,6 +18,8 @@ use crate::tasks::interrupted_turn_history_marker;
 use codex_analytics::AnalyticsEventsClient;
 use codex_app_server_protocol::ThreadHistoryBuilder;
 use codex_app_server_protocol::TurnStatus;
+use codex_config::ConfigGeneration;
+use codex_config::ConfigGenerationSource;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::EnvironmentManager;
 use codex_extension_api::ExtensionRegistry;
@@ -70,8 +72,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
 use tracing::warn;
@@ -203,6 +207,14 @@ pub(crate) struct ThreadManagerState {
     auth_manager: Arc<AuthManager>,
     models_manager: SharedModelsManager,
     environment_manager: Arc<EnvironmentManager>,
+    mcp_source_generation: ConfigGenerationSource,
+    #[cfg(test)]
+    allow_unbound_mcp_config_generation_for_tests: bool,
+    next_mcp_invalidation_generation: AtomicU64,
+    next_mcp_startup_token: AtomicU64,
+    starting_mcp_generations: std::sync::Mutex<HashMap<u64, u64>>,
+    published_mcp_generations: std::sync::Mutex<HashMap<ThreadId, u64>>,
+    mcp_startup_changed: Notify,
     skills_manager: Arc<SkillsManager>,
     plugins_manager: Arc<PluginsManager>,
     mcp_manager: Arc<McpManager>,
@@ -256,6 +268,10 @@ impl ThreadManager {
         attestation_provider: Option<Arc<dyn AttestationProvider>>,
     ) -> Self {
         let codex_home = config.codex_home.clone();
+        let mcp_source_generation = config.config_generation().source();
+        let initial_mcp_source_generation = mcp_source_generation
+            .current()
+            .max(config.config_generation().value());
         let restriction_product = session_source.restriction_product();
         let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
         let plugins_manager = Arc::new(PluginsManager::new_with_restriction_product(
@@ -274,6 +290,14 @@ impl ThreadManager {
                 thread_created_tx,
                 models_manager: build_models_manager(config, auth_manager.clone()),
                 environment_manager,
+                mcp_source_generation,
+                #[cfg(test)]
+                allow_unbound_mcp_config_generation_for_tests: false,
+                next_mcp_invalidation_generation: AtomicU64::new(initial_mcp_source_generation),
+                next_mcp_startup_token: AtomicU64::new(0),
+                starting_mcp_generations: std::sync::Mutex::new(HashMap::new()),
+                published_mcp_generations: std::sync::Mutex::new(HashMap::new()),
+                mcp_startup_changed: Notify::new(),
                 skills_manager,
                 plugins_manager,
                 mcp_manager,
@@ -353,6 +377,7 @@ impl ThreadManager {
             restriction_product,
         ));
         let mcp_manager = Arc::new(McpManager::new(Arc::clone(&plugins_manager)));
+        let mcp_source_generation = ConfigGenerationSource::default();
         let skills_manager = Arc::new(SkillsManager::new_with_restriction_product(
             skills_codex_home,
             /*bundled_skills_enabled*/ true,
@@ -375,6 +400,14 @@ impl ThreadManager {
                 models_manager: create_model_provider(provider, Some(auth_manager.clone()))
                     .models_manager(codex_home, /*config_model_catalog*/ None),
                 environment_manager,
+                mcp_source_generation,
+                #[cfg(test)]
+                allow_unbound_mcp_config_generation_for_tests: true,
+                next_mcp_invalidation_generation: AtomicU64::new(0),
+                next_mcp_startup_token: AtomicU64::new(0),
+                starting_mcp_generations: std::sync::Mutex::new(HashMap::new()),
+                published_mcp_generations: std::sync::Mutex::new(HashMap::new()),
+                mcp_startup_changed: Notify::new(),
                 skills_manager,
                 plugins_manager,
                 mcp_manager,
@@ -415,6 +448,63 @@ impl ThreadManager {
 
     pub fn environment_manager(&self) -> Arc<EnvironmentManager> {
         self.state.environment_manager.clone()
+    }
+
+    pub fn config_generation_source(&self) -> ConfigGenerationSource {
+        self.state.mcp_source_generation.clone()
+    }
+
+    /// Starts one monotonic MCP source/config invalidation generation.
+    ///
+    /// Thread startups registered before this call remain visible to the
+    /// caller until they either publish or fail, closing the publication
+    /// window that a loaded-thread-only enumeration would otherwise miss.
+    pub fn begin_mcp_runtime_invalidation(&self) -> u64 {
+        self.state
+            .next_mcp_invalidation_generation
+            .fetch_add(1, Ordering::AcqRel)
+            .saturating_add(1)
+    }
+
+    pub async fn wait_for_mcp_startups_before(&self, generation: u64) {
+        loop {
+            let notified = self.state.mcp_startup_changed.notified();
+            {
+                let starting = self
+                    .state
+                    .starting_mcp_generations
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let has_older_startup =
+                    starting.values().any(|started_at| *started_at < generation);
+                if !has_older_startup {
+                    // Publish the new source generation while holding the same
+                    // registration mutex used by startup. A startup can therefore
+                    // only register on the old side of this boundary (and be
+                    // awaited) or observe the newly published generation.
+                    self.state.mcp_source_generation.publish(generation);
+                    return;
+                }
+            }
+            notified.await;
+        }
+    }
+
+    pub async fn mcp_threads_stale_before(&self, generation: u64) -> Vec<ThreadId> {
+        let published = self
+            .state
+            .published_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        self.state
+            .threads
+            .read()
+            .await
+            .keys()
+            .filter(|thread_id| published.get(thread_id).copied().unwrap_or(0) < generation)
+            .copied()
+            .collect()
     }
 
     pub fn default_environment_selections(
@@ -745,7 +835,15 @@ impl ThreadManager {
     /// as `Arc<CodexThread>`, it is possible that other references to it exist elsewhere.
     /// Returns the thread if the thread was found and removed.
     pub async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
-        self.state.threads.write().await.remove(thread_id)
+        let removed = self.state.threads.write().await.remove(thread_id);
+        if removed.is_some() {
+            self.state
+                .published_mcp_generations
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(thread_id);
+        }
+        removed
     }
 
     /// Tries to shut down all tracked threads concurrently within the provided timeout.
@@ -785,6 +883,15 @@ impl ThreadManager {
         let mut tracked_threads = self.state.threads.write().await;
         for thread_id in &report.completed {
             tracked_threads.remove(thread_id);
+        }
+        drop(tracked_threads);
+        let mut published = self
+            .state
+            .published_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for thread_id in &report.completed {
+            published.remove(thread_id);
         }
 
         report
@@ -916,6 +1023,15 @@ impl ThreadManager {
 }
 
 impl ThreadManagerState {
+    pub(crate) fn record_mcp_runtime_publication(&self, thread_id: ThreadId, generation: u64) {
+        let mut published = self
+            .published_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let applied = published.entry(thread_id).or_insert(0);
+        *applied = (*applied).max(generation);
+    }
+
     pub(crate) fn state_db(&self) -> Option<StateDbHandle> {
         self.state_db.clone()
     }
@@ -989,7 +1105,14 @@ impl ThreadManagerState {
 
     /// Remove a thread from the manager by ID, returning it when present.
     pub(crate) async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
-        self.threads.write().await.remove(thread_id)
+        let removed = self.threads.write().await.remove(thread_id);
+        if removed.is_some() {
+            self.published_mcp_generations
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(thread_id);
+        }
+        removed
     }
 
     /// Spawn a new thread with no history using a provided config.
@@ -1196,6 +1319,7 @@ impl ThreadManagerState {
                 threads.remove(&resumed.conversation_id);
             }
         }
+        let mut mcp_startup = McpStartupRegistration::new(self, config.config_generation())?;
         let environment_selections =
             resolve_environment_selections(self.environment_manager.as_ref(), &environments)?;
         let parent_rollout_thread_trace = self
@@ -1236,6 +1360,17 @@ impl ThreadManagerState {
         let new_thread = self
             .finalize_thread_spawn(codex, thread_id, tracked_session_source)
             .await?;
+        if let Err(err) = mcp_startup.publish(new_thread.thread_id) {
+            drop(mcp_startup);
+            let _ = self.remove_thread(&new_thread.thread_id).await;
+            if let Err(shutdown_err) = new_thread.thread.shutdown_and_wait().await {
+                warn!(
+                    thread_id = %new_thread.thread_id,
+                    "failed to shut down thread rejected after stale MCP config detection: {shutdown_err}"
+                );
+            }
+            return Err(err);
+        }
         if is_resumed_thread {
             new_thread.thread.emit_thread_resume_lifecycle();
             if let Err(err) = new_thread.thread.apply_goal_resume_runtime_effects().await {
@@ -1320,6 +1455,102 @@ impl ThreadManagerState {
             .ok()
             .map(|thread| thread.codex.session.services.rollout_thread_trace.clone())
             .unwrap_or_else(codex_rollout_trace::ThreadTraceContext::disabled)
+    }
+}
+
+struct McpStartupRegistration<'a> {
+    state: &'a ThreadManagerState,
+    token: u64,
+    source_generation: u64,
+}
+
+impl<'a> McpStartupRegistration<'a> {
+    fn new(
+        state: &'a ThreadManagerState,
+        config_generation: &ConfigGeneration,
+    ) -> CodexResult<Self> {
+        Self::new_inner(state, config_generation, /*allow_test_bypass*/ true)
+    }
+
+    fn new_inner(
+        state: &'a ThreadManagerState,
+        config_generation: &ConfigGeneration,
+        _allow_test_bypass: bool,
+    ) -> CodexResult<Self> {
+        let mut starting = state
+            .starting_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        #[cfg(test)]
+        let source_matches = state.mcp_source_generation.is_source_of(config_generation)
+            || (_allow_test_bypass && state.allow_unbound_mcp_config_generation_for_tests);
+        #[cfg(not(test))]
+        let source_matches = state.mcp_source_generation.is_source_of(config_generation);
+        if !source_matches {
+            return Err(CodexErr::InvalidRequest(
+                "MCP configuration snapshot belongs to an unrelated generation source; reload \
+                 configuration through the active manager and retry"
+                    .to_string(),
+            ));
+        }
+        let source_generation = config_generation.value();
+        let current_generation = state.mcp_source_generation.current();
+        if source_generation != current_generation {
+            return Err(stale_mcp_config_error(
+                source_generation,
+                current_generation,
+            ));
+        }
+        let token = state.next_mcp_startup_token.fetch_add(1, Ordering::Relaxed);
+        starting.insert(token, source_generation);
+        drop(starting);
+        Ok(Self {
+            state,
+            token,
+            source_generation,
+        })
+    }
+
+    #[cfg(test)]
+    fn new_strict_for_test(
+        state: &'a ThreadManagerState,
+        config_generation: &ConfigGeneration,
+    ) -> CodexResult<Self> {
+        Self::new_inner(state, config_generation, /*allow_test_bypass*/ false)
+    }
+
+    fn publish(&mut self, thread_id: ThreadId) -> CodexResult<()> {
+        let current_generation = self.state.mcp_source_generation.current();
+        if self.source_generation != current_generation {
+            return Err(stale_mcp_config_error(
+                self.source_generation,
+                current_generation,
+            ));
+        }
+        self.state
+            .published_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(thread_id, self.source_generation);
+        Ok(())
+    }
+}
+
+fn stale_mcp_config_error(source_generation: u64, current_generation: u64) -> CodexErr {
+    CodexErr::InvalidRequest(format!(
+        "MCP configuration snapshot generation {source_generation} does not match current generation \
+         {current_generation}; reload configuration and retry"
+    ))
+}
+
+impl Drop for McpStartupRegistration<'_> {
+    fn drop(&mut self) {
+        self.state
+            .starting_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.token);
+        self.state.mcp_startup_changed.notify_waiters();
     }
 }
 

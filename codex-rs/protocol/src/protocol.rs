@@ -172,6 +172,36 @@ pub struct McpElicitationAuthority {
     pub approval_policy: AskForApproval,
     pub permission_profile: PermissionProfile,
     pub approvals_reviewer: ApprovalsReviewer,
+    #[serde(
+        default,
+        skip_serializing_if = "McpAppsApprovalsReviewerAuthority::is_empty"
+    )]
+    pub apps_approvals_reviewers: McpAppsApprovalsReviewerAuthority,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
+pub struct McpAppsApprovalsReviewerAuthority {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<ApprovalsReviewer>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub apps: HashMap<String, ApprovalsReviewer>,
+}
+
+impl McpAppsApprovalsReviewerAuthority {
+    pub fn is_empty(&self) -> bool {
+        self.default.is_none() && self.apps.is_empty()
+    }
+
+    pub fn resolve(
+        &self,
+        global: ApprovalsReviewer,
+        connector_id: Option<&str>,
+    ) -> ApprovalsReviewer {
+        connector_id
+            .and_then(|connector_id| self.apps.get(connector_id).copied())
+            .or(self.default)
+            .unwrap_or(global)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]

@@ -4,7 +4,6 @@ use crate::terminal_palette::best_color;
 use crate::terminal_palette::default_bg;
 use ratatui::style::Color;
 use ratatui::style::Style;
-use ratatui::style::Stylize;
 
 const LIGHT_BG_ACCENT_RGB: (u8, u8, u8) = (0, 95, 135);
 

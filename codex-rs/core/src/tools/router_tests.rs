@@ -306,19 +306,13 @@ fn mcp_tool_info(
         callable_name: tool_name.to_string(),
         callable_namespace: callable_namespace.to_string(),
         namespace_description: None,
-        tool: rmcp::model::Tool {
-            name: tool_name.to_string().into(),
-            title: None,
-            description: Some("Test MCP tool".to_string().into()),
-            input_schema: Arc::new(rmcp::model::object(json!({
+        tool: rmcp::model::Tool::new(
+            tool_name.to_string(),
+            "Test MCP tool",
+            Arc::new(rmcp::model::object(json!({
                 "type": "object",
             }))),
-            output_schema: None,
-            annotations: None,
-            execution: None,
-            icons: None,
-            meta: None,
-        },
+        ),
         connector_id: None,
         connector_name: None,
         plugin_display_names: Vec::new(),
@@ -374,6 +368,7 @@ async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
                 approval_policy: turn.approval_policy.value(),
                 permission_profile: turn.permission_profile(),
                 approvals_reviewer: turn.config.approvals_reviewer,
+                apps_approvals_reviewers: Default::default(),
             },
         );
     old_manager.shutdown().await;
@@ -402,6 +397,59 @@ async fn advertised_mcp_tool_fails_closed_after_manager_generation_changes() {
 }
 
 #[tokio::test]
+async fn advertised_mcp_tool_fails_closed_after_config_source_generation_changes() {
+    let (session, turn) = make_session_and_context().await;
+    let tool = mcp_tool_info(
+        "echo",
+        /*supports_parallel_tool_calls*/ false,
+        "mcp__echo__",
+        "query",
+    );
+    let tool_name = tool.canonical_tool_name();
+    let advertised_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    let router = ToolRouter::from_config(
+        &turn.tools_config,
+        ToolRouterParams {
+            deferred_mcp_tools: None,
+            mcp_tools: Some(vec![tool]),
+            discoverable_tools: None,
+            extension_tool_executors: Vec::new(),
+            dynamic_tools: turn.dynamic_tools.as_slice(),
+        },
+    )
+    .bind_mcp_generation(advertised_generation, HashSet::from([tool_name.clone()]));
+    let source = turn.config.config_generation().source();
+    source.publish(turn.config.config_generation().value().saturating_add(1));
+
+    let result = router
+        .dispatch_tool_call_with_code_mode_result(
+            Arc::new(session),
+            Arc::new(turn),
+            CancellationToken::new(),
+            Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new())),
+            ToolCall {
+                tool_name,
+                call_id: "call-stale-source-generation".to_string(),
+                payload: ToolPayload::Function {
+                    arguments: "{}".to_string(),
+                },
+            },
+            ToolCallSource::Direct,
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(FunctionCallError::RespondToModel(message))
+            if message.contains("source generation is stale")
+    ));
+}
+
+#[tokio::test]
 async fn extension_tool_executors_are_model_visible_and_dispatchable() -> anyhow::Result<()> {
     let (mut session, turn) = make_session_and_context().await;
     session.services.extensions = extension_tool_test_registry();
@@ -412,7 +460,7 @@ async fn extension_tool_executors_are_model_visible_and_dispatchable() -> anyhow
             deferred_mcp_tools: None,
             mcp_tools: None,
             discoverable_tools: None,
-            extension_tool_executors: extension_tool_executors(&session),
+            extension_tool_executors: extension_tool_executors(&session, &turn.extension_data),
             dynamic_tools: turn.dynamic_tools.as_slice(),
         },
     );

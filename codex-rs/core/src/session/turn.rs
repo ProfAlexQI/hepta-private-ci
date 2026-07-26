@@ -1245,6 +1245,13 @@ pub(crate) async fn built_tools(
     skills_outcome: Option<&SkillLoadOutcome>,
     cancellation_token: &CancellationToken,
 ) -> CodexResult<Arc<ToolRouter>> {
+    if !turn_context.config.config_generation().is_current() {
+        return Err(CodexErr::InvalidRequest(
+            "MCP configuration source generation is stale; reload the current runtime before \
+             advertising tools"
+                .to_string(),
+        ));
+    }
     let mcp_connection_manager = sess.services.mcp_connection_manager.read().await;
     let mcp_generation = mcp_connection_manager.generation();
     let has_mcp_servers = mcp_connection_manager.has_servers();
@@ -1361,7 +1368,10 @@ pub(crate) async fn built_tools(
                 mcp_tools,
                 deferred_mcp_tools,
                 discoverable_tools,
-                extension_tool_executors: extension_tool_executors(sess),
+                extension_tool_executors: extension_tool_executors(
+                    sess,
+                    &turn_context.extension_data,
+                ),
                 dynamic_tools: turn_context.dynamic_tools.as_slice(),
             },
         )

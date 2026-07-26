@@ -2,30 +2,42 @@ use crate::config_manager::ConfigManager;
 use codex_core::CodexThread;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
-use codex_protocol::protocol::McpElicitationAuthority;
 use codex_protocol::protocol::McpServerRefreshConfig;
 use std::io;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use tokio::sync::Mutex;
 use tracing::warn;
+
+static MCP_REFRESH_SERIALIZER: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn mcp_refresh_serializer() -> &'static Mutex<()> {
+    MCP_REFRESH_SERIALIZER.get_or_init(|| Mutex::new(()))
+}
 
 pub(crate) async fn queue_strict_refresh(
     thread_manager: &Arc<ThreadManager>,
     config_manager: &ConfigManager,
 ) -> io::Result<()> {
+    let _refresh_guard = mcp_refresh_serializer().lock().await;
     config_manager
         .load_latest_config(/*fallback_cwd*/ None)
         .await?;
+    let generation = thread_manager.begin_mcp_runtime_invalidation();
+    thread_manager
+        .wait_for_mcp_startups_before(generation)
+        .await;
     let mut refreshes = Vec::new();
-    for thread_id in thread_manager.list_thread_ids().await {
+    for thread_id in thread_manager.mcp_threads_stale_before(generation).await {
         let thread = thread_manager
             .get_thread(thread_id)
             .await
             .map_err(|err| io::Error::other(format!("failed to load thread {thread_id}: {err}")))?;
         let plan =
             build_refresh_plan(thread_manager, config_manager, thread.config().await).await?;
-        refreshes.push((thread, plan));
+        refreshes.push((thread_id, thread, plan));
     }
-    for (thread, plan) in refreshes {
+    for (_thread_id, thread, plan) in refreshes {
         apply_refresh(thread, plan).await;
     }
     Ok(())
@@ -35,7 +47,12 @@ pub(crate) async fn queue_best_effort_refresh(
     thread_manager: &Arc<ThreadManager>,
     config_manager: &ConfigManager,
 ) {
-    for thread_id in thread_manager.list_thread_ids().await {
+    let _refresh_guard = mcp_refresh_serializer().lock().await;
+    let generation = thread_manager.begin_mcp_runtime_invalidation();
+    thread_manager
+        .wait_for_mcp_startups_before(generation)
+        .await;
+    for thread_id in thread_manager.mcp_threads_stale_before(generation).await {
         let thread = match thread_manager.get_thread(thread_id).await {
             Ok(thread) => thread,
             Err(err) => {
@@ -78,11 +95,7 @@ async fn build_refresh_plan(
             config.mcp_oauth_credentials_store_mode,
         )
         .map_err(io::Error::other)?,
-        elicitation_authority: Some(McpElicitationAuthority {
-            approval_policy: config.permissions.approval_policy.value(),
-            permission_profile: config.permissions.effective_permission_profile(),
-            approvals_reviewer: config.approvals_reviewer,
-        }),
+        elicitation_authority: Some(codex_core::connectors::mcp_elicitation_authority(&config)),
     };
     Ok(McpRefreshPlan {
         thread_config: config,
@@ -123,31 +136,89 @@ mod tests {
     use codex_protocol::protocol::SessionSource;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use pretty_assertions::assert_eq;
+    use std::future::Future;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
     use tempfile::TempDir;
+    use tokio::task::yield_now;
 
     #[tokio::test]
-    async fn strict_refresh_reports_thread_planning_failures() -> anyhow::Result<()> {
-        let (_temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
-
-        let err = queue_strict_refresh(&thread_manager, &config_manager)
-            .await
-            .expect_err("strict refresh should fail");
-
-        assert_eq!(err.to_string(), "failed to load refresh config");
-        Ok(())
+    async fn overlapping_refreshes_are_process_serialized() {
+        let guard = mcp_refresh_serializer().lock().await;
+        let entered = Arc::new(AtomicUsize::new(0));
+        let entered_after_lock = Arc::clone(&entered);
+        let waiter = tokio::spawn(async move {
+            let _guard = mcp_refresh_serializer().lock().await;
+            entered_after_lock.store(1, Ordering::Release);
+        });
+        yield_now().await;
+        assert_eq!(entered.load(Ordering::Acquire), 0);
+        drop(guard);
+        waiter.await.expect("refresh waiter");
+        assert_eq!(entered.load(Ordering::Acquire), 1);
     }
 
-    #[tokio::test]
-    async fn best_effort_refresh_attempts_every_loaded_thread() -> anyhow::Result<()> {
-        let (_temp_dir, thread_manager, config_manager, loader) = refresh_test_state().await?;
+    #[test]
+    fn strict_refresh_reports_thread_planning_failures() -> anyhow::Result<()> {
+        run_refresh_test(|| async {
+            let (_temp_dir, thread_manager, config_manager, _loader) = refresh_test_state().await?;
+            let err = queue_strict_refresh(&thread_manager, &config_manager)
+                .await
+                .expect_err("strict refresh should fail");
+            assert_eq!(err.to_string(), "failed to load refresh config");
+            Ok(())
+        })
+    }
 
-        queue_best_effort_refresh(&thread_manager, &config_manager).await;
+    #[test]
+    fn best_effort_refresh_attempts_every_loaded_thread() -> anyhow::Result<()> {
+        run_refresh_test(|| async {
+            let (_temp_dir, thread_manager, config_manager, loader) = refresh_test_state().await?;
+            queue_best_effort_refresh(&thread_manager, &config_manager).await;
+            assert_eq!(loader.good_loads.load(Ordering::Relaxed), 1);
+            assert_eq!(loader.bad_loads.load(Ordering::Relaxed), 1);
+            let mut good_generation = None;
+            let mut bad_generation = None;
+            for thread_id in thread_manager.list_thread_ids().await {
+                let config = thread_manager.get_thread(thread_id).await?.config().await;
+                if config.cwd == loader.good_cwd {
+                    good_generation = Some(config.config_generation().value());
+                }
+                if config.cwd == loader.bad_cwd {
+                    bad_generation = Some(config.config_generation().value());
+                }
+            }
+            assert_eq!(good_generation, Some(1));
+            assert_eq!(bad_generation, Some(0));
+            let current_generation = thread_manager.config_generation_source().current();
+            assert_eq!(current_generation, 1);
+            assert_eq!(
+                thread_manager
+                    .mcp_threads_stale_before(current_generation)
+                    .await
+                    .len(),
+                2,
+            );
+            Ok(())
+        })
+    }
 
-        assert_eq!(loader.good_loads.load(Ordering::Relaxed), 1);
-        assert_eq!(loader.bad_loads.load(Ordering::Relaxed), 1);
-        Ok(())
+    fn run_refresh_test<F, Fut>(test: F) -> anyhow::Result<()>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
+    {
+        std::thread::Builder::new()
+            .name("mcp-refresh-test".into())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?
+                    .block_on(test())
+            })?
+            .join()
+            .map_err(|_| anyhow::anyhow!("MCP refresh test thread panicked"))?
     }
 
     async fn refresh_test_state() -> anyhow::Result<(
@@ -215,7 +286,8 @@ mod tests {
             CloudRequirementsLoader::default(),
             Arg0DispatchPaths::default(),
             loader.clone(),
-        );
+        )
+        .with_config_generation_source(thread_manager.config_generation_source());
 
         Ok((temp_dir, thread_manager, config_manager, loader))
     }

@@ -40,6 +40,7 @@ pub use codex_core::config::Permissions;
 pub use codex_core::config::TerminalResizeReflowConfig;
 pub use codex_core::config::ThreadStoreConfig;
 pub use codex_core::config::find_codex_home;
+pub use codex_core::default_thread_extension_registry;
 pub use codex_core::init_state_db;
 pub use codex_core::resolve_installation_id;
 pub use codex_core::skills::SkillsManager;

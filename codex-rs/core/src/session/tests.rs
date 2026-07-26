@@ -4438,6 +4438,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
                     approval_policy: config.permissions.approval_policy.value(),
                     permission_profile: config.permissions.effective_permission_profile(),
                     approvals_reviewer: config.approvals_reviewer,
+                    apps_approvals_reviewers: Default::default(),
                 },
             ),
         )),
@@ -4537,7 +4538,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         "turn_id".to_string(),
         skills_outcome,
         /*goal_tools_supported*/ true,
-    );
+    )
+    .await;
 
     let (mailbox, mailbox_rx) = crate::agent::Mailbox::new();
     let session = Session {
@@ -6321,6 +6323,7 @@ where
                     approval_policy: config.permissions.approval_policy.value(),
                     permission_profile: config.permissions.effective_permission_profile(),
                     approvals_reviewer: config.approvals_reviewer,
+                    apps_approvals_reviewers: Default::default(),
                 },
             ),
         )),
@@ -6401,26 +6404,29 @@ where
             .await,
     );
     let turn_environments = turn_environments_for_tests(&environment, &session_configuration.cwd);
-    let turn_context = Arc::new(Session::make_turn_context(
-        thread_id,
-        SessionId::from(thread_id),
-        Some(Arc::clone(&auth_manager)),
-        &session_telemetry,
-        session_configuration.provider.clone(),
-        &session_configuration,
-        services.user_shell.as_ref(),
-        services.shell_zsh_path.as_ref(),
-        services.main_execve_wrapper_exe.as_ref(),
-        per_turn_config,
-        model_info,
-        &models_manager,
-        /*network*/ None,
-        turn_environments,
-        session_configuration.cwd.clone(),
-        "turn_id".to_string(),
-        skills_outcome,
-        /*goal_tools_supported*/ true,
-    ));
+    let turn_context = Arc::new(
+        Session::make_turn_context(
+            thread_id,
+            SessionId::from(thread_id),
+            Some(Arc::clone(&auth_manager)),
+            &session_telemetry,
+            session_configuration.provider.clone(),
+            &session_configuration,
+            services.user_shell.as_ref(),
+            services.shell_zsh_path.as_ref(),
+            services.main_execve_wrapper_exe.as_ref(),
+            per_turn_config,
+            model_info,
+            &models_manager,
+            /*network*/ None,
+            turn_environments,
+            session_configuration.cwd.clone(),
+            "turn_id".to_string(),
+            skills_outcome,
+            /*goal_tools_supported*/ true,
+        )
+        .await,
+    );
 
     let (mailbox, mailbox_rx) = crate::agent::Mailbox::new();
     let session = Arc::new(Session {
@@ -6591,6 +6597,7 @@ async fn explicit_refresh_publishes_current_mcp_elicitation_authority() {
         approval_policy: AskForApproval::Never,
         permission_profile: PermissionProfile::Disabled,
         approvals_reviewer: ApprovalsReviewer::AutoReview,
+        apps_approvals_reviewers: Default::default(),
     };
     super::handlers::refresh_mcp_servers(
         &session,

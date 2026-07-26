@@ -293,6 +293,11 @@ impl MessageProcessor {
             remote_control_handle,
             plugin_startup_tasks,
         } = args;
+        // In-process callers may supply a Config that was built before this
+        // ConfigManager existed. Reuse the snapshot's source so future loads
+        // and ThreadManager invalidations share one monotonic generation.
+        let config_manager =
+            config_manager.with_config_generation_source(config.config_generation().source());
         auth_manager.set_external_auth(Arc::new(ExternalAuthRefreshBridge {
             outgoing: outgoing.clone(),
         }));

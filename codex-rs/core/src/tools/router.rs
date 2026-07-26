@@ -159,6 +159,12 @@ impl ToolRouter {
         } = call;
         let manager = Arc::clone(&session.services.mcp_connection_manager);
         let mcp_generation_guard = if self.mcp_tool_names.contains(&tool_name) {
+            if !turn.config.config_generation().is_current() {
+                return Err(FunctionCallError::RespondToModel(
+                    "MCP configuration source generation is stale; retry on the current runtime"
+                        .to_string(),
+                ));
+            }
             let guard = manager.read().await;
             if self.mcp_generation != Some(guard.generation()) {
                 return Err(FunctionCallError::RespondToModel(
@@ -190,6 +196,7 @@ impl ToolRouter {
 
 pub(crate) fn extension_tool_executors(
     session: &Session,
+    step_store: &codex_extension_api::ExtensionData,
 ) -> Vec<Arc<dyn ToolExecutor<ExtensionToolCall>>> {
     session
         .services
@@ -197,9 +204,10 @@ pub(crate) fn extension_tool_executors(
         .tool_contributors()
         .iter()
         .flat_map(|contributor| {
-            contributor.tools(
+            contributor.tools_for_step(
                 &session.services.session_extension_data,
                 &session.services.thread_extension_data,
+                step_store,
             )
         })
         .collect()

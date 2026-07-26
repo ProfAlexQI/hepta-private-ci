@@ -271,7 +271,9 @@ mod tests {
         let mut terminal =
             Terminal::new(VT100Backend::new(/*width*/ 80, /*height*/ 14)).expect("terminal");
         terminal
-            .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
+            .draw(|frame| {
+                WidgetRef::render_ref(&&screen, frame.area(), frame.buffer_mut());
+            })
             .expect("render cwd prompt");
         insta::assert_snapshot!("cwd_prompt_modal", terminal.backend());
     }
@@ -287,7 +289,9 @@ mod tests {
         let mut terminal =
             Terminal::new(VT100Backend::new(/*width*/ 80, /*height*/ 14)).expect("terminal");
         terminal
-            .draw(|frame| frame.render_widget_ref(&screen, frame.area()))
+            .draw(|frame| {
+                WidgetRef::render_ref(&&screen, frame.area(), frame.buffer_mut());
+            })
             .expect("render cwd prompt");
         insta::assert_snapshot!("cwd_prompt_fork_modal", terminal.backend());
     }

@@ -178,6 +178,7 @@ async fn write_value_supports_nested_app_paths() -> Result<()> {
                 "app1".to_string(),
                 AppConfig {
                     enabled: false,
+                    approvals_reviewer: None,
                     destructive_enabled: None,
                     open_world_enabled: None,
                     default_tools_approval_mode: Some(AppToolApproval::Prompt),
@@ -527,6 +528,38 @@ async fn load_default_config_preserves_selected_user_config_path_after_load_erro
         config.config_layer_stack.get_user_config_file(),
         Some(&selected_file)
     );
+}
+
+#[tokio::test]
+async fn config_loads_freeze_the_current_runtime_generation() {
+    let tmp = tempdir().expect("tempdir");
+    let service = ConfigManager::without_managed_config_for_tests(tmp.path().to_path_buf());
+    let source = service.config_generation_source();
+
+    let generation_zero = service
+        .load_latest_config(/*fallback_cwd*/ None)
+        .await
+        .expect("generation-zero config");
+    assert_eq!(generation_zero.config_generation().value(), 0);
+
+    source.publish(1);
+    assert_eq!(
+        generation_zero.config_generation().value(),
+        0,
+        "an already-loaded config must remain frozen",
+    );
+
+    let generation_one = service
+        .load_latest_config(/*fallback_cwd*/ None)
+        .await
+        .expect("generation-one config");
+    assert_eq!(generation_one.config_generation().value(), 1);
+
+    let generation_one_default = service
+        .load_default_config()
+        .await
+        .expect("generation-one default config");
+    assert_eq!(generation_one_default.config_generation().value(), 1);
 }
 
 #[tokio::test]

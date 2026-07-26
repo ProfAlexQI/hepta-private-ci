@@ -15,6 +15,8 @@ use codex_connectors::ConnectorDirectoryCacheKey;
 use codex_exec_server::EnvironmentManager;
 use codex_exec_server::ExecServerRuntimePaths;
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::protocol::McpAppsApprovalsReviewerAuthority;
+use codex_protocol::protocol::McpElicitationAuthority;
 use codex_tools::DiscoverableTool;
 use rmcp::model::ToolAnnotations;
 use serde::Deserialize;
@@ -26,6 +28,7 @@ use crate::plugins::list_tool_suggest_discoverable_plugins;
 use crate::session::INITIAL_SUBMIT_ID;
 use codex_config::AppsRequirementsToml;
 use codex_config::types::AppToolApproval;
+use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AppsConfigToml;
 use codex_config::types::ToolSuggestDiscoverableType;
 use codex_core_plugins::PluginsManager;
@@ -567,6 +570,56 @@ pub(crate) fn codex_app_tool_is_enabled(config: &Config, tool_info: &ToolInfo) -
         tool_info.tool.annotations.as_ref(),
     )
     .enabled
+}
+
+pub fn mcp_apps_approvals_reviewer_authority(config: &Config) -> McpAppsApprovalsReviewerAuthority {
+    let Some(apps_config) = read_apps_config(config) else {
+        return McpAppsApprovalsReviewerAuthority::default();
+    };
+    let reviewer_requirement = &config.config_layer_stack.requirements().approvals_reviewer;
+    let allowed = |reviewer: ApprovalsReviewer| {
+        reviewer_requirement
+            .can_set(&reviewer)
+            .is_ok()
+            .then_some(reviewer)
+    };
+    McpAppsApprovalsReviewerAuthority {
+        default: apps_config
+            .default
+            .and_then(|defaults| defaults.approvals_reviewer)
+            .and_then(allowed),
+        apps: apps_config
+            .apps
+            .into_iter()
+            .filter_map(|(id, app)| {
+                app.approvals_reviewer
+                    .and_then(allowed)
+                    .map(|reviewer| (id, reviewer))
+            })
+            .collect(),
+    }
+}
+
+pub fn mcp_elicitation_authority(config: &Config) -> McpElicitationAuthority {
+    McpElicitationAuthority {
+        approval_policy: config.permissions.approval_policy.value(),
+        permission_profile: config.permissions.effective_permission_profile(),
+        approvals_reviewer: config.approvals_reviewer,
+        apps_approvals_reviewers: mcp_apps_approvals_reviewer_authority(config),
+    }
+}
+
+pub(crate) fn mcp_approvals_reviewer(
+    config: &Config,
+    server_name: &str,
+    connector_id: Option<&str>,
+) -> ApprovalsReviewer {
+    if server_name == CODEX_APPS_MCP_SERVER_NAME {
+        mcp_apps_approvals_reviewer_authority(config)
+            .resolve(config.approvals_reviewer, connector_id)
+    } else {
+        config.approvals_reviewer
+    }
 }
 
 fn read_apps_config(config: &Config) -> Option<AppsConfigToml> {

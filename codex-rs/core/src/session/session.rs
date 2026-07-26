@@ -46,6 +46,7 @@ async fn wait_for_mcp_startup_auth_test_gate(auth_manager: &Arc<AuthManager>) {
 #[derive(Clone)]
 pub(super) struct McpServerRefreshIntent {
     pub(super) generation: u64,
+    pub(super) source_generation: u64,
     pub(super) config: McpServerRefreshConfig,
 }
 
@@ -57,10 +58,18 @@ pub(super) struct McpServerRefreshState {
 }
 
 impl McpServerRefreshState {
-    pub(super) fn request(&mut self, config: McpServerRefreshConfig) -> u64 {
+    pub(super) fn request(
+        &mut self,
+        config: McpServerRefreshConfig,
+        source_generation: u64,
+    ) -> u64 {
         self.next_generation = self.next_generation.saturating_add(1);
         let generation = self.next_generation;
-        self.pending = Some(McpServerRefreshIntent { generation, config });
+        self.pending = Some(McpServerRefreshIntent {
+            generation,
+            source_generation,
+            config,
+        });
         generation
     }
 
@@ -92,7 +101,7 @@ impl McpServerRefreshState {
         else {
             return false;
         };
-        self.request(intent.config);
+        self.request(intent.config, intent.source_generation);
         true
     }
 }
@@ -208,6 +217,15 @@ impl SessionConfiguration {
             .permission_profile()
             .clone()
             .materialize_project_roots_with_workspace_roots(&self.workspace_roots)
+    }
+
+    pub(super) fn mcp_elicitation_authority(&self) -> McpElicitationAuthority {
+        let mut authority =
+            crate::connectors::mcp_elicitation_authority(&self.original_config_do_not_use);
+        authority.approval_policy = self.approval_policy.value();
+        authority.permission_profile = self.permission_profile();
+        authority.approvals_reviewer = self.approvals_reviewer;
+        authority
     }
 
     pub(super) fn active_permission_profile(&self) -> Option<ActivePermissionProfile> {
@@ -995,11 +1013,7 @@ impl Session {
                             config.permissions.permission_profile(),
                         ),
                         initial_mcp_auth_binding,
-                        McpElicitationAuthority {
-                            approval_policy: config.permissions.approval_policy.value(),
-                            permission_profile: config.permissions.effective_permission_profile(),
-                            approvals_reviewer: config.approvals_reviewer,
-                        },
+                        crate::connectors::mcp_elicitation_authority(&config),
                     ),
                 )),
                 mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
@@ -1284,11 +1298,7 @@ impl Session {
                 let mut old_manager = manager_guard.publish(
                     mcp_connection_manager,
                     auth_snapshot.binding(),
-                    McpElicitationAuthority {
-                        approval_policy: session_configuration.approval_policy.value(),
-                        permission_profile: session_configuration.permission_profile(),
-                        approvals_reviewer: session_configuration.approvals_reviewer,
-                    },
+                    session_configuration.mcp_elicitation_authority(),
                 );
                 let old_cancel_token = std::mem::replace(&mut *cancel_guard, cancel_token);
                 if old_cancel_token.is_cancelled() {

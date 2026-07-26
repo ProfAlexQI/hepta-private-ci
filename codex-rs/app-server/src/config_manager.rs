@@ -1,6 +1,7 @@
 use codex_arg0::Arg0DispatchPaths;
 use codex_cloud_requirements::cloud_requirements_loader;
 use codex_config::CloudRequirementsLoader;
+use codex_config::ConfigGenerationSource;
 use codex_config::ConfigLayerStack;
 use codex_config::LoaderOverrides;
 use codex_config::ThreadConfigLoader;
@@ -34,6 +35,7 @@ pub(crate) struct ConfigManager {
     cloud_requirements: Arc<RwLock<CloudRequirementsLoader>>,
     arg0_paths: Arg0DispatchPaths,
     thread_config_loader: Arc<RwLock<Arc<dyn ThreadConfigLoader>>>,
+    config_generation_source: ConfigGenerationSource,
 }
 
 impl ConfigManager {
@@ -55,7 +57,21 @@ impl ConfigManager {
             cloud_requirements: Arc::new(RwLock::new(cloud_requirements)),
             arg0_paths,
             thread_config_loader: Arc::new(RwLock::new(thread_config_loader)),
+            config_generation_source: ConfigGenerationSource::default(),
         }
+    }
+
+    pub(crate) fn with_config_generation_source(
+        mut self,
+        config_generation_source: ConfigGenerationSource,
+    ) -> Self {
+        self.config_generation_source = config_generation_source;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn config_generation_source(&self) -> ConfigGenerationSource {
+        self.config_generation_source.clone()
     }
 
     pub(crate) fn codex_home(&self) -> &Path {
@@ -163,11 +179,13 @@ impl ConfigManager {
     }
 
     pub(crate) async fn load_default_config(&self) -> std::io::Result<Config> {
+        let config_generation = self.config_generation_source.freeze();
         let mut config = Config::load_default_with_cli_overrides_for_codex_home(
             self.codex_home.clone(),
             self.current_cli_overrides(),
         )
         .await?;
+        config.bind_config_generation(config_generation);
         if self.loader_overrides.user_config_path.is_some()
             || self.loader_overrides.user_config_profile.is_some()
         {
@@ -239,6 +257,7 @@ impl ConfigManager {
             .fallback_cwd(fallback_cwd)
             .cloud_requirements(self.current_cloud_requirements())
             .thread_config_loader(self.current_thread_config_loader())
+            .config_generation_source(self.config_generation_source.clone())
             .build()
             .await?;
         self.apply_runtime_feature_enablement(&mut config);

@@ -943,72 +943,59 @@ fn push_wrapped_diff_line_inner_with_theme_and_color_level(
 /// Returns one `Vec<RtSpan>` per output line.  Styles are preserved across
 /// split boundaries so that wrapping never loses syntax coloring.
 ///
-/// The algorithm walks characters using their Unicode display width (with tabs
-/// expanded to [`TAB_WIDTH`] columns).  When a character would overflow the
-/// current line, the accumulated text is flushed and a new line begins.  A
-/// single character wider than the remaining space forces a line break *before*
-/// the character so that progress is always made (avoiding infinite loops on
-/// CJK characters or tabs at the end of a line).
+/// The algorithm walks characters using their Unicode display width. Tabs are
+/// normalized to [`TAB_WIDTH`] spaces before rendering because Ratatui filters
+/// terminal control characters; this also keeps buffer coordinates aligned
+/// with what the terminal displays. When a character would overflow the current
+/// line, the accumulated text is flushed and a new line begins. A single
+/// character wider than the remaining space forces a line break *before* the
+/// character so that progress is always made (avoiding infinite loops on CJK
+/// characters at the end of a line).
 fn wrap_styled_spans(spans: &[RtSpan<'static>], max_cols: usize) -> Vec<Vec<RtSpan<'static>>> {
     let mut result: Vec<Vec<RtSpan<'static>>> = Vec::new();
     let mut current_line: Vec<RtSpan<'static>> = Vec::new();
     let mut col: usize = 0;
+    let max_cols = max_cols.max(1);
+    let tab_spaces = " ".repeat(TAB_WIDTH);
 
     for span in spans {
         let style = span.style;
-        let text = span.content.as_ref();
-        let mut remaining = text;
+        let mut pending = String::new();
 
-        while !remaining.is_empty() {
-            // Accumulate characters until we fill the line.
-            let mut byte_end = 0;
-            let mut chars_col = 0;
-
-            for ch in remaining.chars() {
-                // Tabs have no Unicode width; treat them as TAB_WIDTH columns.
-                let w = ch.width().unwrap_or(if ch == '\t' { TAB_WIDTH } else { 0 });
-                if col + chars_col + w > max_cols {
-                    // Adding this character would exceed the line width.
-                    // Break here; if this is the first character in `remaining`
-                    // we will flush/start a new line in the `byte_end == 0`
-                    // branch below before consuming it.
-                    break;
-                }
-                byte_end += ch.len_utf8();
-                chars_col += w;
+        for ch in span.content.chars() {
+            if ch.is_control() && ch != '\t' {
+                continue;
             }
+            let width = if ch == '\t' {
+                TAB_WIDTH
+            } else {
+                ch.width().unwrap_or(0)
+            };
 
-            if byte_end == 0 {
-                // Single character wider than remaining space — force onto a
-                // new line so we make progress.
+            if width > 0 && col + width > max_cols {
+                if !pending.is_empty() {
+                    current_line.push(RtSpan::styled(std::mem::take(&mut pending), style));
+                }
                 if !current_line.is_empty() {
                     result.push(std::mem::take(&mut current_line));
                 }
-                // Take at least one character to avoid an infinite loop.
-                let Some(ch) = remaining.chars().next() else {
-                    break;
-                };
-                let ch_len = ch.len_utf8();
-                current_line.push(RtSpan::styled(remaining[..ch_len].to_string(), style));
-                // Use fallback width 1 (not 0) so this branch always advances
-                // even if `ch` has unknown/zero display width.
-                col = ch.width().unwrap_or(if ch == '\t' { TAB_WIDTH } else { 1 });
-                remaining = &remaining[ch_len..];
-                continue;
-            }
-
-            let (chunk, rest) = remaining.split_at(byte_end);
-            current_line.push(RtSpan::styled(chunk.to_string(), style));
-            col += chars_col;
-            remaining = rest;
-
-            // If we exactly filled or exceeded the line, start a new one.
-            // Do not gate on !remaining.is_empty() — the next span in the
-            // outer loop may still have content that must start on a fresh line.
-            if col >= max_cols {
-                result.push(std::mem::take(&mut current_line));
                 col = 0;
             }
+
+            if ch == '\t' {
+                pending.push_str(&tab_spaces);
+            } else {
+                pending.push(ch);
+            }
+            col += width;
+        }
+
+        if !pending.is_empty() {
+            current_line.push(RtSpan::styled(pending, style));
+        }
+        if col >= max_cols {
+            result.push(std::mem::take(&mut current_line));
+            col = 0;
         }
     }
 
@@ -1313,7 +1300,6 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::text::Text;
     use ratatui::widgets::Paragraph;
-    use ratatui::widgets::WidgetRef;
     use ratatui::widgets::Wrap;
 
     #[test]
@@ -1366,7 +1352,7 @@ mod tests {
             .draw(|f| {
                 Paragraph::new(Text::from(lines))
                     .wrap(Wrap { trim: false })
-                    .render_ref(f.area(), f.buffer_mut())
+                    .render(f.area(), f.buffer_mut())
             })
             .expect("draw");
         assert_snapshot!(name, terminal.backend());
@@ -2296,7 +2282,8 @@ mod tests {
 
     #[test]
     fn wrap_styled_spans_tabs_have_visible_width() {
-        // A tab should count as TAB_WIDTH columns, not zero.
+        // A tab should render as TAB_WIDTH spaces, not disappear as a filtered
+        // terminal control character.
         // With max_cols=8, a tab (4 cols) + "abcde" (5 cols) = 9 cols → must wrap.
         let spans = vec![RtSpan::raw("\tabcde")];
         let result = wrap_styled_spans(&spans, /*max_cols*/ 8);
@@ -2305,6 +2292,13 @@ mod tests {
             "tab + 5 chars should exceed 8 cols and wrap, got {} line(s): {result:?}",
             result.len()
         );
+        let rendered = result
+            .iter()
+            .flat_map(|line| line.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert_eq!(rendered, "    abcde");
+        assert!(!rendered.contains('\t'));
     }
 
     #[test]
@@ -2320,7 +2314,7 @@ mod tests {
                     .collect::<String>()
             })
             .collect();
-        assert_eq!(line_text, vec!["abcd", "\t", "界"]);
+        assert_eq!(line_text, vec!["abcd", "    ", "界"]);
 
         let line_width = |line: &[RtSpan<'static>]| -> usize {
             line.iter()

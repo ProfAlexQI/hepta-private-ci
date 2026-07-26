@@ -1,8 +1,12 @@
 use super::*;
 use rmcp::model::BooleanSchema;
 use rmcp::model::ElicitationSchema;
+use rmcp::model::JsonObject;
 use rmcp::model::PrimitiveSchema;
+use rmcp::model::Tool;
+use rmcp::model::ToolAnnotations;
 use serde_json::json;
+use std::sync::Arc;
 
 fn meta(value: Value) -> Option<Meta> {
     let Value::Object(map) = value else {
@@ -107,6 +111,137 @@ fn guardian_elicitation_review_request_requires_opt_in() {
         guardian_elicitation_review_request(&request),
         GuardianElicitationReview::NotRequested
     );
+}
+
+#[test]
+fn codex_apps_elicitation_uses_current_connector_reviewer_authority() {
+    let authority = codex_protocol::protocol::McpElicitationAuthority {
+        approval_policy: AskForApproval::OnRequest,
+        permission_profile: PermissionProfile::default(),
+        approvals_reviewer: ApprovalsReviewer::User,
+        apps_approvals_reviewers: codex_protocol::protocol::McpAppsApprovalsReviewerAuthority {
+            default: None,
+            apps: std::collections::HashMap::from([(
+                "browser-use".to_string(),
+                ApprovalsReviewer::AutoReview,
+            )]),
+        },
+    };
+    assert_eq!(
+        mcp_elicitation_approvals_reviewer(
+            &authority,
+            CODEX_APPS_MCP_SERVER_NAME,
+            Some("browser-use"),
+        ),
+        ApprovalsReviewer::AutoReview,
+    );
+    assert_eq!(
+        mcp_elicitation_approvals_reviewer(&authority, "custom-server", Some("browser-use")),
+        ApprovalsReviewer::User,
+    );
+}
+
+fn codex_apps_catalog_tool(
+    tool_name: &str,
+    connector_id: &str,
+    connector_name: &str,
+) -> codex_mcp::ToolInfo {
+    let mut tool = Tool::new_with_raw(
+        tool_name.to_string(),
+        Some("Trusted tool description".into()),
+        Arc::new(JsonObject::default()),
+    );
+    tool.title = Some("Trusted tool title".to_string());
+    tool.annotations = Some(ToolAnnotations::new().read_only(true));
+    codex_mcp::ToolInfo {
+        server_name: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        supports_parallel_tool_calls: false,
+        server_origin: None,
+        callable_name: tool_name.to_string(),
+        callable_namespace: format!("mcp__codex_apps__{connector_id}"),
+        namespace_description: Some("Trusted connector description".to_string()),
+        tool,
+        connector_id: Some(connector_id.to_string()),
+        connector_name: Some(connector_name.to_string()),
+        plugin_display_names: Vec::new(),
+    }
+}
+
+#[test]
+fn codex_apps_elicitation_binds_identity_to_frozen_tool_catalog() {
+    let mut request = form_request(guardian_meta(Some(json!({}))));
+    request.server_name = CODEX_APPS_MCP_SERVER_NAME.to_string();
+    let GuardianElicitationReview::ApprovalRequest(guardian_request) =
+        guardian_elicitation_review_request(&request)
+    else {
+        panic!("expected Guardian MCP tool call request");
+    };
+    let tools = vec![codex_apps_catalog_tool(
+        "access_browser_origin",
+        "browser-use",
+        "Trusted Browser",
+    )];
+
+    let guardian_request = bind_codex_apps_guardian_request_to_catalog(*guardian_request, &tools)
+        .expect("frozen catalog identity should match");
+
+    assert_eq!(
+        guardian_request,
+        crate::guardian::GuardianApprovalRequest::McpToolCall {
+            id: "mcp_elicitation:codex_apps:7".to_string(),
+            server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+            tool_name: "access_browser_origin".to_string(),
+            arguments: Some(json!({})),
+            connector_id: Some("browser-use".to_string()),
+            connector_name: Some("Trusted Browser".to_string()),
+            connector_description: Some("Trusted connector description".to_string()),
+            tool_title: Some("Trusted tool title".to_string()),
+            tool_description: Some("Trusted tool description".to_string()),
+            annotations: Some(crate::guardian::GuardianMcpAnnotations {
+                destructive_hint: None,
+                open_world_hint: None,
+                read_only_hint: Some(true),
+            }),
+        }
+    );
+}
+
+#[test]
+fn codex_apps_elicitation_rejects_spoofed_connector_or_tool_identity() {
+    let tools = vec![codex_apps_catalog_tool(
+        "access_browser_origin",
+        "browser-use",
+        "Trusted Browser",
+    )];
+    for metadata in [
+        json!({
+            "codex_approval_kind": "mcp_tool_call",
+            "codex_request_type": "approval_request",
+            "connector_id": "attacker",
+            "tool_name": "access_browser_origin",
+        }),
+        json!({
+            "codex_approval_kind": "mcp_tool_call",
+            "codex_request_type": "approval_request",
+            "connector_id": "browser-use",
+            "tool_name": "attacker_tool",
+        }),
+    ] {
+        let mut request = form_request(meta(metadata));
+        request.server_name = CODEX_APPS_MCP_SERVER_NAME.to_string();
+        let GuardianElicitationReview::ApprovalRequest(guardian_request) =
+            guardian_elicitation_review_request(&request)
+        else {
+            panic!("expected Guardian MCP tool call request");
+        };
+
+        assert_eq!(
+            bind_codex_apps_guardian_request_to_catalog(*guardian_request, &tools),
+            Err(
+                "codex_apps guardian elicitation identity does not match the frozen MCP tool catalog"
+            )
+        );
+    }
 }
 
 #[test]

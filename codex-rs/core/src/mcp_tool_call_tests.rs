@@ -78,13 +78,13 @@ fn annotations(
     destructive: Option<bool>,
     open_world: Option<bool>,
 ) -> ToolAnnotations {
-    ToolAnnotations {
-        destructive_hint: destructive,
-        idempotent_hint: None,
-        open_world_hint: open_world,
-        read_only_hint: read_only,
-        title: None,
-    }
+    ToolAnnotations::from_raw(
+        /*title*/ None,
+        read_only,
+        destructive,
+        /*idempotent_hint*/ None,
+        open_world,
+    )
 }
 
 fn approval_metadata(
@@ -1271,6 +1271,7 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context: 
                 approval_policy: turn_context.approval_policy.value(),
                 permission_profile: turn_context.permission_profile(),
                 approvals_reviewer: turn_context.config.approvals_reviewer,
+                apps_approvals_reviewers: Default::default(),
             },
         );
 }
@@ -1933,6 +1934,7 @@ async fn persist_codex_app_tool_approval_writes_tool_override() {
                 "calendar".to_string(),
                 AppConfig {
                     enabled: true,
+                    approvals_reviewer: None,
                     destructive_enabled: None,
                     open_world_enabled: None,
                     default_tools_approval_mode: None,

@@ -163,6 +163,12 @@ impl AgentControl {
         self.session_id
     }
 
+    pub(crate) fn record_mcp_runtime_publication(&self, thread_id: ThreadId, generation: u64) {
+        if let Some(manager) = self.manager.upgrade() {
+            manager.record_mcp_runtime_publication(thread_id, generation);
+        }
+    }
+
     /// Spawn a new agent thread and submit the initial prompt.
     #[cfg(test)]
     pub(crate) async fn spawn_agent(

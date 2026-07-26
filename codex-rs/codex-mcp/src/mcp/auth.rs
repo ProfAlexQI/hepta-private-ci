@@ -13,6 +13,7 @@ use codex_rmcp_client::OAuthProviderError;
 use codex_rmcp_client::determine_streamable_http_auth_status_with_http_client;
 use codex_rmcp_client::discover_streamable_http_oauth;
 use codex_rmcp_client::discover_streamable_http_oauth_with_http_client;
+use futures::FutureExt;
 use futures::future::join_all;
 use tracing::warn;
 
@@ -275,6 +276,7 @@ async fn compute_auth_status(
                 http_client,
                 OAuthDiscoveryTimeout::LOCAL,
             )
+            .boxed()
             .await
         }
     }

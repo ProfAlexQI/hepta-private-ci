@@ -77,6 +77,244 @@ fn assistant_msg(text: &str) -> ResponseItem {
     }
 }
 
+#[tokio::test]
+async fn mcp_invalidation_waits_for_startups_registered_under_an_older_generation() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.to_path_buf(),
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+    );
+
+    let generation_zero = manager.config_generation_source().freeze();
+    let startup = McpStartupRegistration::new(manager.state.as_ref(), &generation_zero)
+        .expect("generation-zero config should register before invalidation");
+    let generation = manager.begin_mcp_runtime_invalidation();
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(20),
+            manager.wait_for_mcp_startups_before(generation),
+        )
+        .await
+        .is_err(),
+        "invalidation must not finish while an older startup can still publish",
+    );
+
+    drop(startup);
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        manager.wait_for_mcp_startups_before(generation),
+    )
+    .await
+    .expect("completed startup should release invalidation wait");
+
+    let next_generation = manager.begin_mcp_runtime_invalidation();
+    let during_invalidation_generation = manager.config_generation_source().freeze();
+    let during_invalidation =
+        McpStartupRegistration::new(manager.state.as_ref(), &during_invalidation_generation)
+            .expect("current config generation should register during invalidation");
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(20),
+            manager.wait_for_mcp_startups_before(next_generation),
+        )
+        .await
+        .is_err(),
+        "startup entering during invalidation must remain on the old generation",
+    );
+    drop(during_invalidation);
+    manager.wait_for_mcp_startups_before(next_generation).await;
+    let after_publication_generation = manager.config_generation_source().freeze();
+    let after_publication =
+        McpStartupRegistration::new(manager.state.as_ref(), &after_publication_generation)
+            .expect("new config generation should register after publication");
+    assert_eq!(
+        after_publication.source_generation, next_generation,
+        "startup after publication must bind the new source generation",
+    );
+}
+
+#[tokio::test]
+async fn unrelated_config_generation_source_is_rejected_at_mcp_startup_registration() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.to_path_buf(),
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+    );
+    let unrelated =
+        codex_config::ConfigGenerationSource::new(manager.config_generation_source().current())
+            .freeze();
+
+    let err = match McpStartupRegistration::new_strict_for_test(manager.state.as_ref(), &unrelated)
+    {
+        Ok(_) => panic!("equal numeric generation from an unrelated source must be rejected"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(
+            err,
+            CodexErr::InvalidRequest(ref message)
+                if message.contains("unrelated generation source")
+        ),
+        "unexpected unrelated-source error: {err}",
+    );
+    assert!(
+        manager
+            .state
+            .starting_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty(),
+        "rejected source must not enter the starting enumeration",
+    );
+}
+
+#[tokio::test]
+async fn queued_mcp_refresh_advances_generation_only_after_manager_publication() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy"));
+    let thread_store = thread_store_from_config(&config, /*state_db*/ None);
+    let manager = ThreadManager::new(
+        &config,
+        auth_manager,
+        SessionSource::Exec,
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+        empty_extension_registry(),
+        /*analytics_events_client*/ None,
+        thread_store,
+        /*state_db*/ None,
+        TEST_INSTALLATION_ID.to_string(),
+        /*attestation_provider*/ None,
+    );
+    let new_thread = manager
+        .start_thread(config.clone())
+        .await
+        .expect("start generation-zero thread");
+
+    let generation = manager.begin_mcp_runtime_invalidation();
+    manager.wait_for_mcp_startups_before(generation).await;
+    let mut next_config = config;
+    next_config.bind_config_generation(manager.config_generation_source().freeze());
+    new_thread
+        .thread
+        .refresh_mcp_config(
+            next_config,
+            codex_protocol::protocol::McpServerRefreshConfig {
+                mcp_servers: serde_json::json!({}),
+                mcp_oauth_credentials_store_mode: serde_json::to_value(
+                    codex_config::types::OAuthCredentialsStoreMode::Auto,
+                )
+                .expect("serialize store mode"),
+                elicitation_authority: None,
+            },
+        )
+        .await;
+
+    assert_eq!(
+        manager.mcp_threads_stale_before(generation).await,
+        vec![new_thread.thread_id],
+        "queueing config must leave the old manager generation visibly stale",
+    );
+    let turn_context = new_thread
+        .thread
+        .codex
+        .session
+        .new_default_turn_with_sub_id("mcp-publication-receipt".to_string())
+        .await;
+    new_thread
+        .thread
+        .codex
+        .session
+        .refresh_mcp_servers_if_requested(&turn_context, /*elicitation_reviewer*/ None)
+        .await;
+    assert!(
+        manager
+            .mcp_threads_stale_before(generation)
+            .await
+            .is_empty(),
+        "only successful manager publication may advance the runtime generation",
+    );
+}
+
+#[tokio::test]
+async fn stale_config_generation_is_rejected_before_mcp_startup_or_thread_publication() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = ThreadManager::with_models_provider_and_home_for_tests(
+        CodexAuth::from_api_key("dummy"),
+        config.model_provider.clone(),
+        config.codex_home.to_path_buf(),
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+    );
+
+    assert_eq!(config.config_generation().value(), 0);
+    config.bind_config_generation(manager.config_generation_source().freeze());
+    let generation = manager.begin_mcp_runtime_invalidation();
+    manager.wait_for_mcp_startups_before(generation).await;
+    assert_eq!(generation, 1);
+
+    let err = match manager.start_thread(config).await {
+        Ok(_) => panic!("generation-zero config must not start after generation one is published"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(
+            err,
+            CodexErr::InvalidRequest(ref message)
+                if message.contains("snapshot generation 0")
+                    && message.contains("current generation 1")
+        ),
+        "unexpected stale-config error: {err}",
+    );
+    assert!(
+        manager
+            .state
+            .starting_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty(),
+        "rejected config must not remain in the starting enumeration",
+    );
+    assert!(
+        manager.list_thread_ids().await.is_empty(),
+        "rejected config must not enter the loaded-thread enumeration",
+    );
+    assert!(
+        manager
+            .state
+            .published_mcp_generations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty(),
+        "rejected config must not be labeled as the current generation",
+    );
+    assert!(
+        manager
+            .mcp_threads_stale_before(generation)
+            .await
+            .is_empty(),
+        "rejected config must not appear in the stale loaded-thread enumeration",
+    );
+}
+
 fn contextual_user_interrupted_marker() -> ResponseItem {
     interrupted_turn_history_marker(InterruptedTurnHistoryMarker::ContextualUser)
         .expect("contextual-user interrupted marker should be enabled")

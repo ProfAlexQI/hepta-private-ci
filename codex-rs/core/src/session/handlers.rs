@@ -504,10 +504,11 @@ pub async fn dynamic_tool_response(sess: &Arc<Session>, id: String, response: Dy
 }
 
 pub async fn refresh_mcp_servers(sess: &Arc<Session>, refresh_config: McpServerRefreshConfig) {
+    let source_generation = sess.get_config().await.config_generation().value();
     sess.mcp_server_refresh_state
         .lock()
         .await
-        .request(refresh_config);
+        .request(refresh_config, source_generation);
 }
 
 pub async fn reload_user_config(sess: &Arc<Session>) {

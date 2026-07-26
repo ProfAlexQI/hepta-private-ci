@@ -31,13 +31,13 @@ use std::sync::Arc;
 use tempfile::tempdir;
 
 fn annotations(destructive_hint: Option<bool>, open_world_hint: Option<bool>) -> ToolAnnotations {
-    ToolAnnotations {
+    ToolAnnotations::from_raw(
+        /*title*/ None,
+        /*read_only_hint*/ None,
         destructive_hint,
-        idempotent_hint: None,
+        /*idempotent_hint*/ None,
         open_world_hint,
-        read_only_hint: None,
-        title: None,
-    }
+    )
 }
 
 fn app(id: &str) -> AppInfo {
@@ -62,18 +62,44 @@ fn plugin_names(names: &[&str]) -> Vec<String> {
     names.iter().map(ToString::to_string).collect()
 }
 
+#[tokio::test]
+async fn app_approvals_reviewer_uses_app_then_default_then_global() {
+    let codex_home = tempdir().expect("tempdir");
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"
+approvals_reviewer = "user"
+
+[apps._default]
+approvals_reviewer = "auto_review"
+
+[apps.calendar]
+approvals_reviewer = "user"
+"#,
+    )
+    .expect("write config");
+    let config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await
+        .expect("config should build");
+
+    assert_eq!(
+        mcp_approvals_reviewer(&config, CODEX_APPS_MCP_SERVER_NAME, Some("calendar")),
+        ApprovalsReviewer::User,
+    );
+    assert_eq!(
+        mcp_approvals_reviewer(&config, CODEX_APPS_MCP_SERVER_NAME, Some("drive")),
+        ApprovalsReviewer::AutoReview,
+    );
+    assert_eq!(
+        mcp_approvals_reviewer(&config, "custom_server", Some("calendar")),
+        ApprovalsReviewer::User,
+    );
+}
+
 fn test_tool_definition(tool_name: &str) -> Tool {
-    Tool {
-        name: tool_name.to_string().into(),
-        title: None,
-        description: None,
-        input_schema: Arc::new(JsonObject::default()),
-        output_schema: None,
-        annotations: None,
-        execution: None,
-        icons: None,
-        meta: None,
-    }
+    Tool::new_with_raw(tool_name.to_string(), None, Arc::new(JsonObject::default()))
 }
 
 fn codex_app_tool(
@@ -243,17 +269,11 @@ fn accessible_connectors_from_mcp_tools_preserves_description() {
         callable_name: "calendar_create_event".to_string(),
         callable_namespace: "mcp__codex_apps__calendar".to_string(),
         namespace_description: Some("Plan events".to_string()),
-        tool: Tool {
-            name: "calendar_create_event".to_string().into(),
-            title: None,
-            description: Some("Create a calendar event".into()),
-            input_schema: Arc::new(JsonObject::default()),
-            output_schema: None,
-            annotations: None,
-            execution: None,
-            icons: None,
-            meta: None,
-        },
+        tool: Tool::new(
+            "calendar_create_event",
+            "Create a calendar event",
+            Arc::new(JsonObject::default()),
+        ),
         connector_id: Some("calendar".to_string()),
         connector_name: Some("Calendar".to_string()),
         plugin_display_names: Vec::new(),
@@ -284,6 +304,7 @@ fn app_tool_policy_uses_global_defaults_for_destructive_hints() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: true,
+            approvals_reviewer: None,
             destructive_enabled: false,
             open_world_enabled: true,
         }),
@@ -313,6 +334,7 @@ fn app_tool_policy_defaults_missing_destructive_hint_to_true() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: true,
+            approvals_reviewer: None,
             destructive_enabled: false,
             open_world_enabled: true,
         }),
@@ -342,6 +364,7 @@ fn app_tool_policy_defaults_missing_open_world_hint_to_true() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: true,
+            approvals_reviewer: None,
             destructive_enabled: true,
             open_world_enabled: false,
         }),
@@ -371,6 +394,7 @@ fn app_is_enabled_uses_default_for_unconfigured_apps() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: false,
+            approvals_reviewer: None,
             destructive_enabled: true,
             open_world_enabled: true,
         }),
@@ -386,6 +410,7 @@ fn app_is_enabled_prefers_per_app_override_over_default() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: false,
+            approvals_reviewer: None,
             destructive_enabled: true,
             open_world_enabled: true,
         }),
@@ -393,6 +418,7 @@ fn app_is_enabled_prefers_per_app_override_over_default() {
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: None,
                 open_world_enabled: None,
                 default_tools_approval_mode: None,
@@ -706,6 +732,7 @@ fn app_tool_policy_honors_default_app_enabled_false() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: false,
+            approvals_reviewer: None,
             destructive_enabled: true,
             open_world_enabled: true,
         }),
@@ -941,6 +968,7 @@ fn app_tool_policy_allows_per_app_enable_when_default_is_disabled() {
     let apps_config = AppsConfigToml {
         default: Some(AppsDefaultConfig {
             enabled: false,
+            approvals_reviewer: None,
             destructive_enabled: true,
             open_world_enabled: true,
         }),
@@ -948,6 +976,7 @@ fn app_tool_policy_allows_per_app_enable_when_default_is_disabled() {
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: None,
                 open_world_enabled: None,
                 default_tools_approval_mode: None,
@@ -985,6 +1014,7 @@ fn app_tool_policy_per_tool_enabled_true_overrides_app_level_disable_flags() {
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: Some(false),
                 open_world_enabled: Some(false),
                 default_tools_approval_mode: None,
@@ -1028,6 +1058,7 @@ fn app_tool_policy_default_tools_enabled_true_overrides_app_level_tool_hints() {
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: Some(false),
                 open_world_enabled: Some(false),
                 default_tools_approval_mode: None,
@@ -1063,6 +1094,7 @@ fn app_tool_policy_default_tools_enabled_false_overrides_app_level_tool_hints() 
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: Some(true),
                 open_world_enabled: Some(true),
                 default_tools_approval_mode: Some(AppToolApproval::Approve),
@@ -1100,6 +1132,7 @@ fn app_tool_policy_uses_default_tools_approval_mode() {
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: None,
                 open_world_enabled: None,
                 default_tools_approval_mode: Some(AppToolApproval::Prompt),
@@ -1139,6 +1172,7 @@ fn app_tool_policy_matches_prefix_stripped_tool_name_for_tool_config() {
             "calendar".to_string(),
             AppConfig {
                 enabled: true,
+                approvals_reviewer: None,
                 destructive_enabled: Some(false),
                 open_world_enabled: Some(false),
                 default_tools_approval_mode: Some(AppToolApproval::Auto),

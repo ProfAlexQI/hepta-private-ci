@@ -106,6 +106,20 @@ pub trait ToolContributor: Send + Sync {
         session_store: &ExtensionData,
         thread_store: &ExtensionData,
     ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>>;
+
+    /// Returns native tools bound to one host-owned sampling step.
+    ///
+    /// Extensions with step-scoped capabilities must override this method and
+    /// derive their tools exclusively from `step_store`. The default preserves
+    /// the existing thread-scoped behavior for extensions without such state.
+    fn tools_for_step(
+        &self,
+        session_store: &ExtensionData,
+        thread_store: &ExtensionData,
+        _step_store: &ExtensionData,
+    ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>> {
+        self.tools(session_store, thread_store)
+    }
 }
 
 /// Future returned by one claimed approval-review contribution.

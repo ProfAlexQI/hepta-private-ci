@@ -131,20 +131,13 @@ pub(crate) fn create_tool_for_hepta_tool_call_param() -> Tool {
 
     let input_schema = create_tool_input_schema(schema, "Hepta tool schema should serialize");
 
-    Tool {
-        name: "hepta".into(),
-        title: Some("Hepta".to_string()),
+    Tool::new(
+        "hepta",
+        "Run a Hepta session. Accepts configuration parameters matching the Hepta Config struct.",
         input_schema,
-        output_schema: Some(hepta_tool_output_schema()),
-        description: Some(
-            "Run a Hepta session. Accepts configuration parameters matching the Hepta Config struct."
-                .into(),
-        ),
-        annotations: None,
-        execution: None,
-        icons: None,
-        meta: None,
-    }
+    )
+    .with_title("Hepta")
+    .with_raw_output_schema(hepta_tool_output_schema())
 }
 
 fn hepta_tool_output_schema() -> Arc<JsonObject> {
@@ -259,19 +252,13 @@ pub(crate) fn create_tool_for_hepta_tool_call_reply_param() -> Tool {
 
     let input_schema = create_tool_input_schema(schema, "Hepta reply tool schema should serialize");
 
-    Tool {
-        name: "hepta-reply".into(),
-        title: Some("Hepta Reply".to_string()),
+    Tool::new(
+        "hepta-reply",
+        "Continue a Hepta conversation by providing the thread id and prompt.",
         input_schema,
-        output_schema: Some(hepta_tool_output_schema()),
-        description: Some(
-            "Continue a Hepta conversation by providing the thread id and prompt.".into(),
-        ),
-        annotations: None,
-        execution: None,
-        icons: None,
-        meta: None,
-    }
+    )
+    .with_title("Hepta Reply")
+    .with_raw_output_schema(hepta_tool_output_schema())
 }
 
 /// Compatibility alias for downstream code that still imports the upstream
