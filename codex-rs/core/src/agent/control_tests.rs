@@ -1268,8 +1268,15 @@ async fn spawn_child_completion_notifies_parent_history() {
     assert_eq!(wait_for_subagent_notification(&parent_thread).await, true);
 }
 
-#[tokio::test]
-async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
+#[test]
+fn multi_agent_v2_completion_ignores_dead_direct_parent() {
+    run_large_stack_async_test(
+        "multi_agent_v2_completion_ignores_dead_direct_parent",
+        multi_agent_v2_completion_ignores_dead_direct_parent_impl(),
+    );
+}
+
+async fn multi_agent_v2_completion_ignores_dead_direct_parent_impl() {
     let harness = AgentControlHarness::new().await;
     let (root_thread_id, root_thread) = harness.start_thread().await;
     let mut config = harness.config.clone();
@@ -1374,8 +1381,15 @@ async fn multi_agent_v2_completion_ignores_dead_direct_parent() {
     assert!(!has_subagent_notification(&root_history_items));
 }
 
-#[tokio::test]
-async fn multi_agent_v2_completion_queues_message_for_direct_parent() {
+#[test]
+fn multi_agent_v2_completion_queues_message_for_direct_parent() {
+    run_large_stack_async_test(
+        "multi_agent_v2_completion_queues_message_for_direct_parent",
+        multi_agent_v2_completion_queues_message_for_direct_parent_impl(),
+    );
+}
+
+async fn multi_agent_v2_completion_queues_message_for_direct_parent_impl() {
     let harness = AgentControlHarness::new().await;
     let (_root_thread_id, root_thread) = harness.start_thread().await;
     let (worker_thread_id, _worker_thread) = harness.start_thread().await;
