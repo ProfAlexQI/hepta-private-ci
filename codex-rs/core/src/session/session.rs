@@ -127,6 +127,11 @@ pub(crate) struct Session {
     #[cfg(test)]
     pub(super) mcp_server_refresh_test_gate:
         Mutex<Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>>,
+    #[cfg(test)]
+    pub(super) mcp_server_refresh_publication_test_gate:
+        Mutex<Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>>,
+    #[cfg(test)]
+    pub(super) mcp_server_refresh_retry_test_notify: Mutex<Option<Arc<tokio::sync::Notify>>>,
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(super) mailbox: Mailbox,
@@ -1086,6 +1091,10 @@ impl Session {
                 mcp_server_refresh_state: Mutex::new(McpServerRefreshState::default()),
                 #[cfg(test)]
                 mcp_server_refresh_test_gate: Mutex::new(None),
+                #[cfg(test)]
+                mcp_server_refresh_publication_test_gate: Mutex::new(None),
+                #[cfg(test)]
+                mcp_server_refresh_retry_test_notify: Mutex::new(None),
                 conversation: Arc::new(RealtimeConversationManager::new()),
                 active_turn: Mutex::new(None),
                 mailbox,

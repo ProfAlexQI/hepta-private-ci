@@ -4554,6 +4554,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         mcp_server_refresh_lock: Semaphore::new(/*permits*/ 1),
         mcp_server_refresh_state: Mutex::new(super::session::McpServerRefreshState::default()),
         mcp_server_refresh_test_gate: Mutex::new(None),
+        mcp_server_refresh_publication_test_gate: Mutex::new(None),
+        mcp_server_refresh_retry_test_notify: Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
         mailbox,
@@ -6441,6 +6443,8 @@ where
         mcp_server_refresh_lock: Semaphore::new(/*permits*/ 1),
         mcp_server_refresh_state: Mutex::new(super::session::McpServerRefreshState::default()),
         mcp_server_refresh_test_gate: Mutex::new(None),
+        mcp_server_refresh_publication_test_gate: Mutex::new(None),
+        mcp_server_refresh_retry_test_notify: Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
         mailbox,
@@ -6753,8 +6757,10 @@ async fn rapid_explicit_mcp_refresh_only_publishes_latest_generation() {
 
     let reached = Arc::new(tokio::sync::Barrier::new(2));
     let release = Arc::new(tokio::sync::Barrier::new(2));
-    *session.mcp_server_refresh_test_gate.lock().await =
-        Some((Arc::clone(&reached), Arc::clone(&release)));
+    *session
+        .mcp_server_refresh_publication_test_gate
+        .lock()
+        .await = Some((Arc::clone(&reached), Arc::clone(&release)));
     let refresh_task = {
         let session = Arc::clone(&session);
         let turn_context = Arc::clone(&turn_context);
@@ -6782,6 +6788,200 @@ async fn rapid_explicit_mcp_refresh_only_publishes_latest_generation() {
     assert_eq!(state.applied_generation, latest_generation);
     assert_eq!(state.next_generation, latest_generation);
     drop(state);
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation + 1
+    );
+}
+
+#[tokio::test]
+async fn mcp_refresh_publication_retries_without_partial_commit_when_startup_token_is_busy() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let old_token = session.mcp_startup_cancellation_token().await;
+    let initial_manager_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    super::handlers::refresh_mcp_servers(
+        &session,
+        McpServerRefreshConfig {
+            mcp_servers: json!({}),
+            mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+                .expect("serialize store mode"),
+            elicitation_authority: None,
+        },
+    )
+    .await;
+    let intent_generation = session
+        .mcp_server_refresh_state
+        .lock()
+        .await
+        .pending
+        .as_ref()
+        .expect("refresh intent")
+        .generation;
+
+    let reached = Arc::new(tokio::sync::Barrier::new(2));
+    let release = Arc::new(tokio::sync::Barrier::new(2));
+    let retry_reached = Arc::new(tokio::sync::Notify::new());
+    *session
+        .mcp_server_refresh_publication_test_gate
+        .lock()
+        .await = Some((Arc::clone(&reached), Arc::clone(&release)));
+    *session.mcp_server_refresh_retry_test_notify.lock().await = Some(Arc::clone(&retry_reached));
+    let mut refresh_task = {
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        tokio::spawn(async move {
+            session
+                .refresh_mcp_servers_if_requested(&turn_context, None)
+                .await;
+        })
+    };
+    reached.wait().await;
+    let startup_token_guard = session.services.mcp_startup_cancellation_token.lock().await;
+    release.wait().await;
+    timeout(StdDuration::from_secs(2), retry_reached.notified())
+        .await
+        .expect("MCP refresh must enter startup-token retry");
+
+    assert!(!refresh_task.is_finished());
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert_eq!(
+            state.pending.as_ref().map(|intent| intent.generation),
+            Some(intent_generation)
+        );
+        assert_eq!(state.applied_generation, 0);
+    }
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation
+    );
+    assert!(!old_token.is_cancelled());
+
+    drop(startup_token_guard);
+    timeout(StdDuration::from_secs(2), &mut refresh_task)
+        .await
+        .expect("MCP refresh should complete after startup token release")
+        .expect("MCP refresh task");
+
+    let state = session.mcp_server_refresh_state.lock().await;
+    assert!(state.pending.is_none());
+    assert_eq!(state.applied_generation, intent_generation);
+    drop(state);
+    assert!(old_token.is_cancelled());
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation + 1
+    );
+}
+
+#[tokio::test]
+async fn cancelled_mcp_refresh_publication_retry_preserves_the_pending_intent() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let old_token = session.mcp_startup_cancellation_token().await;
+    let initial_manager_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    super::handlers::refresh_mcp_servers(
+        &session,
+        McpServerRefreshConfig {
+            mcp_servers: json!({}),
+            mcp_oauth_credentials_store_mode: serde_json::to_value(OAuthCredentialsStoreMode::Auto)
+                .expect("serialize store mode"),
+            elicitation_authority: None,
+        },
+    )
+    .await;
+    let intent_generation = session
+        .mcp_server_refresh_state
+        .lock()
+        .await
+        .pending
+        .as_ref()
+        .expect("refresh intent")
+        .generation;
+
+    let reached = Arc::new(tokio::sync::Barrier::new(2));
+    let release = Arc::new(tokio::sync::Barrier::new(2));
+    let retry_reached = Arc::new(tokio::sync::Notify::new());
+    *session
+        .mcp_server_refresh_publication_test_gate
+        .lock()
+        .await = Some((Arc::clone(&reached), Arc::clone(&release)));
+    *session.mcp_server_refresh_retry_test_notify.lock().await = Some(Arc::clone(&retry_reached));
+    let refresh_task = {
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        tokio::spawn(async move {
+            session
+                .refresh_mcp_servers_if_requested(&turn_context, None)
+                .await;
+        })
+    };
+    reached.wait().await;
+    let startup_token_guard = session.services.mcp_startup_cancellation_token.lock().await;
+    release.wait().await;
+    timeout(StdDuration::from_secs(2), retry_reached.notified())
+        .await
+        .expect("MCP refresh must enter startup-token retry");
+    refresh_task.abort();
+    assert!(
+        refresh_task
+            .await
+            .expect_err("MCP refresh task must be cancelled")
+            .is_cancelled()
+    );
+    drop(startup_token_guard);
+
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert_eq!(
+            state.pending.as_ref().map(|intent| intent.generation),
+            Some(intent_generation)
+        );
+        assert_eq!(state.applied_generation, 0);
+    }
+    assert!(!old_token.is_cancelled());
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_manager_generation
+    );
+
+    session
+        .refresh_mcp_servers_if_requested(&turn_context, None)
+        .await;
+    let state = session.mcp_server_refresh_state.lock().await;
+    assert!(state.pending.is_none());
+    assert_eq!(state.applied_generation, intent_generation);
+    drop(state);
+    assert!(old_token.is_cancelled());
     assert_eq!(
         session
             .services
@@ -7002,8 +7202,10 @@ async fn stale_auth_generation_does_not_publish_mcp_manager() {
 
     let reached = Arc::new(tokio::sync::Barrier::new(2));
     let release = Arc::new(tokio::sync::Barrier::new(2));
-    *session.mcp_server_refresh_test_gate.lock().await =
-        Some((Arc::clone(&reached), Arc::clone(&release)));
+    *session
+        .mcp_server_refresh_publication_test_gate
+        .lock()
+        .await = Some((Arc::clone(&reached), Arc::clone(&release)));
     let refresh_task = {
         let session = Arc::clone(&session);
         let turn_context = Arc::clone(&turn_context);

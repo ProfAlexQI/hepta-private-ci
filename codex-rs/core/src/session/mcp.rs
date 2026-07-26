@@ -47,6 +47,15 @@ enum McpRefreshPublishAttempt {
     Failed,
 }
 
+struct McpRefreshRequest {
+    configured_mcp_servers: Option<HashMap<String, McpServerConfig>>,
+    store_mode: OAuthCredentialsStoreMode,
+    elicitation_authority: Option<codex_protocol::protocol::McpElicitationAuthority>,
+    elicitation_reviewer: Option<ElicitationReviewerHandle>,
+    expected_explicit_generation: Option<u64>,
+    expected_source_generation: Option<u64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UnpublishedMcpReplacementError {
     MissingParts,
@@ -164,6 +173,15 @@ impl ElicitationReviewer for GuardianMcpElicitationReviewer {
 }
 
 impl Session {
+    #[cfg(test)]
+    fn notify_mcp_server_refresh_retry_for_test(&self) {
+        if let Ok(mut notify) = self.mcp_server_refresh_retry_test_notify.try_lock()
+            && let Some(notify) = notify.take()
+        {
+            notify.notify_one();
+        }
+    }
+
     pub(crate) fn mcp_elicitation_reviewer(self: &Arc<Self>) -> ElicitationReviewerHandle {
         Arc::new(GuardianMcpElicitationReviewer::new(self))
     }
@@ -376,13 +394,16 @@ impl Session {
     async fn refresh_mcp_servers_inner(
         &self,
         turn_context: &TurnContext,
-        configured_mcp_servers: Option<HashMap<String, McpServerConfig>>,
-        store_mode: OAuthCredentialsStoreMode,
-        elicitation_authority: Option<codex_protocol::protocol::McpElicitationAuthority>,
-        elicitation_reviewer: Option<ElicitationReviewerHandle>,
-        expected_explicit_generation: Option<u64>,
-        expected_source_generation: Option<u64>,
+        request: McpRefreshRequest,
     ) -> McpRefreshPublication {
+        let McpRefreshRequest {
+            configured_mcp_servers,
+            store_mode,
+            elicitation_authority,
+            elicitation_reviewer,
+            expected_explicit_generation,
+            expected_source_generation,
+        } = request;
         let Some(auth_snapshot) =
             crate::state::FrozenMcpAuthSnapshot::capture(self.services.auth_manager.as_ref()).await
         else {
@@ -519,18 +540,37 @@ impl Session {
             };
         }
 
+        #[cfg(test)]
+        if expected_refresh_generation.is_some() {
+            let gate = self
+                .mcp_server_refresh_publication_test_gate
+                .lock()
+                .await
+                .take();
+            if let Some((reached, release)) = gate {
+                reached.wait().await;
+                release.wait().await;
+            }
+        }
+
         let mut elicitation_authority = Some(elicitation_authority);
         let attempt = loop {
             let attempt = 'attempt: {
                 let mut manager = self.services.mcp_connection_manager.write().await;
                 let Ok(mut startup_token) = self.services.mcp_startup_cancellation_token.try_lock()
                 else {
+                    #[cfg(test)]
+                    self.notify_mcp_server_refresh_retry_for_test();
                     break 'attempt None;
                 };
                 let mut pending_refresh_state = match expected_refresh_generation {
                     Some(_) => match self.mcp_server_refresh_state.try_lock() {
                         Ok(state) => Some(state),
-                        Err(_) => break 'attempt None,
+                        Err(_) => {
+                            #[cfg(test)]
+                            self.notify_mcp_server_refresh_retry_for_test();
+                            break 'attempt None;
+                        }
                     },
                     None => None,
                 };
@@ -689,12 +729,14 @@ impl Session {
             match self
                 .refresh_mcp_servers_inner(
                     turn_context,
-                    configured_mcp_servers,
-                    store_mode,
-                    elicitation_authority,
-                    elicitation_reviewer.clone(),
-                    expected_generation,
-                    expected_source_generation,
+                    McpRefreshRequest {
+                        configured_mcp_servers,
+                        store_mode,
+                        elicitation_authority,
+                        elicitation_reviewer: elicitation_reviewer.clone(),
+                        expected_explicit_generation: expected_generation,
+                        expected_source_generation,
+                    },
                 )
                 .await
             {
@@ -720,12 +762,14 @@ impl Session {
             match self
                 .refresh_mcp_servers_inner(
                     turn_context,
-                    Some(mcp_servers.clone()),
-                    store_mode,
-                    None,
-                    elicitation_reviewer.clone(),
-                    None,
-                    None,
+                    McpRefreshRequest {
+                        configured_mcp_servers: Some(mcp_servers.clone()),
+                        store_mode,
+                        elicitation_authority: None,
+                        elicitation_reviewer: elicitation_reviewer.clone(),
+                        expected_explicit_generation: None,
+                        expected_source_generation: None,
+                    },
                 )
                 .await
             {
