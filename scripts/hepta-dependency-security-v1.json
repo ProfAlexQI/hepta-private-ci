@@ -26,20 +26,20 @@
         "manifest_path": "codex-rs/Cargo.toml",
         "path": "codex-rs/Cargo.lock",
         "deny_config_path": "codex-rs/deny.toml",
-        "sha256": "cba234d59daaa79bf04d59715acf746248c4d948b3935d8ce069a7bd1cc87341"
+        "sha256": "31b17b6e2279ce9baa9ca2c72b24b9fae12eb05331b719f8ae287e81ca83309b"
       },
       {
         "id": "native-app",
         "manifest_path": "apps/hepta-native/Cargo.toml",
         "path": "apps/hepta-native/Cargo.lock",
         "deny_config_path": "apps/hepta-native/deny.toml",
-        "sha256": "3a3cf66acb2cc41fe2a1273a51ec5a1e07823fb6f3e5a7e0bd4fd0c26eddb62e"
+        "sha256": "cc00e4709504db6a8b734b662ec0b14d3ade0eb90adc0c3e6c644fb21d250723"
       }
     ],
     "deny_config": {"path":"codex-rs/deny.toml","sha256":"5e927231e3e0f1ff09b2f4ce6f963314f8320631dc680da9bcf24ae2d8620ec3"},
     "audit_config": {"path":"codex-rs/.cargo/audit.toml","sha256":"91075ad77cf237c05c6370964182452a92483fbb381ccbe5d773348c1fd46dec"},
     "native_deny_config": {"path":"apps/hepta-native/deny.toml","sha256":"854f5aec04140f06f15eba9604e16e0d245eba41cbe29335203c1065f78d80ad"},
-    "native_source_policy": {"path":"apps/hepta-native/dependency-source-policy-v1.json","sha256":"544d01bfc986eb4c0e46ac370f7fee853e46ada9eded680109a0ab371ebd67e1"},
+    "native_source_policy": {"path":"apps/hepta-native/dependency-source-policy-v1.json","sha256":"3aef19ab2ae755074dc2e003904aac403fd9556919f0ed062b006c20b47cfc87"},
     "native_source_policy_runner": {"path":"apps/hepta-native/hepta-native-dependency-policy","sha256":"dd56778b094d276deaf9eff41ff8dfb221518848b26b4a0ef67482aa9f268fd8"},
     "ratatui_source_receipt": {"path":"codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json","sha256":"42368d273c4d3e38ff28e0258e8560fc0b787f8a8f926540ca114a64ea23a44e"}
   },

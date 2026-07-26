@@ -2,7 +2,7 @@
   "schema_version": "hepta_native_dependency_source_policy_v1",
   "cargo_lock": {
     "path": "Cargo.lock",
-    "sha256": "3a3cf66acb2cc41fe2a1273a51ec5a1e07823fb6f3e5a7e0bd4fd0c26eddb62e"
+    "sha256": "cc00e4709504db6a8b734b662ec0b14d3ade0eb90adc0c3e6c644fb21d250723"
   },
   "root_manifest": {
     "path": "Cargo.toml",
