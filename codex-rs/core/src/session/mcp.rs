@@ -41,6 +41,12 @@ enum McpRefreshPublication {
     Failed,
 }
 
+enum McpRefreshPublishAttempt {
+    Published { old_manager: McpConnectionManager },
+    Superseded,
+    Failed,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UnpublishedMcpReplacementError {
     MissingParts,
@@ -83,6 +89,53 @@ impl Drop for UnpublishedMcpReplacement {
     fn drop(&mut self) {
         if let Some(cancel_token) = self.cancel_token.take() {
             cancel_token.cancel();
+        }
+    }
+}
+
+async fn shutdown_unpublished_mcp_replacement(
+    replacement: &mut UnpublishedMcpReplacement,
+    lost_parts_message: &str,
+) -> Result<(), McpRefreshPublication> {
+    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
+        warn!("{lost_parts_message}");
+        return Err(McpRefreshPublication::Failed);
+    };
+    cancel_token.cancel();
+    stale_manager.shutdown().await;
+    Ok(())
+}
+
+async fn shutdown_mcp_refresh_publish_attempt(
+    attempt: McpRefreshPublishAttempt,
+    replacement: &mut UnpublishedMcpReplacement,
+) -> McpRefreshPublication {
+    match attempt {
+        McpRefreshPublishAttempt::Published { mut old_manager } => {
+            old_manager.shutdown().await;
+            McpRefreshPublication::Published
+        }
+        McpRefreshPublishAttempt::Superseded => {
+            match shutdown_unpublished_mcp_replacement(
+                replacement,
+                "superseded MCP replacement lost unpublished parts",
+            )
+            .await
+            {
+                Ok(()) => McpRefreshPublication::Superseded,
+                Err(publication) => publication,
+            }
+        }
+        McpRefreshPublishAttempt::Failed => {
+            match shutdown_unpublished_mcp_replacement(
+                replacement,
+                "failed MCP replacement lost unpublished parts",
+            )
+            .await
+            {
+                Ok(()) => McpRefreshPublication::Failed,
+                Err(publication) => publication,
+            }
         }
     }
 }
@@ -413,20 +466,24 @@ impl Session {
             }
         }
 
-        let mut refresh_state = match expected_explicit_generation {
+        let expected_refresh_generation = match expected_explicit_generation {
             Some(generation) => {
-                let state = self.mcp_server_refresh_state.lock().await;
-                if !state.is_pending(generation) {
-                    let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
-                        warn!("superseded MCP refresh replacement lost unpublished parts");
-                        return McpRefreshPublication::Failed;
-                    };
-                    cancel_token.cancel();
-                    drop(state);
-                    stale_manager.shutdown().await;
+                let is_pending = {
+                    let state = self.mcp_server_refresh_state.lock().await;
+                    state.is_pending(generation)
+                };
+                if !is_pending {
+                    if let Err(publication) = shutdown_unpublished_mcp_replacement(
+                        &mut replacement,
+                        "superseded MCP refresh replacement lost unpublished parts",
+                    )
+                    .await
+                    {
+                        return publication;
+                    }
                     return McpRefreshPublication::Superseded;
                 }
-                Some(state)
+                Some(generation)
             }
             None => None,
         };
@@ -434,98 +491,120 @@ impl Session {
         let Some(latest_auth_snapshot) =
             crate::state::FrozenMcpAuthSnapshot::capture(self.services.auth_manager.as_ref()).await
         else {
-            let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
-                warn!("MCP replacement lost unpublished parts after auth snapshot failure");
-                return McpRefreshPublication::Failed;
+            return match shutdown_unpublished_mcp_replacement(
+                &mut replacement,
+                "MCP replacement lost unpublished parts after auth snapshot failure",
+            )
+            .await
+            {
+                Ok(()) => McpRefreshPublication::Failed,
+                Err(publication) => publication,
             };
-            cancel_token.cancel();
-            drop(refresh_state);
-            stale_manager.shutdown().await;
-            return McpRefreshPublication::Failed;
         };
         if auth_changes.has_changed().unwrap_or(true)
             || !auth_snapshot.matches(&latest_auth_snapshot)
         {
-            if let (Some(generation), Some(state)) =
-                (expected_explicit_generation, refresh_state.as_mut())
-            {
+            if let Some(generation) = expected_refresh_generation {
+                let mut state = self.mcp_server_refresh_state.lock().await;
                 state.supersede_for_auth_change(generation);
             }
-            let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
-                warn!("auth-superseded MCP replacement lost unpublished parts");
-                return McpRefreshPublication::Failed;
+            return match shutdown_unpublished_mcp_replacement(
+                &mut replacement,
+                "auth-superseded MCP replacement lost unpublished parts",
+            )
+            .await
+            {
+                Ok(()) => McpRefreshPublication::Superseded,
+                Err(publication) => publication,
             };
-            cancel_token.cancel();
-            drop(refresh_state);
-            stale_manager.shutdown().await;
-            return McpRefreshPublication::Superseded;
         }
 
-        let mut manager = self.services.mcp_connection_manager.write().await;
-        let mut startup_token = self.services.mcp_startup_cancellation_token.lock().await;
-        let Some(auth_publication_guard) = self.services.auth_manager.auth_publication_guard()
-        else {
-            drop(startup_token);
-            drop(manager);
-            drop(refresh_state);
-            let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
-                warn!("MCP replacement lost unpublished parts after auth gate failure");
-                return McpRefreshPublication::Failed;
+        let mut elicitation_authority = Some(elicitation_authority);
+        let attempt = loop {
+            let attempt = 'attempt: {
+                let mut manager = self.services.mcp_connection_manager.write().await;
+                let Ok(mut startup_token) = self.services.mcp_startup_cancellation_token.try_lock()
+                else {
+                    break 'attempt None;
+                };
+                let mut pending_refresh_state = match expected_refresh_generation {
+                    Some(_) => match self.mcp_server_refresh_state.try_lock() {
+                        Ok(state) => Some(state),
+                        Err(_) => break 'attempt None,
+                    },
+                    None => None,
+                };
+                let Some(auth_publication_guard) =
+                    self.services.auth_manager.auth_publication_guard()
+                else {
+                    break 'attempt Some(McpRefreshPublishAttempt::Failed);
+                };
+                if auth_changes.has_changed().unwrap_or(true)
+                    || self.services.auth_manager.auth_revision() != auth_snapshot.revision()
+                {
+                    if let (Some(generation), Some(state)) =
+                        (expected_refresh_generation, pending_refresh_state.as_mut())
+                    {
+                        state.supersede_for_auth_change(generation);
+                    }
+                    drop(auth_publication_guard);
+                    Some(McpRefreshPublishAttempt::Superseded)
+                } else {
+                    let refresh_state_to_consume = match expected_refresh_generation {
+                        Some(generation) => {
+                            let Some(state) = pending_refresh_state.as_mut() else {
+                                warn!("MCP refresh publication lost its pending generation lock");
+                                drop(auth_publication_guard);
+                                break 'attempt Some(McpRefreshPublishAttempt::Failed);
+                            };
+                            if !state.is_pending(generation) {
+                                drop(auth_publication_guard);
+                                break 'attempt Some(McpRefreshPublishAttempt::Superseded);
+                            }
+                            Some((generation, state))
+                        }
+                        None => None,
+                    };
+                    let Some(elicitation_authority) = elicitation_authority.take() else {
+                        warn!("MCP refresh publication lost its elicitation authority");
+                        drop(auth_publication_guard);
+                        break 'attempt Some(McpRefreshPublishAttempt::Failed);
+                    };
+                    let Ok((refreshed_manager, cancel_token)) = replacement.take() else {
+                        warn!("MCP refresh replacement lost unpublished parts before publication");
+                        drop(auth_publication_guard);
+                        break 'attempt Some(McpRefreshPublishAttempt::Failed);
+                    };
+                    let old_manager = manager.publish(
+                        refreshed_manager,
+                        auth_snapshot.binding(),
+                        elicitation_authority,
+                    );
+                    let old_cancel_token = std::mem::replace(&mut *startup_token, cancel_token);
+                    if old_cancel_token.is_cancelled() {
+                        startup_token.cancel();
+                    }
+                    old_cancel_token.cancel();
+                    if let Some((generation, state)) = refresh_state_to_consume {
+                        let consumed = state.consume_published(generation);
+                        debug_assert!(consumed);
+                    }
+                    if let Some(source_generation) = expected_source_generation {
+                        self.services.agent_control.record_mcp_runtime_publication(
+                            self.conversation_id,
+                            source_generation,
+                        );
+                    }
+                    drop(auth_publication_guard);
+                    Some(McpRefreshPublishAttempt::Published { old_manager })
+                }
             };
-            cancel_token.cancel();
-            stale_manager.shutdown().await;
-            return McpRefreshPublication::Failed;
-        };
-        if auth_changes.has_changed().unwrap_or(true)
-            || self.services.auth_manager.auth_revision() != auth_snapshot.revision()
-        {
-            if let (Some(generation), Some(state)) =
-                (expected_explicit_generation, refresh_state.as_mut())
-            {
-                state.supersede_for_auth_change(generation);
+            match attempt {
+                Some(attempt) => break attempt,
+                None => tokio::task::yield_now().await,
             }
-            drop(auth_publication_guard);
-            drop(startup_token);
-            drop(manager);
-            drop(refresh_state);
-            let Ok((mut stale_manager, cancel_token)) = replacement.take() else {
-                warn!("auth-superseded MCP replacement lost unpublished parts");
-                return McpRefreshPublication::Failed;
-            };
-            cancel_token.cancel();
-            stale_manager.shutdown().await;
-            return McpRefreshPublication::Superseded;
-        }
-        let Ok((refreshed_manager, cancel_token)) = replacement.take() else {
-            warn!("MCP refresh replacement lost unpublished parts before publication");
-            return McpRefreshPublication::Failed;
         };
-        let mut old_manager = manager.publish(
-            refreshed_manager,
-            auth_snapshot.binding(),
-            elicitation_authority,
-        );
-        let old_cancel_token = std::mem::replace(&mut *startup_token, cancel_token);
-        if old_cancel_token.is_cancelled() {
-            startup_token.cancel();
-        }
-        old_cancel_token.cancel();
-        if let (Some(generation), Some(state)) =
-            (expected_explicit_generation, refresh_state.as_mut())
-        {
-            debug_assert!(state.consume_published(generation));
-        }
-        if let Some(source_generation) = expected_source_generation {
-            self.services
-                .agent_control
-                .record_mcp_runtime_publication(self.conversation_id, source_generation);
-        }
-        drop(auth_publication_guard);
-        drop(startup_token);
-        drop(manager);
-        drop(refresh_state);
-        old_manager.shutdown().await;
-        McpRefreshPublication::Published
+        shutdown_mcp_refresh_publish_attempt(attempt, &mut replacement).await
     }
 
     pub(crate) async fn refresh_mcp_servers_if_requested(
@@ -533,7 +612,10 @@ impl Session {
         turn_context: &TurnContext,
         elicitation_reviewer: Option<ElicitationReviewerHandle>,
     ) {
-        let _refresh_owner = self.mcp_server_refresh_lock.lock().await;
+        let Ok(_refresh_owner) = self.mcp_server_refresh_lock.acquire().await else {
+            warn!("MCP server refresh lock closed");
+            return;
+        };
         loop {
             let intent = { self.mcp_server_refresh_state.lock().await.pending() };
             let (
@@ -630,7 +712,10 @@ impl Session {
         store_mode: OAuthCredentialsStoreMode,
         elicitation_reviewer: Option<ElicitationReviewerHandle>,
     ) {
-        let _refresh_owner = self.mcp_server_refresh_lock.lock().await;
+        let Ok(_refresh_owner) = self.mcp_server_refresh_lock.acquire().await else {
+            warn!("MCP server refresh lock closed");
+            return;
+        };
         loop {
             match self
                 .refresh_mcp_servers_inner(

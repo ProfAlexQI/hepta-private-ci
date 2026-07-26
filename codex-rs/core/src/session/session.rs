@@ -122,7 +122,7 @@ pub(crate) struct Session {
     /// The set of enabled features should be invariant for the lifetime of the
     /// session.
     pub(super) features: ManagedFeatures,
-    pub(super) mcp_server_refresh_lock: Mutex<()>,
+    pub(super) mcp_server_refresh_lock: Semaphore,
     pub(super) mcp_server_refresh_state: Mutex<McpServerRefreshState>,
     #[cfg(test)]
     pub(super) mcp_server_refresh_test_gate:
@@ -1082,7 +1082,7 @@ impl Session {
                 state: Mutex::new(state),
                 managed_network_proxy_refresh_lock: Semaphore::new(/*permits*/ 1),
                 features: config.features.clone(),
-                mcp_server_refresh_lock: Mutex::new(()),
+                mcp_server_refresh_lock: Semaphore::new(/*permits*/ 1),
                 mcp_server_refresh_state: Mutex::new(McpServerRefreshState::default()),
                 #[cfg(test)]
                 mcp_server_refresh_test_gate: Mutex::new(None),
