@@ -24,6 +24,25 @@ FORBIDDEN_CODEX_ENGINE_CRATES=(
 
 tree_output="$(cargo tree --offline --manifest-path "$MANIFEST" -p hepta-cli --edges normal --prefix none)"
 package_names="$(awk '{print $1}' <<<"$tree_output")"
+metadata="$(cargo metadata --offline --manifest-path "$MANIFEST" --no-deps --format-version 1)"
+hepta_binary_owners="$(
+  jq -c '[
+    .packages[]
+    | select(any(.targets[]; (.kind | index("bin")) != null and .name == "hepta"))
+    | .name
+  ] | sort' <<<"$metadata"
+)"
+compatibility_binary_present="$(
+  jq -r 'any(
+    .packages[];
+    .name == "codex-cli"
+    and any(.targets[]; (.kind | index("bin")) != null and .name == "hepta-codex-compat")
+  )' <<<"$metadata"
+)"
+official_entrypoint_ready=false
+if [[ "$hepta_binary_owners" == '["hepta-cli"]' && "$compatibility_binary_present" == "true" ]]; then
+  official_entrypoint_ready=true
+fi
 
 found_forbidden=()
 for crate in "${FORBIDDEN_CODEX_ENGINE_CRATES[@]}"; do
@@ -95,17 +114,24 @@ report="$(
     --arg live_status "$live_status" \
     --argjson forbidden "$forbidden_json" \
     --argjson found "$found_json" \
+    --argjson hepta_binary_owners "$hepta_binary_owners" \
+    --argjson compatibility_binary_present "$compatibility_binary_present" \
+    --argjson official_entrypoint_ready "$official_entrypoint_ready" \
     --argjson live_ready "$live_ready" \
     --argjson live_dependency "$live_dependency_json" \
     --argjson live_core "$live_core_json" \
     '{
       product:$product,
       runtime:$runtime,
-      status:(if ($found | length) == 0 and ($live_status != "failed") then "ready" else "blocked" end),
+      status:(if ($found | length) == 0 and $official_entrypoint_ready and ($live_status != "failed") then "ready" else "blocked" end),
       gate:"hepta_active_service_dependency_isolation_gate",
       manifest:$manifest,
       active_binary_package:$package,
       active_binary_target:$binary,
+      official_entrypoint_ready:$official_entrypoint_ready,
+      official_binary_owners:$hepta_binary_owners,
+      compatibility_binary_target:"hepta-codex-compat",
+      compatibility_binary_present:$compatibility_binary_present,
       tracked_forbidden_codex_engine_crates:$forbidden,
       found_forbidden_codex_engine_crates:$found,
       local_cargo_tree_isolated:(($found | length) == 0),
@@ -147,6 +173,11 @@ printf '%s\n' "$report"
 
 if ((${#found_forbidden[@]} > 0)); then
   echo "active hepta-cli package still depends on forbidden Codex engine crates: ${found_forbidden[*]}" >&2
+  exit 1
+fi
+
+if [[ "$official_entrypoint_ready" != "true" ]]; then
+  echo "official hepta binary ownership is ambiguous or compatibility target is missing" >&2
   exit 1
 fi
 

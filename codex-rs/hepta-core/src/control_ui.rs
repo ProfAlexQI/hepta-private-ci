@@ -1008,7 +1008,7 @@ pub fn control_ui_report() -> ControlUiReport {
         local_preview_ready,
         evidence_coverage,
         rust_frontend_ownership,
-        serve_command: "cargo run --manifest-path codex-rs/Cargo.toml -p codex-cli --bin hepta -- --serve-ui 127.0.0.1:7373",
+        serve_command: "cargo run --manifest-path codex-rs/Cargo.toml -p hepta-cli --bin hepta -- --serve-ui 127.0.0.1:7373",
         smoke_gate: "./scripts/hepta-control-ui-smoke.sh",
         package_path: "apps/hepta-control-ui",
         screens,

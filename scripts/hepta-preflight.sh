@@ -988,7 +988,7 @@ else
 fi
 if [[ "$RUN_RELEASE" == "1" ]]; then
   echo "[hepta-preflight] release build compatibility codex-cli"
-  cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta
+  cargo build --release --offline --manifest-path "$MANIFEST" -q -p codex-cli --bin hepta-codex-compat
   echo "[hepta-preflight] release build active hepta-cli"
   cargo build --release --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
 else

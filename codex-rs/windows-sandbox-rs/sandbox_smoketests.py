@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 from urllib.parse import urlsplit
 
 def _resolve_hepta_cmd() -> List[str]:
-    """Resolve the Hepta CLI to invoke `hepta sandbox windows`.
+    """Resolve the compatibility CLI that provides `hepta sandbox windows`.
 
     Prefer local builds (debug first), then fall back to PATH.
     Returns the argv prefix to run Hepta.
@@ -25,28 +25,28 @@ def _resolve_hepta_cmd() -> List[str]:
     cargo_target = os.environ.get("CARGO_TARGET_DIR")
 
     candidates = [
-        ws_root / "target" / "debug" / "hepta.exe",
-        ws_root / "target" / "release" / "hepta.exe",
+        ws_root / "target" / "debug" / "hepta-codex-compat.exe",
+        ws_root / "target" / "release" / "hepta-codex-compat.exe",
     ]
     if cargo_target:
         cargo_base = Path(cargo_target)
         candidates.extend([
-            cargo_base / "debug" / "hepta.exe",
-            cargo_base / "release" / "hepta.exe",
+            cargo_base / "debug" / "hepta-codex-compat.exe",
+            cargo_base / "release" / "hepta-codex-compat.exe",
         ])
 
     for candidate in candidates:
         if candidate.exists():
             return [str(candidate)]
 
-    if shutil.which("hepta"):
-        return ["hepta"]
+    if shutil.which("hepta-codex-compat"):
+        return ["hepta-codex-compat"]
 
     raise FileNotFoundError(
         "Hepta CLI not found. Build it first, e.g.\n"
-        "  cargo build -p codex-cli --bin hepta --release\n"
+        "  cargo build -p codex-cli --bin hepta-codex-compat --release\n"
         "or for debug:\n"
-        "  cargo build -p codex-cli --bin hepta\n"
+        "  cargo build -p codex-cli --bin hepta-codex-compat\n"
     )
 
 HEPTA_CMD = _resolve_hepta_cmd()

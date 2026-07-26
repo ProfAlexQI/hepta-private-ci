@@ -9,17 +9,17 @@ help:
 
 # `hepta`
 alias h := hepta
-alias c := hepta
+alias c := codex
 hepta *args:
-    cargo run --bin hepta -- "$@"
+    cargo run -p hepta-cli --bin hepta -- "$@"
 
 # `codex` compatibility convenience for old local muscle memory.
 codex *args:
-    cargo run --bin hepta -- "$@"
+    cargo run -p codex-cli --bin hepta-codex-compat -- "$@"
 
-# `hepta exec`
+# Legacy full-feature `exec` compatibility.
 exec *args:
-    cargo run --bin hepta -- exec "$@"
+    cargo run -p codex-cli --bin hepta-codex-compat -- exec "$@"
 
 # Start the Hepta TUI through the exec-server harness.
 [no-cd]
@@ -32,8 +32,8 @@ file-search *args:
 
 # Build the Hepta CLI and run the app-server test client.
 app-server-test-client *args:
-    cargo build -p codex-cli --bin hepta
-    cargo run -p codex-app-server-test-client -- --hepta-bin ./target/debug/hepta "$@"
+    cargo build -p codex-cli --bin hepta-codex-compat
+    cargo run -p codex-app-server-test-client -- --hepta-bin ./target/debug/hepta-codex-compat "$@"
 
 # Format the repository-native Just and Rust sources.
 fmt:

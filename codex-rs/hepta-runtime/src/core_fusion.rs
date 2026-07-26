@@ -397,7 +397,7 @@ const NAME_REPOSITORY_CLOSURE_SURFACES: &[HeptaNameRepositoryClosureSurface] = &
     HeptaNameRepositoryClosureSurface {
         surface_id: "active_release_binary_package",
         surface_kind: "release_package",
-        current_name: "codex-cli --bin hepta",
+        current_name: "codex-cli --bin hepta-codex-compat",
         target_name: "hepta-cli --bin hepta",
         closure_state: "closed",
         operator_facing: true,
