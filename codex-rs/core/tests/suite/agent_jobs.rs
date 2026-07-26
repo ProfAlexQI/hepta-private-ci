@@ -65,15 +65,15 @@ where
                 .thread_stack_size(TEST_STACK_SIZE_BYTES)
                 .enable_all()
                 .build()
-                .expect("large-stack runtime should build");
+                .unwrap_or_else(|err| panic!("large-stack runtime should build: {err}"));
             runtime.block_on(future)
         })
-        .expect("large-stack test thread should spawn");
+        .unwrap_or_else(|err| panic!("large-stack test thread should spawn: {err}"));
 
-    handle
+    let result = handle
         .join()
-        .expect("large-stack test thread panicked")
-        .expect("large-stack async test should return ok");
+        .unwrap_or_else(|_| panic!("large-stack test thread panicked"));
+    result.unwrap_or_else(|err| panic!("large-stack async test should return ok: {err}"));
 }
 
 struct AgentJobsResponder {
@@ -111,6 +111,10 @@ impl AgentJobsResponder {
         }
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the fixture names each independent governance output probe explicitly"
+    )]
     fn new_with_governance_output_probe(
         spawn_args_json: String,
         saw_spawn_replay_gate_output: Arc<AtomicBool>,

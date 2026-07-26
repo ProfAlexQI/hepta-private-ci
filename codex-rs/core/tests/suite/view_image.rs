@@ -1508,7 +1508,7 @@ async fn invalid_tool_image_error_does_not_retry_or_rewrite_history() -> anyhow:
 
     let mut invalid_image_error = None;
     wait_for_event_with_timeout(
-        &codex,
+        codex,
         |event| match event {
             EventMsg::Error(error) => {
                 invalid_image_error = Some(error.clone());
@@ -1580,7 +1580,7 @@ async fn invalid_tool_image_error_does_not_retry_or_rewrite_history() -> anyhow:
         .await?;
 
     wait_for_event_with_timeout(
-        &codex,
+        codex,
         |event| matches!(event, EventMsg::TurnComplete(_)),
         VIEW_IMAGE_TURN_COMPLETE_TIMEOUT,
     )

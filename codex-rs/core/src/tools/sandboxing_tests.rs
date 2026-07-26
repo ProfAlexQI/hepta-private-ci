@@ -234,7 +234,7 @@ fn exec_server_env_keeps_command_native_and_carries_sandbox_context() {
     assert_eq!(
         request.exec_server_sandbox,
         Some(codex_exec_server::FileSystemSandboxContext {
-            permissions: exec_server_permissions.into(),
+            permissions: exec_server_permissions,
             cwd: Some(cwd.clone()),
             workspace_roots: vec![cwd],
             windows_sandbox_level: codex_protocol::config_types::WindowsSandboxLevel::Disabled,

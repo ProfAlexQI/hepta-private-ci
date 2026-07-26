@@ -6722,10 +6722,11 @@ async fn cancelled_explicit_mcp_refresh_preserves_intent_until_publication() {
     session
         .refresh_mcp_servers_if_requested(&turn_context, None)
         .await;
-    let state = session.mcp_server_refresh_state.lock().await;
-    assert!(state.pending.is_none());
-    assert_eq!(state.applied_generation, intent_generation);
-    drop(state);
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert!(state.pending.is_none());
+        assert_eq!(state.applied_generation, intent_generation);
+    }
     assert!(old_token.is_cancelled());
     assert_eq!(
         session
@@ -6783,11 +6784,12 @@ async fn rapid_explicit_mcp_refresh_only_publishes_latest_generation() {
     release.wait().await;
     refresh_task.await.expect("refresh task");
 
-    let state = session.mcp_server_refresh_state.lock().await;
-    assert!(state.pending.is_none());
-    assert_eq!(state.applied_generation, latest_generation);
-    assert_eq!(state.next_generation, latest_generation);
-    drop(state);
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert!(state.pending.is_none());
+        assert_eq!(state.applied_generation, latest_generation);
+        assert_eq!(state.next_generation, latest_generation);
+    }
     assert_eq!(
         session
             .services
@@ -6800,6 +6802,10 @@ async fn rapid_explicit_mcp_refresh_only_publishes_latest_generation() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "the test deliberately holds the startup-token guard to exercise publication retry"
+)]
 async fn mcp_refresh_publication_retries_without_partial_commit_when_startup_token_is_busy() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     let old_token = session.mcp_startup_cancellation_token().await;
@@ -6878,10 +6884,11 @@ async fn mcp_refresh_publication_retries_without_partial_commit_when_startup_tok
         .expect("MCP refresh should complete after startup token release")
         .expect("MCP refresh task");
 
-    let state = session.mcp_server_refresh_state.lock().await;
-    assert!(state.pending.is_none());
-    assert_eq!(state.applied_generation, intent_generation);
-    drop(state);
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert!(state.pending.is_none());
+        assert_eq!(state.applied_generation, intent_generation);
+    }
     assert!(old_token.is_cancelled());
     assert_eq!(
         session
@@ -6895,6 +6902,10 @@ async fn mcp_refresh_publication_retries_without_partial_commit_when_startup_tok
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "the test deliberately holds the startup-token guard to exercise cancellation during retry"
+)]
 async fn cancelled_mcp_refresh_publication_retry_preserves_the_pending_intent() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     let old_token = session.mcp_startup_cancellation_token().await;
@@ -6977,10 +6988,11 @@ async fn cancelled_mcp_refresh_publication_retry_preserves_the_pending_intent() 
     session
         .refresh_mcp_servers_if_requested(&turn_context, None)
         .await;
-    let state = session.mcp_server_refresh_state.lock().await;
-    assert!(state.pending.is_none());
-    assert_eq!(state.applied_generation, intent_generation);
-    drop(state);
+    {
+        let state = session.mcp_server_refresh_state.lock().await;
+        assert!(state.pending.is_none());
+        assert_eq!(state.applied_generation, intent_generation);
+    }
     assert!(old_token.is_cancelled());
     assert_eq!(
         session
@@ -7226,10 +7238,11 @@ async fn stale_auth_generation_does_not_publish_mcp_manager() {
     release.wait().await;
     refresh_task.await.expect("refresh task");
 
-    let refresh_state = session.mcp_server_refresh_state.lock().await;
-    assert!(refresh_state.pending.is_none());
-    assert!(refresh_state.applied_generation > stale_intent_generation);
-    drop(refresh_state);
+    {
+        let refresh_state = session.mcp_server_refresh_state.lock().await;
+        assert!(refresh_state.pending.is_none());
+        assert!(refresh_state.applied_generation > stale_intent_generation);
+    }
     let latest_binding = crate::state::FrozenMcpAuthSnapshot::capture(auth_manager.as_ref())
         .await
         .expect("capture latest MCP auth snapshot")

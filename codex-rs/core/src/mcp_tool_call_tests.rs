@@ -1256,6 +1256,11 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context: 
         /*elicitation_reviewer*/ None,
     )
     .await;
+    let auth_binding =
+        crate::state::FrozenMcpAuthSnapshot::capture(session.services.auth_manager.as_ref())
+            .await
+            .expect("capture MCP auth snapshot")
+            .binding();
     session
         .services
         .mcp_connection_manager
@@ -1263,10 +1268,7 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context: 
         .await
         .publish(
             manager,
-            crate::state::FrozenMcpAuthSnapshot::capture(session.services.auth_manager.as_ref())
-                .await
-                .expect("capture MCP auth snapshot")
-                .binding(),
+            auth_binding,
             codex_protocol::protocol::McpElicitationAuthority {
                 approval_policy: turn_context.approval_policy.value(),
                 permission_profile: turn_context.permission_profile(),
