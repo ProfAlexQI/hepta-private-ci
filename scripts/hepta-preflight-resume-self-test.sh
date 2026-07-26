@@ -11,9 +11,9 @@ chmod +x "$fixture/scripts/hepta-preflight-resume"
 cat >"$fixture/scripts/hepta-preflight.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-
 cd "$(dirname "$0")/.."
-
+# hepta-preflight-resume: prelude-start
+FIXTURE_REPO_ROOT="$PWD"
 RUN_NATIVE="${HEPTA_PREFLIGHT_NATIVE:-0}"
 RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-0}"
 PREFLIGHT_RELEASE_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
@@ -21,6 +21,7 @@ run_preflight_gate() {
   printf '[hepta-preflight] %s\n' "$1"
   "${@:2}"
 }
+[[ "$FIXTURE_REPO_ROOT" == "$PWD" ]] || exit 48
 printf '[fixture] release_target=%s\n' "$PREFLIGHT_RELEASE_TARGET_DIR"
 # hepta-preflight-resume: prelude-end
 if [[ "${HEPTA_RESUME_TEST_BREAK_STATE:-0}" == "1" ]]; then

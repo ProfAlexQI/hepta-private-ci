@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# hepta-preflight-resume: prelude-start
 REPO_ROOT="$PWD"
 source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
 source "$REPO_ROOT/scripts/lib/hepta-v2-test-inventory.sh"

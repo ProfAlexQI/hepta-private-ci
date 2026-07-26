@@ -825,10 +825,15 @@ fi
 prelude_end_line="$({
   awk '$0 == "# hepta-preflight-resume: prelude-end" { print NR; exit }' "$PREFLIGHT"
 })"
-if [[ -z "$prelude_end_line" || "$prelude_end_line" -lt 6 ]]; then
+prelude_start_line="$({
+  awk '$0 == "# hepta-preflight-resume: prelude-start" { print NR; exit }' "$PREFLIGHT"
+})"
+if [[ -z "$prelude_start_line" || -z "$prelude_end_line" \
+  || "$prelude_start_line" -lt 4 || "$prelude_end_line" -le "$prelude_start_line" ]]; then
   echo "could not locate the explicit preflight resume prelude boundary in scripts/hepta-preflight.sh" >&2
   exit 1
 fi
+prelude_body_start_line=$((prelude_start_line + 1))
 
 terminal_branch_start="$({
   awk '$0 == "if [[ \"$RUN_NATIVE\" == \"1\" ]]; then" { print NR; exit }' "$PREFLIGHT"
@@ -1064,13 +1069,13 @@ if [[ "$start_line" == "1" ]]; then
   {
     printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail'
     printf 'cd %q\n' "$ROOT"
-    sed -n '6,$p' "$PREFLIGHT"
+    sed -n "${prelude_body_start_line},\$p" "$PREFLIGHT"
   } >"$generated"
 else
   {
     printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail'
     printf 'cd %q\n' "$ROOT"
-    sed -n "6,${prelude_end_line}p" "$PREFLIGHT"
+    sed -n "${prelude_body_start_line},${prelude_end_line}p" "$PREFLIGHT"
     sed -n "${start_line},\$p" "$PREFLIGHT"
   } >"$generated"
 fi
