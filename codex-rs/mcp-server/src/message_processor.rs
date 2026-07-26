@@ -360,7 +360,7 @@ impl MessageProcessor {
         tool_name: &str,
     ) {
         let arguments = arguments.map(serde_json::Value::Object);
-        let (initial_prompt, config): (String, Config) = match arguments {
+        let (initial_prompt, mut config): (String, Config) = match arguments {
             Some(json_val) => match serde_json::from_value::<HeptaToolCallParam>(json_val) {
                 Ok(tool_cfg) => match tool_cfg.into_config(self.arg0_paths.clone()).await {
                     Ok(cfg) => cfg,
@@ -388,6 +388,7 @@ impl MessageProcessor {
                 return;
             }
         };
+        config.bind_config_generation(self.thread_manager.config_generation_source().freeze());
 
         // Clone outgoing and server to move into async task.
         let outgoing = self.outgoing.clone();
