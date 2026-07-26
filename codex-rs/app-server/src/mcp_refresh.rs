@@ -6,20 +6,23 @@ use codex_protocol::protocol::McpServerRefreshConfig;
 use std::io;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use tokio::sync::Mutex;
+use tokio::sync::Semaphore;
 use tracing::warn;
 
-static MCP_REFRESH_SERIALIZER: OnceLock<Mutex<()>> = OnceLock::new();
+static MCP_REFRESH_SERIALIZER: OnceLock<Semaphore> = OnceLock::new();
 
-fn mcp_refresh_serializer() -> &'static Mutex<()> {
-    MCP_REFRESH_SERIALIZER.get_or_init(|| Mutex::new(()))
+fn mcp_refresh_serializer() -> &'static Semaphore {
+    MCP_REFRESH_SERIALIZER.get_or_init(|| Semaphore::new(1))
 }
 
 pub(crate) async fn queue_strict_refresh(
     thread_manager: &Arc<ThreadManager>,
     config_manager: &ConfigManager,
 ) -> io::Result<()> {
-    let _refresh_guard = mcp_refresh_serializer().lock().await;
+    let _refresh_permit = match mcp_refresh_serializer().acquire().await {
+        Ok(permit) => permit,
+        Err(_) => unreachable!("static MCP refresh serializer must remain open"),
+    };
     config_manager
         .load_latest_config(/*fallback_cwd*/ None)
         .await?;
@@ -47,7 +50,10 @@ pub(crate) async fn queue_best_effort_refresh(
     thread_manager: &Arc<ThreadManager>,
     config_manager: &ConfigManager,
 ) {
-    let _refresh_guard = mcp_refresh_serializer().lock().await;
+    let _refresh_permit = match mcp_refresh_serializer().acquire().await {
+        Ok(permit) => permit,
+        Err(_) => unreachable!("static MCP refresh serializer must remain open"),
+    };
     let generation = thread_manager.begin_mcp_runtime_invalidation();
     thread_manager
         .wait_for_mcp_startups_before(generation)
@@ -144,16 +150,22 @@ mod tests {
 
     #[tokio::test]
     async fn overlapping_refreshes_are_process_serialized() {
-        let guard = mcp_refresh_serializer().lock().await;
+        let permit = match mcp_refresh_serializer().acquire().await {
+            Ok(permit) => permit,
+            Err(_) => unreachable!("static MCP refresh serializer must remain open"),
+        };
         let entered = Arc::new(AtomicUsize::new(0));
         let entered_after_lock = Arc::clone(&entered);
         let waiter = tokio::spawn(async move {
-            let _guard = mcp_refresh_serializer().lock().await;
+            let _permit = match mcp_refresh_serializer().acquire().await {
+                Ok(permit) => permit,
+                Err(_) => unreachable!("static MCP refresh serializer must remain open"),
+            };
             entered_after_lock.store(1, Ordering::Release);
         });
         yield_now().await;
         assert_eq!(entered.load(Ordering::Acquire), 0);
-        drop(guard);
+        drop(permit);
         waiter.await.expect("refresh waiter");
         assert_eq!(entered.load(Ordering::Acquire), 1);
     }
