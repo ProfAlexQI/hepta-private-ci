@@ -119,6 +119,13 @@ use hepta_gateway::telegram_transport_plan_for_config_status;
 use hepta_gateway::telegram_typing_keepalive_interval_policy;
 use hepta_gateway::telegram_wait_for_send_rate_limit;
 use hepta_gateway::wait_for_native_telegram_model_child;
+use hepta_runtime::EffectBroker;
+use hepta_runtime::EffectPlan;
+use hepta_runtime::ExactExecutionAuthority;
+use hepta_runtime::ExecutionAdmission;
+use hepta_runtime::ExecutionIngress;
+use hepta_runtime::ProviderEffectAck;
+use hepta_runtime::TerminalEffectReceipt;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::Digest;
@@ -129,6 +136,7 @@ use zeroize::Zeroizing;
 
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RuntimeTelegramReceiveAuthority;
+use crate::telegram_authority::TelegramModelRequest;
 use crate::telegram_authority::TelegramPipelinePermit;
 use crate::telegram_authority::TelegramPipelineReceipt;
 use crate::telegram_authority::TelegramProviderAck;
@@ -368,7 +376,7 @@ pub(crate) fn execute_operator_authorized_telegram_drain(
             })
         },
         |request| {
-            run_hepta_model_turn_with_execution_identity(&request.prompt, &execution_identity)
+            run_hepta_model_turn_with_execution_identity(request, &execution_identity)
                 .map_err(anyhow::Error::msg)
         },
         |plan| {
@@ -1577,15 +1585,160 @@ fn run_hepta_model_turn_with_plan(
 }
 
 fn run_hepta_model_turn_with_execution_identity(
-    prompt: &str,
+    request: &TelegramModelRequest,
     execution_identity: &OperatorTelegramExecutionIdentity,
 ) -> Result<String, String> {
-    run_hepta_model_turn_with_frozen_context(
-        prompt,
+    let mut lifecycle = TelegramModelEffectLifecycle::begin(request, execution_identity)?;
+    let result = run_hepta_model_turn_with_frozen_context(
+        &request.prompt,
         execution_identity.model_runner_plan(),
         execution_identity.hepta_intelligence_context_enabled,
         execution_identity.plugin_capability_context_enabled,
-    )
+    );
+    lifecycle.finish(
+        request,
+        result.as_ref().map(String::as_str).map_err(String::as_str),
+    )?;
+    result
+}
+
+struct TelegramModelEffectLifecycle {
+    broker: EffectBroker,
+    effect_plan_hash: String,
+    provider_binding: &'static str,
+}
+
+impl TelegramModelEffectLifecycle {
+    fn begin(
+        request: &TelegramModelRequest,
+        execution_identity: &OperatorTelegramExecutionIdentity,
+    ) -> Result<Self, String> {
+        let identity_binding = execution_identity
+            .binding_hash()
+            .map_err(|error| format!("bind Telegram execution identity: {error}"))?;
+        let caller_binding = telegram_model_digest(
+            "telegram-model-caller",
+            &[&request.request_binding_hash, &identity_binding],
+        );
+        let workspace_binding = telegram_model_digest(
+            "telegram-model-workspace",
+            &[&execution_identity.config_generation],
+        );
+        let session_binding = telegram_model_digest(
+            "telegram-model-session",
+            &[
+                &request.session_binding_hash,
+                &request.update_id.to_string(),
+            ],
+        );
+        let intent_binding = telegram_model_digest(
+            "telegram-model-intent",
+            &[
+                &request.request_binding_hash,
+                &request.update_id.to_string(),
+            ],
+        );
+        let payload_digest = telegram_model_content_hash(
+            "telegram-model-payload",
+            &[
+                &request.prompt,
+                execution_identity.model_runner_plan().runner_kind,
+            ],
+        );
+        let authority =
+            ExactExecutionAuthority::new(caller_binding, workspace_binding, session_binding)
+                .map_err(|error| format!("bind Telegram model authority: {error}"))?;
+        let admission = ExecutionAdmission::new(
+            ExecutionIngress::Telegram,
+            "operator-telegram-model-turn",
+            authority,
+            intent_binding.clone(),
+            payload_digest.clone(),
+        )
+        .map_err(|error| format!("admit Telegram model effect: {error}"))?;
+        let plan = EffectPlan::new(
+            admission.admission_hash(),
+            "model_inference",
+            execution_identity.model_runner_plan().runner_kind,
+            payload_digest,
+            intent_binding,
+        )
+        .map_err(|error| format!("plan Telegram model effect: {error}"))?;
+        let effect_plan_hash = plan.effect_plan_hash().to_string();
+        let mut broker = EffectBroker::admit(admission);
+        broker
+            .record_effect_plan(plan)
+            .map_err(|error| format!("record Telegram model effect plan: {error}"))?;
+        let provider_binding = execution_identity.model_runner_plan().runner_kind;
+        Ok(Self {
+            broker,
+            effect_plan_hash,
+            provider_binding,
+        })
+    }
+
+    fn finish(
+        &mut self,
+        request: &TelegramModelRequest,
+        result: Result<&str, &str>,
+    ) -> Result<(), String> {
+        let (terminal_status, material) = match result {
+            Ok(output) => ("succeeded", output),
+            Err(error) => ("failed", error),
+        };
+        let provider_ack = ProviderEffectAck::new(
+            &self.effect_plan_hash,
+            self.provider_binding,
+            telegram_model_content_hash(
+                "telegram-model-provider-ack",
+                &[terminal_status, material],
+            ),
+        )
+        .map_err(|error| format!("bind Telegram model provider ACK: {error}"))?;
+        let ack_hash = provider_ack.ack_hash().to_string();
+        self.broker
+            .record_provider_ack(provider_ack)
+            .map_err(|error| format!("record Telegram model provider ACK: {error}"))?;
+        let receipt = TerminalEffectReceipt::terminal(
+            ack_hash,
+            terminal_status,
+            telegram_model_content_hash(
+                "telegram-model-runtime-receipt",
+                &[&self.effect_plan_hash, material],
+            ),
+            telegram_model_content_hash(
+                "telegram-model-terminal-evidence",
+                &[
+                    self.provider_binding,
+                    &request.session_binding_hash,
+                    &request.update_id.to_string(),
+                    terminal_status,
+                ],
+            ),
+        )
+        .map_err(|error| format!("bind Telegram model terminal receipt: {error}"))?;
+        self.broker
+            .record_terminal_receipt(receipt)
+            .map_err(|error| format!("record Telegram model terminal receipt: {error}"))?;
+        self.broker
+            .completed_receipt_hash()
+            .map(|_| ())
+            .map_err(|error| format!("complete Telegram model lifecycle: {error}"))
+    }
+}
+
+fn telegram_model_digest(domain: &str, values: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(domain.as_bytes());
+    for value in values {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn telegram_model_content_hash(domain: &str, values: &[&str]) -> String {
+    format!("sha256:{}", telegram_model_digest(domain, values))
 }
 
 fn run_hepta_model_turn_with_frozen_context(

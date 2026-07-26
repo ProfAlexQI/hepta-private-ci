@@ -149,6 +149,59 @@ fn operator_telegram_identity_freezes_runner_config_and_chat_scope() {
 }
 
 #[test]
+fn operator_telegram_model_effect_reaches_terminal_for_success_and_failure() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let config_path = temp.path().join("openclaw.json");
+    fs::write(
+        &config_path,
+        r#"{
+            "channels": {
+                "telegram": {
+                    "enabled": true,
+                    "dmPolicy": "trusted",
+                    "groupPolicy": "mention",
+                    "allowFrom": ["telegram:42"],
+                    "botToken": {
+                        "source": "file",
+                        "provider": "telegram_bot",
+                        "id": "bot-token"
+                    }
+                }
+            }
+        }"#,
+    )
+    .expect("write config");
+    let identity = operator_telegram_execution_identity_from_path(
+        &config_path,
+        "openai",
+        "gpt-5.5",
+        select_native_telegram_model_runner(None, None, None, false, false),
+        true,
+        false,
+    )
+    .expect("execution identity");
+    let request = TelegramModelRequest {
+        session_binding_hash: "sha256:session-binding".to_string(),
+        request_binding_hash: "sha256:request-binding".to_string(),
+        update_id: 41,
+        prompt: "bounded model prompt".to_string(),
+    };
+
+    let mut succeeded =
+        TelegramModelEffectLifecycle::begin(&request, &identity).expect("begin success");
+    succeeded
+        .finish(&request, Ok("bounded model output"))
+        .expect("success terminal receipt");
+    assert!(succeeded.finish(&request, Ok("duplicate output")).is_err());
+
+    let mut failed =
+        TelegramModelEffectLifecycle::begin(&request, &identity).expect("begin failure");
+    failed
+        .finish(&request, Err("provider unavailable"))
+        .expect("failure terminal receipt");
+}
+
+#[test]
 fn operator_telegram_identity_requires_an_explicit_numeric_chat_scope() {
     let temp = tempfile::tempdir().expect("tempdir");
     let config_path = temp.path().join("openclaw.json");
