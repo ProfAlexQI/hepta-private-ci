@@ -67,6 +67,7 @@ const QUARANTINED_TRANSITIVE_CANARY_EFFECT_PATHS: &[&str] = &[
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary",
 ];
 
+#[cfg(test)]
 const DETACHED_CONTROL_UI_REPORT_PATHS: &[&str] = &[
     CONTROL_UI_ROUTE_PARITY_ENDPOINT,
     GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
