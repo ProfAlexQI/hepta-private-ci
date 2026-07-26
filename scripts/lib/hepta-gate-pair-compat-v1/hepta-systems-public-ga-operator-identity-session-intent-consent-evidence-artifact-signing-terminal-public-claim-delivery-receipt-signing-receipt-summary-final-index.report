@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
-SOURCE_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-readback.report"
+SOURCE_REPORT="$ROOT/scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-readback-report.sh"
 
 [[ -x "$SOURCE_REPORT" ]] || {
   echo "missing executable terminal public claim delivery receipt artifact signing receipt signing receipt summary/briefing readback report: $SOURCE_REPORT" >&2

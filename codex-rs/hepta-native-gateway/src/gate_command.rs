@@ -5,6 +5,10 @@ use crate::gate_runner;
 use crate::gate_spec::GateSpec;
 use crate::gate_spec::ReceiptStateMachine;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
+use crate::runtime_ingress::IngressEffectClass;
+use crate::runtime_ingress::RUNTIME_INGRESS_REGISTRY_SCHEMA_VERSION;
+use crate::runtime_ingress::runtime_ingress_lifecycle_registry;
+use crate::runtime_ingress::runtime_ingress_lifecycle_registry_digest;
 
 pub fn gate_command_json(raw_args: &[String]) -> Result<String> {
     match raw_args {
@@ -25,9 +29,18 @@ pub fn gate_command_json(raw_args: &[String]) -> Result<String> {
 }
 
 fn gate_registry_json() -> Result<String> {
+    let ingress_lifecycle_registry = runtime_ingress_lifecycle_registry();
+    let ingress_lifecycle_registry_digest = runtime_ingress_lifecycle_registry_digest()?;
+    let quarantined_effect_route_count = ingress_lifecycle_registry
+        .iter()
+        .filter(|lifecycle| lifecycle.effect_class == IngressEffectClass::QuarantinedLegacyMutation)
+        .count();
     let gates = CONTROL_UI_ROUTE_SPECS
         .iter()
         .map(|spec| {
+            let ingress_lifecycle = ingress_lifecycle_registry.iter().find(|lifecycle| {
+                lifecycle.method == spec.method && lifecycle.path_pattern == spec.pattern
+            });
             serde_json::json!({
                 "id": spec.capability,
                 "method": spec.method,
@@ -39,6 +52,7 @@ fn gate_registry_json() -> Result<String> {
                 "guarded": spec.is_guarded(),
                 "requires_confirmation": spec.requires_confirmation(),
                 "receipt_state": spec.receipt_state(),
+                "ingress_lifecycle": ingress_lifecycle,
             })
         })
         .collect::<Vec<_>>();
@@ -51,6 +65,12 @@ fn gate_registry_json() -> Result<String> {
         "mode": "declarative_registry_read_only",
         "gate_count": gates.len(),
         "route_count_source": "CONTROL_UI_ROUTE_SPECS",
+        "ingress_lifecycle_registry_schema_version": RUNTIME_INGRESS_REGISTRY_SCHEMA_VERSION,
+        "ingress_lifecycle_registry_sha256": ingress_lifecycle_registry_digest,
+        "ingress_lifecycle_count": ingress_lifecycle_registry.len(),
+        "quarantined_effect_route_count": quarantined_effect_route_count,
+        "release_dispatch_ready": quarantined_effect_route_count == 0,
+        "ingress_lifecycle_registry": ingress_lifecycle_registry,
         "receipt_state_machine": ReceiptStateMachine::ORDERED_STATES,
         "report_execution_performed": false,
         "side_effect_free": true,

@@ -7,14 +7,14 @@ RUST_SOURCE="$ROOT/codex-rs/hepta-runtime/src/hepta_systems_workgraph_legacy_gat
 LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
 DOC="$ROOT/docs/architecture/HEPTA_SYSTEMS_WORKGRAPH_LEGACY_GATE_RECURSION_INVENTORY_READBACK_2026-06-30.md"
 
-ACK_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview.gate"
-ACK_REPLAY_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview.gate"
-ACK_REPLAY_CLOSEOUT_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview.gate"
-ACK_REPLAY_CLOSEOUT_ACK_REPLAY_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview.gate"
-RUNTIME_ADAPTER_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview.gate"
-REPLAY_EXECUTION_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview.gate"
-WAL_WRITE_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview.gate"
-OPERATOR_PACKET_GATE="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview.gate"
+ACK_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview-gate.sh"
+ACK_REPLAY_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview-gate.sh"
+ACK_REPLAY_CLOSEOUT_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-rerun-preview-gate.sh"
+ACK_REPLAY_CLOSEOUT_ACK_REPLAY_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-closeout-receipt-acknowledgement-replay-idempotency-rerun-preview-gate.sh"
+RUNTIME_ADAPTER_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-runtime-adapter-enforcement-closure-rerun-preview-gate.sh"
+REPLAY_EXECUTION_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-replay-readback-execution-closure-rerun-preview-gate.sh"
+WAL_WRITE_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-runtime-wal-write-boundary-execution-rerun-preview-gate.sh"
+OPERATOR_PACKET_GATE="$ROOT/scripts/hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-operator-review-packet-rerun-preview-gate.sh"
 
 fail() {
   printf 'hepta-systems-workgraph-legacy-gate-recursion-inventory-readback-report: FAIL: %s\n' "$1" >&2

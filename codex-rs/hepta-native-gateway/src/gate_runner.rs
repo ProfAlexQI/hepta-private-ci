@@ -322,6 +322,9 @@ struct ShellPairMigrationSpec {
     acknowledgement_prefix: String,
     summary_prefix: String,
     observability_prefix: Option<String>,
+    denial_gate: Option<String>,
+    denial_doc: Option<String>,
+    denial_subject: Option<String>,
     final_ack_denial_side_effect_key: Option<String>,
     final_ack_attachment_surface: Option<String>,
     readback_mode: Option<String>,
@@ -509,6 +512,7 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
                 | "signing_public_status_attachment"
                 | "signing_public_status_readback"
                 | "signing_public_status_final_index"
+                | "signing_summary_attachment"
                 | "signing_summary_readback"
         ) {
             anyhow::bail!(
@@ -583,6 +587,25 @@ fn migrated_pair_specs() -> Result<BTreeMap<String, ShellPairMigrationSpec>> {
         {
             anyhow::bail!(
                 "Hepta migrated summary pair {} has no observability prefix",
+                spec.id
+            );
+        }
+        if spec.template == "signing_summary_attachment"
+            && (!spec
+                .denial_gate
+                .as_deref()
+                .is_some_and(|path| path.starts_with("scripts/") && path.ends_with("-gate.sh"))
+                || !spec.denial_doc.as_deref().is_some_and(|path| {
+                    path.starts_with("docs/architecture/") && path.ends_with(".md")
+                })
+                || spec
+                    .denial_subject
+                    .as_deref()
+                    .is_none_or(|subject| subject.trim().is_empty())
+                || spec.blocker_count < 2)
+        {
+            anyhow::bail!(
+                "Hepta migrated summary attachment pair {} has invalid denial fields",
                 spec.id
             );
         }

@@ -3,18 +3,18 @@
   "status": "bounded_migration_debt",
   "registry": {
     "path": "scripts/hepta-gate-pair-specs-v1.json",
-    "sha256": "98498e6dc1061900b2d01c34f84058d63d51d4a6fd7226451efd9a598d36a59f"
+    "sha256": "d2632b0d2d72b68a9515eea0c1523bc01b95ee61f76b51f92ea35e8c6d24a6e4"
   },
   "compatibility_store": "scripts/lib/hepta-gate-pair-compat-v1",
   "ceilings": {
     "pair_count": 1282,
-    "captured_shell_pair_count": 1241,
+    "captured_shell_pair_count": 1239,
     "legacy_workgraph_pair_count": 8,
-    "compatibility_payload_count": 2516,
+    "compatibility_payload_count": 2512,
     "unregistered_payload_count": 26
   },
   "floors": {
-    "declarative_pair_count": 33
+    "declarative_pair_count": 35
   },
   "migration_policy": {
     "counts_may_only_improve": true,

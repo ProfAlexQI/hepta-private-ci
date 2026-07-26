@@ -452,6 +452,37 @@
         "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-replay-idempotency-rerun-preview",
         "hepta-systems-work-graph-unified-projection-enforcement-readiness-work-graph-events-event-store-cutover-terminal-no-cutover-receipt-acknowledgement-rerun-preview"
       ]
+    },
+    {
+      "batch_id": "signing_summary_attachment_v1",
+      "migration_parent_commit": "720d3d4c662ce54650b5a0ff81dd2af5dc502092",
+      "newly_migrated_pair_count": 2,
+      "migrated_pair_count": 1282,
+      "remaining_legacy_pair_count": 0,
+      "post_migration_exact_pair_id_sha256": "67365f0caba3de715f04fb3726004bf22945ce8dfb8c63c3dc718be9003bad91",
+      "gate_count": 1982,
+      "report_count": 1283,
+      "exact_pair_count": 1282,
+      "template_pair_count": 43,
+      "captured_compatibility_pair_count": 1239,
+      "existing_template_output_byte_parity_count": 86,
+      "pre_migration_content_snapshot_ready": true,
+      "compatibility_payload_all_hash_verified": true,
+      "all_exact_pairs_thin_wrappers": true,
+      "report_execution_sample_ready": true,
+      "gate_execution_sample_ready": true,
+      "receipt_state_machine_derived": true,
+      "script_execution_side_effects_observed": false,
+      "provider_invoked": false,
+      "model_invoked": false,
+      "credentials_read": false,
+      "production_state_mutated": false,
+      "service_restarted": false,
+      "captured_payload_source_hash_binding_count": 2478,
+      "migrated_ids": [
+        "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
+        "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary"
+      ]
     }
   ]
 }

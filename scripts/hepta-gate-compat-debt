@@ -11,12 +11,31 @@ usage() {
 
 require_tools() {
   local tool
-  for tool in jq shasum find sort comm mktemp; do
+  for tool in jq shasum find sort comm mktemp rg sed grep; do
     command -v "$tool" >/dev/null || {
       echo "missing Hepta gate compatibility debt tool: $tool" >&2
       exit 1
     }
   done
+}
+
+verify_payload_dependency_closure() {
+  local payload_root="$1"
+  local payload reference
+  while IFS= read -r payload; do
+    while IFS= read -r reference; do
+      reference="${reference#\$ROOT/}"
+      [[ -x "$ROOT/$reference" ]] || {
+        echo "missing executable Hepta gate compatibility dependency: $reference" >&2
+        return 1
+      }
+    done < <(
+      rg --no-filename --only-matching \
+        '\$ROOT/scripts/[A-Za-z0-9._/-]+(\.gate|\.report|-gate\.sh|-report\.sh)' \
+        "$payload" \
+        | LC_ALL=C sort -u
+    )
+  done < <(find "$payload_root" -type f \( -name '*.gate' -o -name '*.report' \) | LC_ALL=C sort)
 }
 
 verify() {
@@ -134,7 +153,10 @@ verify() {
     }
   done < <(jq -r '.pairs[] | select(.template == "legacy_workgraph_projection_v1") | .id' "$registry")
 
+  verify_payload_dependency_closure "$store"
+
   jq -n \
+    --arg schema hepta_gate_compat_debt_receipt_v1 \
     --arg status ready \
     --argjson pair_count "$pair_count" \
     --argjson captured_shell_pair_count "$captured_count" \
@@ -142,7 +164,7 @@ verify() {
     --argjson declarative_pair_count "$declarative_count" \
     --argjson compatibility_payload_count "$payload_count" \
     --argjson unregistered_payload_count "$unregistered_count" \
-    '{status:$status,pair_count:$pair_count,captured_shell_pair_count:$captured_shell_pair_count,legacy_workgraph_pair_count:$legacy_workgraph_pair_count,declarative_pair_count:$declarative_pair_count,compatibility_payload_count:$compatibility_payload_count,unregistered_payload_count:$unregistered_payload_count,counts_may_only_improve:true}'
+    '{schema:$schema,status:$status,pair_count:$pair_count,captured_shell_pair_count:$captured_shell_pair_count,legacy_workgraph_pair_count:$legacy_workgraph_pair_count,declarative_pair_count:$declarative_pair_count,compatibility_payload_count:$compatibility_payload_count,unregistered_payload_count:$unregistered_payload_count,counts_may_only_improve:true}'
 }
 
 self_test() {
@@ -159,7 +181,14 @@ self_test() {
     echo "Hepta gate compatibility debt accepted registry drift" >&2
     return 1
   fi
-  echo '{"status":"ready","negative_fixtures":2}'
+  cat >"$tmp/missing-dependency.report" <<'EOF'
+SOURCE_REPORT="$ROOT/scripts/hepta-gate-compat-debt-deliberately-missing-report.sh"
+EOF
+  if verify_payload_dependency_closure "$tmp" >/dev/null 2>&1; then
+    echo "Hepta gate compatibility debt accepted a missing payload dependency" >&2
+    return 1
+  fi
+  echo '{"schema":"hepta_gate_compat_debt_self_test_v1","status":"ready","negative_fixtures":3}'
 }
 
 [[ $# -eq 1 ]] || usage

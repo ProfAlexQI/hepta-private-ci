@@ -3343,7 +3343,7 @@
       "gate_implementation_sha256": "365b4da6985a59dce69b296810961158dae0600702f2db2cac01582cad53805d",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-gate-recursion-lean-contract-readback.report",
       "report_source_sha256": "80b9db38faafcc2862425a029a9aff70fc10fc7a71958056beb72d0ae9a8f258",
-      "report_implementation_sha256": "4482d60d86d87631bda4c30d3a47ad8e5c1366cdbfeaf7e91031cce00629c1a0"
+      "report_implementation_sha256": "a47b949a45c01a36de60b0896c345befe29751278950e8dc0a8c262bb3d1031d"
     },
     {
       "id": "hepta-systems-hepta-system-status-internal-read-only-invocation",
@@ -7804,7 +7804,7 @@
       "gate_implementation_sha256": "7d6b736aa774cf333a5eae7e08b89405c9e6a7083995c671f47f5c64be4b1266",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-final-index.report",
       "report_source_sha256": "494a92fdbd55c11219d264e5fcc7326114cbccfb5841711c0358be5d4cb60231",
-      "report_implementation_sha256": "4ddc0759233c1659d1984a6bb26bf08111e648a94ca1856e173d443ce14d39c9"
+      "report_implementation_sha256": "bf092c11a42d5fe4491100f92ce1fe707a8d266e353bb9f542d06b25f82e5002"
     },
     {
       "id": "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-readback",
@@ -7896,7 +7896,7 @@
       "gate_implementation_sha256": "6d535fb60a4a25b761e6c321a3e19effe45b02118fdcb695be4996ce713501dd",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-final-index.report",
       "report_source_sha256": "8ad5a733db8cdc8e506c3684aec973fc1f09f9252686f2c4bb22abca415d03ec",
-      "report_implementation_sha256": "2eda5e786ef7d0d4f9a99c0dd76557b2ae2cef8821d21cc804baf6feb8c9ea52"
+      "report_implementation_sha256": "d9317aefeae3aaf518c19f244a6866683fb4b3f49830c38179826266b8a1fac3"
     },
     {
       "id": "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-summary-readback",
@@ -8084,7 +8084,7 @@
       "gate_implementation_sha256": "e990acf04871685297ad3b8aad3834ab1ec077a4d81cf99c7637a3f9596aba13",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-final-index.report",
       "report_source_sha256": "9be04b1976ad903711d13f5426aecac0ba8e00bafe93280db23ec42a4f020c5b",
-      "report_implementation_sha256": "b30786fc723aa9313f0ac4583468c89b45d1b362a56e2009656b219e5984a6ed"
+      "report_implementation_sha256": "edb35ab03031a02535469bf64933d741ed5cb97cb6435811c20a200dec898109"
     },
     {
       "id": "hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-readback",
@@ -9780,27 +9780,24 @@
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
-      "template": "captured_shell_compat_v1",
-      "capability": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
+      "template": "signing_summary_attachment",
+      "capability": "public-ga-signing-receipt-summary-briefing-attachment",
       "receipt_state": "terminal",
-      "side_effect_boundary": "read-only terminal compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary.report",
+      "side_effect_boundary": "read-only summary denial attachment; never publishes, sends, installs, restarts, or mutates",
+      "source_report": "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-report.sh",
       "report_path": "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary-report.sh",
-      "attachment_surface": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
-      "readback_surface": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
-      "acknowledgement_prefix": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
-      "summary_prefix": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
-      "blocker_count": 1,
-      "next_migration_step": "captured_shell_compatibility_preserved_without_mutation",
-      "missing_source_message": "missing captured compatibility report payload",
-      "missing_report_message": "missing thin compatibility report wrapper",
-      "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary.gate",
-      "gate_source_sha256": "e89e69c28e97c1c59c187c46292a0f95007b1bfda10648b26905e62b027989e7",
-      "gate_implementation_sha256": "e8e71fe19b07e2f76c7c7b50cea12560bcc01dfa8519d3b1c82f3ad1588c93dd",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-export-final-index-delivery-receipt-signing-summary.report",
-      "report_source_sha256": "3382763e69940c038c4f67c77052eb670c0f71e8d77de39e2bb8ff1e1cfebb3e",
-      "report_implementation_sha256": "11a0302d6988dfaaaaa8c31b0521fbcfd5ee6420a2bcd4c7c389eb1d96bc446d"
+      "denial_gate": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-summary-denial-gate.sh",
+      "denial_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_SUMMARY_DENIAL_GATE.md",
+      "denial_subject": "terminal public claim delivery receipt artifact signing receipt summary/briefing",
+      "attachment_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_export_query_observability_final_index",
+      "readback_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_summary_briefing_attachment",
+      "acknowledgement_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_summary_briefing",
+      "summary_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_export_query_observability",
+      "blocker_count": 134,
+      "next_migration_step": "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_summary_briefing_readback_without_observability",
+      "missing_source_message": "missing executable terminal public claim delivery receipt artifact signing receipt export/query/observability final index report",
+      "missing_report_message": "missing executable signing receipt summary/briefing attachment report",
+      "pass_message": "hepta-systems-terminal-public-claim-delivery-receipt-signing-summary-attachment-gate: PASS: artifact signing receipt summary/briefing attachment is ready but blocked"
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-final-ack-final-index-delivery-receipt-signing-terminal-status",
@@ -9921,10 +9918,10 @@
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-public-status-final-index-delivery-receipt-signing-package-channel",
       "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-public-status-final-index-delivery-receipt-signing-package-channel.gate",
       "gate_source_sha256": "c46e83f689632a317b38dc671d268588ca5597afbe5f10e1ce00379c860e144c",
-      "gate_implementation_sha256": "0674035be81fc53b3242291ffa0ed508abc4de802e38cb075e8300622bb41bfa",
+      "gate_implementation_sha256": "7c4acd3f46100dce12e9daa06e0ca2f24e9cf5bd853a6b4fbefa0b25c4ed2aca",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-public-status-final-index-delivery-receipt-signing-package-channel.report",
       "report_source_sha256": "52a7a1bf644089c3753522fe8d5d39cec2d4ec1830b22ef9b97e787834a6a3e1",
-      "report_implementation_sha256": "8b6ad4761c971827139911712d6ca5147c2a88ca1ff55584ff71a9bfe18e5420"
+      "report_implementation_sha256": "2d32d7819744097260a3a11385eb09249714e9f717f4ce8ba1940aec73fcb6a7"
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-audit-final-index-delivery-receipt-signing-receipt-retention",
@@ -10189,10 +10186,10 @@
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-public-status-final-index-delivery-receipt-signing-receipt-package-channel",
       "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-public-status-final-index-delivery-receipt-signing-receipt-package-channel.gate",
       "gate_source_sha256": "31425045eb4503fa61ac75e3eaa73fcb84bfc72e8f5d39e6750c2a44a6b5af94",
-      "gate_implementation_sha256": "597c1e4e69461d4b06b05d98767e38ac38779e1add4a66e4297a04b6773a985f",
+      "gate_implementation_sha256": "87730d9a7e9e6bb3c4803111ac6e34f2a602e740a0a229937199c2c3dcb771de",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-public-status-final-index-delivery-receipt-signing-receipt-package-channel.report",
       "report_source_sha256": "b658c618447079fd2272f8e4ba0cfc6c5f7a9653a23e1f0360231416c01c1010",
-      "report_implementation_sha256": "1473a33dee35afc060ecda74f59e52b95ff4cea5b5a07a2c33e9051f89b22b05"
+      "report_implementation_sha256": "4263a9a5c26eb353c992635861e31cfbf5888345d6d05c5e8734ff82ad0644d5"
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-replay-final-index-delivery-receipt-signing-receipt-ordering",
@@ -10340,27 +10337,24 @@
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
-      "template": "captured_shell_compat_v1",
-      "capability": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
+      "template": "signing_summary_attachment",
+      "capability": "public-ga-signing-receipt-signing-receipt-signing-receipt-summary-briefing-attachment",
       "receipt_state": "terminal",
-      "side_effect_boundary": "read-only terminal compatibility; never mutates, publishes, sends, installs, or restarts",
-      "source_report": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary.report",
+      "side_effect_boundary": "read-only summary denial attachment; never publishes, sends, installs, restarts, or mutates",
+      "source_report": "scripts/hepta-systems-public-ga-operator-identity-session-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-report.sh",
       "report_path": "scripts/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary-report.sh",
-      "attachment_surface": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
-      "readback_surface": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
-      "acknowledgement_prefix": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
-      "summary_prefix": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
-      "blocker_count": 1,
-      "next_migration_step": "captured_shell_compatibility_preserved_without_mutation",
-      "missing_source_message": "missing captured compatibility report payload",
-      "missing_report_message": "missing thin compatibility report wrapper",
-      "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary",
-      "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary.gate",
-      "gate_source_sha256": "92dc3f3bea69fe4f99583ef84c9a755bb3a6b41be00c705d57285eaafc449fb2",
-      "gate_implementation_sha256": "8f345fec91a9972a37c7f37bbdcfea98baab11e8e5f9a17ec999f70c7edf4396",
-      "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-final-index-delivery-receipt-signing-receipt-signing-receipt-summary.report",
-      "report_source_sha256": "2d002a4429362ba21f3179ab6eabdbc69c5a63530942cc6fdc1cf2ce87875b7d",
-      "report_implementation_sha256": "9a599bbbe08fc60b5992dfaa913f7c9eaebd1556f1e3434443036700335f5307"
+      "denial_gate": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-denial-gate.sh",
+      "denial_doc": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_SUMMARY_DENIAL_GATE.md",
+      "denial_subject": "terminal public claim delivery receipt artifact signing receipt signing receipt signing receipt summary/briefing",
+      "attachment_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_export_query_observability_final_index",
+      "readback_surface": "public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_summary_briefing_attachment",
+      "acknowledgement_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_summary_briefing",
+      "summary_prefix": "artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_export_query_observability",
+      "blocker_count": 274,
+      "next_migration_step": "derive_public_ga_operator_identity_session_operator_intent_consent_evidence_artifact_signing_terminal_public_claim_delivery_receipt_artifact_signing_receipt_signing_receipt_signing_receipt_summary_briefing_readback_without_observability",
+      "missing_source_message": "missing executable terminal public claim delivery receipt artifact signing receipt signing receipt signing receipt export/query/observability final index report",
+      "missing_report_message": "missing executable signing receipt signing receipt signing receipt summary/briefing attachment report",
+      "pass_message": "hepta-systems-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-attachment-gate: PASS: artifact signing receipt signing receipt signing receipt summary/briefing attachment is ready but blocked"
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-final-ack-final-index-delivery-receipt-signing-receipt-signing-receipt-terminal-status",
@@ -10481,10 +10475,10 @@
       "pass_message": "hepta-gate-pair-runner: PASS: captured compatibility gate hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-public-status-final-index-delivery-receipt-signing-receipt-signing-receipt-package-channel",
       "gate_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-public-status-final-index-delivery-receipt-signing-receipt-signing-receipt-package-channel.gate",
       "gate_source_sha256": "b2e5ec0e5370649059ef94aaebfae0454761d5613145c3e4010d3a091d570331",
-      "gate_implementation_sha256": "5f771f70202638f3721d91a32861e872adc9cc64e454efec90bdfb10dd2a65dc",
+      "gate_implementation_sha256": "f1c3fd9edfb17784bb60cd1e8bc0a11882b958a3370d38fcc7e859ce54c8a8cb",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-public-status-final-index-delivery-receipt-signing-receipt-signing-receipt-package-channel.report",
       "report_source_sha256": "732f43009680effbff365ba56d606b099d3aabe3a458cae099ca4693f780befb",
-      "report_implementation_sha256": "23e029ed7a13f19e6ac766319d9c10942d9e33e68e55866dac43c9dd6100563c"
+      "report_implementation_sha256": "6e1677922264a691f680ec42347ebb2cad5f12115232138ddf010b34384fd158"
     },
     {
       "id": "hepta-systems-public-ga-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-replay-final-index-delivery-receipt-signing-receipt-signing-receipt-ordering",
@@ -30790,7 +30784,7 @@
       "gate_implementation_sha256": "f355c28b44c0f56460e91109b24395ed470f45a00c5960b3a250a00f805b8b28",
       "report_implementation": "scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-workgraph-legacy-gate-recursion-inventory-readback.report",
       "report_source_sha256": "6c262cccda1589463800b979e2f9f26356481a2a14992ec314bd047fed29da07",
-      "report_implementation_sha256": "943ddfc48d87053e47c6da232a4f9d94358165e579bb289e0ee8cebd24758b85"
+      "report_implementation_sha256": "4ca49cb57f2b9350def69e3990d904aa8b49275750b40b8b8671268f9eaf7fdc"
     }
   ]
 }
