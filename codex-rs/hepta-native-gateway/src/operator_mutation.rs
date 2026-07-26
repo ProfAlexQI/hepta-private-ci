@@ -11,8 +11,15 @@ use std::path::PathBuf;
 use anyhow::Context;
 use anyhow::Result;
 use hepta_core::ApprovalRequirement;
+use hepta_runtime::EffectBroker;
+use hepta_runtime::EffectPlan;
+use hepta_runtime::ExactExecutionAuthority;
+use hepta_runtime::ExecutionAdmission;
+use hepta_runtime::ExecutionIngress;
+use hepta_runtime::ProviderEffectAck;
 use hepta_runtime::RuntimeExecutionReceipt;
 use hepta_runtime::RuntimeKernel;
+use hepta_runtime::TerminalEffectReceipt;
 use hmac::Hmac;
 use hmac::Mac;
 use serde::Deserialize;
@@ -326,6 +333,12 @@ fn commit_with_key(
         .context("build operator mutation executor")?;
     let execution =
         (|| -> Result<(hepta_runtime::VerticalSliceResult, RuntimeExecutionReceipt)> {
+            let (mut effect_broker, effect_plan_hash) = effect_broker_for_commit(
+                &request,
+                &prepared,
+                commit_request_binding_hash,
+                &mutation_id_hash,
+            )?;
             let result = executor
                 .block_on(kernel.approve_candidate_and_run_demo_turn_in_session(
                     &prepared.session_id,
@@ -352,6 +365,7 @@ fn commit_with_key(
             {
                 anyhow::bail!("operator mutation lifecycle evidence failed closed");
             }
+            complete_effect_broker(&mut effect_broker, &effect_plan_hash, &receipt)?;
             Ok((result, receipt))
         })();
     let (result, receipt) = match execution {
@@ -396,6 +410,8 @@ struct PreparedOperatorMutation {
     plan_hash: String,
     session_id: String,
     runtime_instruction: String,
+    target: String,
+    payload_digest: String,
 }
 
 impl PreparedOperatorMutation {
@@ -414,6 +430,7 @@ impl PreparedOperatorMutation {
         })
         .context("encode canonical operator note")?;
         let target = format!("artifacts/.hepta-operator-note-{mutation_id}.json");
+        let payload_digest = format!("sha256:{:x}", Sha256::digest(artifact.as_bytes()));
         let plan_hash = digest(
             PLAN_HASH_DOMAIN,
             &[
@@ -428,8 +445,80 @@ impl PreparedOperatorMutation {
             session_id: format!("native-gateway:operator-note:{plan_hash}"),
             runtime_instruction: format!("overwrite:{target} => {artifact}"),
             plan_hash,
+            target,
+            payload_digest,
         })
     }
+}
+
+fn effect_broker_for_commit(
+    request: &OperatorMutationCommitRequest,
+    prepared: &PreparedOperatorMutation,
+    commit_request_binding_hash: &str,
+    mutation_id_hash: &str,
+) -> Result<(EffectBroker, String)> {
+    let authority = ExactExecutionAuthority::new(
+        commit_request_binding_hash,
+        &request.plan_request_binding_hash,
+        &request.session_binding_hash,
+    )
+    .context("bind exact operator mutation execution authority")?;
+    let admission = ExecutionAdmission::new(
+        ExecutionIngress::NativeGateway,
+        "operator-note-write",
+        authority,
+        &request.plan_hash,
+        &request.candidate_binding_hash,
+    )
+    .context("admit operator mutation execution")?;
+    let effect_plan = EffectPlan::new(
+        admission.admission_hash(),
+        "write_file",
+        &prepared.target,
+        &prepared.payload_digest,
+        mutation_id_hash,
+    )
+    .context("record operator mutation effect plan")?;
+    let effect_plan_hash = effect_plan.effect_plan_hash().to_string();
+    let mut broker = EffectBroker::admit(admission);
+    broker
+        .record_effect_plan(effect_plan)
+        .context("publish operator mutation effect plan before dispatch")?;
+    Ok((broker, effect_plan_hash))
+}
+
+fn complete_effect_broker(
+    broker: &mut EffectBroker,
+    effect_plan_hash: &str,
+    receipt: &RuntimeExecutionReceipt,
+) -> Result<()> {
+    let provider_receipt_hash = receipt
+        .provider_effect_ack_hash
+        .as_deref()
+        .context("operator mutation provider ACK hash is missing")?;
+    let provider_ack = ProviderEffectAck::new(
+        effect_plan_hash,
+        "runtime-kernel:write_file",
+        provider_receipt_hash,
+    )
+    .context("bind operator mutation provider ACK")?;
+    let provider_ack_hash = provider_ack.ack_hash().to_string();
+    broker
+        .record_provider_ack(provider_ack)
+        .context("record operator mutation provider ACK")?;
+    let terminal_receipt = TerminalEffectReceipt::succeeded(
+        provider_ack_hash,
+        &receipt.terminal_receipt_hash,
+        &receipt.terminal_evidence_hash,
+    )
+    .context("bind operator mutation terminal receipt")?;
+    broker
+        .record_terminal_receipt(terminal_receipt)
+        .context("record operator mutation terminal receipt")?;
+    broker
+        .completed_receipt_hash()
+        .context("operator mutation effect broker did not reach terminal state")?;
+    Ok(())
 }
 
 fn prepare_exact_candidate(

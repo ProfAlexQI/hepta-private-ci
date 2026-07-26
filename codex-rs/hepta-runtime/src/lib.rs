@@ -187,6 +187,7 @@ mod dirty_worktree_release_boundary_test_only_clean_worktree_strategy_rehearsal;
 mod dirty_worktree_release_boundary_test_only_rehearsal_outcome_readback;
 mod doctor;
 mod events;
+mod execution_admission;
 mod hepta_contracts;
 mod hepta_system_status_internal_read_only_invocation;
 mod hepta_system_status_operator_approval_protocol;
@@ -1018,6 +1019,15 @@ use runtime_kernel::execution_lease::ExecutionLeaseRegistry;
 use runtime_kernel::outcome_recorder::OutcomeRecorder;
 use runtime_kernel::safety_gate_client::SafetyGateClient;
 use runtime_preference_context::AttachedPreferenceContextState;
+
+pub use execution_admission::EffectBroker;
+pub use execution_admission::EffectPlan;
+pub use execution_admission::ExactExecutionAuthority;
+pub use execution_admission::ExecutionAdmission;
+pub use execution_admission::ExecutionAdmissionError;
+pub use execution_admission::ExecutionIngress;
+pub use execution_admission::ProviderEffectAck;
+pub use execution_admission::TerminalEffectReceipt;
 
 include!("runtime_kernel/exports.rs");
 include!("runtime_kernel/exports_workgraph.rs");
