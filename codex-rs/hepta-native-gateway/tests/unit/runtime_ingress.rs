@@ -73,6 +73,45 @@ fn runtime_ingress_registry_covers_all_declared_routes_and_serializes_lifecycle_
 }
 
 #[test]
+fn runtime_ingress_registry_covers_detached_reports_and_watchdog_readbacks() {
+    for path in DETACHED_CONTROL_UI_REPORT_PATHS {
+        assert_eq!(
+            runtime_ingress_lifecycle("GET", path)
+                .map(|lifecycle| (lifecycle.effect_class, lifecycle.disposition())),
+            Some((
+                IngressEffectClass::MetadataRead,
+                RuntimeRequestDisposition::ReadOnlyDispatch
+            )),
+            "unclassified or unsafe detached report: GET {path}"
+        );
+    }
+
+    for path in [
+        "/health",
+        CONTROL_UI_ROUTE_PARITY_ENDPOINT,
+        "/api/operator-security",
+        "/api/telegram-owner-handoff",
+        "/api/telegram-poll-loop",
+        "/api/native-post-activation-plan",
+        "/api/native-post-execution-stores",
+        hepta_gateway::HEPTA_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        hepta_gateway::HEPTA_CODEX_ENGINE_ADAPTER_BOUNDARY_ENDPOINT,
+        hepta_gateway::HEPTA_CORE_FUSION_READINESS_ENDPOINT,
+        hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT,
+        hepta_gateway::HEPTA_ENGINE_DEPENDENCY_CLOSURE_ENDPOINT,
+    ] {
+        assert_eq!(
+            runtime_ingress_lifecycle("GET", path).map(|lifecycle| (
+                lifecycle.disposition(),
+                lifecycle.effect_class.performs_effect()
+            )),
+            Some((RuntimeRequestDisposition::ReadOnlyDispatch, false)),
+            "unclassified or unsafe watchdog readback: GET {path}"
+        );
+    }
+}
+
+#[test]
 fn runtime_ingress_registry_rejects_unknown_get_effect_and_incomplete_authority() {
     assert!(runtime_ingress_lifecycle("GET", "/api/unregistered").is_none());
     assert!(runtime_ingress_lifecycle("POST", "/api/unregistered").is_none());

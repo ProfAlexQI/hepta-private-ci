@@ -9,7 +9,11 @@ use crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_IN
 use crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_RESOLVE_ENDPOINT;
 use crate::preference_ingress::PREFERENCE_CHALLENGE_ENDPOINT;
 use crate::preference_ingress::PREFERENCE_COMMIT_ENDPOINT;
+use crate::route_registry::CONTROL_UI_ROUTE_PARITY_ENDPOINT;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
+use crate::route_registry::GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT;
+use crate::route_registry::GATEWAY_REPLACEMENT_READINESS_ENDPOINT;
+use crate::route_registry::TELEGRAM_LIVE_SOAK_ENDPOINT;
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
@@ -61,6 +65,13 @@ const QUARANTINED_TRANSITIVE_CANARY_EFFECT_PATHS: &[&str] = &[
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-boundary",
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-receipt-boundary",
     "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary",
+];
+
+const DETACHED_CONTROL_UI_REPORT_PATHS: &[&str] = &[
+    CONTROL_UI_ROUTE_PARITY_ENDPOINT,
+    GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
+    GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
+    TELEGRAM_LIVE_SOAK_ENDPOINT,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -305,6 +316,10 @@ const SPECIAL_INGRESS_LIFECYCLES: &[IngressLifecycleSpec] = &[
     metadata_read("/api/telegram-drain-once"),
     metadata_read("/api/telegram-poll-loop"),
     metadata_read("/api/telegram-cursor"),
+    metadata_read(CONTROL_UI_ROUTE_PARITY_ENDPOINT),
+    metadata_read(GATEWAY_REPLACEMENT_READINESS_ENDPOINT),
+    metadata_read(GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT),
+    metadata_read(TELEGRAM_LIVE_SOAK_ENDPOINT),
     IngressLifecycleSpec {
         method: "POST",
         path_pattern: OPERATOR_AUTHORITY_CHALLENGE_ENDPOINT,
@@ -770,13 +785,7 @@ pub(crate) fn runtime_ingress_lifecycle(method: &str, path: &str) -> Option<Ingr
 pub(crate) fn is_detached_control_ui_report_for_test(method: &str, path: &str) -> bool {
     method == "GET"
         && (QUARANTINED_TRANSITIVE_CANARY_EFFECT_PATHS.contains(&path)
-            || matches!(
-                path,
-                "/api/control-ui-route-parity"
-                    | "/api/gateway-replacement-readiness"
-                    | "/api/gateway-live-activation-plan"
-                    | "/api/telegram-live-soak"
-            ))
+            || DETACHED_CONTROL_UI_REPORT_PATHS.contains(&path))
 }
 
 pub(crate) fn runtime_ingress_lifecycle_registry() -> Vec<IngressLifecycleSpec> {
