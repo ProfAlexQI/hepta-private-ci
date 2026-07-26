@@ -2797,7 +2797,7 @@ impl Session {
         warn!("server reported model {server_model} while requested model was {requested_model}");
 
         let warning_message = format!(
-            "Your account was flagged for potentially high-risk cyber activity and this request was routed to gpt-5.2 as a fallback. To regain access to gpt-5.3-codex, apply for trusted access: {CYBER_VERIFY_URL}"
+            "Your account was flagged for potentially high-risk cyber activity and this request was routed to {server_model} as a fallback. To regain access to {requested_model}, apply for trusted access: {CYBER_VERIFY_URL}"
         );
 
         self.send_event(

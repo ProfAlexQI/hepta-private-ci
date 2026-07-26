@@ -100,6 +100,7 @@ async fn emits_warning_when_resumed_model_differs() {
         CodexAuth::from_api_key("test"),
         config.model_provider.clone(),
     );
+    config.bind_config_generation(thread_manager.config_generation_source().freeze());
     let auth_manager =
         codex_core::test_support::auth_manager_from_auth(CodexAuth::from_api_key("test"));
 

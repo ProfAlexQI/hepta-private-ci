@@ -3275,6 +3275,8 @@ async fn start_materialized_thread_and_restart(
 async fn thread_resume_accepts_personality_override() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
+    const PERSONALITY_MODEL: &str = "exp-codex-personality";
+
     let server = responses::start_mock_server().await;
     let first_body = responses::sse(vec![
         responses::ev_response_created("resp-1"),
@@ -3296,7 +3298,7 @@ async fn thread_resume_accepts_personality_override() -> Result<()> {
 
     let start_id = primary
         .send_thread_start_request(ThreadStartParams {
-            model: Some("gpt-5.3-codex".to_string()),
+            model: Some(PERSONALITY_MODEL.to_string()),
             ..Default::default()
         })
         .await?;
@@ -3334,7 +3336,7 @@ async fn thread_resume_accepts_personality_override() -> Result<()> {
     let resume_id = secondary
         .send_thread_resume_request(ThreadResumeParams {
             thread_id: thread.id,
-            model: Some("gpt-5.3-codex".to_string()),
+            model: Some(PERSONALITY_MODEL.to_string()),
             personality: Some(Personality::Friendly),
             ..Default::default()
         })

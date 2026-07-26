@@ -666,12 +666,12 @@ async fn view_image_routes_to_selected_remote_environment() -> anyhow::Result<()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn view_image_tool_can_preserve_original_resolution_when_requested_on_gpt5_3_codex()
+async fn view_image_tool_can_preserve_original_resolution_when_requested_on_gpt5_4()
 -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
-    let mut builder = test_codex().with_model("gpt-5.3-codex");
+    let mut builder = test_codex().with_model("gpt-5.4");
     let test = builder.build_with_remote_env(&server).await?;
     let TestCodex {
         codex,

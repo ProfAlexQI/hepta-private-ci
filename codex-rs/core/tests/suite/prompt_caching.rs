@@ -773,16 +773,23 @@ async fn per_turn_overrides_keep_cached_prefix_and_key_constant() -> anyhow::Res
         }),
         "expected model switch section after model override: {expected_settings_update_msg:?}"
     );
-    let expected_env_msg_2 = body2["input"][body1_input.len() + 1].clone();
-    assert_eq!(expected_env_msg_2["role"].as_str(), Some("user"));
-    let env_text = expected_env_msg_2["content"][0]["text"]
-        .as_str()
+    let expected_project_instructions_msg = body2["input"][body1_input.len() + 1].clone();
+    assert_eq!(
+        expected_project_instructions_msg["role"].as_str(),
+        Some("user")
+    );
+    let env_text = expected_project_instructions_msg["content"]
+        .as_array()
+        .expect("project instructions content")
+        .iter()
+        .filter_map(|item| item["text"].as_str())
+        .find(|text| text.starts_with(ENVIRONMENT_CONTEXT_OPEN_TAG))
         .expect("environment context text");
     let expected_cwd = new_cwd.path().display().to_string();
     assert_default_env_context(env_text, &expected_cwd);
     let mut expected_body2 = body1_input.to_vec();
     expected_body2.push(expected_settings_update_msg);
-    expected_body2.push(expected_env_msg_2);
+    expected_body2.push(expected_project_instructions_msg);
     expected_body2.push(expected_user_message_2);
     assert_eq!(body2["input"], serde_json::Value::Array(expected_body2));
 

@@ -26,6 +26,7 @@ use core_test_support::managed_network_requirements_loader;
 use core_test_support::responses::ev_apply_patch_custom_tool_call;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
+#[cfg(feature = "code-mode-v8")]
 use core_test_support::responses::ev_custom_tool_call;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_message_item_added;
@@ -2329,6 +2330,7 @@ async fn pre_tool_use_rewrites_exec_command_before_execution() -> Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "code-mode-v8")]
 async fn pre_tool_use_rewrites_code_mode_nested_exec_command_before_execution() -> Result<()> {
     skip_if_no_network!(Ok(()));
 

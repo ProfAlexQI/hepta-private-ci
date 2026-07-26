@@ -3,6 +3,7 @@ use crate::SkillsManager;
 use crate::config::CONFIG_TOML_FILE;
 use crate::config::ConfigBuilder;
 use crate::skills_load_input_from_config;
+use codex_config::ConfigGenerationSource;
 use codex_config::ConfigLayerStackOrdering;
 use codex_core_plugins::PluginsManager;
 use codex_protocol::config_types::ReasoningSummary;
@@ -223,6 +224,40 @@ async fn apply_role_preserves_unspecified_keys() {
     assert_eq!(
         config.main_execve_wrapper_exe,
         Some(PathBuf::from("/tmp/codex-execve-wrapper"))
+    );
+}
+
+#[tokio::test]
+async fn apply_role_preserves_config_generation_source() {
+    let (home, mut config) = test_config_with_cli_overrides(Vec::new()).await;
+    let generation_source = ConfigGenerationSource::new(7);
+    config.bind_config_generation(generation_source.freeze());
+    let role_path = write_role_config(
+        &home,
+        "generation-role.toml",
+        "developer_instructions = \"Stay focused\"",
+    )
+    .await;
+    config.agent_roles.insert(
+        "custom".to_string(),
+        AgentRoleConfig {
+            description: None,
+            config_file: Some(role_path),
+            agent_card_manifest_source: None,
+            agent_card_manifest_version: None,
+            agent_card_manifest: None,
+            nickname_candidates: None,
+        },
+    );
+
+    apply_role_to_config(&mut config, Some("custom"))
+        .await
+        .expect("custom role should apply");
+
+    assert_eq!(config.config_generation().value(), 7);
+    assert!(
+        generation_source.is_source_of(config.config_generation()),
+        "role reload must preserve the active runtime generation source"
     );
 }
 

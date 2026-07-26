@@ -248,6 +248,36 @@ where
     wait_for_event_with_timeout(codex, predicate, Duration::from_secs(1)).await
 }
 
+pub async fn wait_for_mcp_server(codex: &CodexThread, server_name: &str) -> anyhow::Result<()> {
+    use codex_protocol::protocol::EventMsg;
+
+    let summary = loop {
+        let event = codex
+            .next_event()
+            .await
+            .expect("stream ended unexpectedly while waiting for MCP startup");
+        if let EventMsg::McpStartupComplete(summary) = event.msg {
+            break summary;
+        }
+    };
+    if let Some(failure) = summary
+        .failed
+        .iter()
+        .find(|failure| failure.server == server_name)
+    {
+        let error = &failure.error;
+        anyhow::bail!("MCP server {server_name} failed to start: {error}");
+    }
+    if summary.cancelled.iter().any(|server| server == server_name) {
+        anyhow::bail!("MCP server {server_name} startup was cancelled");
+    }
+    assert!(
+        summary.ready.iter().any(|server| server == server_name),
+        "expected MCP server {server_name} to be ready; startup summary: {summary:?}"
+    );
+    Ok(())
+}
+
 pub async fn wait_for_event_match<T, F>(codex: &CodexThread, matcher: F) -> T
 where
     F: Fn(&codex_protocol::protocol::EventMsg) -> Option<T>,

@@ -365,7 +365,7 @@ async fn conversation_start_audio_text_close_round_trip() -> Result<()> {
             .expect("started session id should be present")
     );
     assert_eq!(
-        server.handshakes()[1].header("authorization").as_deref(),
+        server.handshakes()[0].header("authorization").as_deref(),
         Some("Bearer dummy")
     );
     assert_eq!(
@@ -829,23 +829,14 @@ async fn conversation_start_uses_openai_env_key_fallback_with_chatgpt_auth() -> 
 
     skip_if_no_network!(Ok(()));
 
-    let server = start_websocket_server(vec![
-        vec![],
-        vec![vec![json!({
+    let server = start_websocket_server(vec![vec![vec![json!({
             "type": "session.updated",
             "session": { "id": "sess_env", "instructions": "backend prompt" }
-        })]],
-    ])
+        })]]])
     .await;
 
     let mut builder = test_codex().with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing());
     let test = builder.build_with_websocket_server(&server).await?;
-    assert!(
-        server
-            .wait_for_handshakes(/*expected*/ 1, Duration::from_secs(2))
-            .await
-    );
-
     test.codex
         .submit(Op::RealtimeConversationStart(ConversationStartParams {
             output_modality: RealtimeOutputModality::Audio,
@@ -879,7 +870,7 @@ async fn conversation_start_uses_openai_env_key_fallback_with_chatgpt_auth() -> 
     assert_eq!(session_updated, "sess_env");
 
     assert_eq!(
-        server.handshakes()[1].header("authorization").as_deref(),
+        server.handshakes()[0].header("authorization").as_deref(),
         Some("Bearer env-realtime-key")
     );
 

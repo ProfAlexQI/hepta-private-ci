@@ -176,6 +176,7 @@ mod reload {
             config_layer_stack,
         )
         .await?;
+        next_config.bind_config_generation(config.config_generation().clone());
         if preserve_current_profile {
             next_config.active_profile = config.active_profile.clone();
         }

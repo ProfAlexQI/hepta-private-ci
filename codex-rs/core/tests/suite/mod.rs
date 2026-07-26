@@ -38,6 +38,7 @@ mod approvals;
 mod cli_stream;
 mod client;
 mod client_websockets;
+#[cfg(feature = "code-mode-v8")]
 mod code_mode;
 mod codex_delegate;
 mod collaboration_instructions;

@@ -110,6 +110,7 @@ async fn build_analytics_plugin_test_codex(
         .with_model("gpt-5.2")
         .with_config(move |config| {
             config.chatgpt_base_url = chatgpt_base_url;
+            config.analytics_enabled = Some(true);
         });
     Ok(builder
         .build(server)

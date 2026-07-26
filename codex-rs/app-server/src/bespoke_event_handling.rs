@@ -2114,6 +2114,28 @@ mod tests {
         Arc::new(Mutex::new(ThreadState::default()))
     }
 
+    fn run_bespoke_test_with_stack<F>(name: &str, future: F) -> Result<()>
+    where
+        F: std::future::Future<Output = Result<()>> + Send + 'static,
+    {
+        const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+        let handle = std::thread::Builder::new()
+            .name(name.to_string())
+            .stack_size(TEST_STACK_SIZE_BYTES)
+            .spawn(move || -> Result<()> {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()?;
+                runtime.block_on(future)
+            })?;
+
+        match handle.join() {
+            Ok(result) => result,
+            Err(_) => Err(anyhow!("{name} thread panicked")),
+        }
+    }
+
     const TEST_TURN_COMPLETED_AT: i64 = 1_716_000_456;
     const TEST_TURN_DURATION_MS: i64 = 1_234;
 
@@ -2604,10 +2626,17 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn guardian_command_execution_notifications_wrap_review_lifecycle() -> Result<()> {
+    #[test]
+    fn guardian_command_execution_notifications_wrap_review_lifecycle() -> Result<()> {
+        run_bespoke_test_with_stack(
+            "guardian-command-execution-notifications",
+            guardian_command_execution_notifications_wrap_review_lifecycle_inner(),
+        )
+    }
+
+    async fn guardian_command_execution_notifications_wrap_review_lifecycle_inner() -> Result<()> {
         let codex_home = TempDir::new()?;
-        let config = load_default_config_for_test(&codex_home).await;
+        let mut config = load_default_config_for_test(&codex_home).await;
         let thread_manager = Arc::new(
             codex_core::test_support::thread_manager_with_models_provider_and_home(
                 CodexAuth::create_dummy_chatgpt_auth_for_testing(),
@@ -2616,6 +2645,7 @@ mod tests {
                 Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
             ),
         );
+        config.bind_config_generation(thread_manager.config_generation_source().freeze());
         let codex_core::NewThread {
             thread_id: conversation_id,
             thread: conversation,
@@ -3182,10 +3212,17 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn turn_started_omits_active_snapshot_items() -> Result<()> {
+    #[test]
+    fn turn_started_omits_active_snapshot_items() -> Result<()> {
+        run_bespoke_test_with_stack(
+            "turn-started-omits-active-snapshot-items",
+            turn_started_omits_active_snapshot_items_inner(),
+        )
+    }
+
+    async fn turn_started_omits_active_snapshot_items_inner() -> Result<()> {
         let codex_home = TempDir::new()?;
-        let config = load_default_config_for_test(&codex_home).await;
+        let mut config = load_default_config_for_test(&codex_home).await;
         let thread_manager = Arc::new(
             codex_core::test_support::thread_manager_with_models_provider_and_home(
                 CodexAuth::create_dummy_chatgpt_auth_for_testing(),
@@ -3194,6 +3231,7 @@ mod tests {
                 Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
             ),
         );
+        config.bind_config_generation(thread_manager.config_generation_source().freeze());
         let codex_core::NewThread {
             thread_id: conversation_id,
             thread: conversation,

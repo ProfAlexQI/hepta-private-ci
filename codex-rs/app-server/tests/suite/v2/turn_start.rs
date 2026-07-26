@@ -1899,6 +1899,8 @@ async fn turn_start_change_personality_mid_thread_v2() -> Result<()> {
 async fn turn_start_uses_migrated_pragmatic_personality_without_override_v2() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
+    const PERSONALITY_MODEL: &str = "exp-codex-personality";
+
     let server = responses::start_mock_server().await;
     let body = responses::sse(vec![
         responses::ev_response_created("resp-1"),
@@ -1940,7 +1942,7 @@ async fn turn_start_uses_migrated_pragmatic_personality_without_override_v2() ->
 
     let thread_req = mcp
         .send_thread_start_request(ThreadStartParams {
-            model: Some("gpt-5.3-codex".to_string()),
+            model: Some(PERSONALITY_MODEL.to_string()),
             ..Default::default()
         })
         .await?;

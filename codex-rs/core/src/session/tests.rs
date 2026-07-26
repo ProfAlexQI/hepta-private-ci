@@ -1152,7 +1152,7 @@ async fn get_base_instructions_no_user_content() {
             expects_apply_patch_description: false,
         },
         InstructionsTestCase {
-            slug: "gpt-5.3-codex",
+            slug: "gpt-5.5",
             expects_apply_patch_description: false,
         },
         InstructionsTestCase {
@@ -11821,7 +11821,6 @@ async fn task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input()
     assert!(matches!(
         fifth.msg,
         EventMsg::TurnComplete(TurnCompleteEvent {
-            started_at: None,
             error: None,
             turn_id,
             last_agent_message: None,

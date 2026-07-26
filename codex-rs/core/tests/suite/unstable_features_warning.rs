@@ -35,6 +35,7 @@ async fn emits_warning_when_unstable_features_enabled_via_config() {
         CodexAuth::from_api_key("test"),
         config.model_provider.clone(),
     );
+    config.bind_config_generation(thread_manager.config_generation_source().freeze());
     let auth_manager =
         codex_core::test_support::auth_manager_from_auth(CodexAuth::from_api_key("test"));
 
@@ -82,6 +83,7 @@ async fn suppresses_warning_when_configured() {
         CodexAuth::from_api_key("test"),
         config.model_provider.clone(),
     );
+    config.bind_config_generation(thread_manager.config_generation_source().freeze());
     let auth_manager =
         codex_core::test_support::auth_manager_from_auth(CodexAuth::from_api_key("test"));
 
