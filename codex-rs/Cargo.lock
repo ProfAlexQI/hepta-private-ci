@@ -2047,6 +2047,7 @@ dependencies = [
  "codex-rollout",
  "codex-sandboxing",
  "codex-shell-command",
+ "codex-skills",
  "codex-state",
  "codex-thread-store",
  "codex-tools",
