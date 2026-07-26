@@ -46,6 +46,8 @@ use uuid::Uuid;
 
 const ABANDONED_NETWORK_APPROVAL_MESSAGE: &str =
     "network approval was cancelled before a decision was returned";
+const NETWORK_APPROVAL_POLICY_COMMIT_SERIALIZATION_UNAVAILABLE_MESSAGE: &str =
+    "network approval policy commit serialization is unavailable";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NetworkApprovalMode {
@@ -354,16 +356,23 @@ impl NetworkApprovalService {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn close_session_policy_commit_serializer_for_test(&self) {
+        self.session_policy_commit_semaphore.close();
+    }
+
     /// Replace the target session's approval cache with the source session's
     /// currently approved hosts.
-    pub(crate) async fn sync_session_approved_hosts_to(&self, other: &Self) {
+    pub(crate) async fn sync_session_approved_hosts_to(&self, other: &Self) -> bool {
         let Some(_commit_permit) = self.acquire_session_policy_commit_permit().await else {
-            return;
+            other.session_approved_hosts.lock().await.clear();
+            return false;
         };
         let approved_hosts = self.session_approved_hosts.lock().await.clone();
         let mut other_approved_hosts = other.session_approved_hosts.lock().await;
         other_approved_hosts.clear();
         other_approved_hosts.extend(approved_hosts.iter().cloned());
+        true
     }
 
     async fn register_call(
@@ -431,6 +440,36 @@ impl NetworkApprovalService {
         };
         self.record_call_outcome(&owner_call.registration_id, outcome)
             .await;
+    }
+
+    async fn record_policy_denial_for_owner_call(
+        &self,
+        owner_call: Option<&Arc<ActiveNetworkApprovalCall>>,
+        message: impl Into<String>,
+    ) {
+        if let Some(owner_call) = owner_call {
+            self.record_call_outcome(
+                &owner_call.registration_id,
+                NetworkApprovalOutcome::DeniedByPolicy(message.into()),
+            )
+            .await;
+        }
+    }
+
+    async fn acquire_session_policy_commit_permit_or_deny_owner(
+        &self,
+        owner_call: Option<&Arc<ActiveNetworkApprovalCall>>,
+    ) -> Option<SemaphorePermit<'_>> {
+        let Some(commit_permit) = self.acquire_session_policy_commit_permit().await else {
+            self.record_policy_denial_for_owner_call(
+                owner_call,
+                NETWORK_APPROVAL_POLICY_COMMIT_SERIALIZATION_UNAVAILABLE_MESSAGE,
+            )
+            .await;
+            return None;
+        };
+
+        Some(commit_permit)
     }
 
     #[cfg(test)]
@@ -519,11 +558,25 @@ impl NetworkApprovalService {
         }
 
         {
-            let Some(_commit_permit) = self.acquire_session_policy_commit_permit().await else {
+            let Some(_commit_permit) = self
+                .acquire_session_policy_commit_permit_or_deny_owner(owner_call.as_ref())
+                .await
+            else {
                 return NetworkDecision::deny(REASON_NOT_ALLOWED);
             };
-            let denied_hosts = self.session_denied_hosts.lock().await;
-            if denied_hosts.contains(&key) {
+            let denied_by_cached_policy = {
+                let denied_hosts = self.session_denied_hosts.lock().await;
+                denied_hosts.contains(&key)
+            };
+            if denied_by_cached_policy {
+                self.record_policy_denial_for_owner_call(
+                    owner_call.as_ref(),
+                    format!(
+                        "Network access to \"{}\" was blocked by policy.",
+                        Self::format_network_target(key.protocol, request.host.as_str(), key.port)
+                    ),
+                )
+                .await;
                 return NetworkDecision::deny(REASON_NOT_ALLOWED);
             }
         }
@@ -678,17 +731,10 @@ impl NetworkApprovalService {
                 | ReviewDecision::ApprovedForSession
                 | ReviewDecision::NetworkPolicyAmendment { .. }
         ) {
-            let Some(commit_permit) = self.acquire_session_policy_commit_permit().await else {
-                if let Some(owner_call) = owner_call.as_ref() {
-                    self.record_call_outcome(
-                        &owner_call.registration_id,
-                        NetworkApprovalOutcome::DeniedByPolicy(
-                            "network approval policy commit serialization is unavailable"
-                                .to_string(),
-                        ),
-                    )
-                    .await;
-                }
+            let Some(commit_permit) = self
+                .acquire_session_policy_commit_permit_or_deny_owner(owner_call.as_ref())
+                .await
+            else {
                 pending_owner.complete(PendingApprovalDecision::Deny);
                 return NetworkDecision::deny(REASON_NOT_ALLOWED);
             };

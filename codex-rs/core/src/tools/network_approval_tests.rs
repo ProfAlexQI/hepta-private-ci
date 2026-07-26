@@ -134,7 +134,7 @@ async fn session_approved_hosts_preserve_protocol_and_port_scope() {
     }
 
     let seeded = NetworkApprovalService::default();
-    source.sync_session_approved_hosts_to(&seeded).await;
+    assert!(source.sync_session_approved_hosts_to(&seeded).await);
 
     let mut copied = seeded
         .session_approved_hosts
@@ -189,7 +189,7 @@ async fn sync_session_approved_hosts_to_replaces_existing_target_hosts() {
         });
     }
 
-    source.sync_session_approved_hosts_to(&target).await;
+    assert!(source.sync_session_approved_hosts_to(&target).await);
 
     let copied = target
         .session_approved_hosts
@@ -239,7 +239,7 @@ async fn sync_session_approved_hosts_waits_for_an_in_flight_policy_commit() {
         let source = Arc::clone(&source);
         let target = Arc::clone(&target);
         tokio::spawn(async move {
-            source.sync_session_approved_hosts_to(&target).await;
+            assert!(source.sync_session_approved_hosts_to(&target).await);
         })
     };
     tokio::task::yield_now().await;
@@ -267,7 +267,7 @@ async fn sync_session_approved_hosts_waits_for_an_in_flight_policy_commit() {
 }
 
 #[tokio::test]
-async fn sync_session_approved_hosts_fails_closed_when_commit_serialization_is_unavailable() {
+async fn sync_session_approved_hosts_fails_closed_and_clears_stale_target_hosts() {
     let source = NetworkApprovalService::default();
     {
         let mut approved_hosts = source.session_approved_hosts.lock().await;
@@ -289,11 +289,13 @@ async fn sync_session_approved_hosts_fails_closed_when_commit_serialization_is_u
         });
     }
 
-    source.sync_session_approved_hosts_to(&target).await;
+    assert!(!source.sync_session_approved_hosts_to(&target).await);
 
     let copied = target.session_approved_hosts.lock().await;
-    assert_eq!(copied.len(), 1);
-    assert!(copied.iter().any(|host| host.host == "target.example.com"));
+    assert!(
+        copied.is_empty(),
+        "stale target approvals must not survive a failed sync"
+    );
 }
 
 #[tokio::test]
@@ -439,6 +441,30 @@ async fn record_blocked_request_sets_policy_outcome_for_owner_call() {
                 "Network access to \"example.com\" was blocked: domain is not on the allowlist for the current sandbox mode.".to_string()
             ))
         );
+}
+
+#[tokio::test]
+async fn unavailable_policy_commit_serializer_denies_and_cancels_owner_call() {
+    let service = NetworkApprovalService::default();
+    let cancellation_token =
+        register_call_with_default_shell_trigger(&service, "registration-1").await;
+    let owner_call = service.resolve_single_active_call().await;
+
+    service.session_policy_commit_semaphore.close();
+    let permit = service
+        .acquire_session_policy_commit_permit_or_deny_owner(owner_call.as_ref())
+        .await;
+
+    assert!(permit.is_none());
+    assert!(cancellation_token.is_cancelled());
+    let err = service
+        .finish_call("registration-1")
+        .await
+        .expect_err("serializer failure must finish as a policy denial");
+    assert!(
+        matches!(err, ToolError::Rejected(message) if message == NETWORK_APPROVAL_POLICY_COMMIT_SERIALIZATION_UNAVAILABLE_MESSAGE)
+    );
+    assert_eq!(service.take_call_outcome("registration-1").await, None);
 }
 
 #[tokio::test]

@@ -658,14 +658,19 @@ async fn run_review_on_session(
         deadline,
         params.external_cancel.as_ref(),
         Box::pin(async {
-            params
+            if !params
                 .parent_session
                 .services
                 .network_approval
                 .sync_session_approved_hosts_to(
                     &review_session.codex.session.services.network_approval,
                 )
-                .await;
+                .await
+            {
+                return Err(serde_json::Error::io(std::io::Error::other(
+                    "failed to synchronize Guardian network approval cache",
+                )));
+            }
 
             build_guardian_prompt_items(
                 params.parent_session.as_ref(),
@@ -1371,6 +1376,38 @@ mod tests {
         assert_eq!(last_agent_message.as_deref(), Some("fresh"));
         assert_eq!(analytics_result.time_to_first_token_ms, Some(42));
         assert!(keep_review_session);
+    }
+
+    #[tokio::test]
+    async fn run_review_on_session_aborts_when_network_approval_sync_fails() {
+        let (review_session, _tx_event, rx_sub) = test_review_session().await;
+        let params = test_review_params().await;
+        params
+            .parent_session
+            .services
+            .network_approval
+            .close_session_policy_commit_serializer_for_test();
+
+        let (outcome, keep_review_session, _analytics_result) = run_review_on_session(
+            &review_session,
+            &params,
+            GuardianReviewSessionKind::TrunkNew,
+            tokio::time::Instant::now() + Duration::from_secs(1),
+        )
+        .await;
+
+        let GuardianReviewSessionOutcome::PromptBuildFailed(err) = outcome else {
+            panic!("expected sync failure to abort prompt construction");
+        };
+        assert!(
+            err.to_string()
+                .contains("failed to synchronize Guardian network approval cache")
+        );
+        assert!(!keep_review_session);
+        assert!(
+            rx_sub.try_recv().is_err(),
+            "review turn must not be submitted"
+        );
     }
 
     #[tokio::test]
