@@ -210,6 +210,93 @@ async fn sync_session_approved_hosts_to_replaces_existing_target_hosts() {
 }
 
 #[tokio::test]
+async fn sync_session_approved_hosts_waits_for_an_in_flight_policy_commit() {
+    let source = Arc::new(NetworkApprovalService::default());
+    {
+        let mut approved_hosts = source.session_approved_hosts.lock().await;
+        approved_hosts.insert(HostApprovalKey {
+            host: "committed.example.com".to_string(),
+            protocol: "https",
+            port: 443,
+        });
+    }
+    let target = Arc::new(NetworkApprovalService::default());
+    {
+        let mut approved_hosts = target.session_approved_hosts.lock().await;
+        approved_hosts.insert(HostApprovalKey {
+            host: "pre-commit.example.com".to_string(),
+            protocol: "https",
+            port: 8443,
+        });
+    }
+
+    let commit_permit = source
+        .session_policy_commit_semaphore
+        .acquire()
+        .await
+        .expect("the test service keeps its commit semaphore open");
+    let sync_task = {
+        let source = Arc::clone(&source);
+        let target = Arc::clone(&target);
+        tokio::spawn(async move {
+            source.sync_session_approved_hosts_to(&target).await;
+        })
+    };
+    tokio::task::yield_now().await;
+
+    assert!(!sync_task.is_finished());
+    assert!(
+        target
+            .session_approved_hosts
+            .lock()
+            .await
+            .iter()
+            .any(|host| host.host == "pre-commit.example.com")
+    );
+
+    drop(commit_permit);
+    sync_task.await.expect("sync task should complete");
+
+    let copied = target.session_approved_hosts.lock().await;
+    assert_eq!(copied.len(), 1);
+    assert!(
+        copied
+            .iter()
+            .any(|host| host.host == "committed.example.com")
+    );
+}
+
+#[tokio::test]
+async fn sync_session_approved_hosts_fails_closed_when_commit_serialization_is_unavailable() {
+    let source = NetworkApprovalService::default();
+    {
+        let mut approved_hosts = source.session_approved_hosts.lock().await;
+        approved_hosts.insert(HostApprovalKey {
+            host: "source.example.com".to_string(),
+            protocol: "https",
+            port: 443,
+        });
+    }
+    source.session_policy_commit_semaphore.close();
+
+    let target = NetworkApprovalService::default();
+    {
+        let mut approved_hosts = target.session_approved_hosts.lock().await;
+        approved_hosts.insert(HostApprovalKey {
+            host: "target.example.com".to_string(),
+            protocol: "https",
+            port: 8443,
+        });
+    }
+
+    source.sync_session_approved_hosts_to(&target).await;
+
+    let copied = target.session_approved_hosts.lock().await;
+    assert_eq!(copied.len(), 1);
+    assert!(copied.iter().any(|host| host.host == "target.example.com"));
+}
+
+#[tokio::test]
 async fn pending_waiters_receive_owner_decision() {
     let pending = Arc::new(PendingHostApproval::new());
 

@@ -38,6 +38,8 @@ use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::OnceCell;
 use tokio::sync::RwLock;
+use tokio::sync::Semaphore;
+use tokio::sync::SemaphorePermit;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 use uuid::Uuid;
@@ -254,7 +256,7 @@ struct NetworkApprovalCallState {
 pub(crate) struct NetworkApprovalService {
     calls: Mutex<NetworkApprovalCallState>,
     pending_host_approvals: SyncMutex<HashMap<PendingHostApprovalKey, Arc<PendingHostApproval>>>,
-    session_policy_commit_lock: Mutex<()>,
+    session_policy_commit_semaphore: Semaphore,
     session_approved_hosts: Mutex<HashSet<HostApprovalKey>>,
     session_denied_hosts: Mutex<HashSet<HostApprovalKey>>,
 }
@@ -334,7 +336,7 @@ impl Default for NetworkApprovalService {
         Self {
             calls: Mutex::new(NetworkApprovalCallState::default()),
             pending_host_approvals: SyncMutex::new(HashMap::new()),
-            session_policy_commit_lock: Mutex::new(()),
+            session_policy_commit_semaphore: Semaphore::new(/* permits */ 1),
             session_approved_hosts: Mutex::new(HashSet::new()),
             session_denied_hosts: Mutex::new(HashSet::new()),
         }
@@ -342,10 +344,22 @@ impl Default for NetworkApprovalService {
 }
 
 impl NetworkApprovalService {
+    async fn acquire_session_policy_commit_permit(&self) -> Option<SemaphorePermit<'_>> {
+        match self.session_policy_commit_semaphore.acquire().await {
+            Ok(permit) => Some(permit),
+            Err(err) => {
+                warn!("network approval policy commit serialization is unavailable: {err}");
+                None
+            }
+        }
+    }
+
     /// Replace the target session's approval cache with the source session's
     /// currently approved hosts.
     pub(crate) async fn sync_session_approved_hosts_to(&self, other: &Self) {
-        let _commit_guard = self.session_policy_commit_lock.lock().await;
+        let Some(_commit_permit) = self.acquire_session_policy_commit_permit().await else {
+            return;
+        };
         let approved_hosts = self.session_approved_hosts.lock().await.clone();
         let mut other_approved_hosts = other.session_approved_hosts.lock().await;
         other_approved_hosts.clear();
@@ -505,7 +519,9 @@ impl NetworkApprovalService {
         }
 
         {
-            let _commit_guard = self.session_policy_commit_lock.lock().await;
+            let Some(_commit_permit) = self.acquire_session_policy_commit_permit().await else {
+                return NetworkDecision::deny(REASON_NOT_ALLOWED);
+            };
             let denied_hosts = self.session_denied_hosts.lock().await;
             if denied_hosts.contains(&key) {
                 return NetworkDecision::deny(REASON_NOT_ALLOWED);
@@ -655,14 +671,28 @@ impl NetworkApprovalService {
                 .await
         };
 
-        let _session_policy_commit_guard = if matches!(
+        let _session_policy_commit_permit = if matches!(
             &approval_decision,
             ReviewDecision::Approved
                 | ReviewDecision::ApprovedExecpolicyAmendment { .. }
                 | ReviewDecision::ApprovedForSession
                 | ReviewDecision::NetworkPolicyAmendment { .. }
         ) {
-            Some(self.session_policy_commit_lock.lock().await)
+            let Some(commit_permit) = self.acquire_session_policy_commit_permit().await else {
+                if let Some(owner_call) = owner_call.as_ref() {
+                    self.record_call_outcome(
+                        &owner_call.registration_id,
+                        NetworkApprovalOutcome::DeniedByPolicy(
+                            "network approval policy commit serialization is unavailable"
+                                .to_string(),
+                        ),
+                    )
+                    .await;
+                }
+                pending_owner.complete(PendingApprovalDecision::Deny);
+                return NetworkDecision::deny(REASON_NOT_ALLOWED);
+            };
+            Some(commit_permit)
         } else {
             None
         };
