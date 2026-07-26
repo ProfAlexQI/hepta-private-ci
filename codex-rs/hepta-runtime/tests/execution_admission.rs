@@ -41,8 +41,9 @@ fn lifecycle_requires_admission_plan_ack_and_terminal_order() {
     )
     .unwrap();
     broker.record_provider_ack(ack.clone()).unwrap();
-    let receipt = TerminalEffectReceipt::succeeded(
+    let receipt = TerminalEffectReceipt::terminal(
         ack.ack_hash(),
+        "succeeded",
         format!("sha256:{}", hex('3')),
         format!("sha256:{}", hex('4')),
     )
@@ -85,8 +86,9 @@ fn provider_ack_before_effect_plan_is_denied() {
 #[test]
 fn terminal_receipt_before_provider_ack_is_denied() {
     let mut broker = EffectBroker::admit(admission());
-    let receipt = TerminalEffectReceipt::succeeded(
+    let receipt = TerminalEffectReceipt::terminal(
         format!("sha256:{}", hex('2')),
+        "succeeded",
         format!("sha256:{}", hex('3')),
         format!("sha256:{}", hex('4')),
     )

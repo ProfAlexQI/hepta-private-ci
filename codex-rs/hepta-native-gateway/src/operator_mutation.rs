@@ -506,8 +506,9 @@ fn complete_effect_broker(
     broker
         .record_provider_ack(provider_ack)
         .context("record operator mutation provider ACK")?;
-    let terminal_receipt = TerminalEffectReceipt::succeeded(
+    let terminal_receipt = TerminalEffectReceipt::terminal(
         provider_ack_hash,
+        "succeeded",
         &receipt.terminal_receipt_hash,
         &receipt.terminal_evidence_hash,
     )

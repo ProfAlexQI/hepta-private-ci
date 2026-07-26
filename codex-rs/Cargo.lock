@@ -2059,6 +2059,7 @@ dependencies = [
  "core_test_support",
  "flate2",
  "futures",
+ "hepta-runtime",
  "hmac 0.12.1",
  "opentelemetry",
  "opentelemetry_sdk",
@@ -7606,6 +7607,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
 ]

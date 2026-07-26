@@ -1,17 +1,16 @@
-use std::error::Error;
-use std::fmt;
-
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
+use thiserror::Error;
 
 const ADMISSION_DOMAIN: &[u8] = b"hepta.execution-admission.v1";
 const EFFECT_PLAN_DOMAIN: &[u8] = b"hepta.effect-plan.v1";
 const PROVIDER_ACK_DOMAIN: &[u8] = b"hepta.provider-effect-ack.v1";
 const TERMINAL_RECEIPT_DOMAIN: &[u8] = b"hepta.terminal-effect-receipt.v1";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("{0}")]
 pub struct ExecutionAdmissionError(String);
 
 impl ExecutionAdmissionError {
@@ -19,14 +18,6 @@ impl ExecutionAdmissionError {
         Self(message.into())
     }
 }
-
-impl fmt::Display for ExecutionAdmissionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl Error for ExecutionAdmissionError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -195,20 +186,23 @@ pub struct TerminalEffectReceipt {
 }
 
 impl TerminalEffectReceipt {
-    pub fn succeeded(
+    pub fn terminal(
         ack_hash: impl Into<String>,
+        terminal_status: impl Into<String>,
         runtime_receipt_hash: impl Into<String>,
         terminal_evidence_hash: impl Into<String>,
     ) -> Result<Self, ExecutionAdmissionError> {
         let ack_hash = ack_hash.into();
+        let terminal_status = terminal_status.into();
         let runtime_receipt_hash = runtime_receipt_hash.into();
         let terminal_evidence_hash = terminal_evidence_hash.into();
         require_content_hash(&ack_hash, "provider ACK hash")?;
+        require_label(&terminal_status, "terminal status")?;
         require_content_hash(&runtime_receipt_hash, "runtime receipt hash")?;
         require_content_hash(&terminal_evidence_hash, "terminal evidence hash")?;
         let mut receipt = Self {
             ack_hash,
-            terminal_status: "succeeded".to_string(),
+            terminal_status,
             runtime_receipt_hash,
             terminal_evidence_hash,
             receipt_hash: String::new(),
@@ -304,6 +298,13 @@ impl EffectBroker {
             .as_ref()
             .map(TerminalEffectReceipt::receipt_hash)
             .ok_or_else(|| ExecutionAdmissionError::new("execution lifecycle is not terminal"))
+    }
+
+    pub fn completed_provider_ack_hash(&self) -> Result<&str, ExecutionAdmissionError> {
+        self.provider_ack
+            .as_ref()
+            .map(ProviderEffectAck::ack_hash)
+            .ok_or_else(|| ExecutionAdmissionError::new("provider ACK is not recorded"))
     }
 }
 

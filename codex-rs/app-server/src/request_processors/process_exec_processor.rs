@@ -29,6 +29,15 @@ use codex_utils_pty::DEFAULT_OUTPUT_BYTES_CAP;
 use codex_utils_pty::ProcessHandle;
 use codex_utils_pty::SpawnedProcess;
 use codex_utils_pty::TerminalSize;
+use hepta_runtime::EffectBroker;
+use hepta_runtime::EffectPlan;
+use hepta_runtime::ExactExecutionAuthority;
+use hepta_runtime::ExecutionAdmission;
+use hepta_runtime::ExecutionIngress;
+use hepta_runtime::ProviderEffectAck;
+use hepta_runtime::TerminalEffectReceipt;
+use sha2::Digest;
+use sha2::Sha256;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -227,6 +236,7 @@ struct RunProcessParams {
     stream_stdout_stderr: bool,
     expiration: ExecExpiration,
     output_bytes_cap: Option<usize>,
+    effect_lifecycle: ProcessEffectLifecycle,
 }
 
 struct SpawnProcessOutputParams {
@@ -289,6 +299,9 @@ impl ProcessExecManager {
             }
         }
 
+        let mut effect_lifecycle =
+            ProcessEffectLifecycle::new(&request_id, &process_handle, &command, &cwd, &env)?;
+
         let spawned = if tty {
             codex_utils_pty::spawn_pty_process(
                 program,
@@ -308,10 +321,16 @@ impl ProcessExecManager {
         let spawned = match spawned {
             Ok(spawned) => spawned,
             Err(err) => {
+                effect_lifecycle.record_spawn_failure(&err.to_string());
                 self.sessions.lock().await.remove(&process_key);
                 return Err(internal_error(format!("failed to spawn process: {err}")));
             }
         };
+        if let Err(error) = effect_lifecycle.record_spawn_ack() {
+            spawned.session.request_terminate();
+            self.sessions.lock().await.remove(&process_key);
+            return Err(error);
+        }
 
         outgoing
             .send_response(request_id.clone(), ProcessSpawnResponse {})
@@ -329,6 +348,7 @@ impl ProcessExecManager {
                 stream_stdout_stderr,
                 expiration,
                 output_bytes_cap,
+                effect_lifecycle,
             })
             .await;
             sessions.lock().await.remove(&process_key);
@@ -469,6 +489,7 @@ async fn run_process(params: RunProcessParams) {
         stream_stdout_stderr,
         expiration,
         output_bytes_cap,
+        mut effect_lifecycle,
     } = params;
     let mut control_rx = control_rx;
     let mut control_open = true;
@@ -566,6 +587,10 @@ async fn run_process(params: RunProcessParams) {
     let stderr = stderr_handle.await.unwrap_or_default();
     timeout_handle.abort();
 
+    if let Err(error) = effect_lifecycle.record_terminal(exit_code, &stdout.text, &stderr.text) {
+        tracing::error!(?error, %process_handle, "process effect lifecycle failed closed");
+    }
+
     outgoing
         .send_server_notification_to_connection_and_wait(
             request_id.connection_id,
@@ -579,6 +604,143 @@ async fn run_process(params: RunProcessParams) {
             }),
         )
         .await;
+}
+
+struct ProcessEffectLifecycle {
+    broker: EffectBroker,
+    effect_plan_hash: String,
+    process_handle: String,
+}
+
+impl ProcessEffectLifecycle {
+    fn new(
+        request_id: &ConnectionRequestId,
+        process_handle: &str,
+        command: &[String],
+        cwd: &AbsolutePathBuf,
+        env: &HashMap<String, String>,
+    ) -> Result<Self, JSONRPCErrorError> {
+        let request_binding =
+            digest_hex("app-server-process-request", &[&format!("{request_id:?}")]);
+        let workspace_binding = digest_hex(
+            "app-server-process-workspace",
+            &[&cwd.as_path().display().to_string()],
+        );
+        let session_binding = digest_hex(
+            "app-server-process-session",
+            &[&format!("{:?}", request_id.connection_id), process_handle],
+        );
+        let mut env_entries = env.iter().collect::<Vec<_>>();
+        env_entries.sort_unstable();
+        let payload_digest = content_hash(
+            "app-server-process-payload",
+            &[&format!("{command:?}"), &format!("{env_entries:?}")],
+        );
+        let authority = ExactExecutionAuthority::new(
+            request_binding.clone(),
+            workspace_binding,
+            session_binding,
+        )
+        .map_err(lifecycle_error)?;
+        let admission = ExecutionAdmission::new(
+            ExecutionIngress::AppServer,
+            "process-spawn",
+            authority,
+            request_binding.clone(),
+            payload_digest.clone(),
+        )
+        .map_err(lifecycle_error)?;
+        let plan = EffectPlan::new(
+            admission.admission_hash(),
+            "spawn_process",
+            process_handle,
+            payload_digest,
+            request_binding,
+        )
+        .map_err(lifecycle_error)?;
+        let effect_plan_hash = plan.effect_plan_hash().to_string();
+        let mut broker = EffectBroker::admit(admission);
+        broker.record_effect_plan(plan).map_err(lifecycle_error)?;
+        Ok(Self {
+            broker,
+            effect_plan_hash,
+            process_handle: process_handle.to_string(),
+        })
+    }
+
+    fn record_spawn_ack(&mut self) -> Result<(), JSONRPCErrorError> {
+        let ack = ProviderEffectAck::new(
+            &self.effect_plan_hash,
+            "app-server-process-manager",
+            content_hash("app-server-process-spawned", &[&self.process_handle]),
+        )
+        .map_err(lifecycle_error)?;
+        self.broker
+            .record_provider_ack(ack)
+            .map_err(lifecycle_error)
+    }
+
+    fn record_spawn_failure(&mut self, error: &str) {
+        let ack = ProviderEffectAck::new(
+            &self.effect_plan_hash,
+            "app-server-process-manager",
+            content_hash("app-server-process-spawn-failed", &[error]),
+        );
+        if let Ok(ack) = ack {
+            let ack_hash = ack.ack_hash().to_string();
+            if self.broker.record_provider_ack(ack).is_ok()
+                && let Ok(receipt) = TerminalEffectReceipt::terminal(
+                    ack_hash,
+                    "failed",
+                    content_hash("app-server-process-failed", &[&self.process_handle]),
+                    content_hash("app-server-process-error", &[error]),
+                )
+            {
+                let _ = self.broker.record_terminal_receipt(receipt);
+            }
+        }
+    }
+
+    fn record_terminal(
+        &mut self,
+        exit_code: i32,
+        stdout: &str,
+        stderr: &str,
+    ) -> Result<(), JSONRPCErrorError> {
+        let ack_hash = self
+            .broker
+            .completed_provider_ack_hash()
+            .map_err(lifecycle_error)?
+            .to_string();
+        let receipt = TerminalEffectReceipt::terminal(
+            ack_hash,
+            "succeeded",
+            content_hash("app-server-process-exit", &[&exit_code.to_string()]),
+            content_hash("app-server-process-output", &[stdout, stderr]),
+        )
+        .map_err(lifecycle_error)?;
+        self.broker
+            .record_terminal_receipt(receipt)
+            .map_err(lifecycle_error)
+    }
+}
+
+fn lifecycle_error(error: hepta_runtime::ExecutionAdmissionError) -> JSONRPCErrorError {
+    internal_error(format!("process effect admission failed: {error}"))
+}
+
+fn digest_hex(domain: &str, values: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(domain.as_bytes());
+    for value in values {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn content_hash(domain: &str, values: &[&str]) -> String {
+    format!("sha256:{}", digest_hex(domain, values))
 }
 
 fn collect_spawn_process_output(
