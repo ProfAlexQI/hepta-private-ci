@@ -224,7 +224,7 @@ pub(crate) async fn handle_mcp_tool_call(
             | McpToolApprovalDecision::AcceptForSession
             | McpToolApprovalDecision::AcceptAndRemember => {
                 return handle_approved_mcp_tool_call(
-                    sess.as_ref(),
+                    &sess,
                     turn_context.as_ref(),
                     &call_id,
                     invocation,
@@ -291,7 +291,7 @@ pub(crate) async fn handle_mcp_tool_call(
     }
 
     handle_approved_mcp_tool_call(
-        sess.as_ref(),
+        &sess,
         turn_context.as_ref(),
         &call_id,
         invocation,
@@ -307,7 +307,7 @@ pub(crate) struct HandledMcpToolCall {
 }
 
 async fn handle_approved_mcp_tool_call(
-    sess: &Session,
+    sess: &Arc<Session>,
     turn_context: &TurnContext,
     call_id: &str,
     invocation: McpInvocation,
@@ -550,7 +550,7 @@ fn truncate_str_to_char_boundary(value: &str, max_chars: usize) -> &str {
 }
 
 async fn execute_mcp_tool_call(
-    sess: &Session,
+    sess: &Arc<Session>,
     turn_context: &TurnContext,
     call_id: &str,
     invocation: &McpInvocation,
@@ -601,7 +601,7 @@ async fn execute_mcp_tool_call(
 }
 
 async fn maybe_request_codex_apps_auth_elicitation(
-    sess: &Session,
+    sess: &Arc<Session>,
     turn_context: &TurnContext,
     call_id: &str,
     server: &str,
@@ -673,29 +673,24 @@ async fn maybe_request_codex_apps_auth_elicitation(
     auth_elicitation_completed_result(&plan.auth_failure, result.meta)
 }
 
-#[expect(
-    clippy::await_holding_invalid_type,
-    reason = "Hepta Apps cache refresh reads through the session-owned manager guard"
-)]
-async fn refresh_codex_apps_after_connector_auth(sess: &Session, turn_context: &TurnContext) {
-    let mcp_tools_result = {
-        let manager = sess.services.mcp_connection_manager.read().await;
-        manager.hard_refresh_codex_apps_tools_cache().await
-    };
-
-    match mcp_tools_result {
-        Ok(mcp_tools) => {
-            let auth = sess.services.auth_manager.auth().await;
-            connectors::refresh_accessible_connectors_cache_from_mcp_tools(
-                &turn_context.config,
-                auth.as_ref(),
-                &mcp_tools,
-            );
-        }
-        Err(err) => {
-            tracing::warn!("failed to refresh Hepta Apps tools after connector auth: {err:#}");
-        }
+async fn refresh_codex_apps_after_connector_auth(sess: &Arc<Session>, turn_context: &TurnContext) {
+    if !sess.republish_mcp_catalog_now(turn_context).await {
+        tracing::warn!("failed to publish a rebuilt MCP catalog after connector auth");
+        return;
     }
+    let tool_list_snapshot = sess
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .tool_list_snapshot();
+    let mcp_tools = tool_list_snapshot.list_all_tools().await;
+    let auth = sess.services.auth_manager.auth().await;
+    connectors::refresh_accessible_connectors_cache_from_mcp_tools(
+        &turn_context.config,
+        auth.as_ref(),
+        &mcp_tools,
+    );
 }
 
 #[expect(

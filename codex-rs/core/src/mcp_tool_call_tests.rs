@@ -173,6 +173,7 @@ async fn execute_mcp_tool_call_records_replayable_correlation() -> anyhow::Resul
             })
         });
     assert!(dispatch_trace.is_enabled());
+    let session = Arc::new(session);
 
     let result = execute_mcp_tool_call(
         &session,

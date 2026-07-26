@@ -65,10 +65,6 @@ impl ToolExecutor<ToolInvocation> for RequestPluginInstallHandler {
         true
     }
 
-    #[expect(
-        clippy::await_holding_invalid_type,
-        reason = "plugin install discovery reads through the session-owned manager guard"
-    )]
     async fn handle(
         &self,
         invocation: ToolInvocation,
@@ -115,9 +111,13 @@ impl ToolExecutor<ToolInvocation> for RequestPluginInstallHandler {
         }
 
         let auth = session.services.auth_manager.auth().await;
-        let manager = session.services.mcp_connection_manager.read().await;
-        let mcp_tools = manager.list_all_tools().await;
-        drop(manager);
+        let tool_list_snapshot = session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .tool_list_snapshot();
+        let mcp_tools = tool_list_snapshot.list_all_tools().await;
         let accessible_connectors = connectors::with_app_enabled_state(
             connectors::accessible_connectors_from_mcp_tools(&mcp_tools),
             &turn.config,
@@ -264,7 +264,7 @@ fn disabled_install_request(tool: &DiscoverableTool) -> ToolSuggestDisabledTool 
 }
 
 async fn verify_request_plugin_install_completed(
-    session: &crate::session::session::Session,
+    session: &std::sync::Arc<crate::session::session::Session>,
     turn: &crate::session::turn_context::TurnContext,
     tool: &DiscoverableTool,
     auth: Option<&codex_login::CodexAuth>,
@@ -302,12 +302,8 @@ async fn verify_request_plugin_install_completed(
     }
 }
 
-#[expect(
-    clippy::await_holding_invalid_type,
-    reason = "connector cache refresh reads through the session-owned manager guard"
-)]
 async fn refresh_missing_requested_connectors(
-    session: &crate::session::session::Session,
+    session: &std::sync::Arc<crate::session::session::Session>,
     turn: &crate::session::turn_context::TurnContext,
     auth: Option<&codex_login::CodexAuth>,
     expected_connector_ids: &[String],
@@ -317,8 +313,13 @@ async fn refresh_missing_requested_connectors(
         return Some(Vec::new());
     }
 
-    let manager = session.services.mcp_connection_manager.read().await;
-    let mcp_tools = manager.list_all_tools().await;
+    let tool_list_snapshot = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .tool_list_snapshot();
+    let mcp_tools = tool_list_snapshot.list_all_tools().await;
     let accessible_connectors = connectors::with_app_enabled_state(
         connectors::accessible_connectors_from_mcp_tools(&mcp_tools),
         &turn.config,
@@ -327,26 +328,23 @@ async fn refresh_missing_requested_connectors(
         return Some(accessible_connectors);
     }
 
-    match manager.hard_refresh_codex_apps_tools_cache().await {
-        Ok(mcp_tools) => {
-            let accessible_connectors = connectors::with_app_enabled_state(
-                connectors::accessible_connectors_from_mcp_tools(&mcp_tools),
-                &turn.config,
-            );
-            connectors::refresh_accessible_connectors_cache_from_mcp_tools(
-                &turn.config,
-                auth,
-                &mcp_tools,
-            );
-            Some(accessible_connectors)
-        }
-        Err(err) => {
-            warn!(
-                "failed to refresh Hepta apps tools cache after plugin install request for {tool_id}: {err:#}"
-            );
-            None
-        }
+    if !session.republish_mcp_catalog_now(turn).await {
+        warn!("failed to publish rebuilt MCP catalog after plugin install request for {tool_id}");
+        return None;
     }
+    let tool_list_snapshot = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .tool_list_snapshot();
+    let mcp_tools = tool_list_snapshot.list_all_tools().await;
+    let accessible_connectors = connectors::with_app_enabled_state(
+        connectors::accessible_connectors_from_mcp_tools(&mcp_tools),
+        &turn.config,
+    );
+    connectors::refresh_accessible_connectors_cache_from_mcp_tools(&turn.config, auth, &mcp_tools);
+    Some(accessible_connectors)
 }
 
 fn verified_plugin_install_completed(

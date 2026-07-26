@@ -7053,6 +7053,32 @@ async fn invalid_explicit_mcp_refresh_remains_replaceable_without_busy_loop() {
 }
 
 #[tokio::test]
+async fn explicit_catalog_republish_replaces_manager_and_advances_generation() {
+    let (session, turn_context) = make_session_and_context().await;
+    let session = Arc::new(session);
+    let initial_generation = session
+        .services
+        .mcp_connection_manager
+        .read()
+        .await
+        .generation();
+    let old_token = session.mcp_startup_cancellation_token().await;
+
+    assert!(session.republish_mcp_catalog_now(&turn_context).await);
+
+    assert_eq!(
+        session
+            .services
+            .mcp_connection_manager
+            .read()
+            .await
+            .generation(),
+        initial_generation + 1
+    );
+    assert!(old_token.is_cancelled());
+}
+
+#[tokio::test]
 async fn api_key_replacement_requests_mcp_generation_refresh() {
     let auth_home = tempfile::tempdir().expect("create auth home");
     let auth_manager = AuthManager::from_auth_for_testing_with_home(

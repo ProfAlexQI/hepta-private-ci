@@ -54,6 +54,7 @@ struct McpRefreshRequest {
     elicitation_reviewer: Option<ElicitationReviewerHandle>,
     expected_explicit_generation: Option<u64>,
     expected_source_generation: Option<u64>,
+    force_codex_apps_tools_refresh: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -403,6 +404,7 @@ impl Session {
             elicitation_reviewer,
             expected_explicit_generation,
             expected_source_generation,
+            force_codex_apps_tools_refresh,
         } = request;
         let Some(auth_snapshot) =
             crate::state::FrozenMcpAuthSnapshot::capture(self.services.auth_manager.as_ref()).await
@@ -469,6 +471,27 @@ impl Session {
         )
         .await;
         let mut replacement = UnpublishedMcpReplacement::new(refreshed_manager, cancel_token);
+        if force_codex_apps_tools_refresh && host_owned_codex_apps_enabled {
+            let refresh_result = match replacement.manager() {
+                Ok(manager) => manager.hard_refresh_codex_apps_tools_cache().await,
+                Err(_) => {
+                    warn!("MCP refresh replacement lost its unpublished manager");
+                    return McpRefreshPublication::Failed;
+                }
+            };
+            if let Err(error) = refresh_result {
+                warn!("failed to refresh tools on unpublished MCP replacement: {error:#}");
+                return match shutdown_unpublished_mcp_replacement(
+                    &mut replacement,
+                    "failed MCP tools refresh lost unpublished replacement parts",
+                )
+                .await
+                {
+                    Ok(()) => McpRefreshPublication::Failed,
+                    Err(publication) => publication,
+                };
+            }
+        }
         {
             let current_manager = self.services.mcp_connection_manager.read().await;
             let Ok(refreshed_manager) = replacement.manager() else {
@@ -736,6 +759,7 @@ impl Session {
                         elicitation_reviewer: elicitation_reviewer.clone(),
                         expected_explicit_generation: expected_generation,
                         expected_source_generation,
+                        force_codex_apps_tools_refresh: false,
                     },
                 )
                 .await
@@ -769,12 +793,45 @@ impl Session {
                         elicitation_reviewer: elicitation_reviewer.clone(),
                         expected_explicit_generation: None,
                         expected_source_generation: None,
+                        force_codex_apps_tools_refresh: false,
                     },
                 )
                 .await
             {
                 McpRefreshPublication::Superseded => continue,
                 McpRefreshPublication::Published | McpRefreshPublication::Failed => return,
+            }
+        }
+    }
+
+    pub(crate) async fn republish_mcp_catalog_now(
+        self: &Arc<Self>,
+        turn_context: &TurnContext,
+    ) -> bool {
+        let Ok(_refresh_owner) = self.mcp_server_refresh_lock.acquire().await else {
+            warn!("MCP server refresh lock closed");
+            return false;
+        };
+        let store_mode = self.get_config().await.mcp_oauth_credentials_store_mode;
+        loop {
+            match self
+                .refresh_mcp_servers_inner(
+                    turn_context,
+                    McpRefreshRequest {
+                        configured_mcp_servers: None,
+                        store_mode,
+                        elicitation_authority: None,
+                        elicitation_reviewer: Some(self.mcp_elicitation_reviewer()),
+                        expected_explicit_generation: None,
+                        expected_source_generation: None,
+                        force_codex_apps_tools_refresh: true,
+                    },
+                )
+                .await
+            {
+                McpRefreshPublication::Published => return true,
+                McpRefreshPublication::Superseded => continue,
+                McpRefreshPublication::Failed => return false,
             }
         }
     }
