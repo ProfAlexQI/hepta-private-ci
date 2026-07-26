@@ -182,11 +182,12 @@ impl McpProcess {
         &mut self,
         params: HeptaToolCallParam,
     ) -> anyhow::Result<i64> {
-        let hepta_tool_call_params =
-            CallToolRequestParams::new("hepta").with_arguments(match serde_json::to_value(params)? {
+        let hepta_tool_call_params = CallToolRequestParams::new("hepta").with_arguments(
+            match serde_json::to_value(params)? {
                 serde_json::Value::Object(map) => map,
                 _ => unreachable!("params serialize to object"),
-            });
+            },
+        );
         self.send_request(
             "tools/call",
             Some(serde_json::to_value(hepta_tool_call_params)?),

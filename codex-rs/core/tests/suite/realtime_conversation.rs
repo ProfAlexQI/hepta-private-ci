@@ -830,9 +830,9 @@ async fn conversation_start_uses_openai_env_key_fallback_with_chatgpt_auth() -> 
     skip_if_no_network!(Ok(()));
 
     let server = start_websocket_server(vec![vec![vec![json!({
-            "type": "session.updated",
-            "session": { "id": "sess_env", "instructions": "backend prompt" }
-        })]]])
+        "type": "session.updated",
+        "session": { "id": "sess_env", "instructions": "backend prompt" }
+    })]]])
     .await;
 
     let mut builder = test_codex().with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing());
