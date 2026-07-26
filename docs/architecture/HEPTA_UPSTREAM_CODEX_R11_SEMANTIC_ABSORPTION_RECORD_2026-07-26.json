@@ -1,0 +1,77 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-07-26_R11.json",
+    "manifest_sha256": "00ee27a23b27311f98feb7029fefd6cd8fb3efcd0c8f32d8eb112eb96c657841",
+    "commit": "9228d01b50ae907dc6c01eeaeb877ab8e229b7d4",
+    "range_start_exclusive": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+    "range_end_inclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "absorptions": [
+    {
+      "upstream_commit": "5c36e869c1a7bdc5ec4c1325d02e60dfbadcc9b8",
+      "upstream_title": "Bound Code Mode metadata compatibility headers",
+      "disposition": "existing_semantic_equivalent",
+      "scope": "bounded_code_mode_metadata_compatibility_headers",
+      "hepta_commit": "6a81515e0964999fe292e7ac37f3dffda82eb862",
+      "semantic_mapping": "Canonical Code Mode tool names remain available in client metadata while compatibility headers exclude that unbounded field and retain a bounded representation.",
+      "core_files": ["codex-rs/core/src/client.rs", "codex-rs/core/src/client_tests.rs"],
+      "behavioral_evidence": [{"command":"cargo test -p codex-core code_mode_tool_names_stay_in_client_metadata_but_not_compatibility_headers --lib -- --nocapture","result":"passed"}],
+      "non_claims": ["Responses Lite capability parity and Code Mode host fallback policy remain deferred."]
+    },
+    {
+      "upstream_commit": "62fd410384cca008446c2d64a4f2b3f915f4906e",
+      "upstream_title": "Ignore generated system skills watcher events",
+      "disposition": "semantic_transplant",
+      "scope": "generated_system_skill_watcher_filtering",
+      "hepta_commit": "7ca3de730b3af2101f0cb20f0fe2c58c281a806d",
+      "semantic_mapping": "The app-server watcher excludes generated system-skill cache events while preserving user and repository skill event handling.",
+      "core_files": ["codex-rs/app-server/src/skills_watcher.rs"],
+      "behavioral_evidence": [
+        {"command":"cargo test -p codex-app-server generated_system_scope_is_not_watched --lib -- --nocapture","result":"passed"},
+        {"command":"cargo test -p codex-app-server pure_system_cache_events_are_ignored --lib -- --nocapture","result":"passed"}
+      ],
+      "non_claims": ["No broader replacement of Hepta skill discovery or extension ownership is claimed."]
+    },
+    {
+      "upstream_commit": "61a44880a85d2fd0d8770908dea5733495e571c8",
+      "upstream_title": "Raise MCP recursion limit",
+      "disposition": "semantic_transplant",
+      "scope": "mcp_server_recursion_limit_256",
+      "hepta_commit": "351909f7dd9898bd4e8eaeec297b08463b8a7bb4",
+      "semantic_mapping": "Both MCP server library and executable entrypoints use recursion limit 256 while Hepta retains explicit generation ownership for request processing.",
+      "core_files": ["codex-rs/mcp-server/src/lib.rs", "codex-rs/mcp-server/src/main.rs", "codex-rs/mcp-server/src/message_processor.rs"],
+      "behavioral_evidence": [{"command":"cargo check -p codex-mcp-server","result":"passed"}],
+      "non_claims": ["No replacement of the Hepta MCP runtime or publication model is claimed."]
+    }
+  ],
+  "deferrals": [
+    {
+      "upstream_commit":"3a08af44b2a4450bab0a9393f9d36ae621dde6bb","upstream_title":"Handle exec-server network policy requests in client","disposition":"deferred_exec_server_network_policy_reverse_rpc","scope":"per_process_network_policy_reverse_rpc_and_recovery","reason":"Hepta network approval authority does not yet provide upstream-equivalent per-process reverse RPC controllers, bounded concurrency, recovery revocation, and terminal decision evidence.","missing_prerequisites":["execution-bound controller ownership","bounded callback concurrency","cancel and recovery revocation","terminal policy decision receipts"],"tests_run":false,"hepta_commit":null,"non_claims":["Existing network approval serialization is not claimed as exec-server reverse-RPC parity."]
+    },
+    {
+      "upstream_commit":"af7f6f4d346a71e78869f4c0e507160f921fffed","upstream_title":"Include item start times","disposition":"deferred_item_start_timing","scope":"item_started_at_ms_protocol_and_replay","reason":"Hepta has not yet bound item start timing through protocol projection, persistence, replay, and compatibility tests.","missing_prerequisites":["typed started_at_ms protocol field","persistence and replay parity","latency semantics tests"],"tests_run":false,"hepta_commit":null,"non_claims":["Current completion timestamps do not imply first-start timing parity."]
+    },
+    {
+      "upstream_commit":"322d5b96cfa5c8fd52bd83ecfdb79cd9b330205f","upstream_title":"Keep unified mention results fresh","disposition":"deferred_tui_mention_freshness","scope":"tui_unified_mention_result_freshness","reason":"The change is specific to upstream TUI interaction state and is outside the current Hepta backend closure milestone.","missing_prerequisites":["Hepta UI ownership decision","mention freshness product tests"],"tests_run":false,"hepta_commit":null,"non_claims":["Hepta native UI does not claim upstream TUI mention behavior."]
+    },
+    {
+      "upstream_commit":"20dafe201d91d4405eef05ecd1db0257f13a9ac8","upstream_title":"Make the keymap action menu responsive","disposition":"deferred_tui_keymap_responsive_layout","scope":"tui_keymap_action_menu_responsive_layout","reason":"The change is specific to upstream TUI layout and is outside the current Hepta backend closure milestone.","missing_prerequisites":["Hepta UI ownership decision","responsive layout golden tests"],"tests_run":false,"hepta_commit":null,"non_claims":["Hepta native UI does not claim upstream TUI keymap layout parity."]
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 2,
+    "existing_semantic_equivalent_count": 1,
+    "deferred_commit_count": 4,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
