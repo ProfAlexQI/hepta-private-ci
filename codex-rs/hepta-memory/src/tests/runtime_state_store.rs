@@ -12,6 +12,8 @@ use hepta_core::TranscriptEntryKind;
 use crate::DurableIntegrityKey;
 use crate::InMemoryStore;
 
+mod monotonic_state;
+
 fn key(byte: u8) -> DurableIntegrityKey {
     DurableIntegrityKey::from_bytes([byte; 32])
 }

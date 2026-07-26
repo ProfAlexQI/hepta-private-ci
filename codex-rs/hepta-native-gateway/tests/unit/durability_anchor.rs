@@ -41,7 +41,7 @@ impl ExternalMonotonicAnchor {
     ) -> Result<()> {
         self.run_serialized_operation(|| {
             after_health_check();
-            self.verify_and_advance_inner(outcome, preference, telegram, operator)
+            self.verify_and_advance_inner(outcome, preference, telegram, operator, None)
         })
     }
 }
@@ -445,6 +445,7 @@ fn state_is_sampled_only_after_cross_process_exclusion_without_false_rollback() 
                 preference: first_preference,
                 telegram: None,
                 operator: None,
+                runtime_state: None,
             })
         })
     });
@@ -461,6 +462,7 @@ fn state_is_sampled_only_after_cross_process_exclusion_without_false_rollback() 
                 preference: preference.clone(),
                 telegram: None,
                 operator: None,
+                runtime_state: None,
             })
         })
         .expect_err("competing process must not sample state before exclusion");
@@ -486,6 +488,7 @@ fn state_is_sampled_only_after_cross_process_exclusion_without_false_rollback() 
             preference: preference.clone(),
             telegram: None,
             operator: None,
+            runtime_state: None,
         })
     })?;
     ExternalMonotonicAnchor::open(config)?.verify_and_advance(&advanced, &preference, None, None)
@@ -536,7 +539,7 @@ fn crashed_effect_lease_remains_authenticated_and_in_doubt_after_restart() -> Re
 }
 
 #[test]
-fn effect_lease_refuses_before_terminal_record_capacity_is_exhausted() -> Result<()> {
+fn anchor_rotates_before_effect_lease_capacity_is_exhausted() -> Result<()> {
     let root = tempfile::tempdir()?;
     fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))?;
     let config = ExternalMonotonicAnchorConfig::for_test(root.path())?;
@@ -558,9 +561,13 @@ fn effect_lease_refuses_before_terminal_record_capacity_is_exhausted() -> Result
             telegram_state_hash: None,
             operator_generation: None,
             operator_state_hash: None,
+            runtime_state_generation: None,
+            runtime_state_hash: None,
             effect_lease_state: None,
             effect_lease_id: None,
             effect_lease_source_hash: None,
+            rotation_compacted_records: None,
+            rotation_history_hash: None,
             mac: String::new(),
         };
         entry.mac = entry_mac(&entry, &key)?;
@@ -572,14 +579,51 @@ fn effect_lease_refuses_before_terminal_record_capacity_is_exhausted() -> Result
     fs::set_permissions(&config.path, fs::Permissions::from_mode(0o600))?;
 
     let anchor = Arc::new(ExternalMonotonicAnchor::open(config.clone())?);
-    let error = match anchor.begin_effect_lease(&outcome, &preference, None, None) {
-        Ok(_) => anyhow::bail!("effect entered without terminal record capacity"),
-        Err(error) => error,
-    };
-    assert!(format!("{error:#}").contains("lacks two reserved records"));
+    let lease = anchor.begin_effect_lease(&outcome, &preference, None, None)?;
+    lease.finalize(&outcome, &preference, None, None)?;
+
+    let bytes = fs::read(&config.path)?;
+    let snapshot = read_anchor_snapshot_bytes(&bytes, &key)?;
+    assert_eq!(snapshot.entries.len(), 3);
+    let rotation = snapshot.entries.first().context("rotation root")?;
     assert_eq!(
-        fs::read_to_string(config.path)?.lines().count(),
-        MAX_ANCHOR_RECORDS - 1
+        rotation.rotation_compacted_records,
+        Some((MAX_ANCHOR_RECORDS - 1) as u64)
+    );
+    assert!(
+        rotation
+            .rotation_history_hash
+            .as_deref()
+            .is_some_and(|hash| hash.starts_with("sha256:"))
+    );
+    assert_eq!(
+        snapshot.entries[1].effect_lease_state,
+        Some(EffectLeaseRecordState::Pending)
+    );
+    assert_eq!(
+        snapshot.entries[2].effect_lease_state,
+        Some(EffectLeaseRecordState::Finalized)
+    );
+    let reopened = ExternalMonotonicAnchor::open(config.clone())?;
+    reopened.verify_and_advance(&outcome, &preference, None, None)?;
+
+    let mut tampered = fs::read(&config.path)?;
+    let history_hash = rotation
+        .rotation_history_hash
+        .as_deref()
+        .context("rotation history hash")?;
+    let offset = tampered
+        .windows(history_hash.len())
+        .position(|window| window == history_hash.as_bytes())
+        .context("rotation history bytes")?;
+    let hash_byte = &mut tampered[offset + "sha256:".len()];
+    *hash_byte = if *hash_byte == b'0' { b'1' } else { b'0' };
+    fs::write(&config.path, tampered)?;
+    let tampered_anchor = ExternalMonotonicAnchor::open(config)?;
+    assert!(
+        tampered_anchor
+            .verify_and_advance(&outcome, &preference, None, None)
+            .is_err()
     );
     Ok(())
 }
@@ -596,4 +640,66 @@ fn anchor_configuration_requires_a_complete_absolute_pair() {
         _ => None,
     });
     assert!(relative.is_err());
+}
+
+#[test]
+fn anchor_binds_runtime_session_state_and_rejects_rollback() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))?;
+    let config = ExternalMonotonicAnchorConfig::for_test(root.path())?;
+    let runtime = hepta_memory::InMemoryStore::bootstrap_durable(
+        root.path().join("runtime-state.json"),
+        hepta_memory::DurableIntegrityKey::from_bytes([31; 32]),
+    )?;
+    let outcome = state(2, "sha256:o2");
+    let preference = state(3, "sha256:p3");
+    let anchor = ExternalMonotonicAnchor::open(config)?;
+    let initial = runtime
+        .runtime_state_monotonic_state()?
+        .context("initial runtime state")?;
+    anchor.verify_and_advance_with(|| {
+        Ok(DurableAnchorStateSnapshot {
+            outcome: outcome.clone(),
+            preference: preference.clone(),
+            telegram: None,
+            operator: None,
+            runtime_state: Some(initial.clone()),
+        })
+    })?;
+
+    runtime.upsert_session_sync(hepta_core::SessionRecord {
+        session_id: hepta_core::SessionId("session-a".into()),
+        agent_id: hepta_core::AgentId("anchor-test".into()),
+        title: "anchored".into(),
+        created_at_unix_ms: 1,
+        last_active_unix_ms: 2,
+        last_user_intent_summary: None,
+        archived_at_unix_ms: None,
+    })?;
+    let advanced = runtime
+        .runtime_state_monotonic_state()?
+        .context("advanced runtime state")?;
+    anchor.verify_and_advance_with(|| {
+        Ok(DurableAnchorStateSnapshot {
+            outcome: outcome.clone(),
+            preference: preference.clone(),
+            telegram: None,
+            operator: None,
+            runtime_state: Some(advanced),
+        })
+    })?;
+
+    let rollback = anchor
+        .verify_and_advance_with(|| {
+            Ok(DurableAnchorStateSnapshot {
+                outcome,
+                preference,
+                telegram: None,
+                operator: None,
+                runtime_state: Some(initial),
+            })
+        })
+        .expect_err("runtime state rollback must fail closed");
+    assert!(format!("{rollback:#}").contains("runtime session state rolled back"));
+    Ok(())
 }

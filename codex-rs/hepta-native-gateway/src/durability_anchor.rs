@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use anyhow::Context;
 use anyhow::Result;
 use hepta_memory::DurableMonotonicState;
+use hepta_memory::RuntimeStateMonotonicState;
 use hmac::Hmac;
 use hmac::Mac;
 use serde::Deserialize;
@@ -27,20 +28,25 @@ use zeroize::Zeroizing;
 use crate::operator_mutation_journal::OperatorMutationMonotonicState;
 use crate::secure_key_file::read_private_key;
 use crate::telegram_authority::TelegramAuthorityMonotonicState;
+use crate::telegram_durable_files::update_private_state_atomically;
 
 pub(crate) const MONOTONIC_ANCHOR_FILE_ENV: &str = "HEPTA_MONOTONIC_ANCHOR_FILE";
 pub(crate) const MONOTONIC_ANCHOR_KEY_FILE_ENV: &str = "HEPTA_MONOTONIC_ANCHOR_KEY_FILE";
 const ANCHOR_SCHEMA: &str = "hepta.external-monotonic-anchor.v2";
 const ANCHOR_MAC_DOMAIN: &[u8] = b"hepta.external-monotonic-anchor.hmac-sha256.v2";
 const ANCHOR_ENTRY_HASH_DOMAIN: &[u8] = b"hepta.external-monotonic-anchor.entry-sha256.v2";
+const ANCHOR_ROTATION_HISTORY_DOMAIN: &[u8] =
+    b"hepta.external-monotonic-anchor.rotation-history-sha256.v1";
 const EFFECT_LEASE_SOURCE_HASH_DOMAIN: &[u8] =
     b"hepta.external-monotonic-anchor.effect-lease-source-sha256.v1";
 const TELEGRAM_STATE_HASH_DOMAIN: &[u8] =
     b"hepta.external-monotonic-anchor.telegram-state-sha256.v1";
 const GENESIS_PREVIOUS_HASH: &str = "sha256:anchor-genesis";
+const ROTATION_GENESIS_HASH: &str = "sha256:anchor-rotation-genesis";
 const MAX_ANCHOR_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_ANCHOR_RECORDS: usize = 4096;
 const MAX_ANCHOR_LINE_BYTES: usize = 4096;
+const ANCHOR_STAGING_PREFIX: &str = ".hepta-external-monotonic-anchor";
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
@@ -106,6 +112,7 @@ pub(crate) struct DurableAnchorStateSnapshot {
     pub(crate) preference: DurableMonotonicState,
     pub(crate) telegram: Option<TelegramAuthorityMonotonicState>,
     pub(crate) operator: Option<OperatorMutationMonotonicState>,
+    pub(crate) runtime_state: Option<RuntimeStateMonotonicState>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,11 +144,19 @@ struct AnchorEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     operator_state_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_state_generation: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_state_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     effect_lease_state: Option<EffectLeaseRecordState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     effect_lease_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     effect_lease_source_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rotation_compacted_records: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rotation_history_hash: Option<String>,
     mac: String,
 }
 
@@ -199,6 +214,7 @@ impl ExternalMonotonicAnchor {
                 &states.preference,
                 states.telegram.as_ref(),
                 states.operator.as_ref(),
+                states.runtime_state.as_ref(),
             )
         })
     }
@@ -232,6 +248,7 @@ impl ExternalMonotonicAnchor {
             &states.preference,
             states.telegram.as_ref(),
             states.operator.as_ref(),
+            states.runtime_state.as_ref(),
         ) {
             state.fault = Some(format!("{error:#}"));
             return Err(error);
@@ -243,6 +260,7 @@ impl ExternalMonotonicAnchor {
             &states.preference,
             states.telegram.as_ref(),
             states.operator.as_ref(),
+            states.runtime_state.as_ref(),
         ) {
             Ok(source_hash) => source_hash,
             Err(error) => {
@@ -289,6 +307,7 @@ impl ExternalMonotonicAnchor {
         preference: &DurableMonotonicState,
         telegram: Option<&TelegramAuthorityMonotonicState>,
         operator: Option<&OperatorMutationMonotonicState>,
+        runtime_state: Option<&RuntimeStateMonotonicState>,
     ) -> Result<()> {
         self.with_locked_anchor(|file, parent, snapshot| {
             if let Some(last) = snapshot.entries.last() {
@@ -297,13 +316,21 @@ impl ExternalMonotonicAnchor {
                         "external monotonic anchor contains an in-doubt effect lease; automatic re-entry is forbidden"
                     );
                 }
-                compare_anchor_entry_state(last, outcome, preference, telegram, operator)?;
+                compare_anchor_entry_state(
+                    last,
+                    outcome,
+                    preference,
+                    telegram,
+                    operator,
+                    runtime_state,
+                )?;
                 if last.outcome_generation == outcome.generation()
                     && last.outcome_state_hash == outcome.state_hash()
                     && last.preference_generation == preference.generation()
                     && last.preference_state_hash == preference.state_hash()
                     && telegram_state_matches(last, telegram)
                     && operator_state_matches(last, operator)
+                    && runtime_state_matches(last, runtime_state)
                 {
                     return Ok(());
                 }
@@ -325,6 +352,7 @@ impl ExternalMonotonicAnchor {
                 preference,
                 telegram,
                 operator,
+                runtime_state,
                 None,
             )
         })
@@ -337,6 +365,7 @@ impl ExternalMonotonicAnchor {
         preference: &DurableMonotonicState,
         telegram: Option<&TelegramAuthorityMonotonicState>,
         operator: Option<&OperatorMutationMonotonicState>,
+        runtime_state: Option<&RuntimeStateMonotonicState>,
     ) -> Result<String> {
         self.with_locked_anchor(|file, parent, snapshot| {
             let last = snapshot
@@ -348,7 +377,14 @@ impl ExternalMonotonicAnchor {
                     "external monotonic anchor already contains an in-doubt effect lease"
                 );
             }
-            require_exact_anchor_state(last, outcome, preference, telegram, operator)?;
+            require_exact_anchor_state(
+                last,
+                outcome,
+                preference,
+                telegram,
+                operator,
+                runtime_state,
+            )?;
             if snapshot.physical_record_count() > MAX_ANCHOR_RECORDS.saturating_sub(2) {
                 anyhow::bail!(
                     "external monotonic anchor lacks two reserved records for an effect lease"
@@ -365,6 +401,7 @@ impl ExternalMonotonicAnchor {
                 preference,
                 telegram,
                 operator,
+                runtime_state,
                 Some(EffectLeaseBinding {
                     state: EffectLeaseRecordState::Pending,
                     lease_id,
@@ -379,10 +416,7 @@ impl ExternalMonotonicAnchor {
         &self,
         lease_id: &str,
         source_hash: &str,
-        outcome: &DurableMonotonicState,
-        preference: &DurableMonotonicState,
-        telegram: Option<&TelegramAuthorityMonotonicState>,
-        operator: Option<&OperatorMutationMonotonicState>,
+        states: &DurableAnchorStateSnapshot,
     ) -> Result<()> {
         self.with_locked_anchor(|file, parent, snapshot| {
             let pending = snapshot
@@ -395,7 +429,14 @@ impl ExternalMonotonicAnchor {
             {
                 anyhow::bail!("external monotonic anchor effect lease marker does not match");
             }
-            compare_anchor_entry_state(pending, outcome, preference, telegram, operator)?;
+            compare_anchor_entry_state(
+                pending,
+                &states.outcome,
+                &states.preference,
+                states.telegram.as_ref(),
+                states.operator.as_ref(),
+                states.runtime_state.as_ref(),
+            )?;
             if snapshot.physical_record_count() >= MAX_ANCHOR_RECORDS {
                 anyhow::bail!(
                     "external monotonic anchor reached its {MAX_ANCHOR_RECORDS}-record limit"
@@ -407,10 +448,11 @@ impl ExternalMonotonicAnchor {
                 &self.key,
                 pending.sequence + 1,
                 entry_hash(pending),
-                outcome,
-                preference,
-                telegram,
-                operator,
+                &states.outcome,
+                &states.preference,
+                states.telegram.as_ref(),
+                states.operator.as_ref(),
+                states.runtime_state.as_ref(),
                 Some(EffectLeaseBinding {
                     state: EffectLeaseRecordState::Finalized,
                     lease_id,
@@ -432,7 +474,15 @@ impl ExternalMonotonicAnchor {
         lock_anchor(&file)?;
         let result = (|| {
             validate_private_file(&file, "external monotonic anchor", MAX_ANCHOR_BYTES)?;
-            let snapshot = read_anchor_snapshot(&mut file, &self.key)?;
+            let mut snapshot = read_anchor_snapshot(&mut file, &self.key)?;
+            if snapshot.should_rotate() {
+                rotate_anchor_atomically(&self.path, &snapshot, &self.key)?;
+                unlock_anchor(&file);
+                file = open_anchor_file(&self.path)?;
+                lock_anchor(&file)?;
+                validate_private_file(&file, "external monotonic anchor", MAX_ANCHOR_BYTES)?;
+                snapshot = read_anchor_snapshot(&mut file, &self.key)?;
+            }
             operation(&mut file, parent, &snapshot)
         })();
         unlock_anchor(&file);
@@ -454,6 +504,7 @@ impl ExternalMonotonicAnchor {
             preference: preference.clone(),
             telegram: telegram.cloned(),
             operator: operator.cloned(),
+            runtime_state: None,
         };
         self.verify_and_advance_with(|| Ok(states))
     }
@@ -470,6 +521,7 @@ impl ExternalMonotonicAnchor {
             preference: preference.clone(),
             telegram: telegram.cloned(),
             operator: operator.cloned(),
+            runtime_state: None,
         };
         self.begin_effect_lease_with(|| Ok(states))
     }
@@ -505,6 +557,7 @@ impl ExternalMonotonicAnchorEffectLease {
             preference: preference.clone(),
             telegram: telegram.cloned(),
             operator: operator.cloned(),
+            runtime_state: None,
         };
         self.finalize_with(|| Ok(states))
     }
@@ -524,6 +577,13 @@ impl AnchorSnapshot {
 
     fn next_sequence(&self) -> u64 {
         self.entries.last().map_or(1, |entry| entry.sequence + 1)
+    }
+
+    fn should_rotate(&self) -> bool {
+        self.entries.len() >= MAX_ANCHOR_RECORDS.saturating_sub(2)
+            && self.entries.last().is_some_and(|entry| {
+                entry.effect_lease_state != Some(EffectLeaseRecordState::Pending)
+            })
     }
 }
 
@@ -562,16 +622,8 @@ impl ExternalMonotonicAnchor {
             self.operation_idle.notify_all();
             anyhow::bail!("external monotonic anchor effect lease is not active");
         }
-        let result = state_provider().and_then(|states| {
-            self.finalize_effect_lease_inner(
-                lease_id,
-                source_hash,
-                &states.outcome,
-                &states.preference,
-                states.telegram.as_ref(),
-                states.operator.as_ref(),
-            )
-        });
+        let result = state_provider()
+            .and_then(|states| self.finalize_effect_lease_inner(lease_id, source_hash, &states));
         if let Err(error) = &result {
             state.fault = Some(format!("{error:#}"));
         }
@@ -618,6 +670,7 @@ fn append_anchor_entry(
     preference: &DurableMonotonicState,
     telegram: Option<&TelegramAuthorityMonotonicState>,
     operator: Option<&OperatorMutationMonotonicState>,
+    runtime_state: Option<&RuntimeStateMonotonicState>,
     effect_lease: Option<EffectLeaseBinding<'_>>,
 ) -> Result<()> {
     let mut entry = AnchorEntry {
@@ -632,6 +685,8 @@ fn append_anchor_entry(
         telegram_state_hash: telegram.map(telegram_state_hash),
         operator_generation: operator.map(|state| state.journal_revision),
         operator_state_hash: operator.map(|state| state.state_hash.clone()),
+        runtime_state_generation: runtime_state.map(RuntimeStateMonotonicState::generation),
+        runtime_state_hash: runtime_state.map(|state| state.state_hash().to_owned()),
         effect_lease_state: effect_lease.as_ref().map(|binding| binding.state),
         effect_lease_id: effect_lease
             .as_ref()
@@ -639,6 +694,8 @@ fn append_anchor_entry(
         effect_lease_source_hash: effect_lease
             .as_ref()
             .map(|binding| binding.source_hash.to_owned()),
+        rotation_compacted_records: None,
+        rotation_history_hash: None,
         mac: String::new(),
     };
     entry.mac = entry_mac(&entry, key)?;
@@ -667,12 +724,82 @@ fn append_anchor_entry(
         .context("fsync external monotonic anchor parent")
 }
 
+fn rotate_anchor_atomically(path: &Path, expected: &AnchorSnapshot, key: &[u8; 32]) -> Result<()> {
+    let expected_last = expected
+        .entries
+        .last()
+        .context("external monotonic anchor rotation has no source entry")?;
+    if expected_last.effect_lease_state == Some(EffectLeaseRecordState::Pending) {
+        anyhow::bail!("external monotonic anchor cannot rotate a pending effect lease");
+    }
+    let expected_last_hash = entry_hash(expected_last);
+    update_private_state_atomically(path, MAX_ANCHOR_BYTES, ANCHOR_STAGING_PREFIX, |current| {
+        let current = current.context("external monotonic anchor disappeared during rotation")?;
+        let snapshot = read_anchor_snapshot_bytes(current, key)?;
+        let last = snapshot
+            .entries
+            .last()
+            .context("external monotonic anchor rotation source disappeared")?;
+        if snapshot.entries.len() != expected.entries.len()
+            || entry_hash(last) != expected_last_hash
+        {
+            anyhow::bail!("external monotonic anchor changed during rotation");
+        }
+        let previous_history = snapshot
+            .entries
+            .first()
+            .and_then(|entry| entry.rotation_history_hash.as_deref())
+            .unwrap_or(ROTATION_GENESIS_HASH);
+        let previous_compacted = snapshot
+            .entries
+            .first()
+            .and_then(|entry| entry.rotation_compacted_records)
+            .unwrap_or(0);
+        let compacted_records = previous_compacted
+            .checked_add(snapshot.entries.len() as u64)
+            .context("external monotonic anchor rotation count overflow")?;
+        let history_hash =
+            rotation_history_hash(previous_history, &expected_last_hash, compacted_records);
+        let mut rotated = last.clone();
+        rotated.sequence = last.sequence + 1;
+        rotated.previous_entry_hash = expected_last_hash;
+        rotated.effect_lease_state = None;
+        rotated.effect_lease_id = None;
+        rotated.effect_lease_source_hash = None;
+        rotated.rotation_compacted_records = Some(compacted_records);
+        rotated.rotation_history_hash = Some(history_hash);
+        rotated.mac.clear();
+        rotated.mac = entry_mac(&rotated, key)?;
+        let mut bytes =
+            serde_json::to_vec(&rotated).context("encode rotated external monotonic anchor")?;
+        bytes.push(b'\n');
+        if bytes.len() > MAX_ANCHOR_LINE_BYTES {
+            anyhow::bail!("rotated external monotonic anchor exceeds bounded line size");
+        }
+        Ok((bytes, ()))
+    })
+}
+
+fn rotation_history_hash(
+    previous_history_hash: &str,
+    previous_entry_hash: &str,
+    compacted_records: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    update_hash_frame(&mut hasher, ANCHOR_ROTATION_HISTORY_DOMAIN);
+    update_hash_frame(&mut hasher, previous_history_hash.as_bytes());
+    update_hash_frame(&mut hasher, previous_entry_hash.as_bytes());
+    update_hash_frame(&mut hasher, &compacted_records.to_be_bytes());
+    format!("sha256:{:x}", hasher.finalize())
+}
+
 fn compare_anchor_entry_state(
     anchored: &AnchorEntry,
     outcome: &DurableMonotonicState,
     preference: &DurableMonotonicState,
     telegram: Option<&TelegramAuthorityMonotonicState>,
     operator: Option<&OperatorMutationMonotonicState>,
+    runtime_state: Option<&RuntimeStateMonotonicState>,
 ) -> Result<()> {
     compare_state(
         "outcome",
@@ -695,6 +822,11 @@ fn compare_anchor_entry_state(
         anchored.operator_generation,
         anchored.operator_state_hash.as_deref(),
         operator,
+    )?;
+    compare_runtime_state(
+        anchored.runtime_state_generation,
+        anchored.runtime_state_hash.as_deref(),
+        runtime_state,
     )
 }
 
@@ -704,6 +836,7 @@ fn require_exact_anchor_state(
     preference: &DurableMonotonicState,
     telegram: Option<&TelegramAuthorityMonotonicState>,
     operator: Option<&OperatorMutationMonotonicState>,
+    runtime_state: Option<&RuntimeStateMonotonicState>,
 ) -> Result<()> {
     if anchored.outcome_generation != outcome.generation()
         || anchored.outcome_state_hash != outcome.state_hash()
@@ -711,6 +844,7 @@ fn require_exact_anchor_state(
         || anchored.preference_state_hash != preference.state_hash()
         || !telegram_state_matches(anchored, telegram)
         || !operator_state_matches(anchored, operator)
+        || !runtime_state_matches(anchored, runtime_state)
     {
         anyhow::bail!("external monotonic anchor effect lease source state is not exact");
     }
@@ -758,6 +892,15 @@ fn operator_state_matches(
 ) -> bool {
     anchored.operator_generation == current.map(|state| state.journal_revision)
         && anchored.operator_state_hash.as_deref() == current.map(|state| state.state_hash.as_str())
+}
+
+fn runtime_state_matches(
+    anchored: &AnchorEntry,
+    current: Option<&RuntimeStateMonotonicState>,
+) -> bool {
+    anchored.runtime_state_generation == current.map(RuntimeStateMonotonicState::generation)
+        && anchored.runtime_state_hash.as_deref()
+            == current.map(RuntimeStateMonotonicState::state_hash)
 }
 
 fn compare_telegram_state(
@@ -828,6 +971,32 @@ fn compare_operator_state(
     }
 }
 
+fn compare_runtime_state(
+    anchored_generation: Option<u64>,
+    anchored_hash: Option<&str>,
+    current: Option<&RuntimeStateMonotonicState>,
+) -> Result<()> {
+    match (anchored_generation, anchored_hash, current) {
+        (None, None, None | Some(_)) => Ok(()),
+        (Some(_), Some(_), None) => {
+            anyhow::bail!("runtime session state disappeared after it was externally anchored")
+        }
+        (Some(generation), Some(hash), Some(current)) => {
+            if current.generation() < generation {
+                anyhow::bail!(
+                    "runtime session state rolled back from generation {generation} to {}",
+                    current.generation()
+                );
+            }
+            if current.generation() == generation && current.state_hash() != hash {
+                anyhow::bail!("runtime session state diverged at an anchored generation");
+            }
+            Ok(())
+        }
+        _ => anyhow::bail!("external monotonic anchor runtime state binding is incomplete"),
+    }
+}
+
 fn compare_state(
     domain: &str,
     anchored_generation: u64,
@@ -856,6 +1025,13 @@ fn read_anchor_snapshot(file: &mut File, key: &[u8; 32]) -> Result<AnchorSnapsho
     if bytes.len() as u64 > MAX_ANCHOR_BYTES {
         anyhow::bail!("external monotonic anchor exceeds bounded file size");
     }
+    read_anchor_snapshot_bytes(&bytes, key)
+}
+
+fn read_anchor_snapshot_bytes(bytes: &[u8], key: &[u8; 32]) -> Result<AnchorSnapshot> {
+    if bytes.len() as u64 > MAX_ANCHOR_BYTES {
+        anyhow::bail!("external monotonic anchor exceeds bounded file size");
+    }
     let lines = bytes
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
@@ -869,6 +1045,30 @@ fn read_anchor_snapshot(file: &mut File, key: &[u8; 32]) -> Result<AnchorSnapsho
         }
         let entry: AnchorEntry =
             serde_json::from_slice(line).context("decode external monotonic anchor entry")?;
+        let rotation_binding_valid = match (
+            entry.rotation_compacted_records,
+            entry.rotation_history_hash.as_deref(),
+        ) {
+            (None, None) => true,
+            (Some(compacted), Some(history_hash)) => {
+                compacted > 0 && history_hash.strip_prefix("sha256:").is_some_and(hex64)
+            }
+            _ => false,
+        };
+        if entries.is_empty() && entry.rotation_compacted_records.is_some() {
+            if entry.effect_lease_state.is_some()
+                || !entry
+                    .previous_entry_hash
+                    .strip_prefix("sha256:")
+                    .is_some_and(hex64)
+            {
+                anyhow::bail!("external monotonic anchor rotation binding is invalid");
+            }
+            expected_sequence = entry.sequence;
+            previous_hash.clone_from(&entry.previous_entry_hash);
+        } else if !entries.is_empty() && entry.rotation_compacted_records.is_some() {
+            anyhow::bail!("external monotonic anchor rotation marker is not the root entry");
+        }
         let effect_lease_binding_valid = match (
             entry.effect_lease_state,
             entry.effect_lease_id.as_deref(),
@@ -887,6 +1087,7 @@ fn read_anchor_snapshot(file: &mut File, key: &[u8; 32]) -> Result<AnchorSnapsho
             || entry.preference_state_hash.is_empty()
             || (entry.telegram_generation.is_some() != entry.telegram_state_hash.is_some())
             || (entry.operator_generation.is_some() != entry.operator_state_hash.is_some())
+            || (entry.runtime_state_generation.is_some() != entry.runtime_state_hash.is_some())
             || entry
                 .telegram_state_hash
                 .as_deref()
@@ -895,6 +1096,11 @@ fn read_anchor_snapshot(file: &mut File, key: &[u8; 32]) -> Result<AnchorSnapsho
                 .operator_state_hash
                 .as_deref()
                 .is_some_and(str::is_empty)
+            || entry
+                .runtime_state_hash
+                .as_deref()
+                .is_some_and(str::is_empty)
+            || !rotation_binding_valid
             || !effect_lease_binding_valid
             || entry.mac.len() != 64
         {
@@ -984,6 +1190,13 @@ fn entry_fields(entry: &AnchorEntry) -> Vec<String> {
             source_hash.clone(),
         ]);
     }
+    if let (Some(compacted_records), Some(history_hash)) = (
+        entry.rotation_compacted_records,
+        entry.rotation_history_hash.as_ref(),
+    ) {
+        fields.push(compacted_records.to_string());
+        fields.push(history_hash.clone());
+    }
     fields
 }
 
@@ -1004,6 +1217,13 @@ fn anchor_state_fields(entry: &AnchorEntry) -> Vec<String> {
     if let (Some(generation), Some(state_hash)) = (
         entry.operator_generation,
         entry.operator_state_hash.as_ref(),
+    ) {
+        fields.push(generation.to_string());
+        fields.push(state_hash.clone());
+    }
+    if let (Some(generation), Some(state_hash)) = (
+        entry.runtime_state_generation,
+        entry.runtime_state_hash.as_ref(),
     ) {
         fields.push(generation.to_string());
         fields.push(state_hash.clone());

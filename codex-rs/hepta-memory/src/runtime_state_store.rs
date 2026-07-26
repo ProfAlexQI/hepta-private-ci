@@ -18,6 +18,9 @@ use std::sync::atomic::Ordering;
 use serde::Deserialize;
 use serde::Serialize;
 
+mod monotonic_state;
+pub use monotonic_state::RuntimeStateMonotonicState;
+
 use crate::StoreSnapshot;
 use crate::durable::DurableIntegrityContext;
 use crate::durable::DurableIntegrityKey;

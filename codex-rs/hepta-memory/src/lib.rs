@@ -182,6 +182,7 @@ pub use preference_cas::PreferenceDocumentCommitOutcome;
 pub use preference_cas::PreferenceGenesisOutcome;
 pub use preference_cas::PreferenceSeedOutcome;
 pub use preference_cas::PreferenceStateDocument;
+pub use runtime_state_store::RuntimeStateMonotonicState;
 pub use runtime_state_store::RuntimeStateStoreError;
 
 /// Runtime session, memory, and transcript store.
@@ -218,6 +219,15 @@ pub struct InspectedStoreSnapshot {
 }
 
 impl InMemoryStore {
+    pub fn runtime_state_monotonic_state(
+        &self,
+    ) -> Result<Option<RuntimeStateMonotonicState>, RuntimeStateStoreError> {
+        self.durability
+            .as_ref()
+            .map(|durability| durability.monotonic_state())
+            .transpose()
+    }
+
     pub fn bootstrap_durable(
         path: impl AsRef<std::path::Path>,
         integrity_key: DurableIntegrityKey,

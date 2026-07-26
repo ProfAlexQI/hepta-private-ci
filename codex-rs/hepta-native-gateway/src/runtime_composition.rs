@@ -1412,6 +1412,10 @@ impl NativeGatewayRuntime {
             preference: self.preference_ingress.monotonic_state()?,
             telegram: telegram_state,
             operator: operator_state,
+            runtime_state: self
+                .kernel
+                .durable_runtime_state_monotonic_state()
+                .map_err(anyhow::Error::msg)?,
         })
     }
 

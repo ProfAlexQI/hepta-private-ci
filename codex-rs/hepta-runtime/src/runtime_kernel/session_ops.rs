@@ -14,6 +14,17 @@
 /// let _runtime: RuntimeKernel = Default::default();
 /// ```
 impl RuntimeKernel {
+    /// Returns the authenticated session/memory/transcript state for rollback anchoring.
+    pub fn durable_runtime_state_monotonic_state(
+        &self,
+    ) -> Result<Option<hepta_memory::RuntimeStateMonotonicState>, HeptaError> {
+        self.memory.runtime_state_monotonic_state().map_err(|error| {
+            HeptaError(format!(
+                "failed to read durable runtime state monotonic projection: {error}"
+            ))
+        })
+    }
+
     /// Returns the exact authenticated preference state currently attached to
     /// one runtime session, if composition has supplied one.
     pub fn authenticated_preference_context(
