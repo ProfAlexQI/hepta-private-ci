@@ -1,6 +1,7 @@
 pub(crate) mod effect_ack;
 pub(crate) mod execution_intent;
 pub(crate) mod intent;
+pub(crate) mod provider_completion;
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -121,6 +122,15 @@ impl DurableOutcomeStore {
     /// Returns the SQLite database path backing this store.
     pub fn path(&self) -> &Path {
         self.database.path()
+    }
+
+    /// Returns a bounded authenticated high-water projection for composition
+    /// with an external append-only monotonic anchor.
+    pub async fn monotonic_state(&self) -> Result<crate::DurableMonotonicState, OutcomeStoreError> {
+        self.database
+            .monotonic_state()
+            .await
+            .map_err(map_durable_error)
     }
 
     pub(crate) fn database_identity(&self) -> DurableDatabaseIdentity {

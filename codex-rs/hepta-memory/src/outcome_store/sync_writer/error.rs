@@ -7,6 +7,7 @@ use crate::outcome_store::durable::execution_intent::RESOLVE_EXECUTION_INTENT_CO
 use crate::outcome_store::durable::execution_intent::STAGE_EXECUTION_INTENT_COMMIT_OPERATION;
 use crate::outcome_store::durable::intent::ACKNOWLEDGE_INTENT_COMMIT_OPERATION;
 use crate::outcome_store::durable::intent::STAGE_INTENT_COMMIT_OPERATION;
+use crate::outcome_store::durable::provider_completion::STAGE_PROVIDER_COMPLETION_COMMIT_OPERATION;
 
 /// Fail-closed error returned by [`super::SyncDurableOutcomeWriter`].
 ///
@@ -157,6 +158,19 @@ pub(super) fn map_effect_ack_record_error(
     match source {
         OutcomeStoreError::Persistence {
             operation: RECORD_EFFECT_ACK_COMMIT_OPERATION,
+            detail,
+        } => DurableOutcomeWriterError::CommitAmbiguous { attempt_id, detail },
+        source => DurableOutcomeWriterError::Backend { source },
+    }
+}
+
+pub(super) fn map_provider_completion_stage_error(
+    attempt_id: String,
+    source: OutcomeStoreError,
+) -> DurableOutcomeWriterError {
+    match source {
+        OutcomeStoreError::Persistence {
+            operation: STAGE_PROVIDER_COMPLETION_COMMIT_OPERATION,
             detail,
         } => DurableOutcomeWriterError::CommitAmbiguous { attempt_id, detail },
         source => DurableOutcomeWriterError::Backend { source },

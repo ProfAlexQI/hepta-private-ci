@@ -31,16 +31,37 @@ impl AttachedPreferenceContextState {
             .map(|(_, stamp)| stamp.clone())
     }
 
-    pub(crate) fn attach(&mut self, session_id: &str, stamp: RevisionStamp) {
+    pub(crate) fn attach(
+        &mut self,
+        session_id: &str,
+        stamp: RevisionStamp,
+    ) -> Result<(), HeptaError> {
         if let Some((_, current)) = self
             .entries
             .iter_mut()
             .find(|(session, _)| session == session_id)
         {
+            if stamp.revision() < current.revision() {
+                return Err(HeptaError(format!(
+                    "authenticated preference context revision rollback from {} to {}",
+                    current.revision(),
+                    stamp.revision()
+                )));
+            }
+            if stamp.revision() == current.revision() {
+                if stamp.content_hash() != current.content_hash() {
+                    return Err(HeptaError(format!(
+                        "authenticated preference context diverged at revision {}",
+                        current.revision()
+                    )));
+                }
+                return Ok(());
+            }
             *current = stamp;
         } else {
             self.entries.push((session_id.to_string(), stamp));
         }
+        Ok(())
     }
 
     pub(crate) fn remove_session(&mut self, session_id: &str) {
@@ -49,5 +70,47 @@ impl AttachedPreferenceContextState {
 
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hepta_contracts::ContentHash;
+    use hepta_contracts::Revision;
+
+    fn stamp(revision: u64, content_hash: &str) -> RevisionStamp {
+        RevisionStamp::new(Revision::new(revision), ContentHash::new(content_hash))
+    }
+
+    #[test]
+    fn attached_preference_context_is_monotonic_and_idempotent() {
+        let mut state = AttachedPreferenceContextState::default();
+        state
+            .attach("session", stamp(2, "sha256:revision-two"))
+            .expect("attach revision two");
+        state
+            .attach("session", stamp(2, "sha256:revision-two"))
+            .expect("idempotent revision two");
+
+        assert!(
+            state
+                .attach("session", stamp(1, "sha256:revision-one"))
+                .is_err()
+        );
+        assert!(
+            state
+                .attach("session", stamp(2, "sha256:revision-two-diverged"))
+                .is_err()
+        );
+        assert_eq!(state.get("session"), Some(stamp(2, "sha256:revision-two")));
+
+        state
+            .attach("session", stamp(3, "sha256:revision-three"))
+            .expect("attach revision three");
+        assert_eq!(
+            state.get("session"),
+            Some(stamp(3, "sha256:revision-three"))
+        );
     }
 }

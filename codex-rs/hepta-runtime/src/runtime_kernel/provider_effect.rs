@@ -234,10 +234,10 @@ pub(crate) fn acknowledge_provider_invocation(
     result: Result<ToolResult, ToolError>,
     prepared: &[PreparedWriteTransaction],
     expectation: Option<&ProviderEffectExpectation>,
-    sink: &SharedOutcomeReceiptSink,
+    _sink: &SharedOutcomeReceiptSink,
 ) -> Result<ToolResult, ToolError> {
     match result {
-        Ok(result) => acknowledge_committed_provider_result(result, prepared, expectation, sink),
+        Ok(result) => acknowledge_committed_provider_result(result, prepared, expectation),
         Err(provider_error) => {
             let Some(expectation) = expectation else {
                 return Err(provider_error);
@@ -257,20 +257,16 @@ pub(crate) fn acknowledge_provider_invocation(
             }
             let synthetic = ToolResult {
                 content: "provider effect committed before an error was returned".into(),
-                structured_json: Some("{}".into()),
+                structured_json: Some(
+                    json!({
+                        "status": "error",
+                        "error": provider_error.0,
+                        "provider_error_after_commit": true,
+                    })
+                    .to_string(),
+                ),
             };
-            match acknowledge_committed_provider_result(
-                synthetic,
-                prepared,
-                Some(expectation),
-                sink,
-            ) {
-                Ok(_) => Err(provider_error),
-                Err(ack_error) => Err(ToolError(format!(
-                    "{}; provider effect ACK failed: {}",
-                    provider_error.0, ack_error.0
-                ))),
-            }
+            acknowledge_committed_provider_result(synthetic, prepared, Some(expectation))
         }
     }
 }
@@ -279,7 +275,6 @@ fn acknowledge_committed_provider_result(
     mut result: ToolResult,
     prepared: &[PreparedWriteTransaction],
     expectation: Option<&ProviderEffectExpectation>,
-    sink: &SharedOutcomeReceiptSink,
 ) -> Result<ToolResult, ToolError> {
     if prepared.iter().all(|transaction| transaction.preview_only) {
         if expectation.is_some() {
@@ -340,27 +335,6 @@ fn acknowledge_committed_provider_result(
         canonical_provider_ack: canonical_provider_ack.clone(),
     })
     .map_err(|error| ToolError(format!("failed to bind provider effect ACK: {error}")))?;
-    match sink.record_execution_effect_ack(&ack) {
-        Ok(_) => {}
-        Err(record_error) => match sink.execution_effect_ack(&expectation.attempt_id) {
-            Ok(Some(recovered)) if recovered == ack => {}
-            Ok(Some(_)) => {
-                return Err(ToolError(format!(
-                    "provider effect ACK persistence conflicted after commit: {record_error}"
-                )));
-            }
-            Ok(None) => {
-                return Err(ToolError(format!(
-                    "provider effect ACK persistence was not confirmed after commit: {record_error}"
-                )));
-            }
-            Err(read_error) => {
-                return Err(ToolError(format!(
-                    "provider effect ACK persistence and read-back failed after commit: {record_error}; {read_error}"
-                )));
-            }
-        },
-    }
     let object = output
         .as_object_mut()
         .ok_or_else(|| ToolError("provider effect ACK requires an object output".into()))?;
@@ -380,7 +354,7 @@ fn acknowledge_committed_provider_result(
 pub(crate) fn confirm_provider_effect_ack(
     intent: &ExecutionIntent,
     prepared: &[PreparedWriteTransaction],
-    sink: &SharedOutcomeReceiptSink,
+    result: Option<&ToolResult>,
 ) -> Result<Option<ExecutionEffectAck>, HeptaError> {
     let Some(expectation) = ProviderEffectExpectation::from_intent(intent)? else {
         return Ok(None);
@@ -391,15 +365,46 @@ pub(crate) fn confirm_provider_effect_ack(
         ));
     };
     validate_prepared_binding(prepared, &expectation)?;
-    let ack = sink
-        .execution_effect_ack(intent.attempt_id())
-        .map_err(|error| HeptaError(format!("failed to read provider effect ACK: {error}")))?
+    let output = result
+        .and_then(|result| result.structured_json.as_deref())
         .ok_or_else(|| {
             HeptaError(format!(
-                "provider effect ACK is missing for execution attempt {}",
+                "provider effect ACK output is missing for execution attempt {}",
                 intent.attempt_id()
             ))
         })?;
+    let output: Value = serde_json::from_str(output)
+        .map_err(|error| HeptaError(format!("provider effect ACK output is invalid: {error}")))?;
+    let wire: ProviderEffectAckWire = serde_json::from_value(
+        output
+            .get(EFFECT_ACK_OUTPUT_FIELD)
+            .cloned()
+            .ok_or_else(|| {
+                HeptaError(format!(
+                    "provider effect ACK is missing for execution attempt {}",
+                    intent.attempt_id()
+                ))
+            })?,
+    )
+    .map_err(|error| HeptaError(format!("provider effect ACK wire is invalid: {error}")))?;
+    let canonical_provider_ack = serde_json::to_string(&wire)
+        .map_err(|error| HeptaError(format!("provider effect ACK is not canonical: {error}")))?;
+    let ack = ExecutionEffectAck::try_new(ExecutionEffectAckParts {
+        attempt_id: expectation.attempt_id.clone(),
+        idempotency_key: expectation.idempotency_key.clone(),
+        effect_plan_hash: expectation.effect_plan_hash.clone(),
+        canonical_provider_ack,
+    })
+    .map_err(|error| HeptaError(format!("failed to bind provider effect ACK: {error}")))?;
+    if output
+        .get("provider_effect_ack_hash")
+        .and_then(Value::as_str)
+        != Some(ack.ack_hash().as_str())
+    {
+        return Err(HeptaError(
+            "provider effect ACK hash output disagrees with exact material".into(),
+        ));
+    }
     let wire = validate_ack_payload(&expectation, &ack)?;
     let (after_bytes, _) = crate::read_committed_sealed_target(&prepared.sealed_target)?;
     if crate::mutation_content_hash(&after_bytes) != expectation.plan.after_content_hash {

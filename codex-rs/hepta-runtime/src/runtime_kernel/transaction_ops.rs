@@ -66,7 +66,7 @@ impl RuntimeKernel {
             .filter(|entry| entry.session_id == session_id)
             .cloned()
             .collect::<Vec<_>>();
-        transactions.sort_by(|left, right| right.created_at_unix_ms.cmp(&left.created_at_unix_ms));
+        transactions.sort_by_key(|transaction| std::cmp::Reverse(transaction.created_at_unix_ms));
         Ok(transactions)
     }
 
@@ -83,7 +83,7 @@ impl RuntimeKernel {
             .filter(|group| group.session_id == session_id)
             .cloned()
             .collect::<Vec<_>>();
-        groups.sort_by(|left, right| right.opened_at_unix_ms.cmp(&left.opened_at_unix_ms));
+        groups.sort_by_key(|group| std::cmp::Reverse(group.opened_at_unix_ms));
         Ok(groups)
     }
 
@@ -114,7 +114,7 @@ impl RuntimeKernel {
             .filter(|attempt| attempt.session_id == session_id)
             .cloned()
             .collect::<Vec<_>>();
-        attempts.sort_by(|left, right| right.started_at_unix_ms.cmp(&left.started_at_unix_ms));
+        attempts.sort_by_key(|attempt| std::cmp::Reverse(attempt.started_at_unix_ms));
         Ok(attempts)
     }
 
@@ -1896,7 +1896,7 @@ impl RuntimeKernel {
         let mut deleted_backups = Vec::new();
 
         for (_target, mut entries) in grouped {
-            entries.sort_by(|left, right| right.created_at_unix_ms.cmp(&left.created_at_unix_ms));
+            entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_at_unix_ms));
             for (index, entry) in entries.into_iter().enumerate() {
                 let keep_due_to_count = index < keep_latest_per_target;
                 let age_matches = max_age_ms
@@ -1938,9 +1938,8 @@ impl RuntimeKernel {
             }
         }
 
-        kept_backups.sort_by(|left, right| right.created_at_unix_ms.cmp(&left.created_at_unix_ms));
-        deleted_backups
-            .sort_by(|left, right| right.created_at_unix_ms.cmp(&left.created_at_unix_ms));
+        kept_backups.sort_by_key(|backup| std::cmp::Reverse(backup.created_at_unix_ms));
+        deleted_backups.sort_by_key(|backup| std::cmp::Reverse(backup.created_at_unix_ms));
 
         Ok(BackupPruneReport {
             backup_root,

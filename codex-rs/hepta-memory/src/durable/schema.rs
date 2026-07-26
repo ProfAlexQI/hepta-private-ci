@@ -328,9 +328,9 @@ async fn unique_single_column_index_count(
     table: &str,
     column: &str,
 ) -> Result<i64, DurableStorageError> {
-    let query = format!(
+    sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*)
-         FROM pragma_index_list('{table}') AS index_list
+         FROM pragma_index_list(?) AS index_list
          WHERE index_list.\"unique\" = 1
            AND (
              SELECT COUNT(*)
@@ -340,13 +340,11 @@ async fn unique_single_column_index_count(
              SELECT name
              FROM pragma_index_info(index_list.name)
              LIMIT 1
-           ) = ?"
-    );
-    sqlx::query_scalar::<_, i64>(&query)
-        .bind(column)
-        .fetch_one(pool)
-        .await
-        .map_err(|error| {
-            DurableStorageError::persistence("verify durable outcome uniqueness", error)
-        })
+           ) = ?",
+    )
+    .bind(table)
+    .bind(column)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| DurableStorageError::persistence("verify durable outcome uniqueness", error))
 }

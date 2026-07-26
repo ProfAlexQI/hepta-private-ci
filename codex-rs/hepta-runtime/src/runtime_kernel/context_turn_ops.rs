@@ -1,3 +1,5 @@
+#[path = "context_turn_ops/approved_candidate.rs"]
+mod approved_candidate;
 impl RuntimeKernel {
     pub async fn native_turn_messages_with_context_recall_handoff(
         &self,
@@ -412,7 +414,7 @@ impl RuntimeKernel {
         let mut captured = ExecutionBus::new(self).dispatch(authorized_execution).await;
         captured.capture_write_transaction();
 
-        let (attempt_id, durable_intent_recorded, effect_plan_recorded, provider_effect_ack_hash) =
+        let (attempt_id, durable_intent_recorded, effect_plan_hash, provider_effect_ack_hash) =
             captured
                 .execution()
                 .map(|execution| {
@@ -422,7 +424,7 @@ impl RuntimeKernel {
                         execution
                             .execution_intent()
                             .and_then(hepta_memory::ExecutionIntent::effect_plan_hash)
-                            .is_some(),
+                            .map(ToString::to_string),
                         execution
                             .execution_effect_ack()
                             .map(hepta_memory::ExecutionEffectAck::ack_hash)
@@ -455,7 +457,8 @@ impl RuntimeKernel {
         let execution_receipt = RuntimeExecutionReceipt {
             attempt_id,
             durable_intent_recorded,
-            effect_plan_recorded,
+            effect_plan_recorded: effect_plan_hash.is_some(),
+            effect_plan_hash,
             provider_effect_ack_hash,
             terminal_receipt_id: terminal.receipt().id().to_string(),
             terminal_receipt_hash: terminal.receipt().receipt_hash().to_string(),
@@ -564,6 +567,7 @@ impl RuntimeKernel {
         model_timeout_ms: Option<u64>,
         selected_snippets: Option<&CoreTurnContextRecallSelectedSnippetEnvelope>,
     ) -> Result<VerticalSliceResult, HeptaError> {
+        let _turn_reservation = self.begin_session_turn_reservation(&session_id.0)?;
         TurnCoordinator {
             kernel: self,
             session_id,

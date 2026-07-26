@@ -2,6 +2,7 @@ use std::env;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -14,15 +15,32 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::durability_anchor::DurableAnchorStateSnapshot;
+use crate::durability_anchor::ExternalMonotonicAnchor;
+use crate::durability_anchor::ExternalMonotonicAnchorConfig;
+use crate::durability_anchor::ExternalMonotonicAnchorEffectLease;
+use crate::effect_reconciliation::EffectReconciliationAuthority;
+use crate::effect_reconciliation::EffectReconciliationConfig;
+use crate::effect_reconciliation::EffectReconciliationHttpResponse;
+use crate::native_telegram::OperatorTelegramExecutionIdentity;
+use crate::operator_mutation::OperatorMutationCommitReceipt;
+use crate::operator_mutation::OperatorMutationPlanReceipt;
+use crate::operator_mutation_reconciliation::OperatorMutationReconciliationHttpResponse;
 use crate::preference_ingress::NativePreferenceIngress;
 use crate::preference_ingress::NativePreferenceIngressConfig;
 use crate::preference_ingress::PreferenceHttpResponse;
 use crate::runtime_ingress::RuntimeIngressKind;
-use crate::runtime_ingress::runtime_ingress_kind;
+use crate::runtime_ingress::runtime_ingress_lifecycle;
 use crate::runtime_mutation::RuntimeMutationCanaryReceipt;
 #[cfg(all(test, unix))]
 use crate::secure_key_file::PRIVATE_FILE_MODE;
 use crate::secure_key_file::read_private_key;
+use crate::telegram_authority::TelegramAuthority;
+use crate::telegram_authority::TelegramAuthorityCommitReceipt;
+use crate::telegram_authority::TelegramAuthorityConfig;
+use crate::telegram_authority::TelegramAuthorityPlanReceipt;
+use crate::telegram_authority::TelegramPipelineReceipt;
+use crate::telegram_authority::TelegramReconciliationHttpResponse;
 
 const OUTCOME_DATABASE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_DATABASE";
 const INTEGRITY_KEY_FILE_ENV: &str = "HEPTA_RUNTIME_INTEGRITY_KEY_FILE";
@@ -33,7 +51,16 @@ pub(crate) const RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT: &str = "/api/actions/run
 pub struct NativeGatewayRuntime {
     kernel: RuntimeKernel,
     preference_ingress: NativePreferenceIngress,
+    effect_reconciliation: Option<EffectReconciliationAuthority>,
+    monotonic_anchor: Option<Arc<ExternalMonotonicAnchor>>,
+    telegram_authority: Option<TelegramAuthority>,
     outcome_mode: RuntimeOutcomeMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct OperatorAuthorizedTelegramDrainReceipt {
+    pub(crate) authorization: TelegramAuthorityCommitReceipt,
+    pub(crate) pipeline: TelegramPipelineReceipt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -58,6 +85,7 @@ pub(crate) struct RuntimeKernelCanaryReceipt {
 pub(crate) enum RuntimeRequestDisposition {
     ReadOnlyDispatch,
     PlanOnlyQuarantine,
+    ExactAuthorityDispatch,
 }
 
 /// Request-bound readiness/quarantine evidence. This is neither exact tool
@@ -90,6 +118,48 @@ pub(crate) struct RuntimeTelegramDrainPreflightReceipt {
     pub(crate) model_invocation_authorized: bool,
     pub(crate) send_authorized: bool,
     pub(crate) durable_intent_recorded: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct OperatorAuthorityChallengeReceipt {
+    schema: &'static str,
+    status: &'static str,
+    session_binding_hash: String,
+    preference_session_binding_hash: String,
+    telegram_session_binding_hash: Option<String>,
+    telegram_execution_identity_hash: Option<String>,
+    telegram_cursor: Option<i64>,
+    operator_mutation_enabled: bool,
+    telegram_pipeline_enabled: bool,
+    effect_reconciliation_enabled: bool,
+    challenge_endpoint: &'static str,
+    operator_plan_endpoint: &'static str,
+    operator_commit_endpoint: &'static str,
+    operator_reconciliation_inspect_endpoint: &'static str,
+    operator_reconciliation_resolve_endpoint: &'static str,
+    telegram_plan_endpoint: &'static str,
+    telegram_commit_endpoint: &'static str,
+    preference_challenge_endpoint: &'static str,
+    preference_commit_endpoint: &'static str,
+    effect_reconciliation_inspect_endpoint: &'static str,
+    effect_reconciliation_resolve_endpoint: &'static str,
+    authorization_request_binding_domain: &'static str,
+    authorization_request_binding_framing: &'static str,
+    authorization_request_body: &'static str,
+    operator_plan_proof_domain: &'static str,
+    operator_plan_proof_fields: [&'static str; 4],
+    operator_commit_proof_domain: &'static str,
+    operator_commit_proof_fields: [&'static str; 7],
+    operator_reconciliation_proof_domain: &'static str,
+    operator_reconciliation_proof_fields: [&'static str; 8],
+    telegram_plan_proof_domain: &'static str,
+    telegram_plan_proof_fields: [&'static str; 4],
+    telegram_commit_proof_domain: &'static str,
+    telegram_commit_proof_fields: [&'static str; 5],
+    effect_reconciliation_proof_domain: &'static str,
+    effect_reconciliation_proof_fields: [&'static str; 7],
+    secret_material_returned: bool,
+    external_effect_performed: bool,
 }
 
 #[derive(Debug)]
@@ -224,20 +294,38 @@ impl NativeGatewayRuntime {
     /// `HEPTA_PREFERENCE_STORE_MODE=bootstrap-new`.
     ///
     /// Both preference endpoints require distinct domain-separated HMAC
-    /// proofs. The native gateway defaults to loopback, but its clear HTTP
-    /// transport makes no confidentiality claim; the existing explicit
-    /// non-loopback lab override is not a secure deployment mode.
+    /// proofs plus strict loopback Host/Origin/CSRF admission. Clear HTTP makes
+    /// no confidentiality claim beyond the local host boundary.
     pub fn from_env() -> Result<Self> {
-        Self::open(
+        Self::open_with_operational_controls(
             RuntimeCompositionConfig::from_env()?,
             NativePreferenceIngressConfig::from_env()?,
+            EffectReconciliationConfig::from_env()?,
+            ExternalMonotonicAnchorConfig::from_env()?,
+            TelegramAuthorityConfig::from_env()?,
         )
     }
 
+    #[cfg(all(test, unix))]
     fn open(
         config: RuntimeCompositionConfig,
         preference_config: NativePreferenceIngressConfig,
     ) -> Result<Self> {
+        Self::open_with_operational_controls(config, preference_config, None, None, None)
+    }
+
+    fn open_with_operational_controls(
+        config: RuntimeCompositionConfig,
+        preference_config: NativePreferenceIngressConfig,
+        reconciliation_config: Option<EffectReconciliationConfig>,
+        anchor_config: Option<ExternalMonotonicAnchorConfig>,
+        telegram_config: Option<TelegramAuthorityConfig>,
+    ) -> Result<Self> {
+        require_live_mutation_anchor(
+            crate::operator_mutation::enabled(),
+            telegram_config.is_some(),
+            anchor_config.is_some(),
+        )?;
         let integrity_key = read_integrity_key(&config.integrity_key_file)?;
         let prepared_preference = NativePreferenceIngress::prepare(preference_config)?;
         let kernel = match config.outcome_mode {
@@ -256,11 +344,34 @@ impl NativeGatewayRuntime {
             )
         })?;
         let preference_ingress = NativePreferenceIngress::open(prepared_preference)?;
-        Ok(Self {
+        let effect_reconciliation = reconciliation_config
+            .map(EffectReconciliationAuthority::open)
+            .transpose()
+            .context("initialize exact effect reconciliation authority")?;
+        let monotonic_anchor = anchor_config
+            .map(ExternalMonotonicAnchor::open)
+            .transpose()
+            .context("initialize external monotonic anchor")?
+            .map(Arc::new);
+        let telegram_authority = telegram_config
+            .map(TelegramAuthority::open)
+            .transpose()
+            .context("initialize operator-bound Telegram pipeline authority")?;
+        let runtime = Self {
             kernel,
             preference_ingress,
+            effect_reconciliation,
+            monotonic_anchor,
+            telegram_authority,
             outcome_mode: config.outcome_mode,
-        })
+        };
+        runtime
+            .hydrate_authenticated_preference_context()
+            .context("hydrate authenticated preference context at startup")?;
+        runtime
+            .synchronize_durable_anchor()
+            .context("verify and advance external monotonic anchor at startup")?;
+        Ok(runtime)
     }
 
     pub(crate) fn validate_readiness(&self) -> Result<()> {
@@ -269,7 +380,9 @@ impl NativeGatewayRuntime {
             .map_err(|error| anyhow::anyhow!("attached RuntimeKernel readiness failed: {error}"))?;
         self.preference_ingress
             .validate_readiness()
-            .context("attached trusted preference ingress readiness failed")
+            .context("attached trusted preference ingress readiness failed")?;
+        self.synchronize_durable_anchor()
+            .context("external monotonic anchor readiness failed")
     }
 
     pub(crate) fn preflight_request(
@@ -278,11 +391,15 @@ impl NativeGatewayRuntime {
         path: &str,
         body: Option<&str>,
     ) -> Result<RuntimeRequestPreflightReceipt> {
-        let disposition = match method {
-            "GET" => RuntimeRequestDisposition::ReadOnlyDispatch,
-            "POST" => RuntimeRequestDisposition::PlanOnlyQuarantine,
-            _ => anyhow::bail!("attached RuntimeKernel denied unsupported HTTP method"),
-        };
+        self.synchronize_durable_anchor()
+            .context("durable rollback anchor denied request preflight")?;
+        if !matches!(method, "GET" | "POST") {
+            anyhow::bail!("attached RuntimeKernel denied unsupported HTTP method");
+        }
+        let lifecycle = runtime_ingress_lifecycle(method, path).with_context(|| {
+            format!("attached RuntimeKernel denied unclassified native ingress: {method} {path}")
+        })?;
+        let disposition = lifecycle.disposition();
         if !path.starts_with('/') {
             anyhow::bail!("attached RuntimeKernel denied non-origin request target");
         }
@@ -296,22 +413,35 @@ impl NativeGatewayRuntime {
             .map_err(|error| anyhow::anyhow!("attached RuntimeKernel model failed: {error}"))?
             .active;
         let mut hasher = Sha256::new();
-        for value in [
-            b"hepta-native-gateway-runtime-request-v1".as_slice(),
+        let proof_excluded_body = proof_excluded_authorization_body(path, body)?;
+        let mut values = vec![
+            if proof_excluded_body.is_some() {
+                b"hepta-native-gateway-authorization-request-v2".as_slice()
+            } else {
+                b"hepta-native-gateway-runtime-request-v1".as_slice()
+            },
             method.as_bytes(),
             path.as_bytes(),
-            body.unwrap_or_default().as_bytes(),
-            session_id.as_bytes(),
-            model.provider.as_bytes(),
-            model.model.as_bytes(),
-        ] {
+            proof_excluded_body
+                .as_deref()
+                .map(str::as_bytes)
+                .unwrap_or_else(|| body.unwrap_or_default().as_bytes()),
+        ];
+        if proof_excluded_body.is_none() {
+            values.extend([
+                session_id.as_bytes(),
+                model.provider.as_bytes(),
+                model.model.as_bytes(),
+            ]);
+        }
+        for value in values {
             hasher.update((value.len() as u64).to_be_bytes());
             hasher.update(value);
         }
         Ok(RuntimeRequestPreflightReceipt {
             request_binding_hash: format!("{:x}", hasher.finalize()),
             disposition,
-            ingress_kind: runtime_ingress_kind(method, path),
+            ingress_kind: lifecycle.ingress_kind(),
             mutation_authorized: false,
             durable_intent_recorded: false,
             provider_effect_ack_recorded: false,
@@ -373,6 +503,18 @@ impl NativeGatewayRuntime {
         self.preference_ingress.mode()
     }
 
+    pub(crate) const fn effect_reconciliation_enabled(&self) -> bool {
+        self.effect_reconciliation.is_some()
+    }
+
+    pub(crate) const fn monotonic_anchor_enabled(&self) -> bool {
+        self.monotonic_anchor.is_some()
+    }
+
+    pub(crate) const fn telegram_operator_pipeline_enabled(&self) -> bool {
+        self.telegram_authority.is_some()
+    }
+
     pub(crate) fn route_preference_ingress(
         &self,
         method: &str,
@@ -391,22 +533,78 @@ impl NativeGatewayRuntime {
                 });
             }
         };
-        let mut response = self.preference_ingress.route_http(
+        let anchor_lease = if method == "POST"
+            && path == crate::preference_ingress::PREFERENCE_COMMIT_ENDPOINT
+        {
+            if self.monotonic_anchor.is_none() {
+                return Some(PreferenceHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"trusted_preference_ingress.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    preference_context: None,
+                });
+            }
+            if let Some(response) = self
+                .preference_ingress
+                .prevalidate_commit_http(body, &session_binding_hash)
+            {
+                return Some(response);
+            }
+            match self.begin_required_durable_effect_anchor_lease() {
+                Ok(lease) => Some(lease),
+                Err(_) => {
+                    return Some(PreferenceHttpResponse {
+                        status: "503 Service Unavailable",
+                        body: r#"{"error":"trusted_preference_ingress.monotonic_anchor_failed"}"#
+                            .to_string(),
+                        preference_context: None,
+                    });
+                }
+            }
+        } else {
+            None
+        };
+        let response = self.preference_ingress.route_http(
             method,
             path,
             body,
             request_binding_hash,
             &session_binding_hash,
-        )?;
+        );
+        let Some(mut response) = response else {
+            if self
+                .finalize_durable_effect_anchor_lease(anchor_lease)
+                .is_err()
+            {
+                return Some(PreferenceHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"trusted_preference_ingress.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    preference_context: None,
+                });
+            }
+            return None;
+        };
         if let Some(stamp) = response.preference_context.take()
             && self
                 .kernel
                 .attach_authenticated_preference_context(&session_id, stamp)
                 .is_err()
         {
-            return Some(PreferenceHttpResponse {
+            response = PreferenceHttpResponse {
                 status: "503 Service Unavailable",
                 body: r#"{"error":"trusted_preference_ingress.runtime_attachment_failed"}"#
+                    .to_string(),
+                preference_context: None,
+            };
+        }
+        if self
+            .finalize_durable_effect_anchor_lease(anchor_lease)
+            .is_err()
+        {
+            return Some(PreferenceHttpResponse {
+                status: "503 Service Unavailable",
+                body: r#"{"error":"trusted_preference_ingress.monotonic_anchor_failed"}"#
                     .to_string(),
                 preference_context: None,
             });
@@ -430,6 +628,243 @@ impl NativeGatewayRuntime {
         Ok((session_id, format!("sha256:{:x}", hasher.finalize())))
     }
 
+    fn operator_runtime_session_binding(&self) -> Result<String> {
+        let session_id = self
+            .kernel
+            .active_session_id()
+            .map_err(|error| anyhow::anyhow!("active operator session unavailable: {error}"))?;
+        let model = self
+            .kernel
+            .model_selection_for_session(&session_id)
+            .map_err(|error| anyhow::anyhow!("active operator model unavailable: {error}"))?
+            .active;
+        let mut hasher = Sha256::new();
+        for value in [
+            b"hepta-native-operator-session-binding-v1".as_slice(),
+            session_id.as_bytes(),
+            model.provider.as_bytes(),
+            model.model.as_bytes(),
+        ] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value);
+        }
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    fn operator_telegram_runtime_session_binding(
+        &self,
+    ) -> Result<(String, String, OperatorTelegramExecutionIdentity)> {
+        let session_id = self
+            .kernel
+            .active_session_id()
+            .map_err(|error| anyhow::anyhow!("active Telegram session unavailable: {error}"))?;
+        let model = self
+            .kernel
+            .model_selection_for_session(&session_id)
+            .map_err(|error| anyhow::anyhow!("active Telegram model unavailable: {error}"))?
+            .active;
+        let execution_identity = crate::native_telegram::operator_telegram_execution_identity(
+            &model.provider,
+            &model.model,
+        )?;
+        let execution_identity_hash = execution_identity.binding_hash()?;
+        let mut hasher = Sha256::new();
+        for value in [
+            b"hepta-native-operator-telegram-session-binding-v1".as_slice(),
+            session_id.as_bytes(),
+            model.provider.as_bytes(),
+            model.model.as_bytes(),
+            execution_identity_hash.as_bytes(),
+        ] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value);
+        }
+        Ok((
+            format!("{:x}", hasher.finalize()),
+            execution_identity_hash,
+            execution_identity,
+        ))
+    }
+
+    pub(crate) fn operator_authority_challenge(&self) -> Result<OperatorAuthorityChallengeReceipt> {
+        let telegram_pipeline_enabled = self.telegram_operator_pipeline_enabled();
+        let (telegram_session_binding_hash, telegram_execution_identity_hash) =
+            if telegram_pipeline_enabled {
+                let (session_binding_hash, execution_identity_hash, _) =
+                    self.operator_telegram_runtime_session_binding()?;
+                (Some(session_binding_hash), Some(execution_identity_hash))
+            } else {
+                (None, None)
+            };
+        let (_, preference_session_binding_hash) = self.preference_session_binding()?;
+        Ok(OperatorAuthorityChallengeReceipt {
+            schema: "hepta.native.operator-authority-challenge.v1",
+            status: "ready",
+            session_binding_hash: self.operator_runtime_session_binding()?,
+            preference_session_binding_hash,
+            telegram_session_binding_hash,
+            telegram_execution_identity_hash,
+            telegram_cursor: if telegram_pipeline_enabled {
+                self.current_telegram_cursor()?
+            } else {
+                None
+            },
+            operator_mutation_enabled: crate::operator_mutation::enabled(),
+            telegram_pipeline_enabled,
+            effect_reconciliation_enabled: self.effect_reconciliation_enabled(),
+            challenge_endpoint: crate::runtime_ingress::OPERATOR_AUTHORITY_CHALLENGE_ENDPOINT,
+            operator_plan_endpoint: crate::operator_mutation::OPERATOR_MUTATION_PLAN_ENDPOINT,
+            operator_commit_endpoint: crate::operator_mutation::OPERATOR_MUTATION_COMMIT_ENDPOINT,
+            operator_reconciliation_inspect_endpoint:
+                crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_INSPECT_ENDPOINT,
+            operator_reconciliation_resolve_endpoint:
+                crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_RESOLVE_ENDPOINT,
+            telegram_plan_endpoint: crate::telegram_authority::TELEGRAM_AUTHORITY_PLAN_ENDPOINT,
+            telegram_commit_endpoint: crate::telegram_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT,
+            preference_challenge_endpoint: crate::preference_ingress::PREFERENCE_CHALLENGE_ENDPOINT,
+            preference_commit_endpoint: crate::preference_ingress::PREFERENCE_COMMIT_ENDPOINT,
+            effect_reconciliation_inspect_endpoint:
+                crate::effect_reconciliation::EFFECT_RECONCILIATION_INSPECT_ENDPOINT,
+            effect_reconciliation_resolve_endpoint:
+                crate::effect_reconciliation::EFFECT_RECONCILIATION_RESOLVE_ENDPOINT,
+            authorization_request_binding_domain: "hepta-native-gateway-authorization-request-v2",
+            authorization_request_binding_framing: "u64be-length-prefixed-fields",
+            authorization_request_body: "canonical-json-without-top-level-proof",
+            operator_plan_proof_domain: "hepta.native.operator-note.plan.v1",
+            operator_plan_proof_fields: [
+                "mutation_id",
+                "note",
+                "plan_request_binding_hash",
+                "session_binding_hash",
+            ],
+            operator_commit_proof_domain: "hepta.native.operator-note.commit.v1",
+            operator_commit_proof_fields: [
+                "mutation_id",
+                "note",
+                "plan_hash",
+                "candidate_binding_hash",
+                "plan_request_binding_hash",
+                "session_binding_hash",
+                "commit_request_binding_hash",
+            ],
+            operator_reconciliation_proof_domain:
+                crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_PROOF_DOMAIN,
+            operator_reconciliation_proof_fields: [
+                "method",
+                "path",
+                "session_binding_hash",
+                "plan_hash",
+                "attempt_id",
+                "effect_plan_hash",
+                "request_binding_hash",
+                "decision",
+            ],
+            telegram_plan_proof_domain: "hepta.telegram.operator-authority.plan.v1",
+            telegram_plan_proof_fields: [
+                "request_id",
+                "cursor_binding",
+                "plan_request_binding_hash",
+                "session_binding_hash",
+            ],
+            telegram_commit_proof_domain: "hepta.telegram.operator-authority.commit.v1",
+            telegram_commit_proof_fields: [
+                "request_id",
+                "plan_hash",
+                "plan_request_binding_hash",
+                "commit_request_binding_hash",
+                "session_binding_hash",
+            ],
+            effect_reconciliation_proof_domain: "hepta.operator-effect-reconciliation.hmac-sha256.v1",
+            effect_reconciliation_proof_fields: [
+                "method",
+                "path",
+                "session_binding_hash",
+                "attempt_id",
+                "effect_plan_hash",
+                "request_binding_hash",
+                "decision",
+            ],
+            secret_material_returned: false,
+            external_effect_performed: false,
+        })
+    }
+
+    fn current_telegram_cursor(&self) -> Result<Option<i64>> {
+        let status = crate::native_telegram::telegram_cursor_status(true);
+        if !status.cursor_parse_ok {
+            anyhow::bail!(
+                "operator Telegram pipeline denied unreadable durable cursor: {}",
+                status
+                    .error
+                    .as_deref()
+                    .unwrap_or("unknown cursor validation error")
+            );
+        }
+        Ok(status.next_update_offset)
+    }
+
+    pub(crate) fn plan_operator_telegram_drain(
+        &self,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Result<TelegramAuthorityPlanReceipt> {
+        let authority = self
+            .telegram_authority
+            .as_ref()
+            .context("operator Telegram pipeline is disabled")?;
+        let (session_binding, _, _) = self.operator_telegram_runtime_session_binding()?;
+        let cursor = self.current_telegram_cursor()?;
+        self.require_durable_anchor_configured()?;
+        authority
+            .prevalidate_plan(body, request_binding_hash, &session_binding, cursor)
+            .context("prevalidate Telegram authority plan before anchor reservation")?;
+        let anchor_lease = self
+            .begin_required_durable_effect_anchor_lease()
+            .context("anchor Telegram authority plan before state mutation")?;
+        let result = authority.plan(body, request_binding_hash, &session_binding, cursor);
+        let anchor_result = self.finalize_durable_effect_anchor_lease(Some(anchor_lease));
+        combine_effect_with_anchor(result, anchor_result, "anchor Telegram authority plan")
+    }
+
+    pub(crate) fn commit_operator_telegram_drain(
+        &self,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Result<OperatorAuthorizedTelegramDrainReceipt> {
+        let authority = self
+            .telegram_authority
+            .as_ref()
+            .context("operator Telegram pipeline is disabled")?;
+        let (session_binding, _, execution_identity) =
+            self.operator_telegram_runtime_session_binding()?;
+        let cursor = self.current_telegram_cursor()?;
+        self.require_durable_anchor_configured()?;
+        authority
+            .prevalidate_authorize(body, request_binding_hash, &session_binding, cursor)
+            .context("prevalidate Telegram authorization before anchor reservation")?;
+        let anchor_lease = self
+            .begin_required_durable_effect_anchor_lease()
+            .context("anchor Telegram pipeline before external effects")?;
+        let result = (|| {
+            let (authorization, permit) =
+                authority.authorize(body, request_binding_hash, &session_binding, cursor)?;
+            let pipeline = crate::native_telegram::execute_operator_authorized_telegram_drain(
+                permit,
+                execution_identity,
+            )?;
+            Ok(OperatorAuthorizedTelegramDrainReceipt {
+                authorization,
+                pipeline,
+            })
+        })();
+        let anchor_result = self.finalize_durable_effect_anchor_lease(Some(anchor_lease));
+        combine_effect_with_anchor(
+            result,
+            anchor_result,
+            "anchor Telegram pipeline terminal state",
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn authenticated_preference_context_for_test(
         &self,
@@ -451,50 +886,58 @@ impl NativeGatewayRuntime {
         {
             anyhow::bail!("runtime canary requires a canonical request binding");
         }
-        let session_id = "native-gateway:runtime-kernel-canary";
-        self.kernel
-            .switch_model_in_session(session_id, "demo/demo-chat")
-            .map_err(|error| anyhow::anyhow!("select isolated canary model: {error}"))?;
-        let executor = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .context("build isolated RuntimeKernel canary executor")?;
-        let result = executor
-            .block_on(self.kernel.run_demo_turn_in_session(
-                session_id,
-                &format!(
-                    "Use the echo tool with arguments exactly {{\"text\":\"{request_binding_hash}\"}}. Do not answer directly."
-                ),
-            ))
-            .map_err(|error| anyhow::anyhow!("execute RuntimeKernel canary: {error}"))?;
-        let receipt = result
-            .execution_receipt
-            .context("RuntimeKernel canary completed without an execution receipt")?;
-        if result.active_model.provider != "demo"
-            || result.active_model.model != "demo-chat"
-            || result.invoked_tool.as_deref() != Some("echo")
-            || !receipt.durable_intent_recorded
-            || receipt.effect_plan_recorded
-            || receipt.provider_effect_ack_hash.is_some()
-            || receipt.terminal_status != "succeeded"
-        {
-            anyhow::bail!("RuntimeKernel canary lifecycle evidence failed closed");
-        }
-        Ok(RuntimeKernelCanaryReceipt {
-            product: "Hepta",
-            runtime: "hepta",
-            status: "succeeded",
-            action: "runtime-kernel-canary",
-            request_binding_hash: request_binding_hash.to_string(),
-            active_model_provider: result.active_model.provider,
-            active_model: result.active_model.model,
-            invoked_tool: "echo".into(),
-            execution_receipt: receipt,
-            provider_effect_ack_requirement: "not_applicable_read_only_tool",
-            external_network_requested: false,
-            external_side_effects: false,
-            live_surface_expanded: false,
-            raw_request_body_exposed: false,
-        })
+        self.require_durable_anchor_configured()?;
+        let anchor_lease = self
+            .begin_required_durable_effect_anchor_lease()
+            .context("anchor RuntimeKernel canary before durable outcome")?;
+        let result = (|| -> Result<RuntimeKernelCanaryReceipt> {
+            let session_id = "native-gateway:runtime-kernel-canary";
+            self.kernel
+                .switch_model_in_session(session_id, "demo/demo-chat")
+                .map_err(|error| anyhow::anyhow!("select isolated canary model: {error}"))?;
+            let executor = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .context("build isolated RuntimeKernel canary executor")?;
+            let result = executor
+                .block_on(self.kernel.run_demo_turn_in_session(
+                    session_id,
+                    &format!(
+                        "Use the echo tool with arguments exactly {{\"text\":\"{request_binding_hash}\"}}. Do not answer directly."
+                    ),
+                ))
+                .map_err(|error| anyhow::anyhow!("execute RuntimeKernel canary: {error}"))?;
+            let receipt = result
+                .execution_receipt
+                .context("RuntimeKernel canary completed without an execution receipt")?;
+            if result.active_model.provider != "demo"
+                || result.active_model.model != "demo-chat"
+                || result.invoked_tool.as_deref() != Some("echo")
+                || !receipt.durable_intent_recorded
+                || receipt.effect_plan_recorded
+                || receipt.provider_effect_ack_hash.is_some()
+                || receipt.terminal_status != "succeeded"
+            {
+                anyhow::bail!("RuntimeKernel canary lifecycle evidence failed closed");
+            }
+            Ok(RuntimeKernelCanaryReceipt {
+                product: "Hepta",
+                runtime: "hepta",
+                status: "succeeded",
+                action: "runtime-kernel-canary",
+                request_binding_hash: request_binding_hash.to_string(),
+                active_model_provider: result.active_model.provider,
+                active_model: result.active_model.model,
+                invoked_tool: "echo".into(),
+                execution_receipt: receipt,
+                provider_effect_ack_requirement: "not_applicable_read_only_tool",
+                external_network_requested: false,
+                external_side_effects: false,
+                live_surface_expanded: false,
+                raw_request_body_exposed: false,
+            })
+        })();
+        let anchor_result = self.finalize_durable_effect_anchor_lease(Some(anchor_lease));
+        combine_effect_with_anchor(result, anchor_result, "anchor RuntimeKernel canary outcome")
     }
 
     pub(crate) fn execute_runtime_mutation_canary(
@@ -502,7 +945,460 @@ impl NativeGatewayRuntime {
         request_binding_hash: &str,
         idempotency_key: &str,
     ) -> Result<RuntimeMutationCanaryReceipt> {
-        crate::runtime_mutation::execute(&self.kernel, request_binding_hash, idempotency_key)
+        self.require_durable_anchor_configured()?;
+        crate::runtime_mutation::prevalidate(request_binding_hash, idempotency_key)
+            .context("prevalidate runtime mutation canary before anchor reservation")?;
+        let anchor_lease = self
+            .begin_required_durable_effect_anchor_lease()
+            .context("anchor runtime mutation canary before local effect")?;
+        let result =
+            crate::runtime_mutation::execute(&self.kernel, request_binding_hash, idempotency_key);
+        let anchor_result = self.finalize_durable_effect_anchor_lease(Some(anchor_lease));
+        combine_effect_with_anchor(
+            result,
+            anchor_result,
+            "anchor runtime mutation canary outcome",
+        )
+    }
+
+    pub(crate) fn plan_operator_mutation(
+        &self,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Result<OperatorMutationPlanReceipt> {
+        let session_binding_hash = self.operator_runtime_session_binding()?;
+        self.require_durable_anchor_configured()?;
+        crate::operator_mutation::prevalidate_plan(
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        )
+        .context("prevalidate operator mutation plan before anchor reservation")?;
+        let anchor_lease = self
+            .begin_required_durable_effect_anchor_lease()
+            .context("anchor operator mutation before plan state mutation")?;
+        let result = crate::operator_mutation::plan(
+            &self.kernel,
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        );
+        let anchor_result = self.finalize_durable_effect_anchor_lease(Some(anchor_lease));
+        combine_effect_with_anchor(result, anchor_result, "anchor operator mutation plan")
+    }
+
+    pub(crate) fn commit_operator_mutation(
+        &self,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Result<OperatorMutationCommitReceipt> {
+        let session_binding_hash = self.operator_runtime_session_binding()?;
+        self.require_durable_anchor_configured()?;
+        crate::operator_mutation::prevalidate_commit(
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        )
+        .context("prevalidate operator mutation commit before anchor reservation")?;
+        let anchor_lease = self
+            .begin_required_durable_effect_anchor_lease()
+            .context("anchor operator mutation before local effect")?;
+        let result = crate::operator_mutation::commit(
+            &self.kernel,
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        );
+        let anchor_result = self.finalize_durable_effect_anchor_lease(Some(anchor_lease));
+        combine_effect_with_anchor(result, anchor_result, "anchor operator mutation outcome")
+    }
+
+    pub(crate) fn route_operator_mutation_reconciliation(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Option<OperatorMutationReconciliationHttpResponse> {
+        if !matches!(
+            path,
+            crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_INSPECT_ENDPOINT
+                | crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_RESOLVE_ENDPOINT
+        ) {
+            return None;
+        }
+        if !crate::operator_mutation::enabled() {
+            return Some(OperatorMutationReconciliationHttpResponse {
+                status: "403 Forbidden",
+                body: r#"{"error":"operator_mutation_reconciliation.disabled"}"#.to_string(),
+                journal_state_changed: false,
+            });
+        }
+        let session_binding_hash = match self.operator_runtime_session_binding() {
+            Ok(binding) => binding,
+            Err(_) => {
+                return Some(OperatorMutationReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body:
+                        r#"{"error":"operator_mutation_reconciliation.runtime_session_unavailable"}"#
+                            .to_string(),
+                    journal_state_changed: false,
+                });
+            }
+        };
+        let anchor_lease = if method == "POST"
+            && path
+                == crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_RESOLVE_ENDPOINT
+        {
+            if self.monotonic_anchor.is_none() {
+                return Some(OperatorMutationReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body:
+                        r#"{"error":"operator_mutation_reconciliation.monotonic_anchor_failed"}"#
+                            .to_string(),
+                    journal_state_changed: false,
+                });
+            }
+            if let Some(response) =
+                crate::operator_mutation_reconciliation::prevalidate_resolve_http(
+                    &self.kernel,
+                    body,
+                    request_binding_hash,
+                    &session_binding_hash,
+                )
+            {
+                return Some(response);
+            }
+            match self.begin_required_durable_effect_anchor_lease() {
+                Ok(lease) => Some(lease),
+                Err(_) => {
+                    return Some(OperatorMutationReconciliationHttpResponse {
+                        status: "503 Service Unavailable",
+                        body:
+                            r#"{"error":"operator_mutation_reconciliation.monotonic_anchor_failed"}"#
+                                .to_string(),
+                        journal_state_changed: false,
+                    });
+                }
+            }
+        } else {
+            None
+        };
+        let response = crate::operator_mutation_reconciliation::route_http(
+            &self.kernel,
+            method,
+            path,
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        );
+        let anchor_result = self.finalize_durable_effect_anchor_lease(anchor_lease);
+        let Some(response) = response else {
+            if anchor_result.is_err() {
+                return Some(OperatorMutationReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"operator_mutation_reconciliation.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    journal_state_changed: false,
+                });
+            }
+            return None;
+        };
+        debug_assert!(
+            !response.journal_state_changed
+                || path
+                    == crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_RESOLVE_ENDPOINT
+        );
+        if anchor_result.is_err() {
+            return Some(OperatorMutationReconciliationHttpResponse {
+                status: "503 Service Unavailable",
+                body: r#"{"error":"operator_mutation_reconciliation.monotonic_anchor_failed"}"#
+                    .to_string(),
+                journal_state_changed: false,
+            });
+        }
+        Some(response)
+    }
+
+    pub(crate) fn route_effect_reconciliation(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Option<EffectReconciliationHttpResponse> {
+        if !matches!(
+            path,
+            crate::effect_reconciliation::EFFECT_RECONCILIATION_INSPECT_ENDPOINT
+                | crate::effect_reconciliation::EFFECT_RECONCILIATION_RESOLVE_ENDPOINT
+        ) {
+            return None;
+        }
+        let Some(authority) = self.effect_reconciliation.as_ref() else {
+            return Some(EffectReconciliationHttpResponse {
+                status: "403 Forbidden",
+                body: r#"{"error":"operator_effect_reconciliation.disabled"}"#.to_string(),
+                outcome_state_changed: false,
+            });
+        };
+        let session_binding_hash = match self.operator_runtime_session_binding() {
+            Ok(binding) => binding,
+            Err(_) => {
+                return Some(EffectReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body:
+                        r#"{"error":"operator_effect_reconciliation.runtime_session_unavailable"}"#
+                            .to_string(),
+                    outcome_state_changed: false,
+                });
+            }
+        };
+        let anchor_lease = if method == "POST"
+            && path == crate::effect_reconciliation::EFFECT_RECONCILIATION_RESOLVE_ENDPOINT
+        {
+            if self.monotonic_anchor.is_none() {
+                return Some(EffectReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"operator_effect_reconciliation.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    outcome_state_changed: false,
+                });
+            }
+            if let Some(response) = authority.prevalidate_resolve_http(
+                &self.kernel,
+                body,
+                request_binding_hash,
+                &session_binding_hash,
+            ) {
+                return Some(response);
+            }
+            match self.begin_required_durable_effect_anchor_lease() {
+                Ok(lease) => Some(lease),
+                Err(_) => {
+                    return Some(EffectReconciliationHttpResponse {
+                        status: "503 Service Unavailable",
+                        body:
+                            r#"{"error":"operator_effect_reconciliation.monotonic_anchor_failed"}"#
+                                .to_string(),
+                        outcome_state_changed: false,
+                    });
+                }
+            }
+        } else {
+            None
+        };
+        let response = authority.route_http(
+            &self.kernel,
+            method,
+            path,
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+        );
+        let anchor_result = self.finalize_durable_effect_anchor_lease(anchor_lease);
+        let Some(response) = response else {
+            if anchor_result.is_err() {
+                return Some(EffectReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"operator_effect_reconciliation.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    outcome_state_changed: false,
+                });
+            }
+            return None;
+        };
+        debug_assert!(
+            !response.outcome_state_changed
+                || path == crate::effect_reconciliation::EFFECT_RECONCILIATION_RESOLVE_ENDPOINT
+        );
+        if anchor_result.is_err() {
+            return Some(EffectReconciliationHttpResponse {
+                status: "503 Service Unavailable",
+                body: r#"{"error":"operator_effect_reconciliation.monotonic_anchor_failed"}"#
+                    .to_string(),
+                outcome_state_changed: false,
+            });
+        }
+        Some(response)
+    }
+
+    pub(crate) fn route_telegram_reconciliation(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+        request_binding_hash: &str,
+    ) -> Option<TelegramReconciliationHttpResponse> {
+        if !matches!(
+            path,
+            crate::telegram_authority::TELEGRAM_RECONCILIATION_INSPECT_ENDPOINT
+                | crate::telegram_authority::TELEGRAM_RECONCILIATION_RESOLVE_ENDPOINT
+        ) {
+            return None;
+        }
+        let Some(authority) = self.telegram_authority.as_ref() else {
+            return Some(TelegramReconciliationHttpResponse {
+                status: "403 Forbidden",
+                body: r#"{"error":"telegram_terminal_reconciliation.disabled"}"#.to_string(),
+                outcome_state_changed: false,
+            });
+        };
+        let session_binding_hash = match self.operator_telegram_runtime_session_binding() {
+            Ok((binding, _, _)) => binding,
+            Err(_) => {
+                return Some(TelegramReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body:
+                        r#"{"error":"telegram_terminal_reconciliation.runtime_session_unavailable"}"#
+                            .to_string(),
+                    outcome_state_changed: false,
+                });
+            }
+        };
+        let anchor_lease = if method == "POST"
+            && path == crate::telegram_authority::TELEGRAM_RECONCILIATION_RESOLVE_ENDPOINT
+        {
+            if self.monotonic_anchor.is_none() {
+                return Some(TelegramReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"telegram_terminal_reconciliation.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    outcome_state_changed: false,
+                });
+            }
+            if let Some(response) = authority.prevalidate_reconciliation_resolve_http(
+                body,
+                request_binding_hash,
+                &session_binding_hash,
+                Path::new(crate::native_telegram::TELEGRAM_DELIVERY_LEDGER_PATH),
+                Path::new(crate::native_telegram::TELEGRAM_INGRESS_CURSOR_PATH),
+            ) {
+                return Some(response);
+            }
+            match self.begin_required_durable_effect_anchor_lease() {
+                Ok(lease) => Some(lease),
+                Err(_) => {
+                    return Some(TelegramReconciliationHttpResponse {
+                        status: "503 Service Unavailable",
+                        body:
+                            r#"{"error":"telegram_terminal_reconciliation.monotonic_anchor_failed"}"#
+                                .to_string(),
+                        outcome_state_changed: false,
+                    });
+                }
+            }
+        } else {
+            None
+        };
+        let response = authority.route_reconciliation_http(
+            method,
+            path,
+            body,
+            request_binding_hash,
+            &session_binding_hash,
+            Path::new(crate::native_telegram::TELEGRAM_DELIVERY_LEDGER_PATH),
+            Path::new(crate::native_telegram::TELEGRAM_INGRESS_CURSOR_PATH),
+        );
+        let anchor_result = self.finalize_durable_effect_anchor_lease(anchor_lease);
+        let Some(response) = response else {
+            if anchor_result.is_err() {
+                return Some(TelegramReconciliationHttpResponse {
+                    status: "503 Service Unavailable",
+                    body: r#"{"error":"telegram_terminal_reconciliation.monotonic_anchor_failed"}"#
+                        .to_string(),
+                    outcome_state_changed: false,
+                });
+            }
+            return None;
+        };
+        debug_assert!(
+            !response.outcome_state_changed
+                || path == crate::telegram_authority::TELEGRAM_RECONCILIATION_RESOLVE_ENDPOINT
+        );
+        if anchor_result.is_err() {
+            return Some(TelegramReconciliationHttpResponse {
+                status: "503 Service Unavailable",
+                body: r#"{"error":"telegram_terminal_reconciliation.monotonic_anchor_failed"}"#
+                    .to_string(),
+                outcome_state_changed: false,
+            });
+        }
+        Some(response)
+    }
+
+    fn hydrate_authenticated_preference_context(&self) -> Result<()> {
+        let (session_id, session_binding_hash) = self.preference_session_binding()?;
+        if let Some(stamp) = self
+            .preference_ingress
+            .hydrate_runtime_context(&session_binding_hash)?
+        {
+            self.kernel
+                .attach_authenticated_preference_context(&session_id, stamp)
+                .map_err(anyhow::Error::msg)?;
+        }
+        Ok(())
+    }
+
+    fn synchronize_durable_anchor(&self) -> Result<()> {
+        let Some(anchor) = self.monotonic_anchor.as_ref() else {
+            return Ok(());
+        };
+        anchor.verify_and_advance_with(|| self.durable_anchor_states())
+    }
+
+    fn begin_durable_effect_anchor_lease(
+        &self,
+    ) -> Result<Option<ExternalMonotonicAnchorEffectLease>> {
+        let Some(anchor) = self.monotonic_anchor.as_ref() else {
+            return Ok(None);
+        };
+        anchor
+            .begin_effect_lease_with(|| self.durable_anchor_states())
+            .map(Some)
+    }
+
+    fn begin_required_durable_effect_anchor_lease(
+        &self,
+    ) -> Result<ExternalMonotonicAnchorEffectLease> {
+        self.begin_durable_effect_anchor_lease()?
+            .context("external monotonic anchor is required for durable native mutation")
+    }
+
+    fn require_durable_anchor_configured(&self) -> Result<()> {
+        self.monotonic_anchor
+            .as_ref()
+            .map(|_| ())
+            .context("external monotonic anchor is required for durable native mutation")
+    }
+
+    fn finalize_durable_effect_anchor_lease(
+        &self,
+        lease: Option<ExternalMonotonicAnchorEffectLease>,
+    ) -> Result<()> {
+        let Some(lease) = lease else {
+            return Ok(());
+        };
+        lease.finalize_with(|| self.durable_anchor_states())
+    }
+
+    fn durable_anchor_states(&self) -> Result<DurableAnchorStateSnapshot> {
+        let telegram_state = self
+            .telegram_authority
+            .as_ref()
+            .map(TelegramAuthority::monotonic_state)
+            .transpose()
+            .context("project Telegram authority monotonic state")?;
+        let operator_state = crate::operator_mutation::monotonic_state()
+            .context("project operator mutation monotonic state")?;
+        Ok(DurableAnchorStateSnapshot {
+            outcome: self
+                .kernel
+                .durable_outcome_monotonic_state()
+                .map_err(anyhow::Error::msg)?,
+            preference: self.preference_ingress.monotonic_state()?,
+            telegram: telegram_state,
+            operator: operator_state,
+        })
     }
 
     #[cfg(all(test, unix))]
@@ -533,6 +1429,51 @@ impl NativeGatewayRuntime {
             NativePreferenceIngressConfig::bootstrap_for_test(root)?,
         )
     }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn bootstrap_with_anchor_for_test(root: &Path) -> Result<Self> {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
+        let key = root.join("runtime.key");
+        fs::write(
+            &key,
+            b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        )?;
+        fs::set_permissions(&key, fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
+        Self::open_with_operational_controls(
+            RuntimeCompositionConfig {
+                outcome_database: root.join("outcomes.sqlite3"),
+                integrity_key_file: key,
+                outcome_mode: RuntimeOutcomeMode::BootstrapNew,
+            },
+            NativePreferenceIngressConfig::bootstrap_for_test(root)?,
+            None,
+            Some(ExternalMonotonicAnchorConfig::for_runtime_test(root)?),
+            None,
+        )
+    }
+
+    #[cfg(all(test, unix))]
+    pub(crate) fn open_existing_with_anchor_for_test(root: &Path) -> Result<Self> {
+        Self::open_with_operational_controls(
+            RuntimeCompositionConfig {
+                outcome_database: root.join("outcomes.sqlite3"),
+                integrity_key_file: root.join("runtime.key"),
+                outcome_mode: RuntimeOutcomeMode::OpenExisting,
+            },
+            NativePreferenceIngressConfig {
+                database: root.join("preferences.sqlite3"),
+                integrity_key_file: root.join("preference-integrity.key"),
+                authentication_key_file: root.join("preference-authentication.key"),
+                mode: crate::preference_ingress::PreferenceStoreMode::OpenExisting,
+            },
+            None,
+            Some(ExternalMonotonicAnchorConfig::for_runtime_test(root)?),
+            None,
+        )
+    }
 }
 
 fn required_absolute_path(env_name: &str) -> Result<PathBuf> {
@@ -546,142 +1487,119 @@ fn required_absolute_path(env_name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+fn proof_excluded_authorization_body(path: &str, body: Option<&str>) -> Result<Option<String>> {
+    if !matches!(
+        path,
+        crate::operator_mutation::OPERATOR_MUTATION_PLAN_ENDPOINT
+            | crate::operator_mutation::OPERATOR_MUTATION_COMMIT_ENDPOINT
+            | crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_INSPECT_ENDPOINT
+            | crate::operator_mutation_reconciliation::OPERATOR_MUTATION_RECONCILIATION_RESOLVE_ENDPOINT
+            | crate::telegram_authority::TELEGRAM_AUTHORITY_PLAN_ENDPOINT
+            | crate::telegram_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT
+            | crate::telegram_authority::TELEGRAM_RECONCILIATION_INSPECT_ENDPOINT
+            | crate::telegram_authority::TELEGRAM_RECONCILIATION_RESOLVE_ENDPOINT
+            | crate::effect_reconciliation::EFFECT_RECONCILIATION_INSPECT_ENDPOINT
+            | crate::effect_reconciliation::EFFECT_RECONCILIATION_RESOLVE_ENDPOINT
+    ) {
+        return Ok(None);
+    }
+    let mut value: serde_json::Value = serde_json::from_str(
+        body.context("authenticated request body is required before request binding")?,
+    )
+    .context("authenticated request body must be valid JSON before request binding")?;
+    let object = value
+        .as_object_mut()
+        .context("authenticated request body must be a JSON object")?;
+    let proof = object
+        .remove("proof")
+        .context("authenticated request body must include a proof")?;
+    if !proof.is_string() {
+        anyhow::bail!("authenticated request proof must be a JSON string");
+    }
+    let mut canonical = String::new();
+    write_canonical_json(&value, &mut canonical)?;
+    Ok(Some(canonical))
+}
+
+fn write_canonical_json(value: &serde_json::Value, output: &mut String) -> Result<()> {
+    match value {
+        serde_json::Value::Null => output.push_str("null"),
+        serde_json::Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
+        serde_json::Value::Number(value) => output.push_str(&value.to_string()),
+        serde_json::Value::String(value) => {
+            output.push_str(&serde_json::to_string(value).context("encode JSON string")?);
+        }
+        serde_json::Value::Array(values) => {
+            output.push('[');
+            for (index, value) in values.iter().enumerate() {
+                if index != 0 {
+                    output.push(',');
+                }
+                write_canonical_json(value, output)?;
+            }
+            output.push(']');
+        }
+        serde_json::Value::Object(values) => {
+            output.push('{');
+            let mut keys = values.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            for (index, key) in keys.into_iter().enumerate() {
+                if index != 0 {
+                    output.push(',');
+                }
+                output.push_str(&serde_json::to_string(key).context("encode JSON object key")?);
+                output.push(':');
+                write_canonical_json(
+                    values
+                        .get(key)
+                        .context("canonical JSON object key disappeared")?,
+                    output,
+                )?;
+            }
+            output.push('}');
+        }
+    }
+    Ok(())
+}
+
+fn require_live_mutation_anchor(
+    operator_mutation_enabled: bool,
+    telegram_pipeline_enabled: bool,
+    anchor_configured: bool,
+) -> Result<()> {
+    if anchor_configured || (!operator_mutation_enabled && !telegram_pipeline_enabled) {
+        return Ok(());
+    }
+    let required_by = if operator_mutation_enabled && telegram_pipeline_enabled {
+        "operator mutation and Telegram pipeline"
+    } else if operator_mutation_enabled {
+        "operator mutation"
+    } else {
+        "Telegram pipeline"
+    };
+    anyhow::bail!("external monotonic anchor is required when {required_by} authority is enabled")
+}
+
+fn combine_effect_with_anchor<T>(
+    effect: Result<T>,
+    anchor: Result<()>,
+    context: &str,
+) -> Result<T> {
+    match (effect, anchor) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(error)) => Err(error.context(context.to_string())),
+        (Err(error), Ok(())) => Err(error),
+        (Err(error), Err(anchor_error)) => Err(anyhow::anyhow!(
+            "{error:#}; external monotonic anchor also failed: {anchor_error:#}"
+        )),
+    }
+}
+
 fn read_integrity_key(path: &Path) -> Result<DurableIntegrityKey> {
     let bytes = read_private_key(path, INTEGRITY_KEY_FILE_ENV, "RuntimeKernel integrity")?;
     Ok(DurableIntegrityKey::from_bytes(*bytes))
 }
 
 #[cfg(all(test, unix))]
-mod tests {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-
-    use tempfile::tempdir;
-
-    use super::*;
-
-    fn write_key(path: &Path, encoded: &[u8]) {
-        fs::write(path, encoded).expect("write key");
-        fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-            .expect("set key permissions");
-    }
-
-    #[test]
-    fn keyed_runtime_bootstraps_then_opens_existing_database() {
-        let root = tempdir().expect("tempdir");
-        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))
-            .expect("set root permissions");
-        let key_path = root.path().join("runtime.key");
-        let database_path = root.path().join("outcomes.sqlite3");
-        write_key(
-            &key_path,
-            b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n",
-        );
-
-        let preference_root = root.path().join("preference");
-        fs::create_dir(&preference_root).expect("preference root");
-        fs::set_permissions(&preference_root, fs::Permissions::from_mode(0o700))
-            .expect("set preference root permissions");
-        let bootstrap = NativeGatewayRuntime::open(
-            RuntimeCompositionConfig {
-                outcome_database: database_path.clone(),
-                integrity_key_file: key_path.clone(),
-                outcome_mode: RuntimeOutcomeMode::BootstrapNew,
-            },
-            NativePreferenceIngressConfig::bootstrap_for_test(&preference_root)
-                .expect("preference config"),
-        )
-        .expect("bootstrap keyed runtime");
-        bootstrap.validate_readiness().expect("bootstrap readiness");
-        let read = bootstrap
-            .preflight_request("GET", "/api/health", None)
-            .expect("read-only preflight");
-        assert_eq!(
-            read.disposition,
-            RuntimeRequestDisposition::ReadOnlyDispatch
-        );
-        assert!(!read.mutation_authorized);
-        assert!(!read.durable_intent_recorded);
-        assert!(!read.provider_effect_ack_recorded);
-        assert!(!read.terminal_receipt_recorded);
-        let plan = bootstrap
-            .preflight_request("POST", "/api/tasks/publish", Some(r#"{"dry_run":true}"#))
-            .expect("plan-only preflight");
-        assert_eq!(
-            plan.disposition,
-            RuntimeRequestDisposition::PlanOnlyQuarantine
-        );
-        assert_ne!(read.request_binding_hash, plan.request_binding_hash);
-        assert!(!plan.mutation_authorized);
-        let configured = plan.native_post_gate_inputs(true, true);
-        assert!(!configured.real_handler_enabled);
-        assert!(!configured.operator_approval_enabled);
-        assert!(
-            bootstrap
-                .preflight_request("DELETE", "/api/tasks/1", None)
-                .expect_err("mutation method must fail closed")
-                .to_string()
-                .contains("unsupported HTTP method")
-        );
-        let telegram = bootstrap
-            .preflight_telegram_drain(Some(42))
-            .expect("telegram preflight");
-        assert!(!telegram.request_binding_hash.is_empty());
-        assert_eq!(
-            telegram
-                .require_live_pipeline_authority()
-                .expect_err("telegram live pipeline must remain quarantined")
-                .to_string(),
-            "telegram_runtime_admission.exact_authority_unavailable"
-        );
-        drop(bootstrap);
-
-        let opened = NativeGatewayRuntime::open(
-            RuntimeCompositionConfig {
-                outcome_database: database_path,
-                integrity_key_file: key_path,
-                outcome_mode: RuntimeOutcomeMode::OpenExisting,
-            },
-            NativePreferenceIngressConfig {
-                database: preference_root.join("preferences.sqlite3"),
-                integrity_key_file: preference_root.join("preference-integrity.key"),
-                authentication_key_file: preference_root.join("preference-authentication.key"),
-                mode: crate::preference_ingress::PreferenceStoreMode::OpenExisting,
-            },
-        )
-        .expect("open keyed runtime");
-        assert_eq!(opened.outcome_mode(), OPEN_EXISTING_MODE);
-        opened.validate_readiness().expect("open readiness");
-    }
-
-    #[test]
-    fn keyed_runtime_rejects_non_private_key_file() {
-        let root = tempdir().expect("tempdir");
-        let key_path = root.path().join("runtime.key");
-        write_key(
-            &key_path,
-            b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-        );
-        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o644))
-            .expect("relax key permissions");
-
-        let error = read_integrity_key(&key_path).expect_err("unsafe key must fail");
-        assert!(
-            error
-                .to_string()
-                .contains("integrity key must have mode 0o600")
-        );
-    }
-
-    #[test]
-    fn keyed_runtime_rejects_noncanonical_key_encoding() {
-        let root = tempdir().expect("tempdir");
-        let key_path = root.path().join("runtime.key");
-        write_key(
-            &key_path,
-            b"000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
-        );
-        let error = read_integrity_key(&key_path).expect_err("uppercase key must fail");
-        assert!(error.to_string().contains("canonical lowercase hex"));
-    }
-}
+#[path = "../tests/unit/runtime_composition.rs"]
+mod tests;

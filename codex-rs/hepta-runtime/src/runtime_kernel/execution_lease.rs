@@ -1,12 +1,5 @@
-//! Atomic execution/mutation coordination for frozen safety context.
-//!
-//! The capability catalog is immutable after [`RuntimeKernel`] construction,
-//! and the current preference stamp is explicitly unattached. This registry
-//! therefore coordinates the mutable global policy plus the per-session model,
-//! execution profile, filesystem scope, write scope, and path capability gates.
-//!
-//! Registry locks are held only while epochs and active markers are updated.
-//! Neither [`ExecutionLease`] nor [`MutationMarker`] retains a `MutexGuard`.
+//! Atomic execution/mutation coordination for frozen safety context. Registry
+//! guards are held only for marker/epoch updates; RAII tokens retain no guard.
 
 use crate::HeptaError;
 use crate::PreparedReadCapability;
@@ -20,15 +13,18 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+pub(crate) mod session_turn;
+
 /// Stable private failures for execution/mutation coordination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ExecutionLeaseError {
     RegistryPoisoned,
     EpochExhausted,
     GlobalMutationActive,
-    SessionMutationActive { session_id: String },
-    ExecutionInFlight { session_id: String },
-    FrozenContextChanged { session_id: String },
+    SessionMutationActive(String),
+    SessionTurnActive(String),
+    ExecutionInFlight(String),
+    FrozenContextChanged(String),
 }
 
 impl ExecutionLeaseError {
@@ -37,9 +33,10 @@ impl ExecutionLeaseError {
             Self::RegistryPoisoned => "execution_lease.registry_poisoned",
             Self::EpochExhausted => "execution_lease.epoch_exhausted",
             Self::GlobalMutationActive => "execution_lease.global_mutation_active",
-            Self::SessionMutationActive { .. } => "execution_lease.session_mutation_active",
-            Self::ExecutionInFlight { .. } => "execution_lease.execution_in_flight",
-            Self::FrozenContextChanged { .. } => "execution_lease.frozen_context_changed",
+            Self::SessionMutationActive(_) => "execution_lease.session_mutation_active",
+            Self::SessionTurnActive(_) => "execution_lease.session_turn_active",
+            Self::ExecutionInFlight(_) => "execution_lease.execution_in_flight",
+            Self::FrozenContextChanged(_) => "execution_lease.frozen_context_changed",
         }
     }
 }
@@ -48,9 +45,10 @@ impl fmt::Display for ExecutionLeaseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.code())?;
         match self {
-            Self::SessionMutationActive { session_id }
-            | Self::ExecutionInFlight { session_id }
-            | Self::FrozenContextChanged { session_id } => {
+            Self::SessionMutationActive(session_id)
+            | Self::SessionTurnActive(session_id)
+            | Self::ExecutionInFlight(session_id)
+            | Self::FrozenContextChanged(session_id) => {
                 write!(formatter, ": session={session_id}")
             }
             Self::RegistryPoisoned | Self::EpochExhausted | Self::GlobalMutationActive => Ok(()),
@@ -66,6 +64,7 @@ pub(crate) struct ExecutionLeaseRegistry {
     session_epochs: BTreeMap<String, u64>,
     global_mutation_active: bool,
     mutating_sessions: BTreeSet<String>,
+    active_turn_sessions: BTreeSet<String>,
     in_flight_sessions: BTreeSet<String>,
     epoch_exhausted: bool,
 }
@@ -86,11 +85,7 @@ pub(crate) struct ExecutionLease {
     active: bool,
 }
 
-/// Non-cloneable execution lease after all tool-specific resources are held.
-///
-/// `AuthorizedToolExecution` can only be constructed with this type. The
-/// prepared set owns every filesystem identity reservation from before-state
-/// capture through terminal receipt finalization.
+/// Execution lease owning all prepared resources through terminal finalization.
 #[derive(Debug)]
 pub(crate) struct ResourceBoundExecutionLease {
     lease: ExecutionLease,
@@ -118,19 +113,12 @@ impl RuntimeKernel {
         session_id: &str,
     ) -> Result<ExecutionEpoch, HeptaError> {
         let registry = self.lock_execution_lease_registry()?;
-        ensure_registry_open(&registry)?;
-        if registry.global_mutation_active {
-            return Err(lease_error(ExecutionLeaseError::GlobalMutationActive));
-        }
-        if registry.mutating_sessions.contains(session_id) {
-            return Err(lease_error(ExecutionLeaseError::SessionMutationActive {
-                session_id: session_id.to_string(),
-            }));
-        }
+        ensure_context_available(&registry, session_id)?;
         if registry.in_flight_sessions.contains(session_id) {
-            return Err(lease_error(ExecutionLeaseError::ExecutionInFlight {
-                session_id: session_id.to_string(),
-            }));
+            return Err(session_error(
+                ExecutionLeaseError::ExecutionInFlight,
+                session_id,
+            ));
         }
         Ok(ExecutionEpoch {
             session_id: session_id.to_string(),
@@ -144,26 +132,20 @@ impl RuntimeKernel {
         expected: ExecutionEpoch,
     ) -> Result<ExecutionLease, HeptaError> {
         let mut registry = self.lock_execution_lease_registry()?;
-        ensure_registry_open(&registry)?;
-        if registry.global_mutation_active {
-            return Err(lease_error(ExecutionLeaseError::GlobalMutationActive));
-        }
-        if registry.mutating_sessions.contains(&expected.session_id) {
-            return Err(lease_error(ExecutionLeaseError::SessionMutationActive {
-                session_id: expected.session_id,
-            }));
-        }
+        ensure_context_available(&registry, &expected.session_id)?;
         if registry.in_flight_sessions.contains(&expected.session_id) {
-            return Err(lease_error(ExecutionLeaseError::ExecutionInFlight {
-                session_id: expected.session_id,
-            }));
+            return Err(session_error(
+                ExecutionLeaseError::ExecutionInFlight,
+                &expected.session_id,
+            ));
         }
         if registry.global_epoch != expected.global_epoch
             || session_epoch(&registry, &expected.session_id) != expected.session_epoch
         {
-            return Err(lease_error(ExecutionLeaseError::FrozenContextChanged {
-                session_id: expected.session_id,
-            }));
+            return Err(session_error(
+                ExecutionLeaseError::FrozenContextChanged,
+                &expected.session_id,
+            ));
         }
         registry
             .in_flight_sessions
@@ -183,9 +165,10 @@ impl RuntimeKernel {
             return Err(lease_error(ExecutionLeaseError::GlobalMutationActive));
         }
         if let Some(session_id) = registry.in_flight_sessions.iter().next() {
-            return Err(lease_error(ExecutionLeaseError::ExecutionInFlight {
-                session_id: session_id.clone(),
-            }));
+            return Err(session_error(
+                ExecutionLeaseError::ExecutionInFlight,
+                session_id,
+            ));
         }
         registry.global_mutation_active = true;
         drop(registry);
@@ -224,17 +207,19 @@ impl RuntimeKernel {
             .iter()
             .find(|session_id| registry.mutating_sessions.contains(*session_id))
         {
-            return Err(lease_error(ExecutionLeaseError::SessionMutationActive {
-                session_id: session_id.clone(),
-            }));
+            return Err(session_error(
+                ExecutionLeaseError::SessionMutationActive,
+                session_id,
+            ));
         }
         if let Some(session_id) = sessions
             .iter()
             .find(|session_id| registry.in_flight_sessions.contains(*session_id))
         {
-            return Err(lease_error(ExecutionLeaseError::ExecutionInFlight {
-                session_id: session_id.clone(),
-            }));
+            return Err(session_error(
+                ExecutionLeaseError::ExecutionInFlight,
+                session_id,
+            ));
         }
         registry.mutating_sessions.extend(sessions.iter().cloned());
         drop(registry);
@@ -358,6 +343,27 @@ fn ensure_registry_open(registry: &ExecutionLeaseRegistry) -> Result<(), HeptaEr
     } else {
         Ok(())
     }
+}
+
+fn ensure_context_available(
+    registry: &ExecutionLeaseRegistry,
+    session_id: &str,
+) -> Result<(), HeptaError> {
+    ensure_registry_open(registry)?;
+    if registry.global_mutation_active {
+        return Err(lease_error(ExecutionLeaseError::GlobalMutationActive));
+    }
+    if registry.mutating_sessions.contains(session_id) {
+        return Err(session_error(
+            ExecutionLeaseError::SessionMutationActive,
+            session_id,
+        ));
+    }
+    Ok(())
+}
+
+fn session_error(constructor: fn(String) -> ExecutionLeaseError, session_id: &str) -> HeptaError {
+    lease_error(constructor(session_id.to_owned()))
 }
 
 fn session_epoch(registry: &ExecutionLeaseRegistry, session_id: &str) -> u64 {

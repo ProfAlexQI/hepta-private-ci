@@ -1,12 +1,15 @@
 use std::sync::mpsc;
 use std::thread;
 
+mod worker;
+
 use hepta_contracts::ContentHash;
 use hepta_contracts::OutcomeReceipt;
 
 use super::DurableOutcomeWriterError;
 use super::SyncDurableOutcomeWriter;
 use super::duration_millis;
+use crate::DurableMonotonicState;
 use crate::ExecutionEffectAck;
 use crate::ExecutionEffectAckRecordResult;
 use crate::ExecutionIntent;
@@ -14,7 +17,8 @@ use crate::ExecutionIntentResolveResult;
 use crate::ExecutionIntentStageResult;
 use crate::OutcomeIntent;
 use crate::OutcomeIntentStageResult;
-use crate::outcome_store::DurableOutcomeStore;
+
+use self::worker::run_intent_control;
 
 enum IntentControl {
     Stage {
@@ -44,9 +48,16 @@ enum IntentControl {
     RecordEffectAck {
         ack: Box<ExecutionEffectAck>,
     },
+    StageProviderCompletion {
+        ack: Box<ExecutionEffectAck>,
+        receipt: Box<OutcomeReceipt>,
+        canonical_evidence: String,
+        canonical_evidence_hash: ContentHash,
+    },
     ReadEffectAck {
         attempt_id: String,
     },
+    MonotonicState,
 }
 
 enum IntentControlResult {
@@ -59,7 +70,9 @@ enum IntentControlResult {
     ExecutionRead(Box<Option<ExecutionIntent>>),
     ExecutionListed(Vec<ExecutionIntent>),
     EffectAckRecorded(ExecutionEffectAckRecordResult),
+    ProviderCompletionStaged(OutcomeIntentStageResult),
     EffectAckRead(Box<Option<ExecutionEffectAck>>),
+    MonotonicState(DurableMonotonicState),
 }
 
 enum IntentControlDeadline {
@@ -69,6 +82,14 @@ enum IntentControlDeadline {
 }
 
 impl SyncDurableOutcomeWriter {
+    /// Reads one bounded authenticated snapshot for external rollback anchoring.
+    pub fn monotonic_state(&self) -> Result<DurableMonotonicState, DurableOutcomeWriterError> {
+        match self.run_intent_control(IntentControl::MonotonicState, IntentControlDeadline::List)? {
+            IntentControlResult::MonotonicState(state) => Ok(state),
+            _ => Err(invalid_control_result("read durable monotonic state")),
+        }
+    }
+
     /// Persists one provider-owned acknowledgement after its exact effect commits.
     pub fn record_execution_effect_ack(
         &self,
@@ -81,6 +102,30 @@ impl SyncDurableOutcomeWriter {
         )? {
             IntentControlResult::EffectAckRecorded(result) => Ok(result),
             _ => Err(invalid_control_result("record execution effect ACK")),
+        }
+    }
+
+    /// Atomically stages one provider effect ACK and its exact terminal
+    /// completion material in the same SQLite transaction.
+    pub fn stage_provider_completion(
+        &self,
+        ack: ExecutionEffectAck,
+        receipt: OutcomeReceipt,
+        canonical_evidence: impl Into<String>,
+        canonical_evidence_hash: ContentHash,
+    ) -> Result<OutcomeIntentStageResult, DurableOutcomeWriterError> {
+        let attempt_id = ack.attempt_id().to_owned();
+        match self.run_intent_control(
+            IntentControl::StageProviderCompletion {
+                ack: Box::new(ack),
+                receipt: Box::new(receipt),
+                canonical_evidence: canonical_evidence.into(),
+                canonical_evidence_hash,
+            },
+            IntentControlDeadline::Mutation(attempt_id),
+        )? {
+            IntentControlResult::ProviderCompletionStaged(result) => Ok(result),
+            _ => Err(invalid_control_result("stage provider completion")),
         }
     }
 
@@ -253,89 +298,6 @@ impl SyncDurableOutcomeWriter {
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(disconnected_error(deadline)),
         }
-    }
-}
-
-fn run_intent_control(
-    path: std::path::PathBuf,
-    identity: crate::durable::DurableDatabaseIdentity,
-    integrity: crate::durable::DurableIntegrityContext,
-    command: IntentControl,
-) -> Result<IntentControlResult, DurableOutcomeWriterError> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| DurableOutcomeWriterError::WorkerStartup {
-            detail: format!("could not initialize outcome intent runtime: {error}"),
-        })?;
-    let store = runtime
-        .block_on(DurableOutcomeStore::open_existing_bound_with_integrity(
-            path, identity, integrity,
-        ))
-        .map_err(|source| DurableOutcomeWriterError::Backend { source })?;
-    match command {
-        IntentControl::Stage {
-            attempt_id,
-            receipt,
-            canonical_evidence,
-            canonical_evidence_hash,
-        } => runtime
-            .block_on(store.stage_intent(
-                attempt_id.clone(),
-                *receipt,
-                canonical_evidence,
-                canonical_evidence_hash,
-            ))
-            .map(IntentControlResult::Staged)
-            .map_err(|source| super::error::map_stage_error(attempt_id, source)),
-        IntentControl::Acknowledge { attempt_id } => runtime
-            .block_on(store.acknowledge_intent(&attempt_id))
-            .map(|()| IntentControlResult::Acknowledged)
-            .map_err(|source| super::error::map_acknowledgement_error(attempt_id, source)),
-        IntentControl::Read { attempt_id } => runtime
-            .block_on(store.pending_intent(&attempt_id))
-            .map(Box::new)
-            .map(IntentControlResult::Read)
-            .map_err(|source| DurableOutcomeWriterError::Backend { source }),
-        IntentControl::List => runtime
-            .block_on(store.pending_intents())
-            .map(IntentControlResult::Listed)
-            .map_err(|source| DurableOutcomeWriterError::Backend { source }),
-        IntentControl::StageExecution { intent } => {
-            let attempt_id = intent.attempt_id().to_owned();
-            runtime
-                .block_on(store.stage_execution_intent(*intent))
-                .map(IntentControlResult::ExecutionStaged)
-                .map_err(|source| super::error::map_execution_stage_error(attempt_id, source))
-        }
-        IntentControl::ResolveExecution {
-            attempt_id,
-            idempotency_key,
-        } => runtime
-            .block_on(store.resolve_execution_intent(&attempt_id, &idempotency_key))
-            .map(IntentControlResult::ExecutionResolved)
-            .map_err(|source| super::error::map_execution_resolution_error(attempt_id, source)),
-        IntentControl::ReadExecution { attempt_id } => runtime
-            .block_on(store.pending_execution_intent(&attempt_id))
-            .map(Box::new)
-            .map(IntentControlResult::ExecutionRead)
-            .map_err(|source| DurableOutcomeWriterError::Backend { source }),
-        IntentControl::ListExecution => runtime
-            .block_on(store.pending_execution_intents())
-            .map(IntentControlResult::ExecutionListed)
-            .map_err(|source| DurableOutcomeWriterError::Backend { source }),
-        IntentControl::RecordEffectAck { ack } => {
-            let attempt_id = ack.attempt_id().to_owned();
-            runtime
-                .block_on(store.record_execution_effect_ack(*ack))
-                .map(IntentControlResult::EffectAckRecorded)
-                .map_err(|source| super::error::map_effect_ack_record_error(attempt_id, source))
-        }
-        IntentControl::ReadEffectAck { attempt_id } => runtime
-            .block_on(store.execution_effect_ack(&attempt_id))
-            .map(Box::new)
-            .map(IntentControlResult::EffectAckRead)
-            .map_err(|source| DurableOutcomeWriterError::Backend { source }),
     }
 }
 

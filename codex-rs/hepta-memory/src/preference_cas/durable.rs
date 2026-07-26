@@ -65,6 +65,17 @@ struct PreferenceTransitionRowWire {
 }
 
 impl DurablePreferenceStore {
+    /// Returns a bounded authenticated high-water projection for composition
+    /// with an external append-only monotonic anchor.
+    pub async fn monotonic_state(
+        &self,
+    ) -> Result<crate::DurableMonotonicState, PreferenceCasError> {
+        self.database
+            .monotonic_state()
+            .await
+            .map_err(map_durable_error)
+    }
+
     /// Exclusively reserves a new path and bootstraps an empty V2 database.
     ///
     /// This refuses every pre-existing filesystem entry. Initialization

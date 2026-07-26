@@ -10,6 +10,36 @@ fn durable_integrity_key(byte: u8) -> DurableIntegrityKey {
 }
 
 mod fail_closed;
+#[tokio::test]
+async fn durable_outcome_monotonic_state_advances_and_survives_reopen() -> TestResult {
+    let directory = tempfile::tempdir()?;
+    let database_path = directory.path().join("v2-monotonic-outcome.sqlite3");
+    let store =
+        DurableOutcomeStore::bootstrap_new_keyed(&database_path, durable_integrity_key(0x21))
+            .await?;
+    let before = store.monotonic_state().await?;
+    store
+        .record(
+            "attempt-monotonic",
+            outcome_receipt(
+                "receipt-monotonic",
+                "sha256:receipt-monotonic",
+                "sha256:outcome-monotonic",
+            )?,
+            r#"{"terminal":"succeeded"}"#,
+            ContentHash::new("sha256:evidence-monotonic"),
+        )
+        .await?;
+    let after = store.monotonic_state().await?;
+    assert!(after.generation() > before.generation());
+    assert_ne!(after.state_hash(), before.state_hash());
+    drop(store);
+    let reopened =
+        DurableOutcomeStore::open_existing_keyed(&database_path, durable_integrity_key(0x21))
+            .await?;
+    assert_eq!(reopened.monotonic_state().await?, after);
+    Ok(())
+}
 
 #[tokio::test]
 async fn durable_outcomes_recover_and_preserve_exact_replay() -> TestResult {

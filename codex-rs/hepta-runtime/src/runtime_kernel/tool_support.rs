@@ -1018,7 +1018,7 @@ impl Tool for DiskJunkAuditTool {
                 recommendation,
             });
         }
-        candidates.sort_by(|left, right| right.bytes.cmp(&left.bytes));
+        candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.bytes));
         let estimated_reclaimable_bytes = candidates.iter().map(|candidate| candidate.bytes).sum();
         let truncated = candidates.iter().any(|candidate| candidate.truncated);
         let top = candidates

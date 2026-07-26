@@ -43,8 +43,7 @@ impl RuntimeKernel {
         self.attached_preference_context_state
             .lock()
             .map_err(|_| HeptaError("attached preference context mutex poisoned".into()))?
-            .attach(session_id, stamp);
-        Ok(())
+            .attach(session_id, stamp)
     }
 
     /// Constructs an ephemeral runtime whose outcome receipts live in memory.
@@ -1374,7 +1373,7 @@ impl RuntimeKernel {
         if let Some(filter_target_path) = filter_target_path.as_deref() {
             backups.retain(|entry| entry.target_path == filter_target_path);
         }
-        backups.sort_by(|left, right| right.created_at_unix_ms.cmp(&left.created_at_unix_ms));
+        backups.sort_by_key(|backup| std::cmp::Reverse(backup.created_at_unix_ms));
 
         Ok(BackupIndexReport {
             backup_root: backup_root.display().to_string(),
@@ -1553,7 +1552,7 @@ impl RuntimeKernel {
         if let Some(filter_target_path) = filter_target_path.as_deref() {
             transactions.retain(|entry| entry.target_path == filter_target_path);
         }
-        transactions.sort_by(|left, right| right.created_at_unix_ms.cmp(&left.created_at_unix_ms));
+        transactions.sort_by_key(|transaction| std::cmp::Reverse(transaction.created_at_unix_ms));
 
         Ok(WriteTransactionIndexReport {
             filter_target_path,
@@ -1672,7 +1671,7 @@ impl RuntimeKernel {
             .filter(|group| group.session_id == session_id)
             .cloned()
             .collect::<Vec<_>>();
-        groups.sort_by(|left, right| right.opened_at_unix_ms.cmp(&left.opened_at_unix_ms));
+        groups.sort_by_key(|group| std::cmp::Reverse(group.opened_at_unix_ms));
         Ok(WriteTransactionGroupIndexReport {
             session_id,
             active_group_id,

@@ -22,6 +22,7 @@ pub(crate) enum ToolDispatchTerminal<'a> {
     StructuredOutputMissing,
     OutputValidationFailed { error: &'a str },
     ToolReportedFailure { error: &'a str },
+    ProviderErrorAfterCommit { error: &'a str, error_code: &'a str },
     TimedOut { timeout_ms: u64, error: &'a str },
     EventRecordingFailed { error: &'a str },
     TransactionRecordingFailed { error: &'a str },
@@ -302,6 +303,9 @@ fn validate_input(
         ToolDispatchTerminal::OutputValidationFailed { .. } => {
             matches!(input.validation, ToolOutputValidationStatus::Invalid { .. })
         }
+        ToolDispatchTerminal::ProviderErrorAfterCommit { error_code, .. } => {
+            !error_code.trim().is_empty()
+        }
         ToolDispatchTerminal::TransactionRecordingFailed { .. } => {
             matches!(input.transaction, ToolTransactionEvidence::Failed { .. })
         }
@@ -338,6 +342,7 @@ fn outcome_status(terminal: ToolDispatchTerminal<'_>) -> OutcomeStatus {
             failed("tool.output_validation_failed")
         }
         ToolDispatchTerminal::ToolReportedFailure { .. } => failed("tool.reported_failure"),
+        ToolDispatchTerminal::ProviderErrorAfterCommit { error_code, .. } => failed(error_code),
         ToolDispatchTerminal::TimedOut { .. } => OutcomeStatus::Cancelled {
             reason_code: "tool.native_timeout".into(),
         },

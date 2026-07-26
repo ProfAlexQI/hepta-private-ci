@@ -1829,7 +1829,7 @@ impl RuntimeKernel {
                     && !entry.content.trim().is_empty()
             })
             .collect::<Vec<_>>();
-        user_entries.sort_by(|left, right| left.sequence.cmp(&right.sequence));
+        user_entries.sort_by_key(|entry| entry.sequence);
 
         let case_limit = case_limit.max(1);
         let start = user_entries.len().saturating_sub(case_limit);

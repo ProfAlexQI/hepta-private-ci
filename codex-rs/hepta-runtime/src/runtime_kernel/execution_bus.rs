@@ -1,5 +1,6 @@
 //! Single-use tool dispatch and complete terminal-result capture.
 
+mod capture;
 mod result_classification;
 
 use std::future::Future;
@@ -16,6 +17,8 @@ use super::execution_attempt::AuthorizedToolExecution;
 use super::outcome_recorder::OutcomeRecorder;
 use crate::RuntimeKernel;
 use crate::tool_result_is_timeout;
+use capture::capture_invocation_result;
+use result_classification::provider_error_after_commit;
 use result_classification::timeout_ms;
 use result_classification::tool_reported_failure;
 
@@ -28,6 +31,7 @@ pub(crate) enum CapturedDispatchTerminal {
     StructuredOutputMissing,
     OutputValidationFailed(String),
     ToolReportedFailure(String),
+    ProviderErrorAfterCommit { error: String, error_code: String },
     TimedOut { timeout_ms: u64, error: String },
     EventRecordingFailed(String),
     WriteTransactionFailed(String),
@@ -80,6 +84,7 @@ pub(crate) struct CapturedToolExecution<'a> {
     finished_at_unix_ms: u64,
     provider_invocation_started: bool,
     provider_invocation_completed: bool,
+    staged_terminal: Option<super::outcome_sink::ExactOutcomeRecord>,
 }
 
 impl<'a> CapturedToolExecution<'a> {
@@ -96,6 +101,7 @@ impl<'a> CapturedToolExecution<'a> {
             finished_at_unix_ms: now_ms(),
             provider_invocation_started: false,
             provider_invocation_completed: false,
+            staged_terminal: None,
         }
     }
 
@@ -165,6 +171,9 @@ impl<'a> CapturedToolExecution<'a> {
     /// Captures transaction evidence while the authorized execution still owns
     /// any tool-specific reservation sealed into its resource-bound lease.
     pub(crate) fn capture_write_transaction(&mut self) {
+        if !matches!(self.transaction, CapturedTransaction::NotApplicable) {
+            return;
+        }
         let tool_output_json = self
             .tool_result()
             .and_then(|result| result.structured_json.clone());
@@ -212,6 +221,14 @@ impl<'a> CapturedToolExecution<'a> {
 
     pub(super) fn disarm(&mut self) -> Option<AuthorizedToolExecution> {
         self.execution.take()
+    }
+
+    pub(super) fn staged_terminal(&self) -> Option<&super::outcome_sink::ExactOutcomeRecord> {
+        self.staged_terminal.as_ref()
+    }
+
+    pub(super) fn set_staged_terminal(&mut self, exact: super::outcome_sink::ExactOutcomeRecord) {
+        self.staged_terminal = Some(exact);
     }
 }
 
@@ -362,6 +379,21 @@ impl<'a> ExecutionBus<'a> {
                     .await
             };
             captured.provider_invocation_completed = true;
+            capture_invocation_result(
+                kernel,
+                &mut captured,
+                &tool_name,
+                session_id,
+                correlation_id,
+                invoked,
+            );
+            captured.finished_at_unix_ms = now_ms().max(
+                captured
+                    .execution()
+                    .map(AuthorizedToolExecution::started_at_unix_ms)
+                    .unwrap_or_default(),
+            );
+            let provider_result = captured.tool_result().cloned();
             let effect_confirmation = captured
                 .execution_mut()
                 .ok_or_else(|| {
@@ -370,7 +402,9 @@ impl<'a> ExecutionBus<'a> {
                             .into(),
                     )
                 })
-                .and_then(AuthorizedToolExecution::confirm_provider_effect_ack);
+                .and_then(|execution| {
+                    execution.confirm_provider_effect_ack(provider_result.as_ref())
+                });
             if let Err(error) = effect_confirmation {
                 let reason = format!(
                     "provider effect is in doubt and requires reconciliation: {}",
@@ -386,21 +420,29 @@ impl<'a> ExecutionBus<'a> {
                 }
                 return captured;
             }
-
-            capture_invocation_result(
-                kernel,
-                &mut captured,
-                &tool_name,
-                session_id,
-                correlation_id,
-                invoked,
-            );
-            captured.finished_at_unix_ms = now_ms().max(
-                captured
-                    .execution()
-                    .map(AuthorizedToolExecution::started_at_unix_ms)
-                    .unwrap_or_default(),
-            );
+            if captured
+                .execution()
+                .and_then(AuthorizedToolExecution::execution_effect_ack)
+                .is_some()
+            {
+                captured.capture_write_transaction();
+                if let Err(error) =
+                    OutcomeRecorder::new(kernel).stage_provider_completion(&mut captured)
+                {
+                    let reason = format!(
+                        "provider completion is in doubt and requires exact reconciliation: {}",
+                        error.0
+                    );
+                    captured.terminal = CapturedDispatchTerminal::ToolError(reason.clone());
+                    captured.outward_error = Some(HeptaError(reason.clone()));
+                    if let Some(mut execution) = captured.disarm() {
+                        execution.trip_outcome_breaker(reason);
+                        execution.disarm_receipt_guard();
+                        execution.release_execution_lease();
+                    }
+                    return captured;
+                }
+            }
             if let Some(execution) = captured.execution_mut() {
                 execution.release_execution_lease();
             }
@@ -436,121 +478,5 @@ impl<'a> ExecutionBus<'a> {
             execution.release_execution_lease();
         }
         captured
-    }
-}
-
-fn capture_invocation_result(
-    kernel: &RuntimeKernel,
-    captured: &mut CapturedToolExecution<'_>,
-    tool_name: &str,
-    session_id: hepta_core::SessionId,
-    correlation_id: hepta_core::CorrelationId,
-    invoked: Result<ToolResult, HeptaError>,
-) {
-    match invoked {
-        Err(error) => {
-            captured.terminal = CapturedDispatchTerminal::ToolError(error.0.clone());
-            captured.outward_error = Some(error);
-        }
-        Ok(result) => {
-            captured.provider_output_json = result.structured_json.clone();
-            captured.tool_result = Some(result);
-            let timed_out = captured
-                .tool_result
-                .as_ref()
-                .is_some_and(|result| tool_result_is_timeout(tool_name, result));
-            capture_output_validation(kernel, tool_name, captured);
-            if timed_out {
-                capture_provider_terminal(tool_name, captured);
-            } else if !matches!(
-                captured.terminal,
-                CapturedDispatchTerminal::StructuredOutputMissing
-                    | CapturedDispatchTerminal::OutputValidationFailed(_)
-            ) {
-                capture_provider_terminal(tool_name, captured);
-            }
-            if timed_out
-                || !matches!(
-                    captured.terminal,
-                    CapturedDispatchTerminal::StructuredOutputMissing
-                        | CapturedDispatchTerminal::OutputValidationFailed(_)
-                )
-            {
-                if let Err(error) = kernel.emit_event(
-                    EventKind::ToolInvoked,
-                    Some(session_id),
-                    Some(correlation_id),
-                    format!("invoked tool {tool_name}"),
-                ) {
-                    captured.terminal =
-                        CapturedDispatchTerminal::EventRecordingFailed(error.0.clone());
-                    captured.outward_error = Some(error);
-                }
-            }
-        }
-    }
-}
-
-fn capture_output_validation(
-    kernel: &RuntimeKernel,
-    tool_name: &str,
-    captured: &mut CapturedToolExecution<'_>,
-) {
-    let Some(result) = captured.tool_result.as_ref() else {
-        return;
-    };
-    let Some(metadata) = captured.execution().map(AuthorizedToolExecution::metadata) else {
-        let error = "execution guard lost exact authority during output validation".to_string();
-        captured.terminal = CapturedDispatchTerminal::EventRecordingFailed(error.clone());
-        captured.outward_error = Some(HeptaError(error.clone()));
-        captured.kernel.trip_outcome_breaker(error);
-        return;
-    };
-    let Some(output_json) = result.structured_json.as_deref() else {
-        if metadata.produces_structured_output {
-            let error = format!("tool {tool_name} did not return required structured output");
-            captured.validation = CapturedValidation::Missing;
-            captured.terminal = CapturedDispatchTerminal::StructuredOutputMissing;
-            captured.outward_error = Some(HeptaError(error));
-        } else {
-            captured.validation = CapturedValidation::NotRequired;
-        }
-        return;
-    };
-    match kernel.validate_tool_output(tool_name, output_json) {
-        Ok(()) => captured.validation = CapturedValidation::Valid,
-        Err(error) => {
-            captured.validation = CapturedValidation::Invalid(error.0.clone());
-            captured.terminal = CapturedDispatchTerminal::OutputValidationFailed(error.0.clone());
-            captured.outward_error = Some(error);
-        }
-    }
-}
-
-fn capture_provider_terminal(tool_name: &str, captured: &mut CapturedToolExecution<'_>) {
-    let Some(result) = captured.tool_result.as_ref() else {
-        return;
-    };
-    if tool_result_is_timeout(tool_name, result) {
-        if let Some(timeout_ms) = timeout_ms(tool_name, result) {
-            captured.terminal = CapturedDispatchTerminal::TimedOut {
-                timeout_ms,
-                error: result.content.clone(),
-            };
-            captured.outward_error = None;
-        } else if !matches!(
-            captured.terminal,
-            CapturedDispatchTerminal::StructuredOutputMissing
-                | CapturedDispatchTerminal::OutputValidationFailed(_)
-        ) {
-            captured.terminal = CapturedDispatchTerminal::ToolReportedFailure(
-                "timeout result omitted a non-zero exact duration".into(),
-            );
-            captured.outward_error = None;
-        }
-        return;
-    }
-    if let Some(error) = tool_reported_failure(result) {
-        captured.terminal = CapturedDispatchTerminal::ToolReportedFailure(error);
     }
 }

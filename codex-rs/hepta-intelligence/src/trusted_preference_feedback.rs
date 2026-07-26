@@ -431,6 +431,14 @@ impl DurableHmacTrustedPreferenceIngress {
             .await
             .map_err(Into::into)
     }
+
+    /// Returns the keyed durable store high-water projection for composition
+    /// with an external monotonic anchor.
+    pub async fn monotonic_state(
+        &self,
+    ) -> Result<hepta_memory::DurableMonotonicState, PreferenceAuthorityError> {
+        self.store.monotonic_state().await.map_err(Into::into)
+    }
 }
 
 struct BorrowedHmacTrustedPreferenceFeedbackSource<'a> {

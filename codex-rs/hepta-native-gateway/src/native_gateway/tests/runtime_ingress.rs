@@ -1,3 +1,5 @@
+use crate::runtime_composition::RuntimeRequestDisposition;
+
 #[test]
 fn plan_only_preflight_overrides_native_post_env_double_gate_inputs() {
     let receipt = RuntimeRequestPreflightReceipt {
@@ -40,7 +42,11 @@ fn plan_only_preflight_overrides_native_post_env_double_gate_inputs() {
             rate_limit_window_ms: DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS,
         },
     );
-    assert!(!report.execution_admission.current_plan_executes_real_handler);
+    assert!(
+        !report
+            .execution_admission
+            .current_plan_executes_real_handler
+    );
     assert!(!report.real_handler_harness.store_write_attempted);
     assert!(!store_root.exists());
 }
@@ -49,50 +55,43 @@ fn plan_only_preflight_overrides_native_post_env_double_gate_inputs() {
 fn telegram_receive_once_denies_before_config_token_cursor_or_network() {
     let runtime_root = tempfile::tempdir().expect("runtime root");
     let runtime = Arc::new(
-        NativeGatewayRuntime::bootstrap_for_test(runtime_root.path()).expect("keyed runtime"),
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(runtime_root.path())
+            .expect("keyed runtime"),
     );
     let pool = NativeGatewayConnectionPool::new(test_gateway_options(true), runtime, 1, 1)
         .expect("worker pool");
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
-    let response = raw_get(&pool, &listener, "/api/telegram-receive-once");
+    let (response, value) = preference_http_round_trip(
+        &pool,
+        &listener,
+        "/api/telegram-receive-once",
+        &serde_json::json!({}),
+    );
     assert!(response.starts_with("HTTP/1.1 503 Service Unavailable"));
-    assert!(response.contains("telegram_runtime_admission.exact_read_authority_unavailable"));
+    assert_eq!(
+        value["error"],
+        "telegram_runtime_admission.exact_read_authority_unavailable"
+    );
     for field in [
         "config_observed",
         "token_observed",
         "cursor_observed",
         "external_network_read",
     ] {
-        assert!(response.contains(&format!(r#""{field}":false"#)));
+        assert_eq!(value[field], false);
     }
-}
-
-fn raw_get(pool: &NativeGatewayConnectionPool, listener: &TcpListener, path: &str) -> String {
-    use std::io::Read;
-    use std::io::Write;
-
-    let mut client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
-    let (server, _) = listener.accept().expect("server");
-    pool.dispatch(server).expect("dispatch");
-    write!(client, "GET {path} HTTP/1.1\r\n\r\n").expect("request");
-    let mut response = String::new();
-    client.read_to_string(&mut response).expect("response");
-    response
 }
 
 #[test]
 fn existing_action_surface_runs_read_only_runtime_kernel_canary_with_durable_receipt() {
     let runtime_root = tempfile::tempdir().expect("runtime root");
     let runtime = Arc::new(
-        NativeGatewayRuntime::bootstrap_for_test(runtime_root.path()).expect("keyed runtime"),
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(runtime_root.path())
+            .expect("keyed runtime"),
     );
-    let pool = NativeGatewayConnectionPool::new(
-        test_gateway_options(false),
-        Arc::clone(&runtime),
-        1,
-        3,
-    )
-    .expect("worker pool");
+    let pool =
+        NativeGatewayConnectionPool::new(test_gateway_options(false), Arc::clone(&runtime), 1, 3)
+            .expect("worker pool");
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
     let denied = preference_http_round_trip(
         &pool,
@@ -122,15 +121,13 @@ fn existing_action_surface_runs_read_only_runtime_kernel_canary_with_durable_rec
         first.1["provider_effect_ack_requirement"],
         "not_applicable_read_only_tool"
     );
-    assert_eq!(first.1["execution_receipt"]["durable_intent_recorded"], true);
-    assert_eq!(first.1["execution_receipt"]["effect_plan_recorded"], false);
-    assert!(
-        first.1["execution_receipt"]["provider_effect_ack_hash"].is_null()
-    );
     assert_eq!(
-        first.1["execution_receipt"]["terminal_status"],
-        "succeeded"
+        first.1["execution_receipt"]["durable_intent_recorded"],
+        true
     );
+    assert_eq!(first.1["execution_receipt"]["effect_plan_recorded"], false);
+    assert!(first.1["execution_receipt"]["provider_effect_ack_hash"].is_null());
+    assert_eq!(first.1["execution_receipt"]["terminal_status"], "succeeded");
     assert_eq!(first.1["external_network_requested"], false);
     assert_eq!(first.1["external_side_effects"], false);
     assert_eq!(first.1["live_surface_expanded"], false);
@@ -169,18 +166,15 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
 
     let runtime_root = tempfile::tempdir().expect("runtime root");
     let runtime = Arc::new(
-        NativeGatewayRuntime::bootstrap_for_test(runtime_root.path()).expect("keyed runtime"),
+        NativeGatewayRuntime::bootstrap_with_anchor_for_test(runtime_root.path())
+            .expect("keyed runtime"),
     );
     let debug = format!("{runtime:?}");
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains("4041424344454647"));
-    let pool = NativeGatewayConnectionPool::new(
-        test_gateway_options(false),
-        Arc::clone(&runtime),
-        1,
-        4,
-    )
-    .expect("worker pool");
+    let pool =
+        NativeGatewayConnectionPool::new(test_gateway_options(false), Arc::clone(&runtime), 1, 4)
+            .expect("worker pool");
     let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
     let (_, session_binding_hash) = runtime
         .preference_session_binding()
@@ -209,12 +203,11 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
     for (index, byte) in authentication_key.iter_mut().enumerate() {
         *byte = 0x40 + u8::try_from(index).expect("key index");
     }
-    let challenge_envelope =
-        crate::preference_ingress::authenticated_challenge_envelope_for_test(
-            &challenge_request,
-            authentication_key,
-        )
-        .expect("authenticated challenge envelope");
+    let challenge_envelope = crate::preference_ingress::authenticated_challenge_envelope_for_test(
+        &challenge_request,
+        authentication_key,
+    )
+    .expect("authenticated challenge envelope");
     let denied_plan = preference_http_round_trip(
         &pool,
         &listener,
@@ -239,11 +232,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
         crate::preference_ingress::PREFERENCE_CHALLENGE_ENDPOINT,
         &tampered_plan,
     );
-    assert!(
-        denied_plan_tamper
-            .0
-            .starts_with("HTTP/1.1 403 Forbidden")
-    );
+    assert!(denied_plan_tamper.0.starts_with("HTTP/1.1 403 Forbidden"));
     assert_eq!(
         denied_plan_tamper.1["error"],
         "trusted_preference_ingress.runtime_session_binding_mismatch"
@@ -260,11 +249,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
         crate::preference_ingress::PREFERENCE_CHALLENGE_ENDPOINT,
         &uppercase_plan,
     );
-    assert!(
-        denied_plan_encoding
-            .0
-            .starts_with("HTTP/1.1 403 Forbidden")
-    );
+    assert!(denied_plan_encoding.0.starts_with("HTTP/1.1 403 Forbidden"));
     assert_eq!(
         denied_plan_encoding.1["error"],
         "trusted_preference_ingress.plan_proof_encoding_invalid"
@@ -279,7 +264,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
     assert_eq!(challenge.1["challenge_authenticated"], true);
     assert_eq!(
         challenge.1["network_binding_policy"],
-        "loopback_default_explicit_lab_override_possible"
+        "strict_loopback_host_origin_csrf_json"
     );
     assert_eq!(challenge.1["transport_confidentiality_claimed"], false);
     assert_eq!(
@@ -384,6 +369,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
             .as_str()
             .expect("committed preference hash")
     );
+    let expected_attachment = attached.clone();
 
     let replay = preference_http_round_trip(
         &pool,
@@ -396,12 +382,20 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
         replay.1["error"],
         "trusted_preference_ingress.state_conflict"
     );
+    drop(listener);
+    drop(pool);
+    drop(runtime);
+    let reopened = NativeGatewayRuntime::open_existing_with_anchor_for_test(runtime_root.path())
+        .expect("reopen runtime with authenticated preference hydration");
+    assert_eq!(
+        reopened
+            .authenticated_preference_context_for_test()
+            .expect("reopened preference lookup"),
+        Some(expected_attachment)
+    );
 }
 
-fn preference_commit_body(
-    prepared: &serde_json::Value,
-    proof: &str,
-) -> serde_json::Value {
+fn preference_commit_body(prepared: &serde_json::Value, proof: &str) -> serde_json::Value {
     serde_json::json!({
         "commit": prepared,
         "proof": proof,
@@ -418,13 +412,13 @@ fn preference_http_round_trip(
     use std::io::Write;
 
     let body = serde_json::to_string(body).expect("request body");
-    let mut client =
-        TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+    let mut client = TcpStream::connect(listener.local_addr().expect("address")).expect("client");
+    let host = DEFAULT_BIND_ADDR;
     let (server, _) = listener.accept().expect("server");
     pool.dispatch(server).expect("dispatch");
     write!(
         client,
-        "POST {path} HTTP/1.1\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        "POST {path} HTTP/1.1\r\nhost: {host}\r\norigin: http://{host}\r\nx-hepta-csrf: 1\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
         body.len(),
     )
     .expect("request");

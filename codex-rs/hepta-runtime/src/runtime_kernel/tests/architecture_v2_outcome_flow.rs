@@ -347,6 +347,8 @@ async fn architecture_v2_outcome_flow_records_write_transaction_before_receipt()
         uuid::Uuid::new_v4()
     );
     let cleanup = TestFileGuard(crate::tool_workspace_root_path().join(&relative));
+    std::fs::create_dir_all(cleanup.0.parent().expect("write fixture parent"))
+        .expect("create write fixture parent");
     let arguments = serde_json::json!({
         "path": relative,
         "content": "receipt-backed write",

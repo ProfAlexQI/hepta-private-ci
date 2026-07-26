@@ -41,10 +41,6 @@ impl DurableOutcomeStore {
         ack: ExecutionEffectAck,
     ) -> Result<ExecutionEffectAckRecordResult, OutcomeStoreError> {
         self.validate_database_identity()?;
-        let encoded = self
-            .database
-            .encode_canonical_row(&ExecutionEffectAckWire::from_ack(&ack))
-            .map_err(map_durable_error)?;
         let mut transaction = self.database.pool().begin().await.map_err(|error| {
             map_durable_error(DurableStorageError::persistence(
                 "begin execution effect ACK transaction",
@@ -107,41 +103,7 @@ impl DurableOutcomeStore {
         let intent = decode_execution_intent_row(&self.database, intent_row)?;
         validate_ack_binding(&intent, &ack)?;
 
-        let inserted = sqlx::query(
-            "INSERT INTO hepta_v2_execution_effect_acks (
-                attempt_id,
-                idempotency_key,
-                effect_plan_hash,
-                payload_json,
-                storage_hash
-             ) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(ack.attempt_id())
-        .bind(ack.idempotency_key())
-        .bind(ack.effect_plan_hash().as_str())
-        .bind(&encoded.payload_json)
-        .bind(&encoded.storage_hash)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|error| {
-            map_durable_error(DurableStorageError::persistence(
-                "insert execution effect ACK",
-                error,
-            ))
-        })?
-        .rows_affected();
-        if inserted != 1 {
-            transaction.rollback().await.map_err(|error| {
-                map_durable_error(DurableStorageError::persistence(
-                    "rollback invalid execution effect ACK insert",
-                    error,
-                ))
-            })?;
-            self.validate_database_identity()?;
-            return Err(OutcomeStoreError::Corrupt {
-                detail: format!("execution effect ACK insert affected {inserted} rows"),
-            });
-        }
+        insert_effect_ack_in_transaction(&self.database, &mut transaction, &ack).await?;
         self.validate_database_identity()?;
         transaction.commit().await.map_err(|error| {
             map_durable_error(DurableStorageError::persistence(
@@ -266,7 +228,7 @@ pub(super) async fn execution_effect_ack_for_intent(
     }
 }
 
-fn validate_ack_binding(
+pub(super) fn validate_ack_binding(
     intent: &ExecutionIntent,
     ack: &ExecutionEffectAck,
 ) -> Result<(), OutcomeStoreError> {
@@ -286,7 +248,7 @@ fn validate_ack_binding(
     Ok(())
 }
 
-async fn fetch_effect_ack_by_attempt(
+pub(super) async fn fetch_effect_ack_by_attempt(
     transaction: &mut Transaction<'_, Sqlite>,
     attempt_id: &str,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, OutcomeStoreError> {
@@ -306,7 +268,7 @@ async fn fetch_effect_ack_by_attempt(
     })
 }
 
-async fn fetch_effect_ack_attempt_by_idempotency(
+pub(super) async fn fetch_effect_ack_attempt_by_idempotency(
     transaction: &mut Transaction<'_, Sqlite>,
     idempotency_key: &str,
 ) -> Result<Option<String>, OutcomeStoreError> {
@@ -326,7 +288,7 @@ async fn fetch_effect_ack_attempt_by_idempotency(
     })
 }
 
-fn decode_effect_ack_row(
+pub(super) fn decode_effect_ack_row(
     database: &DurableDatabase,
     row: sqlx::sqlite::SqliteRow,
 ) -> Result<ExecutionEffectAck, OutcomeStoreError> {
@@ -409,4 +371,43 @@ impl ExecutionEffectAckWire {
             detail: format!("invalid recovered execution effect ACK: {error}"),
         })
     }
+}
+
+pub(super) async fn insert_effect_ack_in_transaction(
+    database: &DurableDatabase,
+    transaction: &mut Transaction<'_, Sqlite>,
+    ack: &ExecutionEffectAck,
+) -> Result<(), OutcomeStoreError> {
+    let encoded = database
+        .encode_canonical_row(&ExecutionEffectAckWire::from_ack(ack))
+        .map_err(map_durable_error)?;
+    let inserted = sqlx::query(
+        "INSERT INTO hepta_v2_execution_effect_acks (
+            attempt_id,
+            idempotency_key,
+            effect_plan_hash,
+            payload_json,
+            storage_hash
+         ) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(ack.attempt_id())
+    .bind(ack.idempotency_key())
+    .bind(ack.effect_plan_hash().as_str())
+    .bind(&encoded.payload_json)
+    .bind(&encoded.storage_hash)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        map_durable_error(DurableStorageError::persistence(
+            "insert execution effect ACK",
+            error,
+        ))
+    })?
+    .rows_affected();
+    if inserted != 1 {
+        return Err(OutcomeStoreError::Corrupt {
+            detail: format!("execution effect ACK insert affected {inserted} rows"),
+        });
+    }
+    Ok(())
 }

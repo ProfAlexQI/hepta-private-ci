@@ -56,8 +56,8 @@ pub(crate) fn build_write_lock_report(
     mut target_locks: Vec<WriteTargetLockReport>,
     mut group_locks: Vec<WriteGroupLockReport>,
 ) -> WriteLockReport {
-    target_locks.sort_by(|left, right| right.locked_at_unix_ms.cmp(&left.locked_at_unix_ms));
-    group_locks.sort_by(|left, right| right.locked_at_unix_ms.cmp(&left.locked_at_unix_ms));
+    target_locks.sort_by_key(|lock| std::cmp::Reverse(lock.locked_at_unix_ms));
+    group_locks.sort_by_key(|lock| std::cmp::Reverse(lock.locked_at_unix_ms));
     let summary = WriteLockSummaryReport {
         total_target_locks: target_locks.len(),
         total_group_locks: group_locks.len(),

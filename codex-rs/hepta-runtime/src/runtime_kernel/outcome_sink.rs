@@ -1,9 +1,11 @@
 //! Synchronous terminal-outcome persistence selected at runtime construction.
 
 mod breaker;
-
+mod monotonic_state;
 #[cfg(test)]
 use std::collections::BTreeMap;
+mod runtime;
+
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -14,14 +16,15 @@ use hepta_contracts::ContentHash;
 use hepta_contracts::OutcomeReceipt;
 use hepta_core::HeptaError;
 use hepta_memory::DurableIntegrityKey;
+use hepta_memory::DurableMonotonicState;
 use hepta_memory::DurableOutcomeWriterError;
 use hepta_memory::ExecutionEffectAck;
-use hepta_memory::ExecutionEffectAckRecordResult;
 use hepta_memory::ExecutionIntent;
 use hepta_memory::ExecutionIntentStageResult;
 #[cfg(test)]
 use hepta_memory::InMemoryOutcomeStore;
 use hepta_memory::OutcomeIntent;
+use hepta_memory::OutcomeIntentStageResult;
 use hepta_memory::OutcomeIntentState;
 use hepta_memory::OutcomeRecord;
 use hepta_memory::OutcomeRecordResult;
@@ -116,12 +119,13 @@ pub(crate) trait OutcomeReceiptSink: Send + Sync {
 
     fn pending_execution_intents(&self) -> Result<Vec<ExecutionIntent>, OutcomeReceiptSinkError>;
 
-    fn record_execution_effect_ack(
+    fn stage_provider_completion(
         &self,
         _ack: &ExecutionEffectAck,
-    ) -> Result<ExecutionEffectAckRecordResult, OutcomeReceiptSinkError> {
+        _exact: &ExactOutcomeRecord,
+    ) -> Result<OutcomeIntentStageResult, OutcomeReceiptSinkError> {
         Err(OutcomeReceiptSinkError::Coordination {
-            detail: "outcome sink does not support provider effect acknowledgements".into(),
+            detail: "outcome sink does not support atomic provider completion staging".into(),
         })
     }
 
@@ -143,6 +147,12 @@ pub(crate) trait OutcomeReceiptSink: Send + Sync {
         &self,
     ) -> Result<Option<RecoveredPendingOutcome>, OutcomeReceiptSinkError> {
         Ok(None)
+    }
+
+    fn monotonic_state(&self) -> Result<DurableMonotonicState, OutcomeReceiptSinkError> {
+        Err(OutcomeReceiptSinkError::Coordination {
+            detail: "outcome sink does not expose a durable monotonic state".into(),
+        })
     }
 }
 
@@ -206,7 +216,14 @@ impl Error for OutcomeReceiptSinkError {
 #[cfg(test)]
 struct InMemoryOutcomeReceiptSink {
     store: InMemoryOutcomeStore,
-    effect_acks: Mutex<BTreeMap<String, ExecutionEffectAck>>,
+    provider_state: Mutex<InMemoryProviderState>,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct InMemoryProviderState {
+    effect_acks: BTreeMap<String, ExecutionEffectAck>,
+    completions: BTreeMap<String, ExactOutcomeRecord>,
 }
 
 #[cfg(test)]
@@ -214,7 +231,7 @@ impl Default for InMemoryOutcomeReceiptSink {
     fn default() -> Self {
         Self {
             store: InMemoryOutcomeStore::default(),
-            effect_acks: Mutex::new(BTreeMap::new()),
+            provider_state: Mutex::new(InMemoryProviderState::default()),
         }
     }
 }
@@ -256,7 +273,15 @@ impl OutcomeReceiptSink for InMemoryOutcomeReceiptSink {
         exact: &ExactOutcomeRecord,
         _intent: &ExecutionIntent,
     ) -> Result<OutcomeRecordResult, OutcomeReceiptSinkError> {
-        self.record(exact)
+        let result = self.record(exact)?;
+        self.provider_state
+            .lock()
+            .map_err(|_| OutcomeReceiptSinkError::Coordination {
+                detail: "in-memory provider completion mutex poisoned".into(),
+            })?
+            .completions
+            .remove(exact.attempt_id());
+        Ok(result)
     }
 
     fn pending_execution_intent(
@@ -270,42 +295,83 @@ impl OutcomeReceiptSink for InMemoryOutcomeReceiptSink {
         Ok(Vec::new())
     }
 
-    fn record_execution_effect_ack(
+    fn stage_provider_completion(
         &self,
         ack: &ExecutionEffectAck,
-    ) -> Result<ExecutionEffectAckRecordResult, OutcomeReceiptSinkError> {
-        let mut effect_acks =
-            self.effect_acks
+        exact: &ExactOutcomeRecord,
+    ) -> Result<OutcomeIntentStageResult, OutcomeReceiptSinkError> {
+        if ack.attempt_id() != exact.attempt_id() {
+            return Err(OutcomeReceiptSinkError::Coordination {
+                detail: "provider ACK and completion attempt bindings differ".into(),
+            });
+        }
+        let mut state =
+            self.provider_state
                 .lock()
                 .map_err(|_| OutcomeReceiptSinkError::Coordination {
-                    detail: "in-memory effect ACK mutex poisoned".into(),
+                    detail: "in-memory provider completion mutex poisoned".into(),
                 })?;
-        match effect_acks.get(ack.attempt_id()) {
-            Some(existing) if existing == ack => {
-                Ok(ExecutionEffectAckRecordResult::AlreadyRecorded)
+        match state.effect_acks.get(ack.attempt_id()) {
+            Some(existing) if existing != ack => {
+                return Err(OutcomeReceiptSinkError::Coordination {
+                    detail: format!(
+                        "execution effect ACK {} has conflicting exact material",
+                        ack.attempt_id()
+                    ),
+                });
             }
-            Some(_) => Err(OutcomeReceiptSinkError::Coordination {
-                detail: format!(
-                    "execution effect ACK {} has conflicting exact material",
-                    ack.attempt_id()
-                ),
-            }),
-            None => {
-                effect_acks.insert(ack.attempt_id().to_owned(), ack.clone());
-                Ok(ExecutionEffectAckRecordResult::Recorded)
-            }
+            _ => {}
         }
+        match state.completions.get(exact.attempt_id()) {
+            Some(existing) if existing != exact => {
+                return Err(OutcomeReceiptSinkError::Coordination {
+                    detail: format!(
+                        "provider completion {} has conflicting exact material",
+                        exact.attempt_id()
+                    ),
+                });
+            }
+            _ => {}
+        }
+        state
+            .effect_acks
+            .insert(ack.attempt_id().to_owned(), ack.clone());
+        state
+            .completions
+            .insert(exact.attempt_id().to_owned(), exact.clone());
+        Ok(OutcomeIntentStageResult::Pending)
     }
 
     fn execution_effect_ack(
         &self,
         attempt_id: &str,
     ) -> Result<Option<ExecutionEffectAck>, OutcomeReceiptSinkError> {
-        self.effect_acks
+        self.provider_state
             .lock()
-            .map(|effect_acks| effect_acks.get(attempt_id).cloned())
+            .map(|state| state.effect_acks.get(attempt_id).cloned())
             .map_err(|_| OutcomeReceiptSinkError::Coordination {
-                detail: "in-memory effect ACK mutex poisoned".into(),
+                detail: "in-memory provider completion mutex poisoned".into(),
+            })
+    }
+
+    fn pending_intent(
+        &self,
+        attempt_id: &str,
+    ) -> Result<Option<RecoveredPendingOutcome>, OutcomeReceiptSinkError> {
+        self.provider_state
+            .lock()
+            .map(|state| {
+                state
+                    .completions
+                    .get(attempt_id)
+                    .cloned()
+                    .map(|exact| RecoveredPendingOutcome {
+                        exact,
+                        kind: PendingOutcomeKind::SafeRetry,
+                    })
+            })
+            .map_err(|_| OutcomeReceiptSinkError::Coordination {
+                detail: "in-memory provider completion mutex poisoned".into(),
             })
     }
 }
@@ -473,13 +539,24 @@ impl OutcomeReceiptSink for DurableOutcomeReceiptSink {
             .map_err(OutcomeReceiptSinkError::Durable)
     }
 
-    fn record_execution_effect_ack(
+    fn stage_provider_completion(
         &self,
         ack: &ExecutionEffectAck,
-    ) -> Result<ExecutionEffectAckRecordResult, OutcomeReceiptSinkError> {
+        exact: &ExactOutcomeRecord,
+    ) -> Result<OutcomeIntentStageResult, OutcomeReceiptSinkError> {
+        if ack.attempt_id() != exact.attempt_id() {
+            return Err(OutcomeReceiptSinkError::Coordination {
+                detail: "provider ACK and completion attempt bindings differ".into(),
+            });
+        }
         let mut state = self.lock_state()?;
         self.ensure_recovered(&mut state)?;
-        let result = state.writer.record_execution_effect_ack(ack.clone());
+        let result = state.writer.stage_provider_completion(
+            ack.clone(),
+            exact.receipt.clone(),
+            exact.canonical_evidence.clone(),
+            exact.canonical_evidence_hash.clone(),
+        );
         if matches!(
             result,
             Err(DurableOutcomeWriterError::AcknowledgementTimeout { .. }
@@ -525,6 +602,15 @@ impl OutcomeReceiptSink for DurableOutcomeReceiptSink {
             .writer
             .pending_intents()
             .map(|intents| intents.into_iter().next().map(recovered_pending_outcome))
+            .map_err(OutcomeReceiptSinkError::Durable)
+    }
+
+    fn monotonic_state(&self) -> Result<DurableMonotonicState, OutcomeReceiptSinkError> {
+        let mut state = self.lock_state()?;
+        self.ensure_recovered(&mut state)?;
+        state
+            .writer
+            .monotonic_state()
             .map_err(OutcomeReceiptSinkError::Durable)
     }
 }
@@ -627,202 +713,4 @@ pub(crate) fn fail_fatal(
     execution.trip_outcome_breaker(reason.clone());
     execution.disarm_receipt_guard();
     Err(HeptaError(reason))
-}
-
-impl RuntimeKernel {
-    /// Replays exact material from local breaker state or the durable intent journal.
-    pub fn reconcile_pending_outcome(
-        &self,
-        attempt_id: &str,
-    ) -> Result<OutcomeRecordResult, HeptaError> {
-        let attempt_id = attempt_id.trim();
-        if attempt_id.is_empty() {
-            return Err(HeptaError(
-                "pending outcome attempt id must not be empty".into(),
-            ));
-        }
-        let local_pending = {
-            let mut state = self
-                .execution_outcome_state
-                .lock()
-                .map_err(|_| HeptaError("execution outcome state mutex poisoned".into()))?;
-            state.breaker.begin_reconciliation(attempt_id)?
-        };
-        let execution_intent = self
-            .outcome_sink
-            .pending_execution_intent(attempt_id)
-            .map_err(|error| {
-                HeptaError(format!(
-                    "failed to inspect execution intent {attempt_id}: {error}"
-                ))
-            })?;
-        let (exact, _kind) = match local_pending {
-            Some(pending) => pending,
-            None => {
-                let pending = self
-                    .outcome_sink
-                    .pending_intent(attempt_id)
-                    .map_err(|error| {
-                        HeptaError(format!(
-                            "failed to recover pending outcome intent {attempt_id}: {error}"
-                        ))
-                    })?;
-                if let Some(pending) = pending {
-                    (pending.exact, pending.kind)
-                } else if execution_intent.is_some() {
-                    let record = self
-                        .outcome_sink
-                        .read_by_attempt(attempt_id)
-                        .map_err(|error| {
-                            HeptaError(format!(
-                                "failed to recover committed outcome {attempt_id}: {error}"
-                            ))
-                        })?
-                        .ok_or_else(|| {
-                            HeptaError(format!(
-                                "execution attempt {attempt_id} is in doubt without exact terminal material"
-                            ))
-                        })?;
-                    (
-                        ExactOutcomeRecord::from_record(&record),
-                        PendingOutcomeKind::CommitAmbiguous,
-                    )
-                } else {
-                    return Err(HeptaError(format!(
-                        "no retryable outcome is pending for attempt {attempt_id}"
-                    )));
-                }
-            }
-        };
-        let replay = match execution_intent.as_ref() {
-            Some(intent) => self
-                .outcome_sink
-                .record_and_resolve_execution(&exact, intent),
-            None => self.outcome_sink.record(&exact),
-        };
-        let result = match replay {
-            Ok(OutcomeRecordResult::Recorded) => OutcomeRecordResult::Recorded,
-            Ok(OutcomeRecordResult::AlreadyRecorded) => OutcomeRecordResult::AlreadyRecorded,
-            Err(error) if error.pending_kind().is_some() => {
-                let mut state = self
-                    .execution_outcome_state
-                    .lock()
-                    .map_err(|_| HeptaError("execution outcome state mutex poisoned".into()))?;
-                if let Err(reason) = state.breaker.retain_pending(exact, error.clone()) {
-                    state.breaker.trip_fatal(reason);
-                }
-                return Err(HeptaError(format!(
-                    "outcome reconciliation remains pending: {error}"
-                )));
-            }
-            Err(error) => {
-                let reason = format!("outcome reconciliation failed: {error}");
-                match self.execution_outcome_state.lock() {
-                    Ok(mut state) => {
-                        state.breaker.finish_nonretryable_failure(&exact);
-                        state.breaker.trip_fatal(reason.clone());
-                    }
-                    Err(poisoned) => {
-                        let mut state = poisoned.into_inner();
-                        state.breaker.finish_nonretryable_failure(&exact);
-                        state.breaker.trip_fatal(reason.clone());
-                    }
-                }
-                return Err(HeptaError(reason));
-            }
-        };
-        let mut state = self
-            .execution_outcome_state
-            .lock()
-            .map_err(|_| HeptaError("execution outcome state mutex poisoned".into()))?;
-        if state.breaker.resolve(&exact) {
-            state.active_attempts.remove(attempt_id);
-            state.finalized_attempts = state.finalized_attempts.saturating_add(1);
-        }
-        Ok(result)
-    }
-
-    pub(super) fn durable_pending_outcome_reason(&self) -> Result<Option<String>, HeptaError> {
-        let execution_intent = self
-            .outcome_sink
-            .pending_execution_intents()
-            .map_err(|error| {
-                HeptaError(format!(
-                    "durable execution-intent inspection failed closed: {error}"
-                ))
-            })?
-            .into_iter()
-            .next();
-        if let Some(intent) = execution_intent {
-            return Ok(Some(format!(
-                "durable execution attempt {} is in doubt before terminal resolution",
-                intent.attempt_id()
-            )));
-        }
-        self.outcome_sink
-            .first_pending_intent()
-            .map(|pending| {
-                pending.map(|pending| {
-                    format!(
-                        "durable outcome attempt {} requires exact {} from the producer-intent journal",
-                        pending.exact.attempt_id(),
-                        match pending.kind {
-                            PendingOutcomeKind::SafeRetry => "retry",
-                            PendingOutcomeKind::CommitAmbiguous => "reconciliation",
-                        }
-                    )
-                })
-            })
-            .map_err(|error| {
-                HeptaError(format!(
-                    "durable outcome intent inspection failed closed: {error}"
-                ))
-            })
-    }
-
-    /// Enumerates exact pre-dispatch plans that still block provider execution.
-    pub fn pending_execution_intents(&self) -> Result<Vec<ExecutionIntent>, HeptaError> {
-        self.outcome_sink
-            .pending_execution_intents()
-            .map_err(|error| {
-                HeptaError(format!(
-                    "failed to enumerate pending execution intents: {error}"
-                ))
-            })
-    }
-
-    /// Inspects unresolved provider effects without replaying or mutating them.
-    pub fn pending_execution_effect_inspections(
-        &self,
-    ) -> Result<Vec<crate::PendingExecutionEffectInspection>, HeptaError> {
-        self.outcome_sink
-            .pending_execution_intents()
-            .map_err(|error| {
-                HeptaError(format!(
-                    "failed to enumerate pending execution intents: {error}"
-                ))
-            })?
-            .into_iter()
-            .map(|intent| {
-                let ack = self
-                    .outcome_sink
-                    .execution_effect_ack(intent.attempt_id())
-                    .map_err(|error| {
-                        HeptaError(format!(
-                            "failed to inspect provider effect ACK {}: {error}",
-                            intent.attempt_id()
-                        ))
-                    })?;
-                super::provider_effect::inspect_pending_effect(&intent, ack.as_ref())
-            })
-            .collect()
-    }
-
-    /// Compatibility name for commit-ambiguity reconciliation.
-    pub fn reconcile_ambiguous_outcome(
-        &self,
-        attempt_id: &str,
-    ) -> Result<OutcomeRecordResult, HeptaError> {
-        self.reconcile_pending_outcome(attempt_id)
-    }
 }

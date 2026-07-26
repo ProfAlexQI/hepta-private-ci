@@ -99,17 +99,18 @@ use crate::gateway_options::parse_serve_ui_args;
 use crate::http_transport::*;
 use crate::native_telegram;
 use crate::native_telegram::NativeTelegramPluginStatus;
+use crate::operator_mutation::enabled as operator_mutation_enabled;
 use crate::provider_domain::ProviderChannelDryRunPlanResponse;
 use crate::provider_domain::ProviderReportContext;
 use crate::route_registry::*;
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
-use crate::runtime_composition::RuntimeRequestDisposition;
 use crate::runtime_composition::RuntimeRequestPreflightReceipt;
 use crate::runtime_composition::runtime_kernel_canary_body_admitted;
 use crate::runtime_ingress::TELEGRAM_RECEIVE_ONCE_ENDPOINT;
+use crate::runtime_ingress::operator_execution_response;
 #[cfg(test)]
-use crate::runtime_ingress::runtime_ingress_kind;
+use crate::runtime_ingress::runtime_ingress_lifecycle;
 use crate::runtime_ingress::runtime_preflight_matches;
 use crate::runtime_ingress::telegram_receive_once_response;
 use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENDPOINT;
@@ -206,9 +207,13 @@ pub async fn run_native_gateway(
     }
     runtime.validate_readiness()?;
     println!(
-        "Hepta Architecture V2 runtime composition ready: durable_outcomes={} durable_preferences={} authenticated_preference_plan_and_commit=true transport_confidentiality_claimed=false live_gateway_effect_mutations=false",
+        "Hepta Architecture V2 runtime composition ready: durable_outcomes={} durable_preferences={} authenticated_preference_plan_and_commit=true secure_sensitive_ingress=true monotonic_anchor={} effect_reconciliation={} operator_mutation={} operator_telegram_pipeline={} legacy_telegram_live=false transport_confidentiality_claimed=local_host_only",
         runtime.outcome_mode(),
         runtime.preference_mode(),
+        runtime.monotonic_anchor_enabled(),
+        runtime.effect_reconciliation_enabled(),
+        operator_mutation_enabled(),
+        runtime.telegram_operator_pipeline_enabled(),
     );
     let runtime = Arc::new(runtime);
 
@@ -398,17 +403,22 @@ fn handle_native_gateway_connection(
             b"method not allowed; supported POST endpoints are /api/actions/<action> and native POST route specs",
         );
     }
+    if method == "POST"
+        && crate::sensitive_http::requires_admission(path)
+        && !crate::sensitive_http::admit(&request, &options.bind_addr)
+    {
+        return write_http_response(
+            stream,
+            "403 Forbidden",
+            "application/json; charset=utf-8",
+            br#"{"error":"secure_sensitive_ingress.denied","required_transport":"loopback+matching-host-origin+csrf+json"}"#,
+        );
+    }
     let request_body = request_body_text(&request);
     let preflight = runtime
         .preflight_request(method, path, request_body)
         .map_err(|error| anyhow::anyhow!("RuntimeKernel request preflight failed: {error}"))?;
-    if preflight.request_binding_hash.is_empty()
-        || preflight.disposition
-            != if method == "GET" {
-                RuntimeRequestDisposition::ReadOnlyDispatch
-            } else {
-                RuntimeRequestDisposition::PlanOnlyQuarantine
-            }
+    if !runtime_preflight_matches(method, path, &preflight)
         || preflight.mutation_authorized
         || preflight.durable_intent_recorded
         || preflight.provider_effect_ack_recorded
@@ -422,6 +432,32 @@ fn handle_native_gateway_connection(
         );
     }
     if let Some(response) = runtime.route_preference_ingress(
+        method,
+        path,
+        request_body,
+        &preflight.request_binding_hash,
+    ) {
+        return write_http_response(
+            stream,
+            response.status,
+            "application/json; charset=utf-8",
+            response.body.as_bytes(),
+        );
+    }
+    if let Some(response) = runtime.route_effect_reconciliation(
+        method,
+        path,
+        request_body,
+        &preflight.request_binding_hash,
+    ) {
+        return write_http_response(
+            stream,
+            response.status,
+            "application/json; charset=utf-8",
+            response.body.as_bytes(),
+        );
+    }
+    if let Some(response) = runtime.route_telegram_reconciliation(
         method,
         path,
         request_body,
@@ -501,7 +537,21 @@ fn handle_native_gateway_connection(
             }
         };
     }
-    if method == "GET" && path == TELEGRAM_RECEIVE_ONCE_ENDPOINT {
+    if let Some(response) = operator_execution_response(
+        runtime,
+        method,
+        path,
+        request_body,
+        &preflight.request_binding_hash,
+    ) {
+        return write_http_response(
+            stream,
+            response.status,
+            "application/json; charset=utf-8",
+            response.body.as_bytes(),
+        );
+    }
+    if method == "POST" && path == TELEGRAM_RECEIVE_ONCE_ENDPOINT {
         let response =
             telegram_receive_once_response(Some(runtime), options.with_telegram_plugin, 20);
         return write_http_response(
@@ -540,14 +590,27 @@ fn route_native_gateway_request_with_body(
     options: &NativeGatewayOptions,
     request_body: Option<&str>,
 ) -> (&'static str, &'static str, String) {
+    let Some(lifecycle) = runtime_ingress_lifecycle(method, path) else {
+        if crate::runtime_ingress::is_detached_control_ui_report_for_test(method, path) {
+            let preflight = tests::quarantined_preflight();
+            return route_native_gateway_request_after_preflight(
+                method,
+                path,
+                options,
+                request_body,
+                &preflight,
+            );
+        }
+        return (
+            "503 Service Unavailable",
+            "application/json; charset=utf-8",
+            r#"{"error":"runtime request ingress unclassified"}"#.to_string(),
+        );
+    };
     let preflight = RuntimeRequestPreflightReceipt {
         request_binding_hash: "unit-test-request-binding".into(),
-        disposition: if method == "GET" {
-            RuntimeRequestDisposition::ReadOnlyDispatch
-        } else {
-            RuntimeRequestDisposition::PlanOnlyQuarantine
-        },
-        ingress_kind: runtime_ingress_kind(method, path),
+        disposition: lifecycle.disposition(),
+        ingress_kind: lifecycle.ingress_kind(),
         mutation_authorized: false,
         durable_intent_recorded: false,
         provider_effect_ack_recorded: false,
@@ -575,6 +638,16 @@ fn route_native_gateway_request_with_preflight(
             r#"{"error":"runtime request preflight invalid"}"#.to_string(),
         );
     }
+    route_native_gateway_request_after_preflight(method, path, options, request_body, preflight)
+}
+
+fn route_native_gateway_request_after_preflight(
+    method: &str,
+    path: &str,
+    options: &NativeGatewayOptions,
+    request_body: Option<&str>,
+    preflight: &RuntimeRequestPreflightReceipt,
+) -> (&'static str, &'static str, String) {
     let telegram_plugin = native_telegram::telegram_plugin_status(
         options.with_telegram_plugin,
         options.telegram_plugin_poll_ms,

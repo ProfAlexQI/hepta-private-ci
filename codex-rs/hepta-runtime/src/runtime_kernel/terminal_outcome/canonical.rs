@@ -153,6 +153,9 @@ fn append_terminal(out: &mut EvidenceFrames, terminal: ToolDispatchTerminal<'_>)
         ToolDispatchTerminal::ToolReportedFailure { error } => {
             ("failed", "tool.reported_failure", Some(error), 0)
         }
+        ToolDispatchTerminal::ProviderErrorAfterCommit { error, error_code } => {
+            ("failed", error_code, Some(error), 0)
+        }
         ToolDispatchTerminal::TimedOut { timeout_ms, error } => {
             ("cancelled", "tool.native_timeout", Some(error), timeout_ms)
         }

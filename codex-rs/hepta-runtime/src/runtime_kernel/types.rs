@@ -48,6 +48,7 @@ pub struct RuntimeExecutionReceipt {
     pub attempt_id: String,
     pub durable_intent_recorded: bool,
     pub effect_plan_recorded: bool,
+    pub effect_plan_hash: Option<String>,
     pub provider_effect_ack_hash: Option<String>,
     pub terminal_receipt_id: String,
     pub terminal_receipt_hash: String,

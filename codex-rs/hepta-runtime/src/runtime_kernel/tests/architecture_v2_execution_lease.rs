@@ -1,9 +1,5 @@
 fn assert_lease_error(error: crate::HeptaError, code: &str) {
-    assert!(
-        error.0.contains(code),
-        "expected lease error {code}, got {}",
-        error.0
-    );
+    assert!(error.0.contains(code), "expected {code}, got {}", error.0);
 }
 
 #[test]
@@ -12,11 +8,9 @@ fn architecture_v2_execution_lease_detects_epoch_drift_after_failed_mutation() {
     let expected = runtime
         .capture_execution_epoch("session-main")
         .expect("epoch capture");
-
     runtime
         .set_path_capability_gate("unknown-tool", "path", FilesystemScope::WorkspaceOnly)
         .expect_err("invalid mutation should fail after acquiring its marker");
-
     let error = runtime
         .begin_execution_lease(expected)
         .expect_err("failed mutation must still invalidate a frozen epoch");
@@ -82,6 +76,25 @@ fn architecture_v2_execution_lease_allows_unrelated_session_mutation() {
     assert_eq!(switched.current, ExecutionProfile::ReadOnlyTools);
 
     drop(lease);
+}
+
+#[tokio::test]
+async fn architecture_v2_session_turn_reservation_rejects_competing_same_session_turn() {
+    let runtime = RuntimeKernel::new();
+    let reservation = runtime
+        .begin_session_turn_reservation("session-main")
+        .expect("reserve session turn");
+    let error = runtime
+        .run_demo_turn_in_session("session-main", "hello")
+        .await
+        .expect_err("competing turn must fail before model or tool execution");
+    assert_lease_error(error, "execution_lease.session_turn_active");
+    drop(reservation);
+
+    runtime
+        .run_demo_turn_in_session("session-main", "hello")
+        .await
+        .expect("turn resumes after reservation release");
 }
 
 #[test]

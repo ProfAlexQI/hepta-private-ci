@@ -295,8 +295,7 @@ fn journal_from_records_and_tombstones(
         })
         .collect::<Vec<_>>();
 
-    let mut next_sequence = journal.len() as u64 + 1;
-    for tombstone in tombstones {
+    for (next_sequence, tombstone) in (journal.len() as u64 + 1..).zip(tombstones) {
         journal.push(MemoryRuntimeJournalEntry {
             sequence: next_sequence,
             journal_id: format!("journal-tombstone-{}", tombstone.unit_id),
@@ -311,7 +310,6 @@ fn journal_from_records_and_tombstones(
             readback_evidence_id: format!("readback:tombstone:{}", tombstone.unit_id),
             production_mutation_performed: false,
         });
-        next_sequence += 1;
     }
 
     journal

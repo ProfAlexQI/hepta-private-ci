@@ -1352,7 +1352,7 @@ impl RuntimeKernel {
     ) -> Result<WorkerTaskIndexReport, HeptaError> {
         let active_session_id = self.active_session_id()?;
         let mut tasks = self.worker_task_records()?;
-        tasks.sort_by(|left, right| left.created_at_unix_ms.cmp(&right.created_at_unix_ms));
+        tasks.sort_by_key(|task| task.created_at_unix_ms);
         let total_records = tasks.clone();
         if let Some(status) = status_filter {
             tasks.retain(|task| task.status == status);
@@ -2983,7 +2983,7 @@ impl RuntimeKernel {
         if let Some(worker_filter) = &worker_filter {
             tasks.retain(|task| &task.worker_id == worker_filter);
         }
-        tasks.sort_by(|left, right| left.updated_at_unix_ms.cmp(&right.updated_at_unix_ms));
+        tasks.sort_by_key(|task| task.updated_at_unix_ms);
         let joined = tasks
             .iter()
             .filter(|task| task.status == WorkerTaskStatus::Completed)
@@ -3378,7 +3378,7 @@ impl RuntimeKernel {
     ) -> Result<WorkerSubagentObservatoryReport, HeptaError> {
         let now_unix_ms = current_unix_ms()?;
         let mut tasks = self.worker_task_records()?;
-        tasks.sort_by(|left, right| left.updated_at_unix_ms.cmp(&right.updated_at_unix_ms));
+        tasks.sort_by_key(|task| task.updated_at_unix_ms);
         let file_leases = tasks
             .iter()
             .flat_map(|task| task.file_leases.iter().cloned())

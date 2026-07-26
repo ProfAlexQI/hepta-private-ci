@@ -1,3 +1,5 @@
+mod recording;
+
 use hepta_core::EventKind;
 use hepta_core::HeptaError;
 use hepta_core::MemoryRecord;
@@ -28,6 +30,10 @@ use super::terminal_outcome::finalize_tool_outcome;
 use crate::RuntimeKernel;
 use crate::TurnRecord;
 use crate::current_unix_ms;
+use recording::effect_evidence;
+use recording::terminal_evidence;
+use recording::transaction_evidence;
+use recording::validation_evidence;
 
 /// Private persistence seam that preserves the runtime's existing memory,
 /// transcript, and turn-history behavior.
@@ -50,17 +56,21 @@ impl<'a> OutcomeRecorder<'a> {
         let tool_result = captured.tool_result().cloned();
         let provider_output_json = captured.provider_output_json().map(str::to_string);
         let finished_at_unix_ms = captured.finished_at_unix_ms();
+        let staged_terminal = captured.staged_terminal().cloned();
         let result = match captured.execution_mut() {
-            Some(execution) => Self::record_terminal(
-                execution,
-                &terminal,
-                &validation,
-                &transaction,
-                tool_result.as_ref(),
-                provider_output_json.as_deref(),
-                finished_at_unix_ms,
-                false,
-            ),
+            Some(execution) => match staged_terminal {
+                Some(exact) => record_first_outcome(execution, exact),
+                None => Self::record_terminal(
+                    execution,
+                    &terminal,
+                    &validation,
+                    &transaction,
+                    tool_result.as_ref(),
+                    provider_output_json.as_deref(),
+                    finished_at_unix_ms,
+                    false,
+                ),
+            },
             None => Err(HeptaError(
                 "terminal tool dispatch lost exact execution authority".into(),
             )),
@@ -75,17 +85,21 @@ impl<'a> OutcomeRecorder<'a> {
         let transaction = captured.transaction().clone();
         let tool_result = captured.tool_result().cloned();
         let provider_output_json = captured.provider_output_json().map(str::to_string);
+        let staged_terminal = captured.staged_terminal().cloned();
         let _ = match captured.execution_mut() {
-            Some(execution) => Self::record_terminal(
-                execution,
-                &terminal,
-                &validation,
-                &transaction,
-                tool_result.as_ref(),
-                provider_output_json.as_deref(),
-                now_ms(),
-                true,
-            ),
+            Some(execution) => match staged_terminal {
+                Some(exact) => record_first_outcome(execution, exact),
+                None => Self::record_terminal(
+                    execution,
+                    &terminal,
+                    &validation,
+                    &transaction,
+                    tool_result.as_ref(),
+                    provider_output_json.as_deref(),
+                    now_ms(),
+                    true,
+                ),
+            },
             None => Ok(()),
         };
         drop(captured.disarm());
@@ -114,6 +128,36 @@ impl<'a> OutcomeRecorder<'a> {
         );
     }
 
+    /// Builds and atomically stages the exact terminal material paired with a
+    /// provider effect ACK. Non-effect executions intentionally remain on the
+    /// normal terminal path.
+    pub(crate) fn stage_provider_completion(
+        &self,
+        captured: &mut CapturedToolExecution<'_>,
+    ) -> Result<(), HeptaError> {
+        let Some(execution) = captured.execution() else {
+            return Err(HeptaError(
+                "provider completion lost exact execution authority".into(),
+            ));
+        };
+        if execution.execution_effect_ack().is_none() {
+            return Ok(());
+        }
+        let exact = Self::build_exact_terminal(
+            execution,
+            captured.terminal(),
+            captured.validation(),
+            captured.transaction(),
+            captured.tool_result(),
+            captured.provider_output_json(),
+            captured.finished_at_unix_ms(),
+            false,
+        )?;
+        execution.stage_provider_completion(&exact)?;
+        captured.set_staged_terminal(exact);
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn record_terminal(
         execution: &mut AuthorizedToolExecution,
@@ -125,6 +169,32 @@ impl<'a> OutcomeRecorder<'a> {
         finished_at_unix_ms: u64,
         dropped: bool,
     ) -> Result<(), HeptaError> {
+        match Self::build_exact_terminal(
+            execution,
+            terminal,
+            validation,
+            transaction,
+            tool_result,
+            provider_output_json,
+            finished_at_unix_ms,
+            dropped,
+        ) {
+            Ok(exact) => record_first_outcome(execution, exact),
+            Err(error) => fail_fatal(execution, error.0),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_exact_terminal(
+        execution: &AuthorizedToolExecution,
+        terminal: &CapturedDispatchTerminal,
+        validation: &CapturedValidation,
+        transaction: &CapturedTransaction,
+        tool_result: Option<&hepta_core::ToolResult>,
+        provider_output_json: Option<&str>,
+        finished_at_unix_ms: u64,
+        dropped: bool,
+    ) -> Result<ExactOutcomeRecord, HeptaError> {
         let executor = ToolExecutorBinding::try_new(
             execution.capability().clone(),
             execution.executor().principal().clone(),
@@ -180,21 +250,15 @@ impl<'a> OutcomeRecorder<'a> {
             })
         });
 
-        match finalized {
-            Ok(finalized) => {
-                let (receipt, canonical_evidence, evidence_hash) = finalized.into_parts();
-                record_first_outcome(
-                    execution,
-                    ExactOutcomeRecord::new(
-                        execution.attempt_id(),
-                        receipt,
-                        canonical_evidence,
-                        evidence_hash,
-                    ),
-                )
-            }
-            Err(error) => fail_fatal(execution, error.0),
-        }
+        finalized.map(|finalized| {
+            let (receipt, canonical_evidence, evidence_hash) = finalized.into_parts();
+            ExactOutcomeRecord::new(
+                execution.attempt_id(),
+                receipt,
+                canonical_evidence,
+                evidence_hash,
+            )
+        })
     }
 
     pub(crate) async fn store_memory(
@@ -300,111 +364,5 @@ impl<'a> OutcomeRecorder<'a> {
             .map_err(|_| HeptaError("history state mutex poisoned".into()))?;
         guard.push(record);
         Ok(())
-    }
-}
-
-fn terminal_evidence<'a>(
-    terminal: &'a CapturedDispatchTerminal,
-    dropped: bool,
-) -> ToolDispatchTerminal<'a> {
-    if dropped {
-        return ToolDispatchTerminal::DispatchFutureDropped;
-    }
-    match terminal {
-        CapturedDispatchTerminal::Succeeded => ToolDispatchTerminal::Succeeded,
-        CapturedDispatchTerminal::DispatchBlocked(reason) => {
-            ToolDispatchTerminal::DispatchBlocked { reason }
-        }
-        CapturedDispatchTerminal::ToolError(error) => ToolDispatchTerminal::ToolError { error },
-        CapturedDispatchTerminal::StructuredOutputMissing => {
-            ToolDispatchTerminal::StructuredOutputMissing
-        }
-        CapturedDispatchTerminal::OutputValidationFailed(error) => {
-            ToolDispatchTerminal::OutputValidationFailed { error }
-        }
-        CapturedDispatchTerminal::ToolReportedFailure(error) => {
-            ToolDispatchTerminal::ToolReportedFailure { error }
-        }
-        CapturedDispatchTerminal::TimedOut { timeout_ms, error } => {
-            ToolDispatchTerminal::TimedOut {
-                timeout_ms: *timeout_ms,
-                error,
-            }
-        }
-        CapturedDispatchTerminal::EventRecordingFailed(error) => {
-            ToolDispatchTerminal::EventRecordingFailed { error }
-        }
-        CapturedDispatchTerminal::WriteTransactionFailed(error) => {
-            ToolDispatchTerminal::TransactionRecordingFailed { error }
-        }
-    }
-}
-
-fn validation_evidence(validation: &CapturedValidation) -> ToolOutputValidationStatus<'_> {
-    match validation {
-        CapturedValidation::NotRequired => ToolOutputValidationStatus::NotRequired,
-        CapturedValidation::Missing => ToolOutputValidationStatus::Missing,
-        CapturedValidation::Valid => ToolOutputValidationStatus::Valid,
-        CapturedValidation::Invalid(error) => ToolOutputValidationStatus::Invalid { error },
-    }
-}
-
-fn transaction_evidence<'a>(
-    execution: &AuthorizedToolExecution,
-    transaction: &'a CapturedTransaction,
-    dropped: bool,
-) -> ToolTransactionEvidence<'a> {
-    if dropped
-        && !execution.prepared_write_transactions().is_empty()
-        && matches!(transaction, CapturedTransaction::NotApplicable)
-    {
-        return ToolTransactionEvidence::Failed {
-            error: "dispatch dropped before write transaction capture",
-            transaction_id: None,
-            group_id: None,
-            entry_hash: None,
-        };
-    }
-    match transaction {
-        CapturedTransaction::NotApplicable => ToolTransactionEvidence::NotApplicable,
-        CapturedTransaction::Preview => ToolTransactionEvidence::Preview,
-        CapturedTransaction::Recorded {
-            transaction_id,
-            group_id,
-            entry_hash,
-        } => ToolTransactionEvidence::Recorded {
-            transaction_id,
-            group_id: group_id.as_deref(),
-            entry_hash,
-        },
-        CapturedTransaction::Failed {
-            error,
-            transaction_id,
-            group_id,
-            entry_hash,
-        } => ToolTransactionEvidence::Failed {
-            error,
-            transaction_id: transaction_id.as_deref(),
-            group_id: group_id.as_deref(),
-            entry_hash: entry_hash.as_ref(),
-        },
-    }
-}
-
-fn effect_evidence(
-    execution: &AuthorizedToolExecution,
-    transaction: &CapturedTransaction,
-    dropped: bool,
-) -> ToolEffectDisposition {
-    if execution.metadata().read_only || matches!(transaction, CapturedTransaction::Preview) {
-        return ToolEffectDisposition::None;
-    }
-    if dropped {
-        return ToolEffectDisposition::Unknown;
-    }
-    if matches!(transaction, CapturedTransaction::Recorded { .. }) {
-        ToolEffectDisposition::Recorded
-    } else {
-        ToolEffectDisposition::Unknown
     }
 }

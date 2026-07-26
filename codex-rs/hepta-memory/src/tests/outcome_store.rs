@@ -29,8 +29,10 @@ use crate::OutcomeStoreError;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 mod durable;
+#[path = "effect_ack.rs"]
 mod effect_ack;
 mod execution_intent;
+#[path = "outcome_pending_intent.rs"]
 mod pending_intent;
 mod sync_writer;
 

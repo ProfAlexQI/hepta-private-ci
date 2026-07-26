@@ -138,6 +138,7 @@ mod recall_helpers;
 mod snapshot_helpers;
 
 pub use durable::DurableIntegrityKey;
+pub use durable::DurableMonotonicState;
 pub use outcome_store::DurableOutcomeStore;
 pub use outcome_store::DurableOutcomeWriterError;
 pub use outcome_store::ExecutionEffectAck;

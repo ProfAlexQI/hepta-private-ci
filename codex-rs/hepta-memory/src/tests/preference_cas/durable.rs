@@ -10,6 +10,32 @@ fn durable_integrity_key(byte: u8) -> DurableIntegrityKey {
 mod wal_integrity;
 
 #[tokio::test]
+async fn durable_preference_monotonic_state_advances_and_survives_reopen() -> TestResult {
+    let directory = tempfile::tempdir()?;
+    let database_path = directory.path().join("v2-monotonic-preference.sqlite3");
+    let store =
+        DurablePreferenceStore::bootstrap_new_keyed(&database_path, durable_integrity_key(0x51))
+            .await?;
+    let before = store.monotonic_state().await?;
+    store
+        .get_or_init_genesis(
+            PreferenceId::new("preference-monotonic"),
+            PrincipalId::new("subject-monotonic"),
+            preference_document(0, "sha256:genesis-monotonic", "reducer.v1", "{}"),
+        )
+        .await?;
+    let after = store.monotonic_state().await?;
+    assert!(after.generation() > before.generation());
+    assert_ne!(after.state_hash(), before.state_hash());
+    drop(store);
+    let reopened =
+        DurablePreferenceStore::open_existing_keyed(&database_path, durable_integrity_key(0x51))
+            .await?;
+    assert_eq!(reopened.monotonic_state().await?, after);
+    Ok(())
+}
+
+#[tokio::test]
 async fn durable_preference_wal_replays_head_and_historical_idempotency() -> TestResult {
     let directory = tempfile::tempdir()?;
     let database_path = directory.path().join("v2-memory.sqlite3");

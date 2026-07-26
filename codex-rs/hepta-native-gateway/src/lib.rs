@@ -1,4 +1,6 @@
 mod canonical_manifest;
+mod durability_anchor;
+mod effect_reconciliation;
 mod gate_command;
 mod gate_runner;
 mod gate_spec;
@@ -6,6 +8,10 @@ mod gateway_options;
 mod http_transport;
 mod native_gateway;
 mod native_telegram;
+mod operator_mutation;
+mod operator_mutation_journal;
+mod operator_mutation_reconciliation;
+mod preference_attachment;
 mod preference_ingress;
 mod provider_domain;
 mod route_registry;
@@ -13,6 +19,9 @@ mod runtime_composition;
 mod runtime_ingress;
 mod runtime_mutation;
 mod secure_key_file;
+mod sensitive_http;
+mod telegram_authority;
+mod telegram_durable_files;
 mod ui_domain;
 
 pub use canonical_manifest::canonical_manifest_json;

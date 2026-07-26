@@ -55,79 +55,16 @@ impl DurableOutcomeStore {
             canonical_evidence.into(),
             canonical_evidence_hash,
         );
-        let pending_row = encode_intent(&self.database, &attempted, OutcomeIntentState::Pending)?;
         let mut transaction = self.begin_intent_transaction().await?;
-
-        if let Some(row) = fetch_intent_by_attempt(&mut transaction, attempted.attempt_id()).await?
-        {
-            let existing = decode_intent_row(&self.database, row)?;
-            let outcome = exact_intent_stage(&existing, &attempted);
-            return self.rollback_intent(transaction, outcome).await;
+        let (result, inserted) =
+            stage_pending_intent_in_transaction(&self.database, &mut transaction, &attempted)
+                .await?;
+        if inserted {
+            self.commit_intent_transaction(transaction, result, STAGE_INTENT_COMMIT_OPERATION)
+                .await
+        } else {
+            self.rollback_intent(transaction, Ok(result)).await
         }
-        if let Some(row) =
-            fetch_intent_by_receipt(&mut transaction, attempted.receipt().id().as_str()).await?
-        {
-            let existing = decode_intent_row(&self.database, row)?;
-            let outcome =
-                exact_replay(existing.record(), &attempted).map(|_| stage_result(existing.state()));
-            return self.rollback_intent(transaction, outcome).await;
-        }
-        if let Some(row) =
-            fetch_by_receipt(&mut transaction, attempted.receipt().id().as_str()).await?
-        {
-            let existing = decode_stored_row(&self.database, row)?;
-            let outcome = exact_replay(&existing, &attempted)
-                .map(|_| OutcomeIntentStageResult::AlreadyRecorded);
-            return self.rollback_intent(transaction, outcome).await;
-        }
-        if let Some(row) = fetch_by_attempt(&mut transaction, attempted.attempt_id()).await? {
-            let existing = decode_stored_row(&self.database, row)?;
-            let outcome = Err(OutcomeStoreError::AttemptAlreadyFinalized {
-                attempt_id: attempted.attempt_id().to_owned(),
-                existing_receipt: existing.receipt().id().clone(),
-                attempted_receipt: attempted.receipt().id().clone(),
-            });
-            return self.rollback_intent(transaction, outcome).await;
-        }
-
-        let inserted = sqlx::query(
-            "INSERT INTO hepta_v2_outcome_intents (
-                attempt_id,
-                receipt_id,
-                state,
-                payload_json,
-                storage_hash
-             ) VALUES (?, ?, 'pending', ?, ?)",
-        )
-        .bind(attempted.attempt_id())
-        .bind(attempted.receipt().id().as_str())
-        .bind(&pending_row.payload_json)
-        .bind(&pending_row.storage_hash)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|error| {
-            map_durable_error(DurableStorageError::persistence(
-                "insert outcome producer intent",
-                error,
-            ))
-        })?
-        .rows_affected();
-        if inserted != 1 {
-            return self
-                .rollback_intent(
-                    transaction,
-                    Err(OutcomeStoreError::Corrupt {
-                        detail: format!("outcome producer-intent insert affected {inserted} rows"),
-                    }),
-                )
-                .await;
-        }
-        self.commit_intent_transaction(
-            transaction,
-            OutcomeIntentStageResult::Pending,
-            STAGE_INTENT_COMMIT_OPERATION,
-        )
-        .await
     }
 
     pub(crate) async fn commit_staged_intent(
@@ -484,7 +421,7 @@ impl DurableOutcomeStore {
     }
 }
 
-fn build_record(
+pub(super) fn build_record(
     attempt_id: String,
     receipt: OutcomeReceipt,
     canonical_evidence: String,
@@ -514,7 +451,7 @@ fn encode_record(
         .map_err(map_durable_error)
 }
 
-fn encode_intent(
+pub(super) fn encode_intent(
     database: &DurableDatabase,
     record: &OutcomeRecord,
     state: OutcomeIntentState,
@@ -535,7 +472,7 @@ fn encode_intent(
         .map_err(map_durable_error)
 }
 
-fn decode_intent_row(
+pub(super) fn decode_intent_row(
     database: &DurableDatabase,
     row: sqlx::sqlite::SqliteRow,
 ) -> Result<OutcomeIntent, OutcomeStoreError> {
@@ -569,6 +506,69 @@ fn decode_intent_row(
     }
     let record = decode_record_wire(wire.record, &attempt_id, &receipt_id)?;
     Ok(OutcomeIntent::new(state, record))
+}
+
+/// Stages one exact pending terminal intent inside a caller-owned serialized
+/// transaction. The boolean reports whether this call inserted durable bytes.
+pub(super) async fn stage_pending_intent_in_transaction(
+    database: &DurableDatabase,
+    transaction: &mut Transaction<'_, Sqlite>,
+    attempted: &OutcomeRecord,
+) -> Result<(OutcomeIntentStageResult, bool), OutcomeStoreError> {
+    if let Some(row) = fetch_intent_by_attempt(transaction, attempted.attempt_id()).await? {
+        let existing = decode_intent_row(database, row)?;
+        return exact_intent_stage(&existing, attempted).map(|result| (result, false));
+    }
+    if let Some(row) =
+        fetch_intent_by_receipt(transaction, attempted.receipt().id().as_str()).await?
+    {
+        let existing = decode_intent_row(database, row)?;
+        return exact_replay(existing.record(), attempted)
+            .map(|_| (stage_result(existing.state()), false));
+    }
+    if let Some(row) = fetch_by_receipt(transaction, attempted.receipt().id().as_str()).await? {
+        let existing = decode_stored_row(database, row)?;
+        return exact_replay(&existing, attempted)
+            .map(|_| (OutcomeIntentStageResult::AlreadyRecorded, false));
+    }
+    if let Some(row) = fetch_by_attempt(transaction, attempted.attempt_id()).await? {
+        let existing = decode_stored_row(database, row)?;
+        return Err(OutcomeStoreError::AttemptAlreadyFinalized {
+            attempt_id: attempted.attempt_id().to_owned(),
+            existing_receipt: existing.receipt().id().clone(),
+            attempted_receipt: attempted.receipt().id().clone(),
+        });
+    }
+
+    let pending_row = encode_intent(database, attempted, OutcomeIntentState::Pending)?;
+    let inserted = sqlx::query(
+        "INSERT INTO hepta_v2_outcome_intents (
+            attempt_id,
+            receipt_id,
+            state,
+            payload_json,
+            storage_hash
+         ) VALUES (?, ?, 'pending', ?, ?)",
+    )
+    .bind(attempted.attempt_id())
+    .bind(attempted.receipt().id().as_str())
+    .bind(&pending_row.payload_json)
+    .bind(&pending_row.storage_hash)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        map_durable_error(DurableStorageError::persistence(
+            "insert outcome producer intent",
+            error,
+        ))
+    })?
+    .rows_affected();
+    if inserted != 1 {
+        return Err(OutcomeStoreError::Corrupt {
+            detail: format!("outcome producer-intent insert affected {inserted} rows"),
+        });
+    }
+    Ok((OutcomeIntentStageResult::Pending, true))
 }
 
 fn decode_record_wire(
@@ -637,7 +637,7 @@ fn exact_intent_stage(
     exact_replay(existing.record(), attempted).map(|_| stage_result(existing.state()))
 }
 
-fn exact_replay(
+pub(super) fn exact_replay(
     existing: &OutcomeRecord,
     attempted: &OutcomeRecord,
 ) -> Result<OutcomeRecordResult, OutcomeStoreError> {
@@ -650,21 +650,21 @@ fn exact_replay(
     )
 }
 
-const fn stage_result(state: OutcomeIntentState) -> OutcomeIntentStageResult {
+pub(super) const fn stage_result(state: OutcomeIntentState) -> OutcomeIntentStageResult {
     match state {
         OutcomeIntentState::Pending => OutcomeIntentStageResult::Pending,
         OutcomeIntentState::Committed => OutcomeIntentStageResult::Committed,
     }
 }
 
-async fn fetch_intent_by_attempt(
+pub(super) async fn fetch_intent_by_attempt(
     transaction: &mut Transaction<'_, Sqlite>,
     attempt_id: &str,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, OutcomeStoreError> {
     fetch_intent(transaction, "attempt_id", attempt_id).await
 }
 
-async fn fetch_intent_by_receipt(
+pub(super) async fn fetch_intent_by_receipt(
     transaction: &mut Transaction<'_, Sqlite>,
     receipt_id: &str,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, OutcomeStoreError> {
@@ -676,12 +676,24 @@ async fn fetch_intent(
     column: &str,
     value: &str,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, OutcomeStoreError> {
-    let query = format!(
-        "SELECT attempt_id, receipt_id, state, payload_json, storage_hash
-         FROM hepta_v2_outcome_intents
-         WHERE {column} = ?"
-    );
-    sqlx::query(&query)
+    let query = match column {
+        "attempt_id" => {
+            "SELECT attempt_id, receipt_id, state, payload_json, storage_hash
+             FROM hepta_v2_outcome_intents
+             WHERE attempt_id = ?"
+        }
+        "receipt_id" => {
+            "SELECT attempt_id, receipt_id, state, payload_json, storage_hash
+             FROM hepta_v2_outcome_intents
+             WHERE receipt_id = ?"
+        }
+        _ => {
+            return Err(map_durable_error(DurableStorageError::corrupt(format!(
+                "unsupported outcome producer intent index {column}"
+            ))));
+        }
+    };
+    sqlx::query(query)
         .bind(value)
         .fetch_optional(&mut **transaction)
         .await

@@ -90,6 +90,27 @@ async fn architecture_v2_exact_safety_exact_grant_is_single_use() {
 }
 
 #[tokio::test]
+async fn architecture_v2_exact_safety_atomic_approve_and_turn_consumes_its_own_grant() {
+    let runtime = RuntimeKernel::new();
+    let intent = existing_read_intent();
+    runtime
+        .run_demo_turn(&intent)
+        .await
+        .expect("initial pending");
+    let binding = exact_pending_binding(&runtime);
+
+    let executed = runtime
+        .approve_candidate_and_run_demo_turn_in_session("session-main", &binding, &intent)
+        .await
+        .expect("atomic exact approval and turn");
+    assert_eq!(executed.invoked_tool.as_deref(), Some("read_file"));
+
+    let replay = runtime.run_demo_turn(&intent).await.expect("replay");
+    assert_eq!(replay.invoked_tool, None);
+    assert_eq!(replay.approval_required.as_deref(), Some("read_file"));
+}
+
+#[tokio::test]
 async fn architecture_v2_exact_safety_proactive_read_only_token_binds_once() {
     let runtime = RuntimeKernel::new();
     let response = runtime

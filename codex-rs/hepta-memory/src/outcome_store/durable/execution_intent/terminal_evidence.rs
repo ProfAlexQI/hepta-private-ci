@@ -525,6 +525,7 @@ fn validate_terminal_shape(
             | ("failed", "tool.output_missing")
             | ("failed", "tool.output_validation_failed")
             | ("failed", "tool.reported_failure")
+            | ("failed", "mutation_durability_ambiguous")
             | ("cancelled", "tool.native_timeout")
             | ("failed", "runtime.tool_invoked_event_failed")
             | ("failed", "runtime.write_transaction_record_failed")

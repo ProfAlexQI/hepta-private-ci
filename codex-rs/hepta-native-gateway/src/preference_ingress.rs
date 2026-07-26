@@ -1,8 +1,8 @@
 //! HMAC-authenticated native HTTP preference ingress.
 //!
 //! Challenge planning and commit use separate HMAC domains. The gateway
-//! defaults to loopback, but this clear-HTTP transport does not claim
-//! confidentiality and the global lab-only non-loopback override still exists.
+//! is admitted only on strict loopback Host/Origin/CSRF transport. Clear HTTP
+//! still makes no confidentiality claim beyond the local host boundary.
 
 use std::env;
 use std::ffi::OsString;
@@ -37,6 +37,7 @@ use hepta_intelligence::PreferenceIngressProof;
 #[cfg(test)]
 use hepta_intelligence::TrustedExplicitPreferenceReducer;
 use hepta_intelligence::explicit_preference_feedback_challenge_hash;
+use hepta_intelligence::sign_preference_ingress_challenge;
 use hepta_memory::DurableIntegrityKey;
 use hepta_memory::PreferenceAuthorityError;
 use hepta_memory::PreferenceCasError;
@@ -46,6 +47,8 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::preference_attachment::PreferenceAttachmentCandidate;
+use crate::preference_attachment::PreferenceAttachmentStore;
 use crate::secure_key_file::read_private_key;
 
 #[cfg(all(test, unix))]
@@ -65,7 +68,7 @@ const BOOTSTRAP_NEW_MODE: &str = "bootstrap-new";
 const SOURCE_IDENTITY: &str = "source:hepta-native-http-preference-ingress";
 const SOURCE_REVISION: u64 = 2;
 const SOURCE_DESCRIPTOR: &[u8] =
-    b"hepta.native-http.preference-ingress.v2|challenge=/api/v2/preferences/challenge|commit=/api/v2/preferences/commit|challenge-plan-proof=hmac-sha256-domain-v1|commit-proof=memory-challenge-hmac-sha256-v1|transport-confidentiality=not-claimed";
+    b"hepta.native-http.preference-ingress.v2|challenge=/api/v2/preferences/challenge|commit=/api/v2/preferences/commit|challenge-plan-proof=hmac-sha256-domain-v1|commit-proof=memory-challenge-hmac-sha256-v1|transport=strict-loopback-host-origin-csrf-json|transport-confidentiality=local-host-only";
 const RESPONSE_SCHEMA: &str = "hepta.native-http.preference-ingress.v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,6 +165,8 @@ impl NativePreferenceIngressConfig {
 
 pub(crate) struct NativePreferenceIngress {
     authority: DurableHmacTrustedPreferenceIngress,
+    prevalidation_key: PreferenceIngressAuthenticationKey,
+    attachment: PreferenceAttachmentStore,
     executor: PreferenceAsyncExecutor,
     mode: PreferenceStoreMode,
 }
@@ -170,6 +175,8 @@ pub(crate) struct PreparedNativePreferenceIngress {
     config: NativePreferenceIngressConfig,
     integrity_key: DurableIntegrityKey,
     authentication_key: PreferenceIngressAuthenticationKey,
+    prevalidation_key: PreferenceIngressAuthenticationKey,
+    attachment: PreferenceAttachmentStore,
     source: PreferenceFeedbackSourceRef,
     executor: PreferenceAsyncExecutor,
 }
@@ -201,7 +208,11 @@ impl NativePreferenceIngress {
             PREFERENCE_AUTH_KEY_FILE_ENV,
             "preference ingress authentication",
         )?;
+        let attachment =
+            PreferenceAttachmentStore::for_database(&config.database, *authentication_key_bytes)?;
         let authentication_key =
+            PreferenceIngressAuthenticationKey::from_bytes(*authentication_key_bytes);
+        let prevalidation_key =
             PreferenceIngressAuthenticationKey::from_bytes(*authentication_key_bytes);
         let source = native_http_preference_source()?;
         let executor = PreferenceAsyncExecutor::new()?;
@@ -209,6 +220,8 @@ impl NativePreferenceIngress {
             config,
             integrity_key,
             authentication_key,
+            prevalidation_key,
+            attachment,
             source,
             executor,
         })
@@ -219,6 +232,8 @@ impl NativePreferenceIngress {
             config,
             integrity_key,
             authentication_key,
+            prevalidation_key,
+            attachment,
             source,
             executor,
         } = prepared;
@@ -253,6 +268,8 @@ impl NativePreferenceIngress {
             })?;
         Ok(Self {
             authority,
+            prevalidation_key,
+            attachment,
             executor,
             mode: config.mode,
         })
@@ -267,6 +284,22 @@ impl NativePreferenceIngress {
             .reducer_binding()
             .map(|_| ())
             .context("validate trusted preference ingress reducer binding")
+    }
+
+    pub(crate) fn hydrate_runtime_context(
+        &self,
+        expected_session_binding_hash: &str,
+    ) -> Result<Option<RevisionStamp>> {
+        self.executor.block_on(
+            self.attachment
+                .hydrate(&self.authority, expected_session_binding_hash),
+        )?
+    }
+
+    pub(crate) fn monotonic_state(&self) -> Result<hepta_memory::DurableMonotonicState> {
+        self.executor
+            .block_on(self.authority.monotonic_state())?
+            .context("read keyed preference monotonic state")
     }
 
     pub(crate) fn route_http(
@@ -295,6 +328,89 @@ impl NativePreferenceIngress {
             _ => None,
         };
         result
+    }
+
+    pub(crate) fn prevalidate_commit_http(
+        &self,
+        body: Option<&str>,
+        expected_session_binding_hash: &str,
+    ) -> Option<PreferenceHttpResponse> {
+        let request = match parse_body::<PreferenceCommitHttpRequest>(body) {
+            Ok(request) => request,
+            Err(code) => {
+                return Some(PreferenceHttpResponse::error("400 Bad Request", code));
+            }
+        };
+        if request.commit.request.session_binding_hash != expected_session_binding_hash {
+            return Some(PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.runtime_session_binding_mismatch",
+            ));
+        }
+        if request.commit.source != SourceBinding::from_ref(self.authority.source_binding()) {
+            return Some(PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.source_binding_mismatch",
+            ));
+        }
+        let reducer = match self.authority.reducer_binding() {
+            Ok(reducer) => reducer,
+            Err(error) => return Some(authority_error_response(&error)),
+        };
+        if request.commit.reducer != ReducerBinding::from_ref(&reducer) {
+            return Some(PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.reducer_binding_mismatch",
+            ));
+        }
+        let proof = match PreferenceIngressProof::from_hex(&request.proof) {
+            Ok(proof) => proof,
+            Err(_) => {
+                return Some(PreferenceHttpResponse::error(
+                    "403 Forbidden",
+                    "trusted_preference_ingress.proof_encoding_invalid",
+                ));
+            }
+        };
+        let input = match request.commit.clone().try_into_input() {
+            Ok(input) => input,
+            Err(code) => {
+                return Some(PreferenceHttpResponse::error(
+                    "422 Unprocessable Entity",
+                    code,
+                ));
+            }
+        };
+        let challenge_hash = match explicit_preference_feedback_challenge_hash(
+            &input,
+            self.authority.source_binding().clone(),
+        ) {
+            Ok(hash) => hash,
+            Err(error) => return Some(authority_error_response(&error)),
+        };
+        if challenge_hash.as_str() != request.commit.challenge_hash {
+            return Some(PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.challenge_binding_mismatch",
+            ));
+        }
+        let expected_proof =
+            match sign_preference_ingress_challenge(&self.prevalidation_key, &challenge_hash) {
+                Ok(proof) => proof,
+                Err(_) => {
+                    return Some(PreferenceHttpResponse::error(
+                        "503 Service Unavailable",
+                        "trusted_preference_ingress.authority_unavailable",
+                    ));
+                }
+            };
+        if proof != expected_proof {
+            return Some(PreferenceHttpResponse::error(
+                "403 Forbidden",
+                "trusted_preference_ingress.authentication_denied",
+            ));
+        }
+        None
     }
 
     fn handle_challenge(
@@ -361,7 +477,7 @@ impl NativePreferenceIngress {
                 authority: "hepta.intelligence.authenticated-preference-plan",
                 commit_authority: "hepta.memory.authenticated-preference-cas",
                 challenge_authenticated: true,
-                network_binding_policy: "loopback_default_explicit_lab_override_possible",
+                network_binding_policy: "strict_loopback_host_origin_csrf_json",
                 transport_confidentiality_claimed: false,
                 runtime_preflight: "plan_only_quarantine",
                 runtime_effect_authority_claimed: false,
@@ -387,6 +503,9 @@ impl NativePreferenceIngress {
                 "trusted_preference_ingress.runtime_session_binding_mismatch",
             );
         }
+        let attachment_subject = request.commit.request.subject.clone();
+        let attachment_preference = request.commit.request.preference.clone();
+        let attachment_session_binding_hash = request.commit.request.session_binding_hash.clone();
         if request.commit.source != SourceBinding::from_ref(self.authority.source_binding()) {
             return PreferenceHttpResponse::error(
                 "403 Forbidden",
@@ -440,13 +559,28 @@ impl NativePreferenceIngress {
             }
         };
         let committed_state = outcome.commit().document().state();
+        if let Err(error) = self.attachment.persist(&PreferenceAttachmentCandidate {
+            session_binding_hash: attachment_session_binding_hash,
+            subject: attachment_subject,
+            preference: attachment_preference,
+            stamp: RevisionStamp::new(
+                committed_state.revision(),
+                committed_state.content_hash().clone(),
+            ),
+        }) {
+            eprintln!("trusted preference attachment persistence failed: {error:#}");
+            return PreferenceHttpResponse::error(
+                "503 Service Unavailable",
+                "trusted_preference_ingress.attachment_persistence_failed",
+            );
+        }
         let mut response = PreferenceHttpResponse::json(
             "200 OK",
             &PreferenceCommitHttpResponse {
                 schema: RESPONSE_SCHEMA,
                 authority: "hepta.memory.authenticated-preference-cas",
                 challenge_authenticated: true,
-                network_binding_policy: "loopback_default_explicit_lab_override_possible",
+                network_binding_policy: "strict_loopback_host_origin_csrf_json",
                 transport_confidentiality_claimed: false,
                 runtime_preflight: "plan_only_quarantine",
                 runtime_effect_authority_claimed: false,
@@ -895,39 +1029,5 @@ fn required_absolute_value(environment_name: &str, value: Option<OsString>) -> R
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn live_preference_composition_fails_closed_when_required_env_is_missing() {
-        let error = NativePreferenceIngressConfig::from_lookup(|_| None)
-            .expect_err("live ingress must not silently disable itself");
-        assert!(
-            error
-                .to_string()
-                .contains("HEPTA_PREFERENCE_DATABASE is required for --serve-ui")
-        );
-    }
-
-    #[test]
-    fn live_preference_composition_rejects_relative_paths_and_unknown_mode() {
-        let relative = NativePreferenceIngressConfig::from_lookup(|name| match name {
-            PREFERENCE_DATABASE_ENV => Some(OsString::from("relative.sqlite3")),
-            PREFERENCE_INTEGRITY_KEY_FILE_ENV => Some(OsString::from("/tmp/integrity.key")),
-            PREFERENCE_AUTH_KEY_FILE_ENV => Some(OsString::from("/tmp/auth.key")),
-            _ => None,
-        })
-        .expect_err("relative database must fail");
-        assert!(relative.to_string().contains("must be an absolute path"));
-
-        let mode = NativePreferenceIngressConfig::from_lookup(|name| match name {
-            PREFERENCE_DATABASE_ENV => Some(OsString::from("/tmp/preference.sqlite3")),
-            PREFERENCE_INTEGRITY_KEY_FILE_ENV => Some(OsString::from("/tmp/integrity.key")),
-            PREFERENCE_AUTH_KEY_FILE_ENV => Some(OsString::from("/tmp/auth.key")),
-            PREFERENCE_STORE_MODE_ENV => Some(OsString::from("unsafe-default")),
-            _ => None,
-        })
-        .expect_err("unknown mode must fail");
-        assert!(mode.to_string().contains(PREFERENCE_STORE_MODE_ENV));
-    }
-}
+#[path = "../tests/unit/preference_ingress.rs"]
+mod tests;

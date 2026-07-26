@@ -405,17 +405,37 @@ impl AuthorizedToolExecution {
         &self.outcome_sink
     }
 
-    pub(super) fn confirm_provider_effect_ack(&mut self) -> Result<(), HeptaError> {
+    pub(super) fn confirm_provider_effect_ack(
+        &mut self,
+        result: Option<&hepta_core::ToolResult>,
+    ) -> Result<(), HeptaError> {
         let intent = self.execution_intent.as_ref().ok_or_else(|| {
             HeptaError("provider effect confirmation lost its staged execution intent".into())
         })?;
         let ack = super::provider_effect::confirm_provider_effect_ack(
             intent,
             self.prepared_write_transactions(),
-            &self.outcome_sink,
+            result,
         )?;
         self.execution_effect_ack = ack;
         Ok(())
+    }
+
+    pub(super) fn stage_provider_completion(
+        &self,
+        exact: &super::outcome_sink::ExactOutcomeRecord,
+    ) -> Result<(), HeptaError> {
+        let Some(ack) = self.execution_effect_ack.as_ref() else {
+            return Ok(());
+        };
+        self.outcome_sink
+            .stage_provider_completion(ack, exact)
+            .map(|_| ())
+            .map_err(|error| {
+                HeptaError(format!(
+                    "provider completion was not atomically persisted: {error}"
+                ))
+            })
     }
 
     fn build_execution_intent(&self) -> Result<ExecutionIntent, HeptaError> {
@@ -611,119 +631,4 @@ pub(super) fn validate_capability_material(
     Ok(())
 }
 
-impl RuntimeKernel {
-    pub(crate) fn ensure_outcome_dispatch_open(&self) -> Result<(), HeptaError> {
-        let local_reason = self
-            .execution_outcome_state
-            .lock()
-            .map_err(|_| HeptaError("execution outcome state mutex poisoned".into()))?
-            .breaker
-            .reason();
-        if let Some(reason) = local_reason {
-            return Err(HeptaError(format!(
-                "outcome receipt breaker is open: {reason}"
-            )));
-        }
-        if let Some(reason) = self.durable_pending_outcome_reason()? {
-            return Err(HeptaError(format!(
-                "outcome receipt breaker is open: {reason}"
-            )));
-        }
-        Ok(())
-    }
-
-    fn reserve_execution_attempt(&self) -> Result<ExecutionAttemptReservation, HeptaError> {
-        self.ensure_outcome_dispatch_open()?;
-        for _ in 0..ATTEMPT_ID_RETRY_LIMIT {
-            let attempt_id = Uuid::new_v4().to_string();
-            {
-                let mut state = self
-                    .execution_outcome_state
-                    .lock()
-                    .map_err(|_| HeptaError("execution outcome state mutex poisoned".into()))?;
-                if let Some(reason) = state.breaker.reason() {
-                    return Err(HeptaError(format!(
-                        "outcome receipt breaker is open: {reason}"
-                    )));
-                }
-                if !state.active_attempts.insert(attempt_id.clone()) {
-                    continue;
-                }
-            }
-
-            match self.outcome_sink.read_by_attempt(&attempt_id) {
-                Ok(None) => {
-                    return Ok(ExecutionAttemptReservation {
-                        state: Arc::clone(&self.execution_outcome_state),
-                        attempt_id,
-                        active: true,
-                    });
-                }
-                Ok(Some(_)) => {
-                    self.release_attempt_id(&attempt_id);
-                    continue;
-                }
-                Err(error) => {
-                    let reason = format!("outcome store read failed before dispatch: {error}");
-                    self.release_attempt_id(&attempt_id);
-                    self.trip_outcome_breaker(reason.clone());
-                    return Err(HeptaError(reason));
-                }
-            }
-        }
-
-        let reason = "could not allocate a unique execution attempt identity".to_string();
-        self.trip_outcome_breaker(reason.clone());
-        Err(HeptaError(reason))
-    }
-
-    fn release_attempt_id(&self, attempt_id: &str) {
-        match self.execution_outcome_state.lock() {
-            Ok(mut state) => {
-                state.active_attempts.remove(attempt_id);
-            }
-            Err(poisoned) => {
-                poisoned.into_inner().active_attempts.remove(attempt_id);
-            }
-        }
-    }
-
-    pub fn terminal_receipt_recorded(&self, attempt_id: &str) -> Result<bool, HeptaError> {
-        let attempt_id = attempt_id.trim();
-        if attempt_id.is_empty() {
-            return Err(HeptaError(
-                "terminal receipt attempt id must not be empty".into(),
-            ));
-        }
-        self.outcome_sink
-            .read_by_attempt(attempt_id)
-            .map(|record| record.is_some())
-            .map_err(|error| HeptaError(format!("terminal receipt readback failed: {error}")))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn outcome_record_by_attempt(
-        &self,
-        attempt_id: &str,
-    ) -> Result<Option<OutcomeRecord>, HeptaError> {
-        self.outcome_sink
-            .read_by_attempt(attempt_id)
-            .map_err(|error| HeptaError(format!("outcome sink read failed: {error}")))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn outcome_record_count(&self) -> Result<u64, HeptaError> {
-        self.execution_outcome_state
-            .lock()
-            .map(|state| state.finalized_attempts)
-            .map_err(|_| HeptaError("execution outcome state mutex poisoned".into()))
-    }
-
-    pub(crate) fn trip_outcome_breaker(&self, reason: impl Into<String>) {
-        let reason = reason.into();
-        match self.execution_outcome_state.lock() {
-            Ok(mut state) => state.breaker.trip_fatal(reason),
-            Err(poisoned) => poisoned.into_inner().breaker.trip_fatal(reason),
-        }
-    }
-}
+mod runtime;

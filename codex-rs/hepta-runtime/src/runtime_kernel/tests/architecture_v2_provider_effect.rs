@@ -11,6 +11,7 @@ use hepta_core::CorrelationId;
 use hepta_core::PolicyEvaluationContext;
 use hepta_core::SessionId;
 use hepta_memory::DurableIntegrityKey;
+use hepta_memory::OutcomeRecordResult;
 use serde_json::Value;
 use serde_json::json;
 
@@ -65,12 +66,7 @@ fn authorize_mutation(
     let epoch = runtime.capture_execution_epoch(session).expect("epoch");
     let lease = runtime.begin_execution_lease(epoch).expect("lease");
     let lease = lease
-        .bind_tool_resources(
-            runtime,
-            session,
-            tool,
-            &material.canonical_arguments,
-        )
+        .bind_tool_resources(runtime, session, tool, &material.canonical_arguments)
         .expect("sealed write");
     SafetyGateClient::authorize_execution_without_grant(
         runtime,
@@ -85,7 +81,7 @@ fn authorize_mutation(
 
 #[cfg(unix)]
 #[tokio::test]
-async fn architecture_v2_provider_effect_ack_survives_restart_and_stays_fail_closed() {
+async fn architecture_v2_provider_effect_completion_recovers_terminal_without_provider_replay() {
     let directory = tempfile::tempdir().expect("tempdir");
     let database_path = directory.path().join("provider-effect.sqlite3");
     let workspace = crate::tool_workspace_root_path();
@@ -104,8 +100,7 @@ async fn architecture_v2_provider_effect_ack_survives_restart_and_stays_fail_clo
     let runtime =
         RuntimeKernel::bootstrap_with_durable_outcomes(&database_path, durable_integrity_key())
             .expect("durable runtime");
-    let execution =
-        authorize_mutation(&runtime, "session-provider-effect", "write", &arguments);
+    let execution = authorize_mutation(&runtime, "session-provider-effect", "write", &arguments);
     let attempt_id = execution.attempt_id().to_owned();
     let captured = ExecutionBus::new(&runtime).dispatch(execution).await;
     let output: Value = serde_json::from_str(
@@ -154,8 +149,134 @@ async fn architecture_v2_provider_effect_ack_survives_restart_and_stays_fail_clo
             .expect("outcome read")
             .is_none()
     );
+    assert_eq!(recovered.tools.provider_invocation_count("write"), 0);
+    assert_eq!(
+        recovered
+            .reconcile_pending_outcome(&attempt_id)
+            .expect("exact completion capsule must materialize terminal only"),
+        OutcomeRecordResult::Recorded
+    );
+    assert_eq!(recovered.tools.provider_invocation_count("write"), 0);
+    assert!(
+        recovered
+            .pending_execution_intents()
+            .expect("resolved execution intents")
+            .is_empty()
+    );
+    let terminal = recovered
+        .outcome_record_by_attempt(&attempt_id)
+        .expect("terminal readback")
+        .expect("recovered terminal");
+    assert!(
+        terminal
+            .canonical_evidence_hash()
+            .as_str()
+            .starts_with("sha256:")
+    );
     drop(recovered);
+
+    let reopened =
+        RuntimeKernel::open_with_durable_outcomes(&database_path, durable_integrity_key())
+            .expect("second restart");
+    assert!(reopened.ensure_outcome_dispatch_open().is_ok());
+    assert_eq!(reopened.tools.provider_invocation_count("write"), 0);
+    assert!(
+        reopened
+            .pending_execution_intents()
+            .expect("no pending provider replay")
+            .is_empty()
+    );
+    assert_eq!(
+        reopened
+            .outcome_record_by_attempt(&attempt_id)
+            .expect("persisted terminal")
+            .expect("terminal after second restart"),
+        terminal
+    );
+    drop(reopened);
     fs::remove_file(target).expect("remove provider effect fixture");
+}
+
+#[cfg(all(unix, test))]
+#[tokio::test]
+async fn architecture_v2_post_commit_provider_error_recovers_exact_failed_terminal() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let database_path = directory
+        .path()
+        .join("provider-effect-post-commit-error.sqlite3");
+    let workspace = crate::tool_workspace_root_path();
+    let relative = format!(
+        "artifacts/.architecture-v2-provider-effect-error-{}.txt",
+        uuid::Uuid::new_v4()
+    );
+    let target = workspace.join(&relative);
+    let arguments = json!({
+        "path": relative,
+        "content": "committed before provider error\n",
+        "dryRun": false
+    })
+    .to_string();
+
+    let runtime =
+        RuntimeKernel::bootstrap_with_durable_outcomes(&database_path, durable_integrity_key())
+            .expect("durable runtime");
+    let execution = authorize_mutation(
+        &runtime,
+        "session-provider-effect-error",
+        "write",
+        &arguments,
+    );
+    let attempt_id = execution.attempt_id().to_owned();
+    crate::inject_atomic_install_post_commit_failure_for_test();
+    let captured = ExecutionBus::new(&runtime).dispatch(execution).await;
+    let error = captured
+        .outward_error()
+        .expect("post-commit provider error must remain outwardly visible");
+    assert!(error.0.starts_with("mutation_durability_ambiguous:"));
+    let output: Value = serde_json::from_str(
+        captured
+            .tool_result()
+            .and_then(|result| result.structured_json.as_deref())
+            .expect("synthetic provider completion output"),
+    )
+    .expect("synthetic provider completion JSON");
+    assert_eq!(output["provider_error_after_commit"], json!(true));
+    assert_eq!(output["provider_effect_ack"]["status"], json!("committed"));
+    assert_eq!(
+        fs::read_to_string(&target).expect("committed target"),
+        "committed before provider error\n"
+    );
+    captured.simulate_process_loss_after_provider_for_test();
+    drop(runtime);
+
+    let recovered =
+        RuntimeKernel::open_with_durable_outcomes(&database_path, durable_integrity_key())
+            .expect("recovered runtime");
+    assert_eq!(recovered.tools.provider_invocation_count("write"), 0);
+    assert_eq!(
+        recovered
+            .reconcile_pending_outcome(&attempt_id)
+            .expect("exact failed completion capsule"),
+        OutcomeRecordResult::Recorded
+    );
+    assert_eq!(recovered.tools.provider_invocation_count("write"), 0);
+    let terminal = recovered
+        .outcome_record_by_attempt(&attempt_id)
+        .expect("terminal readback")
+        .expect("failed terminal");
+    assert!(matches!(
+        terminal.receipt().status(),
+        hepta_contracts::OutcomeStatus::Failed { error_code }
+            if error_code == "mutation_durability_ambiguous"
+    ));
+    let evidence = terminal.canonical_evidence();
+    assert!(evidence.contains(
+        r#"["terminal.code","mutation_durability_ambiguous"]"#
+    ));
+    assert!(evidence.contains(r#"["provider_output.presence","present"]"#));
+    assert!(!evidence.contains("provider_error_after_commit"));
+    drop(recovered);
+    fs::remove_file(target).expect("remove post-commit provider error fixture");
 }
 
 #[cfg(target_os = "macos")]

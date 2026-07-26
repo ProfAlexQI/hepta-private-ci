@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -14,6 +16,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
+use anyhow::Context;
 #[cfg(feature = "codex-in-process-runner")]
 use codex_arg0::Arg0DispatchPaths;
 pub(crate) use hepta_gateway::NativeTelegramConfigStatus;
@@ -74,6 +77,7 @@ use hepta_gateway::execute_telegram_drain_pipeline_for_updates;
 use hepta_gateway::extract_native_telegram_config_metadata;
 use hepta_gateway::extract_native_telegram_exec_child_final_message;
 use hepta_gateway::extract_native_telegram_openai_chat_completion_text;
+use hepta_gateway::extract_telegram_candidate_material;
 use hepta_gateway::finalize_telegram_drain_pipeline_status;
 use hepta_gateway::invoke_native_telegram_model_runner_with_plan;
 use hepta_gateway::native_telegram_exec_child_args;
@@ -95,7 +99,6 @@ use hepta_gateway::telegram_bot_token_shape_ok as token_shape_ok;
 use hepta_gateway::telegram_call_get_updates_once as gateway_telegram_call_get_updates_once;
 use hepta_gateway::telegram_call_send_chat_action;
 use hepta_gateway::telegram_call_send_message as gateway_telegram_call_send_message;
-use hepta_gateway::telegram_cursor_status as gateway_telegram_cursor_status;
 use hepta_gateway::telegram_cursor_status_from_path;
 use hepta_gateway::telegram_get_updates_with_retry;
 use hepta_gateway::telegram_poll_loop_interval_ms_policy;
@@ -116,21 +119,27 @@ use hepta_gateway::telegram_transport_plan_for_config_status;
 use hepta_gateway::telegram_typing_keepalive_interval_policy;
 use hepta_gateway::telegram_wait_for_send_rate_limit;
 use hepta_gateway::wait_for_native_telegram_model_child;
+use serde::Serialize;
 use serde_json::Value;
 use sha2::Digest;
 use sha2::Sha256;
 #[cfg(feature = "codex-in-process-runner")]
 use tokio::runtime::Handle;
+use zeroize::Zeroizing;
 
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RuntimeTelegramReceiveAuthority;
+use crate::telegram_authority::TelegramPipelinePermit;
+use crate::telegram_authority::TelegramPipelineReceipt;
+use crate::telegram_authority::TelegramProviderAck;
+use crate::telegram_authority::TelegramReadResult;
 
 const LEGACY_RUNTIME_SLUG: &str = "openclaw";
 const LEGACY_CONFIG_FILE_NAME: &str = "openclaw.json";
 const LOCAL_IMPORT_CONFIG_PATH: &str = ".hepta/local-import/private/config/openclaw.json";
 const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
-const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
-const TELEGRAM_DELIVERY_LEDGER_PATH: &str = ".hepta/telegram/delivery-ledger.jsonl";
+pub(crate) const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
+pub(crate) const TELEGRAM_DELIVERY_LEDGER_PATH: &str = ".hepta/telegram/delivery-ledger.jsonl";
 pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
 pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
 pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
@@ -167,8 +176,43 @@ const TELEGRAM_SOAK_MAX_OBSERVED_AGE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SOAK_MAX
 const TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_ALLOW_LEGACY_INLINE_TOKEN";
 const TELEGRAM_SECRET_FILE_MAX_BYTES: u64 = 4096;
+const OPERATOR_TELEGRAM_SELECTION_RULE: &str =
+    "first_allowed_chat_update_at_or_after_cursor_with_prompt_reply_target_and_model_requirement";
+const OPERATOR_TELEGRAM_PROMPT_SCOPE: &str =
+    "trimmed_message_text_caption_or_callback_data_nonempty_and_bounded_by_authority";
 static TELEGRAM_LIVE_SOAK_OBSERVATION: OnceLock<Mutex<NativeTelegramLiveSoakObservationState>> =
     OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct OperatorTelegramExecutionIdentity {
+    schema: &'static str,
+    session_model_provider: String,
+    session_model: String,
+    runner_plan: NativeTelegramModelRunnerPlan,
+    config_generation: String,
+    dm_policy: String,
+    group_policy: String,
+    allowed_chat_ids: Vec<i64>,
+    selection_rule: &'static str,
+    prompt_scope: &'static str,
+    hepta_intelligence_context_enabled: bool,
+    plugin_capability_context_enabled: bool,
+}
+
+impl OperatorTelegramExecutionIdentity {
+    pub(crate) fn binding_hash(&self) -> anyhow::Result<String> {
+        let bytes = serde_json::to_vec(self).context("encode Telegram execution identity")?;
+        Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    }
+
+    fn allows_chat(&self, chat_id: i64) -> bool {
+        self.allowed_chat_ids.binary_search(&chat_id).is_ok()
+    }
+
+    fn model_runner_plan(&self) -> &NativeTelegramModelRunnerPlan {
+        &self.runner_plan
+    }
+}
 
 pub(crate) fn telegram_plugin_status(requested: bool, poll_ms: u64) -> NativeTelegramPluginStatus {
     let config = if requested {
@@ -252,6 +296,118 @@ pub(crate) fn telegram_send_plan_status(requested: bool) -> NativeTelegramSendPl
 
 pub(crate) fn telegram_drain_once_status(requested: bool) -> NativeTelegramDrainOnceStatus {
     telegram_drain_once_status_with_gates(requested, telegram_gateway_gate_summary(), None)
+}
+
+/// Executes one operator-authorized read → model → send pipeline.
+///
+/// Every secret/config read and external call is inside a phase closure, so
+/// `TelegramPipelinePermit` durably records the corresponding intent before
+/// this adapter can reach it. The legacy poll loop never receives such a
+/// permit and therefore remains fail-closed.
+pub(crate) fn execute_operator_authorized_telegram_drain(
+    permit: TelegramPipelinePermit<'_>,
+    execution_identity: OperatorTelegramExecutionIdentity,
+) -> Result<TelegramPipelineReceipt, anyhow::Error> {
+    let gates = telegram_gateway_gate_summary();
+    if !gates.delivery_approval_gate_enabled
+        || !gates.live_read_gate_enabled
+        || !gates.model_turn_gate_enabled
+        || !gates.send_gate_enabled
+    {
+        anyhow::bail!("operator-authorized Telegram pipeline requires all legacy live gates");
+    }
+    let token = RefCell::new(None::<Zeroizing<String>>);
+    permit.execute_with(
+        Path::new(TELEGRAM_DELIVERY_LEDGER_PATH),
+        Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
+        |request| {
+            let config = load_telegram_execution_config_status();
+            if !config.config_ready() {
+                anyhow::bail!("Telegram execution config is not ready");
+            }
+            let effective_token = load_effective_telegram_token().map_err(anyhow::Error::msg)?;
+            let api = call_telegram_get_updates(&effective_token, 20, request.cursor)
+                .map_err(anyhow::Error::msg)?;
+            if api.get("ok").and_then(Value::as_bool) != Some(true) {
+                anyhow::bail!("Telegram getUpdates did not return a provider success ACK");
+            }
+            let updates = api
+                .get("result")
+                .and_then(Value::as_array)
+                .context("Telegram getUpdates result is not an array")?;
+            let candidate = updates
+                .iter()
+                .filter_map(extract_telegram_candidate_material)
+                .find(|candidate| {
+                    candidate.update_id.is_some_and(|update_id| {
+                        request.cursor.is_none_or(|cursor| update_id >= cursor)
+                    }) && candidate.prompt_text.is_some()
+                        && candidate.reply_target.is_some()
+                        && candidate
+                            .reply_target
+                            .as_ref()
+                            .is_some_and(|target| execution_identity.allows_chat(target.chat_id))
+                        && candidate.requires_model
+                })
+                .context("Telegram getUpdates returned no allowed exact model/reply candidate")?;
+            let update_id = candidate
+                .update_id
+                .context("Telegram candidate update id missing")?;
+            let reply_target = candidate
+                .reply_target
+                .context("Telegram candidate reply target missing")?;
+            let prompt = candidate
+                .prompt_text
+                .context("Telegram candidate prompt missing")?;
+            token.replace(Some(Zeroizing::new(effective_token)));
+            Ok(TelegramReadResult {
+                update_id,
+                chat_id: reply_target.chat_id,
+                reply_to_message_id: reply_target.reply_to_message_id,
+                prompt,
+            })
+        },
+        |request| {
+            run_hepta_model_turn_with_execution_identity(&request.prompt, &execution_identity)
+                .map_err(anyhow::Error::msg)
+        },
+        |plan| {
+            let token = token.borrow();
+            let token = token
+                .as_deref()
+                .context("Telegram send lost its read-phase token")?;
+            let provider_response = call_telegram_send_message(
+                token,
+                plan.chat_id,
+                &plan.message_text,
+                plan.reply_to_message_id,
+            )
+            .map_err(anyhow::Error::msg)?;
+            if provider_response.get("ok").and_then(Value::as_bool) != Some(true) {
+                anyhow::bail!("Telegram sendMessage did not return a provider success ACK");
+            }
+            let result = provider_response
+                .get("result")
+                .context("Telegram sendMessage result is missing")?;
+            let provider_message_id = result
+                .get("message_id")
+                .and_then(Value::as_i64)
+                .context("Telegram sendMessage ACK lacks message_id")?;
+            let chat_id = result
+                .get("chat")
+                .and_then(|chat| chat.get("id"))
+                .and_then(Value::as_i64)
+                .context("Telegram sendMessage ACK lacks chat.id")?;
+            let canonical_response =
+                serde_json::to_vec(&provider_response).context("encode Telegram provider ACK")?;
+            Ok(TelegramProviderAck {
+                provider: "telegram-bot-api".into(),
+                provider_message_id,
+                chat_id,
+                raw_response_hash: format!("{:x}", Sha256::digest(canonical_response)),
+            })
+        },
+    )
 }
 
 pub(crate) fn telegram_poll_loop_status(
@@ -385,7 +541,11 @@ fn run_telegram_poll_loop(requested: bool, poll_ms: u64, runtime: Arc<NativeGate
 }
 
 pub(crate) fn telegram_cursor_status(requested: bool) -> NativeTelegramCursorStatus {
-    gateway_telegram_cursor_status(requested, Path::new(TELEGRAM_INGRESS_CURSOR_PATH))
+    crate::telegram_durable_files::cursor_status(
+        requested,
+        Path::new(TELEGRAM_INGRESS_CURSOR_PATH),
+        TELEGRAM_INGRESS_CURSOR_PATH,
+    )
 }
 
 pub(crate) fn telegram_delivery_ledger_status(
@@ -838,6 +998,171 @@ fn load_telegram_config_metadata_status_from_path(
     ))
 }
 
+#[derive(Serialize)]
+struct OperatorTelegramConfigGeneration {
+    schema: &'static str,
+    enabled: bool,
+    dm_policy: String,
+    group_policy: String,
+    allowed_chat_ids: Vec<i64>,
+    token_reference_binding: String,
+    selection_rule: &'static str,
+    prompt_scope: &'static str,
+}
+
+pub(crate) fn operator_telegram_execution_identity(
+    session_model_provider: &str,
+    session_model: &str,
+) -> anyhow::Result<OperatorTelegramExecutionIdentity> {
+    let config_path = resolve_private_hepta_runtime_config_path()
+        .context("Hepta private Telegram config not found")?;
+    let runner_plan = telegram_model_runner_plan();
+    operator_telegram_execution_identity_from_path(
+        &config_path,
+        session_model_provider,
+        session_model,
+        runner_plan,
+        telegram_hepta_intelligence_context_enabled(),
+        telegram_plugin_capability_context_enabled(),
+    )
+}
+
+fn operator_telegram_execution_identity_from_path(
+    config_path: &Path,
+    session_model_provider: &str,
+    session_model: &str,
+    runner_plan: NativeTelegramModelRunnerPlan,
+    hepta_intelligence_context_enabled: bool,
+    plugin_capability_context_enabled: bool,
+) -> anyhow::Result<OperatorTelegramExecutionIdentity> {
+    if !runner_plan.runner_plan_ready {
+        anyhow::bail!("operator Telegram model runner plan is not ready");
+    }
+    let raw = fs::read_to_string(config_path)
+        .with_context(|| format!("read Telegram config {}", config_path.display()))?;
+    let config: Value = serde_json::from_str(&raw).context("decode Telegram config")?;
+    let metadata = extract_native_telegram_config_metadata(config_path, &config)
+        .map_err(anyhow::Error::msg)?;
+    if !metadata.enabled {
+        anyhow::bail!("operator Telegram config is disabled");
+    }
+    let telegram = config
+        .pointer("/channels/telegram")
+        .context("channels.telegram config is missing")?;
+    let allowed_chat_ids = operator_telegram_allowed_chat_ids(telegram);
+    if allowed_chat_ids.is_empty() {
+        anyhow::bail!("operator Telegram execution requires an explicit numeric chat allowlist");
+    }
+    let generation_material = OperatorTelegramConfigGeneration {
+        schema: "hepta.native.telegram-config-generation.v1",
+        enabled: metadata.enabled,
+        dm_policy: metadata.dm_policy.clone(),
+        group_policy: metadata.group_policy.clone(),
+        allowed_chat_ids: allowed_chat_ids.clone(),
+        token_reference_binding: operator_telegram_token_reference_binding(telegram),
+        selection_rule: OPERATOR_TELEGRAM_SELECTION_RULE,
+        prompt_scope: OPERATOR_TELEGRAM_PROMPT_SCOPE,
+    };
+    let generation_bytes =
+        serde_json::to_vec(&generation_material).context("encode Telegram config generation")?;
+    Ok(OperatorTelegramExecutionIdentity {
+        schema: "hepta.native.operator-telegram-execution-identity.v1",
+        session_model_provider: session_model_provider.to_owned(),
+        session_model: session_model.to_owned(),
+        runner_plan,
+        config_generation: format!("sha256:{:x}", Sha256::digest(generation_bytes)),
+        dm_policy: metadata.dm_policy,
+        group_policy: metadata.group_policy,
+        allowed_chat_ids,
+        selection_rule: OPERATOR_TELEGRAM_SELECTION_RULE,
+        prompt_scope: OPERATOR_TELEGRAM_PROMPT_SCOPE,
+        hepta_intelligence_context_enabled,
+        plugin_capability_context_enabled,
+    })
+}
+
+fn operator_telegram_allowed_chat_ids(telegram: &Value) -> Vec<i64> {
+    let mut allowed = BTreeSet::new();
+    if let Some(values) = telegram.get("allowFrom").and_then(Value::as_array) {
+        for value in values {
+            if let Some(chat_id) = value.as_str().and_then(operator_telegram_parse_binding_id) {
+                allowed.insert(chat_id);
+            }
+        }
+    }
+    if let Some(groups) = telegram.get("groups") {
+        match groups {
+            Value::Array(values) => {
+                for value in values {
+                    if let Some(chat_id) = operator_telegram_group_chat_id(value) {
+                        allowed.insert(chat_id);
+                    }
+                }
+            }
+            Value::Object(values) => {
+                for value in values.values() {
+                    if let Some(chat_id) = operator_telegram_group_chat_id(value) {
+                        allowed.insert(chat_id);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    allowed.into_iter().collect()
+}
+
+fn operator_telegram_parse_binding_id(raw: &str) -> Option<i64> {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let normalized = lower
+        .strip_prefix("telegram:")
+        .or_else(|| lower.strip_prefix("tg:"))
+        .unwrap_or(&lower)
+        .trim();
+    normalized
+        .parse::<i64>()
+        .ok()
+        .filter(|chat_id| *chat_id != 0)
+}
+
+fn operator_telegram_group_chat_id(value: &Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(operator_telegram_parse_binding_id))
+        .or_else(|| {
+            value
+                .get("id")
+                .and_then(|id| id.as_i64().or_else(|| id.as_str()?.parse().ok()))
+        })
+        .filter(|chat_id| *chat_id != 0)
+}
+
+fn operator_telegram_token_reference_binding(telegram: &Value) -> String {
+    let Some(token) = telegram.get("botToken") else {
+        return "missing".to_string();
+    };
+    if token.as_str().is_some_and(|value| !value.trim().is_empty()) {
+        return "legacy_inline_present".to_string();
+    }
+    let source = token
+        .get("source")
+        .and_then(Value::as_str)
+        .unwrap_or("missing")
+        .trim();
+    let provider = token
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("missing")
+        .trim();
+    let secret_id = token
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("missing")
+        .trim();
+    format!("source={source};provider={provider};id={secret_id}")
+}
+
 fn load_telegram_execution_config_status() -> NativeTelegramConfigStatus {
     let Some(config_path) = resolve_private_hepta_runtime_config_path() else {
         return NativeTelegramConfigStatus::missing(
@@ -1243,12 +1568,50 @@ fn run_hepta_model_turn_with_plan(
     prompt: &str,
     model_runner_plan: &NativeTelegramModelRunnerPlan,
 ) -> Result<String, String> {
+    run_hepta_model_turn_with_frozen_context(
+        prompt,
+        model_runner_plan,
+        telegram_hepta_intelligence_context_enabled(),
+        telegram_plugin_capability_context_enabled(),
+    )
+}
+
+fn run_hepta_model_turn_with_execution_identity(
+    prompt: &str,
+    execution_identity: &OperatorTelegramExecutionIdentity,
+) -> Result<String, String> {
+    run_hepta_model_turn_with_frozen_context(
+        prompt,
+        execution_identity.model_runner_plan(),
+        execution_identity.hepta_intelligence_context_enabled,
+        execution_identity.plugin_capability_context_enabled,
+    )
+}
+
+fn run_hepta_model_turn_with_frozen_context(
+    prompt: &str,
+    model_runner_plan: &NativeTelegramModelRunnerPlan,
+    hepta_intelligence_context_enabled: bool,
+    plugin_capability_context_enabled: bool,
+) -> Result<String, String> {
     invoke_native_telegram_model_runner_with_plan(
         model_runner_plan,
         prompt,
         run_mlx_local_chat_completion,
-        run_hepta_in_process_model_turn,
-        run_hepta_exec_child_model_turn,
+        |prompt| {
+            run_hepta_in_process_model_turn_with_context(
+                prompt,
+                hepta_intelligence_context_enabled,
+                plugin_capability_context_enabled,
+            )
+        },
+        |prompt| {
+            run_hepta_exec_child_model_turn_with_context(
+                prompt,
+                hepta_intelligence_context_enabled,
+                plugin_capability_context_enabled,
+            )
+        },
     )
     .into_result()
 }
@@ -1353,29 +1716,45 @@ fn run_mlx_local_chat_completion(
     extract_native_telegram_openai_chat_completion_text(&body)
 }
 
-fn run_hepta_in_process_model_turn(prompt: &str) -> Result<String, String> {
+fn run_hepta_in_process_model_turn_with_context(
+    prompt: &str,
+    hepta_intelligence_context_enabled: bool,
+    plugin_capability_context_enabled: bool,
+) -> Result<String, String> {
     #[cfg(feature = "codex-in-process-runner")]
     {
-        run_hepta_in_process_model_turn_with_codex_exec(prompt)
+        run_hepta_in_process_model_turn_with_codex_exec(
+            prompt,
+            hepta_intelligence_context_enabled,
+            plugin_capability_context_enabled,
+        )
     }
 
     #[cfg(not(feature = "codex-in-process-runner"))]
     {
-        let _ = prompt;
+        let _ = (
+            prompt,
+            hepta_intelligence_context_enabled,
+            plugin_capability_context_enabled,
+        );
         Err("gated in-process Codex exec runner is not compiled into the active hepta-cli service binary".to_string())
     }
 }
 
 #[cfg(feature = "codex-in-process-runner")]
-fn run_hepta_in_process_model_turn_with_codex_exec(prompt: &str) -> Result<String, String> {
+fn run_hepta_in_process_model_turn_with_codex_exec(
+    prompt: &str,
+    hepta_intelligence_context_enabled: bool,
+    plugin_capability_context_enabled: bool,
+) -> Result<String, String> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());
     }
     let prompt = native_telegram_hepta_kernel_prompt(
         prompt,
-        telegram_hepta_intelligence_context_enabled(),
-        telegram_plugin_capability_context_enabled(),
+        hepta_intelligence_context_enabled,
+        plugin_capability_context_enabled,
     )?;
 
     let timeout = telegram_model_timeout();
@@ -1431,15 +1810,19 @@ fn telegram_plugin_capability_context_enabled() -> bool {
         .unwrap_or(true)
 }
 
-fn run_hepta_exec_child_model_turn(prompt: &str) -> Result<String, String> {
+fn run_hepta_exec_child_model_turn_with_context(
+    prompt: &str,
+    hepta_intelligence_context_enabled: bool,
+    plugin_capability_context_enabled: bool,
+) -> Result<String, String> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err("Telegram model runner requires non-empty prompt material".to_string());
     }
     let prompt = native_telegram_hepta_kernel_prompt(
         prompt,
-        telegram_hepta_intelligence_context_enabled(),
-        telegram_plugin_capability_context_enabled(),
+        hepta_intelligence_context_enabled,
+        plugin_capability_context_enabled,
     )?;
 
     let exe = env::current_exe()
@@ -1505,331 +1888,5 @@ fn telegram_send_retry_backoff() -> Duration {
 
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[cfg(unix)]
-    #[test]
-    fn telegram_config_status_reads_secret_file_without_exposing_token() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let secret_path = temp.path().join("telegram-token.txt");
-        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
-        }
-        let config_path = temp.path().join("openclaw.json");
-        fs::write(
-            &config_path,
-            format!(
-                r#"{{
-                    "secrets": {{ "providers": {{ "telegram_bot": {{ "path": "{}" }} }} }},
-                    "channels": {{
-                        "telegram": {{
-                            "enabled": true,
-                            "dmPolicy": "allow",
-                            "groupPolicy": "mention",
-                            "allowFrom": ["telegram:6476198178"],
-                            "botToken": {{
-                                "source": "file",
-                                "provider": "telegram_bot",
-                                "id": "bot-token"
-                            }}
-                        }}
-                    }}
-                }}"#,
-                secret_path.display()
-            ),
-        )
-        .expect("write config");
-
-        let status =
-            load_telegram_execution_config_status_from_path(&config_path).expect("load config");
-        assert!(status.enabled);
-        assert_eq!(status.token_source, "secret_file");
-        assert!(status.token_shape_ok);
-        assert!(status.token_file_security_ready);
-        assert!(status.config_ready());
-        assert!(status.binding_ready);
-        assert!(!status.raw_token_exposed);
-
-        let serialized = serde_json::to_string(&status).expect("serialize");
-        assert!(!serialized.contains("abcdefghijklmnopqrstuvwxyz"));
-        assert!(serialized.contains("\"raw_token_exposed\":false"));
-    }
-
-    #[test]
-    fn telegram_metadata_status_never_reads_config_or_secret_contents() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let config_path = temp.path().join("openclaw.json");
-        fs::write(&config_path, "sentinel-inline-secret-not-json").expect("write sentinel");
-        let status = load_telegram_config_metadata_status_from_path(&config_path).expect("status");
-        assert_eq!(status.token_source, "config_content_unobserved");
-        assert!(!status.token_shape_ok);
-        assert!(!status.binding_ready);
-        assert!(
-            !serde_json::to_string(&status)
-                .expect("serialize")
-                .contains("sentinel-inline-secret-not-json")
-        );
-    }
-
-    #[cfg(not(unix))]
-    #[test]
-    fn telegram_secret_file_fails_closed_without_acl_owner_verification() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let secret_path = temp.path().join("telegram-token.txt");
-        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
-
-        let error = read_secure_telegram_secret_file(&secret_path)
-            .expect_err("platform ACL verification required");
-        assert!(error.contains("platform ACL owner/private-access verification"));
-        assert!(!inspect_telegram_secret_file(&secret_path).ready);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn telegram_secret_file_rejects_group_or_world_permissions() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let temp = tempfile::tempdir().expect("tempdir");
-        let secret_path = temp.path().join("telegram-token.txt");
-        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
-        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o640)).expect("set mode");
-
-        let security = inspect_telegram_secret_file(&secret_path);
-        assert!(security.present);
-        assert!(!security.mode_0600);
-        assert!(!security.ready);
-        let error = read_secure_telegram_secret_file(&secret_path).expect_err("unsafe mode");
-        assert!(error.contains("permissions must be 0600"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn telegram_secret_file_rejects_an_unexpected_owner() {
-        use std::os::unix::fs::MetadataExt;
-        use std::os::unix::fs::PermissionsExt;
-
-        let temp = tempfile::tempdir().expect("tempdir");
-        let secret_path = temp.path().join("telegram-token.txt");
-        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
-        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
-        let metadata = fs::metadata(&secret_path).expect("metadata");
-        let unexpected_uid = metadata.uid().wrapping_add(1);
-
-        let error = validate_unix_telegram_secret_file(&metadata, unexpected_uid)
-            .expect_err("unexpected owner");
-        assert!(error.contains("owned by the current user"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn telegram_secret_file_rejects_symlinks_even_to_secure_files() {
-        use std::os::unix::fs::PermissionsExt;
-        use std::os::unix::fs::symlink;
-
-        let temp = tempfile::tempdir().expect("tempdir");
-        let secret_path = temp.path().join("telegram-token.txt");
-        let link_path = temp.path().join("telegram-token-link.txt");
-        fs::write(&secret_path, "123456789:abcdefghijklmnopqrstuvwxyz").expect("write token");
-        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
-        symlink(&secret_path, &link_path).expect("symlink");
-
-        let security = inspect_telegram_secret_file(&link_path);
-        assert!(security.present);
-        assert!(!security.ready);
-        let error = read_secure_telegram_secret_file(&link_path).expect_err("symlink rejected");
-        assert!(error.contains("without following symlinks"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn telegram_secret_file_rejects_oversized_material() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let temp = tempfile::tempdir().expect("tempdir");
-        let secret_path = temp.path().join("telegram-token.txt");
-        fs::write(
-            &secret_path,
-            vec![b'a'; TELEGRAM_SECRET_FILE_MAX_BYTES as usize + 1],
-        )
-        .expect("write token");
-        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).expect("set mode");
-
-        let error = read_secure_telegram_secret_file(&secret_path).expect_err("oversized token");
-        assert!(error.contains("exceeds 4096 bytes"));
-    }
-
-    #[test]
-    fn telegram_secret_path_must_be_a_regular_file() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let error = read_secure_telegram_secret_file(temp.path()).expect_err("directory rejected");
-        assert!(error.contains("regular file"));
-    }
-
-    #[test]
-    fn drain_once_without_gates_stops_before_side_effects() {
-        let gates = NativeTelegramGatewayGateSummary {
-            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
-            delivery_approval_gate_enabled: false,
-            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
-            live_read_gate_enabled: false,
-            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
-            model_turn_gate_enabled: false,
-            send_gate_env: TELEGRAM_SEND_GATE_ENV,
-            send_gate_enabled: false,
-            readiness_summary_performs_live_read: false,
-            readiness_summary_invokes_model: false,
-            readiness_summary_sends_message: false,
-        };
-        let status = telegram_drain_once_status_with_gates(true, gates, None);
-        assert_eq!(status.status, "gated");
-        assert_eq!(
-            status.execution_plan.first_missing_gate,
-            Some(TELEGRAM_DELIVERY_APPROVED_ENV)
-        );
-        assert!(!status.execution_plan.all_required_gates_enabled);
-        assert!(status.execution_plan.receive_before_model);
-        assert!(status.execution_plan.send_after_model_success);
-        assert!(status.execution_plan.cursor_commit_after_delivery);
-        assert!(!status.execution_plan.status_probe_executes_pipeline);
-        assert!(status.cursor_plan.duplicate_suppression_ready);
-        assert!(status.inspection.parser_ready);
-        assert_eq!(status.inspection.update_count, 0);
-        assert!(status.model_turn_plan.planner_ready);
-        assert!(status.invocation_request.request_builder_ready);
-        assert!(!status.invocation_request.candidate_present);
-        assert!(!status.invocation_request.runner_invocation_allowed);
-        assert_eq!(status.model_execution.status, "gated");
-        assert!(!status.model_execution.session_runner_invoked);
-        assert!(status.send_plan.send_plan_ready);
-        assert!(!status.send_plan.delivery_performed_by_status);
-        assert!(status.send_request.request_builder_ready);
-        assert!(!status.send_request.model_output_present);
-        assert!(!status.send_request.send_allowed);
-        assert_eq!(status.send_execution.status, "gated");
-        assert!(!status.send_execution.send_attempted);
-        assert!(!status.send_execution.cursor_written);
-        assert!(!status.live_read_started);
-        assert!(!status.model_turn_started);
-        assert!(!status.send_started);
-        assert!(!status.cursor_written);
-        assert!(!status.external_network_read);
-        assert!(!status.external_network_write);
-        assert!(!status.external_send);
-        assert!(!status.raw_update_payload_exposed);
-        assert!(!status.raw_prompt_text_exposed);
-        assert!(!status.raw_response_text_exposed);
-        assert!(!status.raw_token_exposed);
-        assert!(
-            status
-                .error
-                .unwrap()
-                .contains(TELEGRAM_DELIVERY_APPROVED_ENV)
-        );
-    }
-
-    #[test]
-    fn drain_once_with_model_and_send_gates_still_waits_for_live_read() {
-        let gates = NativeTelegramGatewayGateSummary {
-            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
-            delivery_approval_gate_enabled: true,
-            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
-            live_read_gate_enabled: false,
-            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
-            model_turn_gate_enabled: true,
-            send_gate_env: TELEGRAM_SEND_GATE_ENV,
-            send_gate_enabled: true,
-            readiness_summary_performs_live_read: false,
-            readiness_summary_invokes_model: false,
-            readiness_summary_sends_message: false,
-        };
-        let status = telegram_drain_once_status_with_gates(true, gates, None);
-        assert_eq!(status.status, "gated");
-        assert!(!status.execution_plan.all_required_gates_enabled);
-        assert_eq!(
-            status.execution_plan.first_missing_gate,
-            Some(TELEGRAM_LIVE_READ_ENV)
-        );
-        assert!(!status.execution_plan.status_probe_executes_pipeline);
-        assert!(status.cursor_plan.duplicate_suppression_ready);
-        assert!(status.model_turn_plan.planner_ready);
-        assert!(status.invocation_request.request_builder_ready);
-        assert!(!status.invocation_request.candidate_present);
-        assert!(status.invocation_request.model_turn_gate_enabled);
-        assert!(!status.invocation_request.runner_invocation_allowed);
-        assert_eq!(status.model_execution.status, "waiting_candidate");
-        assert!(!status.model_execution.session_runner_invoked);
-        assert!(status.send_plan.send_plan_ready);
-        assert_eq!(status.send_execution.status, "waiting_model_output");
-        assert!(!status.send_execution.send_attempted);
-        assert!(!status.live_read_started);
-        assert!(!status.model_turn_started);
-        assert!(!status.send_started);
-        assert!(!status.cursor_written);
-        assert!(!status.external_network_read);
-        assert!(!status.external_network_write);
-        assert!(!status.external_send);
-        assert!(!status.raw_prompt_text_exposed);
-        assert!(!status.raw_response_text_exposed);
-        assert!(!status.raw_token_exposed);
-        assert!(status.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
-    }
-
-    #[test]
-    fn drain_once_with_all_environment_gates_denies_without_runtime_authority() {
-        let gates = NativeTelegramGatewayGateSummary {
-            delivery_approval_gate_env: TELEGRAM_DELIVERY_APPROVED_ENV,
-            delivery_approval_gate_enabled: true,
-            live_read_gate_env: TELEGRAM_LIVE_READ_ENV,
-            live_read_gate_enabled: true,
-            model_turn_gate_env: TELEGRAM_MODEL_TURN_GATE_ENV,
-            model_turn_gate_enabled: true,
-            send_gate_env: TELEGRAM_SEND_GATE_ENV,
-            send_gate_enabled: true,
-            readiness_summary_performs_live_read: false,
-            readiness_summary_invokes_model: false,
-            readiness_summary_sends_message: false,
-        };
-
-        let status = telegram_drain_once_status_with_gates(true, gates, None);
-
-        assert_eq!(status.status, "attention");
-        assert_eq!(
-            status.error.as_deref(),
-            Some("telegram_runtime_admission.runtime_unavailable")
-        );
-        assert_eq!(
-            status.config.error.as_deref(),
-            Some("runtime admission denied before Telegram config or token observation")
-        );
-        assert!(!status.config.raw_token_exposed);
-        assert!(!status.live_read_started);
-        assert!(!status.model_turn_started);
-        assert!(!status.send_started);
-        assert!(!status.cursor_written);
-        assert!(!status.external_network_read);
-        assert!(!status.external_network_write);
-        assert!(!status.external_send);
-        assert!(!status.model_execution.session_runner_invoked);
-        assert!(!status.send_execution.send_attempted);
-        assert!(!status.send_execution.cursor_written);
-    }
-
-    #[test]
-    fn receive_once_without_live_gate_is_gated_and_side_effect_free() {
-        let report = telegram_receive_once_status_with_gate(true, 999, false);
-        assert_eq!(report.status, "gated");
-        assert_eq!(report.limit, 20);
-        assert!(!report.live_read_gate_enabled);
-        assert!(!report.external_network_read);
-        assert!(!report.external_send);
-        assert!(!report.model_turn_started);
-        assert!(!report.cursor_written);
-        assert!(!report.raw_update_payload_exposed);
-        assert!(!report.raw_token_exposed);
-        assert!(report.error.unwrap().contains(TELEGRAM_LIVE_READ_ENV));
-    }
-}
+#[path = "../tests/unit/native_telegram.rs"]
+mod tests;

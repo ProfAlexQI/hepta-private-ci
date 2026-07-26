@@ -1,3 +1,5 @@
+//! Pending outcome intent lifecycle tests.
+
 use super::*;
 
 use crate::DurableOutcomeStore;

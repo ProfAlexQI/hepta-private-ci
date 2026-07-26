@@ -872,14 +872,15 @@ fn parse_openai_codex_sse_response(body: &str) -> Result<ModelResponse, String> 
                     .unwrap_or("openai-codex response failed");
                 return Err(format!("openai-codex response failed: {}", message));
             }
-            "response.output_item.added" => {
-                if event.pointer("/item/type").and_then(Value::as_str) == Some("function_call") {
-                    current_function_name = event
-                        .pointer("/item/name")
-                        .and_then(Value::as_str)
-                        .map(ToString::to_string);
-                    current_function_args.clear();
-                }
+            "response.output_item.added"
+                if event.pointer("/item/type").and_then(Value::as_str)
+                    == Some("function_call") =>
+            {
+                current_function_name = event
+                    .pointer("/item/name")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string);
+                current_function_args.clear();
             }
             "response.output_text.delta" | "response.refusal.delta" => {
                 if let Some(delta) = event.get("delta").and_then(Value::as_str) {
@@ -899,10 +900,8 @@ fn parse_openai_codex_sse_response(body: &str) -> Result<ModelResponse, String> 
             "response.output_item.done" => {
                 if let Some(item) = event.get("item") {
                     match item.get("type").and_then(Value::as_str).unwrap_or_default() {
-                        "message" => {
-                            if text.is_empty() {
-                                text = codex_message_item_text(item);
-                            }
+                        "message" if text.is_empty() => {
+                            text = codex_message_item_text(item);
                         }
                         "function_call" => {
                             let name = item
