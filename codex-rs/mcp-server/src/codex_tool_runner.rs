@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::exec_approval::handle_exec_approval_request;
+use crate::execution_admission::McpExecutionAdmission;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::OutgoingNotificationMeta;
 use crate::patch_approval::handle_patch_approval_request;
@@ -62,6 +63,27 @@ pub async fn run_hepta_tool_session(
     thread_manager: Arc<ThreadManager>,
     running_requests_id_to_hepta_thread_id: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
 ) {
+    let workspace_binding = config.cwd.as_path().display().to_string();
+    let mut execution_admission = match McpExecutionAdmission::new(
+        "mcp-session-start",
+        &id.to_string(),
+        &workspace_binding,
+        "new-thread",
+        &initial_prompt,
+    ) {
+        Ok(admission) => admission,
+        Err(error) => {
+            outgoing
+                .send_response(
+                    id,
+                    CallToolResult::error(vec![Content::text(format!(
+                        "MCP execution admission failed: {error}"
+                    ))]),
+                )
+                .await;
+            return;
+        }
+    };
     let NewThread {
         thread_id,
         thread,
@@ -69,6 +91,7 @@ pub async fn run_hepta_tool_session(
     } = match thread_manager.start_thread(config.clone()).await {
         Ok(res) => res,
         Err(e) => {
+            let _ = execution_admission.complete(&format!("start-error:{e}"), "failed");
             let result = CallToolResult::error(vec![Content::text(format!(
                 "Failed to start Hepta session: {e}"
             ))]);
@@ -116,6 +139,7 @@ pub async fn run_hepta_tool_session(
     };
 
     if let Err(e) = thread.submit_with_id(submission).await {
+        let _ = execution_admission.complete(&format!("submit-error:{e}"), "failed");
         tracing::error!("Failed to submit initial prompt: {e}");
         let result = create_call_tool_result_with_thread_id(
             thread_id,
@@ -124,6 +148,24 @@ pub async fn run_hepta_tool_session(
         );
         outgoing.send_response(id.clone(), result).await;
         // unregister the id so we don't keep it in the map
+        running_requests_id_to_hepta_thread_id
+            .lock()
+            .await
+            .remove(&id);
+        return;
+    }
+    if let Err(error) = execution_admission.complete("thread-submit-accepted", "succeeded") {
+        let _ = thread.submit(Op::Interrupt).await;
+        outgoing
+            .send_response(
+                id.clone(),
+                create_call_tool_result_with_thread_id(
+                    thread_id,
+                    format!("MCP execution lifecycle failed closed: {error}"),
+                    Some(true),
+                ),
+            )
+            .await;
         running_requests_id_to_hepta_thread_id
             .lock()
             .await
@@ -149,6 +191,28 @@ pub async fn run_hepta_tool_session_reply(
     prompt: String,
     running_requests_id_to_hepta_thread_id: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
 ) {
+    let mut execution_admission = match McpExecutionAdmission::new(
+        "mcp-session-reply",
+        &request_id.to_string(),
+        "existing-thread",
+        &thread_id.to_string(),
+        &prompt,
+    ) {
+        Ok(admission) => admission,
+        Err(error) => {
+            outgoing
+                .send_response(
+                    request_id,
+                    create_call_tool_result_with_thread_id(
+                        thread_id,
+                        format!("MCP execution admission failed: {error}"),
+                        Some(true),
+                    ),
+                )
+                .await;
+            return;
+        }
+    };
     running_requests_id_to_hepta_thread_id
         .lock()
         .await
@@ -166,6 +230,7 @@ pub async fn run_hepta_tool_session_reply(
         })
         .await
     {
+        let _ = execution_admission.complete(&format!("submit-error:{e}"), "failed");
         tracing::error!("Failed to submit user input: {e}");
         let result = create_call_tool_result_with_thread_id(
             thread_id,
@@ -174,6 +239,24 @@ pub async fn run_hepta_tool_session_reply(
         );
         outgoing.send_response(request_id.clone(), result).await;
         // unregister the id so we don't keep it in the map
+        running_requests_id_to_hepta_thread_id
+            .lock()
+            .await
+            .remove(&request_id);
+        return;
+    }
+    if let Err(error) = execution_admission.complete("thread-submit-accepted", "succeeded") {
+        let _ = thread.submit(Op::Interrupt).await;
+        outgoing
+            .send_response(
+                request_id.clone(),
+                create_call_tool_result_with_thread_id(
+                    thread_id,
+                    format!("MCP execution lifecycle failed closed: {error}"),
+                    Some(true),
+                ),
+            )
+            .await;
         running_requests_id_to_hepta_thread_id
             .lock()
             .await

@@ -32,6 +32,7 @@ use tracing_subscriber::prelude::*;
 mod codex_tool_config;
 mod codex_tool_runner;
 mod exec_approval;
+mod execution_admission;
 pub(crate) mod message_processor;
 mod outgoing_message;
 mod patch_approval;

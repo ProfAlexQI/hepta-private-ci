@@ -34,6 +34,7 @@ use crate::codex_tool_config::HeptaToolCallParam;
 use crate::codex_tool_config::HeptaToolCallReplyParam;
 use crate::codex_tool_config::create_tool_for_hepta_tool_call_param;
 use crate::codex_tool_config::create_tool_for_hepta_tool_call_reply_param;
+use crate::execution_admission::McpExecutionAdmission;
 use crate::outgoing_message::OutgoingMessageSender;
 
 pub(crate) struct MessageProcessor {
@@ -527,6 +528,19 @@ impl MessageProcessor {
         let request_id = params.request_id;
         // Create a stable string form early for logging and submission id.
         let request_id_string = request_id.to_string();
+        let mut execution_admission = match McpExecutionAdmission::new(
+            "mcp-session-interrupt",
+            &request_id_string,
+            "existing-thread",
+            &request_id_string,
+            "interrupt",
+        ) {
+            Ok(admission) => admission,
+            Err(error) => {
+                tracing::error!(%error, "MCP interrupt admission failed closed");
+                return;
+            }
+        };
 
         // Obtain the thread id while holding the first lock, then release.
         let thread_id = {
@@ -559,7 +573,12 @@ impl MessageProcessor {
             })
             .await
         {
+            let _ = execution_admission.complete(&format!("interrupt-error:{e}"), "failed");
             tracing::error!("Failed to submit interrupt to Hepta: {e}");
+            return;
+        }
+        if let Err(error) = execution_admission.complete("interrupt-accepted", "succeeded") {
+            tracing::error!(%error, "MCP interrupt lifecycle failed closed");
             return;
         }
         // unregister the id so we don't keep it in the map
