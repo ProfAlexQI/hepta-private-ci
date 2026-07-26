@@ -91,16 +91,8 @@ fn reserialize_shell_outputs(items: &mut [ResponseItem]) {
                 shell_call_ids.insert(identifier);
             }
         }
-        ResponseItem::CustomToolCall {
-            id: _,
-            status: _,
-            call_id,
-            name,
-            input: _,
-        } => {
-            if name == "apply_patch" {
-                shell_call_ids.insert(call_id.clone());
-            }
+        ResponseItem::CustomToolCall { call_id, name, .. } if name == "apply_patch" => {
+            shell_call_ids.insert(call_id.clone());
         }
         ResponseItem::FunctionCall { name, call_id, .. }
             if is_shell_tool_name(name) || name == "apply_patch" =>

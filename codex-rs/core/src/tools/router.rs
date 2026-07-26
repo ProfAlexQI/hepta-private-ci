@@ -139,10 +139,6 @@ impl ToolRouter {
     }
 
     #[instrument(level = "trace", skip_all, err)]
-    #[expect(
-        clippy::await_holding_invalid_type,
-        reason = "MCP dispatch holds a generation lease so exposed tools execute on the same manager"
-    )]
     pub async fn dispatch_tool_call_with_code_mode_result(
         &self,
         session: Arc<Session>,

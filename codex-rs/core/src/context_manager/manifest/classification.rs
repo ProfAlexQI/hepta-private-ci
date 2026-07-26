@@ -78,8 +78,10 @@ fn registered_contribution_classification(
     policy_class: &'static str,
     include_reason: &'static str,
 ) -> ContributionClassification {
-    let registry_entry = context_source_registry_entry(source_id)
-        .expect("context source registry must cover manifest classifier source");
+    let registry_entry = match context_source_registry_entry(source_id) {
+        Some(registry_entry) => registry_entry,
+        None => panic!("context source registry must cover manifest classifier source"),
+    };
     ContributionClassification {
         source_id: registry_entry.source_id,
         policy_class,

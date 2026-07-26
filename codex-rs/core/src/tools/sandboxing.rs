@@ -469,7 +469,7 @@ impl<'a> SandboxAttempt<'a> {
         );
         if self.sandbox_requested {
             exec_request.exec_server_sandbox = Some(FileSystemSandboxContext {
-                permissions: exec_server_permissions.into(),
+                permissions: exec_server_permissions,
                 cwd: Some(exec_request.windows_sandbox_policy_cwd.clone()),
                 workspace_roots: self.workspace_roots.to_vec(),
                 windows_sandbox_level: self.windows_sandbox_level,
