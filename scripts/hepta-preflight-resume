@@ -837,6 +837,14 @@ if [[ -z "$terminal_branch_start" ]]; then
   echo "could not locate the native/release branch in scripts/hepta-preflight.sh" >&2
   exit 1
 fi
+receipt_replay_boundary="$({
+  awk '$0 == "echo \"[hepta-preflight] source-bound release gate receipt replay boundary\"" { print NR; exit }' "$PREFLIGHT"
+})"
+if [[ -z "$receipt_replay_boundary" || "$receipt_replay_boundary" -le "$prelude_end_line" \
+  || "$receipt_replay_boundary" -ge "$terminal_branch_start" ]]; then
+  echo "could not locate the source-bound receipt replay boundary in scripts/hepta-preflight.sh" >&2
+  exit 1
+fi
 
 start_line=1
 if [[ -n "$resume_marker" && "$legacy_state" != "1" ]]; then
@@ -845,10 +853,15 @@ if [[ -n "$resume_marker" && "$legacy_state" != "1" ]]; then
   else
     start_line="$({
       awk -v expected="$resume_marker" '
-        /^[[:space:]]*echo "\[hepta-preflight\] / {
+        /^[[:space:]]*(echo "\[hepta-preflight\] |run_preflight_gate ")/ {
           marker = $0
-          sub(/^[[:space:]]*echo "\[hepta-preflight\] /, "", marker)
-          sub(/"$/, "", marker)
+          if (marker ~ /^[[:space:]]*echo /) {
+            sub(/^[[:space:]]*echo "\[hepta-preflight\] /, "", marker)
+            sub(/"$/, "", marker)
+          } else {
+            sub(/^[[:space:]]*run_preflight_gate "/, "", marker)
+            sub(/"[[:space:]].*$/, "", marker)
+          }
           if (marker == expected) {
             print NR
             exit
@@ -862,10 +875,12 @@ if [[ -n "$resume_marker" && "$legacy_state" != "1" ]]; then
     exit 1
   fi
 
-  # The final native/release branches must be resumed from their opening `if`
-  # so that the generated suffix remains syntactically balanced.
-  if (( start_line >= terminal_branch_start )); then
-    start_line="$terminal_branch_start"
+  # Gate receipts live in a process-private temporary directory. Any resume at
+  # or beyond their explicit replay boundary must regenerate the complete
+  # source-bound receipt set in the new process. This also starts before the
+  # final native/release branches, keeping both conditional suffixes balanced.
+  if (( start_line >= receipt_replay_boundary )); then
+    start_line="$receipt_replay_boundary"
   fi
 fi
 
@@ -1075,13 +1090,13 @@ if ! printf '%s\n' "$run_banner" | tee -a "$LOG_FILE"; then
   exit 1
 fi
 
-# Native/release suffixes must be regenerated from the opening `if` to remain
-# syntactically balanced. Until that structural replay reaches the original
-# checkpoint, keep publishing the original marker and streak: an interruption
-# in the replay prefix must not silently disarm the same-checkpoint fuse.
-terminal_replay_target_pending=0
-if [[ -n "$resume_marker" && "$start_line" == "$terminal_branch_start" ]]; then
-  terminal_replay_target_pending=1
+# Receipt/native/release suffixes must regenerate from the receipt boundary.
+# Until that replay reaches the original checkpoint, keep publishing the
+# original marker and streak: an interruption in the replay prefix must not
+# silently disarm the same-checkpoint fuse.
+replay_target_pending=0
+if [[ -n "$resume_marker" && "$start_line" == "$receipt_replay_boundary" ]]; then
+  replay_target_pending=1
 fi
 
 set +e
@@ -1096,11 +1111,11 @@ env -u CODEX_THREAD_ID PATH="$RESUME_RELEVANT_PATH" "$generated" 2>&1 \
           marker="${line#'[hepta-preflight] '}"
           checkpoint_marker="$marker"
           marker_failure_streak=0
-          if [[ "$terminal_replay_target_pending" == "1" ]]; then
+          if [[ "$replay_target_pending" == "1" ]]; then
             checkpoint_marker="$resume_marker"
             marker_failure_streak="$resume_failure_streak"
             if [[ "$marker" == "$resume_marker" ]]; then
-              terminal_replay_target_pending=0
+              replay_target_pending=0
             fi
           elif [[ "${resume_marker:-<prelude>}" == "${marker:-<prelude>}" ]]; then
             marker_failure_streak="$resume_failure_streak"

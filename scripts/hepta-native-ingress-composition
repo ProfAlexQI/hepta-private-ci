@@ -28,28 +28,101 @@ deny_literal() {
   fi
 }
 
+expect_verify_failure() {
+  local root="$1"
+  local message="$2"
+  if HEPTA_NATIVE_INGRESS_ROOT="$root" "$0" verify >/dev/null 2>&1; then
+    echo "$message" >&2
+    return 1
+  fi
+}
+
 verify() {
   local registry="codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
   local runtime="codex-rs/hepta-native-gateway/src/runtime_composition.rs"
   local gateway="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+  local routes="codex-rs/hepta-native-gateway/src/route_registry.rs"
+  local gate_command="codex-rs/hepta-native-gateway/src/gate_command.rs"
   local telegram="codex-rs/hepta-native-gateway/src/native_telegram.rs"
+  local telegram_authority="codex-rs/hepta-native-gateway/src/telegram_authority.rs"
   local mutation="codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
+  local operator_mutation="codex-rs/hepta-native-gateway/src/operator_mutation.rs"
+  local sensitive_http="codex-rs/hepta-native-gateway/src/sensitive_http.rs"
   local preference="codex-rs/hepta-native-gateway/src/preference_ingress.rs"
+  local preference_attachment="codex-rs/hepta-native-gateway/src/preference_attachment.rs"
+  local reconciliation="codex-rs/hepta-native-gateway/src/effect_reconciliation.rs"
+  local anchor="codex-rs/hepta-native-gateway/src/durability_anchor.rs"
   local freezer="codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
   local source
-  for source in "$registry" "$runtime" "$gateway" "$telegram" "$mutation" "$preference" "$freezer"; do
+  for source in "$registry" "$runtime" "$gateway" "$routes" "$gate_command" "$telegram" "$telegram_authority" "$mutation" "$operator_mutation" "$sensitive_http" "$preference" "$preference_attachment" "$reconciliation" "$anchor" "$freezer"; do
     [[ -f "$ROOT/$source" ]] || {
       echo "native ingress composition source missing: $source" >&2
       return 1
     }
   done
 
+  for field in \
+    'method: &'"'"'static str' \
+    'path_pattern: &'"'"'static str' \
+    'effect_class: IngressEffectClass' \
+    'authority_owner: IngressAuthorityOwner' \
+    'secret_access: IngressAccessPolicy' \
+    'config_access: IngressAccessPolicy' \
+    'network_access: IngressAccessPolicy' \
+    'durable_intent: IngressLifecycleRequirement' \
+    'effect_ack: IngressLifecycleRequirement' \
+    'terminal_receipt: IngressLifecycleRequirement' \
+    'default_enablement: IngressDefaultEnablement'
+  do
+    require_literal "$registry" "$field" \
+      "machine-readable ingress lifecycle field is missing"
+  done
   require_literal "$registry" \
-    '("GET", TELEGRAM_RECEIVE_ONCE_ENDPOINT) => RuntimeIngressKind::CredentialedNetworkRead' \
+    'CONTROL_UI_ROUTE_SPECS.iter().find_map' \
+    "CONTROL_UI_ROUTE_SPECS are not lifecycle classified from their typed declarations"
+  require_literal "$registry" \
+    'pub(crate) fn runtime_ingress_lifecycle_registry() -> Vec<IngressLifecycleSpec>' \
+    "machine-readable ingress lifecycle registry is not exposed"
+  require_literal "$gate_command" \
+    '"ingress_lifecycle_registry": ingress_lifecycle_registry,' \
+    "native gate registry does not publish ingress lifecycle declarations"
+  require_literal "$registry" \
+    'path_pattern: TELEGRAM_RECEIVE_ONCE_ENDPOINT,' \
+    "Telegram receive lifecycle declaration is missing"
+  if ! perl -0ne \
+    '$found = 1 if /method: "POST",\s*path_pattern: TELEGRAM_RECEIVE_ONCE_ENDPOINT,/s; END { exit($found ? 0 : 1) }' \
+    "$ROOT/$registry"
+  then
+    echo "Telegram receive has no POST lifecycle declaration: $registry" >&2
+    return 1
+  fi
+  require_literal "$registry" \
+    'effect_class: IngressEffectClass::CredentialedNetworkRead,' \
     "Telegram receive is not classified as a credentialed network read"
   require_literal "$registry" \
+    'authority_owner: IngressAuthorityOwner::RuntimeKernelTelegramRead,' \
+    "Telegram receive lacks exact RuntimeKernel authority ownership"
+  require_literal "$registry" \
+    'default_enablement: IngressDefaultEnablement::DisabledUnlessExplicitGate,' \
+    "live ingress is not default-off"
+  require_literal "$registry" \
+    'if spec.method == "GET" && spec.effect_class.performs_effect() {' \
+    "GET effect surfaces are not rejected"
+  require_literal "$registry" \
+    'IngressEffectClass::BoundedEphemeralVerification' \
+    "bounded request-local GET verification surfaces are not distinguished"
+  require_literal "$registry" \
+    '.filter(|spec| validate_lifecycle(*spec).is_ok())' \
+    "invalid lifecycle declarations do not fail closed"
+  deny_literal "$registry" \
     '("POST", _) => RuntimeIngressKind::MutationPlan' \
-    "native POST fallback is not classified as a mutation plan"
+    "method-only POST fallback remains the ingress proof"
+  require_literal "$runtime" \
+    'attached RuntimeKernel denied unclassified native ingress' \
+    "unclassified ingress does not fail closed"
+  require_literal "$runtime" \
+    'ingress_kind: lifecycle.ingress_kind(),' \
+    "runtime preflight is not driven by the lifecycle registry"
   require_literal "$runtime" \
     'pub(crate) struct RuntimeTelegramReceiveAuthority {' \
     "request-bound Telegram read authority is missing"
@@ -62,6 +135,9 @@ verify() {
   require_literal "$gateway" \
     'telegram_receive_once_response(Some(runtime), options.with_telegram_plugin, 20)' \
     "Telegram receive dispatch bypasses RuntimeKernel authorization"
+  require_literal "$gateway" \
+    'if method == "POST" && path == TELEGRAM_RECEIVE_ONCE_ENDPOINT {' \
+    "credentialed Telegram effect remains reachable by GET"
   require_literal "$registry" \
     'let authority = match runtime.authorize_telegram_receive() {' \
     "Telegram receive admission bypasses RuntimeKernel authorization"
@@ -85,8 +161,8 @@ verify() {
     "legacy unauthorised Telegram receive signature remains"
 
   require_literal "$registry" \
-    '("POST", RUNTIME_MUTATION_CANARY_ENDPOINT) => RuntimeIngressKind::MutationPlan' \
-    "runtime mutation canary is not classified as a mutation"
+    'path_pattern: RUNTIME_MUTATION_CANARY_ENDPOINT,' \
+    "runtime mutation canary is not lifecycle classified"
   require_literal "$gateway" \
     'if !runtime_mutation_enabled() {' \
     "runtime mutation canary is not default-off"
@@ -102,18 +178,136 @@ verify() {
     require_literal "$mutation" "$evidence" \
       "runtime mutation canary omits lifecycle evidence"
   done
+  for endpoint in OPERATOR_MUTATION_PLAN_ENDPOINT OPERATOR_MUTATION_COMMIT_ENDPOINT; do
+    require_literal "$registry" \
+      "path_pattern: $endpoint," \
+      "operator mutation lifecycle declaration is missing"
+  done
+  require_literal "$registry" \
+    'if !operator_mutation_enabled() {' \
+    "operator mutation is not default-off"
+  require_literal "$gateway" \
+    '!crate::sensitive_http::admit(&request, &options.bind_addr)' \
+    "sensitive ingress lacks loopback/Origin/CSRF transport admission"
+  for evidence in \
+    'const PLAN_PROOF_DOMAIN:' \
+    'const COMMIT_PROOF_DOMAIN:' \
+    'ApprovalRequirement::Ask,' \
+    'plan_request_binding_hash: String,' \
+    'session_binding_hash: String,' \
+    'if request.session_binding_hash != current_session_binding_hash {' \
+    '.approve_candidate_and_run_demo_turn_in_session(' \
+    '!receipt.durable_intent_recorded' \
+    'receipt.provider_effect_ack_hash.is_none()' \
+    'receipt.terminal_status != "succeeded"'
+  do
+    require_literal "$operator_mutation" "$evidence" \
+      "operator mutation omits split authority or lifecycle evidence"
+  done
+  for evidence in \
+    'loopback_port(bind_addr)' \
+    'loopback_host_matches_port(host, bind_port)' \
+    'origin != format!("http://{host}")' \
+    'unique_header(request, CSRF_HEADER)' \
+    'eq_ignore_ascii_case("application/json")'
+  do
+    require_literal "$sensitive_http" "$evidence" \
+      "sensitive transport admission is incomplete"
+  done
+  for endpoint in TELEGRAM_AUTHORITY_PLAN_ENDPOINT TELEGRAM_AUTHORITY_COMMIT_ENDPOINT; do
+    require_literal "$registry" \
+      "path_pattern: $endpoint," \
+      "operator Telegram lifecycle declaration is missing"
+    require_literal "$sensitive_http" "$endpoint" \
+      "operator Telegram route is not behind sensitive ingress admission"
+  done
+  for evidence in \
+    'effect_class: IngressEffectClass::TelegramOperatorPipeline,' \
+    'authority_owner: IngressAuthorityOwner::TelegramOperatorPipeline,' \
+    'durable_intent: IngressLifecycleRequirement::RequiredBeforeEffect,' \
+    'effect_ack: IngressLifecycleRequirement::RequiredAfterEffect,' \
+    'terminal_receipt: IngressLifecycleRequirement::RequiredForTerminal,'
+  do
+    require_literal "$registry" "$evidence" \
+      "operator Telegram lifecycle registry is incomplete"
+  done
+  for evidence in \
+    'const PLAN_PROOF_DOMAIN:' \
+    'const COMMIT_PROOF_DOMAIN:' \
+    'TELEGRAM_PIPELINE_AUTHORITY_OWNER' \
+    'phase == Phase::ReadCompleted' \
+    'event.plan_hash != binding.plan_hash && event.update_id == Some(update_id)' \
+    'record Telegram delivery ACK before cursor commit' \
+    'commit Telegram next update cursor after delivery ACK' \
+    'Phase::TerminalSucceeded' \
+    'pub(crate) fn monotonic_state(&self)' \
+    'latest_event_hash'
+  do
+    require_literal "$telegram_authority" "$evidence" \
+      "operator Telegram authority omits exact proof, exclusion, durability, or terminal evidence"
+  done
+  require_literal "$telegram" \
+    'execute_operator_authorized_telegram_drain(' \
+    "operator Telegram production adapter is missing"
+  require_literal "$telegram" \
+    'Path::new(TELEGRAM_DELIVERY_LEDGER_PATH)' \
+    "operator Telegram delivery ledger target is not fixed by production code"
+  require_literal "$telegram" \
+    'Path::new(TELEGRAM_INGRESS_CURSOR_PATH)' \
+    "operator Telegram cursor target is not fixed by production code"
   require_literal "$preference" \
     'if request.session_binding_hash != expected_session_binding_hash {' \
     "preference authority is not bound to the active runtime session"
   require_literal "$runtime" \
     '.attach_authenticated_preference_context(&session_id, stamp)' \
     "authenticated preference state is not attached to RuntimeKernel"
+  require_literal "$runtime" \
+    '.hydrate_authenticated_preference_context()' \
+    "authenticated preference state is not hydrated during runtime startup"
+  require_literal "$preference_attachment" \
+    'authenticated preference attachment MAC is invalid' \
+    "restart preference attachment is not independently authenticated"
+  require_literal "$runtime" \
+    '.synchronize_durable_anchor()' \
+    "durable changes are not bound to the external monotonic anchor"
+  for evidence in \
+    'HEPTA_MONOTONIC_ANCHOR_FILE' \
+    'HEPTA_MONOTONIC_ANCHOR_KEY_FILE' \
+    'current.generation() < anchored_generation' \
+    'current.generation() == anchored_generation && current.state_hash() != anchored_hash' \
+    'Telegram authority journal rolled back from sequence' \
+    'Telegram authority journal diverged at an anchored sequence' \
+    'file.sync_all()'
+  do
+    require_literal "$anchor" "$evidence" \
+      "external monotonic anchor omits rollback, divergence, or durability evidence"
+  done
+  require_literal "$runtime" \
+    'telegram: telegram_state,' \
+    "runtime monotonic anchor does not include Telegram authority state"
+  for endpoint in EFFECT_RECONCILIATION_INSPECT_ENDPOINT EFFECT_RECONCILIATION_RESOLVE_ENDPOINT; do
+    require_literal "$registry" \
+      "path_pattern: $endpoint," \
+      "operator effect reconciliation lifecycle declaration is missing"
+    require_literal "$sensitive_http" "$endpoint" \
+      "operator effect reconciliation is not behind sensitive ingress admission"
+  done
+  for evidence in \
+    'RetryTerminalReceiptOnly' \
+    'inspection.state != ExecutionEffectInspectionState::AppliedAcknowledged' \
+    '.reconcile_pending_outcome(&request.attempt_id)' \
+    'provider_replayed: false' \
+    'arbitrary_target_accepted: false'
+  do
+    require_literal "$reconciliation" "$evidence" \
+      "effect reconciliation may replay or fabricate provider material"
+  done
   require_literal "$freezer" \
     'Some(stamp) => stamp,' \
     "frozen context does not consume attached preference state"
 
   local metadata_loader
-  metadata_loader="$(perl -0ne 'print $1 if /(fn load_telegram_config_metadata_status_from_path\(.*?)(?=fn load_telegram_execution_config_status\()/s' "$ROOT/$telegram")"
+  metadata_loader="$(perl -0ne 'print $1 if /(fn load_telegram_config_metadata_status_from_path\(.*?)(?=\n#\[derive\(Serialize\)\]\nstruct OperatorTelegramConfigGeneration)/s' "$ROOT/$telegram")"
   [[ -n "$metadata_loader" ]] || {
     echo "Telegram metadata-only loader body cannot be inspected" >&2
     return 1
@@ -132,7 +326,21 @@ verify() {
     return 1
   }
 
-  echo '{"schema":"hepta.native-ingress-composition.v1","status":"ready","credentialed_network_reads":1,"mutation_fallback":"plan_only","default_off_real_mutations":1,"authenticated_preference_context":"attached"}'
+  local route_count
+  route_count="$(rg -c 'ControlUiRouteSpec \{' "$ROOT/$routes")"
+  local real_mutation_count
+  real_mutation_count="$(perl -0ne '
+    if (/const SPECIAL_INGRESS_LIFECYCLES:.*?= &\[(.*?)\n\];/s) {
+      $block = $1;
+      $count = () = $block =~ /effect_class: IngressEffectClass::RuntimeKernelLocalMutation/g;
+      print $count;
+    }
+  ' "$ROOT/$registry")"
+  [[ "$real_mutation_count" =~ ^[1-9][0-9]*$ ]] || {
+    echo "real mutation lifecycle inventory could not be derived" >&2
+    return 1
+  }
+  echo "{\"schema\":\"hepta.native-ingress-composition.v2\",\"status\":\"ready\",\"control_ui_route_specs\":$route_count,\"classification\":\"typed_lifecycle_registry\",\"unknown_ingress\":\"fail_closed\",\"get_external_or_durable_effect_surfaces\":0,\"get_bounded_ephemeral_verifications\":3,\"legacy_credentialed_network_reads\":1,\"operator_telegram_pipelines\":1,\"mutation_routes\":\"plan_only_unless_specialized\",\"default_off_runtime_kernel_mutations\":$real_mutation_count,\"authenticated_preference_context\":\"attached\",\"telegram_durable_intent_owner\":\"TelegramPipelineAuthority\"}"
 }
 
 self_test() {
@@ -140,43 +348,89 @@ self_test() {
   fixture="$(mktemp -d)"
   trap 'rm -rf "$fixture"' RETURN
   mkdir -p "$fixture/codex-rs/hepta-native-gateway/src" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
-  cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs,runtime_mutation.rs,preference_ingress.rs} \
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs,telegram_authority.rs,runtime_mutation.rs,operator_mutation.rs,sensitive_http.rs,preference_ingress.rs,preference_attachment.rs,effect_reconciliation.rs,durability_anchor.rs,route_registry.rs,gate_command.rs} \
     "$fixture/codex-rs/hepta-native-gateway/src/"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/"
 
   HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null
-  perl -0pi -e 's/RuntimeIngressKind::CredentialedNetworkRead/RuntimeIngressKind::MetadataRead/' \
+  perl -0pi -e 's/method: "POST",\n        path_pattern: TELEGRAM_RECEIVE_ONCE_ENDPOINT/method: "GET",\n        path_pattern: TELEGRAM_RECEIVE_ONCE_ENDPOINT/' \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
-  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
-    echo "native ingress composition self-test accepted a downgraded network ingress" >&2
-    return 1
-  fi
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted a GET effect surface"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  perl -0pi -e 's/CONTROL_UI_ROUTE_SPECS\.iter\(\)\.find_map/CONTROL_UI_ROUTE_SPECS.iter().filter_map/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted an unclassified route source"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  perl -0pi -e 's/authority_owner: IngressAuthorityOwner::RuntimeKernelTelegramRead/authority_owner: IngressAuthorityOwner::RuntimeKernelRequestBinding/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted missing effect authority"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  perl -0pi -e 's/if spec\.method == "GET" && spec\.effect_class\.performs_effect\(\) \{/if false {/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted removal of GET effect validation"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
   perl -0pi -e 's/telegram_receive_once_status\(requested, limit, &authority\)/telegram_receive_once_status(requested, limit, \/\* authority removed \*\/)/g' \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
-  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
-    echo "native ingress composition self-test accepted an authority-free dispatch" >&2
-    return 1
-  fi
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted an authority-free dispatch"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
   perl -0pi -e 's/!receipt\.durable_intent_recorded/false/' \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
-  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
-    echo "native ingress composition self-test accepted mutation without durable intent" >&2
-    return 1
-  fi
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted mutation without durable intent"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_mutation.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
+  perl -0pi -e 's/ApprovalRequirement::Ask/ApprovalRequirement::None/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/operator_mutation.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted operator mutation without exact approval"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/operator_mutation.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/operator_mutation.rs"
+  perl -0pi -e 's/event\.plan_hash != binding\.plan_hash && event\.update_id == Some\(update_id\)/false/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/telegram_authority.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted non-atomic Telegram update claims"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/telegram_authority.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/telegram_authority.rs"
+  perl -0pi -e 's/!crate::sensitive_http::admit\(&request, &options.bind_addr\)/false/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_gateway.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted sensitive ingress without transport admission"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/native_gateway.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_gateway.rs"
+  perl -0pi -e 's/let file_metadata = fs::metadata\(path\)/let _raw = fs::read_to_string(path); let file_metadata = fs::metadata(path)/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_telegram.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted metadata status secret/config reads"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/native_telegram.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_telegram.rs"
+  perl -0pi -e 's/\.hydrate_authenticated_preference_context\(\)/.skip_startup_preference_hydration()/g' \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_composition.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted missing startup preference hydration"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_composition.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/runtime_composition.rs"
+  perl -0pi -e 's/provider_replayed: false/provider_replayed: true/g' \
+    "$fixture/codex-rs/hepta-native-gateway/src/effect_reconciliation.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted provider replay during reconciliation"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/effect_reconciliation.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/effect_reconciliation.rs"
   perl -0pi -e 's/Some\(stamp\) => stamp/Some(_stamp) => revisions.stamp(session_id, "preference:unattached", framed_hash("hepta.runtime.preference-context.v1", &[]))?/' \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
-  if HEPTA_NATIVE_INGRESS_ROOT="$fixture" "$0" verify >/dev/null 2>&1; then
-    echo "native ingress composition self-test accepted discarded preference authority" >&2
-    return 1
-  fi
-  echo '{"schema":"hepta.native-ingress-composition-self-test.v1","status":"ready","negative_fixtures":4}'
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted discarded preference authority"
+  echo '{"schema":"hepta.native-ingress-composition-self-test.v2","status":"ready","negative_fixtures":13}'
 }
 
 case "${1:-}" in

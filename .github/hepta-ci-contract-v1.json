@@ -75,12 +75,20 @@
     "entrypoint": "scripts/hepta-safe-lint-security-baseline run"
   },
   "dependency_security": {
-    "capability_version": 1,
+    "capability_version": 2,
     "contract": "scripts/hepta-dependency-security-v1.json",
     "configured_capability": "supported",
     "tools_pinned": true,
     "advisory_database_pinned": true,
     "scan_network_disabled": true,
+    "cargo_lock_graphs": [
+      "codex-rs/Cargo.lock",
+      "apps/hepta-native/Cargo.lock"
+    ],
+    "vendored_source_receipts_required": true,
+    "vendored_source_receipts": [
+      "codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json"
+    ],
     "ci_job": "rust-backend",
     "entrypoint": "scripts/hepta-dependency-security scan"
   },
@@ -104,7 +112,12 @@
       "backend-native",
       "backend-native-release"
     ],
-    "required_command": "scripts/hepta-preflight-resume --reset"
+    "required_command": "scripts/hepta-preflight-resume --reset",
+    "dependency_security": {
+      "cargo_audit_install": "cargo install cargo-audit --version 0.22.2 --locked",
+      "cargo_deny_install": "cargo install cargo-deny --version 0.20.2 --locked",
+      "materialize_database": "scripts/hepta-dependency-security materialize-db"
+    }
   },
   "upstream_intake": {
     "url": "https://github.com/openai/codex.git",
@@ -165,9 +178,15 @@
   "upstream_truth": {
     "capability_version": 1,
     "registry": "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
-    "registry_sha256": "f3ec3723b59f216c6ba6061bca99649fb9b8a046eef0fe38d5c06af02b842179",
+    "registry_sha256": "0a3b7e90856e88ac12c5f2e7e60046a47f2442c0c2d9d75e8aa024c7f495ec65",
     "ci_job": "upstream-truth",
     "semantic_command": "scripts/hepta-upstream-truth-gate verify-semantic",
+    "counted_evidence_command": "scripts/hepta-upstream-truth-gate verify-counted-evidence",
+    "counted_evidence_ci_job": "rust-backend",
+    "counted_evidence_requires_full_history": true,
+    "counted_evidence_requires_materialized_intake_refs": true,
+    "minimum_counted_evidence_command_count": 11,
+    "minimum_exact_test_count": 18,
     "self_test_command": "scripts/hepta-upstream-truth-gate self-test",
     "network_receipt_command": "scripts/hepta-upstream-truth-gate network-receipt artifacts/upstream-network-freshness-receipt.json",
     "network_receipt_verify_command": "scripts/hepta-upstream-truth-gate verify-network-receipt artifacts/upstream-network-freshness-receipt.json",

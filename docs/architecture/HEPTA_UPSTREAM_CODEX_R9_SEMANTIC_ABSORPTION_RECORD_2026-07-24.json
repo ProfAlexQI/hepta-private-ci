@@ -13,6 +13,11 @@
     "cherry_pick_performed": false
   },
   "integration_mode": "selective_semantic_transplant_with_authority_prerequisite_deferrals",
+  "reconciliation": {
+    "reconciled_at": "2026-07-25T06:52:05Z",
+    "local_evidence_commit": "d3cd943d08fcc6b0b8604ade975acd6b75d76405",
+    "reason": "Later R6/R8 work now proves frozen-auth publication and same-manager catalog/client execution. R9 deferrals are narrowed to the still-missing starting-runtime/config-source invalidation, per-connector reviewer, and executor-skill authority boundaries."
+  },
   "absorptions": [
     {
       "lane": "hooks_runtime",
@@ -30,8 +35,12 @@
       ],
       "behavioral_evidence": [
         {
-          "command": "cargo test -p codex-hooks fast_exiting_hook_preserves_stdout_when_stdin_is_not_consumed",
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-hooks --expected-test-count 1 --test engine::command_runner::tests::fast_exiting_hook_preserves_stdout_when_stdin_is_not_consumed",
           "result": "passed",
+          "expected_test_count": 1,
+          "expected_tests": [
+            "engine::command_runner::tests::fast_exiting_hook_preserves_stdout_when_stdin_is_not_consumed"
+          ],
           "tests_passed": 1,
           "tests_failed": 0,
           "assertion": "A fast hook preserves completed stdout while a one-megabyte stdin write observes BrokenPipe."
@@ -72,8 +81,12 @@
       ],
       "behavioral_evidence": [
         {
-          "command": "cargo test -p codex-core explicit_refresh_publishes_current_mcp_elicitation_authority",
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 1 --test session::tests::explicit_refresh_publishes_current_mcp_elicitation_authority",
           "result": "passed",
+          "expected_test_count": 1,
+          "expected_tests": [
+            "session::tests::explicit_refresh_publishes_current_mcp_elicitation_authority"
+          ],
           "tests_passed": 1,
           "tests_failed": 0,
           "assertion": "A stale active turn cannot override refreshed Never, Disabled, and AutoReview authority."
@@ -109,8 +122,13 @@
       ],
       "behavioral_evidence": [
         {
-          "command": "cargo test -p codex-app-server mcp_refresh",
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-app-server --expected-test-count 2 --test mcp_refresh::tests::strict_refresh_reports_thread_planning_failures --test mcp_refresh::tests::best_effort_refresh_attempts_every_loaded_thread",
           "result": "passed",
+          "expected_test_count": 2,
+          "expected_tests": [
+            "mcp_refresh::tests::strict_refresh_reports_thread_planning_failures",
+            "mcp_refresh::tests::best_effort_refresh_attempts_every_loaded_thread"
+          ],
           "tests_passed": 2,
           "tests_failed": 0,
           "assertion": "The best-effort refresh helper attempts every loaded thread and strict planning failures remain visible."
@@ -137,8 +155,12 @@
       ],
       "behavioral_evidence": [
         {
-          "command": "cargo test -p codex-core-skills outcome_rendering_uses_aliases_when_they_allow_more_skills_to_fit",
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core-skills --expected-test-count 1 --test render::tests::outcome_rendering_uses_aliases_when_they_allow_more_skills_to_fit",
           "result": "passed",
+          "expected_test_count": 1,
+          "expected_tests": [
+            "render::tests::outcome_rendering_uses_aliases_when_they_allow_more_skills_to_fit"
+          ],
           "tests_passed": 1,
           "tests_failed": 0,
           "assertion": "Aliases are selected only when they permit more skills to fit the metadata budget."
@@ -238,16 +260,17 @@
       "disposition": "deferred_thread_start_refresh_window",
       "scope": "mcp_runtime_invalidation_during_thread_startup",
       "hepta_commit": null,
-      "reason": "The upstream solution registers centralized runtimes during session creation. Hepta still pushes refresh config into session-owned managers and has no authoritative runtime/source epoch to invalidate before publication.",
+      "reason": "The upstream solution registers centralized runtimes during session creation. Hepta now rejects stale auth-generation publication and binds tool catalogs to a manager generation, but app-server refresh still enumerates loaded threads and there is no starting-runtime registry or monotonic configuration/source generation that can invalidate a runtime before publication.",
       "missing_prerequisites": [
         "centralized long-lived MCP runtime owner",
-        "monotonic source or configuration generation",
+        "monotonic configuration or source generation distinct from auth revision",
         "starting-runtime registration before asynchronous publication",
         "race test covering invalidation between registration and publish"
       ],
       "tests_run": false,
       "non_claims": [
-        "Loaded-thread refresh does not close the startup window."
+        "Loaded-thread refresh does not close the startup window.",
+        "Auth-generation publication guards do not replace starting-runtime registration."
       ]
     },
     {

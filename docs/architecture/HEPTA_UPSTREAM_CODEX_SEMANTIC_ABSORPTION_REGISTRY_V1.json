@@ -159,10 +159,19 @@
       },
       "record": {
         "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R6_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
-        "sha256": "9aabea289a1ea72eb2c529ba51cbb2731a74ed5663e513c0cb1569ce4888120f",
+        "sha256": "c936b0349cc97962bbae947b3b8b17bdf1e023d009e9f22bc8632ad25b3f51be",
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
+        {
+          "kind": "absorption",
+          "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+          "local_commit": "d3cd943d08fcc6b0b8604ade975acd6b75d76405",
+          "scope": "frozen_auth_generation_publication_and_same_manager_catalog_client_binding",
+          "non_claims": [
+            "No centralized immutable McpRuntime or automatic invalidation of loaded and starting runtimes is absorbed."
+          ]
+        },
         {
           "kind": "deferral",
           "upstream_commit": "ef2d3edb959a75a90665ade37d554f3ca65fe880",
@@ -174,9 +183,9 @@
         {
           "kind": "deferral",
           "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
-          "scope": "authentication_generation_bound_mcp_refresh",
+          "scope": "automatic_auth_change_invalidation_startup_and_immutable_runtime_parity",
           "non_claims": [
-            "No authoritative authentication generation or same-generation catalog/client binding is absorbed."
+            "Frozen-auth publication and same-manager catalog/client binding are absorbed; automatic auth-change invalidation, centralized immutable runtime publication, and startup parity remain deferred."
           ]
         }
       ]
@@ -226,7 +235,7 @@
       },
       "record": {
         "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R8_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
-        "sha256": "3280224009f116e13b97022a132a1180b45fa95b47268f67fddd318496038611",
+        "sha256": "7c0037ebf0d5c37b0b5e2a75756ef1c7bee7f8afad1a1732bd8949e5b0c0e6c9",
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
@@ -236,7 +245,7 @@
           "local_commit": "16364d4f2599ae2e6f05c3361961bc302b947081",
           "scope": "serialized_cancellation_safe_refresh_coordination_during_session_lifetime",
           "non_claims": [
-            "The local coordinator remains generation-bound session state rather than the upstream closeable semaphore abstraction."
+            "The local coordinator remains generation-bound session state rather than the upstream closeable semaphore abstraction; R6 separately binds frozen-auth publication."
           ]
         },
         {
@@ -260,7 +269,7 @@
       },
       "record": {
         "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R9_SEMANTIC_ABSORPTION_RECORD_2026-07-24.json",
-        "sha256": "3ca38cacd447ca1a3cf326a2167f0658179ac885aad399ce708f9c6a70f2e877",
+        "sha256": "a7cd837f84fecba5ea58f501f104738b10e72c2efe01a7e1c0da1c933156e2c0",
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [
@@ -337,7 +346,7 @@
           "upstream_commit": "3645a4397c4889ea483a3b9a61ad7cf5921aa384",
           "scope": "mcp_runtime_invalidation_during_thread_startup",
           "non_claims": [
-            "Loaded-thread refresh does not close the startup window."
+            "Loaded-thread refresh and auth-generation guards do not close the starting-runtime/config-source invalidation window."
           ]
         },
         {
@@ -361,7 +370,7 @@
       },
       "record": {
         "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R10_SEMANTIC_ABSORPTION_RECORD_2026-07-25.json",
-        "sha256": "a2d87c8a419a505ef2b5d5af3ecaa6eaf551dabb6ac2f8dd1622bc2dcdab1f92",
+        "sha256": "def7be57717aa8f0515b10f5a7bcbbcfb877385b8947aadbe826640bd8f0e963",
         "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
       },
       "disposition_bindings": [

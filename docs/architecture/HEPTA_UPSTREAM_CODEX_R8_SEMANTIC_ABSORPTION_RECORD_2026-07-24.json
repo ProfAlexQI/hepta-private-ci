@@ -13,6 +13,11 @@
     "cherry_pick_performed": false
   },
   "integration_mode": "existing_generation_coordinator_equivalence_with_bounded_shutdown_deferral",
+  "reconciliation": {
+    "reconciled_at": "2026-07-25T06:52:05Z",
+    "local_evidence_commit": "d3cd943d08fcc6b0b8604ade975acd6b75d76405",
+    "reason": "R6 frozen-auth generation publication and same-manager catalog/client binding are now locally evidenced. R8 remains a bounded coordinator equivalence because explicit closeable shutdown and single-owner consolidation are still absent."
+  },
   "absorptions": [
     {
       "lane": "tools_apps_runtime",
@@ -32,28 +37,20 @@
         "codex-rs/core/src/tools/router.rs",
         "codex-rs/core/src/tools/router_tests.rs"
       ],
-      "behavioral_evidence": [
-        {
-          "command": "cargo test -p codex-core explicit_refresh_rebuilds_mcp_connections_on_each_next_turn",
-          "result": "passed",
-          "tests_passed": 1,
-          "tests_failed": 0,
-          "assertion": "Each consumed explicit refresh rebuilds configured MCP connections."
-        },
-        {
-          "command": "cargo test -p codex-core cancelled_explicit_mcp_refresh_preserves_intent_until_publication",
-          "result": "passed",
-          "tests_passed": 1,
-          "tests_failed": 0,
-          "assertion": "Cancellation cannot consume the pending desired generation before publication."
-        },
-        {
-          "command": "cargo test -p codex-core rapid_explicit_mcp_refresh_only_publishes_latest_generation",
-          "result": "passed",
-          "tests_passed": 1,
-          "tests_failed": 0,
-          "assertion": "Concurrent desired generations publish only the latest valid replacement."
-        },
+    "behavioral_evidence": [
+      {
+        "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 3 --test session::tests::explicit_refresh_rebuilds_mcp_connections_on_each_next_turn --test session::tests::cancelled_explicit_mcp_refresh_preserves_intent_until_publication --test session::tests::rapid_explicit_mcp_refresh_only_publishes_latest_generation",
+        "result": "passed",
+        "expected_test_count": 3,
+        "expected_tests": [
+          "session::tests::explicit_refresh_rebuilds_mcp_connections_on_each_next_turn",
+          "session::tests::cancelled_explicit_mcp_refresh_preserves_intent_until_publication",
+          "session::tests::rapid_explicit_mcp_refresh_only_publishes_latest_generation"
+        ],
+        "tests_passed": 3,
+        "tests_failed": 0,
+        "assertion": "Exactly three coordinator tests prove repeat rebuild, cancellation-safe intent retention, and latest-generation-only publication."
+      },
         {
           "command": "cargo test -p codex-core advertised_mcp_tool_fails_closed_after_manager_generation_changes",
           "result": "passed",
@@ -65,7 +62,7 @@
       "non_claims": [
         "No byte-for-byte or type-level equivalence with upstream McpRefresh is claimed.",
         "The local coordinator remains a generation state plus session-owned lock rather than one closeable semaphore abstraction.",
-        "This narrow equivalence does not close R6 authentication-generation refresh or background prewarm."
+        "R6 now separately records frozen-auth generation publication and same-manager catalog/client binding; automatic auth-change invalidation and background prewarm remain deferred."
       ]
     }
   ],
@@ -77,9 +74,8 @@
       "disposition": "deferred_local_shutdown_contract_and_structural_consolidation",
       "scope": "closeable_shutdown_refresh_gate_and_single_owner_module",
       "hepta_commit": null,
-      "reason": "The upstream abstraction explicitly closes a semaphore during shutdown and places pending invalidation plus gate ownership in one module. Hepta currently relies on session/task teardown and keeps the generation state and serialization lock as adjacent Session fields. Consolidating those fields while R6 authentication publication is changing would add churn without closing a current behavioral defect.",
+      "reason": "The upstream abstraction explicitly closes a semaphore during shutdown and places pending invalidation plus gate ownership in one module. Hepta still relies on session/task teardown and keeps generation state and the serialization lock as adjacent Session fields. The now-stable auth-generation publication contract does not provide explicit waiter shutdown or structural single ownership.",
       "missing_prerequisites": [
-        "stable R6 authentication-generation publication contract",
         "explicit local shutdown behavior for a refresh waiting on the publication lock",
         "one coordinator API that preserves desired and applied generations",
         "regression proof that structural consolidation does not weaken same-generation catalog and client binding"

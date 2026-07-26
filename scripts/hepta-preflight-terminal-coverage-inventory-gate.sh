@@ -432,6 +432,9 @@ required_markers=(
   "upstream Codex latest active-safety regression gate"
   "upstream Codex latest release-governance non-activation gate"
   "upstream Codex latest operator briefing non-persistence gate"
+  "source-bound native ingress composition verify/self-test"
+  "source-bound dependency security verify/self-test"
+  "source-bound gate compatibility debt verify/self-test"
   "hepta-gateway tests"
   "codex-cli native tests"
   "control-ui smoke"
@@ -647,16 +650,19 @@ if [[ "$inline_fixture_mode" == true ]]; then
     preflight_markers+=("$marker")
   done < <(
     printf '%s\n' "$PREFLIGHT_TEXT" \
-      | grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' \
-      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/' \
+      | sed -nE \
+        -e 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/p' \
+        -e 's/^[[:space:]]*run_preflight_gate "([^"]*)"[[:space:]].*$/\1/p' \
       || true
   )
 else
   while IFS= read -r marker; do
     preflight_markers+=("$marker")
   done < <(
-    grep -E '^[[:space:]]*echo "\[hepta-preflight\] ' "$PREFLIGHT_PATH" \
-      | sed -E 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/' \
+    sed -nE \
+      -e 's/^[[:space:]]*echo "\[hepta-preflight\] (.*)"$/\1/p' \
+      -e 's/^[[:space:]]*run_preflight_gate "([^"]*)"[[:space:]].*$/\1/p' \
+      "$PREFLIGHT_PATH" \
       || true
   )
 fi
@@ -837,16 +843,24 @@ for marker in "${required_markers[@]}"; do
     while IFS= read -r line; do
       lines+=("$line")
     done < <(
-      grep -nF "echo \"[hepta-preflight] $marker\"" <<<"$PREFLIGHT_TEXT" \
+      {
+        grep -nF "echo \"[hepta-preflight] $marker\"" <<<"$PREFLIGHT_TEXT"
+        grep -nF "run_preflight_gate \"$marker\"" <<<"$PREFLIGHT_TEXT"
+      } \
         | cut -d: -f1 \
+        | sort -n \
         || true
     )
   else
     while IFS= read -r line; do
       lines+=("$line")
     done < <(
-      grep -nF "echo \"[hepta-preflight] $marker\"" "$PREFLIGHT_PATH" \
+      {
+        grep -nF "echo \"[hepta-preflight] $marker\"" "$PREFLIGHT_PATH"
+        grep -nF "run_preflight_gate \"$marker\"" "$PREFLIGHT_PATH"
+      } \
         | cut -d: -f1 \
+        | sort -n \
         || true
     )
   fi

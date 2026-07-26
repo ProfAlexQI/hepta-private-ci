@@ -94,11 +94,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - name: Install Rust 1.93.0
+      - name: Materialize immutable upstream intake refs for counted evidence
+        run: scripts/hepta-ci-materialize-upstream-intake materialize
+      - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
         with:
-          toolchain: 1.93.0
+          toolchain: 1.95.0
           components: rustfmt, clippy
       - name: Cache Cargo inputs and backend target
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -108,9 +111,11 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             codex-rs/target
-          key: ${{ runner.os }}-hepta-ci-v1-${{ github.job }}-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock') }}
-      - name: Fetch the locked backend graph
-        run: cargo fetch --locked --manifest-path codex-rs/Cargo.toml
+          key: ${{ runner.os }}-hepta-ci-v2-${{ github.job }}-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/rust-toolchain.toml', 'apps/hepta-native/Cargo.lock') }}
+      - name: Fetch both locked dependency graphs
+        run: |
+          cargo fetch --locked --manifest-path codex-rs/Cargo.toml
+          cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml
       - name: Install pinned dependency security tools
         run: |
           cargo install cargo-audit --version 0.22.2 --locked
@@ -145,10 +150,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Install Rust 1.93.0
+      - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
         with:
-          toolchain: 1.93.0
+          toolchain: 1.95.0
       - name: Cache Cargo inputs and full workspace target
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:

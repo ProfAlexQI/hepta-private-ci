@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -16,11 +18,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_REGISTRY = (
-    ROOT
-    / "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json"
-)
+DEFAULT_REGISTRY = ROOT / "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json"
 CI_CONTRACT = ROOT / ".github/hepta-ci-contract-v1.json"
+TEST_RESULT = re.compile(r"test result: ok\. (\d+) passed; (\d+) failed; \d+ ignored; \d+ measured; \d+ filtered out")
 
 
 class GateError(RuntimeError):
@@ -34,11 +34,8 @@ def require(condition: bool, message: str) -> None:
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-C", str(ROOT), *args],
-        check=check,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        ["git", "-C", str(ROOT), *args], check=check, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
 
 
@@ -64,10 +61,7 @@ def repo_path(relative: str) -> Path:
     require(not path.is_absolute(), f"repository path must be relative: {relative}")
     require(".." not in path.parts, f"repository path escapes root: {relative}")
     resolved = (ROOT / path).resolve()
-    require(
-        resolved == ROOT or ROOT in resolved.parents,
-        f"repository path escapes root: {relative}",
-    )
+    require(resolved == ROOT or ROOT in resolved.parents, f"repository path escapes root: {relative}")
     return resolved
 
 
@@ -76,14 +70,8 @@ def verify_registry_ci_binding(registry_path: Path) -> None:
     binding = contract.get("upstream_truth")
     require(isinstance(binding, dict), "CI upstream-truth binding is missing")
     expected_path = repo_path(binding.get("registry", ""))
-    require(
-        registry_path.resolve() == expected_path,
-        "semantic registry path is not the CI-bound registry",
-    )
-    require(
-        digest_file(registry_path) == binding.get("registry_sha256"),
-        "semantic registry hash is not bound by the CI contract",
-    )
+    require(registry_path.resolve() == expected_path, "semantic registry path is not the CI-bound registry")
+    require(digest_file(registry_path) == binding.get("registry_sha256"), "semantic registry hash is not bound by the CI contract")
 
 
 def ref_oid(ref: str) -> str | None:
@@ -97,24 +85,17 @@ def require_direct_commit(ref: str, expected: str, label: str) -> None:
     actual = ref_oid(ref)
     require(actual == expected, f"{label} ref mismatch: expected {expected}, found {actual}")
     object_type = git("cat-file", "-t", expected, check=False)
-    require(
-        object_type.returncode == 0 and object_type.stdout.strip() == "commit",
-        f"{label} object is not an available commit: {expected}",
-    )
+    require(object_type.returncode == 0 and object_type.stdout.strip() == "commit", f"{label} object is not an available commit: {expected}")
 
 
 def require_commit(commit: str, label: str) -> None:
     require(
-        isinstance(commit, str)
-        and len(commit) == 40
+        isinstance(commit, str) and len(commit) == 40
         and all(character in "0123456789abcdef" for character in commit),
         f"{label} must be a lowercase full SHA-1",
     )
     object_type = git("cat-file", "-t", commit, check=False)
-    require(
-        object_type.returncode == 0 and object_type.stdout.strip() == "commit",
-        f"{label} is not an available commit: {commit}",
-    )
+    require(object_type.returncode == 0 and object_type.stdout.strip() == "commit", f"{label} is not an available commit: {commit}")
 
 
 def is_ancestor(ancestor: str, descendant: str) -> bool:
@@ -134,10 +115,7 @@ def intake_entries(intake: dict[str, Any]) -> list[dict[str, Any]]:
         require(isinstance(shard, dict), "intake shard descriptor must be an object")
         path = repo_path(shard.get("path", ""))
         require(path.is_file(), f"intake shard is missing: {path}")
-        require(
-            digest_file(path) == shard.get("sha256"),
-            f"intake shard hash mismatch: {path}",
-        )
+        require(digest_file(path) == shard.get("sha256"), f"intake shard hash mismatch: {path}")
         inventory = load_json(path).get("commit_inventory")
         require(isinstance(inventory, list), f"intake shard lacks commit_inventory: {path}")
         entries.extend(inventory)
@@ -159,18 +137,46 @@ def verify_evidence(item: dict[str, Any], label: str) -> None:
         for evidence in behavioral:
             require(isinstance(evidence, dict), f"{label} evidence must be an object")
             result = evidence.get("result")
-            require(
-                isinstance(result, str) and result.startswith("passed"),
-                f"{label} evidence is not passing",
+            require(isinstance(result, str) and result.startswith("passed"), f"{label} evidence is not passing")
+            require(bool(evidence.get("command") or evidence.get("scope")), f"{label} evidence lacks command or scope")
+            command = evidence.get("command")
+            expected_count = evidence.get("expected_test_count")
+            uses_counted_runner = (
+                isinstance(command, str)
+                and command.startswith("scripts/hepta-upstream-truth-gate evidence-test ")
             )
-            require(
-                bool(evidence.get("command") or evidence.get("scope")),
-                f"{label} evidence lacks command or scope",
-            )
+            if uses_counted_runner or expected_count is not None:
+                require(uses_counted_runner, f"{label} counted evidence must use the counted runner")
+                require(isinstance(expected_count, int) and expected_count > 0, f"{label} counted evidence expected count must be positive")
+                require(
+                    evidence.get("tests_passed") == expected_count and evidence.get("tests_failed") == 0,
+                    f"{label} counted evidence result totals drifted",
+                )
+                expected_tests = evidence.get("expected_tests")
+                require(
+                    isinstance(expected_tests, list) and len(expected_tests) == expected_count
+                    and len(set(expected_tests)) == expected_count
+                    and all(isinstance(test, str) and test.strip() for test in expected_tests),
+                    f"{label} counted evidence exact test set is invalid",
+                )
+                command_parts = shlex.split(command)
+                require(command_parts[:2] == ["scripts/hepta-upstream-truth-gate", "evidence-test"], f"{label} counted evidence runner path is invalid")
+                require("--expected-test-count" in command_parts, f"{label} counted evidence command lacks expected-test-count")
+                count_index = command_parts.index("--expected-test-count")
+                require(
+                    count_index + 1 < len(command_parts) and command_parts[count_index + 1] == str(expected_count),
+                    f"{label} counted evidence command count drifted",
+                )
+                command_tests = [
+                    command_parts[index + 1] for index, value in enumerate(command_parts[:-1])
+                    if value == "--test"
+                ]
+                require(sorted(command_tests) == sorted(expected_tests), f"{label} counted evidence command test set drifted")
+                counted_runner = repo_path(command_parts[0])
+                require(counted_runner.is_file() and os.access(counted_runner, os.X_OK), f"{label} counted evidence runner is missing or not executable")
     else:
         require(
-            isinstance(regression, list)
-            and bool(regression)
+            isinstance(regression, list) and bool(regression)
             and all(isinstance(test, str) and test.strip() for test in regression),
             f"{label} lacks passing behavioral evidence or regression coverage",
         )
@@ -181,6 +187,157 @@ def verify_evidence(item: dict[str, Any], label: str) -> None:
         require(repo_path(relative).is_file(), f"{label} evidence file is missing: {relative}")
 
 
+def evidence_test(arguments: list[str]) -> dict[str, Any]:
+    values: dict[str, list[str]] = {}
+    index = 0
+    while index < len(arguments):
+        flag = arguments[index]
+        require(flag in {"--package", "--expected-test-count", "--test"}, f"unknown evidence-test argument: {flag}")
+        require(index + 1 < len(arguments), f"missing value for evidence-test argument: {flag}")
+        values.setdefault(flag, []).append(arguments[index + 1])
+        index += 2
+    for flag in ("--package", "--expected-test-count"):
+        require(len(values.get(flag, [])) == 1, f"evidence-test requires exactly one {flag}")
+    package = values["--package"][0]
+    try:
+        expected_count = int(values["--expected-test-count"][0])
+    except ValueError as error:
+        raise GateError("evidence-test count must be an integer") from error
+    expected = sorted(values.get("--test", []))
+    require(expected_count > 0 and len(expected) == expected_count, "evidence-test expected set/count mismatch")
+    require(len(set(expected)) == expected_count, "evidence-test expected tests must be unique")
+
+    def cargo(test_name: str, *libtest_args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["cargo", "test", "--locked", "-p", package, "--lib", test_name, "--", "--exact", *libtest_args],
+            cwd=ROOT / "codex-rs", text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, check=False,
+        )
+
+    discovered: list[str] = []
+    passed = 0
+    failed = 0
+    for test_name in expected:
+        listing = cargo(test_name, "--list")
+        require(listing.returncode == 0, f"exact Cargo test listing failed for {test_name}:\n{listing.stdout}")
+        listed = sorted(line.removesuffix(": test") for line in listing.stdout.splitlines() if line.endswith(": test"))
+        require(listed == [test_name], f"exact Cargo test set drifted for {test_name}: discovered={listed!r}")
+        discovered.extend(listed)
+
+        execution = cargo(test_name)
+        require(execution.returncode == 0, f"exact Cargo test execution failed for {test_name}:\n{execution.stdout}")
+        totals = [tuple(map(int, match.groups())) for match in TEST_RESULT.finditer(execution.stdout)]
+        require(bool(totals), f"exact Cargo output contained no libtest result for {test_name}")
+        test_passed = sum(row[0] for row in totals)
+        test_failed = sum(row[1] for row in totals)
+        require(test_passed == 1 and test_failed == 0, f"exact Cargo result drifted for {test_name}: passed={test_passed}, failed={test_failed}")
+        passed += test_passed
+        failed += test_failed
+    require(sorted(discovered) == expected, f"exact Cargo aggregate test set drifted: expected={expected!r}, discovered={discovered!r}")
+    require(passed == expected_count and failed == 0, f"exact Cargo aggregate result drifted: passed={passed}, failed={failed}")
+    return {
+        "schema": "hepta_upstream_semantic_evidence_test_v1", "status": "ready",
+        "package": package, "execution_mode": "one_exact_library_libtest_invocation_per_test",
+        "expected_test_count": expected_count,
+        "discovered_tests": discovered, "passed_test_count": passed, "failed_test_count": failed,
+        "zero_test_success_rejected": True, "unexpected_test_set_rejected": True,
+    }
+
+
+def counted_evidence_minimum_policy() -> tuple[int, int]:
+    contract = load_json(CI_CONTRACT)
+    binding = contract.get("upstream_truth")
+    require(isinstance(binding, dict), "CI upstream-truth binding is missing")
+    minimum_command_count = binding.get("minimum_counted_evidence_command_count")
+    minimum_test_count = binding.get("minimum_exact_test_count")
+    require(
+        isinstance(minimum_command_count, int) and minimum_command_count > 0,
+        "CI counted-evidence command minimum is invalid",
+    )
+    require(
+        isinstance(minimum_test_count, int) and minimum_test_count > 0,
+        "CI exact-test minimum is invalid",
+    )
+    return minimum_command_count, minimum_test_count
+
+
+def require_counted_evidence_minimums(command_count: int, test_count: int) -> tuple[int, int]:
+    minimum_command_count, minimum_test_count = counted_evidence_minimum_policy()
+    require(
+        command_count >= minimum_command_count,
+        f"counted evidence command count regressed: minimum={minimum_command_count}, actual={command_count}",
+    )
+    require(
+        test_count >= minimum_test_count,
+        f"exact counted evidence test count regressed: minimum={minimum_test_count}, actual={test_count}",
+    )
+    return minimum_command_count, minimum_test_count
+
+
+def verify_counted_evidence(registry_path: Path) -> dict[str, Any]:
+    semantic = verify_semantic(registry_path)
+    registry = load_json(registry_path)
+    commands_seen: set[str] = set()
+    command_count = 0
+    test_count = 0
+    packages: set[str] = set()
+
+    for descriptor in registry["records"]:
+        record = load_json(repo_path(descriptor["record"]["path"]))
+        for absorption in record.get("absorptions", []):
+            for evidence in absorption.get("behavioral_evidence", []):
+                command = evidence.get("command")
+                if not (
+                    isinstance(command, str)
+                    and command.startswith("scripts/hepta-upstream-truth-gate evidence-test ")
+                ):
+                    continue
+                require(command not in commands_seen, f"duplicate counted evidence command: {command}")
+                commands_seen.add(command)
+                command_parts = shlex.split(command)
+                require(
+                    command_parts[:2] == ["scripts/hepta-upstream-truth-gate", "evidence-test"],
+                    "counted evidence command does not use the canonical runner",
+                )
+                result = evidence_test(command_parts[2:])
+                expected_tests = sorted(evidence["expected_tests"])
+                require(
+                    result["expected_test_count"] == evidence["expected_test_count"],
+                    "counted evidence execution count drifted from its record",
+                )
+                require(
+                    sorted(result["discovered_tests"]) == expected_tests,
+                    "counted evidence execution set drifted from its record",
+                )
+                require(
+                    result["passed_test_count"] == evidence["tests_passed"]
+                    and result["failed_test_count"] == evidence["tests_failed"],
+                    "counted evidence execution result drifted from its record",
+                )
+                command_count += 1
+                test_count += result["expected_test_count"]
+                packages.add(result["package"])
+
+    minimum_command_count, minimum_test_count = require_counted_evidence_minimums(
+        command_count,
+        test_count,
+    )
+    return {
+        "schema": "hepta_upstream_counted_semantic_evidence_gate_v1",
+        "status": "ready",
+        "registry_sha256": semantic["registry_sha256"],
+        "command_count": command_count,
+        "exact_test_count": test_count,
+        "minimum_command_count": minimum_command_count,
+        "minimum_exact_test_count": minimum_test_count,
+        "packages": sorted(packages),
+        "one_exact_library_libtest_invocation_per_test": True,
+        "zero_test_success_rejected": True,
+        "unexpected_test_set_rejected": True,
+        "upstream_fully_consumed": False,
+    }
+
+
 def verify_semantic(
     registry_path: Path,
     *,
@@ -189,11 +346,7 @@ def verify_semantic(
     if enforce_ci_binding:
         verify_registry_ci_binding(registry_path)
     registry = load_json(registry_path)
-    require(
-        registry.get("schema_version")
-        == "hepta_upstream_codex_semantic_absorption_registry_v1",
-        "unsupported semantic-absorption registry schema",
-    )
+    require(registry.get("schema_version") == "hepta_upstream_codex_semantic_absorption_registry_v1", "unsupported semantic-absorption registry schema")
     require(registry.get("status") == "ready", "semantic-absorption registry is not ready")
     upstream = registry.get("upstream")
     require(isinstance(upstream, dict), "registry upstream contract is missing")
@@ -228,18 +381,12 @@ def verify_semantic(
 
         intake = load_json(intake_path)
         record = load_json(record_path)
-        require(
-            record.get("schema_version") == record_spec.get("schema_version"),
-            f"{record_id} absorption record schema mismatch",
-        )
+        require(record.get("schema_version") == record_spec.get("schema_version"), f"{record_id} absorption record schema mismatch")
         source_record = record.get("source_intake")
         require(isinstance(source_record, dict), f"{record_id} source binding is missing")
         require(source_record.get("path") == source.get("path"), f"{record_id} source path mismatch")
         embedded_hash = source_record.get("manifest_sha256")
-        require(
-            embedded_hash is None or embedded_hash == source.get("sha256"),
-            f"{record_id} embedded source manifest hash mismatch",
-        )
+        require(embedded_hash is None or embedded_hash == source.get("sha256"), f"{record_id} embedded source manifest hash mismatch")
         source_commit = source_record.get("commit")
         require_commit(source_commit, f"{record_id} source-manifest local commit")
         require(is_ancestor(source_commit, head), f"{record_id} source-manifest commit is unreachable")
@@ -286,28 +433,13 @@ def verify_semantic(
             key = (kind, commit)
             require(key not in expected_keys, f"{record_id} duplicate canonical binding: {key}")
             expected_keys.add(key)
-            require(
-                isinstance(binding.get("scope"), str) and binding["scope"].strip(),
-                f"{record_id} canonical binding scope is missing: {commit}",
-            )
-            require(
-                meaningful_non_claims(binding.get("non_claims")),
-                f"{record_id} canonical binding non-claims are missing: {commit}",
-            )
+            require(isinstance(binding.get("scope"), str) and binding["scope"].strip(), f"{record_id} canonical binding scope is missing: {commit}")
+            require(meaningful_non_claims(binding.get("non_claims")), f"{record_id} canonical binding non-claims are missing: {commit}")
             if kind == "absorption":
-                require_commit(
-                    binding.get("local_commit"),
-                    f"{record_id} canonical local absorption commit",
-                )
-                require(
-                    is_ancestor(binding["local_commit"], head),
-                    f"{record_id} canonical local absorption commit is unreachable",
-                )
+                require_commit(binding.get("local_commit"), f"{record_id} canonical local absorption commit")
+                require(is_ancestor(binding["local_commit"], head), f"{record_id} canonical local absorption commit is unreachable")
             else:
-                require(
-                    binding.get("local_commit") is None,
-                    f"{record_id} deferral must not bind a local commit",
-                )
+                require(binding.get("local_commit") is None, f"{record_id} deferral must not bind a local commit")
         require(set(actual) == expected_keys, f"{record_id} dispositions drifted from registry")
 
         for (kind, commit), item in actual.items():
@@ -317,12 +449,7 @@ def verify_semantic(
             require(commit != start and not is_ancestor(commit, start), f"{record_id} disposition is outside range")
             record_title = item.get("upstream_title")
             intake_title = by_commit[commit].get("title")
-            require(
-                isinstance(record_title, str)
-                and isinstance(intake_title, str)
-                and record_title.replace("`", "") == intake_title.replace("`", ""),
-                f"{record_id} upstream title mismatch: {commit}",
-            )
+            require(isinstance(record_title, str) and isinstance(intake_title, str) and record_title.replace("`", "") == intake_title.replace("`", ""), f"{record_id} upstream title mismatch: {commit}")
             binding = next(value for value in bindings if (value["kind"], value["upstream_commit"]) == (kind, commit))
             if item.get("scope") is not None:
                 require(item.get("scope") == binding.get("scope"), f"{record_id} scope mismatch: {commit}")
@@ -330,47 +457,24 @@ def verify_semantic(
                 require(meaningful_non_claims(item["non_claims"]), f"{record_id} empty record non-claims")
             if kind == "absorption":
                 local_commit = item.get("hepta_commit")
-                require(
-                    local_commit == binding.get("local_commit"),
-                    f"{record_id} local absorption binding mismatch",
-                )
+                require(local_commit == binding.get("local_commit"), f"{record_id} local absorption binding mismatch")
                 require_commit(local_commit, f"{record_id} local absorption commit")
                 require(is_ancestor(local_commit, head), f"{record_id} local absorption commit is unreachable")
-                require(
-                    isinstance(item.get("semantic_mapping"), str) and item["semantic_mapping"].strip(),
-                    f"{record_id} semantic mapping is missing: {commit}",
-                )
+                require(isinstance(item.get("semantic_mapping"), str) and item["semantic_mapping"].strip(), f"{record_id} semantic mapping is missing: {commit}")
                 verify_evidence(item, f"{record_id} absorption {commit}")
             else:
                 require(item.get("hepta_commit") is None, f"{record_id} deferral has local commit")
-                require(
-                    isinstance(item.get("disposition"), str)
-                    and item["disposition"].startswith("deferred"),
-                    f"{record_id} deferral disposition is invalid",
-                )
-                require(
-                    isinstance(item.get("reason"), str) and item["reason"].strip(),
-                    f"{record_id} deferral reason is missing",
-                )
-                require(
-                    isinstance(item.get("missing_prerequisites"), list)
-                    and bool(item["missing_prerequisites"]),
-                    f"{record_id} deferral prerequisites are missing",
-                )
+                require(isinstance(item.get("disposition"), str) and item["disposition"].startswith("deferred"), f"{record_id} deferral disposition is invalid")
+                require(isinstance(item.get("reason"), str) and item["reason"].strip(), f"{record_id} deferral reason is missing")
+                require(isinstance(item.get("missing_prerequisites"), list) and bool(item["missing_prerequisites"]), f"{record_id} deferral prerequisites are missing")
                 require(item.get("tests_run") is False, f"{record_id} deferred tests_run must be false")
 
         claims = record.get("claims")
         require(isinstance(claims, dict), f"{record_id} record claims are missing")
         absorbed_claim = claims.get("absorbed_commit_count", 0)
         equivalent_claim = claims.get("existing_semantic_equivalent_count", 0)
-        require(
-            len(absorptions) == absorbed_claim + equivalent_claim,
-            f"{record_id} absorbed/equivalent count drift",
-        )
-        require(
-            len(deferrals) == claims.get("deferred_commit_count", len(deferrals)),
-            f"{record_id} deferred count drift",
-        )
+        require(len(absorptions) == absorbed_claim + equivalent_claim, f"{record_id} absorbed/equivalent count drift")
+        require(len(deferrals) == claims.get("deferred_commit_count", len(deferrals)), f"{record_id} deferred count drift")
         for claim in (
             "upstream_fully_consumed",
             "merge_performed",
@@ -388,18 +492,12 @@ def verify_semantic(
     require(isinstance(claims, dict), "registry claims are missing")
     require(claims.get("upstream_fully_consumed") is False, "registry must not claim full consumption")
     return {
-        "schema": "hepta_upstream_semantic_absorption_gate_v1",
-        "status": "ready",
-        "registry_sha256": digest_file(registry_path),
-        "record_count": len(records),
-        "absorption_or_equivalence_count": absorption_total,
-        "deferral_count": deferral_total,
-        "source_manifest_hashes_verified": True,
-        "upstream_entries_verified": True,
-        "local_commits_reachable": True,
-        "behavioral_evidence_verified": True,
-        "scope_and_non_claims_verified": True,
-        "upstream_fully_consumed": False,
+        "schema": "hepta_upstream_semantic_absorption_gate_v1", "status": "ready",
+        "registry_sha256": digest_file(registry_path), "record_count": len(records),
+        "absorption_or_equivalence_count": absorption_total, "deferral_count": deferral_total,
+        "source_manifest_hashes_verified": True, "upstream_entries_verified": True,
+        "local_commits_reachable": True, "behavioral_evidence_verified": True,
+        "scope_and_non_claims_verified": True, "upstream_fully_consumed": False,
     }
 
 
@@ -549,46 +647,51 @@ def expect_failure(callback: Any, label: str) -> None:
 
 def self_test(registry_path: Path) -> dict[str, Any]:
     verify_semantic(registry_path)
+    counted_evidence = {
+        "behavioral_evidence": [{
+            "command": "scripts/hepta-upstream-truth-gate evidence-test --package fixture --expected-test-count 1 --test fixture::exact_fixture",
+            "result": "passed; exactly 1 test", "tests_passed": 1, "tests_failed": 0,
+            "expected_test_count": 1, "expected_tests": ["fixture::exact_fixture"],
+        }],
+        "core_files": ["scripts/hepta-upstream-truth-gate"],
+    }
+    verify_evidence(counted_evidence, "counted evidence positive fixture")
+    for label, field, value in (
+        ("zero-test evidence count", "expected_test_count", 0),
+        ("evidence command test set drift", "expected_tests", ["fixture::other"]),
+    ):
+        fixture = json.loads(json.dumps(counted_evidence))
+        fixture["behavioral_evidence"][0][field] = value
+        expect_failure(lambda fixture=fixture: verify_evidence(fixture, label), label)
+    minimum_command_count, minimum_test_count = counted_evidence_minimum_policy()
+    require_counted_evidence_minimums(minimum_command_count, minimum_test_count)
+    expect_failure(
+        lambda: require_counted_evidence_minimums(minimum_command_count - 1, minimum_test_count),
+        "counted evidence command minimum regression",
+    )
+    expect_failure(
+        lambda: require_counted_evidence_minimums(minimum_command_count, minimum_test_count - 1),
+        "exact counted evidence test minimum regression",
+    )
+
     registry = load_json(registry_path)
     with tempfile.TemporaryDirectory(prefix="hepta-upstream-truth-") as temporary:
         directory = Path(temporary)
-        bad_hash = json.loads(json.dumps(registry))
-        bad_hash["records"][0]["source_intake"]["sha256"] = "0" * 64
-        bad_hash_path = directory / "bad-hash.json"
-        bad_hash_path.write_text(json.dumps(bad_hash), encoding="utf-8")
-        expect_failure(
-            lambda: verify_semantic(bad_hash_path, enforce_ci_binding=False),
-            "source manifest hash",
+        mutations = (
+            ("source manifest hash", ("records", 0, "source_intake", "sha256"), "0" * 64),
+            ("canonical scope", ("records", 0, "disposition_bindings", 0, "scope"), ""),
+            ("canonical non-claims", ("records", 0, "disposition_bindings", 0, "non_claims"), []),
+            ("unreachable local absorption commit", ("records", 0, "disposition_bindings", 0, "local_commit"), registry["upstream"]["expected_head"]),
         )
-
-        no_scope = json.loads(json.dumps(registry))
-        no_scope["records"][0]["disposition_bindings"][0]["scope"] = ""
-        no_scope_path = directory / "no-scope.json"
-        no_scope_path.write_text(json.dumps(no_scope), encoding="utf-8")
-        expect_failure(
-            lambda: verify_semantic(no_scope_path, enforce_ci_binding=False),
-            "canonical scope",
-        )
-
-        no_non_claims = json.loads(json.dumps(registry))
-        no_non_claims["records"][0]["disposition_bindings"][0]["non_claims"] = []
-        no_non_claims_path = directory / "no-non-claims.json"
-        no_non_claims_path.write_text(json.dumps(no_non_claims), encoding="utf-8")
-        expect_failure(
-            lambda: verify_semantic(no_non_claims_path, enforce_ci_binding=False),
-            "canonical non-claims",
-        )
-
-        unreachable = json.loads(json.dumps(registry))
-        unreachable["records"][0]["disposition_bindings"][0]["local_commit"] = registry[
-            "upstream"
-        ]["expected_head"]
-        unreachable_path = directory / "unreachable-local-commit.json"
-        unreachable_path.write_text(json.dumps(unreachable), encoding="utf-8")
-        expect_failure(
-            lambda: verify_semantic(unreachable_path, enforce_ci_binding=False),
-            "unreachable local absorption commit",
-        )
+        for fixture_number, (label, path, value) in enumerate(mutations):
+            fixture = json.loads(json.dumps(registry))
+            target: Any = fixture
+            for component in path[:-1]:
+                target = target[component]
+            target[path[-1]] = value
+            fixture_path = directory / f"semantic-{fixture_number}.json"
+            fixture_path.write_text(json.dumps(fixture), encoding="utf-8")
+            expect_failure(lambda path=fixture_path: verify_semantic(path, enforce_ci_binding=False), label)
 
         upstream = registry["upstream"]
         now = int(time.time())
@@ -623,28 +726,20 @@ def self_test(registry_path: Path) -> dict[str, Any]:
         mismatch["remote_head"] = "0" * 40
         mismatch_path = directory / "mismatch-receipt.json"
         mismatch_path.write_text(json.dumps(mismatch), encoding="utf-8")
-        expect_failure(
-            lambda: verify_network_receipt(registry_path, mismatch_path),
-            "network head mismatch",
-        )
+        expect_failure(lambda: verify_network_receipt(registry_path, mismatch_path), "network head mismatch")
 
         stale = dict(base)
         stale_epoch = now - registry["network_receipt"]["maximum_age_seconds"] - 1
         stale["generated_at_epoch"] = stale_epoch
-        stale["generated_at"] = (
-            datetime.fromtimestamp(stale_epoch, timezone.utc).isoformat().replace("+00:00", "Z")
-        )
+        stale["generated_at"] = datetime.fromtimestamp(stale_epoch, timezone.utc).isoformat().replace("+00:00", "Z")
         stale_path = directory / "stale-receipt.json"
         stale_path.write_text(json.dumps(stale), encoding="utf-8")
-        expect_failure(
-            lambda: verify_network_receipt(registry_path, stale_path),
-            "stale network receipt",
-        )
+        expect_failure(lambda: verify_network_receipt(registry_path, stale_path), "stale network receipt")
     return {
         "schema": "hepta_upstream_truth_gate_self_test_v1",
         "status": "ready",
-        "positive_fixtures": 2,
-        "negative_fixtures": 6,
+        "positive_fixtures": 3,
+        "negative_fixtures": 10,
     }
 
 
@@ -654,6 +749,12 @@ def emit(value: dict[str, Any]) -> None:
 
 def main() -> int:
     registry_path = registry_from_environment()
+    if len(sys.argv) >= 3 and sys.argv[1] == "evidence-test":
+        emit(evidence_test(sys.argv[2:]))
+        return 0
+    if len(sys.argv) == 2 and sys.argv[1] == "verify-counted-evidence":
+        emit(verify_counted_evidence(registry_path))
+        return 0
     if len(sys.argv) == 2 and sys.argv[1] == "verify-semantic":
         emit(verify_semantic(registry_path))
         return 0
@@ -668,7 +769,7 @@ def main() -> int:
         return 0
     print(
         "usage: scripts/hepta-upstream-truth-gate "
-        "<verify-semantic|self-test|network-receipt PATH|verify-network-receipt PATH>",
+        "<verify-semantic|verify-counted-evidence|self-test|evidence-test ARGS|network-receipt PATH|verify-network-receipt PATH>",
         file=sys.stderr,
     )
     return 2

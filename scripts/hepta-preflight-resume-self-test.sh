@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 RESUME="$ROOT/scripts/hepta-preflight-resume"
-
 tmp="$(mktemp -d /tmp/hepta-preflight-resume-self-test.XXXXXX)"
-trap 'rm -rf "$tmp"' EXIT
-
+trap '[[ "${HEPTA_RESUME_SELFTEST_KEEP_TMP:-0}" == "1" ]] || rm -rf "$tmp"' EXIT
 fixture="$tmp/repo"
 mkdir -p "$fixture/scripts" "$fixture/codex-rs" "$fixture/apps/hepta-native"
 cp "$RESUME" "$fixture/scripts/hepta-preflight-resume"
 chmod +x "$fixture/scripts/hepta-preflight-resume"
-
 cat >"$fixture/scripts/hepta-preflight.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -21,13 +17,16 @@ cd "$(dirname "$0")/.."
 RUN_NATIVE="${HEPTA_PREFLIGHT_NATIVE:-0}"
 RUN_RELEASE="${HEPTA_PREFLIGHT_RELEASE:-0}"
 PREFLIGHT_RELEASE_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+run_preflight_gate() {
+  printf '[hepta-preflight] %s\n' "$1"
+  "${@:2}"
+}
 printf '[fixture] release_target=%s\n' "$PREFLIGHT_RELEASE_TARGET_DIR"
 # hepta-preflight-resume: prelude-end
-
 if [[ "${HEPTA_RESUME_TEST_BREAK_STATE:-0}" == "1" ]]; then
   rm -rf "${HEPTA_RESUME_TEST_STATE_DIR:?}"
 fi
-echo "[hepta-preflight] fixture deterministic gate"
+run_preflight_gate "fixture deterministic gate" true
 [[ "$PREFLIGHT_RELEASE_TARGET_DIR" == "${HEPTA_RESUME_TEST_EXPECTED_TARGET:?}" ]] || exit 44
 [[ -z "${CODEX_THREAD_ID+x}" ]] || exit 45
 if [[ -n "${HEPTA_RESUME_TEST_EXPECTED_PATH+x}" \
@@ -50,10 +49,13 @@ if [[ "${HEPTA_RESUME_TEST_FAIL:-0}" == "1" \
   || ( -n "${HEPTA_RESUME_TEST_FAIL_FILE:-}" && -f "$HEPTA_RESUME_TEST_FAIL_FILE" ) ]]; then
   exit 42
 fi
-
+echo "[hepta-preflight] source-bound release gate receipt replay boundary"
+echo "[hepta-preflight] fixture dependency security receipt"
+true
+echo "[hepta-preflight] fixture compatibility receipt"
+true
 echo "[hepta-preflight] fixture trailing gate"
 true
-
 if [[ "$RUN_NATIVE" == "1" ]]; then
   echo "[hepta-preflight] fixture native gate"
   true
@@ -66,7 +68,6 @@ if [[ -n "${HEPTA_RESUME_TEST_TERMINAL_REPLAY_SIGNAL:-}" ]]; then
     sleep 0.05
   done
 fi
-
 if [[ "$RUN_RELEASE" == "1" ]]; then
   echo "[hepta-preflight] fixture release gate"
   if [[ -n "${HEPTA_RESUME_TEST_TERMINAL_FAIL_FILE:-}" \
@@ -77,26 +78,37 @@ if [[ "$RUN_RELEASE" == "1" ]]; then
 else
   echo "[hepta-preflight] release build skipped (set HEPTA_PREFLIGHT_RELEASE=1)"
 fi
-
 echo "[hepta-preflight] fixture whitespace/status"
 true
-
+if [[ "$RUN_RELEASE" == "1" ]]; then
+  fixture_provenance='{"fixture":true}'
+  fixture_provenance_sha="$(
+    printf '%s' "$fixture_provenance" | shasum -a 256 | awk '{print $1}'
+  )"
+  printf '[hepta-preflight-provenance] %s\n' "$fixture_provenance"
+  printf '[hepta-preflight-final] {"artifact_sha256":"%s","build_provenance_sha256":"%s","schema":"hepta_preflight_final_receipt_v1","source_commit":"%s","status":"passed"}\n' \
+    "$(printf '1%.0s' {1..64})" \
+    "$fixture_provenance_sha" \
+    "$(git rev-parse HEAD)"
+  if [[ -n "${HEPTA_RESUME_TEST_FAIL_AFTER_PROVENANCE_FILE:-}" \
+    && -f "$HEPTA_RESUME_TEST_FAIL_AFTER_PROVENANCE_FILE" ]]; then
+    rm -f "$HEPTA_RESUME_TEST_FAIL_AFTER_PROVENANCE_FILE"
+    exit 42
+  fi
+fi
 echo "Hepta preflight passed"
 EOF
 chmod +x "$fixture/scripts/hepta-preflight.sh"
-
 touch \
   "$fixture/codex-rs/Cargo.lock" \
   "$fixture/apps/hepta-native/Cargo.lock" \
   "$fixture/MODULE.bazel.lock"
-
 git -C "$fixture" init -q
 git -C "$fixture" add .
 git -C "$fixture" \
   -c user.name='Hepta Resume Self-Test' \
   -c user.email='hepta-resume-self-test@invalid' \
   commit -qm 'fixture'
-
 state="$tmp/resume.state"
 log="$tmp/resume.log"
 target="$tmp/target"
@@ -110,7 +122,6 @@ common_env=(
   CARGO_TARGET_DIR="$target"
   HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
 )
-
 assert_complete_state() {
   jq -e '
     .schema_version == "hepta_preflight_resume_state_v2"
@@ -135,7 +146,6 @@ assert_complete_state() {
     and .last_exit == {preflight:0, tee:0, checkpoint:0, combined:0}
   ' "$1" >/dev/null
 }
-
 fixture_head="$(git -C "$fixture" rev-parse HEAD)"
 printf '%s\t%s\n' "$fixture_head" "fixture whitespace/status" >"$state"
 legacy_show_json="$(env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" --show)"
@@ -155,7 +165,6 @@ env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
 assert_complete_state "$state"
 grep -q '^\[fixture\] release_target=' "$log"
 grep -q '^\[hepta-preflight\] fixture deterministic gate$' "$log"
-
 complete_show_json="$(
   env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
     "$fixture/scripts/hepta-preflight-resume" --show
@@ -177,12 +186,10 @@ jq -e '
   and .completion_evidence_valid == true
   and .last_exit == {preflight:0, tee:0, checkpoint:0, combined:0}
 ' >/dev/null <<<"$complete_show_json"
-
 complete_gate_count="$(grep -c '^\[hepta-preflight\] fixture deterministic gate$' "$log")"
 env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null
 [[ "$(grep -c '^\[hepta-preflight\] fixture deterministic gate$' "$log")" == "$complete_gate_count" ]]
-
 cp "$state" "$state.complete.saved"
 jq '.head = "0000000000000000000000000000000000000000"' "$state" >"$state.tmp"
 mv "$state.tmp" "$state"
@@ -191,7 +198,6 @@ env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
   "$fixture/scripts/hepta-preflight-resume" --show >/dev/null 2>&1 || complete_stale_head_rc=$?
 [[ "$complete_stale_head_rc" == "1" ]]
 mv "$state.complete.saved" "$state"
-
 complete_stale_environment_show="$(
   env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 CARGO_TARGET_DIR="$tmp/complete-stale-target" \
     "$fixture/scripts/hepta-preflight-resume" --show
@@ -205,7 +211,6 @@ complete_stale_environment_rc=0
 env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 CARGO_TARGET_DIR="$tmp/complete-stale-target" \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || complete_stale_environment_rc=$?
 [[ "$complete_stale_environment_rc" == "1" ]]
-
 touch "$fixture/COMPLETE_DIRTY_FIXTURE"
 complete_dirty_show="$(
   env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
@@ -222,7 +227,6 @@ env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || complete_dirty_rc=$?
 [[ "$complete_dirty_rc" == "1" ]]
 rm -f "$fixture/COMPLETE_DIRTY_FIXTURE"
-
 cp "$log" "$log.complete.saved"
 printf '%s\n' '[fixture] complete evidence tampered' >>"$log"
 complete_tampered_log_show="$(
@@ -240,7 +244,6 @@ env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
 [[ "$complete_tampered_log_rc" == "1" ]]
 mv "$log.complete.saved" "$log"
 rm -f "$log"
-
 import_rc=0
 env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" \
   --import-log "$tmp/untrusted.log" >/dev/null 2>&1 || import_rc=$?
@@ -248,7 +251,6 @@ env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" \
   echo "resume fixture import-log returned $import_rc; expected fail-closed exit 2" >&2
   exit 1
 }
-
 run_failure() {
   local rc=0
   env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=1 \
@@ -258,7 +260,6 @@ run_failure() {
     exit 1
   }
 }
-
 broken_state_dir="$tmp/broken-state"
 mkdir -p "$broken_state_dir"
 checkpoint_output="$tmp/checkpoint-output.log"
@@ -278,9 +279,7 @@ env \
   exit 1
 }
 [[ ! -e "$broken_state_dir/resume.state" ]]
-
 run_failure --reset
-
 show_json="$(env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" --show)"
 jq -e '
   .status == "blocked"
@@ -294,7 +293,6 @@ jq -e '
   and .last_exit.preflight == 42
   and .last_exit.combined == 42
 ' >/dev/null <<<"$show_json"
-
 cp "$log" "$tmp/resume-log.saved"
 printf '%s\n' '[fixture] tampered' >>"$log"
 tampered_show_json="$(env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" --show)"
@@ -308,7 +306,6 @@ env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=1 \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || tampered_rc=$?
 [[ "$tampered_rc" == "1" ]]
 mv "$tmp/resume-log.saved" "$log"
-
 changed_show_json="$(
   env "${common_env[@]}" CARGO_TARGET_DIR="$tmp/different-target" \
     "$fixture/scripts/hepta-preflight-resume" --show
@@ -318,7 +315,6 @@ jq -e '
   and .resumable == false
   and .environment_matches == false
 ' >/dev/null <<<"$changed_show_json"
-
 policy_show_json="$(
   env "${common_env[@]}" HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES=25 \
     "$fixture/scripts/hepta-preflight-resume" --show
@@ -332,7 +328,6 @@ policy_rc=0
 env "${common_env[@]}" HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES=25 \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || policy_rc=$?
 [[ "$policy_rc" == "1" ]]
-
 unlisted_policy_show_json="$(
   env "${common_env[@]}" HEPTA_UNLISTED_RESUME_POLICY=changed \
     "$fixture/scripts/hepta-preflight-resume" --show
@@ -342,10 +337,6 @@ jq -e '
   and .environment_matches == false
   and .relevant_environment_matches == false
 ' >/dev/null <<<"$unlisted_policy_show_json"
-
-# Codex injects a thread correlation id and a random per-process arg0 alias
-# directory. Neither selects preflight inputs, so an exact relaunch from a new
-# thread remains resumable. All non-arg0 PATH entries stay fail-closed.
 session_state="$tmp/session.state"
 session_log="$tmp/session.log"
 session_codex_home="$tmp/session-codex-home"
@@ -378,7 +369,6 @@ env "${session_env[@]}" \
   PATH="$session_arg0_one:$PATH" \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || session_rc=$?
 [[ "$session_rc" == "42" ]]
-
 new_thread_show_json="$(
   env "${session_env[@]}" \
     CODEX_THREAD_ID=fixture-thread-two \
@@ -398,9 +388,6 @@ env "${session_env[@]}" \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || new_thread_rc=$?
 [[ "$new_thread_rc" == "42" ]]
 [[ "$(jq -r '.attempt' "$session_state")" == "2" ]]
-
-# HEPTA_HOME overrides CODEX_HOME in the arg0 injector. A codex-arg0-looking
-# directory under the non-effective legacy home remains semantic PATH input.
 non_effective_home_show_json="$(
   env "${session_env[@]}" \
     CODEX_THREAD_ID=fixture-thread-two \
@@ -420,7 +407,6 @@ env "${session_env[@]}" \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 \
   || non_effective_home_rc=$?
 [[ "$non_effective_home_rc" == "1" ]]
-
 semantic_path_show_json="$(
   env "${session_env[@]}" \
     CODEX_THREAD_ID=fixture-thread-two \
@@ -445,9 +431,6 @@ env "${session_env[@]}" \
   PATH="$session_arg0_two:$PATH" \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
 assert_complete_state "$session_state"
-
-# Empty HEPTA_HOME has the same meaning as an absent override and falls back to
-# CODEX_HOME, matching codex_utils_home_dir::non_empty_env.
 codex_fallback_state="$tmp/codex-fallback.state"
 codex_fallback_log="$tmp/codex-fallback.log"
 codex_fallback_arg0_one="$session_codex_home/tmp/arg0/codex-arg0-fallback-one"
@@ -498,10 +481,6 @@ env "${codex_fallback_env[@]}" \
   PATH="$codex_fallback_arg0_two:$PATH" \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
 assert_complete_state "$codex_fallback_state"
-
-# With both explicit homes absent, the injector defaults to $HOME/.hepta. Run
-# this boundary under macOS system Bash 3.2 so a codex-arg0 PATH cannot regress
-# to the empty-array nounset failure found by independent review.
 default_state="$tmp/default-home.state"
 default_log="$tmp/default-home.log"
 default_output="$tmp/default-home.output"
@@ -558,9 +537,6 @@ env -u HEPTA_HOME -u CODEX_HOME "${default_env[@]}" \
   PATH="$default_arg0_two:$PATH" \
   /bin/bash "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
 assert_complete_state "$default_state"
-
-# Even when no shell home can be resolved, a codex-arg0-looking PATH entry must
-# be preserved without triggering Bash 3.2's empty-array nounset behavior.
 unresolved_home_state="$tmp/unresolved-home.state"
 unresolved_home_log="$tmp/unresolved-home.log"
 unresolved_arg0="$tmp/unresolved-root/codex-arg0-unowned"
@@ -581,10 +557,6 @@ jq -e '
   and .resumable == true
   and .environment_matches == true
 ' >/dev/null <<<"$unresolved_home_show_json"
-
-# Bind the canonical identity of an effective-home symlink. Retargeting the
-# stable lexical path changes config/auth/cache semantics even though each
-# session's physical arg0 directory is transient and normalized.
 symlink_state="$tmp/symlink-home.state"
 symlink_log="$tmp/symlink-home.log"
 symlink_home="$tmp/stable-hepta-home"
@@ -638,9 +610,6 @@ env "${symlink_env[@]}" \
   PATH="$symlink_arg0_two:$PATH" \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
 assert_complete_state "$symlink_state"
-
-# The state is bound to this worktree, not merely to a shared HEAD and clean
-# porcelain digest.
 cp "$state" "$state.worktree-id.saved"
 jq '.evidence.worktree_id = "different-worktree"' "$state" >"$state.tmp"
 mv "$state.tmp" "$state"
@@ -654,7 +623,6 @@ env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1
   || worktree_identity_rc=$?
 [[ "$worktree_identity_rc" == "1" ]]
 mv "$state.worktree-id.saved" "$state"
-
 touch "$fixture/UNTRACKED_RESUME_FIXTURE"
 dirty_show_json="$(env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" --show)"
 jq -e '
@@ -666,10 +634,8 @@ dirty_rc=0
 env "${common_env[@]}" "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || dirty_rc=$?
 [[ "$dirty_rc" == "1" ]]
 rm -f "$fixture/UNTRACKED_RESUME_FIXTURE"
-
 run_failure
 run_failure
-
 jq -e '
   .schema_version == "hepta_preflight_resume_state_v2"
   and .status == "blocked"
@@ -690,7 +656,6 @@ jq -e '
   and (.evidence.attempt_log_sha256 | test("^[0-9a-f]{64}$"))
   and (.evidence.failure_fingerprint_sha256 | test("^[0-9a-f]{64}$"))
 ' "$state" >/dev/null
-
 fused_rc=0
 env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=1 \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || fused_rc=$?
@@ -700,14 +665,10 @@ env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=1 \
 }
 [[ "$(jq -r '.attempt' "$state")" == "3" ]]
 [[ "$(grep -c '^\[fixture\] release_target=' "$log")" == "3" ]]
-
 env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
 assert_complete_state "$state"
 grep -q '^Hepta preflight passed$' "$log"
-
-# A same-marker interrupted state retains the prior streak instead of silently
-# resetting the retry fuse.
 rm -f "$state" "$log"
 run_failure
 jq '
@@ -725,9 +686,6 @@ jq -e '
 ' "$state" >/dev/null
 env "${common_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
-
-# Resolved tool identity is part of the environment binding even when PATH is
-# unchanged and only the executable output changes.
 fake_bin="$tmp/fake-bin"
 mkdir -p "$fake_bin"
 write_fake_tool() {
@@ -771,9 +729,6 @@ env "${identity_env[@]}" "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>
 [[ "$identity_resume_rc" == "1" ]]
 env "${identity_env[@]}" HEPTA_RESUME_TEST_FAIL=0 \
   "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
-
-# A live receipt is non-resumable even during the short acquisition window
-# before the owner has written its first running state.
 fresh_lock_state="$tmp/fresh-lock.state"
 fresh_lock_log="$tmp/fresh-lock.log"
 fresh_lock_process_start="$(
@@ -817,9 +772,6 @@ jq -e '
 ' >/dev/null <<<"$fresh_lock_show"
 rm -f "$fresh_lock_state.lock/owner.json"
 rmdir "$fresh_lock_state.lock"
-
-# A live owner serializes concurrent runners and publishes an inspectable
-# receipt. The second runner must not execute any fixture gate.
 concurrent_state="$tmp/concurrent.state"
 concurrent_log="$tmp/concurrent.log"
 concurrent_output="$tmp/concurrent.output"
@@ -868,9 +820,6 @@ env "${concurrent_env[@]}" "$fixture/scripts/hepta-preflight-resume" >/dev/null 
 [[ "$concurrent_second_rc" == "75" ]]
 wait "$concurrent_pid"
 [[ ! -e "$concurrent_state.lock" ]]
-
-# A same-host owner receipt with a conclusively dead PID is recoverable. No
-# unknown or live owner path is used by this recovery fixture.
 stale_state="$tmp/stale.state"
 stale_log="$tmp/stale.log"
 mkdir "$stale_state.lock"
@@ -900,10 +849,6 @@ env \
   HEPTA_RESUME_TEST_EXPECTED_TARGET="$target" \
   "$fixture/scripts/hepta-preflight-resume" >/dev/null
 [[ ! -e "$stale_state.lock" ]]
-
-# Every contender must honor the guard during the quarantine -> replacement
-# window. A PATH fixture pauses the stale-owner recovery immediately after its
-# atomic rename so a second runner can probe that exact race.
 race_state="$tmp/race.state"
 race_log="$tmp/race.log"
 race_signal="$tmp/race.quarantined"
@@ -968,9 +913,6 @@ wait "$race_recovery_pid" || race_recovery_rc=$?
 [[ "$race_recovery_rc" == "0" ]]
 [[ ! -e "$race_state.lock" ]]
 [[ ! -e "$race_state.lock.reclaim" ]]
-
-# An orphaned reclaim guard is availability-blocking but fail-closed. A losing
-# contender must not delete a guard that it did not create.
 orphan_state="$tmp/orphan.state"
 orphan_log="$tmp/orphan.log"
 mkdir "$orphan_state.lock" "$orphan_state.lock.reclaim"
@@ -1004,9 +946,6 @@ env \
 [[ -d "$orphan_state.lock.reclaim" ]]
 rm -f "$orphan_state.lock/owner.json"
 rmdir "$orphan_state.lock.reclaim" "$orphan_state.lock"
-
-# The blocked state must survive even when the cumulative log path becomes
-# unwritable after the pipeline has opened it.
 log_failure_state="$tmp/log-failure.state"
 log_failure_log="$tmp/log-failure.log"
 log_failure_env=(
@@ -1042,9 +981,34 @@ jq -e '
 ' >/dev/null <<<"$log_failure_show"
 rmdir "$log_failure_log"
 env "${log_failure_env[@]}" "$fixture/scripts/hepta-preflight-resume" --reset >/dev/null
-
-# Terminal checkpoints always regenerate the complete native/release branch,
-# keeping both if/else blocks syntactically balanced for every profile.
+post_provenance_state="$tmp/post-provenance.state"
+post_provenance_log="$tmp/post-provenance.log"
+post_provenance_fail="$tmp/post-provenance.fail"
+post_provenance_env=(
+  HEPTA_PREFLIGHT_RESUME_STATE="$post_provenance_state"
+  HEPTA_PREFLIGHT_RESUME_LOG="$post_provenance_log"
+  HEPTA_PREFLIGHT_NATIVE=1
+  HEPTA_PREFLIGHT_RELEASE=1
+  HEPTA_RESUME_TEST_FAIL_AFTER_PROVENANCE_FILE="$post_provenance_fail"
+  CARGO_TARGET_DIR="$target"
+  HEPTA_RESUME_TEST_EXPECTED_TARGET="$target"
+)
+touch "$post_provenance_fail"
+post_provenance_rc=0
+env "${post_provenance_env[@]}" "$fixture/scripts/hepta-preflight-resume" \
+  >/dev/null 2>&1 || post_provenance_rc=$?
+[[ "$post_provenance_rc" == "42" ]]
+[[ "$(grep -c '^\[hepta-preflight-provenance\] ' "$post_provenance_log")" == "1" ]]
+[[ "$(grep -c '^\[hepta-preflight-final\] ' "$post_provenance_log")" == "1" ]]
+[[ "$(grep -c '^Hepta preflight passed$' "$post_provenance_log" || true)" == "0" ]]
+env "${post_provenance_env[@]}" "$fixture/scripts/hepta-preflight-resume" >/dev/null
+assert_complete_state "$post_provenance_state"
+[[ "$(grep -c '^\[hepta-preflight-provenance\] ' "$post_provenance_log")" == "2" ]]
+[[ "$(grep -c '^\[hepta-preflight-final\] ' "$post_provenance_log")" == "2" ]]
+[[ "$(grep -c '^Hepta preflight passed$' "$post_provenance_log")" == "1" ]]
+tail -n 2 "$post_provenance_log" | sed -n '1p' \
+  | grep -q '^\[hepta-preflight-final\] '
+tail -n 1 "$post_provenance_log" | grep -qx 'Hepta preflight passed'
 run_terminal_resume_case() {
   local name="$1"
   local native="$2"
@@ -1063,7 +1027,6 @@ run_terminal_resume_case() {
     HEPTA_RESUME_TEST_FAIL_FILE="$fail_file"
   )
   local case_rc=0
-
   touch "$fail_file"
   env "${case_env[@]}" \
     "$fixture/scripts/hepta-preflight-resume" >/dev/null 2>&1 || case_rc=$?
@@ -1082,19 +1045,18 @@ run_terminal_resume_case() {
   assert_complete_state "$case_state"
   [[ "$(grep -c '^\[hepta-preflight\] fixture deterministic gate$' "$case_log")" == "1" ]]
   [[ "$(grep -c '^\[fixture\] release_target=' "$case_log")" == "2" ]]
+  grep -Fqx \
+    "[hepta-preflight] source-bound release gate receipt replay boundary" \
+    "$case_log"
   grep -Fqx "[hepta-preflight] $marker" "$case_log"
 }
-
+run_terminal_resume_case dependency-receipt 1 1 "fixture dependency security receipt"
+run_terminal_resume_case compatibility-receipt 1 1 "fixture compatibility receipt"
 run_terminal_resume_case native-on 1 1 "fixture native gate"
 run_terminal_resume_case native-skip 0 1 "native app gates skipped (HEPTA_PREFLIGHT_NATIVE=0)"
 run_terminal_resume_case release-on 1 1 "fixture release gate"
 run_terminal_resume_case release-skip 0 0 "release build skipped (set HEPTA_PREFLIGHT_RELEASE=1)"
 run_terminal_resume_case terminal-tail 1 1 "fixture whitespace/status"
-
-# A terminal suffix is structurally replayed from the opening native `if`.
-# Earlier replay markers must not replace the original failed checkpoint or
-# clear its streak before the target is reached; the next target failure must
-# therefore arm the third-attempt fuse.
 terminal_streak_state="$tmp/terminal-streak.state"
 terminal_streak_log="$tmp/terminal-streak.log"
 terminal_streak_initial_fail="$tmp/terminal-streak-initial.fail"
@@ -1153,5 +1115,4 @@ jq -e '
   and .failure_streak == 3
   and .fuse_armed == true
 ' "$terminal_streak_state" >/dev/null
-
 echo "Hepta preflight resume self-test passed"

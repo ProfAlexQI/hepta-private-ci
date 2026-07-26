@@ -87,6 +87,8 @@ assert_test_inventory() {
 run_rust_backend() {
   require_tools cargo cargo-audit cargo-deny git jq perl rg shasum
   assert_lockfiles_clean
+  budgeted_cargo ci-upstream-counted-evidence 1800 \
+    "$ROOT/scripts/hepta-upstream-truth-gate" verify-counted-evidence
   budgeted_cargo ci-rustfmt 300 \
     cargo fmt --all --manifest-path "$MANIFEST" -- --check
   budgeted_cargo ci-safe-lint-security-baseline 1200 \
@@ -165,7 +167,7 @@ run_rust_backend() {
   budgeted_cargo ci-hepta-memory-preference-authority-tests 600 \
     cargo test --locked --manifest-path "$MANIFEST" -q \
       -p hepta-memory preference_authority
-  assert_test_inventory "Architecture V2 preference-CAS" 35 \
+  assert_test_inventory "Architecture V2 preference-CAS" 36 \
     '.*' \
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/document.rs" \
@@ -175,7 +177,7 @@ run_rust_backend() {
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_opening_security.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/fixtures.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/legacy.rs"
-  assert_test_inventory "Architecture V2 durable preference-CAS" 19 \
+  assert_test_inventory "Architecture V2 durable preference-CAS" 20 \
     '.*' \
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/preference_cas/durable_concurrency.rs" \
@@ -193,23 +195,23 @@ run_rust_backend() {
   budgeted_cargo ci-hepta-memory-preference-cas-tests 600 \
     cargo test --locked --manifest-path "$MANIFEST" -q \
       -p hepta-memory preference_cas
-  assert_test_inventory "Architecture V2 outcome-store" 50 \
+  assert_test_inventory "Architecture V2 outcome-store" 56 \
     '.*' \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/durable.rs" \
-    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/effect_ack.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs" \
-    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_pending_intent.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs"
-  assert_test_inventory "Architecture V2 durable outcome-store" 29 \
+  assert_test_inventory "Architecture V2 durable outcome-store" 35 \
     '.*' \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/durable.rs" \
-    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs" \
+    "$ROOT/codex-rs/hepta-memory/src/tests/effect_ack.rs" \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs" \
-    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs"
-  assert_test_inventory "Architecture V2 durable effect ACK" 4 \
+    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_pending_intent.rs"
+  assert_test_inventory "Architecture V2 durable effect ACK" 9 \
     '.*' \
-    "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs"
+    "$ROOT/codex-rs/hepta-memory/src/tests/effect_ack.rs"
   assert_test_inventory "Architecture V2 durable execution intent" 9 \
     '.*' \
     "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs"
@@ -249,7 +251,7 @@ run_rust_backend() {
   budgeted_cargo ci-hepta-runtime-architecture-v2-provider-idempotency-tests 600 \
     cargo test --locked --manifest-path "$MANIFEST" -q \
       -p hepta-runtime --lib architecture_v2_provider_idempotency_
-  assert_test_inventory "Architecture V2 exact-safety" 10 \
+  assert_test_inventory "Architecture V2 exact-safety" 11 \
     'architecture_v2_exact_(safety|admission)_.*' \
     "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_exact_safety.rs"
   budgeted_cargo ci-hepta-runtime-architecture-v2-exact-safety-tests 600 \

@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCHEMA_VERSION="hepta_immutable_release_manifest_v1"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-
 source "$REPO_ROOT/scripts/lib/hepta-release-provenance.sh"
-
 usage() {
   cat >&2 <<'EOF'
 usage:
@@ -15,7 +12,6 @@ usage:
   scripts/hepta-immutable-release-tree cutover --manifest PATH --active-link PATH --expected-current-sha256 SHA
   scripts/hepta-immutable-release-tree rollback --receipt PATH --expected-current-sha256 SHA
   scripts/hepta-immutable-release-tree self-test
-
 Activation is byte-preserving: current and target SHA-256 must match. Installing
 different bytes requires the explicit cutover command. Cutover changes only the
 active binary and manifest links; it never restarts services or mutates launchd.
@@ -25,27 +21,103 @@ backend/native/release profiles.
 EOF
   exit 2
 }
-
 sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
-
 canonical_file() {
   local target="$1"
   realpath "$target"
 }
-
 require_sha256() {
   [[ "$1" =~ ^[0-9a-f]{64}$ ]] || {
     echo "invalid SHA-256: $1" >&2
     exit 1
   }
 }
-
+cargo_lock_sha_from_provenance() {
+  local provenance_json="$1"
+  local lock_path="$2"
+  local cargo_lock_sha
+  cargo_lock_sha="$(
+    jq -er --arg lock_path "$lock_path" '
+      [
+        .dependencies.lock_inputs[]
+        | select(.path == $lock_path)
+        | .sha256
+      ]
+      | if length == 1 then .[0] else error("expected exactly one Cargo.lock input") end
+    ' <<<"$provenance_json"
+  )" || {
+    echo "build provenance must bind exactly one $lock_path input" >&2
+    return 1
+  }
+  [[ "$cargo_lock_sha" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "build provenance contains an invalid $lock_path SHA-256" >&2
+    return 1
+  }
+  printf '%s\n' "$cargo_lock_sha"
+}
+dependency_contract_sha_current() {
+  jq -cS . "$REPO_ROOT/scripts/hepta-dependency-security-v1.json" \
+    | hepta_release_sha256_text
+}
+extract_final_preflight_evidence() {
+  local preflight_log="$1"
+  python3 - "$preflight_log" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+prefix = "[hepta-preflight-provenance] "
+final_prefix = "[hepta-preflight-final] "
+pass_marker = "Hepta preflight passed"
+successful = []
+for index, line in enumerate(lines):
+    if not line.startswith(final_prefix):
+        continue
+    if index == 0 or index + 1 >= len(lines):
+        continue
+    if not lines[index - 1].startswith(prefix) or lines[index + 1] != pass_marker:
+        continue
+    try:
+        provenance = json.loads(lines[index - 1][len(prefix):])
+        final = json.loads(line[len(final_prefix):])
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"invalid final preflight JSON: {error}")
+    canonical_provenance = json.dumps(
+        provenance, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    provenance_sha = hashlib.sha256(canonical_provenance.encode("utf-8")).hexdigest()
+    if set(final) != {
+        "schema",
+        "status",
+        "source_commit",
+        "artifact_sha256",
+        "build_provenance_sha256",
+    }:
+        raise SystemExit("final preflight receipt has an invalid field set")
+    if final.get("schema") != "hepta_preflight_final_receipt_v1":
+        raise SystemExit("final preflight receipt schema is invalid")
+    if final.get("status") != "passed":
+        raise SystemExit("final preflight receipt is not passed")
+    if final.get("build_provenance_sha256") != provenance_sha:
+        raise SystemExit("final preflight receipt does not bind its provenance")
+    successful.append((canonical_provenance, final))
+if not successful:
+    raise SystemExit("preflight log has no completed final receipt/pass pair")
+baseline = successful[-1]
+for candidate in successful:
+    if candidate != baseline:
+        raise SystemExit("preflight log contains conflicting completed final receipts")
+print(baseline[0])
+print(json.dumps(baseline[1], sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+PY
+}
 resolve_preflight_source_commit() {
   local preflight_log="$1"
   local provenance_json="$2"
   local provenance_head metadata_heads metadata_head source_heads unique_heads source_head_count source_head
   local resume_line_count resume_heads resume_head resume_head_count metadata_line_count metadata_head_count
-
   provenance_head="$(jq -r '.source.commit // empty' <<<"$provenance_json")"
   source_heads=""
   if [[ -n "$provenance_head" ]]; then
@@ -55,7 +127,6 @@ resolve_preflight_source_commit() {
     }
     source_heads="$provenance_head"
   fi
-
   metadata_line_count="$(rg -c '"hepta_repo_head"' "$preflight_log" || true)"
   metadata_line_count="${metadata_line_count:-0}"
   metadata_heads="$(
@@ -79,7 +150,6 @@ resolve_preflight_source_commit() {
       source_heads="${source_heads}${source_heads:+$'\n'}${metadata_head}"
     done <<<"$metadata_heads"
   fi
-
   unique_heads="$(printf '%s\n' "$source_heads" | awk 'NF' | sort -u)"
   source_head_count="$(printf '%s\n' "$unique_heads" | awk 'NF { count += 1 } END { print count + 0 }')"
   [[ "$source_head_count" == "1" ]] || {
@@ -87,7 +157,6 @@ resolve_preflight_source_commit() {
     return 1
   }
   source_head="$unique_heads"
-
   resume_line_count="$(rg -c '^\[hepta-preflight-resume\] ' "$preflight_log" || true)"
   resume_line_count="${resume_line_count:-0}"
   resume_heads="$(
@@ -106,7 +175,6 @@ resolve_preflight_source_commit() {
   done <<<"$resume_heads"
   printf '%s\n' "$source_head"
 }
-
 materialize() {
   local artifact="" source_commit="" release_root="" preflight_log=""
   while (( $# > 0 )); do
@@ -119,7 +187,6 @@ materialize() {
     esac
     shift
   done
-
   [[ -f "$artifact" && -x "$artifact" ]] || {
     echo "artifact must be an executable file: $artifact" >&2
     exit 1
@@ -137,21 +204,16 @@ materialize() {
     echo "source-bound releases require a preflight log" >&2
     exit 1
   fi
-
   artifact="$(canonical_file "$artifact")"
   mkdir -p "$release_root"
   release_root="$(cd "$release_root" && pwd -P)"
-
   local artifact_sha artifact_size release_id release_dir manifest_path
   artifact_sha="$(sha256_file "$artifact")"
   require_sha256 "$artifact_sha"
   artifact_size="$(stat -f '%z' "$artifact")"
-  release_id="${source_commit}-${artifact_sha}"
-  release_dir="$release_root/$release_id"
-  manifest_path="$release_dir/manifest.json"
-
   local status source_commit_bound preflight_bound preflight_sha preflight_size preflight_head
-  local build_provenance_json
+  local build_provenance_json codex_cargo_lock_sha native_cargo_lock_sha
+  local dependency_contract_sha bound_gate_receipts_json final_receipt_json
   status="ready"
   source_commit_bound=true
   preflight_bound=true
@@ -159,26 +221,36 @@ materialize() {
   preflight_size=0
   preflight_head=""
   build_provenance_json="null"
+  codex_cargo_lock_sha=""
+  native_cargo_lock_sha=""
+  dependency_contract_sha=""
+  bound_gate_receipts_json="null"
+  final_receipt_json="null"
   if [[ "$source_commit" == "unknown" ]]; then
     status="legacy_unbound"
     source_commit_bound=false
     preflight_bound=false
   else
+    git -C "$REPO_ROOT" cat-file -e "$source_commit^{commit}" 2>/dev/null || {
+      echo "source-bound release commit does not exist in the Hepta repository" >&2
+      exit 1
+    }
+    [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$source_commit" ]] || {
+      echo "source-bound release commit is not the current Hepta HEAD" >&2
+      exit 1
+    }
+    [[ -z "$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ]] || {
+      echo "source-bound release materialization requires a clean Hepta worktree" >&2
+      exit 1
+    }
     [[ -f "$preflight_log" ]] || {
       echo "missing preflight log: $preflight_log" >&2
       exit 1
     }
-    rg -q '^Hepta preflight passed$' "$preflight_log" || {
-      echo "preflight log has no pass marker: $preflight_log" >&2
-      exit 1
-    }
-    local provenance_line_count
-    provenance_line_count="$(rg -c '^\[hepta-preflight-provenance\] ' "$preflight_log" || true)"
-    [[ "$provenance_line_count" == "1" ]] || {
-      echo "preflight log must contain exactly one build provenance receipt" >&2
-      exit 1
-    }
-    build_provenance_json="$(sed -n 's/^\[hepta-preflight-provenance\] //p' "$preflight_log")"
+    local final_evidence
+    final_evidence="$(extract_final_preflight_evidence "$preflight_log")" || exit 1
+    build_provenance_json="$(sed -n '1p' <<<"$final_evidence")"
+    final_receipt_json="$(sed -n '2p' <<<"$final_evidence")"
     jq -e . >/dev/null <<<"$build_provenance_json" || {
       echo "preflight build provenance receipt is not valid JSON" >&2
       exit 1
@@ -190,6 +262,16 @@ materialize() {
       echo "preflight log source truth does not match source commit" >&2
       exit 1
     }
+    jq -e \
+      --arg source_commit "$source_commit" \
+      --arg artifact_sha "$artifact_sha" \
+      '
+        .source_commit == $source_commit
+        and .artifact_sha256 == $artifact_sha
+      ' <<<"$final_receipt_json" >/dev/null || {
+      echo "final preflight receipt does not bind the reviewed source and artifact" >&2
+      exit 1
+    }
     hepta_release_validate_build_provenance_json \
       "$build_provenance_json" \
       "$source_commit" \
@@ -198,13 +280,45 @@ materialize() {
       exit 1
     }
     jq -e '
-      .preflight_profiles.backend == true
-      and .preflight_profiles.native == true
-      and .preflight_profiles.release == true
-      and .deployment_consistency.checked_during_candidate_preflight == false
-      and .deployment_consistency.required_before_activation == true
+      (keys | sort) == [
+        "artifact",
+        "bound_gate_receipts",
+        "dependencies",
+        "deployment_consistency",
+        "preflight_profiles",
+        "schema_version",
+        "source",
+        "toolchain",
+        "watchdog_gate_mode"
+      ]
+      and .preflight_profiles == {backend:true,native:true,release:true}
+      and (.watchdog_gate_mode | type == "string" and length > 0)
+      and .deployment_consistency == {
+        checked_during_candidate_preflight:false,
+        required_before_activation:true
+      }
     ' >/dev/null <<<"$build_provenance_json" || {
       echo "preflight build provenance receipt does not bind all required profiles" >&2
+      exit 1
+    }
+    codex_cargo_lock_sha="$(
+      cargo_lock_sha_from_provenance "$build_provenance_json" "codex-rs/Cargo.lock"
+    )" || exit 1
+    native_cargo_lock_sha="$(
+      cargo_lock_sha_from_provenance "$build_provenance_json" "apps/hepta-native/Cargo.lock"
+    )" || exit 1
+    dependency_contract_sha="$(dependency_contract_sha_current)"
+    bound_gate_receipts_json="$(jq -ce '.bound_gate_receipts' <<<"$build_provenance_json")" || {
+      echo "preflight build provenance is missing bound gate receipts" >&2
+      exit 1
+    }
+    hepta_release_validate_bound_gate_receipts_json \
+      "$bound_gate_receipts_json" \
+      "$source_commit" \
+      "$codex_cargo_lock_sha" \
+      "$native_cargo_lock_sha" \
+      "$dependency_contract_sha" || {
+      echo "preflight bound gate receipts are incomplete or invalid" >&2
       exit 1
     }
     local current_build_provenance
@@ -213,7 +327,7 @@ materialize() {
     )"
     jq -e \
       --argjson current "$current_build_provenance" \
-      '. as $receipt | ($receipt | del(.preflight_profiles, .watchdog_gate_mode, .deployment_consistency)) == $current' \
+      '. as $receipt | ($receipt | del(.preflight_profiles, .watchdog_gate_mode, .bound_gate_receipts, .deployment_consistency)) == $current' \
       >/dev/null <<<"$build_provenance_json" || {
       echo "preflight build provenance no longer matches source, toolchain, dependencies, or artifact" >&2
       exit 1
@@ -222,24 +336,58 @@ materialize() {
     preflight_sha="$(sha256_file "$preflight_log")"
     preflight_size="$(stat -f '%z' "$preflight_log")"
   fi
-
+  if [[ "$status" == "ready" ]]; then
+    release_id="${source_commit}-${artifact_sha}-${preflight_sha}"
+  else
+    release_id="${source_commit}-${artifact_sha}"
+  fi
+  release_dir="$release_root/$release_id"
+  manifest_path="$release_dir/manifest.json"
   if [[ -e "$release_dir" ]]; then
     [[ -f "$manifest_path" ]] || {
       echo "existing release directory has no manifest: $release_dir" >&2
       exit 1
     }
     "$0" verify --manifest "$manifest_path" >/dev/null
+    jq -e \
+      --arg release_id "$release_id" \
+      --arg source_commit "$source_commit" \
+      --arg artifact_sha "$artifact_sha" \
+      --arg preflight_sha "$preflight_sha" \
+      --argjson preflight_size "$preflight_size" \
+      --argjson build_provenance "$build_provenance_json" '
+        .release_id == $release_id
+        and .source.commit == $source_commit
+        and .artifact.sha256 == $artifact_sha
+        and .preflight.log_sha256 == (
+          if .status == "ready" then $preflight_sha else null end
+        )
+        and .preflight.log_size_bytes == (
+          if .status == "ready" then $preflight_size else 0 end
+        )
+        and .preflight.relative_path == (
+          if .status == "ready" then "evidence/preflight.log" else null end
+        )
+        and .build_provenance == $build_provenance
+      ' "$manifest_path" >/dev/null || {
+      echo "existing immutable release evidence differs from the current materialization" >&2
+      exit 1
+    }
     printf '%s\n' "$manifest_path"
     return 0
   fi
-
   local staging
   staging="$(mktemp -d "$release_root/.staging.XXXXXX")"
   trap 'chmod -R u+w "$staging" 2>/dev/null || true; rm -rf "$staging"' RETURN
   mkdir -p "$staging/bin"
   cp -p "$artifact" "$staging/bin/hepta"
   chmod 0555 "$staging/bin/hepta"
-
+  if [[ "$status" == "ready" ]]; then
+    mkdir -p "$staging/evidence"
+    cp -p "$preflight_log" "$staging/evidence/preflight.log"
+    chmod 0444 "$staging/evidence/preflight.log"
+    chmod 0555 "$staging/evidence"
+  fi
   jq -n \
     --arg schema_version "$SCHEMA_VERSION" \
     --arg status "$status" \
@@ -260,8 +408,8 @@ materialize() {
       source:{commit:$source_commit,commit_bound:$source_commit_bound},
       artifact:{relative_path:"bin/hepta",sha256:$artifact_sha256,size_bytes:$artifact_size_bytes,executable:true},
       build_provenance:$build_provenance,
-      preflight:{bound:$preflight_bound,source_head:(if $preflight_bound then $preflight_source_head else null end),candidate_source_commit:(if $preflight_bound then $source_commit else null end),candidate_artifact_sha256:(if $preflight_bound then $artifact_sha256 else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
-      policy:{immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
+      preflight:{bound:$preflight_bound,relative_path:(if $preflight_bound then "evidence/preflight.log" else null end),source_head:(if $preflight_bound then $preflight_source_head else null end),candidate_source_commit:(if $preflight_bound then $source_commit else null end),candidate_artifact_sha256:(if $preflight_bound then $artifact_sha256 else null end),log_sha256:(if $preflight_bound then $preflight_sha256 else null end),log_size_bytes:(if $preflight_bound then $preflight_size_bytes else 0 end),passed:$preflight_bound},
+      policy:{release_contract_version:2,immutable_tree:true,dirty_worktree_source_forbidden:true,activation_byte_change_forbidden:true,restart_performed:false},
       side_effects:{service_restarted:false,active_process_mutated:false,provider_invoked:false,credentials_read:false,memory_or_kg_written:false,channel_message_sent:false}
     }' >"$staging/manifest.json"
   chmod 0444 "$staging/manifest.json"
@@ -271,7 +419,6 @@ materialize() {
   "$0" verify --manifest "$manifest_path" >/dev/null
   printf '%s\n' "$manifest_path"
 }
-
 verify_manifest() {
   local manifest=""
   while (( $# > 0 )); do
@@ -286,8 +433,11 @@ verify_manifest() {
     exit 1
   }
   manifest="$(canonical_file "$manifest")"
-
   local release_dir artifact artifact_sha expected_size actual_size
+  local manifest_status release_contract_version source_commit preflight_sha
+  local build_provenance_json codex_cargo_lock_sha native_cargo_lock_sha
+  local dependency_contract_sha bound_gate_receipts_json expected_release_id
+  local immutable_preflight final_evidence evidence_provenance final_receipt_json
   release_dir="$(dirname "$manifest")"
   jq -e --arg schema "$SCHEMA_VERSION" '
     .schema_version == $schema
@@ -311,6 +461,7 @@ verify_manifest() {
         and .preflight.candidate_source_commit == .source.commit
         and .preflight.candidate_artifact_sha256 == .artifact.sha256
         and (.preflight.log_sha256 | test("^[0-9a-f]{64}$"))
+        and (.preflight.log_size_bytes | type == "number" and . > 0)
         and .build_provenance.schema_version == "hepta_build_provenance_v1"
         and .build_provenance.source.commit_bound == true
         and .build_provenance.source.commit == .source.commit
@@ -327,10 +478,139 @@ verify_manifest() {
         and .build_provenance.preflight_profiles.native == true
         and .build_provenance.preflight_profiles.release == true)
       or
-      (.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .build_provenance == null and .preflight.bound == false and .preflight.passed == false and .preflight.source_head == null and .preflight.candidate_source_commit == null and .preflight.candidate_artifact_sha256 == null and .preflight.log_sha256 == null)
+      (.status == "legacy_unbound"
+        and .source.commit == "unknown"
+        and .source.commit_bound == false
+        and .build_provenance == null
+        and .preflight.bound == false
+        and .preflight.passed == false
+        and .preflight.source_head == null
+        and .preflight.candidate_source_commit == null
+        and .preflight.candidate_artifact_sha256 == null
+        and .preflight.log_sha256 == null
+        and .preflight.log_size_bytes == 0)
     )
   ' "$manifest" >/dev/null
-
+  manifest_status="$(jq -r '.status' "$manifest")"
+  release_contract_version="$(jq -r '.policy.release_contract_version // 1' "$manifest")"
+  if [[ "$manifest_status" == "ready" ]]; then
+    source_commit="$(jq -r '.source.commit' "$manifest")"
+    artifact_sha="$(jq -r '.artifact.sha256' "$manifest")"
+    preflight_sha="$(jq -r '.preflight.log_sha256' "$manifest")"
+    build_provenance_json="$(jq -ce '.build_provenance' "$manifest")"
+    hepta_release_validate_build_provenance_json \
+      "$build_provenance_json" \
+      "$source_commit" \
+      "$artifact_sha" || {
+      echo "immutable release build provenance is invalid" >&2
+      exit 1
+    }
+    if [[ "$release_contract_version" == "2" ]]; then
+      jq -e '
+        .policy.release_contract_version == 2
+        and .policy.dirty_worktree_source_forbidden == true
+        and .preflight.relative_path == "evidence/preflight.log"
+        and (.build_provenance | keys | sort) == [
+          "artifact",
+          "bound_gate_receipts",
+          "dependencies",
+          "deployment_consistency",
+          "preflight_profiles",
+          "schema_version",
+          "source",
+          "toolchain",
+          "watchdog_gate_mode"
+        ]
+        and .build_provenance.preflight_profiles == {
+          backend:true,
+          native:true,
+          release:true
+        }
+        and .build_provenance.deployment_consistency == {
+          checked_during_candidate_preflight:false,
+          required_before_activation:true
+        }
+      ' "$manifest" >/dev/null || {
+        echo "immutable release v2 policy or preflight path is invalid" >&2
+        exit 1
+      }
+      codex_cargo_lock_sha="$(
+        cargo_lock_sha_from_provenance "$build_provenance_json" "codex-rs/Cargo.lock"
+      )" || exit 1
+      native_cargo_lock_sha="$(
+        cargo_lock_sha_from_provenance "$build_provenance_json" "apps/hepta-native/Cargo.lock"
+      )" || exit 1
+      bound_gate_receipts_json="$(jq -ce '.bound_gate_receipts' <<<"$build_provenance_json")" || {
+        echo "immutable release build provenance is missing bound gate receipts" >&2
+        exit 1
+      }
+      dependency_contract_sha="$(dependency_contract_sha_current)"
+      hepta_release_validate_bound_gate_receipts_json \
+        "$bound_gate_receipts_json" \
+        "$source_commit" \
+        "$codex_cargo_lock_sha" \
+        "$native_cargo_lock_sha" \
+        "$dependency_contract_sha" || {
+        echo "immutable release bound gate receipts are invalid" >&2
+        exit 1
+      }
+      immutable_preflight="$release_dir/evidence/preflight.log"
+      [[ -f "$immutable_preflight" && ! -L "$immutable_preflight" ]] || {
+        echo "immutable release preflight evidence is missing or not a regular file" >&2
+        exit 1
+      }
+      [[ "$(stat -f '%Lp' "$immutable_preflight")" == "444" ]] || {
+        echo "immutable release preflight evidence mode must be 0444" >&2
+        exit 1
+      }
+      [[ "$(sha256_file "$immutable_preflight")" == "$preflight_sha" \
+        && "$(stat -f '%z' "$immutable_preflight")" == "$(jq -r '.preflight.log_size_bytes' "$manifest")" ]] || {
+        echo "immutable release preflight evidence bytes do not match the manifest" >&2
+        exit 1
+      }
+      final_evidence="$(extract_final_preflight_evidence "$immutable_preflight")" || exit 1
+      evidence_provenance="$(sed -n '1p' <<<"$final_evidence")"
+      final_receipt_json="$(sed -n '2p' <<<"$final_evidence")"
+      [[ "$(jq -cS . <<<"$build_provenance_json")" == "$evidence_provenance" ]] || {
+        echo "immutable release manifest provenance differs from copied preflight evidence" >&2
+        exit 1
+      }
+      jq -e \
+        --arg source_commit "$source_commit" \
+        --arg artifact_sha "$artifact_sha" \
+        '
+          .source_commit == $source_commit
+          and .artifact_sha256 == $artifact_sha
+        ' <<<"$final_receipt_json" >/dev/null || {
+        echo "immutable release final receipt differs from its manifest" >&2
+        exit 1
+      }
+    elif [[ "$release_contract_version" != "1" ]]; then
+      echo "unsupported immutable release contract version: $release_contract_version" >&2
+      exit 1
+    fi
+    if [[ "$release_contract_version" == "2" ]]; then
+      expected_release_id="${source_commit}-${artifact_sha}-${preflight_sha}"
+    else
+      expected_release_id="${source_commit}-${artifact_sha}"
+    fi
+  else
+    [[ "$release_contract_version" == "1" || "$release_contract_version" == "2" ]] || {
+      echo "unsupported immutable release contract version: $release_contract_version" >&2
+      exit 1
+    }
+    jq -e '.preflight.relative_path == null' "$manifest" >/dev/null 2>&1 || {
+      [[ "$release_contract_version" == "1" ]] || {
+        echo "legacy-unbound v2 release must have a null preflight path" >&2
+        exit 1
+      }
+    }
+    expected_release_id="unknown-$(jq -r '.artifact.sha256' "$manifest")"
+  fi
+  [[ "$(jq -r '.release_id' "$manifest")" == "$expected_release_id" ]] || {
+    echo "immutable release ID does not bind its source, artifact, and evidence" >&2
+    exit 1
+  }
   artifact="$release_dir/$(jq -r '.artifact.relative_path' "$manifest")"
   [[ -f "$artifact" && -x "$artifact" ]] || {
     echo "missing immutable release artifact: $artifact" >&2
@@ -357,7 +637,6 @@ verify_manifest() {
   }
   jq -c '{schema_version,status,release_id,source,artifact,build_provenance,preflight,policy}' "$manifest"
 }
-
 activate() {
   local manifest="" active_link="" expected_current_sha=""
   while (( $# > 0 )); do
@@ -375,6 +654,7 @@ activate() {
   manifest="$(canonical_file "$manifest")"
   jq -e '
     .status == "ready"
+    and .policy.release_contract_version == 2
     and .source.commit_bound == true
     and .preflight.bound == true
     and .preflight.passed == true
@@ -386,7 +666,6 @@ activate() {
     echo "active binary must already exist: $active_link" >&2
     exit 1
   }
-
   local current_sha target_sha target release_id active_dir backup tmp_link manifest_link manifest_tmp
   current_sha="$(sha256_file "$active_link")"
   target_sha="$(jq -r '.artifact.sha256' "$manifest")"
@@ -418,12 +697,10 @@ activate() {
   manifest_tmp="$active_dir/.hepta-manifest-link.$$"
   ln -s "$manifest" "$manifest_tmp"
   mv -f "$manifest_tmp" "$manifest_link"
-
   jq -n --arg status ready --arg release_id "$release_id" --arg active_link "$active_link" \
     --arg target "$target" --arg manifest "$manifest" --arg sha256 "$current_sha" --arg backup "$backup" \
       '{status:$status,release_id:$release_id,active_link:$active_link,target:$target,manifest:$manifest,sha256:$sha256,backup:$backup,bytes_changed:false,service_restarted:false,active_process_mutated:false}'
 }
-
 CUTOVER_TRANSACTION_ARMED=false
 CUTOVER_ACTIVE_LINK=""
 CUTOVER_MANIFEST_LINK=""
@@ -439,7 +716,6 @@ CUTOVER_CURRENT_SHA=""
 CUTOVER_CURRENT_MANIFEST_FILE_SHA=""
 CUTOVER_FAILURE_SCHEMA="hepta_immutable_release_cutover_receipt_v1"
 CUTOVER_OPERATION="cutover"
-
 cleanup_cutover_backup_temp() {
   [[ -n "$CUTOVER_BACKUP_TEMP" ]] || return 0
   [[ -n "$CUTOVER_BACKUP_TEMP_ROOT" \
@@ -454,7 +730,6 @@ cleanup_cutover_backup_temp() {
   rm -R "$CUTOVER_BACKUP_TEMP"
   CUTOVER_BACKUP_TEMP=""
 }
-
 snapshot_cutover_entry() {
   local source="$1"
   local snapshot="$2"
@@ -464,7 +739,6 @@ snapshot_cutover_entry() {
     cp -p "$source" "$snapshot"
   fi
 }
-
 rollback_cutover_on_exit() {
   local rc=$?
   local rollback_performed=false rollback_restored=true cleanup_completed=true failure_status
@@ -499,7 +773,6 @@ rollback_cutover_on_exit() {
   fi
   exit "$rc"
 }
-
 validate_cutover_rollback_record() {
   local record="$1" active_link="$2" manifest_link="$3"
   local previous_sha="$4" previous_manifest_sha="$5" previous_manifest_target="$6"
@@ -542,7 +815,6 @@ validate_cutover_rollback_record() {
       return 1
     }
 }
-
 replace_release_links_transactionally() {
   local active_link="$1" manifest_link="$2" target="$3" manifest="$4"
   local current_sha="$5" current_manifest_file_sha="$6" target_sha="$7"
@@ -567,7 +839,6 @@ replace_release_links_transactionally() {
     echo "active release changed while replacement was being staged" >&2
     exit 1
   }
-
   failure_point="${HEPTA_IMMUTABLE_RELEASE_CUTOVER_TEST_FAILURE_POINT:-none}"
   [[ "$failure_point" == "none" || "$failure_point" == "after_active_swap" || "$failure_point" == "after_manifest_swap" ]] || {
     echo "invalid immutable cutover test failure point" >&2
@@ -600,7 +871,6 @@ replace_release_links_transactionally() {
   trap - EXIT
   rm -f "$CUTOVER_ACTIVE_SNAPSHOT" "$CUTOVER_MANIFEST_SNAPSHOT"
 }
-
 cutover() {
   local manifest="" active_link="" expected_current_sha=""
   while (( $# > 0 )); do
@@ -616,11 +886,16 @@ cutover() {
   require_sha256 "$expected_current_sha"
   "$0" verify --manifest "$manifest" >/dev/null
   manifest="$(canonical_file "$manifest")"
-  jq -e '.status == "ready" and .source.commit_bound == true and .preflight.bound == true and .preflight.passed == true' "$manifest" >/dev/null || {
+  jq -e '
+    .status == "ready"
+    and .policy.release_contract_version == 2
+    and .source.commit_bound == true
+    and .preflight.bound == true
+    and .preflight.passed == true
+  ' "$manifest" >/dev/null || {
     echo "immutable cutover requires a source-bound passed-preflight candidate" >&2
     exit 1
   }
-
   local target target_sha target_manifest_file_sha release_id active_dir manifest_link lock_dir
   target="$(canonical_file "$(dirname "$manifest")/$(jq -r '.artifact.relative_path' "$manifest")")"
   target_sha="$(jq -r '.artifact.sha256' "$manifest")"
@@ -635,12 +910,10 @@ cutover() {
     echo "immutable cutover lock is already held: $lock_dir" >&2
     exit 1
   }
-
   CUTOVER_ACTIVE_LINK="$active_link"
   CUTOVER_MANIFEST_LINK="$manifest_link"
   CUTOVER_LOCK_DIR="$lock_dir"
   trap rollback_cutover_on_exit EXIT
-
   [[ -f "$active_link" && -x "$active_link" ]] || {
     echo "active binary must already exist: $active_link" >&2
     exit 1
@@ -650,10 +923,9 @@ cutover() {
     exit 1
   }
   "$0" verify --manifest "$manifest_link" >/dev/null
-
   local current_sha current_manifest_sha current_manifest_file_sha current_manifest_target
   local backup_root backup backup_manifest rollback_record rollback_record_sha rollback_record_previous_manifest
-  local backup_staging backup_created
+  local backup_staging backup_created current_preflight_relative
   current_sha="$(sha256_file "$active_link")"
   current_manifest_sha="$(jq -r '.artifact.sha256' "$manifest_link")"
   current_manifest_file_sha="$(sha256_file "$manifest_link")"
@@ -670,7 +942,6 @@ cutover() {
     echo "immutable cutover requires different target bytes" >&2
     exit 1
   }
-
   mkdir -p "$active_dir/backups"
   backup_root="$active_dir/backups/hepta.pre-cutover-$current_sha-to-$target_sha"
   backup="$backup_root/bin/hepta"
@@ -696,6 +967,21 @@ cutover() {
     mkdir "$backup_staging/bin"
     cp -p "$(canonical_file "$active_link")" "$backup_staging/bin/hepta"
     cp -p "$(canonical_file "$manifest_link")" "$backup_staging/manifest.json"
+    current_preflight_relative="$(
+      jq -r '.preflight.relative_path // empty' "$backup_staging/manifest.json"
+    )"
+    if [[ -n "$current_preflight_relative" ]]; then
+      [[ "$current_preflight_relative" == "evidence/preflight.log" ]] || {
+        echo "current release has an unexpected preflight evidence path" >&2
+        exit 1
+      }
+      mkdir "$backup_staging/evidence"
+      cp -p \
+        "$(dirname "$current_manifest_target")/$current_preflight_relative" \
+        "$backup_staging/evidence/preflight.log"
+      chmod 0444 "$backup_staging/evidence/preflight.log"
+      chmod 0555 "$backup_staging/evidence"
+    fi
     chmod 0555 "$backup_staging/bin/hepta" "$backup_staging/bin"
     chmod 0444 "$backup_staging/manifest.json"
     "$0" verify --manifest "$backup_staging/manifest.json" >/dev/null
@@ -722,7 +1008,6 @@ cutover() {
   CUTOVER_BACKUP="$backup"
   CUTOVER_CURRENT_SHA="$current_sha"
   CUTOVER_CURRENT_MANIFEST_FILE_SHA="$current_manifest_file_sha"
-
   local receipt
   receipt="$(jq -cn \
     --arg schema_version "hepta_immutable_release_cutover_receipt_v1" \
@@ -745,13 +1030,11 @@ cutover() {
     --arg rollback_record_sha256 "$rollback_record_sha" \
     --argjson backup_created "$backup_created" \
     '{schema_version:$schema_version,status:$status,release_id:$release_id,active_link:$active_link,target:$target,manifest_link:$manifest_link,manifest:$manifest,expected_current_sha256:$expected_current_sha256,previous:{artifact_sha256:$previous_sha256,manifest:$previous_manifest,manifest_sha256:$previous_manifest_sha256},target_release:{artifact_sha256:$target_sha256,manifest:$manifest,manifest_sha256:$target_manifest_sha256},backup:{bundle:$backup_root,artifact:$backup,manifest:$backup_manifest,artifact_sha256:$previous_sha256,manifest_sha256:$previous_manifest_sha256,created:$backup_created,verified:true},cas_verified:true,bytes_changed:true,links_pre_staged:true,individual_links_atomically_replaced:true,pair_transactional_with_trap:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,manifest_linked:true,rollback:{armed_during_cutover:true,performed:false,backup_available:true,record:$rollback_record,record_sha256:$rollback_record_sha256},service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}')"
-
   replace_release_links_transactionally \
     "$active_link" "$manifest_link" "$target" "$manifest" \
     "$current_sha" "$current_manifest_file_sha" "$target_sha"
   printf '%s\n' "$receipt"
 }
-
 rollback_release() {
   local receipt_path="" expected_current_sha=""
   while (( $# > 0 )); do
@@ -794,7 +1077,6 @@ rollback_release() {
     echo "invalid immutable cutover rollback receipt: $receipt_path" >&2
     exit 1
   }
-
   local bundle_root active_link manifest_link previous_artifact previous_manifest previous_manifest_target
   local previous_sha previous_manifest_sha deployed_sha deployed_manifest_sha deployed_manifest deployed_artifact
   local active_dir lock_dir current_sha current_manifest_sha current_manifest_file_sha rollback_receipt
@@ -844,7 +1126,6 @@ rollback_release() {
     "$receipt_path" "$active_link" "$manifest_link" \
     "$previous_sha" "$previous_manifest_sha" "$previous_manifest_target" \
     "$deployed_sha" "$deployed_manifest_sha" "$deployed_manifest"
-
   active_dir="$(cd "$(dirname "$active_link")" && pwd -P)"
   active_link="$active_dir/$(basename "$active_link")"
   [[ "$manifest_link" == "$active_link.manifest" ]] || {
@@ -856,7 +1137,6 @@ rollback_release() {
     echo "immutable cutover lock is already held: $lock_dir" >&2
     exit 1
   }
-
   CUTOVER_ACTIVE_LINK="$active_link"
   CUTOVER_MANIFEST_LINK="$manifest_link"
   CUTOVER_LOCK_DIR="$lock_dir"
@@ -864,7 +1144,6 @@ rollback_release() {
   CUTOVER_FAILURE_SCHEMA="hepta_immutable_release_rollback_receipt_v1"
   CUTOVER_OPERATION="rollback"
   trap rollback_cutover_on_exit EXIT
-
   [[ -f "$active_link" && -x "$active_link" && -f "$manifest_link" ]] || {
     echo "active release pair is missing during rollback" >&2
     exit 1
@@ -884,7 +1163,6 @@ rollback_release() {
     echo "active release pair does not match the deployed cutover receipt" >&2
     exit 1
   }
-
   CUTOVER_CURRENT_SHA="$current_sha"
   CUTOVER_CURRENT_MANIFEST_FILE_SHA="$current_manifest_file_sha"
   rollback_receipt="$(jq -cn \
@@ -898,45 +1176,115 @@ rollback_release() {
     --arg previous_manifest "$previous_manifest" \
     --arg previous_manifest_sha256 "$previous_manifest_sha" \
     '{schema_version:$schema_version,status:$status,receipt:$receipt,active_link:$active_link,manifest_link:$manifest_link,expected_current_sha256:$expected_current_sha256,restored:{artifact_sha256:$previous_sha256,manifest:$previous_manifest,manifest_sha256:$previous_manifest_sha256},cas_verified:true,bytes_changed:true,links_pre_staged:true,individual_links_atomically_replaced:true,pair_transactional_with_trap:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}')"
-
   replace_release_links_transactionally \
     "$active_link" "$manifest_link" "$previous_artifact" "$previous_manifest" \
     "$current_sha" "$current_manifest_file_sha" "$previous_sha"
   printf '%s\n' "$rollback_receipt"
 }
-
+self_test_rehash_bound_gate_receipts() {
+  local receipts_json="$1"
+  local gate_id field sha_field embedded_sha
+  for gate_id in native-ingress-composition dependency-security gate-compat-debt; do
+    for field in receipt self_test_receipt; do
+      if [[ "$field" == "receipt" ]]; then
+        sha_field="receipt_sha256"
+      else
+        sha_field="self_test_sha256"
+      fi
+      embedded_sha="$(
+        jq -cS --arg id "$gate_id" --arg field "$field" \
+          '.gates[] | select(.id == $id) | .[$field]' \
+          <<<"$receipts_json" \
+          | hepta_release_sha256_text
+      )"
+      receipts_json="$(
+        jq -c \
+          --arg id "$gate_id" \
+          --arg field "$sha_field" \
+          --arg embedded_sha "$embedded_sha" \
+          '(.gates[] | select(.id == $id) | .[$field]) = $embedded_sha' \
+          <<<"$receipts_json"
+      )"
+    done
+  done
+  jq -cS . <<<"$receipts_json"
+}
+self_test_expect_materialize_denied() {
+  local label="$1"
+  local tool="$2"
+  local artifact="$3"
+  local source_commit="$4"
+  local provenance_json="$5"
+  local fixture_root="$6"
+  local preflight="$fixture_root/preflight.log"
+  mkdir -p "$fixture_root"
+  hepta_release_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance_json"
+  if "$tool" materialize \
+    --artifact "$artifact" \
+    --source-commit "$source_commit" \
+    --preflight-log "$preflight" \
+    --release-root "$fixture_root/releases" >/dev/null 2>&1; then
+    echo "immutable release materialization accepted $label" >&2
+    return 1
+  fi
+}
 self_test() {
   [[ $# -eq 0 ]] || usage
-  local root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
+  local source_root root tool tmp artifact source_commit preflight bound_manifest legacy_manifest
   local fixture_sha activation different different_manifest provenance invalid_manifest short_head
   local missing_preflight_rc legacy_activation_rc tampered_manifest conflicting_preflight missing_source_preflight wrong_banner_preflight
   local different_preflight different_provenance different_sha cutover_receipt cutover_rc rollback_rc rollback_active
   local rollback_record rollback_receipt rollback_manifest failure_point failure_log failure_receipt
-  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-  tool="$root/scripts/hepta-immutable-release-tree"
+  local receipts mutated_receipts mutated_provenance negative_name negative_filter negative_root
+  local evidence_variant_preflight evidence_variant_provenance evidence_variant_manifest tampered_release_dir
+  local missing_receipts_verify_dir missing_receipts_manifest
+  local dirty_source_fixture tampered_evidence_manifest tampered_evidence_file
+  local canonical_preflight_artifact artifact_override_rc
+  source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   tmp="$(mktemp -d /tmp/hepta-immutable-release-tree-self-test.XXXXXX)"
-  trap 'chmod -R u+w "$tmp" 2>/dev/null || true; rm -rf "$tmp"' RETURN
-
+  root="$tmp/source"
+  mkdir -p \
+    "$root/scripts/lib" \
+    "$root/codex-rs" \
+    "$root/apps/hepta-native"
+  cp "$source_root/scripts/hepta-immutable-release-tree" "$root/scripts/"
+  cp "$source_root/scripts/lib/hepta-release-provenance.sh" "$root/scripts/lib/"
+  cp "$source_root/scripts/hepta-dependency-security-v1.json" "$root/scripts/"
+  cp "$source_root/codex-rs/"{Cargo.lock,rust-toolchain.toml} "$root/codex-rs/"
+  cp "$source_root/apps/hepta-native/"{Cargo.lock,rust-toolchain.toml} \
+    "$root/apps/hepta-native/"
+  git -C "$root" init -q
+  git -C "$root" add .
+  git -C "$root" \
+    -c user.name="Hepta Release Self-Test" \
+    -c user.email="hepta-release-self-test@invalid" \
+    commit -qm "fixture"
+  tool="$root/scripts/hepta-immutable-release-tree"
+  dirty_source_fixture="$root/.hepta-immutable-release-source-dirty-self-test.$$"
+  trap 'rm -f "$dirty_source_fixture"; chmod -R u+w "$tmp" 2>/dev/null || true; rm -rf "$tmp"' RETURN
   artifact="$tmp/hepta"
   printf '%s\n' '#!/usr/bin/env bash' 'printf "hepta fixture\n"' >"$artifact"
   chmod 0755 "$artifact"
   source_commit="$(git -C "$root" rev-parse HEAD)"
   short_head="${source_commit:0:10}"
   preflight="$tmp/preflight.log"
-  provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$artifact")"
-  provenance="$(
-    jq -c '. + {
-      preflight_profiles:{backend:true,native:true,release:true},
-      watchdog_gate_mode:"fixture",
-      deployment_consistency:{checked_during_candidate_preflight:false,required_before_activation:true}
-    }' <<<"$provenance"
+  provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$artifact")"
+  hepta_release_write_fixture_preflight_log "$preflight" "$source_commit" "$provenance"
+  canonical_preflight_artifact="$(
+    hepta_release_canonical_preflight_artifact_path "$tmp/cargo-target" ""
   )"
-  printf '%s\n' \
-    "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$preflight" \
-    "{\"hepta_repo_head\": \"$source_commit\"}" \
-    "[hepta-preflight-provenance] $provenance" \
-    'Hepta preflight passed' >"$preflight"
-
+  [[ "$canonical_preflight_artifact" == "$tmp/cargo-target/release/hepta" ]] || {
+    echo "canonical release artifact resolver did not select the Cargo target artifact" >&2
+    exit 1
+  }
+  artifact_override_rc=0
+  hepta_release_canonical_preflight_artifact_path \
+    "$tmp/cargo-target" "$tmp/unreviewed-artifact" >/dev/null 2>&1 \
+    || artifact_override_rc=$?
+  [[ "$artifact_override_rc" == "1" ]] || {
+    echo "canonical release artifact resolver accepted an override" >&2
+    exit 1
+  }
   bound_manifest="$($tool materialize --artifact "$artifact" --source-commit "$source_commit" --preflight-log "$preflight" --release-root "$tmp/releases")"
   $tool verify --manifest "$bound_manifest" | jq -e '
     .status == "ready"
@@ -948,9 +1296,173 @@ self_test() {
     and .preflight.source_head == .source.commit
     and .preflight.candidate_source_commit == .source.commit
     and .preflight.candidate_artifact_sha256 == .artifact.sha256
+    and .preflight.relative_path == "evidence/preflight.log"
+    and .policy.release_contract_version == 2
     and .policy.immutable_tree == true
   ' >/dev/null
-
+  : >"$dirty_source_fixture"
+  if $tool materialize \
+    --artifact "$artifact" \
+    --source-commit "$source_commit" \
+    --preflight-log "$preflight" \
+    --release-root "$tmp/dirty-source-releases" >/dev/null 2>&1; then
+    echo "immutable release materialization accepted a dirty source worktree" >&2
+    exit 1
+  fi
+  rm -f "$dirty_source_fixture"
+  tampered_evidence_manifest="$(
+    $tool materialize \
+      --artifact "$artifact" \
+      --source-commit "$source_commit" \
+      --preflight-log "$preflight" \
+      --release-root "$tmp/tampered-evidence-releases"
+  )"
+  tampered_evidence_file="$(dirname "$tampered_evidence_manifest")/evidence/preflight.log"
+  chmod u+w "$(dirname "$tampered_evidence_manifest")" "$(dirname "$tampered_evidence_file")"
+  chmod u+w "$tampered_evidence_file"
+  printf '%s\n' '[forged-after-materialize]' >>"$tampered_evidence_file"
+  chmod 0444 "$tampered_evidence_file"
+  chmod 0555 "$(dirname "$tampered_evidence_file")" "$(dirname "$tampered_evidence_manifest")"
+  if $tool verify --manifest "$tampered_evidence_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted tampered copied preflight evidence" >&2
+    exit 1
+  fi
+  mutated_provenance="$(jq -c 'del(.bound_gate_receipts)' <<<"$provenance")"
+  self_test_expect_materialize_denied \
+    "missing bound gate receipts" \
+    "$tool" "$artifact" "$source_commit" "$mutated_provenance" "$tmp/negative-missing-receipts"
+  receipts="$(jq -c '.bound_gate_receipts' <<<"$provenance")"
+  while read -r negative_name rehash_receipts negative_filter; do
+    mutated_receipts="$(jq -c "$negative_filter" <<<"$receipts")"
+    [[ "$rehash_receipts" != "yes" ]] \
+      || mutated_receipts="$(self_test_rehash_bound_gate_receipts "$mutated_receipts")"
+    mutated_provenance="$(
+      jq -c --argjson receipts "$mutated_receipts" \
+        '.bound_gate_receipts = $receipts' <<<"$provenance"
+    )"
+    negative_root="$tmp/negative-$negative_name"
+    self_test_expect_materialize_denied \
+      "$negative_name bound gate evidence" \
+      "$tool" "$artifact" "$source_commit" "$mutated_provenance" "$negative_root"
+  done <<'EOF'
+wrong_source no .source.commit = ("0" * 40)
+duplicate_gate no .gates[2] = .gates[0]
+missing_gate no .gates = .gates[0:2]
+unknown_gate no .gates[2].id = "unknown-gate"
+blocked_receipt yes (.gates[] | select(.id == "native-ingress-composition") | .receipt.status) = "blocked"
+blocked_self_test yes (.gates[] | select(.id == "native-ingress-composition") | .self_test_receipt.status) = "blocked"
+vulnerability_nonzero yes (.gates[] | select(.id == "dependency-security") | .receipt.vulnerability_count) = 1
+warning_nonzero yes (.gates[] | select(.id == "dependency-security") | .receipt.warning_count) = 1
+unsafe_warning_nonzero yes (.gates[] | select(.id == "dependency-security") | .receipt.unsafe_warning_count) = 1 | (.gates[] | select(.id == "dependency-security") | .receipt.unsafe_warning_counts.unsound) = 1
+unsafe_warning_exception yes (.gates[] | select(.id == "dependency-security") | .receipt.unsafe_warning_exceptions) = ["forged"]
+dependency_audit_wrong_exit yes (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_audit_exit_code) = 0
+dependency_deny_nonzero yes (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_deny_exit_code) = 1
+dependency_deny_errors yes (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_deny_error_count) = 1
+dependency_deny_warning_invalid yes (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_deny_warning_count) = -1
+raw_configured_zero yes (.gates[] | select(.id == "dependency-security") | .receipt) |= (.graphs |= map(.cargo_audit_exit_code=0|.raw_vulnerability_count=0|.raw_vulnerabilities=[]|.vulnerability_exception_count=0|.vulnerability_exceptions=[]|.raw_warning_count=0|.raw_unsafe_warning_count=0|.raw_unsafe_warnings=[]|.unsafe_warning_exception_count=0|.unsafe_warning_exceptions=[])|.raw_vulnerability_count=0|.vulnerability_exception_count=0|.vulnerability_exceptions=[]|.raw_warning_count=0|.raw_unsafe_warning_count=0|.unsafe_warning_exception_count=0|.unsafe_warning_exceptions=[])
+raw_new_exception_id yes (.gates[] | select(.id == "dependency-security") | .receipt) |= (.graphs[0].raw_vulnerabilities[0].advisory_id="RUSTSEC-9999-9999"|.graphs[0].vulnerability_exceptions[0].advisory_id="RUSTSEC-9999-9999"|.vulnerability_exceptions[0].advisory_id="RUSTSEC-9999-9999")
+raw_missing_finding yes (.gates[] | select(.id == "dependency-security") | .receipt) |= (.graphs[0].raw_vulnerabilities|=.[1:]|.graphs[0].vulnerability_exceptions|=.[1:]|.graphs[0].raw_vulnerability_count=5|.graphs[0].vulnerability_exception_count=5|.raw_vulnerability_count=6|.vulnerability_exception_count=6|.vulnerability_exceptions|=.[1:])
+raw_modified_package_version yes (.gates[] | select(.id == "dependency-security") | .receipt) |= (.graphs[0].raw_vulnerabilities[0].package="forged"|.graphs[0].raw_vulnerabilities[0].version="9.9.9"|.graphs[0].vulnerability_exceptions[0].package="forged"|.graphs[0].vulnerability_exceptions[0].version="9.9.9"|.vulnerability_exceptions[0].package="forged"|.vulnerability_exceptions[0].version="9.9.9")
+raw_reordered_findings yes (.gates[] | select(.id == "dependency-security") | .receipt) |= (.graphs[0].raw_vulnerabilities=([.graphs[0].raw_vulnerabilities[1],.graphs[0].raw_vulnerabilities[0]]+.graphs[0].raw_vulnerabilities[2:])|.graphs[0].vulnerability_exceptions=([.graphs[0].vulnerability_exceptions[1],.graphs[0].vulnerability_exceptions[0]]+.graphs[0].vulnerability_exceptions[2:])|.vulnerability_exceptions=([.vulnerability_exceptions[1],.vulnerability_exceptions[0]]+.vulnerability_exceptions[2:]))
+wrong_receipt_schema yes (.gates[] | select(.id == "native-ingress-composition") | .receipt.schema) = "forged"
+wrong_embedded_hash no (.gates[] | select(.id == "native-ingress-composition") | .receipt_sha256) = ("0" * 64)
+wrong_cargo_lock yes (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_lock_sha256) = ("0" * 64)
+wrong_native_cargo_lock yes (.gates[] | select(.id == "dependency-security") | .receipt.graphs[1].cargo_lock_sha256) = ("0" * 64)
+wrong_dependency_tool yes (.gates[] | select(.id == "dependency-security") | .receipt.tools.cargo_audit) = "cargo-audit 999.0.0"
+wrong_dependency_database yes (.gates[] | select(.id == "dependency-security") | .receipt.advisory_database_commit) = ("0" * 40)
+wrong_dependency_contract yes (.gates[] | select(.id == "dependency-security") | .receipt.contract_sha256) = ("0" * 64)
+minimal_ingress_receipt yes (.gates[] | select(.id == "native-ingress-composition") | .receipt) = {schema:"hepta.native-ingress-composition.v2",status:"ready"}
+minimal_compat_receipt yes (.gates[] | select(.id == "gate-compat-debt") | .receipt) = {schema:"hepta_gate_compat_debt_receipt_v1",status:"ready",counts_may_only_improve:true}
+EOF
+  while read -r negative_name negative_filter; do
+    mutated_provenance="$(jq -c "$negative_filter" <<<"$provenance")"
+    self_test_expect_materialize_denied \
+      "$negative_name provenance" \
+      "$tool" "$artifact" "$source_commit" "$mutated_provenance" \
+      "$tmp/negative-$negative_name"
+  done <<'EOF'
+forged_toolchain_aggregate .toolchain.aggregate_sha256 = ("0" * 64)
+forged_dependency_aggregate .dependencies.aggregate_sha256 = ("0" * 64)
+forged_native_lock_input (.dependencies.lock_inputs[] | select(.path == "apps/hepta-native/Cargo.lock") | .sha256) = ("0" * 64)
+EOF
+  mutated_provenance="$(
+    jq -c '
+      .source.commit = ("1" * 40)
+      | .bound_gate_receipts.source.commit = ("1" * 40)
+    ' <<<"$provenance"
+  )"
+  self_test_expect_materialize_denied \
+    "nonexistent source commit" \
+    "$tool" "$artifact" "$(printf '1%.0s' {1..40})" "$mutated_provenance" \
+    "$tmp/negative-nonexistent-source"
+  tampered_release_dir="$tmp/tampered-receipt-release"
+  tampered_manifest="$(
+    $tool materialize \
+      --artifact "$artifact" \
+      --source-commit "$source_commit" \
+      --preflight-log "$preflight" \
+      --release-root "$tampered_release_dir"
+  )"
+  chmod u+w "$(dirname "$tampered_manifest")"
+  chmod u+w "$tampered_manifest"
+  jq '
+    (.build_provenance.bound_gate_receipts.gates[]
+      | select(.id == "dependency-security")
+      | .receipt.status) = "blocked"
+  ' "$tampered_manifest" >"$tmp/tampered-receipt-manifest.json"
+  mv "$tmp/tampered-receipt-manifest.json" "$tampered_manifest"
+  chmod 0444 "$tampered_manifest"
+  chmod 0555 "$(dirname "$tampered_manifest")"
+  if $tool verify --manifest "$tampered_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted a tampered bound gate receipt" >&2
+    exit 1
+  fi
+  tampered_release_dir="$tmp/tampered-existing-evidence"
+  tampered_manifest="$(
+    $tool materialize \
+      --artifact "$artifact" \
+      --source-commit "$source_commit" \
+      --preflight-log "$preflight" \
+      --release-root "$tampered_release_dir"
+  )"
+  chmod u+w "$(dirname "$tampered_manifest")"
+  chmod u+w "$tampered_manifest"
+  jq '.build_provenance.watchdog_gate_mode = "forged-existing-evidence"' \
+    "$tampered_manifest" >"$tmp/tampered-existing-manifest.json"
+  mv "$tmp/tampered-existing-manifest.json" "$tampered_manifest"
+  chmod 0444 "$tampered_manifest"
+  chmod 0555 "$(dirname "$tampered_manifest")"
+  if $tool materialize \
+    --artifact "$artifact" \
+    --source-commit "$source_commit" \
+    --preflight-log "$preflight" \
+    --release-root "$tampered_release_dir" >/dev/null 2>&1; then
+    echo "immutable release materialization silently reused different existing evidence" >&2
+    exit 1
+  fi
+  evidence_variant_preflight="$tmp/evidence-variant-preflight.log"
+  evidence_variant_provenance="$(
+    jq -c '.watchdog_gate_mode = "fixture-variant"' <<<"$provenance"
+  )"
+  hepta_release_write_fixture_preflight_log \
+    "$evidence_variant_preflight" \
+    "$source_commit" \
+    "$evidence_variant_provenance"
+  evidence_variant_manifest="$(
+    $tool materialize \
+      --artifact "$artifact" \
+      --source-commit "$source_commit" \
+      --preflight-log "$evidence_variant_preflight" \
+      --release-root "$tmp/releases"
+  )"
+  $tool verify --manifest "$evidence_variant_manifest" >/dev/null
+  if [[ "$evidence_variant_manifest" == "$bound_manifest" \
+    || "$(jq -r '.artifact.sha256' "$evidence_variant_manifest")" != "$(jq -r '.artifact.sha256' "$bound_manifest")" \
+    || "$(jq -r '.source.commit' "$evidence_variant_manifest")" != "$(jq -r '.source.commit' "$bound_manifest")" \
+    || "$(jq -r '.preflight.log_sha256' "$evidence_variant_manifest")" == "$(jq -r '.preflight.log_sha256' "$bound_manifest")" ]]; then
+    echo "same source and artifact with different evidence did not get a distinct release identity" >&2
+    exit 1
+  fi
   conflicting_preflight="$tmp/conflicting-preflight.log"
   printf '%s\n' \
     "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$conflicting_preflight" \
@@ -961,7 +1473,6 @@ self_test() {
     echo "immutable release materialization accepted conflicting full source truths" >&2
     exit 1
   fi
-
   wrong_banner_preflight="$tmp/wrong-banner-preflight.log"
   printf '%s\n' \
     "[hepta-preflight-resume] head=0000000000 attempt=1 start_line=1 marker=<start> log=$wrong_banner_preflight" \
@@ -972,7 +1483,6 @@ self_test() {
     echo "immutable release materialization accepted a conflicting resume banner" >&2
     exit 1
   fi
-
   missing_source_preflight="$tmp/missing-source-preflight.log"
   printf '%s\n' \
     "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$missing_source_preflight" \
@@ -982,14 +1492,12 @@ self_test() {
     echo "immutable release materialization accepted missing full source truth" >&2
     exit 1
   fi
-
   missing_preflight_rc=0
   $tool materialize --artifact "$artifact" --source-commit "$source_commit" --release-root "$tmp/missing-preflight" >/dev/null 2>&1 || missing_preflight_rc=$?
   if [[ "$missing_preflight_rc" != "1" ]]; then
     echo "source-bound materialization without preflight did not fail closed" >&2
     exit 1
   fi
-
   invalid_manifest="$tmp/invalid-manifest.json"
   jq 'del(.build_provenance)' "$bound_manifest" >"$invalid_manifest"
   chmod 0444 "$invalid_manifest"
@@ -997,10 +1505,20 @@ self_test() {
     echo "immutable release verification accepted a source-bound manifest without provenance" >&2
     exit 1
   fi
-
+  missing_receipts_verify_dir="$tmp/missing-receipts-verify"
+  mkdir -p "$missing_receipts_verify_dir/bin"
+  cp -p "$(dirname "$bound_manifest")/bin/hepta" "$missing_receipts_verify_dir/bin/hepta"
+  missing_receipts_manifest="$missing_receipts_verify_dir/manifest.json"
+  jq 'del(.build_provenance.bound_gate_receipts)' \
+    "$bound_manifest" >"$missing_receipts_manifest"
+  chmod 0555 "$missing_receipts_verify_dir/bin/hepta" "$missing_receipts_verify_dir/bin" "$missing_receipts_verify_dir"
+  chmod 0444 "$missing_receipts_manifest"
+  if $tool verify --manifest "$missing_receipts_manifest" >/dev/null 2>&1; then
+    echo "immutable release verification accepted a ready manifest without bound gate receipts" >&2
+    exit 1
+  fi
   legacy_manifest="$($tool materialize --artifact "$artifact" --source-commit unknown --release-root "$tmp/releases")"
   $tool verify --manifest "$legacy_manifest" | jq -e '.status == "legacy_unbound" and .source.commit == "unknown" and .source.commit_bound == false and .preflight.bound == false' >/dev/null
-
   legacy_activation_rc=0
   mkdir -p "$tmp/legacy-active"
   cp "$artifact" "$tmp/legacy-active/hepta"
@@ -1010,7 +1528,6 @@ self_test() {
     echo "legacy-unbound activation did not fail closed" >&2
     exit 1
   fi
-
   tampered_manifest="$tmp/tampered-manifest.json"
   jq '.preflight.candidate_artifact_sha256 = ("0" * 64)' "$bound_manifest" >"$tampered_manifest"
   chmod 0444 "$tampered_manifest"
@@ -1018,7 +1535,6 @@ self_test() {
     echo "immutable release verification accepted a mismatched preflight candidate artifact" >&2
     exit 1
   fi
-
   mkdir -p "$tmp/active"
   cp "$artifact" "$tmp/active/hepta"
   chmod 0755 "$tmp/active/hepta"
@@ -1032,29 +1548,20 @@ self_test() {
     exit 1
   fi
   $tool verify --manifest "$tmp/active/hepta.manifest" >/dev/null
-
   different="$tmp/different"
   printf '%s\n' '#!/usr/bin/env bash' 'printf "different fixture\n"' >"$different"
   chmod 0755 "$different"
   different_sha="$(sha256_file "$different")"
   different_preflight="$tmp/different-preflight.log"
-  different_provenance="$(hepta_release_build_provenance_json "$root" "$source_commit" "$different")"
-  different_provenance="$(jq -c '. + {preflight_profiles:{backend:true,native:true,release:true},watchdog_gate_mode:"fixture",deployment_consistency:{checked_during_candidate_preflight:false,required_before_activation:true}}' <<<"$different_provenance")"
-  printf '%s\n' \
-    "[hepta-preflight-resume] head=$short_head attempt=1 start_line=1 marker=<start> log=$different_preflight" \
-    "{\"hepta_repo_head\": \"$source_commit\"}" \
-    "[hepta-preflight-provenance] $different_provenance" \
-    'Hepta preflight passed' >"$different_preflight"
+  different_provenance="$(hepta_release_fixture_complete_provenance_json "$root" "$source_commit" "$different")"
+  hepta_release_write_fixture_preflight_log "$different_preflight" "$source_commit" "$different_provenance"
   different_manifest="$($tool materialize --artifact "$different" --source-commit "$source_commit" --preflight-log "$different_preflight" --release-root "$tmp/releases")"
   if $tool activate --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha" >/dev/null 2>&1; then
     echo "immutable activation accepted different binary bytes" >&2
     exit 1
   fi
-
-  # Model the deployed legacy-unbound manifest before the first source-bound cutover.
   ln -s "$legacy_manifest" "$tmp/active/.hepta-legacy-manifest"
   mv -f "$tmp/active/.hepta-legacy-manifest" "$tmp/active/hepta.manifest"
-
   cutover_rc=0
   $tool cutover --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$(printf '0%.0s' {1..64})" >/dev/null 2>&1 || cutover_rc=$?
   if [[ "$cutover_rc" != "1" || "$(sha256_file "$tmp/active/hepta")" != "$fixture_sha" ]]; then
@@ -1086,7 +1593,6 @@ self_test() {
     echo "successful immutable cutover did not preserve its durable rollback bundle" >&2
     exit 1
   fi
-
   rollback_receipt="$($tool rollback --receipt "$rollback_record" --expected-current-sha256 "$different_sha")"
   jq -e --arg old "$fixture_sha" '
     .status == "ready" and .restored.artifact_sha256 == $old
@@ -1101,7 +1607,6 @@ self_test() {
     exit 1
   fi
   $tool verify --manifest "$tmp/active/hepta.manifest" >/dev/null
-
   cutover_receipt="$($tool cutover --manifest "$different_manifest" --active-link "$tmp/active/hepta" --expected-current-sha256 "$fixture_sha")"
   jq -e '.status == "ready" and .backup.created == false and .backup.verified == true' >/dev/null <<<"$cutover_receipt"
   rollback_receipt="$($tool rollback --receipt "$rollback_record" --expected-current-sha256 "$different_sha")"
@@ -1111,7 +1616,6 @@ self_test() {
     echo "reused rollback bundle did not support a repeated cutover and rollback" >&2
     exit 1
   fi
-
   for failure_point in after_active_swap after_manifest_swap; do
     rollback_active="$tmp/rollback-active-$failure_point"
     mkdir -p "$rollback_active"
@@ -1142,12 +1646,10 @@ self_test() {
       exit 1
     fi
   done
-
   jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
-    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,artifact_override_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
   echo "hepta immutable release tree self-test passed"
 }
-
 [[ $# -gt 0 ]] || usage
 command_name="$1"
 shift

@@ -39,10 +39,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Install Rust 1.93.0
+      - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
         with:
-          toolchain: 1.93.0
+          toolchain: 1.95.0
           components: rustfmt, clippy
       - name: Cache Cargo inputs and preflight targets
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -56,6 +56,12 @@ jobs:
           key: ${{ runner.os }}-hepta-full-v1-${{ github.job }}-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/rust-toolchain.toml', 'apps/hepta-native/Cargo.lock') }}
       - name: Install preflight tools
         run: brew install jq ripgrep just
+      - name: Install pinned dependency security tools
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+      - name: Materialize pinned RustSec advisory database
+        run: scripts/hepta-dependency-security materialize-db
       - name: Verify workflow contract
         run: scripts/hepta-ci-baseline contract
       - name: Materialize frozen upstream intake refs
@@ -83,9 +89,7 @@ jobs:
       - name: Fetch locked dependency graphs
         run: |
           cargo fetch --locked --manifest-path codex-rs/Cargo.toml
-          if test "$HEPTA_PREFLIGHT_NATIVE" = "1"; then
-            cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml
-          fi
+          cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml
       - name: Run full preflight without deployment
         env:
           CARGO_NET_OFFLINE: "true"

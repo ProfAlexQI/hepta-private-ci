@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CONTRACT="${HEPTA_CI_CONTRACT:-$ROOT/.github/hepta-ci-contract-v1.json}"
-
 usage() {
   echo "usage: scripts/hepta-ci-baseline-contract <verify|self-test>" >&2
   exit 2
 }
-
 require_exact_literal() {
   local file="$1"
   local literal="$2"
@@ -20,7 +17,6 @@ require_exact_literal() {
     return 1
   fi
 }
-
 require_literal_count() {
   local file="$1"
   local literal="$2"
@@ -33,7 +29,6 @@ require_literal_count() {
     return 1
   fi
 }
-
 require_literal() {
   local file="$1"
   local literal="$2"
@@ -43,7 +38,6 @@ require_literal() {
     return 1
   }
 }
-
 reject_literal() {
   local file="$1"
   local literal="$2"
@@ -52,7 +46,36 @@ reject_literal() {
     return 1
   fi
 }
-
+workflow_job_block() {
+  local file="$1"
+  local job="$2"
+  awk -v job="$job" '
+    $0 == "  " job ":" {
+      in_job = 1
+    }
+    in_job {
+      if (seen && $0 ~ /^  [[:alnum:]_-]+:$/) {
+        exit
+      }
+      print
+      seen = 1
+    }
+  ' "$file"
+}
+require_literal_order() {
+  local file="$1"
+  local first="$2"
+  local second="$3"
+  local label="$4"
+  local content first_line second_line
+  content="$(cat "$file")"
+  first_line="$(grep -Fn -- "$first" <<<"$content" | head -n 1 | cut -d: -f1)"
+  second_line="$(grep -Fn -- "$second" <<<"$content" | head -n 1 | cut -d: -f1)"
+  if [[ -z "$first_line" || -z "$second_line" || "$first_line" -ge "$second_line" ]]; then
+    echo "Hepta CI contract requires ordered $label in $file" >&2
+    return 1
+  fi
+}
 normalized_v2_inventory() {
   local file="$1"
   local line call
@@ -67,7 +90,6 @@ normalized_v2_inventory() {
   done <"$file" \
     | sed -E 's#"\$ROOT/([^"]+)"#\1#g; s/[[:space:]]+//g'
 }
-
 verify_v2_inventory_parity() {
   local ci_inventory preflight_inventory
   ci_inventory="$(normalized_v2_inventory "$ROOT/scripts/hepta-ci-baseline")"
@@ -84,7 +106,6 @@ verify_v2_inventory_parity() {
     return 1
   }
 }
-
 verify_contract() {
   command -v jq >/dev/null || {
     echo "missing Hepta CI contract tool: jq" >&2
@@ -96,6 +117,11 @@ verify_contract() {
     and .permissions == {contents:"read"}
     and (.baseline_workflow.allowed_events | sort == ["pull_request","push","schedule","workflow_dispatch"])
     and (.full_workflow.allowed_events == ["workflow_dispatch"])
+    and .full_workflow.dependency_security == {
+      cargo_audit_install:"cargo install cargo-audit --version 0.22.2 --locked",
+      cargo_deny_install:"cargo install cargo-deny --version 0.20.2 --locked",
+      materialize_database:"scripts/hepta-dependency-security materialize-db"
+    }
     and .full_workspace_platform_evidence == {
       capability_version:3,
       trigger:"workflow_dispatch",
@@ -127,12 +153,20 @@ verify_contract() {
       entrypoint:"scripts/hepta-safe-lint-security-baseline run"
     }
     and .dependency_security == {
-      capability_version:1,
+      capability_version:2,
       contract:"scripts/hepta-dependency-security-v1.json",
       configured_capability:"supported",
       tools_pinned:true,
       advisory_database_pinned:true,
       scan_network_disabled:true,
+      cargo_lock_graphs:[
+        "codex-rs/Cargo.lock",
+        "apps/hepta-native/Cargo.lock"
+      ],
+      vendored_source_receipts_required:true,
+      vendored_source_receipts:[
+        "codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json"
+      ],
       ci_job:"rust-backend",
       entrypoint:"scripts/hepta-dependency-security scan"
     }
@@ -204,9 +238,15 @@ verify_contract() {
     and .upstream_truth == {
       capability_version:1,
       registry:"docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
-      registry_sha256:"f3ec3723b59f216c6ba6061bca99649fb9b8a046eef0fe38d5c06af02b842179",
+      registry_sha256:"0a3b7e90856e88ac12c5f2e7e60046a47f2442c0c2d9d75e8aa024c7f495ec65",
       ci_job:"upstream-truth",
       semantic_command:"scripts/hepta-upstream-truth-gate verify-semantic",
+      counted_evidence_command:"scripts/hepta-upstream-truth-gate verify-counted-evidence",
+      counted_evidence_ci_job:"rust-backend",
+      counted_evidence_requires_full_history:true,
+      counted_evidence_requires_materialized_intake_refs:true,
+      minimum_counted_evidence_command_count:11,
+      minimum_exact_test_count:18,
       self_test_command:"scripts/hepta-upstream-truth-gate self-test",
       network_receipt_command:"scripts/hepta-upstream-truth-gate network-receipt artifacts/upstream-network-freshness-receipt.json",
       network_receipt_verify_command:"scripts/hepta-upstream-truth-gate verify-network-receipt artifacts/upstream-network-freshness-receipt.json",
@@ -215,8 +255,7 @@ verify_contract() {
       semantic_absorption_required:true
     }
   ' "$CONTRACT" >/dev/null
-
-  local baseline_rel full_rel baseline full
+  local baseline_rel full_rel baseline full rust_backend_block
   baseline_rel="$(jq -er '.baseline_workflow.path' "$CONTRACT")"
   full_rel="$(jq -er '.full_workflow.path' "$CONTRACT")"
   baseline="$ROOT/$baseline_rel"
@@ -225,7 +264,6 @@ verify_contract() {
     echo "Hepta CI workflow file missing" >&2
     return 1
   }
-
   require_exact_literal "$baseline" "  pull_request:" "pull_request trigger"
   require_exact_literal "$baseline" "  push:" "push trigger"
   require_exact_literal "$baseline" "  workflow_dispatch:" "manual trigger"
@@ -234,7 +272,6 @@ verify_contract() {
   reject_literal "$full" "  pull_request:"
   reject_literal "$full" "  push:"
   reject_literal "$full" "  schedule:"
-
   local workflow
   for workflow in "$baseline" "$full"; do
     require_exact_literal "$workflow" "permissions:" "permissions block"
@@ -246,7 +283,6 @@ verify_contract() {
       reject_literal "$workflow" "$forbidden"
     done < <(jq -er '.forbidden_workflow_tokens[]' "$CONTRACT")
   done
-
   local job command_name binding profile
   while IFS= read -r job; do
     require_exact_literal "$baseline" "  $job:" "baseline job $job"
@@ -258,11 +294,22 @@ verify_contract() {
   require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-safe-lint-security-baseline" run' "safe lint/security baseline execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-dependency-security" scan' "dependency security execution"
+  require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-upstream-truth-gate" verify-counted-evidence' "exact counted upstream evidence execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-gate-compat-debt verify' "gate compatibility debt verification"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-gate-compat-debt self-test' "gate compatibility debt self-test"
   require_literal "$baseline" "cargo install cargo-audit --version 0.22.2 --locked" "pinned cargo-audit installation"
   require_literal "$baseline" "cargo install cargo-deny --version 0.20.2 --locked" "pinned cargo-deny installation"
   require_literal "$baseline" "run: scripts/hepta-dependency-security materialize-db" "pinned advisory database materialization"
+  rust_backend_block="$(workflow_job_block "$baseline" "rust-backend")"
+  require_literal <(printf '%s\n' "$rust_backend_block") "          fetch-depth: 0" "rust-backend full-history checkout"
+  require_literal <(printf '%s\n' "$rust_backend_block") \
+    "        run: scripts/hepta-ci-materialize-upstream-intake materialize" \
+    "rust-backend frozen intake materialization"
+  require_literal_order \
+    <(printf '%s\n' "$rust_backend_block") \
+    "        run: scripts/hepta-ci-materialize-upstream-intake materialize" \
+    "        run: scripts/hepta-ci-baseline rust-backend" \
+    "rust-backend frozen intake materialization before counted evidence"
   require_literal "$baseline" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned Cargo cache action"
   require_literal_count "$baseline" "          persist-credentials: false" 6 "checkout credential isolation"
   require_literal "$baseline" '${{ github.job }}' "job-bound Cargo cache key"
@@ -279,7 +326,6 @@ verify_contract() {
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence run ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt execution"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "platform receipt verification"
   require_literal "$baseline" 'run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }}' "successful platform receipt promotion eligibility"
-
   require_literal "$full" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
   require_literal "$full" "components: rustfmt, clippy" "full preflight V2 Clippy component"
   require_literal "$full" "uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684" "pinned full preflight Cargo cache action"
@@ -291,12 +337,37 @@ verify_contract() {
   done < <(jq -er '.full_workflow.required_profiles[]' "$CONTRACT")
   require_literal "$full" "run: $(jq -er '.full_workflow.required_command' "$CONTRACT")" "full preflight command"
   require_exact_literal "$full" "        run: $(jq -er '.upstream_intake.materialize_command' "$CONTRACT")" "frozen upstream intake materialization command"
+  require_literal "$full" \
+    "$(jq -er '.full_workflow.dependency_security.cargo_audit_install' "$CONTRACT")" \
+    "full preflight pinned cargo-audit installation"
+  require_literal "$full" \
+    "$(jq -er '.full_workflow.dependency_security.cargo_deny_install' "$CONTRACT")" \
+    "full preflight pinned cargo-deny installation"
+  require_exact_literal "$full" \
+    "        run: $(jq -er '.full_workflow.dependency_security.materialize_database' "$CONTRACT")" \
+    "full preflight pinned advisory database materialization"
+  require_literal_order \
+    "$full" \
+    "        run: $(jq -er '.full_workflow.dependency_security.materialize_database' "$CONTRACT")" \
+    "        run: $(jq -er '.full_workflow.required_command' "$CONTRACT")" \
+    "full preflight dependency database materialization before release verification"
   require_literal "$full" "HEPTA_PREFLIGHT_NATIVE=0" "backend-only native opt-out"
   require_literal "$full" "HEPTA_PREFLIGHT_RELEASE=0" "release opt-out"
   require_literal "$full" "HEPTA_PREFLIGHT_NATIVE=1" "explicit native profile"
   require_literal "$full" "HEPTA_PREFLIGHT_RELEASE=1" "explicit release profile"
+  require_literal "$baseline" \
+    "cargo fetch --locked --manifest-path codex-rs/Cargo.toml" \
+    "rust-backend codex dependency graph fetch"
+  require_literal "$baseline" \
+    "cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml" \
+    "rust-backend native dependency graph fetch"
+  require_literal "$full" \
+    "cargo fetch --locked --manifest-path codex-rs/Cargo.toml" \
+    "full preflight codex dependency graph fetch"
+  require_literal "$full" \
+    "cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml" \
+    "full preflight native dependency graph fetch"
   verify_v2_inventory_parity
-
   local action_ref
   while IFS= read -r action_ref; do
     if [[ ! "$action_ref" =~ ^[0-9a-f]{40}$ ]]; then
@@ -304,7 +375,6 @@ verify_contract() {
       return 1
     fi
   done < <(sed -nE 's/^[[:space:]]*uses:[[:space:]]*[^@[:space:]]+@([0-9A-Za-z._-]+).*/\1/p' "$baseline" "$full")
-
   jq -n \
     --arg schema hepta_ci_baseline_contract_verification_v1 \
     --arg status ready \
@@ -312,7 +382,6 @@ verify_contract() {
     --arg full_workflow "$full_rel" \
     '{schema:$schema,status:$status,baseline_workflow:$baseline_workflow,full_workflow:$full_workflow,permissions_read_only:true,ordinary_pr_full_preflight_denied:true,deploy_install_sign_publish_denied:true,cache_lock_toolchain_bound:true,frozen_upstream_intake_bound:true,full_workspace_platforms:["linux","macos"],windows_unsupported:true,receipt_promotion_requires_real_run:true,cross_platform_promotion_denied:true}'
 }
-
 self_test() (
   local tmp baseline_rel full_rel
   tmp="$(mktemp -d /tmp/hepta-ci-contract-self-test.XXXXXX)"
@@ -327,23 +396,19 @@ self_test() (
   cp "$ROOT/scripts/hepta-ci-baseline-contract" "$tmp/scripts/hepta-ci-baseline-contract"
   cp "$ROOT/scripts/hepta-ci-materialize-upstream-intake" "$tmp/scripts/hepta-ci-materialize-upstream-intake"
   cp "$ROOT/scripts/hepta-preflight.sh" "$tmp/scripts/hepta-preflight.sh"
-
   HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null
-
   printf '\npermissions: write-all\n' >>"$tmp/$baseline_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted write-all permissions" >&2
     return 1
   fi
   cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
-
   printf '\n  pull_request:\n' >>"$tmp/$full_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted ordinary PR full preflight" >&2
     return 1
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
-
   jq '.upstream_intake.url = "https://example.invalid/floating.git"' \
     "$tmp/contract.json" >"$tmp/contract-mutated.json"
   if HEPTA_CI_CONTRACT="$tmp/contract-mutated.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
@@ -368,7 +433,36 @@ self_test() (
     echo "Hepta CI contract self-test accepted false safe lint CI evidence promotion" >&2
     return 1
   fi
-
+  perl -0pi -e \
+    's/(  rust-backend:\n.*?)(          fetch-depth: 0\n)/$1/s' \
+    "$tmp/$baseline_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted a shallow rust-backend checkout" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+  perl -0pi -e \
+    's/(  rust-backend:\n.*?)(      - name: Materialize immutable upstream intake refs for counted evidence\n        run: scripts\/hepta-ci-materialize-upstream-intake materialize\n)/$1/s' \
+    "$tmp/$baseline_rel"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted rust-backend without frozen intake refs" >&2
+    return 1
+  fi
+  cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
+  sed -i.bak '/cargo install cargo-audit --version 0.22.2 --locked/d' "$tmp/$full_rel"
+  rm -f "$tmp/$full_rel.bak"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted full preflight without pinned cargo-audit" >&2
+    return 1
+  fi
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
+  sed -i.bak '/scripts\/hepta-dependency-security materialize-db/d' "$tmp/$full_rel"
+  rm -f "$tmp/$full_rel.bak"
+  if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
+    echo "Hepta CI contract self-test accepted full preflight without pinned RustSec DB materialization" >&2
+    return 1
+  fi
+  cp "$ROOT/$full_rel" "$tmp/$full_rel"
   perl -0pi -e \
     's/Architecture V2 provider-effect ACK" 2/Architecture V2 provider-effect ACK" 3/' \
     "$tmp/scripts/hepta-ci-baseline"
@@ -377,14 +471,12 @@ self_test() (
     return 1
   fi
   cp "$ROOT/scripts/hepta-ci-baseline" "$tmp/scripts/hepta-ci-baseline"
-
   printf '\n      - run: git fetch upstream main\n' >>"$tmp/$full_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted a floating upstream fetch" >&2
     return 1
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
-
   local ref_fixture predecessor_ref predecessor_sha r2_ref r2_sha r3_ref r3_sha r4_ref r4_sha r5_ref r5_sha r6_ref r6_sha r7_ref r7_sha r8_ref r8_sha r9_ref r9_sha predecessor_before r2_before r3_before r4_before r5_before r6_before r7_before r8_before wrong_r4_after wrong_r5_after wrong_r6_after wrong_r7_after wrong_r8_after wrong_r9_after
   ref_fixture="$tmp/ref-fixture"
   predecessor_ref="refs/remotes/upstream/hepta-intake-20260721"
@@ -415,13 +507,11 @@ self_test() (
   git -C "$ref_fixture" update-ref -d "$r7_ref"
   git -C "$ref_fixture" update-ref -d "$r8_ref"
   git -C "$ref_fixture" update-ref -d "$r9_ref"
-
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted missing R4/R5/R6/R7/R8/R9 upstream intake refs" >&2
     return 1
   fi
-
   git -C "$ref_fixture" update-ref "$r4_ref" "$r3_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null 2>&1; then
@@ -433,7 +523,6 @@ self_test() (
     echo "Hepta CI contract self-test mutated a misdirected R4 upstream intake ref" >&2
     return 1
   }
-
   git -C "$ref_fixture" update-ref "$r4_ref" "$r4_sha"
   git -C "$ref_fixture" update-ref "$r5_ref" "$r4_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -446,7 +535,6 @@ self_test() (
     echo "Hepta CI contract self-test mutated a misdirected R5 upstream intake ref" >&2
     return 1
   }
-
   git -C "$ref_fixture" update-ref "$r5_ref" "$r5_sha"
   git -C "$ref_fixture" update-ref "$r6_ref" "$r5_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -459,7 +547,6 @@ self_test() (
     echo "Hepta CI contract self-test mutated a misdirected R6 upstream intake ref" >&2
     return 1
   }
-
   git -C "$ref_fixture" update-ref "$r6_ref" "$r6_sha"
   git -C "$ref_fixture" update-ref "$r7_ref" "$r6_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -472,7 +559,6 @@ self_test() (
     echo "Hepta CI contract self-test mutated a misdirected R7 upstream intake ref" >&2
     return 1
   }
-
   git -C "$ref_fixture" update-ref "$r7_ref" "$r7_sha"
   git -C "$ref_fixture" update-ref "$r8_ref" "$r7_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -485,7 +571,6 @@ self_test() (
     echo "Hepta CI contract self-test mutated a misdirected R8 upstream intake ref" >&2
     return 1
   }
-
   git -C "$ref_fixture" update-ref "$r8_ref" "$r8_sha"
   git -C "$ref_fixture" update-ref "$r9_ref" "$r8_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
@@ -498,7 +583,6 @@ self_test() (
     echo "Hepta CI contract self-test mutated a misdirected R9 upstream intake ref" >&2
     return 1
   }
-
   git -C "$ref_fixture" update-ref -d "$r4_ref"
   git -C "$ref_fixture" update-ref -d "$r5_ref"
   git -C "$ref_fixture" update-ref -d "$r6_ref"
@@ -546,7 +630,6 @@ self_test() (
     echo "Hepta CI contract self-test failed to materialize the exact R9 upstream intake ref" >&2
     return 1
   }
-
   r4_before="$(git -C "$ref_fixture" rev-parse "$r4_ref")"
   r5_before="$(git -C "$ref_fixture" rev-parse "$r5_ref")"
   r6_before="$(git -C "$ref_fixture" rev-parse "$r6_ref")"
@@ -574,7 +657,6 @@ self_test() (
     echo "Hepta CI contract self-test failed to rematerialize the exact R8 upstream intake ref" >&2
     return 1
   }
-
   r4_before="$(git -C "$ref_fixture" rev-parse "$r4_ref")"
   r5_before="$(git -C "$ref_fixture" rev-parse "$r5_ref")"
   r6_before="$(git -C "$ref_fixture" rev-parse "$r6_ref")"
@@ -609,14 +691,12 @@ self_test() (
   }
   HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" verify >/dev/null
-
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$r2_sha"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" HEPTA_CI_REPO_ROOT="$ref_fixture" \
     "$tmp/scripts/hepta-ci-materialize-upstream-intake" materialize >/dev/null 2>&1; then
     echo "Hepta CI contract self-test overwrote an unexpected predecessor upstream intake ref" >&2
     return 1
   fi
-
   sed -i.bak '/codex-rs\/Cargo.lock/d' "$tmp/$baseline_rel"
   rm -f "$tmp/$baseline_rel.bak"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
@@ -624,33 +704,28 @@ self_test() (
     return 1
   fi
   cp "$ROOT/$baseline_rel" "$tmp/$baseline_rel"
-
   printf '\n      - run: scripts/hepta-immutable-release-tree activate\n' >>"$tmp/$full_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted deployment activation" >&2
     return 1
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
-
   printf '\n      - run: scripts/hepta-immutable-release-tree cutover\n' >>"$tmp/$full_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted deployment cutover" >&2
     return 1
   fi
   cp "$ROOT/$full_rel" "$tmp/$full_rel"
-
   printf '\n      - run: scripts/hepta-immutable-release-tree rollback\n' >>"$tmp/$full_rel"
   if HEPTA_CI_CONTRACT="$tmp/contract.json" "$tmp/scripts/hepta-ci-baseline-contract" verify >/dev/null 2>&1; then
     echo "Hepta CI contract self-test accepted deployment rollback" >&2
     return 1
   fi
-
   jq -n \
     --arg schema hepta_ci_baseline_contract_self_test_v1 \
     --arg status ready \
-    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
+    '{schema:$schema,status:$status,write_permissions_denied:true,ordinary_pr_full_preflight_denied:true,unbound_cache_denied:true,deployment_activation_denied:true,deployment_cutover_denied:true,deployment_rollback_denied:true,different_upstream_url_ref_sha_denied:true,false_safe_lint_ci_evidence_promotion_denied:true,v2_inventory_drift_denied:true,floating_upstream_fetch_denied:true,rust_backend_shallow_checkout_denied:true,rust_backend_missing_intake_refs_denied:true,full_preflight_unpinned_audit_denied:true,full_preflight_missing_pinned_rustsec_db_denied:true,missing_r4_r5_r6_r7_r8_r9_refs_denied:true,misdirected_r4_ref_denied:true,misdirected_r4_ref_not_overwritten:true,misdirected_r5_ref_denied:true,misdirected_r5_ref_not_overwritten:true,misdirected_r6_ref_denied:true,misdirected_r6_ref_not_overwritten:true,misdirected_r7_ref_denied:true,misdirected_r7_ref_not_overwritten:true,misdirected_r8_ref_denied:true,misdirected_r8_ref_not_overwritten:true,misdirected_r9_ref_denied:true,misdirected_r9_ref_not_overwritten:true,clean_checkout_r4_r5_r6_r7_r8_r9_materialized:true,predecessor_r1_ref_preserved:true,predecessor_r2_ref_preserved:true,historical_r3_ref_preserved:true,historical_r4_ref_preserved_while_materializing_r8:true,historical_r5_ref_preserved_while_materializing_r8:true,historical_r6_ref_preserved_while_materializing_r8:true,historical_r7_ref_preserved_while_materializing_r8:true,historical_r4_ref_preserved_while_materializing_r9:true,historical_r5_ref_preserved_while_materializing_r9:true,historical_r6_ref_preserved_while_materializing_r9:true,historical_r7_ref_preserved_while_materializing_r9:true,historical_r8_ref_preserved_while_materializing_r9:true,unexpected_predecessor_ref_overwrite_denied:true}'
 )
-
 [[ $# -eq 1 ]] || usage
 case "$1" in
   verify)

@@ -16,6 +16,15 @@ require_tool() {
   }
 }
 
+require_literals() {
+  local source="$1" label="$2" requirement
+  shift 2
+  for requirement; do
+    grep -Fq "$requirement" "$source" && continue
+    echo "$label: $requirement" >&2
+    return 1
+  done
+}
 package_dependency_names() {
   local manifest="$1"
   python3 - "$ROOT/$manifest" "$ROOT/codex-rs/Cargo.toml" <<'PY'
@@ -576,7 +585,7 @@ verify_v2_test_inventories() {
   hepta_v2_assert_test_inventory "Architecture V2 kernel safety gate" 12 '.*' \
     "$ROOT/codex-rs/hepta-kernel/src/safety_gate/tests.rs" \
     "$ROOT/codex-rs/hepta-kernel/src/safety_gate/admission_tests.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 preference-CAS" 35 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 preference-CAS" 36 '.*' \
     "$ROOT/$memory_tests/preference_cas.rs" \
     "$ROOT/$memory_tests/preference_cas/document.rs" \
     "$ROOT/$memory_tests/preference_cas/durable.rs" \
@@ -585,7 +594,7 @@ verify_v2_test_inventories() {
     "$ROOT/$memory_tests/preference_cas/durable_opening_security.rs" \
     "$ROOT/$memory_tests/preference_cas/fixtures.rs" \
     "$ROOT/$memory_tests/preference_cas/legacy.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 durable preference-CAS" 19 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 durable preference-CAS" 20 '.*' \
     "$ROOT/$memory_tests/preference_cas/durable.rs" \
     "$ROOT/$memory_tests/preference_cas/durable_concurrency.rs" \
     "$ROOT/$memory_tests/preference_cas/durable_opening.rs" \
@@ -595,20 +604,20 @@ verify_v2_test_inventories() {
   hepta_v2_assert_test_inventory "Architecture V2 durable sidecar lifecycle" 2 \
     'unlinked_open_sidecar_.*' \
     "$ROOT/codex-rs/hepta-memory/src/durable/opening/filesystem.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 outcome-store" 50 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 outcome-store" 56 '.*' \
     "$ROOT/$memory_tests/outcome_store.rs" \
     "$ROOT/$memory_tests/outcome_store/durable.rs" \
-    "$ROOT/$memory_tests/outcome_store/effect_ack.rs" \
+    "$ROOT/$memory_tests/effect_ack.rs" \
     "$ROOT/$memory_tests/outcome_store/execution_intent.rs" \
-    "$ROOT/$memory_tests/outcome_store/pending_intent.rs" \
+    "$ROOT/$memory_tests/outcome_pending_intent.rs" \
     "$ROOT/$memory_tests/outcome_store/sync_writer.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 durable outcome-store" 29 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 durable outcome-store" 35 '.*' \
     "$ROOT/$memory_tests/outcome_store/durable.rs" \
-    "$ROOT/$memory_tests/outcome_store/effect_ack.rs" \
+    "$ROOT/$memory_tests/effect_ack.rs" \
     "$ROOT/$memory_tests/outcome_store/execution_intent.rs" \
-    "$ROOT/$memory_tests/outcome_store/pending_intent.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 durable effect ACK" 4 '.*' \
-    "$ROOT/$memory_tests/outcome_store/effect_ack.rs"
+    "$ROOT/$memory_tests/outcome_pending_intent.rs"
+  hepta_v2_assert_test_inventory "Architecture V2 durable effect ACK" 9 '.*' \
+    "$ROOT/$memory_tests/effect_ack.rs"
   hepta_v2_assert_test_inventory "Architecture V2 durable execution intent" 9 '.*' \
     "$ROOT/$memory_tests/outcome_store/execution_intent.rs"
   hepta_v2_assert_test_inventory "Architecture V2 sync durable outcome writer" 13 '.*' \
@@ -616,7 +625,7 @@ verify_v2_test_inventories() {
   hepta_v2_assert_test_inventory "Architecture V2 runtime neuron hydration" 8 \
     "$HEPTA_V2_RUNTIME_NEURON_TEST_PATTERN" \
     "$ROOT/codex-rs/hepta-runtime/src/query/tests.rs"
-  hepta_v2_assert_test_inventory "Architecture V2 exact-safety" 10 \
+  hepta_v2_assert_test_inventory "Architecture V2 exact-safety" 11 \
     'architecture_v2_exact_(safety|admission)_.*' \
     "$ROOT/$runtime_tests/architecture_v2_exact_safety.rs"
   hepta_v2_assert_test_inventory "Architecture V2 execution-lease" 5 \
@@ -1015,15 +1024,16 @@ verify_provider_effect_boundary() {
   local effect_ack="$memory_root/outcome_store/effect_ack.rs"
   local durable_ack="$memory_root/outcome_store/durable/effect_ack.rs"
   local durable_intent="$memory_root/outcome_store/durable/execution_intent.rs"
+  local provider_completion="$memory_root/outcome_store/durable/provider_completion.rs"
   local terminal="$memory_root/outcome_store/durable/execution_intent/terminal_evidence.rs"
-  local memory_regression="$memory_root/tests/outcome_store/effect_ack.rs"
+  local memory_regression="$memory_root/tests/effect_ack.rs"
   local runtime_regression="$runtime_root/tests/architecture_v2_provider_effect.rs"
   local native_regression="$runtime_root/tests/architecture_v2_native_mutation.rs"
   local source requirement
 
   for source in \
     "$provider" "$bus" "$sink" "$transaction" "$database" "$integrity" "$effect_ack" "$durable_ack" \
-    "$durable_intent" "$terminal" "$memory_regression" "$runtime_regression" \
+    "$durable_intent" "$provider_completion" "$terminal" "$memory_regression" "$runtime_regression" \
     "$native_regression"
   do
     [[ -f "$ROOT/$source" ]] || {
@@ -1041,34 +1051,30 @@ verify_provider_effect_boundary() {
       return 1
     }
   done
-  for requirement in \
+  require_literals "$ROOT/$effect_ack" \
+    "Architecture V2 provider effect ACK contract is incomplete" \
     'pub struct ExecutionEffectAckParts' \
     'pub struct ExecutionEffectAck' \
     'const EFFECT_ACK_DOMAIN: &str = "hepta.memory.execution-effect-ack.v1"' \
     'strip_prefix(&expected_prefix)' \
     'canonical_provider_ack'
-  do
-    grep -Fq "$requirement" "$ROOT/$effect_ack" || {
-      echo "Architecture V2 provider effect ACK contract is incomplete: $requirement" >&2
-      return 1
-    }
-  done
-  for requirement in \
+  require_literals "$ROOT/$durable_ack" \
+    "Architecture V2 provider effect ACK persistence is incomplete" \
     'pub async fn record_execution_effect_ack(' \
     'pub async fn execution_effect_ack(' \
     'pub(super) async fn execution_effect_ack_for_intent(' \
     'ExecutionEffectAckIntentMissing' \
     'ExecutionEffectAckBindingMismatch'
-  do
-    grep -Fq "$requirement" "$ROOT/$durable_ack" || {
-      echo "Architecture V2 provider effect ACK persistence is incomplete: $requirement" >&2
-      return 1
-    }
-  done
-  for requirement in \
+  require_literals "$ROOT/$provider_completion" \
+    "Architecture V2 atomic provider completion persistence is incomplete" \
+    'pub async fn stage_provider_completion(' \
+    'stage_pending_intent_in_transaction' \
+    'stage_effect_ack_in_transaction' \
+    'commit provider effect ACK and exact terminal completion'
+  require_literals "$ROOT/$provider" \
+    "Architecture V2 provider effect ACK boundary is incomplete" \
     'pub(crate) fn canonical_effect_plan_for(' \
     'pub(crate) fn acknowledge_provider_invocation(' \
-    'match sink.record_execution_effect_ack(&ack)' \
     'pub(crate) fn confirm_provider_effect_ack(' \
     'pub(crate) fn inspect_pending_effect(' \
     'prepared.staged_after_bytes.clone()' \
@@ -1079,12 +1085,10 @@ verify_provider_effect_boundary() {
     'ExecutionEffectInspectionState::AppliedAcknowledged' \
     'ExecutionEffectInspectionState::AppliedUnacknowledged' \
     'ExecutionEffectInspectionState::InDoubt'
-  do
-    grep -Fq "$requirement" "$ROOT/$provider" || {
-      echo "Architecture V2 provider effect ACK boundary is incomplete: $requirement" >&2
-      return 1
-    }
-  done
+  require_literals "$ROOT/$sink" \
+    "Architecture V2 atomic provider completion sink is incomplete" \
+    'fn stage_provider_completion(' \
+    'state.writer.stage_provider_completion('
   for requirement in \
     'transaction.staged_after_bytes =' \
     'stage_native_tts_audio(input_json)' \
@@ -1124,16 +1128,12 @@ verify_provider_effect_boundary() {
       return 1
     }
   done
-  for requirement in \
-    'fn record_execution_effect_ack(' \
-    'fn execution_effect_ack(' \
+  require_literals "$ROOT/$sink" \
+    "Architecture V2 provider effect sink boundary is incomplete" \
+    'fn execution_effect_ack('
+  require_literals "$ROOT/$runtime_root/outcome_sink/runtime.rs" \
+    "Architecture V2 provider effect sink boundary is incomplete" \
     'pub fn pending_execution_effect_inspections('
-  do
-    grep -Fq "$requirement" "$ROOT/$sink" || {
-      echo "Architecture V2 provider effect sink boundary is incomplete: $requirement" >&2
-      return 1
-    }
-  done
   for requirement in \
     'execution_effect_ack_for_intent(database, transaction, &intent).await?' \
     'effect_ack.as_ref()'
@@ -1153,7 +1153,7 @@ verify_provider_effect_boundary() {
     }
   done
 
-  hepta_v2_assert_test_inventory "Architecture V2 durable effect ACK" 4 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 durable effect ACK" 9 '.*' \
     "$ROOT/$memory_regression"
   hepta_v2_assert_test_inventory "Architecture V2 provider-effect ACK" 2 \
     'architecture_v2_provider_effect_.*' "$ROOT/$runtime_regression"
@@ -1408,9 +1408,9 @@ verify_durable_outcome_boundary() {
   local memory_root="codex-rs/hepta-memory/src"
   local types_source="$runtime_root/types.rs"
   local sink_source="$runtime_root/outcome_sink.rs"
-  local sink_breaker_source="$runtime_root/outcome_sink/breaker.rs"
+  local sink_breaker_source="$runtime_root/outcome_sink/breaker.rs" sink_runtime_source="$runtime_root/outcome_sink/runtime.rs"
   local session_source="$runtime_root/session_ops.rs"
-  local attempt_source="$runtime_root/execution_attempt.rs"
+  local attempt_source="$runtime_root/execution_attempt.rs" attempt_runtime_source="$runtime_root/execution_attempt/runtime.rs"
   local recorder_source="$runtime_root/outcome_recorder.rs"
   local runtime_tests="$runtime_root/outcome_sink/tests.rs"
   local database_source="$memory_root/durable.rs"
@@ -1425,9 +1425,9 @@ verify_durable_outcome_boundary() {
   local terminal_evidence_source="$memory_root/outcome_store/durable/execution_intent/terminal_evidence.rs"
   local intent_source="$memory_root/outcome_store/durable/intent.rs"
   local store_tests="$memory_root/tests/outcome_store/durable.rs"
-  local effect_ack_tests="$memory_root/tests/outcome_store/effect_ack.rs"
+  local effect_ack_tests="$memory_root/tests/effect_ack.rs"
   local execution_intent_tests="$memory_root/tests/outcome_store/execution_intent.rs"
-  local intent_tests="$memory_root/tests/outcome_store/pending_intent.rs"
+  local intent_tests="$memory_root/tests/outcome_pending_intent.rs"
   local writer_source="$memory_root/outcome_store/sync_writer.rs"
   local writer_intent_source="$memory_root/outcome_store/sync_writer/intent.rs"
   local writer_tests="$memory_root/tests/outcome_store/sync_writer.rs"
@@ -1437,10 +1437,10 @@ verify_durable_outcome_boundary() {
   local source requirement trait_block opening_existing_block opening_reserve_block count
 
   for source in \
-    "$types_source" "$sink_source" "$session_source" "$attempt_source" \
+    "$types_source" "$sink_source" "$session_source" "$attempt_source" "$attempt_runtime_source" \
     "$recorder_source" "$runtime_tests" "$database_source" "$database_schema_source" \
     "$integrity_source" "$opening_source" "$opening_filesystem_source" "$store_source" \
-    "$execution_intent_source" "$sink_breaker_source" \
+    "$execution_intent_source" "$sink_breaker_source" "$sink_runtime_source" \
     "$effect_ack_source" "$durable_effect_ack_source" "$terminal_evidence_source" \
     "$intent_source" "$store_tests" "$effect_ack_tests" "$execution_intent_tests" "$intent_tests" \
     "$writer_source" "$writer_intent_source" "$writer_tests" \
@@ -1552,7 +1552,7 @@ verify_durable_outcome_boundary() {
     'pub fn reconcile_pending_outcome(' \
     'fn pending_intent(' \
     'fn first_pending_intent(' \
-    'pub(super) fn durable_pending_outcome_reason(' \
+    'pub(in crate::runtime_kernel) fn durable_pending_outcome_reason(' \
     'DurableOutcomeWriterError::WorkerUnavailable' \
     'DurableOutcomeWriterError::AcknowledgementTimeout' \
     'DurableOutcomeWriterError::CommitAmbiguous' \
@@ -1560,7 +1560,7 @@ verify_durable_outcome_boundary() {
     'pub(crate) fn open_existing_durable_outcome_sink(' \
     '.reopen_existing_bound()'
   do
-    grep -Fq "$requirement" "$ROOT/$sink_source" "$ROOT/$sink_breaker_source" || {
+    grep -Fq "$requirement" "$ROOT/$sink_source" "$ROOT/$sink_breaker_source" "$ROOT/$sink_runtime_source" || {
       echo "Architecture V2 record-first exact outcome reconciliation is incomplete: $requirement" >&2
       return 1
     }
@@ -1569,11 +1569,11 @@ verify_durable_outcome_boundary() {
     echo "Architecture V2 outcome recorder bypasses record-first exact persistence" >&2
     return 1
   }
-  grep -Fq '.outcome_sink.read_by_attempt' "$ROOT/$attempt_source" || {
+  grep -Fq '.outcome_sink.read_by_attempt' "$ROOT/$attempt_runtime_source" || {
     echo "Architecture V2 execution attempt reservation bypasses durable outcome reads" >&2
     return 1
   }
-  grep -Fq 'self.durable_pending_outcome_reason()?' "$ROOT/$attempt_source" || {
+  grep -Fq 'self.durable_pending_outcome_reason()?' "$ROOT/$attempt_runtime_source" || {
     echo "Architecture V2 execution admission bypasses unresolved durable outcome intents" >&2
     return 1
   }
@@ -1727,12 +1727,12 @@ verify_durable_outcome_boundary() {
 
   hepta_v2_assert_test_inventory "Architecture V2 runtime outcome sink" 19 '.*' \
     "$ROOT/$runtime_tests"
-  hepta_v2_assert_test_inventory "Architecture V2 durable outcome store" 29 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 durable outcome store" 35 '.*' \
     "$ROOT/$store_tests" \
     "$ROOT/$effect_ack_tests" \
     "$ROOT/$execution_intent_tests" \
     "$ROOT/$intent_tests"
-  hepta_v2_assert_test_inventory "Architecture V2 durable effect ACK" 4 '.*' \
+  hepta_v2_assert_test_inventory "Architecture V2 durable effect ACK" 9 '.*' \
     "$ROOT/$effect_ack_tests"
   hepta_v2_assert_test_inventory "Architecture V2 durable execution intent" 9 '.*' \
     "$ROOT/$execution_intent_tests"
@@ -1846,7 +1846,7 @@ verify() {
   verify_production_durable_composition
   verify_durable_outcome_boundary
 
-  echo '{"schema":"hepta_architecture_v2_dependency_boundary_v1","status":"ready","contract_boundary":"hepta-contracts","contract_dependencies":0,"compatibility_shell":"hepta-core","tool_schema_owner":"hepta-contracts","forbidden_reverse_edges":46,"live_preference_authority":"authenticated-native-http","trusted_preference_feedback_authority":"keyed-composed-live-hmac","trusted_preference_transport":"native-http-challenge-commit","trusted_preference_authority_composition":"keyed-durable-pinned-hmac-source","legacy_intuition_feedback_owner":"hepta-intelligence","legacy_intuition_planner_owner":"hepta-intelligence","capability_manifest_owner":"runtime-catalog-adapter","exact_admission_owner":"hepta-kernel","runtime_self_admission":"forbidden","identity_sealed_write_path":"retained-openat","process_write_reservation":"identity-global","cross_process_write_reservation":"advisory-prefix-identity-lock","exact_dispatch_selector":"executor-capability","production_tool_descriptor_inventory":41,"test_tool_descriptor_inventory":42,"production_exec_process":"quarantined","quarantined_process_descriptor":"high-non-read-only-destructive","production_disk_junk_audit":"test-only","backup_prune_deletion":"release-quarantined","mutation_transaction_evidence":"generalized-set","mutation_install_durability":"atomic-ambiguous-effect-recorded","provider_effect_plan":"pre-dispatch-canonical","provider_effect_ack":"durable-exact-before-terminal","provider_effect_recovery":"read-only-fail-closed","live_tts_effect":"private-byte-stage-before-intent-durable-ack","sealed_read_capability":"retained-fd-captured-bytes","production_unsealed_reads":"quarantined","production_live_native_mutations":"exact-receipt-quarantined","production_live_native_mutation_inventory":20,"production_outcome_composition":"durable-keyed-only","durable_schema":5,"durable_compatibility_schema":4,"durable_row_integrity":"hmac-sha256-v1","durable_integrity_key":"external-caller-supplied","durable_rollback_resistance":"external-monotonic-anchor-required","execution_intent_stage":"before-provider-invocation","execution_intent_terminal_resolution":"atomic-with-outcome-record","execution_intent_idempotency_domain":"v3","execution_intent_row_schema":4,"strict_terminal_evidence_field_inventory":80,"durable_sidecar_validation":"bounded-identity-recheck","durable_sidecar_validation_attempts":4,"test_inventory_binding":"test-attribute-plus-target-function","contracts_test_inventory":12,"intelligence_neuron_test_inventory":4,"intelligence_tool_candidate_test_inventory":4,"intelligence_feedback_test_inventory":4,"intelligence_planner_test_inventory":8,"intelligence_preference_test_inventory":8,"intelligence_trusted_preference_test_inventory":9,"memory_preference_authority_test_inventory":6,"memory_preference_test_inventory":35,"memory_durable_preference_test_inventory":19,"memory_durable_opening_security_test_inventory":7,"memory_durable_sidecar_lifecycle_test_inventory":2,"memory_outcome_test_inventory":50,"memory_durable_outcome_test_inventory":29,"memory_effect_ack_test_inventory":4,"memory_execution_intent_test_inventory":9,"memory_pending_outcome_intent_test_inventory":3,"memory_sync_outcome_writer_test_inventory":13,"runtime_neuron_test_inventory":8,"runtime_exact_safety_test_inventory":10,"runtime_execution_lease_test_inventory":5,"runtime_outcome_receipt_test_inventory":4,"runtime_outcome_flow_test_inventory":8,"runtime_outcome_sink_test_inventory":19,"runtime_provider_idempotency_test_inventory":2,"runtime_provider_effect_test_inventory":2,"runtime_resource_reservation_test_inventory":4,"runtime_capability_descriptor_test_inventory":4,"runtime_symlink_reservation_test_inventory":4,"runtime_process_reservation_test_inventory":8,"runtime_dispatch_selector_test_inventory":3,"runtime_native_mutation_test_inventory":8,"runtime_sealed_read_test_inventory":9,"runtime_cross_process_write_lock_test_inventory":4,"runtime_process_control_test_inventory":2,"runtime_maintenance_test_inventory":7,"durable_outcome_sink":"keyed-producer-intent-journal-exact-reconciliation","durable_outcome_database_open":"keyed-bootstrap-new-or-identity-bound-existing-private-filesystem","durable_preference_database_open":"bootstrap-new-or-existing-private-filesystem-keyed-capable"}'
+  echo '{"schema":"hepta_architecture_v2_dependency_boundary_v1","status":"ready","contract_boundary":"hepta-contracts","contract_dependencies":0,"compatibility_shell":"hepta-core","tool_schema_owner":"hepta-contracts","forbidden_reverse_edges":46,"live_preference_authority":"authenticated-native-http","trusted_preference_feedback_authority":"keyed-composed-live-hmac","trusted_preference_transport":"native-http-challenge-commit","trusted_preference_authority_composition":"keyed-durable-pinned-hmac-source","legacy_intuition_feedback_owner":"hepta-intelligence","legacy_intuition_planner_owner":"hepta-intelligence","capability_manifest_owner":"runtime-catalog-adapter","exact_admission_owner":"hepta-kernel","runtime_self_admission":"forbidden","identity_sealed_write_path":"retained-openat","process_write_reservation":"identity-global","cross_process_write_reservation":"advisory-prefix-identity-lock","exact_dispatch_selector":"executor-capability","production_tool_descriptor_inventory":41,"test_tool_descriptor_inventory":42,"production_exec_process":"quarantined","quarantined_process_descriptor":"high-non-read-only-destructive","production_disk_junk_audit":"test-only","backup_prune_deletion":"release-quarantined","mutation_transaction_evidence":"generalized-set","mutation_install_durability":"atomic-ambiguous-effect-recorded","provider_effect_plan":"pre-dispatch-canonical","provider_effect_ack":"durable-exact-before-terminal","provider_effect_recovery":"read-only-fail-closed","live_tts_effect":"private-byte-stage-before-intent-durable-ack","sealed_read_capability":"retained-fd-captured-bytes","production_unsealed_reads":"quarantined","production_live_native_mutations":"exact-receipt-quarantined","production_live_native_mutation_inventory":20,"production_outcome_composition":"durable-keyed-only","durable_schema":5,"durable_compatibility_schema":4,"durable_row_integrity":"hmac-sha256-v1","durable_integrity_key":"external-caller-supplied","durable_rollback_resistance":"external-monotonic-anchor-required","execution_intent_stage":"before-provider-invocation","execution_intent_terminal_resolution":"atomic-with-outcome-record","execution_intent_idempotency_domain":"v3","execution_intent_row_schema":4,"strict_terminal_evidence_field_inventory":80,"durable_sidecar_validation":"bounded-identity-recheck","durable_sidecar_validation_attempts":4,"test_inventory_binding":"test-attribute-plus-target-function","contracts_test_inventory":12,"intelligence_neuron_test_inventory":4,"intelligence_tool_candidate_test_inventory":4,"intelligence_feedback_test_inventory":4,"intelligence_planner_test_inventory":8,"intelligence_preference_test_inventory":8,"intelligence_trusted_preference_test_inventory":9,"memory_preference_authority_test_inventory":6,"memory_preference_test_inventory":36,"memory_durable_preference_test_inventory":20,"memory_durable_opening_security_test_inventory":7,"memory_durable_sidecar_lifecycle_test_inventory":2,"memory_outcome_test_inventory":56,"memory_durable_outcome_test_inventory":35,"memory_effect_ack_test_inventory":9,"memory_execution_intent_test_inventory":9,"memory_pending_outcome_intent_test_inventory":3,"memory_sync_outcome_writer_test_inventory":13,"runtime_neuron_test_inventory":8,"runtime_exact_safety_test_inventory":11,"runtime_execution_lease_test_inventory":5,"runtime_outcome_receipt_test_inventory":4,"runtime_outcome_flow_test_inventory":8,"runtime_outcome_sink_test_inventory":19,"runtime_provider_idempotency_test_inventory":2,"runtime_provider_effect_test_inventory":2,"runtime_resource_reservation_test_inventory":4,"runtime_capability_descriptor_test_inventory":4,"runtime_symlink_reservation_test_inventory":4,"runtime_process_reservation_test_inventory":8,"runtime_dispatch_selector_test_inventory":3,"runtime_native_mutation_test_inventory":8,"runtime_sealed_read_test_inventory":9,"runtime_cross_process_write_lock_test_inventory":4,"runtime_process_control_test_inventory":2,"runtime_maintenance_test_inventory":7,"durable_outcome_sink":"keyed-producer-intent-journal-exact-reconciliation","durable_outcome_database_open":"keyed-bootstrap-new-or-identity-bound-existing-private-filesystem","durable_preference_database_open":"bootstrap-new-or-existing-private-filesystem-keyed-capable"}'
 }
 
 expect_fixture_denied() {
@@ -1931,7 +1931,19 @@ self_test() (
   do
     cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/architecture_v2_${regression}.rs" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/tests/"
   done
-  mkdir -p "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink"
+  mkdir -p \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/execution_attempt" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/execution_bus" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_recorder" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/execution_attempt/runtime.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/execution_attempt/runtime.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/execution_bus/capture.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/execution_bus/capture.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_recorder/recording.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_recorder/recording.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/runtime.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/runtime.rs"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/breaker.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/breaker.rs"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/tests.rs" \
@@ -1946,44 +1958,25 @@ self_test() (
     "$fixture/codex-rs/hepta-memory/src/preference_authority" \
     "$fixture/codex-rs/hepta-memory/src/tests/outcome_store" \
     "$fixture/codex-rs/hepta-memory/src/tests/preference_cas"
-  cp "$ROOT/codex-rs/hepta-memory/src/durable.rs" \
-    "$fixture/codex-rs/hepta-memory/src/durable.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/durable/schema.rs" \
-    "$fixture/codex-rs/hepta-memory/src/durable/schema.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/durable/integrity.rs" \
-    "$fixture/codex-rs/hepta-memory/src/durable/integrity.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/durable/opening.rs" \
-    "$fixture/codex-rs/hepta-memory/src/durable/opening.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/durable/opening/filesystem.rs" \
-    "$fixture/codex-rs/hepta-memory/src/durable/opening/filesystem.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/execution_intent.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/execution_intent.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/effect_ack.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/effect_ack.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/durable.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/durable.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/durable/execution_intent.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/durable/execution_intent.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/durable/effect_ack.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/durable/effect_ack.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/durable/execution_intent/terminal_evidence.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/durable/execution_intent/terminal_evidence.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/durable/intent.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/durable/intent.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/sync_writer.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/sync_writer.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/outcome_store/sync_writer/intent.rs" \
-    "$fixture/codex-rs/hepta-memory/src/outcome_store/sync_writer/intent.rs"
+  for source in \
+    durable.rs durable/schema.rs durable/integrity.rs durable/opening.rs durable/opening/filesystem.rs \
+    outcome_store/execution_intent.rs outcome_store/effect_ack.rs outcome_store/durable.rs \
+    outcome_store/durable/execution_intent.rs outcome_store/durable/effect_ack.rs \
+    outcome_store/durable/provider_completion.rs outcome_store/durable/execution_intent/terminal_evidence.rs \
+    outcome_store/durable/intent.rs outcome_store/sync_writer.rs outcome_store/sync_writer/intent.rs
+  do
+    cp "$ROOT/codex-rs/hepta-memory/src/$source" "$fixture/codex-rs/hepta-memory/src/$source"
+  done
   cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store.rs" \
     "$fixture/codex-rs/hepta-memory/src/tests/outcome_store.rs"
   cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/durable.rs" \
     "$fixture/codex-rs/hepta-memory/src/tests/outcome_store/durable.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs" \
-    "$fixture/codex-rs/hepta-memory/src/tests/outcome_store/effect_ack.rs"
+  cp "$ROOT/codex-rs/hepta-memory/src/tests/effect_ack.rs" \
+    "$fixture/codex-rs/hepta-memory/src/tests/effect_ack.rs"
   cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs" \
     "$fixture/codex-rs/hepta-memory/src/tests/outcome_store/execution_intent.rs"
-  cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs" \
-    "$fixture/codex-rs/hepta-memory/src/tests/outcome_store/pending_intent.rs"
+  cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_pending_intent.rs" \
+    "$fixture/codex-rs/hepta-memory/src/tests/outcome_pending_intent.rs"
   cp "$ROOT/codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs" \
     "$fixture/codex-rs/hepta-memory/src/tests/outcome_store/sync_writer.rs"
   cp "$ROOT/codex-rs/hepta-memory/src/preference_cas/durable.rs" \
@@ -2224,13 +2217,16 @@ PY
   perl -0pi -e \
     's/PendingOutcomeKind::SafeRetry/PendingOutcomeKind::UnsafeRetry/g' \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink.rs" \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/breaker.rs"
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/breaker.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/runtime.rs"
   expect_fixture_denied "$fixture" \
     "Architecture V2 record-first exact outcome reconciliation is incomplete"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink.rs"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/breaker.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/breaker.rs"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/runtime.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink/runtime.rs"
 
   perl -0pi -e 's/pub async fn stage_intent/pub async fn stage_unbound/' \
     "$fixture/codex-rs/hepta-memory/src/outcome_store/durable/intent.rs"
@@ -2389,12 +2385,12 @@ PY
   cp "$ROOT/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs" \
     "$fixture/codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
 
-  perl -0pi -e 's/match sink\.record_execution_effect_ack\(&ack\)/match sink.record_untracked_effect(&ack)/' \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/provider_effect.rs"
+  perl -0pi -e 's/state\.writer\.stage_provider_completion\(/state.writer.stage_untracked_completion(/' \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink.rs"
   expect_fixture_denied "$fixture" \
-    "Architecture V2 provider effect ACK boundary is incomplete"
-  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/provider_effect.rs" \
-    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/provider_effect.rs"
+    "Architecture V2 atomic provider completion sink is incomplete"
+  cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink.rs" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/outcome_sink.rs"
 
   perl -0pi -e 's#std::process::Command::new\("/usr/bin/say"\)#std::process::Command::new("say")#' \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/transaction_ops.rs"

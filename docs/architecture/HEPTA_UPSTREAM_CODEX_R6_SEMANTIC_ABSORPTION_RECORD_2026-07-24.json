@@ -12,41 +12,99 @@
     "ordinary_rebase_performed": false,
     "cherry_pick_performed": false
   },
-  "integration_mode": "fail_closed_deferral_pending_hepta_native_prerequisites",
-  "absorptions": [],
+  "integration_mode": "partial_reconciliation_with_remaining_fail_closed_deferrals",
+  "reconciliation": {
+    "reconciled_at": "2026-07-25T06:52:05Z",
+    "local_evidence_commit": "d3cd943d08fcc6b0b8604ade975acd6b75d76405",
+    "reason": "Later local work closed the frozen-auth publication and same-manager catalog/client subdomain. The original R6 deferral is narrowed rather than erased because automatic auth-change invalidation, centralized immutable runtime publication, and startup registration remain absent."
+  },
+  "absorptions": [
+    {
+      "lane": "security_tools_apps_runtime",
+      "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
+      "upstream_title": "Refresh MCP runtimes when session auth changes (#35146)",
+      "disposition": "partial_semantic_transplant",
+      "scope": "frozen_auth_generation_publication_and_same_manager_catalog_client_binding",
+      "hepta_commit": "d3cd943d08fcc6b0b8604ade975acd6b75d76405",
+      "semantic_mapping": "Each local MCP rebuild captures one frozen auth snapshot and revision, constructs the replacement against that snapshot, and rechecks the auth generation under the publication guard before publishing. A stale auth generation is rejected. The published manager carries its auth binding, and advertised MCP tools retain a read guard on the exact manager generation used for dispatch, preventing a catalog from executing through a later client generation.",
+      "core_files": [
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/state/service.rs",
+        "codex-rs/core/src/tools/router.rs",
+        "codex-rs/core/src/tools/router_tests.rs",
+        "codex-rs/login/src/auth/manager.rs",
+        "scripts/hepta-upstream-truth-gate"
+      ],
+      "behavioral_evidence": [
+        {
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 1 --test session::tests::mcp_refresh_projection_uses_one_frozen_auth_snapshot",
+          "result": "passed; exactly 1 test",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "expected_test_count": 1,
+          "expected_tests": ["session::tests::mcp_refresh_projection_uses_one_frozen_auth_snapshot"]
+        },
+        {
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 1 --test session::tests::stale_auth_generation_does_not_publish_mcp_manager",
+          "result": "passed; exactly 1 test",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "expected_test_count": 1,
+          "expected_tests": ["session::tests::stale_auth_generation_does_not_publish_mcp_manager"]
+        },
+        {
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 1 --test tools::router::tests::advertised_mcp_tool_fails_closed_after_manager_generation_changes",
+          "result": "passed; exactly 1 test",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "expected_test_count": 1,
+          "expected_tests": ["tools::router::tests::advertised_mcp_tool_fails_closed_after_manager_generation_changes"]
+        }
+      ],
+      "non_claims": [
+        "No centralized immutable McpRuntime or ArcSwap publication model is claimed.",
+        "Authentication changes do not yet invalidate every loaded and still-starting runtime automatically.",
+        "No cross-account startup-race or plugin auth-mode parity claim is made."
+      ]
+    }
+  ],
   "deferrals": [
     {
       "lane": "tools_apps_runtime",
       "upstream_commit": "ef2d3edb959a75a90665ade37d554f3ca65fe880",
       "upstream_title": "Prewarm MCP runtime updates in the background (#35144)",
       "disposition": "deferred_prerequisite_unavailable",
+      "scope": "background_mcp_runtime_prewarm",
       "hepta_commit": null,
-      "reason": "The local baseline lacks a published immutable McpRuntime, serialized exact refresh ownership, an authoritative dirty/generation transition, and the latest desired-state plus environment snapshot needed to ensure that stale background work cannot publish or detach a writer.",
+      "reason": "The local tree now has serialized desired/applied refresh generations and auth-bound publication, but it still lacks a published immutable McpRuntime plus a joined coalescing worker that rebuilds from the latest desired configuration and environment snapshot without allowing stale background work to publish.",
       "missing_prerequisites": [
         "published immutable McpRuntime snapshot",
-        "serialized exact refresh lock and ownership",
-        "authoritative dirty and generation transition",
-        "latest desired-state snapshot",
         "latest environment snapshot",
         "coalescing worker whose stale generations cannot publish",
         "joined shutdown semantics"
       ],
-      "tests_run": false
+      "tests_run": false,
+      "non_claims": [
+        "No background MCP runtime publication or coalescing writer is absorbed.",
+        "The synchronous generation-bound refresh path is not evidence of background prewarm parity."
+      ]
     },
     {
       "lane": "security_tools_apps_runtime",
       "upstream_commit": "6c729ef1c1dcfbcbe1bd9d0c2dddde24377ae899",
       "upstream_title": "Refresh MCP runtimes when session auth changes (#35146)",
-      "disposition": "deferred_prerequisite_unavailable",
+      "disposition": "deferred_remaining_auth_change_runtime_invalidation_contract",
+      "scope": "automatic_auth_change_invalidation_startup_and_immutable_runtime_parity",
       "hepta_commit": null,
-      "reason": "Credential rotation is a high-priority security semantic, but the local baseline lacks an authoritative authentication generation publisher and watcher, plugin auth-mode binding, a published auth/token snapshot, startup re-projection, and generation-bound coupling between the exposed tool catalog and the executing MCP client.",
+      "reason": "The local implementation now freezes and rechecks auth generation before publication and binds exposed tools to the executing manager generation. It still does not automatically invalidate every loaded and still-starting MCP runtime when authentication changes, publish one centralized immutable runtime projection, or prove startup and cross-account transitions end to end.",
       "missing_prerequisites": [
-        "authoritative authentication generation publisher",
-        "authentication change watcher",
+        "automatic authentication-change invalidation trigger for loaded and starting runtimes",
         "plugin authentication-mode binding",
-        "published immutable auth and token snapshot",
-        "startup authentication re-projection",
-        "generation-bound tool catalog and executing MCP client"
+        "centralized immutable MCP runtime projection",
+        "starting-runtime registration before asynchronous publication",
+        "startup and cross-account transition regression proof"
       ],
       "required_behavioral_tests": [
         "An old-generation runtime is revoked and cannot expose or execute tools after authentication rotation.",
@@ -55,11 +113,15 @@
         "A startup authentication race cannot publish a mixed-credential runtime.",
         "Tool exposure and execution always resolve through the same published generation."
       ],
-      "tests_run": false
+      "tests_run": false,
+      "non_claims": [
+        "Frozen-auth publication does not imply automatic runtime refresh on every auth change.",
+        "Same-manager catalog dispatch does not close the still-starting runtime invalidation window."
+      ]
     }
   ],
   "claims": {
-    "absorbed_commit_count": 0,
+    "absorbed_commit_count": 1,
     "deferred_commit_count": 2,
     "all_r6_candidates_absorbed": false,
     "upstream_fully_consumed": false,

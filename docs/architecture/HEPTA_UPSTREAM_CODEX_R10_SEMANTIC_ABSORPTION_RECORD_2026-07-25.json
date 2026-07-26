@@ -18,8 +18,18 @@
       "scope": "managed_mcp_requirements_active_thread_refresh",
       "hepta_commit": "7d166521d93ac4524ebd0dbeed55b99794559dc9",
       "semantic_mapping": "Each loaded thread now receives a typed current Config snapshot whose MCP servers, managed requirements, plugin requirements, OAuth store mode, and Hepta elicitation authority are refreshed together while the thread model remains unchanged.",
-      "core_files": ["codex-rs/app-server/src/mcp_refresh.rs", "codex-rs/core/src/codex_thread.rs", "codex-rs/core/src/session/tests.rs"],
-      "behavioral_evidence": [{"command":"cargo test -p codex-core managed_mcp_requirements_refresh_without_model_drift","result":"passed"},{"command":"cargo test -p codex-app-server mcp_refresh","result":"passed"}],
+      "core_files": ["codex-rs/app-server/src/mcp_refresh.rs", "codex-rs/core/src/codex_thread.rs", "codex-rs/core/src/session/tests.rs", "scripts/hepta-upstream-truth-gate"],
+      "behavioral_evidence": [
+        {
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 1 --test session::tests::refresh_mcp_config_replaces_managed_requirements_without_changing_model",
+          "result": "passed; exactly 1 test",
+          "tests_passed": 1,
+          "tests_failed": 0,
+          "expected_test_count": 1,
+          "expected_tests": ["session::tests::refresh_mcp_config_replaces_managed_requirements_without_changing_model"]
+        },
+        {"command":"cargo test -p codex-app-server mcp_refresh","result":"passed"}
+      ],
       "non_claims": ["The thread-start MCP invalidation window deferred in R9 is not closed by loaded-thread refresh."]
     },
     {
@@ -40,8 +50,21 @@
       "scope": "mcp_auth_discovery_runtime_http_client_snapshot_parity",
       "hepta_commit": "66d703e0a7c71e7cdfcdaa47be938a17463bb0f9",
       "semantic_mapping": "OAuth discovery and auth status now resolve the same server placement and runtime HTTP client configuration used by the MCP runtime across app-server, CLI, connectors, plugins, skill dependencies, startup, and refresh paths.",
-      "core_files": ["codex-rs/rmcp-client/src/auth_status.rs", "codex-rs/codex-mcp/src/mcp/auth.rs", "codex-rs/app-server/src/request_processors/mcp_processor.rs"],
-      "behavioral_evidence": [{"command":"cargo test -p codex-mcp auth","result":"passed; 6 tests"},{"command":"cargo test -p codex-app-server runtime_http_client","result":"passed; 2 tests"}],
+      "core_files": ["codex-rs/rmcp-client/src/auth_status.rs", "codex-rs/codex-mcp/src/mcp/auth.rs", "codex-rs/app-server/src/request_processors/mcp_processor.rs", "scripts/hepta-upstream-truth-gate"],
+      "behavioral_evidence": [
+        {"command":"cargo test -p codex-mcp auth","result":"passed; 6 tests"},
+        {
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-rmcp-client --expected-test-count 2 --test auth_status::tests::routed_discovery_uses_runtime_client_and_capped_timeout --test auth_status::tests::routed_discovery_preserves_requested_timeout_budget",
+          "result": "passed; exactly 2 tests",
+          "tests_passed": 2,
+          "tests_failed": 0,
+          "expected_test_count": 2,
+          "expected_tests": [
+            "auth_status::tests::routed_discovery_uses_runtime_client_and_capped_timeout",
+            "auth_status::tests::routed_discovery_preserves_requested_timeout_budget"
+          ]
+        }
+      ],
       "non_claims": ["Runtime proxy credentials remain governed by their existing configuration and secret providers."]
     },
     {
@@ -62,8 +85,22 @@
       "scope": "plugin_mcp_filter_preserves_servers_without_allowlists",
       "hepta_commit": "4b4553b788f994ce29ab0bb19046ec06c149d5bf",
       "semantic_mapping": "Plugin MCP servers are preserved when no allowlist layer is configured, while an explicitly configured empty allowlist remains a deny-all boundary.",
-      "core_files": ["codex-rs/core/src/config/mod.rs", "codex-rs/core/src/config/config_tests.rs"],
-      "behavioral_evidence": [{"command":"cargo test -p codex-core plugin_mcp_allowlist","result":"passed; 4 tests"}],
+      "core_files": ["codex-rs/core/src/config/mod.rs", "codex-rs/core/src/config/config_tests.rs", "scripts/hepta-upstream-truth-gate"],
+      "behavioral_evidence": [
+        {
+          "command": "scripts/hepta-upstream-truth-gate evidence-test --package codex-core --expected-test-count 4 --test config::tests::filter_plugin_mcp_servers_by_allowlist_enforces_plugin_and_identity_rules --test config::tests::filter_plugin_mcp_servers_without_any_allowlist_preserves_all_servers --test config::tests::filter_plugin_mcp_servers_by_explicit_empty_allowlist_blocks_all --test config::tests::filter_plugin_mcp_servers_by_allowlist_blocks_unlisted_plugin",
+          "result": "passed; exactly 4 tests",
+          "tests_passed": 4,
+          "tests_failed": 0,
+          "expected_test_count": 4,
+          "expected_tests": [
+            "config::tests::filter_plugin_mcp_servers_by_allowlist_enforces_plugin_and_identity_rules",
+            "config::tests::filter_plugin_mcp_servers_without_any_allowlist_preserves_all_servers",
+            "config::tests::filter_plugin_mcp_servers_by_explicit_empty_allowlist_blocks_all",
+            "config::tests::filter_plugin_mcp_servers_by_allowlist_blocks_unlisted_plugin"
+          ]
+        }
+      ],
       "non_claims": ["An explicit empty allowlist is not treated as absence and still denies every plugin MCP server."]
     }
   ],
