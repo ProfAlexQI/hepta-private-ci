@@ -65,6 +65,24 @@ fn journal_consumes_mutation_and_commit_exactly_once() -> Result<()> {
     journal.finalize_linked_success(&key, &plan, &receipt)?;
     assert_eq!(journal.inspect(&key, &plan)?.phase, "succeeded");
     assert!(journal.mark_in_doubt(&key, &plan).is_err());
+    let before_checkpoint = journal.monotonic_state(&key)?;
+    journal.compact_succeeded_for_test(&key, 0)?;
+    let after_checkpoint = journal.monotonic_state(&key)?;
+    assert!(after_checkpoint.journal_revision > before_checkpoint.journal_revision);
+    assert_ne!(after_checkpoint.state_hash, before_checkpoint.state_hash);
+    assert!(journal.inspect(&key, &plan).is_err());
+    assert!(
+        journal
+            .reserve_plan(&key, &mutation, &plan, &plan_request, &session)
+            .is_err()
+    );
+    journal.reserve_plan(
+        &key,
+        &"c".repeat(64),
+        &"d".repeat(64),
+        &"e".repeat(64),
+        &"f".repeat(64),
+    )?;
     Ok(())
 }
 
@@ -144,5 +162,55 @@ fn journal_rejects_tampering_and_symlink_redirection() -> Result<()> {
             .is_err()
     );
     assert_eq!(fs::read(&victim)?, b"unchanged");
+    Ok(())
+}
+
+#[test]
+fn legacy_journal_is_verified_then_upgraded_on_first_write() -> Result<()> {
+    #[derive(Serialize)]
+    struct LegacyState<'a> {
+        schema: &'a str,
+        revision: u64,
+        records: Vec<JournalRecord>,
+        mac: String,
+    }
+
+    let root = tempfile::tempdir()?;
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))?;
+    let path = root.path().join("journal.json");
+    let key = [21_u8; 32];
+    let mut state = JournalState {
+        schema: LEGACY_JOURNAL_SCHEMA.to_string(),
+        revision: 0,
+        checkpoint: JournalCheckpoint::default(),
+        records: Vec::new(),
+        mac: String::new(),
+    };
+    state.mac = sign_legacy_state(&state, &key)?;
+    fs::write(
+        &path,
+        serde_json::to_vec(&LegacyState {
+            schema: LEGACY_JOURNAL_SCHEMA,
+            revision: state.revision,
+            records: state.records,
+            mac: state.mac,
+        })?,
+    )?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+
+    let journal = OperatorMutationJournal::for_test_path(path.clone());
+    journal.reserve_plan(
+        &key,
+        &"1".repeat(64),
+        &"2".repeat(64),
+        &"3".repeat(64),
+        &"4".repeat(64),
+    )?;
+    let upgraded: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+    assert_eq!(upgraded["schema"], JOURNAL_SCHEMA);
+    assert_eq!(
+        upgraded["checkpoint"]["history_hash"],
+        CHECKPOINT_GENESIS_HASH
+    );
     Ok(())
 }

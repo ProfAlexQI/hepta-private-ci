@@ -22,11 +22,17 @@ use sha2::Sha256;
 use crate::telegram_durable_files::read_private_state;
 use crate::telegram_durable_files::update_private_state_atomically;
 
-const JOURNAL_SCHEMA: &str = "hepta.native.operator-mutation-journal.v1";
+const JOURNAL_SCHEMA: &str = "hepta.native.operator-mutation-journal.v2";
+const LEGACY_JOURNAL_SCHEMA: &str = "hepta.native.operator-mutation-journal.v1";
 const JOURNAL_MAC_DOMAIN: &[u8] = b"hepta.native.operator-mutation-journal.hmac-sha256.v1";
 const JOURNAL_STATE_HASH_DOMAIN: &[u8] = b"hepta.native.operator-mutation-journal.state-sha256.v1";
 const MAX_JOURNAL_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_JOURNAL_RECORDS: usize = 4096;
+const MAX_CHECKPOINTED_AUTHORITIES: usize = 20_000;
+const RETAIN_SUCCEEDED_RECORDS: usize = 512;
+const CHECKPOINT_GENESIS_HASH: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+const CHECKPOINT_HASH_DOMAIN: &[u8] = b"hepta.native.operator-mutation-checkpoint.sha256.v1";
 const STAGING_PREFIX: &str = ".hepta-operator-mutation-journal";
 
 type HmacSha256 = Hmac<Sha256>;
@@ -66,6 +72,8 @@ pub(crate) struct OperatorMutationJournalInspection {
 struct JournalState {
     schema: String,
     revision: u64,
+    #[serde(default)]
+    checkpoint: JournalCheckpoint,
     records: Vec<JournalRecord>,
     mac: String,
 }
@@ -74,7 +82,25 @@ struct JournalState {
 struct UnsignedJournalState<'a> {
     schema: &'a str,
     revision: u64,
+    checkpoint: &'a JournalCheckpoint,
     records: &'a [JournalRecord],
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JournalCheckpoint {
+    compacted_records: u64,
+    #[serde(default)]
+    consumed_authorities: Vec<ConsumedAuthority>,
+    #[serde(default)]
+    history_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConsumedAuthority {
+    mutation_id_hash: String,
+    plan_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,12 +173,11 @@ impl OperatorMutationJournal {
         validate_hex(plan_request_binding_hash, "plan request binding")?;
         validate_hex(session_binding_hash, "session binding")?;
         self.update(key, |state| {
+            compact_succeeded_records(state, RETAIN_SUCCEEDED_RECORDS)?;
             if state.records.len() >= MAX_JOURNAL_RECORDS {
                 anyhow::bail!("operator mutation journal record limit reached");
             }
-            if state.records.iter().any(|record| {
-                record.mutation_id_hash == mutation_id_hash || record.plan_hash == plan_hash
-            }) {
+            if authority_consumed(state, mutation_id_hash, plan_hash) {
                 anyhow::bail!("operator mutation identifier or plan was already consumed");
             }
             state.records.push(JournalRecord {
@@ -185,12 +210,10 @@ impl OperatorMutationJournal {
         validate_hex(mutation_id_hash, "mutation id hash")?;
         validate_hex(plan_hash, "plan hash")?;
         let state = self.read(key)?;
-        if state.records.len() >= MAX_JOURNAL_RECORDS {
+        if state.records.len() >= MAX_JOURNAL_RECORDS && removable_succeeded_records(&state) == 0 {
             anyhow::bail!("operator mutation journal record limit reached");
         }
-        if state.records.iter().any(|record| {
-            record.mutation_id_hash == mutation_id_hash || record.plan_hash == plan_hash
-        }) {
+        if authority_consumed(&state, mutation_id_hash, plan_hash) {
             anyhow::bail!("operator mutation identifier or plan was already consumed");
         }
         Ok(())
@@ -414,6 +437,7 @@ impl OperatorMutationJournal {
                 None => empty_state(key)?,
             };
             mutate(&mut state)?;
+            state.schema = JOURNAL_SCHEMA.to_string();
             state.revision = state
                 .revision
                 .checked_add(1)
@@ -427,6 +451,11 @@ impl OperatorMutationJournal {
             }
             Ok((bytes, ()))
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compact_succeeded_for_test(&self, key: &[u8], retain: usize) -> Result<()> {
+        self.update(key, |state| compact_succeeded_records(state, retain))
     }
 }
 
@@ -446,6 +475,11 @@ fn empty_state(key: &[u8]) -> Result<JournalState> {
     let mut state = JournalState {
         schema: JOURNAL_SCHEMA.to_string(),
         revision: 0,
+        checkpoint: JournalCheckpoint {
+            compacted_records: 0,
+            consumed_authorities: Vec::new(),
+            history_hash: CHECKPOINT_GENESIS_HASH.to_string(),
+        },
         records: Vec::new(),
         mac: String::new(),
     };
@@ -454,20 +488,34 @@ fn empty_state(key: &[u8]) -> Result<JournalState> {
 }
 
 fn decode_and_verify(bytes: &[u8], key: &[u8]) -> Result<JournalState> {
-    let state: JournalState =
+    let mut state: JournalState =
         serde_json::from_slice(bytes).context("decode operator mutation journal")?;
-    if state.schema != JOURNAL_SCHEMA
-        || state.records.len() > MAX_JOURNAL_RECORDS
+    if !matches!(
+        state.schema.as_str(),
+        JOURNAL_SCHEMA | LEGACY_JOURNAL_SCHEMA
+    ) || state.records.len() > MAX_JOURNAL_RECORDS
+        || state.checkpoint.consumed_authorities.len() > MAX_CHECKPOINTED_AUTHORITIES
         || state.mac.len() != 64
     {
         anyhow::bail!("operator mutation journal schema or bounds are invalid");
     }
-    let expected = sign_state(&state, key)?;
+    let expected = if state.schema == LEGACY_JOURNAL_SCHEMA {
+        sign_legacy_state(&state, key)?
+    } else {
+        sign_state(&state, key)?
+    };
     let actual = decode_hex(&state.mac).context("decode operator mutation journal MAC")?;
     let expected =
         decode_hex(&expected).context("decode expected operator mutation journal MAC")?;
     if actual != expected {
         anyhow::bail!("operator mutation journal MAC is invalid");
+    }
+    if state.schema == LEGACY_JOURNAL_SCHEMA {
+        state.checkpoint = JournalCheckpoint {
+            compacted_records: 0,
+            consumed_authorities: Vec::new(),
+            history_hash: CHECKPOINT_GENESIS_HASH.to_string(),
+        };
     }
     for (index, record) in state.records.iter().enumerate() {
         validate_record(record)?;
@@ -478,7 +526,115 @@ fn decode_and_verify(bytes: &[u8], key: &[u8]) -> Result<JournalState> {
             anyhow::bail!("operator mutation journal contains duplicate authority");
         }
     }
+    validate_checkpoint(&state.checkpoint)?;
+    for authority in &state.checkpoint.consumed_authorities {
+        if state.records.iter().any(|record| {
+            record.mutation_id_hash == authority.mutation_id_hash
+                || record.plan_hash == authority.plan_hash
+        }) {
+            anyhow::bail!("operator mutation checkpoint overlaps live authority");
+        }
+    }
     Ok(state)
+}
+
+fn validate_checkpoint(checkpoint: &JournalCheckpoint) -> Result<()> {
+    if checkpoint.compacted_records != checkpoint.consumed_authorities.len() as u64 {
+        anyhow::bail!("operator mutation checkpoint count is inconsistent");
+    }
+    validate_content_hash(&checkpoint.history_hash, "checkpoint history hash")?;
+    for (index, authority) in checkpoint.consumed_authorities.iter().enumerate() {
+        validate_hex(&authority.mutation_id_hash, "checkpoint mutation id hash")?;
+        validate_hex(&authority.plan_hash, "checkpoint plan hash")?;
+        if checkpoint.consumed_authorities[..index]
+            .iter()
+            .any(|existing| {
+                existing.mutation_id_hash == authority.mutation_id_hash
+                    || existing.plan_hash == authority.plan_hash
+            })
+        {
+            anyhow::bail!("operator mutation checkpoint contains duplicate authority");
+        }
+    }
+    Ok(())
+}
+
+fn authority_consumed(state: &JournalState, mutation_id_hash: &str, plan_hash: &str) -> bool {
+    state
+        .records
+        .iter()
+        .any(|record| record.mutation_id_hash == mutation_id_hash || record.plan_hash == plan_hash)
+        || state
+            .checkpoint
+            .consumed_authorities
+            .iter()
+            .any(|authority| {
+                authority.mutation_id_hash == mutation_id_hash || authority.plan_hash == plan_hash
+            })
+}
+
+fn removable_succeeded_records(state: &JournalState) -> usize {
+    state
+        .records
+        .iter()
+        .filter(|record| record.phase == JournalPhase::Succeeded)
+        .count()
+        .saturating_sub(RETAIN_SUCCEEDED_RECORDS)
+}
+
+fn compact_succeeded_records(state: &mut JournalState, retain: usize) -> Result<()> {
+    let succeeded = state
+        .records
+        .iter()
+        .filter(|record| record.phase == JournalPhase::Succeeded)
+        .count();
+    let mut remaining = succeeded.saturating_sub(retain);
+    if remaining == 0 {
+        return Ok(());
+    }
+    if state
+        .checkpoint
+        .consumed_authorities
+        .len()
+        .saturating_add(remaining)
+        > MAX_CHECKPOINTED_AUTHORITIES
+    {
+        anyhow::bail!("operator mutation checkpoint authority limit reached");
+    }
+    let mut retained = Vec::with_capacity(state.records.len() - remaining);
+    for record in state.records.drain(..) {
+        if remaining > 0 && record.phase == JournalPhase::Succeeded {
+            state.checkpoint.history_hash =
+                checkpoint_history_hash(&state.checkpoint.history_hash, &record)?;
+            state
+                .checkpoint
+                .consumed_authorities
+                .push(ConsumedAuthority {
+                    mutation_id_hash: record.mutation_id_hash,
+                    plan_hash: record.plan_hash,
+                });
+            state.checkpoint.compacted_records = state
+                .checkpoint
+                .compacted_records
+                .checked_add(1)
+                .context("operator mutation checkpoint count exhausted")?;
+            remaining -= 1;
+        } else {
+            retained.push(record);
+        }
+    }
+    state.records = retained;
+    Ok(())
+}
+
+fn checkpoint_history_hash(previous: &str, record: &JournalRecord) -> Result<String> {
+    let encoded =
+        serde_json::to_vec(record).context("encode compacted operator mutation record")?;
+    let mut hasher = Sha256::new();
+    update_hash_frame(&mut hasher, CHECKPOINT_HASH_DOMAIN);
+    update_hash_frame(&mut hasher, previous.as_bytes());
+    update_hash_frame(&mut hasher, &encoded);
+    Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
 fn validate_record(record: &JournalRecord) -> Result<()> {
@@ -675,10 +831,33 @@ fn sign_state(state: &JournalState, key: &[u8]) -> Result<String> {
     let unsigned = UnsignedJournalState {
         schema: &state.schema,
         revision: state.revision,
+        checkpoint: &state.checkpoint,
         records: &state.records,
     };
     let encoded =
         serde_json::to_vec(&unsigned).context("encode operator mutation journal MAC payload")?;
+    let mut mac =
+        HmacSha256::new_from_slice(key).context("initialize operator mutation journal HMAC")?;
+    mac.update(&(JOURNAL_MAC_DOMAIN.len() as u64).to_be_bytes());
+    mac.update(JOURNAL_MAC_DOMAIN);
+    mac.update(&(encoded.len() as u64).to_be_bytes());
+    mac.update(&encoded);
+    Ok(hex_encode(&mac.finalize().into_bytes()))
+}
+
+fn sign_legacy_state(state: &JournalState, key: &[u8]) -> Result<String> {
+    #[derive(Serialize)]
+    struct LegacyUnsignedJournalState<'a> {
+        schema: &'a str,
+        revision: u64,
+        records: &'a [JournalRecord],
+    }
+    let encoded = serde_json::to_vec(&LegacyUnsignedJournalState {
+        schema: &state.schema,
+        revision: state.revision,
+        records: &state.records,
+    })
+    .context("encode legacy operator mutation journal MAC payload")?;
     let mut mac =
         HmacSha256::new_from_slice(key).context("initialize operator mutation journal HMAC")?;
     mac.update(&(JOURNAL_MAC_DOMAIN.len() as u64).to_be_bytes());
