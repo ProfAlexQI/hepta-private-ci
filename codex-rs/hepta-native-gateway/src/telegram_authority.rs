@@ -6,19 +6,14 @@
 //! an exact effect plan; a provider-owned acknowledgement must be persisted
 //! before the terminal receipt can be published.
 
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -36,6 +31,8 @@ use sha2::Sha256;
 use zeroize::Zeroizing;
 
 use crate::secure_key_file::read_private_key;
+use crate::telegram_durable_files::read_private_state;
+use crate::telegram_durable_files::update_private_state_atomically;
 
 pub(crate) const TELEGRAM_AUTHORITY_ENABLED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_OPERATOR_AUTHORITY";
 pub(crate) const TELEGRAM_AUTHORITY_KEY_FILE_ENV: &str =
@@ -52,6 +49,7 @@ pub(crate) const TELEGRAM_RECONCILIATION_RESOLVE_ENDPOINT: &str =
 pub(crate) const TELEGRAM_PIPELINE_AUTHORITY_OWNER: &str = "TelegramPipelineAuthority";
 
 const SCHEMA: &str = "hepta.telegram.operator-authority.v1";
+const CHECKPOINT_SCHEMA: &str = "hepta.telegram.operator-authority.checkpoint.v1";
 const MONOTONIC_STATE_SCHEMA: &str = "hepta.telegram.operator-authority.monotonic-state.v1";
 const RECONCILIATION_SCHEMA: &str = "hepta.telegram.terminal-reconciliation.v1";
 const DELIVERY_ACK_BINDING_SCHEMA: &str = "hepta.telegram.delivery-ack-binding.v1";
@@ -63,6 +61,9 @@ const DELIVERY_ACK_MAC_DOMAIN: &[u8] = b"hepta.telegram.delivery-ack-binding.mac
 const PLAN_HASH_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.plan-hash.v1";
 const EVENT_MAC_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.event-mac.v1";
 const EVENT_HASH_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.event-hash.v1";
+const CHECKPOINT_MAC_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.checkpoint-mac.v1";
+const CHECKPOINT_HASH_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.checkpoint-hash.v1";
+const CHECKPOINT_HISTORY_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.checkpoint-history.v1";
 const READ_RESULT_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.read-result.v1";
 const MODEL_RESULT_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.model-result.v1";
 const SEND_PLAN_DOMAIN: &[u8] = b"hepta.telegram.operator-authority.send-plan.v1";
@@ -75,7 +76,13 @@ const MAX_REPLY_BYTES: usize = 4096;
 const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_DELIVERY_LEDGER_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_JOURNAL_EVENTS: usize = 4096;
+const MAX_CHECKPOINTED_AUTHORITIES: usize = 20_000;
+const RETAIN_TERMINAL_PIPELINES: usize = 128;
 const MAX_EVENT_BYTES: usize = 8192;
+const MAX_CHECKPOINT_BYTES: usize = 4 * 1024 * 1024;
+const CHECKPOINT_GENESIS_HASH: &str = "sha256:telegram-authority-checkpoint-genesis";
+const JOURNAL_STAGING_PREFIX: &str = ".hepta-telegram-authority-journal";
+#[cfg(test)]
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 
@@ -159,7 +166,28 @@ impl std::fmt::Debug for TelegramAuthority {
 
 #[derive(Debug, Clone)]
 struct JournalSnapshot {
+    checkpoint: Option<JournalCheckpoint>,
     events: Vec<JournalEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JournalCheckpoint {
+    schema: String,
+    revision: u64,
+    sequence: u64,
+    previous_checkpoint_hash: String,
+    compacted_events: u64,
+    consumed_authorities: Vec<ConsumedAuthority>,
+    history_hash: String,
+    mac: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConsumedAuthority {
+    request_id: String,
+    plan_hash: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -422,6 +450,13 @@ impl Phase {
                 )
         )
     }
+
+    fn is_success_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::TerminalSucceeded | Self::ReconciledTerminalSucceeded
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -569,13 +604,16 @@ impl TelegramAuthority {
             session_binding_hash,
             current_cursor,
         )?;
-        self.with_locked_events(|_, snapshot| {
-            if snapshot.events.len() >= MAX_JOURNAL_EVENTS {
+        self.with_locked_events(|snapshot| {
+            if snapshot.events.len() >= MAX_JOURNAL_EVENTS
+                && compactable_terminal_pipeline_count(snapshot) == 0
+            {
                 anyhow::bail!("Telegram authority journal reached its bounded event limit");
             }
             if snapshot.events.iter().any(|event| {
                 event.plan_hash == binding.plan_hash || event.request_id == binding.request_id
-            }) {
+            }) || authority_consumed(snapshot, &binding.request_id, &binding.plan_hash)
+            {
                 anyhow::bail!("Telegram authority request or plan was already recorded");
             }
             Ok(())
@@ -604,8 +642,10 @@ impl TelegramAuthority {
         {
             anyhow::bail!("Telegram authority plan became stale before authorization");
         }
-        self.with_locked_events(|_, snapshot| {
-            if snapshot.events.len() >= MAX_JOURNAL_EVENTS {
+        self.with_locked_events(|snapshot| {
+            if snapshot.events.len() >= MAX_JOURNAL_EVENTS
+                && compactable_terminal_pipeline_count(snapshot) == 0
+            {
                 anyhow::bail!("Telegram authority journal reached its bounded event limit");
             }
             if snapshot.events.iter().any(|event| {
@@ -819,10 +859,12 @@ impl TelegramAuthority {
     }
 
     fn append_new_plan(&self, binding: &PlanBinding) -> Result<()> {
-        self.with_locked_events(|file, snapshot| {
+        self.update_locked_events(|snapshot| {
+            compact_if_needed(snapshot, &self.key)?;
             if snapshot.events.iter().any(|event| {
                 event.plan_hash == binding.plan_hash || event.request_id == binding.request_id
-            }) {
+            }) || authority_consumed(snapshot, &binding.request_id, &binding.plan_hash)
+            {
                 anyhow::bail!("Telegram authority request or plan was already recorded");
             }
             let event = event_for(
@@ -832,7 +874,7 @@ impl TelegramAuthority {
                 Phase::Planned,
                 PhaseEvidence::default(),
             );
-            append_event(file, snapshot, event, &self.key).map(|_| ())
+            append_event(snapshot, event, &self.key).map(|_| ())
         })
     }
 
@@ -843,7 +885,8 @@ impl TelegramAuthority {
         phase: Phase,
         evidence: PhaseEvidence,
     ) -> Result<JournalEvent> {
-        self.with_locked_events(|file, snapshot| {
+        self.update_locked_events(|snapshot| {
+            compact_if_needed(snapshot, &self.key)?;
             let latest = snapshot
                 .events
                 .iter()
@@ -893,12 +936,12 @@ impl TelegramAuthority {
             }
             validate_evidence_transition(latest, phase, &evidence)?;
             let event = event_for(snapshot, binding, Some(owner_nonce), phase, evidence);
-            append_event(file, snapshot, event, &self.key)
+            append_event(snapshot, event, &self.key)
         })
     }
 
     fn latest_owned_phase(&self, binding: &PlanBinding, owner_nonce: &str) -> Result<Phase> {
-        self.with_locked_events(|_, snapshot| {
+        self.with_locked_events(|snapshot| {
             let latest = snapshot
                 .events
                 .iter()
@@ -919,13 +962,13 @@ impl TelegramAuthority {
     }
 
     fn inspect_events(&self) -> Result<Vec<JournalEvent>> {
-        self.with_locked_events(|_, snapshot| Ok(snapshot.events.clone()))
+        self.with_locked_events(|snapshot| Ok(snapshot.events.clone()))
     }
 
     /// Returns the canonical state that an independently stored monotonic
     /// anchor must bind. No anchor path or value is accepted from ingress.
     pub(crate) fn monotonic_state(&self) -> Result<TelegramAuthorityMonotonicState> {
-        self.with_locked_events(|_, snapshot| {
+        self.with_locked_events(|snapshot| {
             let (sequence, hash, mac) = snapshot.monotonic_binding();
             Ok(TelegramAuthorityMonotonicState {
                 schema: MONOTONIC_STATE_SCHEMA,
@@ -1161,7 +1204,8 @@ impl TelegramAuthority {
         cursor_path: &Path,
         resolve: bool,
     ) -> Result<TelegramReconciliationOutcome> {
-        self.with_locked_events(|file, snapshot| {
+        self.update_locked_events(|snapshot| {
+            compact_if_needed(snapshot, &self.key)?;
             let latest = snapshot
                 .events
                 .iter()
@@ -1236,7 +1280,7 @@ impl TelegramAuthority {
                 Phase::ReconciledTerminalSucceeded,
                 evidence,
             );
-            append_event(file, snapshot, event, &self.key)?;
+            append_event(snapshot, event, &self.key)?;
             Ok(TelegramReconciliationOutcome {
                 result: "recorded",
                 terminal_receipt_hash: Some(terminal_receipt_hash),
@@ -1247,29 +1291,36 @@ impl TelegramAuthority {
 
     fn with_locked_events<T>(
         &self,
-        operation: impl FnOnce(&mut File, &JournalSnapshot) -> Result<T>,
+        operation: impl FnOnce(&JournalSnapshot) -> Result<T>,
     ) -> Result<T> {
         let _process = self
             .process_lock
             .lock()
             .map_err(|_| anyhow::anyhow!("Telegram authority process mutex poisoned"))?;
-        let mut file = open_journal(&self.journal_file)?;
-        lock_file(&file)?;
-        let result = (|| {
-            validate_journal_file(&file)?;
-            let snapshot = read_journal_snapshot(&mut file, &self.key)?;
-            let result = operation(&mut file, &snapshot)?;
-            File::open(
-                self.journal_file
-                    .parent()
-                    .context("Telegram authority journal parent disappeared")?,
-            )?
-            .sync_all()
-            .context("fsync Telegram authority journal parent")?;
-            Ok(result)
-        })();
-        unlock_file(&file);
-        result
+        let bytes = read_private_state(&self.journal_file, MAX_JOURNAL_BYTES)?;
+        let snapshot = read_journal_snapshot(bytes.as_deref().unwrap_or_default(), &self.key)?;
+        operation(&snapshot)
+    }
+
+    fn update_locked_events<T>(
+        &self,
+        operation: impl FnOnce(&mut JournalSnapshot) -> Result<T>,
+    ) -> Result<T> {
+        let _process = self
+            .process_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Telegram authority process mutex poisoned"))?;
+        update_private_state_atomically(
+            &self.journal_file,
+            MAX_JOURNAL_BYTES,
+            JOURNAL_STAGING_PREFIX,
+            |current| {
+                let mut snapshot = read_journal_snapshot(current.unwrap_or_default(), &self.key)?;
+                let output = operation(&mut snapshot)?;
+                let bytes = encode_journal_snapshot(&snapshot)?;
+                Ok((bytes, output))
+            },
+        )
     }
 }
 
@@ -1278,17 +1329,35 @@ impl JournalSnapshot {
         self.events
             .last()
             .map(event_hash)
+            .or_else(|| self.checkpoint.as_ref().map(checkpoint_hash))
             .unwrap_or_else(|| GENESIS_HASH.to_owned())
     }
 
     fn next_sequence(&self) -> u64 {
-        self.events.last().map_or(1, |event| event.sequence + 1)
+        self.events
+            .last()
+            .map(|event| event.sequence + 1)
+            .or_else(|| {
+                self.checkpoint
+                    .as_ref()
+                    .map(|checkpoint| checkpoint.sequence + 1)
+            })
+            .unwrap_or(1)
     }
 
     fn monotonic_binding(&self) -> (u64, String, Option<String>) {
-        self.events.last().map_or_else(
+        if let Some(event) = self.events.last() {
+            return (event.sequence, event_hash(event), Some(event.mac.clone()));
+        }
+        self.checkpoint.as_ref().map_or_else(
             || (0, GENESIS_HASH.to_owned(), None),
-            |event| (event.sequence, event_hash(event), Some(event.mac.clone())),
+            |checkpoint| {
+                (
+                    checkpoint.sequence,
+                    checkpoint_hash(checkpoint),
+                    Some(checkpoint.mac.clone()),
+                )
+            },
         )
     }
 }
@@ -1647,8 +1716,7 @@ fn event_for(
 }
 
 fn append_event(
-    file: &mut File,
-    snapshot: &JournalSnapshot,
+    snapshot: &mut JournalSnapshot,
     mut event: JournalEvent,
     key: &[u8; 32],
 ) -> Result<JournalEvent> {
@@ -1656,36 +1724,46 @@ fn append_event(
         anyhow::bail!("Telegram authority journal reached its bounded event limit");
     }
     event.mac = event_mac(&event, key)?;
-    let mut bytes = serde_json::to_vec(&event).context("encode Telegram authority event")?;
-    bytes.push(b'\n');
-    if bytes.len() > MAX_EVENT_BYTES {
+    if serde_json::to_vec(&event)
+        .context("encode Telegram authority event")?
+        .len()
+        > MAX_EVENT_BYTES
+    {
         anyhow::bail!("Telegram authority event exceeds its bounded size");
     }
-    let current = file.metadata()?.len();
-    if current.saturating_add(bytes.len() as u64) > MAX_JOURNAL_BYTES {
-        anyhow::bail!("Telegram authority journal exceeds its bounded size");
-    }
-    file.seek(SeekFrom::End(0))?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
+    snapshot.events.push(event.clone());
     Ok(event)
 }
 
-fn read_journal_snapshot(file: &mut File, key: &[u8; 32]) -> Result<JournalSnapshot> {
-    file.seek(SeekFrom::Start(0))?;
-    let mut bytes = Vec::new();
-    file.take(MAX_JOURNAL_BYTES + 1).read_to_end(&mut bytes)?;
+fn read_journal_snapshot(bytes: &[u8], key: &[u8; 32]) -> Result<JournalSnapshot> {
     if bytes.len() as u64 > MAX_JOURNAL_BYTES {
         anyhow::bail!("Telegram authority journal exceeds its bounded size");
     }
-    let lines = bytes
+    let mut lines = bytes
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
-    let mut previous = GENESIS_HASH.to_owned();
-    let mut expected_sequence = 1;
+    let checkpoint = if lines.first().is_some_and(|line| {
+        serde_json::from_slice::<serde_json::Value>(line)
+            .ok()
+            .and_then(|value| value.get("schema")?.as_str().map(ToOwned::to_owned))
+            .as_deref()
+            == Some(CHECKPOINT_SCHEMA)
+    }) {
+        let checkpoint: JournalCheckpoint = serde_json::from_slice(lines.remove(0))
+            .context("decode Telegram authority checkpoint")?;
+        validate_checkpoint(&checkpoint, key)?;
+        Some(checkpoint)
+    } else {
+        None
+    };
+    let mut previous = checkpoint
+        .as_ref()
+        .map(checkpoint_hash)
+        .unwrap_or_else(|| GENESIS_HASH.to_owned());
+    let first_sequence = checkpoint.as_ref().map_or(1, |value| value.sequence + 1);
     let mut events = Vec::new();
-    for line in lines {
+    for (expected_sequence, line) in (first_sequence..).zip(lines) {
         if line.len() > MAX_EVENT_BYTES || events.len() >= MAX_JOURNAL_EVENTS {
             anyhow::bail!("Telegram authority journal exceeds bounded record limits");
         }
@@ -1700,10 +1778,242 @@ fn read_journal_snapshot(file: &mut File, key: &[u8; 32]) -> Result<JournalSnaps
             anyhow::bail!("Telegram authority journal chain or MAC is invalid");
         }
         previous = event_hash(&event);
-        expected_sequence += 1;
         events.push(event);
     }
-    Ok(JournalSnapshot { events })
+    Ok(JournalSnapshot { checkpoint, events })
+}
+
+fn encode_journal_snapshot(snapshot: &JournalSnapshot) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    if let Some(checkpoint) = &snapshot.checkpoint {
+        let encoded =
+            serde_json::to_vec(checkpoint).context("encode Telegram authority checkpoint")?;
+        if encoded.len() > MAX_CHECKPOINT_BYTES {
+            anyhow::bail!("Telegram authority checkpoint exceeds its bounded size");
+        }
+        bytes.extend(encoded);
+        bytes.push(b'\n');
+    }
+    for event in &snapshot.events {
+        let encoded = serde_json::to_vec(event).context("encode Telegram authority event")?;
+        if encoded.len() > MAX_EVENT_BYTES {
+            anyhow::bail!("Telegram authority event exceeds its bounded size");
+        }
+        bytes.extend(encoded);
+        bytes.push(b'\n');
+    }
+    if bytes.len() as u64 > MAX_JOURNAL_BYTES {
+        anyhow::bail!("Telegram authority journal exceeds its bounded size");
+    }
+    Ok(bytes)
+}
+
+fn compactable_terminal_pipeline_count(snapshot: &JournalSnapshot) -> usize {
+    terminal_pipeline_hashes(snapshot)
+        .len()
+        .saturating_sub(RETAIN_TERMINAL_PIPELINES)
+}
+
+fn compact_if_needed(snapshot: &mut JournalSnapshot, key: &[u8; 32]) -> Result<()> {
+    if snapshot.events.len() < MAX_JOURNAL_EVENTS {
+        return Ok(());
+    }
+    compact_terminal_pipelines(snapshot, key, RETAIN_TERMINAL_PIPELINES)
+}
+
+fn compact_terminal_pipelines(
+    snapshot: &mut JournalSnapshot,
+    key: &[u8; 32],
+    retain_terminal_pipelines: usize,
+) -> Result<()> {
+    let terminal_plans = terminal_pipeline_hashes(snapshot);
+    let compact_count = terminal_plans
+        .len()
+        .saturating_sub(retain_terminal_pipelines);
+    if compact_count == 0 {
+        anyhow::bail!("Telegram authority journal reached its bounded event limit");
+    }
+    let compacted_plans = terminal_plans
+        .into_iter()
+        .take(compact_count)
+        .collect::<HashSet<_>>();
+    let mut consumed_authorities = snapshot
+        .checkpoint
+        .as_ref()
+        .map(|checkpoint| checkpoint.consumed_authorities.clone())
+        .unwrap_or_default();
+    for plan_hash in &compacted_plans {
+        let event = snapshot
+            .events
+            .iter()
+            .rev()
+            .find(|event| event.plan_hash == *plan_hash)
+            .context("Telegram terminal pipeline disappeared during checkpoint")?;
+        if !consumed_authorities.iter().any(|authority| {
+            authority.request_id == event.request_id || authority.plan_hash == event.plan_hash
+        }) {
+            consumed_authorities.push(ConsumedAuthority {
+                request_id: event.request_id.clone(),
+                plan_hash: event.plan_hash.clone(),
+            });
+        }
+    }
+    if consumed_authorities.len() > MAX_CHECKPOINTED_AUTHORITIES {
+        anyhow::bail!("Telegram authority checkpoint reached its bounded authority limit");
+    }
+    let removed_events = snapshot
+        .events
+        .iter()
+        .filter(|event| compacted_plans.contains(&event.plan_hash))
+        .count();
+    if removed_events == 0 {
+        anyhow::bail!("Telegram authority checkpoint made no progress");
+    }
+    let (old_sequence, old_state_hash, _) = snapshot.monotonic_binding();
+    let old_history_hash = snapshot
+        .checkpoint
+        .as_ref()
+        .map(|checkpoint| checkpoint.history_hash.as_str())
+        .unwrap_or(CHECKPOINT_GENESIS_HASH);
+    let removed_events_text = removed_events.to_string();
+    let compacted_events =
+        snapshot
+            .checkpoint
+            .as_ref()
+            .map_or(removed_events as u64, |checkpoint| {
+                checkpoint
+                    .compacted_events
+                    .saturating_add(removed_events as u64)
+            });
+    let compacted_events_text = compacted_events.to_string();
+    let previous_checkpoint_hash = snapshot
+        .checkpoint
+        .as_ref()
+        .map(checkpoint_hash)
+        .unwrap_or_else(|| CHECKPOINT_GENESIS_HASH.to_owned());
+    let mut checkpoint = JournalCheckpoint {
+        schema: CHECKPOINT_SCHEMA.to_owned(),
+        revision: snapshot
+            .checkpoint
+            .as_ref()
+            .map_or(1, |checkpoint| checkpoint.revision + 1),
+        sequence: old_sequence + 1,
+        previous_checkpoint_hash,
+        compacted_events,
+        consumed_authorities,
+        history_hash: digest(
+            CHECKPOINT_HISTORY_DOMAIN,
+            &[
+                old_history_hash,
+                &old_state_hash,
+                &removed_events_text,
+                &compacted_events_text,
+            ],
+        ),
+        mac: String::new(),
+    };
+    checkpoint.mac = checkpoint_mac(&checkpoint, key)?;
+    snapshot
+        .events
+        .retain(|event| !compacted_plans.contains(&event.plan_hash));
+    let mut previous_entry_hash = checkpoint_hash(&checkpoint);
+    for (sequence, event) in (checkpoint.sequence + 1..).zip(&mut snapshot.events) {
+        event.sequence = sequence;
+        event.previous_entry_hash = previous_entry_hash;
+        event.mac = event_mac(event, key)?;
+        previous_entry_hash = event_hash(event);
+    }
+    snapshot.checkpoint = Some(checkpoint);
+    Ok(())
+}
+
+fn terminal_pipeline_hashes(snapshot: &JournalSnapshot) -> Vec<String> {
+    snapshot
+        .events
+        .iter()
+        .filter(|event| event.phase.is_success_terminal())
+        .map(|event| event.plan_hash.clone())
+        .collect()
+}
+
+fn authority_consumed(snapshot: &JournalSnapshot, request_id: &str, plan_hash: &str) -> bool {
+    snapshot.checkpoint.as_ref().is_some_and(|checkpoint| {
+        checkpoint
+            .consumed_authorities
+            .iter()
+            .any(|authority| authority.request_id == request_id || authority.plan_hash == plan_hash)
+    })
+}
+
+fn validate_checkpoint(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result<()> {
+    if checkpoint.schema != CHECKPOINT_SCHEMA
+        || checkpoint.revision == 0
+        || checkpoint.sequence == 0
+        || checkpoint.consumed_authorities.is_empty()
+        || checkpoint.consumed_authorities.len() > MAX_CHECKPOINTED_AUTHORITIES
+        || checkpoint.compacted_events == 0
+        || checkpoint.mac.len() != 64
+        || !constant_time_equal(&checkpoint.mac, &checkpoint_mac(checkpoint, key)?)
+    {
+        anyhow::bail!("Telegram authority checkpoint binding or MAC is invalid");
+    }
+    if checkpoint.previous_checkpoint_hash != CHECKPOINT_GENESIS_HASH {
+        validate_content_hash(
+            &checkpoint.previous_checkpoint_hash,
+            "Telegram authority previous checkpoint hash",
+        )?;
+    }
+    validate_hash(
+        &checkpoint.history_hash,
+        "Telegram authority checkpoint history hash",
+    )?;
+    let mut request_ids = HashSet::new();
+    let mut plan_hashes = HashSet::new();
+    for authority in &checkpoint.consumed_authorities {
+        validate_hash(&authority.request_id, "Telegram checkpoint request id")?;
+        validate_hash(&authority.plan_hash, "Telegram checkpoint plan hash")?;
+        if !request_ids.insert(authority.request_id.as_str())
+            || !plan_hashes.insert(authority.plan_hash.as_str())
+        {
+            anyhow::bail!("Telegram authority checkpoint contains duplicate authority");
+        }
+    }
+    Ok(())
+}
+
+fn checkpoint_mac(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result<String> {
+    let mut mac = HmacSha256::new_from_slice(key)?;
+    update_mac(&mut mac, CHECKPOINT_MAC_DOMAIN);
+    for field in checkpoint_fields(checkpoint) {
+        update_mac(&mut mac, field.as_bytes());
+    }
+    Ok(hex_encode(&mac.finalize().into_bytes()))
+}
+
+fn checkpoint_hash(checkpoint: &JournalCheckpoint) -> String {
+    let mut hasher = Sha256::new();
+    update_hash(&mut hasher, CHECKPOINT_HASH_DOMAIN);
+    for field in checkpoint_fields(checkpoint) {
+        update_hash(&mut hasher, field.as_bytes());
+    }
+    update_hash(&mut hasher, checkpoint.mac.as_bytes());
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn checkpoint_fields(checkpoint: &JournalCheckpoint) -> Vec<String> {
+    let mut fields = vec![
+        checkpoint.schema.clone(),
+        checkpoint.revision.to_string(),
+        checkpoint.sequence.to_string(),
+        checkpoint.previous_checkpoint_hash.clone(),
+        checkpoint.compacted_events.to_string(),
+        checkpoint.history_hash.clone(),
+    ];
+    for authority in &checkpoint.consumed_authorities {
+        fields.push(authority.request_id.clone());
+        fields.push(authority.plan_hash.clone());
+    }
+    fields
 }
 
 fn event_mac(event: &JournalEvent, key: &[u8; 32]) -> Result<String> {
@@ -2147,6 +2457,13 @@ fn validate_hash(value: &str, name: &str) -> Result<()> {
     anyhow::bail!("{name} must be canonical lowercase SHA-256 hex")
 }
 
+fn validate_content_hash(value: &str, name: &str) -> Result<()> {
+    let Some(value) = value.strip_prefix("sha256:") else {
+        anyhow::bail!("{name} must use the sha256 content-hash scheme");
+    };
+    validate_hash(value, name)
+}
+
 fn cursor_binding(cursor: Option<i64>) -> String {
     cursor.map_or_else(|| "none".into(), |cursor| cursor.to_string())
 }
@@ -2234,67 +2551,6 @@ fn validate_private_parent(path: &Path) -> Result<()> {
 fn validate_private_parent(_path: &Path) -> Result<()> {
     anyhow::bail!("Telegram authority journal requires Unix secure-file semantics")
 }
-
-#[cfg(unix)]
-fn open_journal(path: &Path) -> Result<File> {
-    OpenOptions::new()
-        .read(true)
-        .append(true)
-        .create(true)
-        .mode(PRIVATE_FILE_MODE)
-        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-        .open(path)
-        .context("open Telegram authority journal")
-}
-
-#[cfg(not(unix))]
-fn open_journal(_path: &Path) -> Result<File> {
-    anyhow::bail!("Telegram authority journal requires Unix secure-file semantics")
-}
-
-#[cfg(unix)]
-fn validate_journal_file(file: &File) -> Result<()> {
-    let metadata = file.metadata()?;
-    if !metadata.file_type().is_file()
-        || metadata.uid() != effective_uid()
-        || metadata.nlink() != 1
-        || metadata.mode() & 0o7777 != PRIVATE_FILE_MODE
-        || metadata.len() > MAX_JOURNAL_BYTES
-    {
-        anyhow::bail!("Telegram authority journal secure-file invariant failed");
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn validate_journal_file(_file: &File) -> Result<()> {
-    anyhow::bail!("Telegram authority journal requires Unix secure-file semantics")
-}
-
-#[cfg(unix)]
-fn lock_file(file: &File) -> Result<()> {
-    use std::os::fd::AsRawFd;
-    // SAFETY: flock only consumes the valid descriptor and a constant operation.
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-        return Err(std::io::Error::last_os_error()).context("lock Telegram authority journal");
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn lock_file(_file: &File) -> Result<()> {
-    anyhow::bail!("Telegram authority journal requires Unix locking")
-}
-
-#[cfg(unix)]
-fn unlock_file(file: &File) {
-    use std::os::fd::AsRawFd;
-    // SAFETY: best-effort unlock of the descriptor locked above.
-    let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
-}
-
-#[cfg(not(unix))]
-fn unlock_file(_file: &File) {}
 
 #[cfg(unix)]
 fn effective_uid() -> u32 {

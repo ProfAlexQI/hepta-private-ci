@@ -1020,3 +1020,70 @@ fn concurrent_plans_atomically_exclude_the_second_update_claim() {
         "losing plan must not acquire a permit or reach credentialed read"
     );
 }
+
+#[test]
+fn terminal_checkpoint_preserves_replay_identity_and_in_doubt_history() -> Result<()> {
+    let mut snapshot = JournalSnapshot {
+        checkpoint: None,
+        events: Vec::new(),
+    };
+    for (request, plan, phase) in [
+        ('1', '2', Phase::TerminalSucceeded),
+        ('3', '4', Phase::InDoubt),
+        ('5', '6', Phase::ReconciledTerminalSucceeded),
+    ] {
+        let binding = PlanBinding {
+            request_id: request.to_string().repeat(64),
+            plan_hash: plan.to_string().repeat(64),
+            plan_request_binding_hash: "7".repeat(64),
+            commit_request_binding_hash: Some("8".repeat(64)),
+            session_binding_hash: "9".repeat(64),
+            cursor: None,
+        };
+        let event = event_for(
+            &snapshot,
+            &binding,
+            Some(&"a".repeat(64)),
+            phase,
+            PhaseEvidence::default(),
+        );
+        append_event(&mut snapshot, event, &KEY)?;
+    }
+    let before = snapshot.monotonic_binding();
+
+    compact_terminal_pipelines(&mut snapshot, &KEY, 1)?;
+
+    let checkpoint = snapshot.checkpoint.as_ref().context("checkpoint")?;
+    assert_eq!(checkpoint.compacted_events, 1);
+    assert_eq!(checkpoint.consumed_authorities.len(), 1);
+    assert!(authority_consumed(
+        &snapshot,
+        &"1".repeat(64),
+        &"2".repeat(64)
+    ));
+    assert!(
+        snapshot
+            .events
+            .iter()
+            .any(|event| { event.plan_hash == "4".repeat(64) && event.phase == Phase::InDoubt })
+    );
+    assert!(snapshot.events.iter().any(|event| {
+        event.plan_hash == "6".repeat(64) && event.phase == Phase::ReconciledTerminalSucceeded
+    }));
+    assert!(snapshot.monotonic_binding().0 > before.0);
+
+    let encoded = encode_journal_snapshot(&snapshot)?;
+    let decoded = read_journal_snapshot(&encoded, &KEY)?;
+    assert_eq!(decoded.checkpoint, snapshot.checkpoint);
+    assert_eq!(decoded.events, snapshot.events);
+
+    let mut tampered = encoded;
+    let checkpoint_mac = checkpoint.mac.as_bytes();
+    let offset = tampered
+        .windows(checkpoint_mac.len())
+        .position(|window| window == checkpoint_mac)
+        .context("checkpoint MAC")?;
+    tampered[offset] = if tampered[offset] == b'a' { b'b' } else { b'a' };
+    assert!(read_journal_snapshot(&tampered, &KEY).is_err());
+    Ok(())
+}
