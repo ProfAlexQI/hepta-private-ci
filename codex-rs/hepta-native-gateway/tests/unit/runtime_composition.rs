@@ -237,6 +237,7 @@ fn keyed_runtime_bootstraps_then_opens_existing_database() {
         .expect("set root permissions");
     let key_path = root.path().join("runtime.key");
     let database_path = root.path().join("outcomes.sqlite3");
+    let state_path = root.path().join("runtime-state.json");
     write_key(
         &key_path,
         b"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n",
@@ -249,6 +250,7 @@ fn keyed_runtime_bootstraps_then_opens_existing_database() {
     let bootstrap = NativeGatewayRuntime::open(
         RuntimeCompositionConfig {
             outcome_database: database_path.clone(),
+            state_database: state_path.clone(),
             integrity_key_file: key_path.clone(),
             outcome_mode: RuntimeOutcomeMode::BootstrapNew,
         },
@@ -338,6 +340,7 @@ fn keyed_runtime_bootstraps_then_opens_existing_database() {
     let opened = NativeGatewayRuntime::open(
         RuntimeCompositionConfig {
             outcome_database: database_path,
+            state_database: state_path,
             integrity_key_file: key_path,
             outcome_mode: RuntimeOutcomeMode::OpenExisting,
         },

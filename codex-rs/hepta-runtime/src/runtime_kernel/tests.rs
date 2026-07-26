@@ -5713,3 +5713,37 @@ mod architecture_v2_provider_effect_tests {
 mod architecture_v2_sealed_read_tests {
     include!("tests/architecture_v2_sealed_read.rs");
 }
+
+#[cfg(unix)]
+#[test]
+fn durable_runtime_hydrates_session_state_on_reopen() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let outcome_path = root.path().join("outcomes.sqlite3");
+    let state_path = root.path().join("runtime-state.json");
+    let runtime = RuntimeKernel::bootstrap_with_durable_outcomes_and_state(
+        &outcome_path,
+        hepta_memory::DurableIntegrityKey::from_bytes([11; 32]),
+        &state_path,
+        hepta_memory::DurableIntegrityKey::from_bytes([12; 32]),
+    )
+    .expect("bootstrap durable runtime");
+    runtime
+        .switch_session("durable-session")
+        .expect("create durable session");
+    drop(runtime);
+
+    let recovered = RuntimeKernel::open_with_durable_outcomes_and_state(
+        &outcome_path,
+        hepta_memory::DurableIntegrityKey::from_bytes([11; 32]),
+        &state_path,
+        hepta_memory::DurableIntegrityKey::from_bytes([12; 32]),
+    )
+    .expect("open durable runtime");
+    assert!(
+        recovered
+            .sessions()
+            .expect("list recovered sessions")
+            .iter()
+            .any(|session| session.session_id == "durable-session")
+    );
+}

@@ -85,8 +85,51 @@ impl RuntimeKernel {
         Ok(Self::new_with_outcome_sink(outcome_sink))
     }
 
+    /// Bootstraps durable outcome receipts together with authenticated
+    /// session, memory, and transcript state.
+    pub fn bootstrap_with_durable_outcomes_and_state(
+        outcome_path: impl AsRef<std::path::Path>,
+        outcome_integrity_key: hepta_memory::DurableIntegrityKey,
+        state_path: impl AsRef<std::path::Path>,
+        state_integrity_key: hepta_memory::DurableIntegrityKey,
+    ) -> Result<Self, HeptaError> {
+        let memory = InMemoryStore::bootstrap_durable(state_path, state_integrity_key)
+            .map_err(|error| HeptaError(format!("bootstrap durable runtime state: {error}")))?;
+        let outcome_sink = runtime_kernel::outcome_sink::bootstrap_new_durable_outcome_sink(
+            outcome_path.as_ref(),
+            outcome_integrity_key,
+        )
+        .map_err(|error| HeptaError(format!("bootstrap durable outcomes: {error}")))?;
+        Ok(Self::new_with_outcome_sink_and_memory(outcome_sink, memory))
+    }
+
+    /// Opens durable outcome receipts and hydrates authenticated session,
+    /// memory, and transcript state before the runtime becomes available.
+    pub fn open_with_durable_outcomes_and_state(
+        outcome_path: impl AsRef<std::path::Path>,
+        outcome_integrity_key: hepta_memory::DurableIntegrityKey,
+        state_path: impl AsRef<std::path::Path>,
+        state_integrity_key: hepta_memory::DurableIntegrityKey,
+    ) -> Result<Self, HeptaError> {
+        let memory = InMemoryStore::open_durable(state_path, state_integrity_key)
+            .map_err(|error| HeptaError(format!("open durable runtime state: {error}")))?;
+        let outcome_sink = runtime_kernel::outcome_sink::open_existing_durable_outcome_sink(
+            outcome_path.as_ref(),
+            outcome_integrity_key,
+        )
+        .map_err(|error| HeptaError(format!("open durable outcomes: {error}")))?;
+        Ok(Self::new_with_outcome_sink_and_memory(outcome_sink, memory))
+    }
+
     pub(crate) fn new_with_outcome_sink(
         outcome_sink: runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,
+    ) -> Self {
+        Self::new_with_outcome_sink_and_memory(outcome_sink, InMemoryStore::default())
+    }
+
+    fn new_with_outcome_sink_and_memory(
+        outcome_sink: runtime_kernel::outcome_sink::SharedOutcomeReceiptSink,
+        memory: InMemoryStore,
     ) -> Self {
         let providers = ProviderRegistry::new();
         let active = providers.default_model();
@@ -94,7 +137,7 @@ impl RuntimeKernel {
         Self {
             providers,
             tools: ToolRegistry::new(),
-            memory: InMemoryStore::default(),
+            memory,
             policy: ConfigurablePolicyEngine::default(),
             approval_state: Arc::new(Mutex::new(ApprovalState::default())),
             context_revision_state: Arc::new(Mutex::new(ContextRevisionState::default())),

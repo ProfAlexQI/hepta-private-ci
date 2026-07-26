@@ -118,6 +118,8 @@ mod recall_context_helpers;
 mod recall_context_quality;
 mod recall_memory;
 mod restore_preview;
+#[cfg(unix)]
+mod runtime_state_store;
 mod search;
 mod snapshot_core;
 mod snapshot_inspection;

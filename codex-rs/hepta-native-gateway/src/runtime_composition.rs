@@ -43,6 +43,7 @@ use crate::telegram_authority::TelegramPipelineReceipt;
 use crate::telegram_authority::TelegramReconciliationHttpResponse;
 
 const OUTCOME_DATABASE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_DATABASE";
+const STATE_DATABASE_ENV: &str = "HEPTA_RUNTIME_STATE_DATABASE";
 const INTEGRITY_KEY_FILE_ENV: &str = "HEPTA_RUNTIME_INTEGRITY_KEY_FILE";
 const OUTCOME_MODE_ENV: &str = "HEPTA_RUNTIME_OUTCOME_MODE";
 const OPEN_EXISTING_MODE: &str = "open-existing";
@@ -263,6 +264,7 @@ impl RuntimeOutcomeMode {
 
 struct RuntimeCompositionConfig {
     outcome_database: PathBuf,
+    state_database: PathBuf,
     integrity_key_file: PathBuf,
     outcome_mode: RuntimeOutcomeMode,
 }
@@ -270,6 +272,7 @@ struct RuntimeCompositionConfig {
 impl RuntimeCompositionConfig {
     fn from_env() -> Result<Self> {
         let outcome_database = required_absolute_path(OUTCOME_DATABASE_ENV)?;
+        let state_database = required_absolute_path(STATE_DATABASE_ENV)?;
         let integrity_key_file = required_absolute_path(INTEGRITY_KEY_FILE_ENV)?;
         let outcome_mode = env::var(OUTCOME_MODE_ENV)
             .ok()
@@ -278,6 +281,7 @@ impl RuntimeCompositionConfig {
             .unwrap_or(RuntimeOutcomeMode::OpenExisting);
         Ok(Self {
             outcome_database,
+            state_database,
             integrity_key_file,
             outcome_mode,
         })
@@ -326,16 +330,26 @@ impl NativeGatewayRuntime {
             telegram_config.is_some(),
             anchor_config.is_some(),
         )?;
-        let integrity_key = read_integrity_key(&config.integrity_key_file)?;
+        let outcome_integrity_key = read_integrity_key(&config.integrity_key_file)?;
+        let state_integrity_key = read_integrity_key(&config.integrity_key_file)?;
         let prepared_preference = NativePreferenceIngress::prepare(preference_config)?;
         let kernel = match config.outcome_mode {
             RuntimeOutcomeMode::OpenExisting => {
-                RuntimeKernel::open_with_durable_outcomes(&config.outcome_database, integrity_key)
+                RuntimeKernel::open_with_durable_outcomes_and_state(
+                    &config.outcome_database,
+                    outcome_integrity_key,
+                    &config.state_database,
+                    state_integrity_key,
+                )
             }
-            RuntimeOutcomeMode::BootstrapNew => RuntimeKernel::bootstrap_with_durable_outcomes(
-                &config.outcome_database,
-                integrity_key,
-            ),
+            RuntimeOutcomeMode::BootstrapNew => {
+                RuntimeKernel::bootstrap_with_durable_outcomes_and_state(
+                    &config.outcome_database,
+                    outcome_integrity_key,
+                    &config.state_database,
+                    state_integrity_key,
+                )
+            }
         }
         .with_context(|| {
             format!(
@@ -1423,6 +1437,7 @@ impl NativeGatewayRuntime {
         Self::open(
             RuntimeCompositionConfig {
                 outcome_database: root.join("outcomes.sqlite3"),
+                state_database: root.join("runtime-state.json"),
                 integrity_key_file: key,
                 outcome_mode: RuntimeOutcomeMode::BootstrapNew,
             },
@@ -1445,6 +1460,7 @@ impl NativeGatewayRuntime {
         Self::open_with_operational_controls(
             RuntimeCompositionConfig {
                 outcome_database: root.join("outcomes.sqlite3"),
+                state_database: root.join("runtime-state.json"),
                 integrity_key_file: key,
                 outcome_mode: RuntimeOutcomeMode::BootstrapNew,
             },
@@ -1460,6 +1476,7 @@ impl NativeGatewayRuntime {
         Self::open_with_operational_controls(
             RuntimeCompositionConfig {
                 outcome_database: root.join("outcomes.sqlite3"),
+                state_database: root.join("runtime-state.json"),
                 integrity_key_file: root.join("runtime.key"),
                 outcome_mode: RuntimeOutcomeMode::OpenExisting,
             },

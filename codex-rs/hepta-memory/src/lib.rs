@@ -135,6 +135,7 @@ mod outcome_store;
 mod preference_authority;
 mod preference_cas;
 mod recall_helpers;
+mod runtime_state_store;
 mod snapshot_helpers;
 
 pub use durable::DurableIntegrityKey;
@@ -181,15 +182,19 @@ pub use preference_cas::PreferenceDocumentCommitOutcome;
 pub use preference_cas::PreferenceGenesisOutcome;
 pub use preference_cas::PreferenceSeedOutcome;
 pub use preference_cas::PreferenceStateDocument;
+pub use runtime_state_store::RuntimeStateStoreError;
 
-/// Small non-durable store for local development, tests, and snapshot-backed
-/// runtime state.
-#[derive(Default, Clone)]
+/// Runtime session, memory, and transcript store.
+///
+/// The default remains an ephemeral reference store for tests. Production can
+/// explicitly bootstrap or open an authenticated atomic snapshot backing.
+#[derive(Clone)]
 pub struct InMemoryStore {
     pub(crate) state: Arc<Mutex<StoreState>>,
+    durability: Option<Arc<runtime_state_store::RuntimeStatePersistence>>,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub(crate) struct StoreState {
     pub(crate) sessions: Vec<SessionRecord>,
     pub(crate) memories: Vec<MemoryRecord>,
@@ -213,6 +218,65 @@ pub struct InspectedStoreSnapshot {
 }
 
 impl InMemoryStore {
+    pub fn bootstrap_durable(
+        path: impl AsRef<std::path::Path>,
+        integrity_key: DurableIntegrityKey,
+    ) -> Result<Self, RuntimeStateStoreError> {
+        let (durability, snapshot) = runtime_state_store::RuntimeStatePersistence::bootstrap_new(
+            path.as_ref(),
+            integrity_key,
+        )?;
+        Ok(Self::from_durable_snapshot(durability, snapshot))
+    }
+
+    pub fn open_durable(
+        path: impl AsRef<std::path::Path>,
+        integrity_key: DurableIntegrityKey,
+    ) -> Result<Self, RuntimeStateStoreError> {
+        let (durability, snapshot) = runtime_state_store::RuntimeStatePersistence::open_existing(
+            path.as_ref(),
+            integrity_key,
+        )?;
+        Ok(Self::from_durable_snapshot(durability, snapshot))
+    }
+
+    fn from_durable_snapshot(
+        durability: runtime_state_store::RuntimeStatePersistence,
+        snapshot: StoreSnapshot,
+    ) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(StoreState {
+                sessions: snapshot.sessions,
+                memories: snapshot.memories,
+                transcripts: snapshot.transcripts,
+            })),
+            durability: Some(Arc::new(durability)),
+        }
+    }
+
+    fn mutate<T>(
+        &self,
+        operation: impl FnOnce(&mut StoreState) -> T,
+    ) -> Result<T, hepta_core::MemoryError> {
+        let mut guard = self
+            .state
+            .lock()
+            .map_err(|_| hepta_core::MemoryError("memory store mutex poisoned".into()))?;
+        let mut next = guard.clone();
+        let result = operation(&mut next);
+        if let Some(durability) = &self.durability {
+            durability
+                .persist(&StoreSnapshot {
+                    sessions: next.sessions.clone(),
+                    memories: next.memories.clone(),
+                    transcripts: next.transcripts.clone(),
+                })
+                .map_err(|error| hepta_core::MemoryError(error.to_string()))?;
+        }
+        *guard = next;
+        Ok(result)
+    }
+
     pub fn list_sessions(&self) -> Result<Vec<SessionRecord>, hepta_core::MemoryError> {
         let guard = self
             .state
@@ -238,85 +302,71 @@ impl InMemoryStore {
     }
 
     pub fn put_memory_sync(&self, record: MemoryRecord) -> Result<(), hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("memory store mutex poisoned".into()))?;
-        guard.memories.push(record);
-        Ok(())
+        self.mutate(|state| state.memories.push(record))
     }
 
     pub fn append_transcript_sync(
         &self,
         entry: TranscriptEntry,
     ) -> Result<(), hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("transcript store mutex poisoned".into()))?;
-        guard.transcripts.push(entry);
-        Ok(())
+        self.mutate(|state| state.transcripts.push(entry))
     }
 
     pub fn restore(&self, snapshot: StoreSnapshot) -> Result<(), hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("memory store mutex poisoned".into()))?;
-        guard.sessions = snapshot.sessions;
-        guard.memories = snapshot.memories;
-        guard.transcripts = snapshot.transcripts;
-        Ok(())
+        self.mutate(|state| {
+            state.sessions = snapshot.sessions;
+            state.memories = snapshot.memories;
+            state.transcripts = snapshot.transcripts;
+        })
     }
 
     pub fn upsert_session_sync(
         &self,
         record: SessionRecord,
     ) -> Result<(), hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("session store mutex poisoned".into()))?;
-        if let Some(existing) = guard
-            .sessions
-            .iter_mut()
-            .find(|existing| existing.session_id == record.session_id)
-        {
-            *existing = record;
-        } else {
-            guard.sessions.push(record);
-        }
-        Ok(())
+        self.mutate(|state| {
+            if let Some(existing) = state
+                .sessions
+                .iter_mut()
+                .find(|existing| existing.session_id == record.session_id)
+            {
+                *existing = record;
+            } else {
+                state.sessions.push(record);
+            }
+        })
     }
 
     pub fn remove_session_sync(
         &self,
         session_id: &SessionId,
     ) -> Result<Option<SessionRecord>, hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("session store mutex poisoned".into()))?;
-        if let Some(index) = guard
-            .sessions
-            .iter()
-            .position(|record| &record.session_id == session_id)
-        {
-            Ok(Some(guard.sessions.remove(index)))
-        } else {
-            Ok(None)
+        self.mutate(|state| {
+            if let Some(index) = state
+                .sessions
+                .iter()
+                .position(|record| &record.session_id == session_id)
+            {
+                Some(state.sessions.remove(index))
+            } else {
+                None
+            }
+        })
+    }
+}
+
+impl Default for InMemoryStore {
+    fn default() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(StoreState::default())),
+            durability: None,
         }
     }
 }
 
 impl SessionStore for InMemoryStore {
     async fn create(&self, record: SessionRecord) -> Result<(), hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("session store mutex poisoned".into()))?;
-        guard.sessions.push(record);
-        Ok(())
+        self.mutate(|state| state.sessions.push(record))
     }
 
     async fn get(
@@ -337,12 +387,7 @@ impl SessionStore for InMemoryStore {
 
 impl MemoryStore for InMemoryStore {
     async fn put(&self, record: MemoryRecord) -> Result<(), hepta_core::MemoryError> {
-        let mut guard = self
-            .state
-            .lock()
-            .map_err(|_| hepta_core::MemoryError("memory store mutex poisoned".into()))?;
-        guard.memories.push(record);
-        Ok(())
+        self.put_memory_sync(record)
     }
 
     async fn search(

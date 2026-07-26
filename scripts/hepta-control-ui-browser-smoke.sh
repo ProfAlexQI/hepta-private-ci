@@ -36,6 +36,7 @@ server_pid=""
 attempt_log_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-browser-smoke.XXXXXX")"
 runtime_fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/hepta-control-ui-runtime.XXXXXX")"
 runtime_database="$runtime_fixture_dir/outcomes.sqlite3"
+runtime_state_database="$runtime_fixture_dir/runtime-state.json"
 runtime_key_file="$runtime_fixture_dir/integrity.key"
 preference_database="$runtime_fixture_dir/preferences.sqlite3"
 preference_integrity_key_file="$runtime_fixture_dir/preference-integrity.key"
@@ -58,6 +59,7 @@ start_server() {
   fi
   : >"$SERVER_LOG"
   HEPTA_RUNTIME_OUTCOME_DATABASE="$runtime_database" \
+    HEPTA_RUNTIME_STATE_DATABASE="$runtime_state_database" \
     HEPTA_RUNTIME_INTEGRITY_KEY_FILE="$runtime_key_file" \
     HEPTA_RUNTIME_OUTCOME_MODE="$outcome_mode" \
     HEPTA_PREFERENCE_DATABASE="$preference_database" \
