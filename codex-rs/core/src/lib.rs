@@ -117,6 +117,29 @@ pub use thread_manager::ThreadManager;
 pub use thread_manager::ThreadShutdownReport;
 pub use thread_manager::build_models_manager;
 pub use thread_manager::thread_store_from_config;
+
+pub fn install_default_thread_extensions<C>(
+    registry: &mut codex_extension_api::ExtensionRegistryBuilder<C>,
+) {
+    codex_executor_skills_extension::install(registry);
+}
+
+pub fn default_thread_extension_registry<C>()
+-> std::sync::Arc<codex_extension_api::ExtensionRegistry<C>> {
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::new();
+    install_default_thread_extensions(&mut builder);
+    std::sync::Arc::new(builder.build())
+}
+
+#[cfg(test)]
+mod default_thread_extension_registry_tests {
+    #[test]
+    fn default_registry_installs_executor_skill_tools_for_every_host() {
+        let registry = super::default_thread_extension_registry::<super::config::Config>();
+        assert_eq!(registry.tool_contributors().len(), 1);
+    }
+}
+
 pub use web_search::web_search_action_detail;
 pub use web_search::web_search_detail;
 pub use windows_sandbox_read_grants::grant_read_root_non_elevated;

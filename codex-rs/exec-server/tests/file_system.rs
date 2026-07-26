@@ -530,6 +530,34 @@ async fn file_system_sandboxed_read_allows_readable_root(use_remote: bool) -> Re
     Ok(())
 }
 
+#[test_case(false ; "local_sandbox_helper")]
+#[test_case(true ; "remote_rpc_and_sandbox_helper")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bounded_read_beneath_works_through_executor_transports(use_remote: bool) -> Result<()> {
+    let context = create_file_system_context(use_remote).await?;
+    let file_system = context.file_system;
+
+    let tmp = TempDir::new()?;
+    let allowed_dir = tmp.path().join("allowed");
+    let nested_dir = allowed_dir.join("nested");
+    std::fs::create_dir_all(&nested_dir)?;
+    std::fs::write(nested_dir.join("note.txt"), "bounded hello")?;
+    let sandbox = read_only_sandbox(allowed_dir.clone());
+
+    let contents = file_system
+        .read_file_beneath(
+            &absolute_path(allowed_dir),
+            Path::new("nested/note.txt"),
+            64,
+            Some(&sandbox),
+        )
+        .await
+        .with_context(|| format!("mode={use_remote}"))?;
+
+    assert_eq!(contents, b"bounded hello");
+    Ok(())
+}
+
 #[test_case(false ; "local")]
 #[test_case(true ; "remote")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

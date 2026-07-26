@@ -1,3 +1,4 @@
+mod bounded_read;
 #[cfg(target_os = "linux")]
 mod bwrap;
 mod denial;
@@ -7,6 +8,7 @@ pub mod policy_transforms;
 #[cfg(target_os = "macos")]
 pub mod seatbelt;
 
+pub use bounded_read::read_file_beneath;
 #[cfg(target_os = "linux")]
 pub use bwrap::find_system_bwrap_in_path;
 #[cfg(target_os = "linux")]

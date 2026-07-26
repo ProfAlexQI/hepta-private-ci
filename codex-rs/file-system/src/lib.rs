@@ -152,6 +152,27 @@ pub trait ExecutorFileSystem: Send + Sync {
         sandbox: Option<&FileSystemSandboxContext>,
     ) -> FileSystemResult<Vec<u8>>;
 
+    /// Atomically opens `authority_root`, walks only normal relative path
+    /// components without following symbolic links, and reads no more than
+    /// `max_bytes + 1` bytes from a regular final file.
+    ///
+    /// Implementations must not fall back to [`Self::read_file`]. The default
+    /// fails closed so executors that do not provide the required descriptor-
+    /// relative semantics cannot accidentally claim this authority.
+    async fn read_file_beneath(
+        &self,
+        authority_root: &AbsolutePathBuf,
+        relative_path: &Path,
+        max_bytes: u64,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        let _ = (authority_root, relative_path, max_bytes, sandbox);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "atomic bounded reads beneath an authority root are unsupported by this executor",
+        ))
+    }
+
     /// Reads a file and decodes it as UTF-8 text.
     async fn read_file_text(
         &self,

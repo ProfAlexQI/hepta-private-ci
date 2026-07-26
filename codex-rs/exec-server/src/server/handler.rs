@@ -24,6 +24,8 @@ use crate::protocol::FsGetMetadataParams;
 use crate::protocol::FsGetMetadataResponse;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
+use crate::protocol::FsReadFileBeneathParams;
+use crate::protocol::FsReadFileBeneathResponse;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -220,6 +222,14 @@ impl ExecServerHandler {
     ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
         self.require_initialized_for("filesystem")?;
         self.file_system.read_file(params).await
+    }
+
+    pub(crate) async fn fs_read_file_beneath(
+        &self,
+        params: FsReadFileBeneathParams,
+    ) -> Result<FsReadFileBeneathResponse, JSONRPCErrorError> {
+        self.require_initialized_for("filesystem")?;
+        self.file_system.read_file_beneath(params).await
     }
 
     pub(crate) async fn fs_write_file(

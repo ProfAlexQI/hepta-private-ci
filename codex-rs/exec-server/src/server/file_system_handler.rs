@@ -20,6 +20,8 @@ use crate::protocol::FsGetMetadataResponse;
 use crate::protocol::FsReadDirectoryEntry;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
+use crate::protocol::FsReadFileBeneathParams;
+use crate::protocol::FsReadFileBeneathResponse;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -28,6 +30,7 @@ use crate::protocol::FsWriteFileParams;
 use crate::protocol::FsWriteFileResponse;
 use crate::rpc::internal_error;
 use crate::rpc::invalid_request;
+use crate::rpc::method_not_found;
 use crate::rpc::not_found;
 
 #[derive(Clone)]
@@ -52,6 +55,25 @@ impl FileSystemHandler {
             .await
             .map_err(map_fs_error)?;
         Ok(FsReadFileResponse {
+            data_base64: STANDARD.encode(bytes),
+        })
+    }
+
+    pub(crate) async fn read_file_beneath(
+        &self,
+        params: FsReadFileBeneathParams,
+    ) -> Result<FsReadFileBeneathResponse, JSONRPCErrorError> {
+        let bytes = self
+            .file_system
+            .read_file_beneath(
+                &params.authority_root,
+                &params.relative_path,
+                params.max_bytes,
+                params.sandbox.as_ref(),
+            )
+            .await
+            .map_err(map_fs_error)?;
+        Ok(FsReadFileBeneathResponse {
             data_base64: STANDARD.encode(bytes),
         })
     }
@@ -167,6 +189,7 @@ fn map_fs_error(err: io::Error) -> JSONRPCErrorError {
         io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied => {
             invalid_request(err.to_string())
         }
+        io::ErrorKind::Unsupported => method_not_found(err.to_string()),
         _ => internal_error(err.to_string()),
     }
 }

@@ -3,6 +3,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use std::path::Path;
 use tokio::io;
 
 use crate::CopyOptions;
@@ -21,6 +22,7 @@ use crate::protocol::FsCopyParams;
 use crate::protocol::FsCreateDirectoryParams;
 use crate::protocol::FsGetMetadataParams;
 use crate::protocol::FsReadDirectoryParams;
+use crate::protocol::FsReadFileBeneathParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsRemoveParams;
 use crate::protocol::FsWriteFileParams;
@@ -74,6 +76,30 @@ impl ExecutorFileSystem for SandboxedFileSystem {
                 format!("fs/readFile returned invalid base64 dataBase64: {err}"),
             )
         })
+    }
+
+    async fn read_file_beneath(
+        &self,
+        authority_root: &AbsolutePathBuf,
+        relative_path: &Path,
+        max_bytes: u64,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        let sandbox = require_platform_sandbox(sandbox)?;
+        let response = self
+            .run_sandboxed(
+                sandbox,
+                FsHelperRequest::ReadFileBeneath(FsReadFileBeneathParams {
+                    authority_root: authority_root.clone(),
+                    relative_path: relative_path.to_path_buf(),
+                    max_bytes,
+                    sandbox: None,
+                }),
+            )
+            .await?
+            .expect_read_file_beneath()
+            .map_err(map_sandbox_error)?;
+        decode_bounded_base64(response.data_base64, max_bytes, "fs/readFileBeneath")
     }
 
     async fn write_file(
@@ -235,6 +261,34 @@ fn map_sandbox_error(error: JSONRPCErrorError) -> io::Error {
     match error.code {
         -32004 => io::Error::new(io::ErrorKind::NotFound, error.message),
         -32600 => io::Error::new(io::ErrorKind::InvalidInput, error.message),
+        -32601 => io::Error::new(io::ErrorKind::Unsupported, error.message),
         _ => io::Error::other(error.message),
     }
+}
+
+fn decode_bounded_base64(
+    data_base64: String,
+    max_bytes: u64,
+    operation: &str,
+) -> io::Result<Vec<u8>> {
+    let max_encoded_len = (u128::from(max_bytes) + 2) / 3 * 4;
+    if data_base64.len() as u128 > max_encoded_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{operation} returned data above the requested byte limit"),
+        ));
+    }
+    let bytes = STANDARD.decode(data_base64).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{operation} returned invalid base64 dataBase64: {error}"),
+        )
+    })?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{operation} returned data above the requested byte limit"),
+        ));
+    }
+    Ok(bytes)
 }

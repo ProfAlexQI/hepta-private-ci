@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use std::path::Path;
 use tokio::io;
 use tracing::trace;
 
@@ -19,11 +20,13 @@ use crate::protocol::FsCopyParams;
 use crate::protocol::FsCreateDirectoryParams;
 use crate::protocol::FsGetMetadataParams;
 use crate::protocol::FsReadDirectoryParams;
+use crate::protocol::FsReadFileBeneathParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsRemoveParams;
 use crate::protocol::FsWriteFileParams;
 
 const INVALID_REQUEST_ERROR_CODE: i64 = -32600;
+const METHOD_NOT_FOUND_ERROR_CODE: i64 = -32601;
 const NOT_FOUND_ERROR_CODE: i64 = -32004;
 
 #[derive(Clone)]
@@ -60,6 +63,27 @@ impl ExecutorFileSystem for RemoteFileSystem {
                 format!("remote fs/readFile returned invalid base64 dataBase64: {err}"),
             )
         })
+    }
+
+    async fn read_file_beneath(
+        &self,
+        authority_root: &AbsolutePathBuf,
+        relative_path: &Path,
+        max_bytes: u64,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        trace!("remote fs read_file_beneath");
+        let client = self.client.get().await.map_err(map_remote_error)?;
+        let response = client
+            .fs_read_file_beneath(FsReadFileBeneathParams {
+                authority_root: authority_root.clone(),
+                relative_path: relative_path.to_path_buf(),
+                max_bytes,
+                sandbox: remote_sandbox_context(sandbox),
+            })
+            .await
+            .map_err(map_remote_error)?;
+        decode_bounded_base64(response.data_base64, max_bytes, "remote fs/readFileBeneath")
     }
 
     async fn write_file(
@@ -206,12 +230,42 @@ fn map_remote_error(error: ExecServerError) -> io::Error {
         ExecServerError::Server { code, message } if code == INVALID_REQUEST_ERROR_CODE => {
             io::Error::new(io::ErrorKind::InvalidInput, message)
         }
+        ExecServerError::Server { code, message } if code == METHOD_NOT_FOUND_ERROR_CODE => {
+            io::Error::new(io::ErrorKind::Unsupported, message)
+        }
         ExecServerError::Server { message, .. } => io::Error::other(message),
         ExecServerError::Closed | ExecServerError::Disconnected(_) => {
             io::Error::new(io::ErrorKind::BrokenPipe, "exec-server transport closed")
         }
         _ => io::Error::other(error.to_string()),
     }
+}
+
+fn decode_bounded_base64(
+    data_base64: String,
+    max_bytes: u64,
+    operation: &str,
+) -> io::Result<Vec<u8>> {
+    let max_encoded_len = (u128::from(max_bytes) + 2) / 3 * 4;
+    if data_base64.len() as u128 > max_encoded_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{operation} returned data above the requested byte limit"),
+        ));
+    }
+    let bytes = STANDARD.decode(data_base64).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{operation} returned invalid base64 dataBase64: {error}"),
+        )
+    })?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{operation} returned data above the requested byte limit"),
+        ));
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -296,6 +350,16 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn older_remote_without_bounded_read_fails_closed_as_unsupported() {
+        let error = map_remote_error(ExecServerError::Server {
+            code: METHOD_NOT_FOUND_ERROR_CODE,
+            message: "method not found".to_string(),
+        });
+
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
     }
 
     fn absolute_test_path(name: &str) -> AbsolutePathBuf {

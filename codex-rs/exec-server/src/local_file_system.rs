@@ -88,6 +88,19 @@ impl ExecutorFileSystem for LocalFileSystem {
         file_system.read_file(path, sandbox).await
     }
 
+    async fn read_file_beneath(
+        &self,
+        authority_root: &AbsolutePathBuf,
+        relative_path: &Path,
+        max_bytes: u64,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        let (file_system, sandbox) = self.file_system_for(sandbox)?;
+        file_system
+            .read_file_beneath(authority_root, relative_path, max_bytes, sandbox)
+            .await
+    }
+
     async fn write_file(
         &self,
         path: &AbsolutePathBuf,
@@ -159,6 +172,24 @@ impl ExecutorFileSystem for UnsandboxedFileSystem {
     ) -> FileSystemResult<Vec<u8>> {
         reject_platform_sandbox_context(sandbox)?;
         self.file_system.read_file(path, /*sandbox*/ None).await
+    }
+
+    async fn read_file_beneath(
+        &self,
+        authority_root: &AbsolutePathBuf,
+        relative_path: &Path,
+        max_bytes: u64,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        reject_platform_sandbox_context(sandbox)?;
+        self.file_system
+            .read_file_beneath(
+                authority_root,
+                relative_path,
+                max_bytes,
+                /*sandbox*/ None,
+            )
+            .await
     }
 
     async fn write_file(
@@ -252,6 +283,27 @@ impl ExecutorFileSystem for DirectFileSystem {
             ));
         }
         tokio::fs::read(path.as_path()).await
+    }
+
+    async fn read_file_beneath(
+        &self,
+        authority_root: &AbsolutePathBuf,
+        relative_path: &Path,
+        max_bytes: u64,
+        sandbox: Option<&FileSystemSandboxContext>,
+    ) -> FileSystemResult<Vec<u8>> {
+        reject_sandbox_context(sandbox)?;
+        let authority_root = authority_root.to_path_buf();
+        let relative_path = relative_path.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            codex_sandboxing::read_file_beneath(
+                authority_root.as_path(),
+                relative_path.as_path(),
+                max_bytes,
+            )
+        })
+        .await
+        .map_err(|error| io::Error::other(format!("filesystem task failed: {error}")))?
     }
 
     async fn write_file(

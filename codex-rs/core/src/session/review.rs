@@ -125,6 +125,15 @@ pub(super) async fn spawn_review_thread(
         parent_turn_context.network.is_some(),
     ));
 
+    let extension_data = Arc::new(codex_extension_api::ExtensionData::new(
+        review_turn_id.clone(),
+    ));
+    codex_executor_skills_extension::attach_step_authority(
+        &extension_data,
+        &parent_turn_context.turn_skills.outcome,
+        &review_turn_id,
+    )
+    .await;
     let review_turn_context = TurnContext {
         sub_id: review_turn_id.clone(),
         trace_id: current_span_trace_id(),
@@ -163,7 +172,7 @@ pub(super) async fn spawn_review_thread(
         dynamic_tools: parent_turn_context.dynamic_tools.clone(),
         truncation_policy: model_info.truncation_policy.into(),
         turn_metadata_state,
-        extension_data: Arc::new(codex_extension_api::ExtensionData::new(review_turn_id)),
+        extension_data,
         turn_skills: TurnSkillsContext::new(parent_turn_context.turn_skills.outcome.clone()),
         turn_timing_state: Arc::new(TurnTimingState::default()),
         terminal_error: Arc::new(Mutex::new(None)),

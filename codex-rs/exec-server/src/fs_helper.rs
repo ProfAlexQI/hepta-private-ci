@@ -14,6 +14,7 @@ use crate::protocol::FS_COPY_METHOD;
 use crate::protocol::FS_CREATE_DIRECTORY_METHOD;
 use crate::protocol::FS_GET_METADATA_METHOD;
 use crate::protocol::FS_READ_DIRECTORY_METHOD;
+use crate::protocol::FS_READ_FILE_BENEATH_METHOD;
 use crate::protocol::FS_READ_FILE_METHOD;
 use crate::protocol::FS_REMOVE_METHOD;
 use crate::protocol::FS_WRITE_FILE_METHOD;
@@ -26,6 +27,8 @@ use crate::protocol::FsGetMetadataResponse;
 use crate::protocol::FsReadDirectoryEntry;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
+use crate::protocol::FsReadFileBeneathParams;
+use crate::protocol::FsReadFileBeneathResponse;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -34,6 +37,7 @@ use crate::protocol::FsWriteFileParams;
 use crate::protocol::FsWriteFileResponse;
 use crate::rpc::internal_error;
 use crate::rpc::invalid_request;
+use crate::rpc::method_not_found;
 use crate::rpc::not_found;
 
 pub const CODEX_FS_HELPER_ARG1: &str = "--codex-run-as-fs-helper";
@@ -43,6 +47,8 @@ pub const CODEX_FS_HELPER_ARG1: &str = "--codex-run-as-fs-helper";
 pub(crate) enum FsHelperRequest {
     #[serde(rename = "fs/readFile")]
     ReadFile(FsReadFileParams),
+    #[serde(rename = "fs/readFileBeneath")]
+    ReadFileBeneath(FsReadFileBeneathParams),
     #[serde(rename = "fs/writeFile")]
     WriteFile(FsWriteFileParams),
     #[serde(rename = "fs/createDirectory")]
@@ -69,6 +75,8 @@ pub(crate) enum FsHelperResponse {
 pub(crate) enum FsHelperPayload {
     #[serde(rename = "fs/readFile")]
     ReadFile(FsReadFileResponse),
+    #[serde(rename = "fs/readFileBeneath")]
+    ReadFileBeneath(FsReadFileBeneathResponse),
     #[serde(rename = "fs/writeFile")]
     WriteFile(FsWriteFileResponse),
     #[serde(rename = "fs/createDirectory")]
@@ -87,6 +95,7 @@ impl FsHelperPayload {
     fn operation(&self) -> &'static str {
         match self {
             Self::ReadFile(_) => FS_READ_FILE_METHOD,
+            Self::ReadFileBeneath(_) => FS_READ_FILE_BENEATH_METHOD,
             Self::WriteFile(_) => FS_WRITE_FILE_METHOD,
             Self::CreateDirectory(_) => FS_CREATE_DIRECTORY_METHOD,
             Self::GetMetadata(_) => FS_GET_METADATA_METHOD,
@@ -100,6 +109,18 @@ impl FsHelperPayload {
         match self {
             Self::ReadFile(response) => Ok(response),
             other => Err(unexpected_response(FS_READ_FILE_METHOD, other.operation())),
+        }
+    }
+
+    pub(crate) fn expect_read_file_beneath(
+        self,
+    ) -> Result<FsReadFileBeneathResponse, JSONRPCErrorError> {
+        match self {
+            Self::ReadFileBeneath(response) => Ok(response),
+            other => Err(unexpected_response(
+                FS_READ_FILE_BENEATH_METHOD,
+                other.operation(),
+            )),
         }
     }
 
@@ -178,6 +199,22 @@ pub(crate) async fn run_direct_request(
             Ok(FsHelperPayload::ReadFile(FsReadFileResponse {
                 data_base64: STANDARD.encode(data),
             }))
+        }
+        FsHelperRequest::ReadFileBeneath(params) => {
+            let data = file_system
+                .read_file_beneath(
+                    &params.authority_root,
+                    &params.relative_path,
+                    params.max_bytes,
+                    /*sandbox*/ None,
+                )
+                .await
+                .map_err(map_fs_error)?;
+            Ok(FsHelperPayload::ReadFileBeneath(
+                FsReadFileBeneathResponse {
+                    data_base64: STANDARD.encode(data),
+                },
+            ))
         }
         FsHelperRequest::WriteFile(params) => {
             let bytes = STANDARD.decode(params.data_base64).map_err(|err| {
@@ -272,6 +309,7 @@ fn map_fs_error(err: io::Error) -> JSONRPCErrorError {
         io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied => {
             invalid_request(err.to_string())
         }
+        io::ErrorKind::Unsupported => method_not_found(err.to_string()),
         _ => internal_error(err.to_string()),
     }
 }
@@ -282,10 +320,11 @@ mod tests {
 
     #[test]
     fn helper_requests_use_fs_method_names() -> serde_json::Result<()> {
+        let cwd = std::env::current_dir().expect("cwd");
         assert_eq!(
             serde_json::to_value(FsHelperRequest::WriteFile(FsWriteFileParams {
-                path: std::env::current_dir()
-                    .expect("cwd")
+                path: cwd
+                    .clone()
                     .join("file")
                     .as_path()
                     .try_into()
@@ -294,6 +333,15 @@ mod tests {
                 sandbox: None,
             }))?["operation"],
             FS_WRITE_FILE_METHOD,
+        );
+        assert_eq!(
+            serde_json::to_value(FsHelperRequest::ReadFileBeneath(FsReadFileBeneathParams {
+                authority_root: cwd.as_path().try_into().expect("absolute authority root"),
+                relative_path: std::path::PathBuf::from("package/resource"),
+                max_bytes: 1024,
+                sandbox: None,
+            }))?["operation"],
+            FS_READ_FILE_BENEATH_METHOD,
         );
         Ok(())
     }

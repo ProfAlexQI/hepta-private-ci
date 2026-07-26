@@ -484,7 +484,7 @@ impl Session {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn make_turn_context(
+    pub(crate) async fn make_turn_context(
         thread_id: ThreadId,
         session_id: SessionId,
         auth_manager: Option<Arc<AuthManager>>,
@@ -597,6 +597,12 @@ impl Session {
         ));
         let (current_date, timezone) = local_time_context();
         let extension_data = Arc::new(codex_extension_api::ExtensionData::new(sub_id.clone()));
+        codex_executor_skills_extension::attach_step_authority(
+            &extension_data,
+            &skills_outcome,
+            &sub_id,
+        )
+        .await;
         TurnContext {
             sub_id,
             trace_id: current_span_trace_id(),
@@ -767,13 +773,8 @@ impl Session {
         let per_turn_config = Self::build_per_turn_config(&session_configuration, cwd.clone());
         {
             let mut mcp_connection_manager = self.services.mcp_connection_manager.write().await;
-            mcp_connection_manager.update_elicitation_authority(
-                codex_protocol::protocol::McpElicitationAuthority {
-                    approval_policy: session_configuration.approval_policy.value(),
-                    permission_profile: session_configuration.permission_profile(),
-                    approvals_reviewer: session_configuration.approvals_reviewer,
-                },
-            );
+            mcp_connection_manager
+                .update_elicitation_authority(session_configuration.mcp_elicitation_authority());
         }
 
         let model_info = self
@@ -827,7 +828,8 @@ impl Session {
             sub_id,
             skills_outcome,
             goal_tools_supported,
-        );
+        )
+        .await;
         turn_context.realtime_active = self.conversation.running_state().await.is_some();
 
         if let Some(final_schema) = final_output_json_schema {

@@ -72,6 +72,8 @@ pub use protocol::FsGetMetadataResponse;
 pub use protocol::FsReadDirectoryEntry;
 pub use protocol::FsReadDirectoryParams;
 pub use protocol::FsReadDirectoryResponse;
+pub use protocol::FsReadFileBeneathParams;
+pub use protocol::FsReadFileBeneathResponse;
 pub use protocol::FsReadFileParams;
 pub use protocol::FsReadFileResponse;
 pub use protocol::FsRemoveParams;

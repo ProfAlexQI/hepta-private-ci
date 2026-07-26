@@ -100,6 +100,7 @@ where
     let mut skill_root_by_path: HashMap<AbsolutePathBuf, AbsolutePathBuf> = HashMap::new();
     let mut file_systems_by_skill_path: HashMap<AbsolutePathBuf, Arc<dyn ExecutorFileSystem>> =
         HashMap::new();
+    let mut executor_authority_by_skill_path: HashMap<AbsolutePathBuf, bool> = HashMap::new();
     for root in roots {
         let SkillRoot {
             path,
@@ -177,6 +178,9 @@ where
             file_systems_by_skill_path
                 .entry(skill.path_to_skills_md.clone())
                 .or_insert_with(|| Arc::clone(&fs));
+            executor_authority_by_skill_path
+                .entry(skill.path_to_skills_md.clone())
+                .or_insert(!has_local_authority);
         }
     }
 
@@ -193,9 +197,16 @@ where
     let used_roots: HashSet<AbsolutePathBuf> = skill_root_by_path.values().cloned().collect();
     skill_roots.retain(|root| used_roots.contains(root));
     file_systems_by_skill_path.retain(|path, _| retained_skill_paths.contains(path));
+    executor_authority_by_skill_path.retain(|path, _| retained_skill_paths.contains(path));
     outcome.skill_roots = skill_roots;
     outcome.skill_root_by_path = Arc::new(skill_root_by_path);
     outcome.file_systems_by_skill_path = SkillFileSystemsByPath::new(file_systems_by_skill_path);
+    outcome.executor_skill_paths = Arc::new(
+        executor_authority_by_skill_path
+            .into_iter()
+            .filter_map(|(path, is_executor)| is_executor.then_some(path))
+            .collect(),
+    );
 
     fn scope_rank(scope: SkillScope) -> u8 {
         // Higher-priority scopes first (matches root scan order for dedupe).

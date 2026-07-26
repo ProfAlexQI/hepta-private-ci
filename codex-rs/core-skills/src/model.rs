@@ -93,6 +93,7 @@ pub struct SkillLoadOutcome {
     pub(crate) skill_roots: Vec<AbsolutePathBuf>,
     pub(crate) skill_root_by_path: Arc<HashMap<AbsolutePathBuf, AbsolutePathBuf>>,
     pub(crate) file_systems_by_skill_path: SkillFileSystemsByPath,
+    pub(crate) executor_skill_paths: Arc<HashSet<AbsolutePathBuf>>,
     pub(crate) implicit_skills_by_scripts_dir: Arc<HashMap<AbsolutePathBuf, SkillMetadata>>,
     pub(crate) implicit_skills_by_doc_path: Arc<HashMap<AbsolutePathBuf, SkillMetadata>>,
 }
@@ -120,12 +121,23 @@ impl SkillLoadOutcome {
             .map(|skill| (skill, self.is_skill_enabled(skill)))
     }
 
-    pub(crate) fn file_system_for_skill(
+    pub fn file_system_for_skill(
         &self,
         skill: &SkillMetadata,
     ) -> Option<Arc<dyn ExecutorFileSystem>> {
         self.file_systems_by_skill_path
             .get(&skill.path_to_skills_md)
+    }
+
+    /// Returns true only when discovery of `skill` was authorized by a
+    /// caller-supplied executor filesystem root, never a host-local root.
+    pub fn is_executor_skill(&self, skill: &SkillMetadata) -> bool {
+        self.executor_skill_paths.contains(&skill.path_to_skills_md)
+    }
+
+    /// Returns the exact effective root that authorized discovery of `skill`.
+    pub fn root_for_skill(&self, skill: &SkillMetadata) -> Option<&AbsolutePathBuf> {
+        self.skill_root_by_path.get(&skill.path_to_skills_md)
     }
 }
 
@@ -179,6 +191,14 @@ pub fn filter_skill_load_outcome_for_product(
     outcome
         .file_systems_by_skill_path
         .retain_paths(&retained_paths);
+    outcome.executor_skill_paths = Arc::new(
+        outcome
+            .executor_skill_paths
+            .iter()
+            .filter(|path| retained_paths.contains(*path))
+            .cloned()
+            .collect(),
+    );
     outcome.skill_root_by_path = Arc::new(
         outcome
             .skill_root_by_path

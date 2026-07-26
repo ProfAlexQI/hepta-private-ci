@@ -45,6 +45,7 @@ use crate::protocol::FS_COPY_METHOD;
 use crate::protocol::FS_CREATE_DIRECTORY_METHOD;
 use crate::protocol::FS_GET_METADATA_METHOD;
 use crate::protocol::FS_READ_DIRECTORY_METHOD;
+use crate::protocol::FS_READ_FILE_BENEATH_METHOD;
 use crate::protocol::FS_READ_FILE_METHOD;
 use crate::protocol::FS_REMOVE_METHOD;
 use crate::protocol::FS_WRITE_FILE_METHOD;
@@ -56,6 +57,8 @@ use crate::protocol::FsGetMetadataParams;
 use crate::protocol::FsGetMetadataResponse;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
+use crate::protocol::FsReadFileBeneathParams;
+use crate::protocol::FsReadFileBeneathResponse;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -356,6 +359,13 @@ impl ExecServerClient {
         params: FsReadFileParams,
     ) -> Result<FsReadFileResponse, ExecServerError> {
         self.call(FS_READ_FILE_METHOD, &params).await
+    }
+
+    pub async fn fs_read_file_beneath(
+        &self,
+        params: FsReadFileBeneathParams,
+    ) -> Result<FsReadFileBeneathResponse, ExecServerError> {
+        self.call(FS_READ_FILE_BENEATH_METHOD, &params).await
     }
 
     pub async fn fs_write_file(
