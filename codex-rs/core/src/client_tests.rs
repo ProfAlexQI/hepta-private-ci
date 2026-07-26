@@ -7,6 +7,7 @@ use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
 use super::X_CODEX_WINDOW_ID_HEADER;
 use super::X_OPENAI_SUBAGENT_HEADER;
+use super::parse_turn_metadata_header;
 use crate::AttestationContext;
 use crate::AttestationProvider;
 use crate::GenerateAttestationFuture;
@@ -309,6 +310,45 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
             ),
         ])
     );
+}
+
+#[test]
+fn code_mode_tool_names_stay_in_client_metadata_but_not_compatibility_headers() {
+    let client = test_model_client(SessionSource::Cli);
+    let canonical = json!({
+        "turn_id": "turn-123",
+        "code_mode_tool_names": {
+            "exec": ["mcp__example__lookup", "mcp__example__search"]
+        }
+    })
+    .to_string();
+
+    let client_metadata = client.build_ws_client_metadata(Some(&canonical));
+    let client_metadata_json: serde_json::Value = serde_json::from_str(
+        client_metadata
+            .get(X_CODEX_TURN_METADATA_HEADER)
+            .expect("turn metadata client payload"),
+    )
+    .expect("valid turn metadata client payload");
+    assert_eq!(
+        client_metadata_json,
+        json!({
+            "turn_id": "turn-123",
+            "code_mode_tool_names": {
+                "exec": ["mcp__example__lookup", "mcp__example__search"]
+            }
+        })
+    );
+
+    let compatibility_header =
+        parse_turn_metadata_header(Some(&canonical)).expect("turn metadata compatibility header");
+    let compatibility_json: serde_json::Value = serde_json::from_str(
+        compatibility_header
+            .to_str()
+            .expect("ASCII turn metadata compatibility header"),
+    )
+    .expect("valid turn metadata compatibility header");
+    assert_eq!(compatibility_json, json!({"turn_id": "turn-123"}));
 }
 
 #[tokio::test]

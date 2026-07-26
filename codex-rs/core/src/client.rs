@@ -85,6 +85,7 @@ use codex_rollout_trace::CompactionTraceContext;
 use codex_rollout_trace::InferenceTraceAttempt;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_tools::create_tools_json_for_responses_api;
+use codex_utils_string::to_ascii_json_string;
 use eventsource_stream::Event;
 use eventsource_stream::EventStreamError;
 use futures::StreamExt;
@@ -143,6 +144,7 @@ pub const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER: &str =
     "x-responsesapi-include-timing-metrics";
 const X_CODEX_WS_STREAM_REQUEST_START_MS_CLIENT_METADATA_KEY: &str =
     "x-codex-ws-stream-request-start-ms";
+const CODE_MODE_TOOL_NAMES_METADATA_KEY: &str = "code_mode_tool_names";
 const RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE: &str = "responses_websockets=2026-02-06";
 const RESPONSES_ENDPOINT: &str = "/responses";
 const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
@@ -645,7 +647,8 @@ impl ModelClient {
                 parent_thread_id,
             );
         }
-        if let Some(turn_metadata_header) = parse_turn_metadata_header(turn_metadata_header)
+        if let Some(turn_metadata_header) =
+            turn_metadata_header.and_then(|value| HeaderValue::from_str(value).ok())
             && let Ok(turn_metadata) = turn_metadata_header.to_str()
         {
             client_metadata.insert(
@@ -1621,7 +1624,18 @@ impl ModelClientSession {
 /// Invalid values are treated as absent so callers can compare and propagate
 /// metadata with the same sanitization path used when constructing headers.
 fn parse_turn_metadata_header(turn_metadata_header: Option<&str>) -> Option<HeaderValue> {
-    turn_metadata_header.and_then(|value| HeaderValue::from_str(value).ok())
+    let value = turn_metadata_header?;
+    let canonical_header = HeaderValue::from_str(value).ok()?;
+    let Ok(mut metadata) =
+        serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(value)
+    else {
+        return Some(canonical_header);
+    };
+    if metadata.remove(CODE_MODE_TOOL_NAMES_METADATA_KEY).is_none() {
+        return Some(canonical_header);
+    }
+    let compatibility_header = to_ascii_json_string(&metadata).ok()?;
+    HeaderValue::from_str(&compatibility_header).ok()
 }
 
 /// Stamp a ResponsesWsRequest with the current time.
