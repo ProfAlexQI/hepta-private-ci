@@ -26,6 +26,7 @@ hepta-gateway = { workspace = true }
 hepta-intelligence = { workspace = true }
 hepta-memory = { workspace = true }
 hepta-runtime = { workspace = true }
+hmac = { workspace = true }
 libc = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }

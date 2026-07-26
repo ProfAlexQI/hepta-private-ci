@@ -1,8 +1,9 @@
 [advisories]
-# Reviewed 2026-07-17. Keep this list in sync with ../deny.toml.
+# Reviewed 2026-07-25. Keep this list in sync with ../deny.toml.
 ignore = [
-    "RUSTSEC-2024-0388", # derivative 2.2.0 via starlark; upstream crate is unmaintained
-    "RUSTSEC-2025-0057", # fxhash 0.2.1 via starlark_map; upstream crate is unmaintained
+    "RUSTSEC-2023-0089", # atomic-polyfill 1.0.3 via starlark 0.14.2 pagable/postcard/heapless; remove when upstream drops it
+    "RUSTSEC-2024-0388", # derivative 2.2.0 via starlark 0.14.2; upstream crate is unmaintained
+    "RUSTSEC-2025-0057", # fxhash 0.2.1 via starlark_map 0.14.2; upstream crate is unmaintained
     "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/ratatui; upstream crate is unmaintained
     "RUSTSEC-2024-0320", # yaml-rust via syntect; remove when syntect drops or updates it
     "RUSTSEC-2025-0141", # bincode via syntect; remove when syntect drops or updates it
@@ -10,6 +11,4 @@ ignore = [
     "RUSTSEC-2026-0119", # hickory-proto via rama-dns/rama-tcp; remove when rama updates to hickory 0.26.1 or hickory-net
     "RUSTSEC-2026-0194", # quick-xml via plist/syntect and wayland-scanner; trusted inputs only; remove when rust-plist#191 and wayland-rs#938 are released
     "RUSTSEC-2026-0195", # quick-xml via plist/syntect and wayland-scanner; trusted inputs only; remove when rust-plist#191 and wayland-rs#938 are released
-    "RUSTSEC-2026-0189", # rmcp StreamableHttpService is test-only locally; production MCP HTTP is client-only; remove on rmcp >=1.4
-    "RUSTSEC-2023-0071", # rsa is reachable only through sqlx's disabled optional MySQL dependency; remove if MySQL is enabled
 ]

@@ -1,0 +1,10 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -228,6 +228,7 @@
+ [dependencies.ratatui-crossterm]
+ version = "0.1.2"
+ optional = true
++default-features = false
+ 
+ [dependencies.ratatui-macros]
+ version = "0.7.2"

@@ -20,18 +20,54 @@
     "scan_fetch_disabled": true
   },
   "inputs": {
-    "cargo_lock": {"path":"codex-rs/Cargo.lock","sha256":"6cc8d915b3282797295b69a561b2d34ba81ae57dbe90ab225934f134b69f7a5e"},
-    "deny_config": {"path":"codex-rs/deny.toml","sha256":"f42ae0c73978e5aa305ae24a397e7c27d44bda6d04f3645a77bb04bb4b0246d3"},
-    "audit_config": {"path":"codex-rs/.cargo/audit.toml","sha256":"d6125a68e7e61ffc415ced8b240dff71129b7877b27fb9c69d2d7c74d64b0700"}
+    "cargo_locks": [
+      {
+        "id": "codex-workspace",
+        "manifest_path": "codex-rs/Cargo.toml",
+        "path": "codex-rs/Cargo.lock",
+        "deny_config_path": "codex-rs/deny.toml",
+        "sha256": "ca99360c5c8f804ae732c3d65ffb85ebfc193e2ece648d4eb358cc16ece52685"
+      },
+      {
+        "id": "native-app",
+        "manifest_path": "apps/hepta-native/Cargo.toml",
+        "path": "apps/hepta-native/Cargo.lock",
+        "deny_config_path": "apps/hepta-native/deny.toml",
+        "sha256": "3a3cf66acb2cc41fe2a1273a51ec5a1e07823fb6f3e5a7e0bd4fd0c26eddb62e"
+      }
+    ],
+    "deny_config": {"path":"codex-rs/deny.toml","sha256":"5e927231e3e0f1ff09b2f4ce6f963314f8320631dc680da9bcf24ae2d8620ec3"},
+    "audit_config": {"path":"codex-rs/.cargo/audit.toml","sha256":"91075ad77cf237c05c6370964182452a92483fbb381ccbe5d773348c1fd46dec"},
+    "native_deny_config": {"path":"apps/hepta-native/deny.toml","sha256":"854f5aec04140f06f15eba9604e16e0d245eba41cbe29335203c1065f78d80ad"},
+    "native_source_policy": {"path":"apps/hepta-native/dependency-source-policy-v1.json","sha256":"544d01bfc986eb4c0e46ac370f7fee853e46ada9eded680109a0ab371ebd67e1"},
+    "native_source_policy_runner": {"path":"apps/hepta-native/hepta-native-dependency-policy","sha256":"dd56778b094d276deaf9eff41ff8dfb221518848b26b4a0ef67482aa9f268fd8"},
+    "ratatui_source_receipt": {"path":"codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json","sha256":"42368d273c4d3e38ff28e0258e8560fc0b787f8a8f926540ca114a64ea23a44e"}
+  },
+  "vendored_sources": {
+    "ratatui": {
+      "receipt_path": "codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json",
+      "package": "ratatui",
+      "version": "0.30.2",
+      "upstream_tag": "ratatui-v0.30.2",
+      "crate_archive_sha256": "3274ba0a2c5e1bcad2a2005d20f4dc59dad26b2eb0940fb094500dba4099d57d",
+      "payload_file_count": 40,
+      "payload_tree_sha256": "e097360d7080dc6ff60c9325a8200b74033e0a1297260e5e26a67fb5230fd292",
+      "license": "MIT",
+      "single_manifest_consumer": "codex-rs/Cargo.toml",
+      "forbidden_dependency": "lru < 0.16.3"
+    }
   },
   "scans": {
-    "audit": {"network":false,"deny_vulnerabilities":true,"output":"cargo-audit.json"},
-    "deny": {"network":false,"checks":["bans","licenses","sources"],"output":"cargo-deny.jsonl"}
+    "audit": {"network":false,"deny_vulnerabilities":true,"deny_warning_kinds":["unmaintained","unsound","yanked"],"vulnerability_exceptions":["RUSTSEC-2026-0118","RUSTSEC-2026-0119","RUSTSEC-2026-0194","RUSTSEC-2026-0195"],"warning_exceptions":["RUSTSEC-2023-0089","RUSTSEC-2024-0320","RUSTSEC-2024-0388","RUSTSEC-2024-0436","RUSTSEC-2025-0057","RUSTSEC-2025-0141"],"expected_raw_findings":{"codex-workspace":{"raw_vulnerabilities":[{"advisory_id":"RUSTSEC-2026-0119","kind":"vulnerability","package":"hickory-proto","version":"0.25.2"},{"advisory_id":"RUSTSEC-2026-0118","kind":"vulnerability","package":"hickory-proto","version":"0.25.2"},{"advisory_id":"RUSTSEC-2026-0195","kind":"vulnerability","package":"quick-xml","version":"0.39.4"},{"advisory_id":"RUSTSEC-2026-0194","kind":"vulnerability","package":"quick-xml","version":"0.39.4"}],"raw_unsafe_warnings":[{"advisory_id":"RUSTSEC-2023-0089","kind":"unmaintained","package":"atomic-polyfill","version":"1.0.3"},{"advisory_id":"RUSTSEC-2025-0141","kind":"unmaintained","package":"bincode","version":"1.3.3"},{"advisory_id":"RUSTSEC-2024-0388","kind":"unmaintained","package":"derivative","version":"2.2.0"},{"advisory_id":"RUSTSEC-2025-0057","kind":"unmaintained","package":"fxhash","version":"0.2.1"},{"advisory_id":"RUSTSEC-2024-0436","kind":"unmaintained","package":"paste","version":"1.0.15"},{"advisory_id":"RUSTSEC-2024-0320","kind":"unmaintained","package":"yaml-rust","version":"0.4.5"}]},"native-app":{"raw_vulnerabilities":[],"raw_unsafe_warnings":[]}},"output_suffix":"cargo-audit.json"},
+    "expected_raw_findings_sha256": "79875483fa5a377ce389e7775556043c0dd90a319a9ecdc104c18bd4c8f0fe73",
+    "deny": {"network":false,"checks":["bans","licenses","sources"],"output_suffix":"cargo-deny.jsonl"}
   },
   "claims": {
     "configured_capability_is_execution_evidence": false,
     "successful_bound_receipt_required": true,
     "vulnerability_exceptions_are_hash_bound": true,
+    "unsafe_warnings_fail_closed": true,
+    "unsafe_warning_exceptions_require_exact_evidence": true,
     "deployment": false,
     "publication": false
   }

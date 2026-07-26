@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "status": "ready",
+  "package": {
+    "name": "ratatui",
+    "version": "0.30.2",
+    "vendored_path": "third_party/ratatui-0.30.2-hepta"
+  },
+  "upstream": {
+    "registry": "https://crates.io",
+    "crate_archive": "https://static.crates.io/crates/ratatui/ratatui-0.30.2.crate",
+    "crate_archive_sha256": "3274ba0a2c5e1bcad2a2005d20f4dc59dad26b2eb0940fb094500dba4099d57d",
+    "repository": "https://github.com/ratatui/ratatui",
+    "tag": "ratatui-v0.30.2",
+    "tag_object_sha": "8d20b4fafe0be257ad230a3a568db5dce954b83f",
+    "git_commit_sha": "e665c36cb14752a61cd777fbd06dbef8474f2add",
+    "cargo_vcs_info_sha256": "440ce068d3b99e8f5adf1e7633d1cd2640d73b774c3e7b55ec2a36c638713eeb",
+    "normalized_manifest_path": "Cargo.toml.upstream",
+    "normalized_manifest_sha256": "21f7aeab8c165a15744702b6e0a563c1fe7899738ae041696db28069be248657",
+    "payload_file_count": 40,
+    "payload_tree_sha256": "e097360d7080dc6ff60c9325a8200b74033e0a1297260e5e26a67fb5230fd292",
+    "payload_tree_algorithm": "SHA-256 of LC_ALL=C sorted '<file-sha256><two spaces><relative-path>\\n' records for the 39 unmodified package files plus Cargo.toml.upstream labeled as Cargo.toml; exclude Cargo.toml, Cargo.toml.upstream, HEPTA_SOURCE_RECEIPT_V1.json, and patches/."
+  },
+  "patches": [
+    {
+      "path": "patches/0001-disable-ratatui-crossterm-default-features.patch",
+      "sha256": "03cd7e41eb4a6721ef137129967e502e21af928e59ea86b9e31d49fcd6e8b46a",
+      "input_path": "Cargo.toml.upstream",
+      "input_sha256": "21f7aeab8c165a15744702b6e0a563c1fe7899738ae041696db28069be248657",
+      "output_path": "Cargo.toml",
+      "output_sha256": "9a2764583875774ac96cebd9c4d5f67723939329203fff84f0807b18d68b3b9f",
+      "purpose": "Disable ratatui-crossterm default features so the workspace-selected crossterm_0_28 feature cannot also activate crossterm_0_29."
+    }
+  ],
+  "license": {
+    "spdx": "MIT",
+    "path": "LICENSE",
+    "sha256": "50eb43e8d742c9c61a9391e42b2184fce54dbd1893a1bb1c85b8c9ee217ab1f5"
+  },
+  "workspace_binding": {
+    "ratatui_features": [
+      "all-widgets",
+      "crossterm_0_28",
+      "layout-cache",
+      "macros",
+      "underline-color"
+    ],
+    "crossterm_repository": "https://github.com/nornagon/crossterm",
+    "crossterm_git_revision": "87db8bfa6dc99427fd3b071681b07fc31c6ce995",
+    "forbidden_dependency": "lru < 0.16.3"
+  },
+  "verification": {
+    "patch_check": "verify_dir=$(mktemp -d); cp Cargo.toml.upstream \"$verify_dir/Cargo.toml\"; patch --silent -d \"$verify_dir\" -p1 < patches/0001-disable-ratatui-crossterm-default-features.patch; cmp \"$verify_dir/Cargo.toml\" Cargo.toml",
+    "dependency_check": "cargo tree --locked --workspace --all-features --target all -i lru@0.12.5",
+    "security_check": "scripts/hepta-dependency-security scan <absolute-output-directory>"
+  }
+}

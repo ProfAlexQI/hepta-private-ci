@@ -45,6 +45,7 @@ members = [
     "execpolicy",
     "execpolicy-legacy",
     "ext/extension-api",
+    "ext/executor-skills",
     "ext/guardian",
     "ext/memories",
     "external-agent-migration",
@@ -171,6 +172,7 @@ codex-core-skills = { path = "core-skills" }
 codex-exec = { path = "exec" }
 codex-file-system = { path = "file-system" }
 codex-exec-server = { path = "exec-server" }
+codex-executor-skills-extension = { path = "ext/executor-skills" }
 codex-execpolicy = { path = "execpolicy" }
 codex-extension-api = { path = "ext/extension-api" }
 codex-guardian = { path = "ext/guardian" }
@@ -259,9 +261,9 @@ core_test_support = { path = "core/tests/common" }
 mcp_test_support = { path = "mcp-server/tests/common" }
 
 # External
-age = "0.11.1"
+age = "0.12.1"
 allocative = "0.3.3"
-ansi-to-tui = "7.0.0"
+ansi-to-tui = "8.0.1"
 anyhow = "1"
 arboard = { version = "3", features = ["wayland-data-control"] }
 arc-swap = "1.9.0"
@@ -349,8 +351,14 @@ pretty_assertions = "1.4.1"
 pulldown-cmark = "0.10"
 quick-xml = "0.41.0"
 rand = "0.9"
-ratatui = "0.29.0"
-ratatui-macros = "0.6.0"
+ratatui = { version = "0.30.2", default-features = false, features = [
+    "all-widgets",
+    "crossterm_0_28",
+    "layout-cache",
+    "macros",
+    "underline-color",
+] }
+ratatui-macros = "0.7.2"
 rcgen = { version = "0.14.7", default-features = false, features = [
     "aws_lc_rs",
     "pem",
@@ -358,7 +366,7 @@ rcgen = { version = "0.14.7", default-features = false, features = [
 regex = "1.12.3"
 regex-lite = "0.1.8"
 reqwest = { version = "0.12", features = ["cookies"] }
-rmcp = { version = "0.15.0", default-features = false }
+rmcp = { version = "1.8.0", default-features = false }
 runfiles = { git = "https://github.com/dzbarsky/rules_rust", rev = "b56cbaa8465e74127f1ea216f813cd377295ad81" }
 rustls = { version = "0.23", default-features = false, features = [
     "ring",
@@ -383,17 +391,18 @@ sha2 = "0.10"
 shlex = "1.3.0"
 similar = "2.7.0"
 socket2 = "0.6.1"
-sqlx = { version = "0.8.6", default-features = false, features = [
+sqlx = { version = "0.9.0", default-features = false, features = [
     "chrono",
     "json",
     "macros",
     "migrate",
-    "runtime-tokio-rustls",
-    "sqlite",
+    "runtime-tokio",
+    "tls-rustls",
+    "sqlite-bundled",
     "time",
     "uuid",
 ] }
-starlark = "0.13.0"
+starlark = { version = "0.14.2", default-features = false }
 strum = "0.27.2"
 strum_macros = "0.28.0"
 supports-color = "3.0.2"
@@ -534,7 +543,7 @@ opt-level = 0
 # Uncomment to debug local changes.
 # ratatui = { path = "../../ratatui" }
 crossterm = { git = "https://github.com/nornagon/crossterm", rev = "87db8bfa6dc99427fd3b071681b07fc31c6ce995" }
-ratatui = { git = "https://github.com/nornagon/ratatui", rev = "9b2ad1298408c45918ee9f8241a6f95498cdbed2" }
+ratatui = { path = "third_party/ratatui-0.30.2-hepta" }
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6" }
 tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "9200079d3b54a1ff51072e24d81fd354f085156f" }
 

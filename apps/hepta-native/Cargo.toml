@@ -17,15 +17,15 @@ metadata.makepad-auto-version = "zqpv-Yj-K7WNVK2I8h5Okhho46Q="
 # makepad-widgets = { git = "https://github.com/makepad/makepad", branch = "dev", features = ["serde"] }
 # makepad-code-editor = { git = "https://github.com/makepad/makepad", branch = "dev" }
 
-makepad-widgets = { git = "https://github.com/kevinaboos/makepad", branch = "runtime_dpi_override", features = ["serde"] }
-makepad-code-editor = { git = "https://github.com/kevinaboos/makepad", branch = "runtime_dpi_override" }
+makepad-widgets = { git = "https://github.com/kevinaboos/makepad", rev = "da62750524402e4fadc25a8c15b14f09e4c95cce", features = ["serde"] }
+makepad-code-editor = { git = "https://github.com/kevinaboos/makepad", rev = "da62750524402e4fadc25a8c15b14f09e4c95cce" }
 
 
 ## Including this crate automatically configures all `robius-*` crates to work with Makepad.
 robius-use-makepad = "0.1.1"
-robius-open = { git = "https://github.com/project-robius/robius" }
-robius-directories = { git = "https://github.com/project-robius/robius" }
-robius-location = { git = "https://github.com/project-robius/robius" }
+robius-open = { git = "https://github.com/project-robius/robius", rev = "9fc3d48e4c07f8954d9fcb54964d5e640bf6ed87" }
+robius-directories = { git = "https://github.com/project-robius/robius", rev = "9fc3d48e4c07f8954d9fcb54964d5e640bf6ed87" }
+robius-location = { git = "https://github.com/project-robius/robius", rev = "9fc3d48e4c07f8954d9fcb54964d5e640bf6ed87" }
 
 
 anyhow = "1.0"
@@ -50,8 +50,8 @@ image = { version = "0.25.9", default-features = false, features = ["png", "jpeg
 imghdr = "0.7.0"
 libc = "0.2"
 linkify = "0.10.0"
-matrix-sdk-base = { git = "https://github.com/project-robius/matrix-rust-sdk", branch = "space_room_suggested" }
-matrix-sdk = { git = "https://github.com/project-robius/matrix-rust-sdk", branch = "space_room_suggested", default-features = false, features = [
+matrix-sdk-base = { git = "https://github.com/project-robius/matrix-rust-sdk", rev = "627563bb87e4746c0758560efe2c3fdc034faac6" }
+matrix-sdk = { git = "https://github.com/project-robius/matrix-rust-sdk", rev = "627563bb87e4746c0758560efe2c3fdc034faac6", default-features = false, features = [
     "e2e-encryption",
     "automatic-room-key-forwarding",
     "markdown",
@@ -60,7 +60,7 @@ matrix-sdk = { git = "https://github.com/project-robius/matrix-rust-sdk", branch
     "bundled-sqlite",
     "sso-login",
 ] }
-matrix-sdk-ui = { git = "https://github.com/project-robius/matrix-rust-sdk", branch = "space_room_suggested", default-features = false, features = [
+matrix-sdk-ui = { git = "https://github.com/project-robius/matrix-rust-sdk", rev = "627563bb87e4746c0758560efe2c3fdc034faac6", default-features = false, features = [
     "rustls-tls",
 ] }
 mime = "0.3.17"
@@ -88,10 +88,9 @@ zeroize = "1.8.2"
 
 
 ## Dependencies for TSP support.
-## Commit "f0bc4625dcd729e07e4a36257df2f1d94c81cef4" is the most recent one without the invalid change to pin serde to 1.0.219.
-## See my issue here: <https://github.com/openwallet-foundation-labs/tsp/issues/237>.
-## However, that commit doesn't build.... yikes. So we have to use a slightly older commit in the "rev" field below.
-tsp_sdk = { git = "https://github.com/openwallet-foundation-labs/tsp.git", rev = "1cd0cc9442e144ad7c01ccd30daffbb3a52c0f20", optional = true, features = [
+## This upstream commit removes the unmaintained rustls-pemfile dependency in
+## favor of rustls-pki-types' maintained PEM parser.
+tsp_sdk = { git = "https://github.com/openwallet-foundation-labs/tsp.git", rev = "e9d5445489b74f3e052360ee4da1e7c27b9c80b3", optional = true, features = [
     "async",
     "resolve",
 ] }
@@ -118,7 +117,7 @@ reqwest = { version = "0.12", default-features = false, optional = true, feature
 ## `codex-keyring-store` owns the abstraction, while this target-specific edge
 ## enables keyring's Apple backend on iOS as well as macOS.
 keyring = { version = "3.6", default-features = false, features = ["apple-native", "crypto-rust"] }
-robius-web-auth-session = { git = "https://github.com/project-robius/robius" }
+robius-web-auth-session = { git = "https://github.com/project-robius/robius", rev = "9fc3d48e4c07f8954d9fcb54964d5e640bf6ed87" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 rfd = "0.17.2"
@@ -155,16 +154,24 @@ tempfile = "3.20"
 ## whereas the `tsp_sdk` crate depends on `sqlx`, which requires a different version
 ## of `libsqlite3-sys` (via `aries-askar`, which depends on `askar-storage`,
 ## which requires libsqlite3-sys 0.30.0).
-## So this patch is a custom version of sqlx 0.8.6 that updates the libsqlite3-sys
-## dependency to version 0.35.0, which is compatible with the version required by
-## the matrix-sdk crate.
+## This local, provenance-bound SQLx 0.8.6 compatibility source retains the
+## project-robius libsqlite3-sys 0.35.0 update and exposes only the
+## core/macros/SQLite surface used here. Omitting unused MySQL/Postgres package
+## declarations keeps their inactive RSA dependency out of Cargo.lock.
 ## See <https://github.com/launchbadge/sqlx/pull/3928/files#diff-4f4849707ed063bc5de6d9f6d105f0e7baf62d1085b3c8aee4a547468b89248fR57>
-sqlx = { git = "https://github.com/project-robius/sqlx.git", branch = "update_libsqlite3-sys_version" }
+sqlx = { path = "third_party/sqlx-sqlite-only-0.8.6" }
+
+## Exact-source, provenance-bound compatibility patches. Aquamarine is a
+## deterministic pass-through rustdoc attribute with no generated JavaScript;
+## wasm_evt_listener replaces derivative-generated implementations with
+## equivalent manual implementations.
+aquamarine = { path = "third_party/aquamarine-0.6.0" }
+wasm_evt_listener = { path = "third_party/wasm_evt_listener-0.1.0" }
 
 ## The main branch of the `tsp_sdk` repo already includes this patch, so we copy it here.
 ## This is required for the askar repos to work with the above-patched `sqlx` crate.
 ## See <https://github.com/openwallet-foundation/askar/pull/386>
-askar-storage = { git = "https://github.com/openwallet-foundation/askar.git" }
+askar-storage = { git = "https://github.com/openwallet-foundation/askar.git", rev = "49086e28d1995966bb2b2054d2450a76f19bda30" }
 
 
 ## This is a temporary patch to add the TSP signature field to the `RoomMessageEventContent` type.
@@ -181,7 +188,7 @@ askar-storage = { git = "https://github.com/openwallet-foundation/askar.git" }
 ## Note: matrix-sdk currently uses a git dependency for ruma,
 ## so we patch the git source, not crates-io.
 [patch."https://github.com/ruma/ruma"]
-ruma = { git = "https://github.com/project-robius/ruma.git", branch = "tsp" }
+ruma = { git = "https://github.com/project-robius/ruma.git", rev = "98196b1db32d3393216f31d2c085a7082bd1d28d" }
 
 ## On Windows, use the `winresource` crate to embed the app's icon and metadata into the executable.
 [target.'cfg(windows)'.build-dependencies]

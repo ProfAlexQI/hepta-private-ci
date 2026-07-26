@@ -1,29 +1,237 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="${HEPTA_DEPENDENCY_SECURITY_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
 CONTRACT="${HEPTA_DEPENDENCY_SECURITY_CONTRACT:-$ROOT/scripts/hepta-dependency-security-v1.json}"
 CACHE_ROOT="${HEPTA_DEPENDENCY_SECURITY_CACHE_ROOT:-$ROOT/.hepta/security}"
 AUDIT_BIN="${HEPTA_CARGO_AUDIT:-cargo-audit}"
 DENY_BIN="${HEPTA_CARGO_DENY:-cargo-deny}"
 DB_PATH="$CACHE_ROOT/advisory-db"
-
 usage() {
   echo "usage: scripts/hepta-dependency-security <verify|materialize-db|scan OUTPUT_DIR|self-test>" >&2
   exit 2
 }
-
 sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
-
 contract_value() {
   jq -er "$1" "$CONTRACT"
 }
-
+verify_vendored_ratatui() {
+  python3 - "$ROOT" "$CONTRACT" <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import tomllib
+root = Path(sys.argv[1])
+contract = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+expected = contract["vendored_sources"]["ratatui"]
+def fail(message: str) -> None:
+    raise SystemExit(f"Hepta dependency-security vendored Ratatui verification failed: {message}")
+expected_exceptions = sorted(
+    contract["scans"]["audit"]["vulnerability_exceptions"]
+    + contract["scans"]["audit"]["warning_exceptions"]
+)
+audit_exceptions = sorted(tomllib.loads((root / contract["inputs"]["audit_config"]["path"]).read_text())["advisories"]["ignore"])
+deny_entries = tomllib.loads((root / contract["inputs"]["deny_config"]["path"]).read_text())["advisories"]["ignore"]
+if sorted(entry["id"] for entry in deny_entries if entry.get("reason")) != expected_exceptions or audit_exceptions != expected_exceptions:
+    fail("RustSec exception policy or reason evidence drifted")
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+receipt_path = root / expected["receipt_path"]
+if not receipt_path.is_file() or receipt_path.is_symlink():
+    fail("source receipt is missing, not regular, or a symlink")
+receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+vendor = receipt_path.parent
+for candidate in [root / "codex-rs", root / "codex-rs" / "third_party", vendor]:
+    if candidate.is_symlink():
+        fail(f"vendored path component is a symlink: {candidate}")
+for candidate in vendor.rglob("*"):
+    if candidate.is_symlink():
+        fail(f"vendored payload contains a symlink: {candidate.relative_to(vendor)}")
+if receipt.get("schema_version") != 1 or receipt.get("status") != "ready":
+    fail("receipt schema or status drifted")
+if receipt.get("package") != {
+    "name": expected["package"],
+    "version": expected["version"],
+    "vendored_path": "third_party/ratatui-0.30.2-hepta",
+}:
+    fail("package identity drifted")
+upstream = receipt.get("upstream", {})
+fixed_upstream = {
+    "registry": "https://crates.io",
+    "crate_archive": "https://static.crates.io/crates/ratatui/ratatui-0.30.2.crate",
+    "crate_archive_sha256": expected["crate_archive_sha256"],
+    "repository": "https://github.com/ratatui/ratatui",
+    "tag": expected["upstream_tag"],
+    "tag_object_sha": "8d20b4fafe0be257ad230a3a568db5dce954b83f",
+    "git_commit_sha": "e665c36cb14752a61cd777fbd06dbef8474f2add",
+    "cargo_vcs_info_sha256": "440ce068d3b99e8f5adf1e7633d1cd2640d73b774c3e7b55ec2a36c638713eeb",
+    "normalized_manifest_path": "Cargo.toml.upstream",
+    "normalized_manifest_sha256": "21f7aeab8c165a15744702b6e0a563c1fe7899738ae041696db28069be248657",
+    "payload_file_count": expected["payload_file_count"],
+    "payload_tree_sha256": expected["payload_tree_sha256"],
+}
+for key, value in fixed_upstream.items():
+    if upstream.get(key) != value:
+        fail(f"upstream field drifted: {key}")
+if upstream.get("payload_tree_algorithm") != (
+    "SHA-256 of LC_ALL=C sorted '<file-sha256><two spaces><relative-path>\\n' "
+    "records for the 39 unmodified package files plus Cargo.toml.upstream labeled "
+    "as Cargo.toml; exclude Cargo.toml, Cargo.toml.upstream, "
+    "HEPTA_SOURCE_RECEIPT_V1.json, and patches/."
+):
+    fail("payload tree algorithm drifted")
+vcs_path = vendor / ".cargo_vcs_info.json"
+if sha256(vcs_path) != upstream["cargo_vcs_info_sha256"]:
+    fail(".cargo_vcs_info.json hash drifted")
+vcs = json.loads(vcs_path.read_text(encoding="utf-8"))
+if vcs != {"git": {"sha1": upstream["git_commit_sha"]}, "path_in_vcs": "ratatui"}:
+    fail(".cargo_vcs_info.json provenance drifted")
+normalized_manifest = vendor / upstream["normalized_manifest_path"]
+if sha256(normalized_manifest) != upstream["normalized_manifest_sha256"]:
+    fail("normalized upstream manifest hash drifted")
+patches = receipt.get("patches")
+expected_patch = {
+    "path": "patches/0001-disable-ratatui-crossterm-default-features.patch",
+    "sha256": "03cd7e41eb4a6721ef137129967e502e21af928e59ea86b9e31d49fcd6e8b46a",
+    "input_path": "Cargo.toml.upstream",
+    "input_sha256": upstream["normalized_manifest_sha256"],
+    "output_path": "Cargo.toml",
+    "output_sha256": "9a2764583875774ac96cebd9c4d5f67723939329203fff84f0807b18d68b3b9f",
+    "purpose": (
+        "Disable ratatui-crossterm default features so the workspace-selected "
+        "crossterm_0_28 feature cannot also activate crossterm_0_29."
+    ),
+}
+if patches != [expected_patch]:
+    fail("manifest patch receipt drifted")
+patch_path = vendor / expected_patch["path"]
+actual_patch_files = sorted(
+    path.relative_to(vendor).as_posix()
+    for path in (vendor / "patches").rglob("*")
+    if path.is_file()
+)
+if actual_patch_files != [expected_patch["path"]]:
+    fail("manifest patch set is not exact")
+if sha256(patch_path) != expected_patch["sha256"]:
+    fail("manifest patch hash drifted")
+if sha256(vendor / expected_patch["input_path"]) != expected_patch["input_sha256"]:
+    fail("manifest patch input hash drifted")
+if sha256(vendor / expected_patch["output_path"]) != expected_patch["output_sha256"]:
+    fail("manifest patch output hash drifted")
+with tempfile.TemporaryDirectory(prefix="hepta-ratatui-patch-check.") as temporary:
+    temporary_path = Path(temporary)
+    shutil.copy2(vendor / expected_patch["input_path"], temporary_path / "Cargo.toml")
+    with patch_path.open("rb") as patch_input:
+        subprocess.run(
+            ["patch", "--silent", "-d", temporary, "-p1"],
+            stdin=patch_input,
+            check=True,
+        )
+    if (temporary_path / "Cargo.toml").read_bytes() != (
+        vendor / expected_patch["output_path"]
+    ).read_bytes():
+        fail("manifest patch does not reproduce the vendored manifest")
+license_receipt = receipt.get("license")
+if license_receipt != {
+    "spdx": expected["license"],
+    "path": "LICENSE",
+    "sha256": "50eb43e8d742c9c61a9391e42b2184fce54dbd1893a1bb1c85b8c9ee217ab1f5",
+}:
+    fail("license receipt drifted")
+if sha256(vendor / license_receipt["path"]) != license_receipt["sha256"]:
+    fail("license hash drifted")
+payload_records: list[str] = []
+for path in vendor.rglob("*"):
+    if not path.is_file():
+        continue
+    relative = path.relative_to(vendor).as_posix()
+    if relative in {
+        "Cargo.toml",
+        "Cargo.toml.upstream",
+        "HEPTA_SOURCE_RECEIPT_V1.json",
+    } or relative.startswith("patches/"):
+        continue
+    payload_records.append(f"{sha256(path)}  {relative}\n")
+payload_records.append(f"{sha256(normalized_manifest)}  Cargo.toml\n")
+payload_records.sort()
+if len(payload_records) != upstream["payload_file_count"]:
+    fail("payload file count drifted")
+payload_hash = hashlib.sha256("".join(payload_records).encode("utf-8")).hexdigest()
+if payload_hash != upstream["payload_tree_sha256"]:
+    fail("payload tree hash drifted")
+workspace_binding = receipt.get("workspace_binding")
+if workspace_binding != {
+    "ratatui_features": [
+        "all-widgets",
+        "crossterm_0_28",
+        "layout-cache",
+        "macros",
+        "underline-color",
+    ],
+    "crossterm_repository": "https://github.com/nornagon/crossterm",
+    "crossterm_git_revision": "87db8bfa6dc99427fd3b071681b07fc31c6ce995",
+    "forbidden_dependency": expected["forbidden_dependency"],
+}:
+    fail("workspace binding receipt drifted")
+workspace_manifest_path = root / expected["single_manifest_consumer"]
+workspace_manifest = tomllib.loads(workspace_manifest_path.read_text(encoding="utf-8"))
+workspace_ratatui = workspace_manifest["workspace"]["dependencies"].get("ratatui")
+if workspace_ratatui != {
+    "version": expected["version"],
+    "default-features": False,
+    "features": workspace_binding["ratatui_features"],
+}:
+    fail("workspace Ratatui dependency binding drifted")
+if workspace_manifest.get("patch", {}).get("crates-io", {}).get("ratatui") != {
+    "path": receipt["package"]["vendored_path"]
+}:
+    fail("workspace Ratatui patch binding drifted")
+if workspace_manifest.get("patch", {}).get("crates-io", {}).get("crossterm") != {
+    "git": workspace_binding["crossterm_repository"],
+    "rev": workspace_binding["crossterm_git_revision"],
+}:
+    fail("workspace crossterm binding drifted")
+consumer_token = f'path = "{receipt["package"]["vendored_path"]}"'
+consumers: list[str] = []
+for manifest_path in (root / "codex-rs").rglob("Cargo.toml"):
+    occurrences = manifest_path.read_text(encoding="utf-8").count(consumer_token)
+    consumers.extend(
+        manifest_path.relative_to(root).as_posix() for _ in range(occurrences)
+    )
+if consumers != [expected["single_manifest_consumer"]]:
+    fail(f"vendored Ratatui must have exactly one manifest consumer, found {consumers}")
+lock = tomllib.loads((root / "codex-rs" / "Cargo.lock").read_text(encoding="utf-8"))
+ratatui_packages = [
+    package
+    for package in lock["package"]
+    if package["name"] == expected["package"] and package["version"] == expected["version"]
+]
+if len(ratatui_packages) != 1 or "source" in ratatui_packages[0]:
+    fail("Cargo.lock does not bind exactly one path-sourced Ratatui 0.30.2")
+for package in lock["package"]:
+    if package["name"] != "lru":
+        continue
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", package["version"])
+    if match is None or tuple(map(int, match.groups())) < (0, 16, 3):
+        fail(f"forbidden lru dependency remains: {package['version']}")
+PY
+}
 verify_contract() {
   command -v git >/dev/null
   command -v jq >/dev/null
+  command -v patch >/dev/null
+  command -v python3 >/dev/null
   command -v shasum >/dev/null
   jq -e '
     .schema == "hepta_dependency_security_contract_v1"
@@ -38,23 +246,101 @@ verify_contract() {
       network_used_only_for_exact_materialization:true,
       scan_fetch_disabled:true
     }
-    and .scans.audit == {network:false,deny_vulnerabilities:true,output:"cargo-audit.json"}
-    and .scans.deny == {network:false,checks:["bans","licenses","sources"],output:"cargo-deny.jsonl"}
+    and .inputs == {
+      cargo_locks:[
+        {
+          id:"codex-workspace",
+          manifest_path:"codex-rs/Cargo.toml",
+          path:"codex-rs/Cargo.lock",
+          deny_config_path:"codex-rs/deny.toml",
+          sha256:"ca99360c5c8f804ae732c3d65ffb85ebfc193e2ece648d4eb358cc16ece52685"
+        },
+        {
+          id:"native-app",
+          manifest_path:"apps/hepta-native/Cargo.toml",
+          path:"apps/hepta-native/Cargo.lock",
+          deny_config_path:"apps/hepta-native/deny.toml",
+          sha256:"3a3cf66acb2cc41fe2a1273a51ec5a1e07823fb6f3e5a7e0bd4fd0c26eddb62e"
+        }
+      ],
+      deny_config:{
+        path:"codex-rs/deny.toml",
+        sha256:"5e927231e3e0f1ff09b2f4ce6f963314f8320631dc680da9bcf24ae2d8620ec3"
+      },
+      audit_config:{
+        path:"codex-rs/.cargo/audit.toml",
+        sha256:"91075ad77cf237c05c6370964182452a92483fbb381ccbe5d773348c1fd46dec"
+      },
+      native_deny_config:{
+        path:"apps/hepta-native/deny.toml",
+        sha256:"854f5aec04140f06f15eba9604e16e0d245eba41cbe29335203c1065f78d80ad"
+      },
+      native_source_policy:{
+        path:"apps/hepta-native/dependency-source-policy-v1.json",
+        sha256:"544d01bfc986eb4c0e46ac370f7fee853e46ada9eded680109a0ab371ebd67e1"
+      },
+      native_source_policy_runner:{
+        path:"apps/hepta-native/hepta-native-dependency-policy",
+        sha256:"dd56778b094d276deaf9eff41ff8dfb221518848b26b4a0ef67482aa9f268fd8"
+      },
+      ratatui_source_receipt:{
+        path:"codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json",
+        sha256:"42368d273c4d3e38ff28e0258e8560fc0b787f8a8f926540ca114a64ea23a44e"
+      }
+    }
+    and .vendored_sources.ratatui == {
+      receipt_path:"codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json",
+      package:"ratatui",
+      version:"0.30.2",
+      upstream_tag:"ratatui-v0.30.2",
+      crate_archive_sha256:"3274ba0a2c5e1bcad2a2005d20f4dc59dad26b2eb0940fb094500dba4099d57d",
+      payload_file_count:40,
+      payload_tree_sha256:"e097360d7080dc6ff60c9325a8200b74033e0a1297260e5e26a67fb5230fd292",
+      license:"MIT",
+      single_manifest_consumer:"codex-rs/Cargo.toml",
+      forbidden_dependency:"lru < 0.16.3"
+    }
+    and (.scans.audit|del(.expected_raw_findings)) == {network:false,deny_vulnerabilities:true,deny_warning_kinds:["unmaintained","unsound","yanked"],vulnerability_exceptions:["RUSTSEC-2026-0118","RUSTSEC-2026-0119","RUSTSEC-2026-0194","RUSTSEC-2026-0195"],warning_exceptions:["RUSTSEC-2023-0089","RUSTSEC-2024-0320","RUSTSEC-2024-0388","RUSTSEC-2024-0436","RUSTSEC-2025-0057","RUSTSEC-2025-0141"],output_suffix:"cargo-audit.json"}
+    and .scans.expected_raw_findings_sha256 == "79875483fa5a377ce389e7775556043c0dd90a319a9ecdc104c18bd4c8f0fe73"
+    and .scans.deny == {network:false,checks:["bans","licenses","sources"],output_suffix:"cargo-deny.jsonl"}
     and .claims.configured_capability_is_execution_evidence == false
     and .claims.successful_bound_receipt_required == true
     and .claims.vulnerability_exceptions_are_hash_bound == true
+    and .claims.unsafe_warnings_fail_closed == true
+    and .claims.unsafe_warning_exceptions_require_exact_evidence == true
     and .claims.deployment == false
     and .claims.publication == false
   ' "$CONTRACT" >/dev/null
+  [[ "$(jq -cS '.scans.audit.expected_raw_findings' "$CONTRACT" | shasum -a 256 | awk '{print $1}')" == "$(contract_value '.scans.expected_raw_findings_sha256')" ]]
   while IFS=$'\t' read -r relative expected; do
     [[ -f "$ROOT/$relative" ]]
     [[ "$(sha256_file "$ROOT/$relative")" == "$expected" ]] || {
       echo "Hepta dependency-security input hash drift: $relative" >&2
       return 1
     }
-  done < <(jq -r '.inputs[] | [.path,.sha256] | @tsv' "$CONTRACT")
+  done < <(
+    jq -r '
+      [
+        .inputs.cargo_locks[],
+        .inputs.deny_config,
+        .inputs.audit_config,
+        .inputs.native_deny_config,
+        .inputs.native_source_policy,
+        .inputs.native_source_policy_runner,
+        .inputs.ratatui_source_receipt
+      ][]
+      | [.path,.sha256]
+      | @tsv
+    ' "$CONTRACT"
+  )
+  while IFS= read -r manifest_path; do
+    [[ -f "$ROOT/$manifest_path" ]] || {
+      echo "Hepta dependency-security manifest is missing: $manifest_path" >&2
+      return 1
+    }
+  done < <(jq -r '.inputs.cargo_locks[].manifest_path' "$CONTRACT")
+  verify_vendored_ratatui
 }
-
 verify_tools() {
   local audit_version deny_version
   audit_version="$($AUDIT_BIN --version)"
@@ -62,7 +348,6 @@ verify_tools() {
   [[ "$audit_version" == "cargo-audit $(contract_value '.tools[] | select(.id=="cargo-audit") | .version')" ]]
   [[ "$deny_version" == "cargo-deny $(contract_value '.tools[] | select(.id=="cargo-deny") | .version')" ]]
 }
-
 verify_db() {
   local expected
   expected="$(contract_value '.advisory_database.commit')"
@@ -70,7 +355,6 @@ verify_db() {
   [[ "$(git -C "$DB_PATH" rev-parse HEAD)" == "$expected" ]]
   [[ -z "$(git -C "$DB_PATH" status --short)" ]]
 }
-
 materialize_db() {
   local expected repository
   expected="$(contract_value '.advisory_database.commit')"
@@ -90,47 +374,275 @@ materialize_db() {
   git -C "$DB_PATH" checkout --detach FETCH_HEAD >/dev/null
   verify_db
 }
-
+classify_audit_findings() {
+  local audit_output="$1" vulnerability_exceptions warning_exceptions
+  vulnerability_exceptions="$(contract_value '.scans.audit.vulnerability_exceptions')"
+  warning_exceptions="$(contract_value '.scans.audit.warning_exceptions')"
+  jq -c --argjson vulnerability_exceptions "$vulnerability_exceptions" --argjson warning_exceptions "$warning_exceptions" '
+    if ((.vulnerabilities|type)!="object" or (.vulnerabilities.list|type)!="array" or (.vulnerabilities.count|type)!="number" or (.warnings|type)!="object") then error("malformed cargo-audit evidence") else
+    .vulnerabilities.count as $reported_vulnerability_count
+    | ([.vulnerabilities.list[]? | {advisory_id:.advisory.id,kind:"vulnerability",package:.package.name,version:.package.version}]) as $raw_v
+    | (([.warnings.unmaintained[]? | {advisory_id:.advisory.id,kind:"unmaintained",package:.package.name,version:.package.version}]
+      + [.warnings.unsound[]? | {advisory_id:.advisory.id,kind:"unsound",package:.package.name,version:.package.version}]
+      + [.warnings.yanked[]? | {advisory_id:null,kind:"yanked",package:.package.name,version:.package.version}])) as $raw_w
+    | ([$raw_v[] | select(.advisory_id as $id | ($vulnerability_exceptions | index($id)) != null)]) as $ve
+    | ([$raw_w[] | select(.advisory_id as $id | ($warning_exceptions | index($id)) != null)]) as $we
+    | {raw_vulnerabilities:$raw_v,vulnerability_exceptions:$ve,vulnerabilities:($raw_v-$ve),raw_unsafe_warnings:$raw_w,unsafe_warning_exceptions:$we,unsafe_warnings:($raw_w-$we)}
+    | . + {raw_vulnerability_count:(.raw_vulnerabilities|length),vulnerability_exception_count:(.vulnerability_exceptions|length),vulnerability_count:(.vulnerabilities|length),raw_warning_count:(.raw_unsafe_warnings|length),raw_unsafe_warning_count:(.raw_unsafe_warnings|length),unsafe_warning_exception_count:(.unsafe_warning_exceptions|length),warning_count:(.unsafe_warnings|length),unsafe_warning_count:(.unsafe_warnings|length),unsafe_warning_counts:{unmaintained:([.unsafe_warnings[]|select(.kind=="unmaintained")]|length),unsound:([.unsafe_warnings[]|select(.kind=="unsound")]|length),yanked:([.unsafe_warnings[]|select(.kind=="yanked")]|length)}}
+    | if .raw_vulnerability_count == $reported_vulnerability_count then . else error("cargo-audit vulnerability count mismatch") end end' "$audit_output"
+}
 scan() {
-  local output_dir="$1" audit_output deny_output receipt
+  local output_dir="$1" receipt contract_sha graphs deny_executable
+  local graph_id manifest_path lock_path deny_config_path audit_output deny_output raw_audit_home
+  local audit_rc audit_expected_rc deny_rc deny_errors deny_warnings audit_findings expected_findings audit_ready graph
   [[ "$output_dir" == /* ]] || {
     echo "Hepta dependency-security output directory must be absolute" >&2
     return 1
   }
   verify_tools
   verify_db
+  deny_executable="$(command -v "$DENY_BIN")"
+  HEPTA_CARGO_DENY_BIN="$deny_executable" \
+    "$ROOT/apps/hepta-native/hepta-native-dependency-policy" verify >/dev/null
   mkdir -p "$output_dir"
-  audit_output="$output_dir/cargo-audit.json"
-  deny_output="$output_dir/cargo-deny.jsonl"
   receipt="$output_dir/dependency-security-receipt.json"
-  (
-    cd "$ROOT/codex-rs"
-    "$AUDIT_BIN" audit --db "$DB_PATH" --no-fetch --file Cargo.lock --json >"$audit_output"
-    "$DENY_BIN" --manifest-path Cargo.toml --config deny.toml --frozen --format json \
-      check bans licenses sources >"$deny_output" 2>&1
-  )
+  contract_sha="$(jq -cS . "$CONTRACT" | shasum -a 256 | awk '{print $1}')"
+  graphs='[]'
+  while IFS=$'\t' read -r graph_id manifest_path lock_path deny_config_path; do
+    [[ "$graph_id" =~ ^[a-z0-9-]+$ ]] || {
+      echo "Hepta dependency-security graph id is invalid: $graph_id" >&2
+      return 1
+    }
+    audit_output="$output_dir/$graph_id-cargo-audit.json"
+    deny_output="$output_dir/$graph_id-cargo-deny.jsonl"
+    raw_audit_home="$(mktemp -d "$output_dir/.raw-audit-$graph_id.XXXXXX")"
+    audit_rc=0
+    (
+      cd "$raw_audit_home"
+      "$AUDIT_BIN" audit \
+        --db "$DB_PATH" \
+        --no-fetch \
+        --file "$ROOT/$lock_path" \
+        --json >"$audit_output"
+    ) || audit_rc=$?
+    rm -rf "$raw_audit_home"
+    deny_rc=0
+    (
+      cd "$(dirname "$ROOT/$manifest_path")"
+      "$DENY_BIN" \
+        --manifest-path "$ROOT/$manifest_path" \
+        --config "$ROOT/$deny_config_path" \
+        --frozen \
+        --format json \
+        check bans licenses sources >"$deny_output" 2>&1
+    ) || deny_rc=$?
+    deny_errors="$(jq -s '[.[] | select(.type=="summary") | .fields | [.bans.errors,.licenses.errors,.sources.errors][]] | if length==3 then add else -1 end' "$deny_output")"
+    deny_warnings="$(jq -s '[.[] | select(.type=="summary") | .fields | [.bans.warnings,.licenses.warnings,.sources.warnings][]] | if length==3 then add else -1 end' "$deny_output")"
+    audit_findings="$(classify_audit_findings "$audit_output")"
+    expected_findings="$(jq -ce --arg id "$graph_id" '.scans.audit.expected_raw_findings[$id]' "$CONTRACT")"
+    audit_expected_rc="$(jq 'if .raw_vulnerability_count == 0 then 0 else 1 end' <<<"$audit_findings")"
+    audit_ready=false
+    [[ "$audit_rc" == "$audit_expected_rc" && "$deny_rc" == 0 && "$deny_errors" == 0 ]] \
+      && jq -e --argjson expected "$expected_findings" '.vulnerability_count==0 and .warning_count==0 and .unsafe_warning_count==0 and {raw_vulnerabilities,raw_unsafe_warnings}==$expected' <<<"$audit_findings" >/dev/null \
+      && audit_ready=true
+    graph="$(
+      jq -cn \
+        --arg id "$graph_id" \
+        --arg manifest_path "$manifest_path" \
+        --arg cargo_lock_path "$lock_path" \
+        --arg cargo_lock_sha256 "$(sha256_file "$ROOT/$lock_path")" \
+        --arg cargo_audit_sha256 "$(sha256_file "$audit_output")" \
+        --arg cargo_deny_sha256 "$(sha256_file "$deny_output")" \
+        --argjson cargo_audit_exit_code "$audit_rc" \
+        --argjson cargo_deny_exit_code "$deny_rc" \
+        --argjson cargo_deny_error_count "$deny_errors" \
+        --argjson cargo_deny_warning_count "$deny_warnings" \
+        --argjson audit_findings "$audit_findings" \
+        --argjson audit_ready "$audit_ready" \
+        '({
+          id:$id,
+          status:(if $audit_ready then "ready" else "blocked" end),
+          manifest_path:$manifest_path,
+          cargo_lock_path:$cargo_lock_path,
+          cargo_lock_sha256:$cargo_lock_sha256,
+          cargo_audit_sha256:$cargo_audit_sha256,
+          cargo_deny_sha256:$cargo_deny_sha256,
+          cargo_audit_exit_code:$cargo_audit_exit_code,
+          cargo_deny_exit_code:$cargo_deny_exit_code,
+          cargo_deny_error_count:$cargo_deny_error_count,
+          cargo_deny_warning_count:$cargo_deny_warning_count
+        } + $audit_findings)'
+    )"
+    graphs="$(jq -cn --argjson graphs "$graphs" --argjson graph "$graph" '$graphs + [$graph]')"
+  done < <(jq -r '.inputs.cargo_locks[] | [.id,.manifest_path,.path,.deny_config_path] | @tsv' "$CONTRACT")
   jq -n \
     --arg audit_version "$($AUDIT_BIN --version)" \
     --arg deny_version "$($DENY_BIN --version)" \
     --arg db_commit "$(git -C "$DB_PATH" rev-parse HEAD)" \
-    --arg lock_sha "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
-    --argjson vulnerabilities "$(jq '.vulnerabilities.count' "$audit_output")" \
-    --argjson warnings "$(jq '[.warnings[]?[]?] | length' "$audit_output")" \
-    '{schema:"hepta_dependency_security_receipt_v1",status:(if $vulnerabilities == 0 then "ready" else "blocked" end),tools:{cargo_audit:$audit_version,cargo_deny:$deny_version},advisory_database_commit:$db_commit,cargo_lock_sha256:$lock_sha,vulnerability_count:$vulnerabilities,warning_count:$warnings,network_used_during_scan:false,deployment:false,publication:false}' \
+    --arg contract_sha256 "$contract_sha" \
+    --argjson graphs "$graphs" \
+    '{
+      schema:"hepta_dependency_security_receipt_v1",
+      status:(if ($graphs | all(.status == "ready")) then "ready" else "blocked" end),
+      tools:{cargo_audit:$audit_version,cargo_deny:$deny_version},
+      advisory_database_commit:$db_commit,
+      contract_sha256:$contract_sha256,
+      graphs:$graphs,
+      raw_vulnerability_count:([$graphs[].raw_vulnerability_count]|add),
+      vulnerability_exception_count:([$graphs[].vulnerability_exception_count]|add),
+      vulnerability_exceptions:[$graphs[] as $g|$g.vulnerability_exceptions[]|.+{graph_id:$g.id}],
+      vulnerability_count:([$graphs[].vulnerability_count]|add),
+      raw_warning_count:([$graphs[].raw_warning_count]|add),
+      warning_count:([$graphs[].warning_count]|add),
+      raw_unsafe_warning_count:([$graphs[].raw_unsafe_warning_count]|add),
+      unsafe_warning_exception_count:([$graphs[].unsafe_warning_exception_count]|add),
+      unsafe_warning_exceptions:[$graphs[] as $g|$g.unsafe_warning_exceptions[]|.+{graph_id:$g.id}],
+      unsafe_warning_count:([$graphs[].unsafe_warning_count]|add),
+      unsafe_warning_counts:{
+        unmaintained:([$graphs[].unsafe_warning_counts.unmaintained] | add),
+        unsound:([$graphs[].unsafe_warning_counts.unsound] | add),
+        yanked:([$graphs[].unsafe_warning_counts.yanked] | add)
+      },
+      network_used_during_scan:false,
+      deployment:false,
+      publication:false
+    }' \
     >"$receipt"
-  jq -e '.status == "ready" and .vulnerability_count == 0' "$receipt" >/dev/null
   cat "$receipt"
+  jq -e '
+    .status == "ready"
+    and .vulnerability_count == 0
+    and .warning_count == 0
+    and .unsafe_warning_count == 0
+    and (.graphs | length == 2 and all(.status == "ready"))
+  ' "$receipt" >/dev/null
 }
-
 self_test() {
+  local fixture kind vendor_fixture_root fixture_contract
   verify_contract
   if HEPTA_DEPENDENCY_SECURITY_CONTRACT=/dev/null "$0" verify >/dev/null 2>&1; then
     echo "Hepta dependency-security self-test accepted an invalid contract" >&2
     return 1
   fi
-  jq -n '{schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:1}'
+  fixture="$(mktemp -d "${TMPDIR:-/tmp}/hepta-dependency-security-self-test.XXXXXX")"
+  trap 'rm -rf "$fixture"' RETURN
+  for kind in unmaintained unsound yanked; do
+    jq -n --arg kind "$kind" '{vulnerabilities:{count:0,list:[]},warnings:{unmaintained:[],unsound:[],yanked:[]}}|.warnings[$kind]=[(if $kind=="yanked" then {package:{name:"fixture",version:"1.0.0"}} else {advisory:{id:"RUSTSEC-9999-9999"},package:{name:"fixture",version:"1.0.0"}} end)]' >"$fixture/$kind.json"
+    if jq -e '.unsafe_warning_count==0' <<<"$(classify_audit_findings "$fixture/$kind.json")" >/dev/null; then
+      echo "Hepta dependency-security self-test accepted zero vulnerabilities with $kind warnings" >&2
+      return 1
+    fi
+  done
+  jq -n '{vulnerabilities:{count:0,list:[]},warnings:{unmaintained:[],unsound:[],yanked:[]}}' >"$fixture/ready.json"
+  jq -e '.vulnerability_count==0 and .unsafe_warning_count==0' <<<"$(classify_audit_findings "$fixture/ready.json")" >/dev/null
+  jq -n '{vulnerabilities:{count:1,list:[{advisory:{id:"RUSTSEC-2026-0118"},package:{name:"hickory-proto",version:"0.25.2"}}]},warnings:{unmaintained:[],unsound:[],yanked:[]}}' >"$fixture/existing-exception.json"
+  jq -e '.raw_vulnerability_count==1 and .vulnerability_exception_count==1 and .vulnerability_count==0' <<<"$(classify_audit_findings "$fixture/existing-exception.json")" >/dev/null
+  jq -n '{vulnerabilities:{count:0}}' >"$fixture/malformed.json"
+  if classify_audit_findings "$fixture/malformed.json" >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted malformed audit evidence" >&2
+    return 1
+  fi
+  vendor_fixture_root="$fixture/vendor-root"
+  fixture_contract="$vendor_fixture_root/scripts/hepta-dependency-security-v1.json"
+  mkdir -p \
+    "$vendor_fixture_root/scripts" \
+    "$vendor_fixture_root/apps/hepta-native" \
+    "$vendor_fixture_root/codex-rs/.cargo" \
+    "$vendor_fixture_root/codex-rs/third_party"
+  cp "$CONTRACT" "$fixture_contract"
+  cp "$ROOT/codex-rs/Cargo.toml" "$vendor_fixture_root/codex-rs/Cargo.toml"
+  cp "$ROOT/codex-rs/Cargo.lock" "$vendor_fixture_root/codex-rs/Cargo.lock"
+  cp "$ROOT/codex-rs/deny.toml" "$vendor_fixture_root/codex-rs/deny.toml"
+  cp "$ROOT/codex-rs/.cargo/audit.toml" "$vendor_fixture_root/codex-rs/.cargo/audit.toml"
+  cp "$ROOT/apps/hepta-native/Cargo.toml" "$vendor_fixture_root/apps/hepta-native/Cargo.toml"
+  cp "$ROOT/apps/hepta-native/Cargo.lock" "$vendor_fixture_root/apps/hepta-native/Cargo.lock"
+  cp "$ROOT/apps/hepta-native/deny.toml" "$vendor_fixture_root/apps/hepta-native/deny.toml"
+  cp \
+    "$ROOT/apps/hepta-native/dependency-source-policy-v1.json" \
+    "$vendor_fixture_root/apps/hepta-native/dependency-source-policy-v1.json"
+  cp \
+    "$ROOT/apps/hepta-native/hepta-native-dependency-policy" \
+    "$vendor_fixture_root/apps/hepta-native/hepta-native-dependency-policy"
+  cp -R \
+    "$ROOT/codex-rs/third_party/ratatui-0.30.2-hepta" \
+    "$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta"
+  HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null
+  printf '\n' >>"$vendor_fixture_root/apps/hepta-native/dependency-source-policy-v1.json"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted native source-policy drift" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/apps/hepta-native/dependency-source-policy-v1.json" \
+    "$vendor_fixture_root/apps/hepta-native/dependency-source-policy-v1.json"
+  printf '\n' >>"$vendor_fixture_root/apps/hepta-native/hepta-native-dependency-policy"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted native source-policy runner drift" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/apps/hepta-native/hepta-native-dependency-policy" \
+    "$vendor_fixture_root/apps/hepta-native/hepta-native-dependency-policy"
+  printf '\n' >>"$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/src/lib.rs"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted vendored payload drift" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/codex-rs/third_party/ratatui-0.30.2-hepta/src/lib.rs" \
+    "$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/src/lib.rs"
+  printf '\n' >>"$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/LICENSE"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted vendored license drift" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/codex-rs/third_party/ratatui-0.30.2-hepta/LICENSE" \
+    "$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/LICENSE"
+  printf '\n' >>"$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/Cargo.toml"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted vendored manifest patch drift" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/codex-rs/third_party/ratatui-0.30.2-hepta/Cargo.toml" \
+    "$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/Cargo.toml"
+  mkdir -p "$vendor_fixture_root/codex-rs/duplicate"
+  printf '%s\n' \
+    '[patch.crates-io]' \
+    'ratatui = { path = "third_party/ratatui-0.30.2-hepta" }' \
+    >"$vendor_fixture_root/codex-rs/duplicate/Cargo.toml"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted a second vendored manifest consumer" >&2
+    return 1
+  fi
+  rm "$vendor_fixture_root/codex-rs/duplicate/Cargo.toml"
+  rmdir "$vendor_fixture_root/codex-rs/duplicate"
+  jq '.status = "blocked"' \
+    "$ROOT/codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json" \
+    >"$vendor_fixture_root/codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted source receipt drift" >&2
+    return 1
+  fi
+  jq -n '{schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:12,vendored_source_negative_fixtures:5}'
 }
-
 [[ $# -ge 1 ]] || usage
 case "$1" in
   verify)

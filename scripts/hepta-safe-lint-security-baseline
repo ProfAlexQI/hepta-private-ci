@@ -36,7 +36,7 @@ verify_contract() {
       tool:"cargo-clippy",
       selected_packages:["hepta-cli"],
       dependency_mode:"compiled_not_linted",
-      command:["rustup","run","1.93.0","cargo","clippy","--locked","--offline","--manifest-path","codex-rs/Cargo.toml","--all-targets","--no-deps","-p","hepta-cli","--","-D","warnings"],
+      command:["rustup","run","1.95.0","cargo","clippy","--locked","--offline","--manifest-path","codex-rs/Cargo.toml","--all-targets","--no-deps","-p","hepta-cli","--","-D","warnings"],
       safety:{locked:true,offline:true,no_live:true,no_source_or_lockfile_write:true,build_artifact_write:true,no_dependency_install:true}
     }
     and .ci_v2_lint == {
@@ -49,7 +49,7 @@ verify_contract() {
       dependency_mode:"compiled_not_linted",
       command:["cargo","clippy","--locked","--manifest-path","codex-rs/Cargo.toml","-q","-p","hepta-intelligence","-p","hepta-memory","-p","hepta-runtime","--tests","--no-deps","--","-D","warnings"]
     }
-    and .toolchain == {channel:"1.93.0",required_components:["clippy"]}
+    and .toolchain == {channel:"1.95.0",required_components:["clippy"]}
     and .evidence.receipt_schema == "hepta_safe_lint_security_execution_receipt_v1"
     and .evidence.receipt_verifier == "scripts/hepta-safe-lint-security-baseline verify-receipt"
     and .evidence.local_execution == {status:"configured_not_verified",requires_clean_source:true,requires_main_backend_lane_lock:true}
@@ -210,10 +210,20 @@ validate_local_lane() {
     echo "local safe lint execution requires an absolute external CARGO_TARGET_DIR" >&2
     return 1
   }
-  local owner_file expected_owner
+  local owner_file owner_line owner_pid ancestor lock_is_ancestor
   owner_file="${HEPTA_HEAVY_LOCK_ROOT:-$HOME/.openclaw/run}/hepta-lane-main-backend.lock/owner"
-  expected_owner="main:main-backend:$PPID"
-  [[ -f "$owner_file" && "$(head -n 1 "$owner_file")" == "$expected_owner" ]] || {
+  owner_line="$(head -n 1 "$owner_file" 2>/dev/null || true)"
+  owner_pid="${owner_line##*:}"
+  ancestor="$PPID"
+  lock_is_ancestor=false
+  while [[ "$ancestor" =~ ^[0-9]+$ && "$ancestor" -gt 1 ]]; do
+    if [[ "$ancestor" == "$owner_pid" ]]; then
+      lock_is_ancestor=true
+      break
+    fi
+    ancestor="$(ps -o ppid= -p "$ancestor" | tr -d '[:space:]')"
+  done
+  [[ "$owner_line" == "main:main-backend:$owner_pid" && "$lock_is_ancestor" == true ]] || {
     echo "local safe lint execution requires the main-backend hepta-heavy-lock" >&2
     return 1
   }
@@ -243,7 +253,7 @@ run_lint() {
 
   set +e
   cd "$ROOT"
-  rustup run 1.93.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml \
+  rustup run 1.95.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml \
     --all-targets --no-deps -p hepta-cli -- -D warnings
   exit_code=$?
   set -e
@@ -255,14 +265,14 @@ run_lint() {
     --arg evidence_kind "$evidence_kind" \
     --arg source_sha "$source_sha" \
     --arg contract_sha256 "$contract_sha" \
-    --arg rustc "$(rustup run 1.93.0 rustc -Vv)" \
-    --arg cargo "$(rustup run 1.93.0 cargo -V)" \
-    --arg clippy "$(rustup run 1.93.0 cargo clippy -V)" \
+    --arg rustc "$(rustup run 1.95.0 rustc -Vv)" \
+    --arg cargo "$(rustup run 1.95.0 cargo -V)" \
+    --arg clippy "$(rustup run 1.95.0 cargo clippy -V)" \
     --arg rust_toolchain_sha256 "$(sha256_file "$ROOT/codex-rs/rust-toolchain.toml")" \
     --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
     --arg workspace_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.toml")" \
     --arg package_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/hepta-cli/Cargo.toml")" \
-    --arg command "rustup run 1.93.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml --all-targets --no-deps -p hepta-cli -- -D warnings" \
+    --arg command "rustup run 1.95.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml --all-targets --no-deps -p hepta-cli -- -D warnings" \
     --argjson exit_code "$exit_code" \
     --argjson success "$success" '
       {
@@ -298,14 +308,14 @@ verify_receipt() {
     --arg evidence_kind "$evidence_kind" \
     --arg source_sha "$(git -C "$ROOT" rev-parse HEAD)" \
     --arg contract_sha256 "$(sha256_file "$CONTRACT")" \
-    --arg rustc "$(rustup run 1.93.0 rustc -Vv)" \
-    --arg cargo "$(rustup run 1.93.0 cargo -V)" \
-    --arg clippy "$(rustup run 1.93.0 cargo clippy -V)" \
+    --arg rustc "$(rustup run 1.95.0 rustc -Vv)" \
+    --arg cargo "$(rustup run 1.95.0 cargo -V)" \
+    --arg clippy "$(rustup run 1.95.0 cargo clippy -V)" \
     --arg rust_toolchain_sha256 "$(sha256_file "$ROOT/codex-rs/rust-toolchain.toml")" \
     --arg cargo_lock_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.lock")" \
     --arg workspace_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/Cargo.toml")" \
     --arg package_manifest_sha256 "$(sha256_file "$ROOT/codex-rs/hepta-cli/Cargo.toml")" \
-    --arg command "rustup run 1.93.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml --all-targets --no-deps -p hepta-cli -- -D warnings" '
+    --arg command "rustup run 1.95.0 cargo clippy --locked --offline --manifest-path codex-rs/Cargo.toml --all-targets --no-deps -p hepta-cli -- -D warnings" '
       .schema == "hepta_safe_lint_security_execution_receipt_v1"
       and .capability == {id:"hepta_main_backend_safe_lint_security_baseline",version:1}
       and .evidence.kind == $evidence_kind
