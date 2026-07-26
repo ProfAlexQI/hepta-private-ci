@@ -1,0 +1,42 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v11",
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-07-26T12:42:47Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "61a44880a85d2fd0d8770908dea5733495e571c8",
+    "range_start_exclusive": "4c43465133428898aa84f0bfc02c306ed65fb66a",
+    "range_end_inclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+    "commit_count": 7,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 44,
+    "net_insertions": 1482,
+    "net_deletions": 239,
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags upstream 61a44880a85d2fd0d8770908dea5733495e571c8:refs/remotes/upstream/hepta-intake-20260726-r11"
+  },
+  "commit_inventory": [
+    {"upstream_commit":"3a08af44b2a4450bab0a9393f9d36ae621dde6bb","title":"Handle exec-server network policy requests in client","status":"deferred","hepta_v2_priority":"P0"},
+    {"upstream_commit":"af7f6f4d346a71e78869f4c0e507160f921fffed","title":"Include item start times","status":"deferred","hepta_v2_priority":"P1"},
+    {"upstream_commit":"5c36e869c1a7bdc5ec4c1325d02e60dfbadcc9b8","title":"Bound Code Mode metadata compatibility headers","status":"existing_semantic_equivalent","hepta_v2_priority":"P1"},
+    {"upstream_commit":"322d5b96cfa5c8fd52bd83ecfdb79cd9b330205f","title":"Keep unified mention results fresh","status":"deferred","hepta_v2_priority":"P3"},
+    {"upstream_commit":"20dafe201d91d4405eef05ecd1db0257f13a9ac8","title":"Make the keymap action menu responsive","status":"deferred","hepta_v2_priority":"P3"},
+    {"upstream_commit":"62fd410384cca008446c2d64a4f2b3f915f4906e","title":"Ignore generated system skills watcher events","status":"absorbed","hepta_v2_priority":"P1"},
+    {"upstream_commit":"61a44880a85d2fd0d8770908dea5733495e571c8","title":"Raise MCP recursion limit","status":"absorbed","hepta_v2_priority":"P0"}
+  ],
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
