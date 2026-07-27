@@ -12,6 +12,22 @@ use codex_mcp::McpOAuthLoginSupport;
 use codex_mcp::oauth_login_support_with_http_client;
 use codex_mcp::should_retry_without_scopes;
 use codex_rmcp_client::perform_oauth_login_silent;
+use hepta_runtime::EffectBroker;
+use hepta_runtime::EffectPlan;
+use hepta_runtime::ExactExecutionAuthority;
+use hepta_runtime::ExecutionAdmission;
+use hepta_runtime::ExecutionIngress;
+use hepta_runtime::ProviderEffectAck;
+use hepta_runtime::TerminalEffectReceipt;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use sha2::Digest;
+use sha2::Sha256;
+
+use super::plugin_mutation_journal::PluginMutationBegin;
+use super::plugin_mutation_journal::PluginMutationEnvelope;
+use super::plugin_mutation_journal::PluginMutationJournal;
+use super::plugin_mutation_journal::PluginMutationJournalError;
 
 #[derive(Clone)]
 pub(crate) struct PluginRequestProcessor {
@@ -288,18 +304,20 @@ impl PluginRequestProcessor {
 
     pub(crate) async fn plugin_share_save(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareSaveParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        self.plugin_share_save_response(params)
+        self.plugin_share_save_response(request_id, params)
             .await
             .map(|response| Some(response.into()))
     }
 
     pub(crate) async fn plugin_share_update_targets(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareUpdateTargetsParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        self.plugin_share_update_targets_response(params)
+        self.plugin_share_update_targets_response(request_id, params)
             .await
             .map(|response| Some(response.into()))
     }
@@ -315,18 +333,20 @@ impl PluginRequestProcessor {
 
     pub(crate) async fn plugin_share_checkout(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareCheckoutParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        self.plugin_share_checkout_response(params)
+        self.plugin_share_checkout_response(request_id, params)
             .await
             .map(|response| Some(response.into()))
     }
 
     pub(crate) async fn plugin_share_delete(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareDeleteParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        self.plugin_share_delete_response(params)
+        self.plugin_share_delete_response(request_id, params)
             .await
             .map(|response| Some(response.into()))
     }
@@ -856,6 +876,7 @@ impl PluginRequestProcessor {
 
     async fn plugin_share_save_response(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareSaveParams,
     ) -> Result<PluginShareSaveResponse, JSONRPCErrorError> {
         let (config, auth) = self.load_plugin_share_config_and_auth().await?;
@@ -887,6 +908,26 @@ impl PluginRequestProcessor {
             validate_client_plugin_share_targets(share_targets)?;
         }
 
+        let target = remote_plugin_id
+            .as_deref()
+            .unwrap_or_else(|| plugin_path.as_path().to_str().unwrap_or("plugin-path"));
+        let mut lifecycle = match PluginMutationLifecycle::prepare::<PluginShareSaveResponse>(
+            request_id,
+            config.codex_home.as_path(),
+            "plugin-share-save",
+            target,
+            &PluginShareSaveParams {
+                plugin_path: plugin_path.clone(),
+                remote_plugin_id: remote_plugin_id.clone(),
+                discoverability,
+                share_targets: share_targets.clone(),
+            },
+        )? {
+            PluginMutationStart::Execute(lifecycle) => lifecycle,
+            PluginMutationStart::Replay(response) => return Ok(response),
+        };
+        lifecycle.mark_committing()?;
+
         let remote_plugin_service_config = RemotePluginServiceConfig {
             chatgpt_base_url: config.chatgpt_base_url.clone(),
         };
@@ -894,7 +935,7 @@ impl PluginRequestProcessor {
             discoverability: discoverability.map(remote_plugin_share_discoverability),
             share_targets: share_targets.map(remote_plugin_share_targets),
         };
-        let result = codex_core_plugins::remote::save_remote_plugin_share(
+        let result = match codex_core_plugins::remote::save_remote_plugin_share(
             &remote_plugin_service_config,
             auth.as_ref(),
             config.codex_home.as_path(),
@@ -903,17 +944,28 @@ impl PluginRequestProcessor {
             access_policy,
         )
         .await
-        .map_err(|err| remote_plugin_catalog_error_to_jsonrpc(err, "save remote plugin share"))?;
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let error =
+                    remote_plugin_catalog_error_to_jsonrpc(error, "save remote plugin share");
+                lifecycle.record_failure(&format!("{error:?}"))?;
+                return Err(error);
+            }
+        };
         let remote_plugin_id = result.remote_plugin_id;
-        self.clear_plugin_related_caches();
-        Ok(PluginShareSaveResponse {
+        let response = PluginShareSaveResponse {
             remote_plugin_id,
             share_url: result.share_url.unwrap_or_default(),
-        })
+        };
+        lifecycle.record_success(&response)?;
+        self.clear_plugin_related_caches();
+        Ok(response)
     }
 
     async fn plugin_share_update_targets_response(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareUpdateTargetsParams,
     ) -> Result<PluginShareUpdateTargetsResponse, JSONRPCErrorError> {
         let (config, auth) = self.load_plugin_share_config_and_auth().await?;
@@ -930,10 +982,27 @@ impl PluginRequestProcessor {
         }
         validate_client_plugin_share_targets(&share_targets)?;
 
+        let mut lifecycle =
+            match PluginMutationLifecycle::prepare::<PluginShareUpdateTargetsResponse>(
+                request_id,
+                config.codex_home.as_path(),
+                "plugin-share-update-targets",
+                &remote_plugin_id,
+                &PluginShareUpdateTargetsParams {
+                    remote_plugin_id: remote_plugin_id.clone(),
+                    discoverability,
+                    share_targets: share_targets.clone(),
+                },
+            )? {
+                PluginMutationStart::Execute(lifecycle) => lifecycle,
+                PluginMutationStart::Replay(response) => return Ok(response),
+            };
+        lifecycle.mark_committing()?;
+
         let remote_plugin_service_config = RemotePluginServiceConfig {
             chatgpt_base_url: config.chatgpt_base_url.clone(),
         };
-        let result = codex_core_plugins::remote::update_remote_plugin_share_targets(
+        let result = match codex_core_plugins::remote::update_remote_plugin_share_targets(
             &remote_plugin_service_config,
             auth.as_ref(),
             &remote_plugin_id,
@@ -941,18 +1010,28 @@ impl PluginRequestProcessor {
             remote_plugin_share_update_discoverability(discoverability),
         )
         .await
-        .map_err(|err| {
-            remote_plugin_catalog_error_to_jsonrpc(err, "update remote plugin share targets")
-        })?;
-        self.clear_plugin_related_caches();
-        Ok(PluginShareUpdateTargetsResponse {
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let error = remote_plugin_catalog_error_to_jsonrpc(
+                    error,
+                    "update remote plugin share targets",
+                );
+                lifecycle.record_failure(&format!("{error:?}"))?;
+                return Err(error);
+            }
+        };
+        let response = PluginShareUpdateTargetsResponse {
             principals: result
                 .principals
                 .into_iter()
                 .map(plugin_share_principal_from_remote)
                 .collect(),
             discoverability: remote_plugin_share_discoverability_to_info(result.discoverability),
-        })
+        };
+        lifecycle.record_success(&response)?;
+        self.clear_plugin_related_caches();
+        Ok(response)
     }
 
     async fn plugin_share_list_response(
@@ -988,6 +1067,7 @@ impl PluginRequestProcessor {
 
     async fn plugin_share_checkout_response(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareCheckoutParams,
     ) -> Result<PluginShareCheckoutResponse, JSONRPCErrorError> {
         let (config, auth) = self.load_plugin_share_config_and_auth().await?;
@@ -998,20 +1078,39 @@ impl PluginRequestProcessor {
         if remote_plugin_id.is_empty() || !is_valid_remote_plugin_id(&remote_plugin_id) {
             return Err(invalid_request("invalid remote plugin id"));
         }
+        let mut lifecycle = match PluginMutationLifecycle::prepare::<PluginShareCheckoutResponse>(
+            request_id,
+            config.codex_home.as_path(),
+            "plugin-share-checkout",
+            &remote_plugin_id,
+            &PluginShareCheckoutParams {
+                remote_plugin_id: remote_plugin_id.clone(),
+            },
+        )? {
+            PluginMutationStart::Execute(lifecycle) => lifecycle,
+            PluginMutationStart::Replay(response) => return Ok(response),
+        };
+        lifecycle.mark_committing()?;
 
         let remote_plugin_service_config = RemotePluginServiceConfig {
             chatgpt_base_url: config.chatgpt_base_url.clone(),
         };
-        let result = codex_core_plugins::remote::checkout_remote_plugin_share(
+        let result = match codex_core_plugins::remote::checkout_remote_plugin_share(
             &remote_plugin_service_config,
             auth.as_ref(),
             config.codex_home.as_path(),
             &remote_plugin_id,
         )
         .await
-        .map_err(|err| remote_plugin_catalog_error_to_jsonrpc(err, "checkout plugin share"))?;
-        self.clear_plugin_related_caches();
-        Ok(PluginShareCheckoutResponse {
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let error = remote_plugin_catalog_error_to_jsonrpc(error, "checkout plugin share");
+                lifecycle.record_failure(&format!("{error:?}"))?;
+                return Err(error);
+            }
+        };
+        let response = PluginShareCheckoutResponse {
             remote_plugin_id: result.remote_plugin_id,
             plugin_id: result.plugin_id,
             plugin_name: result.plugin_name,
@@ -1019,11 +1118,15 @@ impl PluginRequestProcessor {
             marketplace_name: result.marketplace_name,
             marketplace_path: result.marketplace_path,
             remote_version: result.remote_version,
-        })
+        };
+        lifecycle.record_success(&response)?;
+        self.clear_plugin_related_caches();
+        Ok(response)
     }
 
     async fn plugin_share_delete_response(
         &self,
+        request_id: &ConnectionRequestId,
         params: PluginShareDeleteParams,
     ) -> Result<PluginShareDeleteResponse, JSONRPCErrorError> {
         let (config, auth) = self.load_plugin_share_config_and_auth().await?;
@@ -1031,20 +1134,39 @@ impl PluginRequestProcessor {
         if remote_plugin_id.is_empty() || !is_valid_remote_plugin_id(&remote_plugin_id) {
             return Err(invalid_request("invalid remote plugin id"));
         }
+        let mut lifecycle = match PluginMutationLifecycle::prepare::<PluginShareDeleteResponse>(
+            request_id,
+            config.codex_home.as_path(),
+            "plugin-share-delete",
+            &remote_plugin_id,
+            &PluginShareDeleteParams {
+                remote_plugin_id: remote_plugin_id.clone(),
+            },
+        )? {
+            PluginMutationStart::Execute(lifecycle) => lifecycle,
+            PluginMutationStart::Replay(response) => return Ok(response),
+        };
+        lifecycle.mark_committing()?;
 
         let remote_plugin_service_config = RemotePluginServiceConfig {
             chatgpt_base_url: config.chatgpt_base_url.clone(),
         };
-        codex_core_plugins::remote::delete_remote_plugin_share(
+        if let Err(error) = codex_core_plugins::remote::delete_remote_plugin_share(
             &remote_plugin_service_config,
             auth.as_ref(),
             config.codex_home.as_path(),
             &remote_plugin_id,
         )
         .await
-        .map_err(|err| remote_plugin_catalog_error_to_jsonrpc(err, "delete remote plugin share"))?;
+        {
+            let error = remote_plugin_catalog_error_to_jsonrpc(error, "delete remote plugin share");
+            lifecycle.record_failure(&format!("{error:?}"))?;
+            return Err(error);
+        }
+        let response = PluginShareDeleteResponse {};
+        lifecycle.record_success(&response)?;
         self.clear_plugin_related_caches();
-        Ok(PluginShareDeleteResponse {})
+        Ok(response)
     }
 
     async fn load_plugin_share_config_and_auth(
@@ -1757,6 +1879,228 @@ fn remote_plugin_detail_to_info(
         apps,
         mcp_servers: Vec::new(),
     }
+}
+
+enum PluginMutationStart<Response> {
+    Execute(Box<PluginMutationLifecycle>),
+    Replay(Response),
+}
+
+struct PluginMutationLifecycle {
+    journal: PluginMutationJournal,
+    request_binding: String,
+    operation: String,
+    broker: EffectBroker,
+    effect_plan_hash: String,
+}
+
+impl PluginMutationLifecycle {
+    fn prepare<Response: DeserializeOwned>(
+        request_id: &ConnectionRequestId,
+        codex_home: &Path,
+        operation: &str,
+        target: &str,
+        params: &impl Serialize,
+    ) -> Result<PluginMutationStart<Response>, JSONRPCErrorError> {
+        let request_binding = plugin_digest_hex(
+            "app-server-plugin-mutation-request",
+            &[&format!("{request_id:?}")],
+        );
+        let workspace_binding = plugin_digest_hex(
+            "app-server-plugin-mutation-workspace",
+            &[&codex_home.display().to_string()],
+        );
+        let session_binding = plugin_digest_hex(
+            "app-server-plugin-mutation-session",
+            &[&format!("{:?}", request_id.connection_id)],
+        );
+        let encoded = serde_json::to_vec(params)
+            .map_err(|error| internal_error(format!("encode plugin mutation request: {error}")))?;
+        let payload_digest =
+            plugin_content_hash_bytes("app-server-plugin-mutation-payload", &[encoded.as_slice()]);
+        let target_binding = plugin_content_hash("app-server-plugin-mutation-target", &[target]);
+        let authority = ExactExecutionAuthority::new(
+            request_binding.clone(),
+            workspace_binding,
+            session_binding,
+        )
+        .map_err(plugin_lifecycle_error)?;
+        let admission = ExecutionAdmission::new(
+            ExecutionIngress::AppServer,
+            operation,
+            authority,
+            request_binding.clone(),
+            payload_digest.clone(),
+        )
+        .map_err(plugin_lifecycle_error)?;
+        let plan = EffectPlan::new(
+            admission.admission_hash(),
+            operation,
+            target_binding.clone(),
+            payload_digest.clone(),
+            request_binding.clone(),
+        )
+        .map_err(plugin_lifecycle_error)?;
+        let effect_plan_hash = plan.effect_plan_hash().to_string();
+        let mut broker = EffectBroker::admit(admission);
+        broker
+            .record_effect_plan(plan)
+            .map_err(plugin_lifecycle_error)?;
+        let journal =
+            PluginMutationJournal::new(codex_home.join("hepta-plugin-mutation-journal.json"));
+        let envelope = PluginMutationEnvelope {
+            request_binding: request_binding.clone(),
+            operation: operation.to_string(),
+            target_binding,
+            payload_digest,
+            idempotency_binding: request_binding.clone(),
+            effect_plan_hash: effect_plan_hash.clone(),
+        };
+        match journal.begin(envelope).map_err(plugin_journal_error)? {
+            PluginMutationBegin::Planned => Ok(PluginMutationStart::Execute(Box::new(Self {
+                journal,
+                request_binding,
+                operation: operation.to_string(),
+                broker,
+                effect_plan_hash,
+            }))),
+            PluginMutationBegin::ReplayedSuccess(response) => {
+                let response = serde_json::from_value(response).map_err(|error| {
+                    internal_error(format!("decode replayed plugin mutation response: {error}"))
+                })?;
+                Ok(PluginMutationStart::Replay(response))
+            }
+            PluginMutationBegin::ReplayedFailure(error) => Err(internal_error(format!(
+                "replayed plugin mutation failed: {error}"
+            ))),
+            PluginMutationBegin::InDoubt => Err(internal_error(
+                "plugin mutation is already planned or committing; reconciliation is required",
+            )),
+        }
+    }
+
+    fn mark_committing(&self) -> Result<(), JSONRPCErrorError> {
+        self.journal
+            .mark_committing(&self.request_binding)
+            .map_err(plugin_journal_error)
+    }
+
+    fn record_success<Response: Serialize>(
+        &mut self,
+        response: &Response,
+    ) -> Result<(), JSONRPCErrorError> {
+        let response = serde_json::to_value(response)
+            .map_err(|error| internal_error(format!("encode plugin mutation response: {error}")))?;
+        let encoded = serde_json::to_vec(&response).map_err(|error| {
+            internal_error(format!("encode plugin mutation terminal evidence: {error}"))
+        })?;
+        let ack = ProviderEffectAck::new(
+            &self.effect_plan_hash,
+            "codex-remote-plugin-service",
+            plugin_content_hash_bytes("app-server-plugin-provider-success", &[&encoded]),
+        )
+        .map_err(plugin_lifecycle_error)?;
+        let ack_hash = ack.ack_hash().to_string();
+        self.broker
+            .record_provider_ack(ack)
+            .map_err(plugin_lifecycle_error)?;
+        let receipt = TerminalEffectReceipt::terminal(
+            &ack_hash,
+            "succeeded",
+            plugin_content_hash(
+                "app-server-plugin-runtime-success",
+                &[&self.operation, &self.request_binding],
+            ),
+            plugin_content_hash_bytes("app-server-plugin-response", &[&encoded]),
+        )
+        .map_err(plugin_lifecycle_error)?;
+        self.broker
+            .record_terminal_receipt(receipt)
+            .map_err(plugin_lifecycle_error)?;
+        let receipt_hash = self
+            .broker
+            .completed_receipt_hash()
+            .map_err(plugin_lifecycle_error)?
+            .to_string();
+        self.journal
+            .succeed(&self.request_binding, ack_hash, receipt_hash, response)
+            .map_err(plugin_journal_error)
+    }
+
+    fn record_failure(&mut self, error: &str) -> Result<(), JSONRPCErrorError> {
+        let ack = ProviderEffectAck::new(
+            &self.effect_plan_hash,
+            "codex-remote-plugin-service",
+            plugin_content_hash("app-server-plugin-provider-failure", &[error]),
+        )
+        .map_err(plugin_lifecycle_error)?;
+        let ack_hash = ack.ack_hash().to_string();
+        self.broker
+            .record_provider_ack(ack)
+            .map_err(plugin_lifecycle_error)?;
+        let receipt = TerminalEffectReceipt::terminal(
+            &ack_hash,
+            "failed",
+            plugin_content_hash(
+                "app-server-plugin-runtime-failure",
+                &[&self.operation, &self.request_binding],
+            ),
+            plugin_content_hash("app-server-plugin-error", &[error]),
+        )
+        .map_err(plugin_lifecycle_error)?;
+        self.broker
+            .record_terminal_receipt(receipt)
+            .map_err(plugin_lifecycle_error)?;
+        let receipt_hash = self
+            .broker
+            .completed_receipt_hash()
+            .map_err(plugin_lifecycle_error)?
+            .to_string();
+        self.journal
+            .fail(
+                &self.request_binding,
+                ack_hash,
+                receipt_hash,
+                error.to_string(),
+            )
+            .map_err(plugin_journal_error)
+    }
+}
+
+fn plugin_lifecycle_error(error: hepta_runtime::ExecutionAdmissionError) -> JSONRPCErrorError {
+    internal_error(format!("plugin mutation effect admission failed: {error}"))
+}
+
+fn plugin_journal_error(error: PluginMutationJournalError) -> JSONRPCErrorError {
+    internal_error(format!("plugin mutation journal failed: {error}"))
+}
+
+fn plugin_digest_hex(domain: &str, values: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(domain.as_bytes());
+    for value in values {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn plugin_content_hash(domain: &str, values: &[&str]) -> String {
+    let values = values
+        .iter()
+        .map(|value| value.as_bytes())
+        .collect::<Vec<_>>();
+    plugin_content_hash_bytes(domain, &values)
+}
+
+fn plugin_content_hash_bytes(domain: &str, values: &[&[u8]]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(domain.as_bytes());
+    for value in values {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value);
+    }
+    format!("sha256:{:x}", hasher.finalize())
 }
 
 fn remote_plugin_catalog_error_to_jsonrpc(

@@ -1118,21 +1118,27 @@ impl MessageProcessor {
                 self.plugin_processor.plugin_skill_read(params).await
             }
             ClientRequest::PluginShareSave { params, .. } => {
-                self.plugin_processor.plugin_share_save(params).await
+                self.plugin_processor
+                    .plugin_share_save(&request_id, params)
+                    .await
             }
             ClientRequest::PluginShareUpdateTargets { params, .. } => {
                 self.plugin_processor
-                    .plugin_share_update_targets(params)
+                    .plugin_share_update_targets(&request_id, params)
                     .await
             }
             ClientRequest::PluginShareList { params, .. } => {
                 self.plugin_processor.plugin_share_list(params).await
             }
             ClientRequest::PluginShareCheckout { params, .. } => {
-                self.plugin_processor.plugin_share_checkout(params).await
+                self.plugin_processor
+                    .plugin_share_checkout(&request_id, params)
+                    .await
             }
             ClientRequest::PluginShareDelete { params, .. } => {
-                self.plugin_processor.plugin_share_delete(params).await
+                self.plugin_processor
+                    .plugin_share_delete(&request_id, params)
+                    .await
             }
             ClientRequest::AppsList { params, .. } => {
                 self.apps_processor.apps_list(&request_id, params).await
