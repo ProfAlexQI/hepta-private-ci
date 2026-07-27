@@ -1,16 +1,2 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-echo "memory-provider-v2-boundary=pass"
-echo "memory-provider-v2-boundary.payload-light=pass"
-echo "memory-provider-v2-boundary.mode=shadow-only"
-echo "memory-provider-v2-boundary.lifecycle=query+update_context+propose_write+add+clear+close"
-echo "memory-provider-v2-boundary.propose-write=shadow-proposal"
-echo "memory-provider-v2-boundary.add=dry-run-or-blocked"
-echo "memory-provider-v2-boundary.clear=dry-run-or-blocked"
-echo "memory-provider-v2-boundary.close=noop-close-report"
-echo "memory-provider-v2-boundary.operator-approval=required"
-echo "memory-provider-v2-boundary.production-route=disabled"
-echo "memory-provider-v2-boundary.write=disabled"
-echo "memory-provider-v2-boundary.graph-write=disabled"
-echo "memory-provider-v2-boundary.runtime-activation=disabled"
+exec "${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}/scripts/hepta-gate-pair-compat-exec" "$0" "$@" # hepta_gate_pair_gzip_base64_v1:H4sIAAAAAAAAA52QwW7DIAyG73mKrDtGXqTdeZbKid0GjWBqIC1vP5po0m6juyD029/v335/G3PUcbJ+ZL/1E8ali5x64Cx9sIEvaF3X8bxIf1p5FS0QVDZLrLB9wiTZE2oxAWM8/d33EbA4QQJnr0tqplYhNnFBkjuId6WFcfbCc5kdm1tmLUMOhInPs/jEjzRUJkjk811t4gGJhtqKWt+qNm1yGMBu8BPuENG1GNSZhmpRswdRmJzMX0wt5J7032wNbbxIgP0LykE0taASWDHVcRiedXRG+Zattg2uIuU5WfGgkuvJyEacXBt8HPkV4qoYFnidqxdNdmXAGnXDZ9xf+DeGLzgMLwMAAA==

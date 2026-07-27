@@ -1,21 +1,2 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-repo_root="${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-
-bash "$repo_root/scripts/hepta-context-source-aware-compression-readiness-gate.sh" >/dev/null
-bash "$repo_root/scripts/hepta-context-source-aware-compression-operator-approval-evidence-gate.sh" >/dev/null
-bash "$repo_root/scripts/hepta-context-source-aware-compression-positive-route-readiness-gate.sh" >/dev/null
-
-cat <<'EOF'
-source-aware-readiness-export=pass
-source-aware-readiness-export.schema=1
-source-aware-readiness-export.runtime-activation=disabled
-source-aware-readiness-export.reserved-route=disabled
-source-aware-readiness-export.operator-approval-evidence=contract-only
-source-aware-readiness-export.positive-route=unimplemented
-source-aware-readiness-export.canary=under-development
-source-aware-readiness-export.helper-marker=required
-source-aware-readiness-export.no-production-consumption=pass
-source-aware-readiness-export.no-debug-export-leak=pass
-EOF
+exec "${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}/scripts/hepta-gate-pair-compat-exec" "$0" "$@" # hepta_gate_pair_gzip_base64_v1:H4sIAAAAAAAAA7VSy27bMBC86ysU1cjjQCu5FlGBtHDhmwI7PRWFsSanEWGKZJakksDIv5eKixY5tAoQ5MYlZ2ZnZ/nhqE6B6622NexQbil0RUAsBZIrvfb4SdoUBcO7DTsXm2q2Xy6ub642q8V1u1m17c1HMTuVqqxmp0qzpR75uP98tV5u1u231ZfF9/MfT9VZPZ9X5fFx6e/V2VNVFGOnDPwjXAfJ2sdQd/CRhHQ24iGK4BJLCLonRr7sPSME7axgkNI2F+KWIuahq8pPtcJQ22TMm9WdB1N0LMh7dgMZgUEr2Ax+j3beBR31AMEuRUzMVkiK5eXlyaL9elK8kPzLw4N3HBtPIfwfMg+yQ0/NxQSMk426z88y+6SYTTdKB9oaqCkmAniAOsz2Wta/F9CMaXL2IZw1jxMyL4NtktW9N+iR9zHlQJIlfswUBRY5fBjnR+IErYPJ1kVPvAM3jLukebKXdSJPqZIcgx2/S0i9fw75FRvMZIVtuv1dCwPaHXj5hxS/ANwY2+vhAwAA

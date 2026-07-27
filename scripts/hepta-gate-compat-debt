@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CONTRACT="${HEPTA_GATE_COMPAT_DEBT_CONTRACT:-$ROOT/scripts/hepta-gate-compat-debt-v1.json}"
+COMPAT_EXECUTOR="$ROOT/scripts/hepta-gate-pair-compat-exec"
+COMPAT_MARKER="# hepta_gate_pair_gzip_base64_v1:"
 
 usage() {
   echo "usage: scripts/hepta-gate-compat-debt <verify|self-test>" >&2
@@ -21,8 +23,16 @@ require_tools() {
 
 verify_payload_dependency_closure() {
   local payload_root="$1"
-  local payload reference
+  local payload reference scan_payload
+  local tmp
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-gate-compat-closure.XXXXXX")"
+  trap 'rm -rf "$tmp"' RETURN
   while IFS= read -r payload; do
+    scan_payload="$payload"
+    if sed -n '2p' "$payload" | grep -Fq "$COMPAT_MARKER"; then
+      scan_payload="$tmp/payload"
+      "$COMPAT_EXECUTOR" --decode-to "$scan_payload" "$payload"
+    fi
     while IFS= read -r reference; do
       reference="${reference#\$ROOT/}"
       [[ -x "$ROOT/$reference" ]] || {
@@ -32,7 +42,7 @@ verify_payload_dependency_closure() {
     done < <(
       rg --no-filename --only-matching \
         '\$ROOT/scripts/[A-Za-z0-9._/-]+(\.gate|\.report|-gate\.sh|-report\.sh)' \
-        "$payload" \
+        "$scan_payload" \
         | LC_ALL=C sort -u
     )
   done < <(find "$payload_root" -type f \( -name '*.gate' -o -name '*.report' \) | LC_ALL=C sort)
@@ -117,7 +127,12 @@ verify() {
       echo "missing registered Hepta $kind compatibility payload for $id" >&2
       return 1
     }
-    [[ "$(shasum -a 256 "$ROOT/$implementation" | awk '{print $1}')" == "$expected_sha" ]] || {
+    local hash_input="$ROOT/$implementation"
+    if sed -n '2p' "$hash_input" | grep -Fq "$COMPAT_MARKER"; then
+      hash_input="$tmp/registered-payload"
+      "$COMPAT_EXECUTOR" --decode-to "$hash_input" "$ROOT/$implementation"
+    fi
+    [[ "$(shasum -a 256 "$hash_input" | awk '{print $1}')" == "$expected_sha" ]] || {
       echo "registered Hepta $kind compatibility payload drifted for $id" >&2
       return 1
     }

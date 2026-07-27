@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+MARKER="# hepta_gate_pair_gzip_base64_v1:"
+MAX_ARCHIVE_BYTES=$((4 * 1024 * 1024))
+
+usage() {
+  printf '%s\n' \
+    'usage: scripts/hepta-gate-pair-compat-exec [--decode-to <output>] <artifact> [args...]' >&2
+  exit 2
+}
+
+decode_base64() {
+  local payload="$1"
+  local output="$2"
+  if printf '%s' "$payload" | base64 --decode 2>/dev/null | gzip -dc >"$output" 2>/dev/null; then
+    return 0
+  fi
+  if printf '%s' "$payload" | base64 -D 2>/dev/null | gzip -dc >"$output" 2>/dev/null; then
+    return 0
+  fi
+  printf '%s\n' 'unable to decode Hepta gate-pair compatibility artifact' >&2
+  return 1
+}
+
+decode_to() {
+  local artifact="$1"
+  local output="$2"
+  local artifact_size
+  local line
+  local payload
+  local basename
+  local kind
+  local relative
+  local expected_sha
+  local actual_sha
+
+  [[ -f "$artifact" ]] || {
+    printf 'missing Hepta gate-pair compatibility artifact: %s\n' "$artifact" >&2
+    return 1
+  }
+  artifact_size="$(wc -c <"$artifact" | tr -d '[:space:]')"
+  (( artifact_size <= MAX_ARCHIVE_BYTES )) || {
+    printf 'Hepta gate-pair compatibility artifact exceeds byte limit: %s\n' "$artifact" >&2
+    return 1
+  }
+  line="$(sed -n '2p' "$artifact")"
+  [[ "$line" == *"$MARKER"* ]] || {
+    printf 'invalid Hepta gate-pair compatibility envelope: %s\n' "$artifact" >&2
+    return 1
+  }
+  payload="${line#*"$MARKER"}"
+  [[ -n "$payload" ]] || {
+    printf 'empty Hepta gate-pair compatibility payload: %s\n' "$artifact" >&2
+    return 1
+  }
+  decode_base64 "$payload" "$output"
+
+  basename="${artifact##*/}"
+  case "$basename" in
+    *.gate)
+      kind="gate"
+      ;;
+    *.report)
+      kind="report"
+      ;;
+    *)
+      printf 'unexpected Hepta gate-pair compatibility suffix: %s\n' "$artifact" >&2
+      return 1
+      ;;
+  esac
+  relative="${artifact#"$ROOT/"}"
+  expected_sha="$(
+    jq -er \
+      --arg path "$relative" \
+      --arg path_key "${kind}_implementation" \
+      --arg sha_key "${kind}_implementation_sha256" \
+      '[
+        .pairs[]
+        | select(.[$path_key] == $path)
+        | .[$sha_key]
+      ]
+      | unique
+      | if length == 1 then .[0] else error("ambiguous compatibility payload") end' \
+      "$SPEC_FILE"
+  )"
+  actual_sha="$(shasum -a 256 "$output" | awk '{print $1}')"
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    printf 'Hepta gate-pair compatibility payload SHA-256 mismatch: %s\n' "$artifact" >&2
+    return 1
+  }
+}
+
+decode_output=""
+if [[ "${1:-}" == "--decode-to" ]]; then
+  [[ $# == 3 ]] || usage
+  decode_output="$2"
+  artifact="$3"
+  decode_to "$artifact" "$decode_output"
+  exit 0
+fi
+
+[[ $# -ge 1 ]] || usage
+artifact="$1"
+shift
+decoded="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-compat.XXXXXX")"
+trap 'rm -f "$decoded"' EXIT
+decode_to "$artifact" "$decoded"
+export HEPTA_REPO_ROOT="${HEPTA_REPO_ROOT:-$ROOT}"
+eval "$(<"$decoded")"

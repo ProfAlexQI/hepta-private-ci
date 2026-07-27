@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+COMPAT_EXECUTOR="$ROOT/scripts/hepta-gate-pair-compat-exec"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-status-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-final-index-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-public-status-v1.sh"
@@ -91,7 +92,7 @@ if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" && ( "$template" == "capture
 fi
 
 execute_captured_shell_compat() {
-  local implementation expected_sha actual_sha
+  local implementation expected_sha
   if [[ "$kind" == "gate" ]]; then
     implementation="$gate_implementation"
     expected_sha="$gate_implementation_sha256"
@@ -113,9 +114,8 @@ execute_captured_shell_compat() {
     echo "missing captured Hepta $kind implementation: $implementation" >&2
     exit 1
   }
-  actual_sha="$(shasum -a 256 "$implementation" | awk '{print $1}')"
-  [[ "$actual_sha" == "$expected_sha" ]] || {
-    echo "captured Hepta $kind implementation SHA-256 mismatch for: $id" >&2
+  [[ -x "$COMPAT_EXECUTOR" ]] || {
+    echo "missing Hepta gate-pair compatibility executor: $COMPAT_EXECUTOR" >&2
     exit 1
   }
 
@@ -157,7 +157,7 @@ execute_captured_shell_compat() {
     fi
   }
   export -f grep rg
-  eval "$(<"$implementation")"
+  "$COMPAT_EXECUTOR" "$implementation"
 }
 
 verify_legacy_workgraph_projection() {
