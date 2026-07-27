@@ -313,20 +313,28 @@
     #[test]
     fn telegram_live_soak_endpoint_is_side_effect_free() {
         let options = test_gateway_options(true);
-        let (status, content_type, body) =
-            route_native_gateway_request("GET", "/api/telegram-live-soak", &options);
-        assert_eq!(status, "200 OK");
-        assert_eq!(content_type, "application/json; charset=utf-8");
+        let mut canonical_body = None;
+        for path in TELEGRAM_LIVE_SOAK_ROUTE.paths() {
+            let (status, content_type, body) =
+                route_native_gateway_request("GET", path, &options);
+            assert_eq!(status, "200 OK", "live soak route failed: {path}");
+            assert_eq!(content_type, "application/json; charset=utf-8");
+            if let Some(canonical_body) = &canonical_body {
+                assert_eq!(&body, canonical_body, "live soak alias drift: {path}");
+            } else {
+                canonical_body = Some(body.clone());
+            }
 
-        let value: serde_json::Value = serde_json::from_str(&body).expect("live soak json");
-        assert_eq!(value["runtime"], "hepta");
-        assert_eq!(value["side_effect_free"], true);
-        assert_eq!(value["raw_update_payload_exposed"], false);
-        assert_eq!(value["raw_prompt_text_exposed"], false);
-        assert_eq!(value["raw_response_text_exposed"], false);
-        assert_eq!(value["raw_token_exposed"], false);
-        assert_eq!(value["poll_loop_status"]["worker_spawned_by_status"], false);
-        assert_eq!(value["production_guards"]["retry_transient_send_errors"], true);
+            let value: serde_json::Value = serde_json::from_str(&body).expect("live soak json");
+            assert_eq!(value["runtime"], "hepta");
+            assert_eq!(value["side_effect_free"], true);
+            assert_eq!(value["raw_update_payload_exposed"], false);
+            assert_eq!(value["raw_prompt_text_exposed"], false);
+            assert_eq!(value["raw_response_text_exposed"], false);
+            assert_eq!(value["raw_token_exposed"], false);
+            assert_eq!(value["poll_loop_status"]["worker_spawned_by_status"], false);
+            assert_eq!(value["production_guards"]["retry_transient_send_errors"], true);
+        }
     }
 
     #[test]
@@ -594,10 +602,15 @@
         assert!(report.ready);
         assert_eq!(
             report.evidence_scope,
-            "static route registration and handler parity only"
+            "typed route registration, compatibility-handler serialization, production ingress availability, and real-socket test coverage"
         );
         assert!(!report.live_product_complete);
         assert_eq!(report.missing_route_count, 0);
+        assert_eq!(report.quarantined_route_count, 28);
+        assert_eq!(
+            report.production_dispatchable_route_count + report.quarantined_route_count,
+            report.implemented_route_count
+        );
         assert!(report.route_count >= 40);
         let routes = report
             .routes
@@ -49303,7 +49316,7 @@
         );
         assert_eq!(
             value["execution_admission"]["real_handler_implemented"],
-            true
+            false
         );
         assert_eq!(
             value["execution_admission"]["current_plan_executes_real_handler"],
@@ -49315,11 +49328,11 @@
         );
         assert_eq!(
             value["execution_admission"]["blocked_reason"],
-            "real_handler_gate_disabled"
+            "real_handler_not_wired"
         );
         assert_eq!(value["real_handler_harness_ready"], true);
-        assert_eq!(value["real_handler_harness"]["status"], "blocked");
-        assert_eq!(value["real_handler_harness"]["handler_implemented"], true);
+        assert_eq!(value["real_handler_harness"]["status"], "not_implemented");
+        assert_eq!(value["real_handler_harness"]["handler_implemented"], false);
         assert_eq!(
             value["real_handler_harness"]["store_write_attempted"],
             false
@@ -49367,8 +49380,8 @@
             value["post_route_count"]
         );
         assert_eq!(value["all_evidence_contracts_ready"], true);
-        assert_eq!(value["real_handler_implemented_count"], 3);
-        assert_eq!(value["real_handler_ready_count"], 3);
+        assert_eq!(value["real_handler_implemented_count"], 0);
+        assert_eq!(value["real_handler_ready_count"], 0);
         assert_eq!(value["all_real_handlers_blocked"], true);
         assert_eq!(value["raw_request_body_exposed"], false);
         assert_eq!(value["raw_idempotency_key_exposed"], false);
@@ -49385,8 +49398,8 @@
                 .iter()
                 .any(|route| route["pattern"] == "/api/tasks/publish"
                     && route["allowlisted_for_real_handler"] == true
-                    && route["real_handler_implemented"] == true
-                    && route["blocked_reason"] == "real_handler_gate_disabled")
+                    && route["real_handler_implemented"] == false
+                    && route["blocked_reason"] == "real_handler_not_wired")
         );
     }
 
@@ -49467,19 +49480,19 @@
         let value: serde_json::Value = serde_json::from_str(&body).expect("activation plan json");
 
         assert_eq!(value["runtime"], "hepta");
-        assert_eq!(value["status"], "ready");
+        assert_eq!(value["status"], "attention");
         assert_eq!(value["native_route"], true);
         assert_eq!(value["compatibility_mode"], "native_post_activation_plan");
         assert_eq!(value["side_effect_free"], true);
-        assert_eq!(value["activation_preflight_ready"], true);
+        assert_eq!(value["activation_preflight_ready"], false);
         assert_eq!(value["activation_currently_enabled"], false);
         assert_eq!(
             value["activation_blocked_reason"],
-            "real_handler_gate_disabled"
+            "real_handler_not_implemented"
         );
         assert_eq!(value["handler_candidate_count"], 3);
-        assert_eq!(value["handler_implemented_count"], 3);
-        assert_eq!(value["all_handlers_implemented"], true);
+        assert_eq!(value["handler_implemented_count"], 0);
+        assert_eq!(value["all_handlers_implemented"], false);
         assert_eq!(
             value["handler_scope_env"],
             NATIVE_POST_REAL_HANDLER_SCOPE_ENV
@@ -49499,7 +49512,7 @@
         assert_eq!(value["store_contracts_ready"], true);
         assert_eq!(value["store_jsonl_valid"], true);
         assert_eq!(value["store_capacity_ok"], true);
-        assert_eq!(value["rollback_ready"], true);
+        assert_eq!(value["rollback_ready"], false);
         assert_eq!(value["rollback_anchor_required"], true);
         assert_eq!(value["rollback_store_file"], "rollback.jsonl");
         assert_eq!(value["rollback_schema_id"], "hepta.post.rollback_anchor.v1");
@@ -49602,7 +49615,7 @@
             serde_json::from_str(&body).expect("gray release evidence json");
 
         assert_eq!(value["runtime"], "hepta");
-        assert_eq!(value["status"], "staged");
+        assert_eq!(value["status"], "attention");
         assert_eq!(value["native_route"], true);
         assert_eq!(
             value["compatibility_mode"],
@@ -49620,10 +49633,13 @@
         assert_eq!(value["handler_scope"], serde_json::Value::Null);
         assert_eq!(value["selected_handler_count"], 0);
         assert_eq!(value["single_handler_scope_ready"], false);
-        assert_eq!(value["activation_preflight_ready"], true);
+        assert_eq!(value["activation_preflight_ready"], false);
         assert_eq!(value["activation_currently_enabled"], false);
         assert_eq!(value["gray_release_ready"], false);
-        assert_eq!(value["gray_release_phase"], "handler_scope_not_single");
+        assert_eq!(
+            value["gray_release_phase"],
+            "activation_preflight_not_ready"
+        );
         assert_eq!(
             value["selected_handler_evidence"]["dry_run_record_present"],
             false
@@ -49749,41 +49765,25 @@
             temp.path(),
         );
 
-        assert_eq!(execution_admission.admission_status, "harness_ready");
-        assert!(execution_admission.current_plan_executes_real_handler);
+        assert_eq!(execution_admission.admission_status, "blocked");
+        assert!(!execution_admission.current_plan_executes_real_handler);
         assert!(execution_admission.operator_approval_enabled);
-        assert_eq!(
-            execution_admission.blocked_reason,
-            "real_handler_harness_dry_run_only"
-        );
-        assert_eq!(harness.status, "dry_run_recorded");
+        assert_eq!(execution_admission.blocked_reason, "real_handler_not_wired");
+        assert_eq!(harness.status, "not_implemented");
         assert_eq!(harness.handler_kind, "task_publish");
         assert!(harness.dry_run_only);
-        assert!(harness.handler_implemented);
+        assert!(!harness.handler_implemented);
         assert!(harness.dual_gate_satisfied);
-        assert!(harness.capacity_check_performed);
-        assert!(harness.store_capacity_ok);
-        assert!(harness.store_write_attempted);
-        assert!(harness.store_write_succeeded);
+        assert!(!harness.capacity_check_performed);
+        assert!(!harness.store_capacity_ok);
+        assert!(!harness.store_write_attempted);
+        assert!(!harness.store_write_succeeded);
         assert!(!harness.task_published);
         assert!(!harness.external_side_effects);
         assert!(!harness.raw_request_body_exposed);
         assert!(!harness.raw_idempotency_key_exposed);
-        let report = harness
-            .store_write_report
-            .as_ref()
-            .expect("store write report");
-        assert_eq!(report.status, "written");
-        assert_eq!(report.written_file_count, 4);
-        for file in &report.written_files {
-            let content = std::fs::read_to_string(file).expect("read store file");
-            assert!(content.contains("hepta.post.execution_store_record.v1"));
-            assert!(content.contains("task_publish"));
-            assert!(content.contains(fingerprint));
-            assert!(content.contains("\"current_plan_executes_real_handler\":true"));
-            assert!(!content.contains("secret task text"));
-            assert!(!content.contains("secret-idem"));
-        }
+        assert!(harness.store_write_report.is_none());
+        assert!(!temp.path().join("idempotency.jsonl").exists());
     }
 
     #[test]
@@ -49887,28 +49887,16 @@
             temp.path(),
         );
 
-        assert_eq!(first.status, "dry_run_recorded");
-        assert!(first.store_write_succeeded);
-        assert_eq!(second.status, "duplicate_suppressed");
-        assert!(second.duplicate_check_performed);
-        assert!(second.duplicate_found);
-        assert!(second.duplicate_suppressed);
+        assert_eq!(first.status, "not_implemented");
+        assert!(!first.store_write_succeeded);
+        assert_eq!(second.status, "not_implemented");
+        assert!(!second.duplicate_check_performed);
+        assert!(!second.duplicate_found);
+        assert!(!second.duplicate_suppressed);
         assert!(!second.store_write_attempted);
         assert!(!second.store_write_succeeded);
         assert!(second.store_write_report.is_none());
-        let idempotency_content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
-            .expect("idempotency store");
-        assert_eq!(idempotency_content.lines().count(), 1);
-        assert!(
-            idempotency_content.contains(
-                idempotency_evidence
-                    .key_fingerprint
-                    .as_deref()
-                    .expect("fingerprint")
-            )
-        );
-        assert!(!idempotency_content.contains("secret duplicate task"));
-        assert!(!idempotency_content.contains("secret-duplicate-idem"));
+        assert!(!temp.path().join("idempotency.jsonl").exists());
     }
 
     #[test]
@@ -49976,25 +49964,19 @@
             temp.path(),
         );
 
-        assert_eq!(first.status, "dry_run_recorded");
-        assert!(first.rate_limit_check_performed);
+        assert_eq!(first.status, "not_implemented");
+        assert!(!first.rate_limit_check_performed);
         assert!(!first.rate_limited);
-        assert_eq!(second.status, "rate_limited");
-        assert!(second.duplicate_check_performed);
+        assert_eq!(second.status, "not_implemented");
+        assert!(!second.duplicate_check_performed);
         assert!(!second.duplicate_found);
-        assert!(second.rate_limit_check_performed);
-        assert!(second.rate_limited);
-        assert!(second.rate_limit_suppressed);
+        assert!(!second.rate_limit_check_performed);
+        assert!(!second.rate_limited);
+        assert!(!second.rate_limit_suppressed);
         assert!(!second.store_write_attempted);
         assert!(!second.store_write_succeeded);
         assert!(second.store_write_report.is_none());
-        let rate_limit_content = std::fs::read_to_string(temp.path().join("rate-limit.jsonl"))
-            .expect("rate-limit store");
-        assert_eq!(rate_limit_content.lines().count(), 1);
-        assert!(!rate_limit_content.contains("secret first task"));
-        assert!(!rate_limit_content.contains("secret second task"));
-        assert!(!rate_limit_content.contains("secret-first-idem"));
-        assert!(!rate_limit_content.contains("secret-second-idem"));
+        assert!(!temp.path().join("rate-limit.jsonl").exists());
     }
 
     #[test]
@@ -50021,7 +50003,7 @@
         ];
         let temp = tempfile::tempdir().expect("tempdir");
 
-        for (plan_kind, body, raw_secret, raw_idempotency_key) in candidates {
+        for (plan_kind, body, _raw_secret, _raw_idempotency_key) in candidates {
             let spec = native_post_plan_route_specs()
                 .iter()
                 .find(|spec| spec.plan_kind == plan_kind)
@@ -50055,37 +50037,28 @@
             );
 
             assert_eq!(body_admission.admission_status, "ready_for_real_handler");
-            assert!(native_post_plan_kind_has_real_handler(plan_kind));
-            assert_eq!(execution_admission.admission_status, "harness_ready");
-            assert!(execution_admission.current_plan_executes_real_handler);
-            assert_eq!(harness.status, "dry_run_recorded");
+            assert!(!native_post_plan_kind_has_real_handler(plan_kind));
+            assert_eq!(execution_admission.admission_status, "blocked");
+            assert!(!execution_admission.current_plan_executes_real_handler);
+            assert_eq!(
+                execution_admission.blocked_reason,
+                "real_handler_not_wired"
+            );
+            assert_eq!(harness.status, "not_implemented");
             assert_eq!(harness.handler_kind, plan_kind);
-            assert!(harness.handler_implemented);
+            assert!(!harness.handler_implemented);
             assert!(harness.dry_run_only);
-            assert!(harness.store_write_attempted);
-            assert!(harness.store_write_succeeded);
+            assert!(!harness.store_write_attempted);
+            assert!(!harness.store_write_succeeded);
             assert!(!harness.task_published);
             assert!(!harness.message_sent);
             assert!(!harness.external_side_effects);
             assert!(!harness.raw_request_body_exposed);
             assert!(!harness.raw_idempotency_key_exposed);
-
-            let report = harness
-                .store_write_report
-                .as_ref()
-                .expect("store write report");
-            assert_eq!(report.written_file_count, 4);
-            for file in &report.written_files {
-                let content = std::fs::read_to_string(file).expect("read store file");
-                assert!(content.contains(plan_kind));
-                assert!(!content.contains(raw_secret));
-                assert!(!content.contains(raw_idempotency_key));
-            }
+            assert!(harness.store_write_report.is_none());
         }
 
-        let idempotency_content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
-            .expect("idempotency store");
-        assert_eq!(idempotency_content.lines().count(), candidates.len());
+        assert!(!temp.path().join("idempotency.jsonl").exists());
     }
 
     #[test]
@@ -50128,11 +50101,8 @@
         assert!(!execution_admission.current_plan_executes_real_handler);
         assert!(execution_admission.enablement_gate_enabled);
         assert!(!execution_admission.operator_approval_enabled);
-        assert_eq!(
-            execution_admission.blocked_reason,
-            "operator_approval_required"
-        );
-        assert_eq!(harness.status, "blocked");
+        assert_eq!(execution_admission.blocked_reason, "real_handler_not_wired");
+        assert_eq!(harness.status, "not_implemented");
         assert!(!harness.dual_gate_satisfied);
         assert!(!harness.store_write_attempted);
         assert!(!harness.store_write_succeeded);
@@ -50189,13 +50159,13 @@
         assert_eq!(mismatched_admission.admission_status, "blocked");
         assert!(!mismatched_admission.current_plan_executes_real_handler);
         assert!(mismatched_admission.handler_scope_configured);
-        assert!(mismatched_admission.handler_scope_required);
+        assert!(!mismatched_admission.handler_scope_required);
         assert!(!mismatched_admission.handler_scope_matches);
         assert_eq!(
             mismatched_admission.blocked_reason,
-            "handler_scope_not_selected"
+            "real_handler_not_wired"
         );
-        assert_eq!(mismatched_harness.status, "blocked");
+        assert_eq!(mismatched_harness.status, "not_implemented");
         assert!(mismatched_harness.handler_scope_configured);
         assert!(!mismatched_harness.handler_scope_matches);
         assert!(!mismatched_harness.store_write_attempted);
@@ -50211,17 +50181,14 @@
             temp.path(),
         );
 
-        assert_eq!(matched_admission.admission_status, "harness_ready");
+        assert_eq!(matched_admission.admission_status, "blocked");
         assert!(matched_admission.handler_scope_matches);
-        assert_eq!(matched_harness.status, "dry_run_recorded");
+        assert_eq!(matched_admission.blocked_reason, "real_handler_not_wired");
+        assert_eq!(matched_harness.status, "not_implemented");
         assert!(matched_harness.handler_scope_matches);
-        assert!(matched_harness.store_write_attempted);
-        assert!(matched_harness.store_write_succeeded);
-        let content = std::fs::read_to_string(temp.path().join("idempotency.jsonl"))
-            .expect("idempotency store");
-        assert!(content.contains("task_publish"));
-        assert!(!content.contains("secret scoped task"));
-        assert!(!content.contains("secret-scoped-idem"));
+        assert!(!matched_harness.store_write_attempted);
+        assert!(!matched_harness.store_write_succeeded);
+        assert!(!temp.path().join("idempotency.jsonl").exists());
     }
 
     #[test]
@@ -50374,8 +50341,11 @@
             true,
             true,
         );
-        assert_eq!(before.status, "staged");
-        assert_eq!(before.gray_release_phase, "awaiting_scoped_dry_run_record");
+        assert_eq!(before.status, "attention");
+        assert_eq!(
+            before.gray_release_phase,
+            "activation_preflight_not_ready"
+        );
         assert!(!before.gray_release_ready);
         assert!(!before.selected_handler_evidence_ready);
 
@@ -50389,28 +50359,21 @@
             true,
         );
 
-        assert_eq!(report.status, "ready");
-        assert_eq!(report.gray_release_phase, "gray_release_ready");
-        assert!(report.activation_currently_enabled);
-        assert!(report.single_handler_scope_ready);
+        assert_eq!(report.status, "attention");
         assert_eq!(
-            report.selected_handler_kind.as_deref(),
-            Some("task_publish")
+            report.gray_release_phase,
+            "activation_preflight_not_ready"
         );
-        assert!(report.gray_release_evidence_ready);
-        assert!(report.selected_handler_evidence_ready);
-        assert!(report.gray_release_ready);
-        assert_eq!(report.selected_handler_evidence.record_count, 1);
-        assert_eq!(report.selected_handler_evidence.dry_run_record_count, 1);
-        assert_eq!(report.selected_handler_evidence.rollback_anchor_count, 1);
-        assert_eq!(
-            report
-                .selected_handler_evidence
-                .latest_record
-                .as_ref()
-                .and_then(|record| record.plan_kind.as_deref()),
-            Some("task_publish")
-        );
+        assert!(!report.activation_currently_enabled);
+        assert!(!report.single_handler_scope_ready);
+        assert!(report.selected_handler_kind.is_none());
+        assert!(!report.gray_release_evidence_ready);
+        assert!(!report.selected_handler_evidence_ready);
+        assert!(!report.gray_release_ready);
+        assert_eq!(report.selected_handler_evidence.record_count, 0);
+        assert_eq!(report.selected_handler_evidence.dry_run_record_count, 0);
+        assert_eq!(report.selected_handler_evidence.rollback_anchor_count, 0);
+        assert!(report.selected_handler_evidence.latest_record.is_none());
         assert!(!report.raw_request_body_exposed);
         assert!(!report.raw_idempotency_key_exposed);
         let rollback_content =
@@ -50520,10 +50483,10 @@
         assert_eq!(value["post_execution_stores_ready"], true);
         assert_eq!(value["post_execution_stores"]["status"], "ready");
         assert_eq!(value["post_activation_plan_ready"], true);
-        assert_eq!(value["post_activation_plan"]["status"], "ready");
+        assert_eq!(value["post_activation_plan"]["status"], "attention");
         assert_eq!(
             value["post_activation_plan"]["activation_preflight_ready"],
-            true
+            false
         );
         assert_eq!(
             value["post_activation_plan"]["activation_currently_enabled"],
@@ -50531,11 +50494,14 @@
         );
         assert_eq!(
             value["post_activation_plan"]["activation_blocked_reason"],
-            "real_handler_gate_disabled"
+            "real_handler_not_implemented"
         );
-        assert_eq!(value["post_activation_plan"]["rollback_ready"], true);
+        assert_eq!(value["post_activation_plan"]["rollback_ready"], false);
         assert_eq!(value["post_gray_release_evidence_ready"], true);
-        assert_eq!(value["post_gray_release_evidence"]["status"], "staged");
+        assert_eq!(
+            value["post_gray_release_evidence"]["status"],
+            "attention"
+        );
         assert_eq!(
             value["post_gray_release_evidence"]["gray_release_ready"],
             false
@@ -50603,13 +50569,13 @@
         assert_eq!(value["missing_route_count"], 0);
         assert_eq!(
             value["evidence_scope"],
-            "static route registration and handler parity only"
+            "typed route registration, compatibility-handler serialization, production ingress availability, and real-socket test coverage"
         );
         assert_eq!(value["live_product_complete"], false);
         assert!(value["legacy_source"]
             .as_str()
             .expect("legacy source")
-            .contains("not browser behavior"));
+            .contains("quarantined legacy GET effects"));
     }
 
     #[test]

@@ -19,6 +19,12 @@ use std::time::SystemTime;
 use anyhow::Context;
 #[cfg(feature = "codex-in-process-runner")]
 use codex_arg0::Arg0DispatchPaths;
+pub(crate) use hepta_authority::TELEGRAM_DELIVERY_APPROVED_ENV;
+pub(crate) use hepta_authority::TELEGRAM_LIVE_READ_ENV;
+pub(crate) use hepta_authority::TELEGRAM_MODEL_TURN_GATE_ENV;
+pub(crate) use hepta_authority::TELEGRAM_POLL_LOOP_ENV;
+pub(crate) use hepta_authority::TELEGRAM_SEND_GATE_ENV;
+use hepta_authority::parse_gate_truthy;
 pub(crate) use hepta_gateway::NativeTelegramConfigStatus;
 pub(crate) use hepta_gateway::NativeTelegramConfigStatusInput;
 pub(crate) use hepta_gateway::NativeTelegramCursorPlan;
@@ -86,7 +92,6 @@ use hepta_gateway::native_telegram_hepta_kernel_prompt;
 use hepta_gateway::native_telegram_mlx_chat_completion_body;
 use hepta_gateway::native_telegram_model_failure_fallback_message;
 use hepta_gateway::native_telegram_model_timeout;
-use hepta_gateway::parse_telegram_env_truthy_value;
 use hepta_gateway::parse_telegram_env_u64_value;
 use hepta_gateway::plan_telegram_drain_once_api_result;
 use hepta_gateway::plan_telegram_drain_once_preflight;
@@ -148,11 +153,6 @@ const LOCAL_IMPORT_CONFIG_PATH: &str = ".hepta/local-import/private/config/openc
 const LOCAL_IMPORT_MANIFEST_PATH: &str = ".hepta/local-import/manifest.json";
 pub(crate) const TELEGRAM_INGRESS_CURSOR_PATH: &str = ".hepta/telegram/ingress-drain-cursor.json";
 pub(crate) const TELEGRAM_DELIVERY_LEDGER_PATH: &str = ".hepta/telegram/delivery-ledger.jsonl";
-pub(crate) const TELEGRAM_LIVE_READ_ENV: &str = "HEPTA_NATIVE_TELEGRAM_LIVE_READ";
-pub(crate) const TELEGRAM_MODEL_TURN_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_MODEL_TURN";
-pub(crate) const TELEGRAM_SEND_GATE_ENV: &str = "HEPTA_NATIVE_TELEGRAM_SEND";
-pub(crate) const TELEGRAM_POLL_LOOP_ENV: &str = "HEPTA_NATIVE_TELEGRAM_POLL_LOOP";
-pub(crate) const TELEGRAM_DELIVERY_APPROVED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_DELIVERY_APPROVED";
 pub(crate) const TELEGRAM_IN_PROCESS_MODEL_RUNNER_ENV: &str =
     "HEPTA_NATIVE_TELEGRAM_IN_PROCESS_MODEL_RUNNER";
 pub(crate) const TELEGRAM_HEPTA_KERNEL_RUNNER_ENV: &str =
@@ -1429,7 +1429,7 @@ fn call_telegram_send_chat_action(token: &str, chat_id: i64) -> Result<Value, St
 
 fn env_truthy(name: &str) -> bool {
     env::var(name)
-        .map(|value| parse_telegram_env_truthy_value(&value))
+        .map(|value| parse_gate_truthy(&value))
         .unwrap_or(false)
 }
 
@@ -1842,9 +1842,7 @@ fn run_mlx_local_chat_completion(
         .ok_or_else(|| "Telegram MLX runner requires a max token limit".to_string())?;
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let body = native_telegram_mlx_chat_completion_body(model, prompt, max_tokens)?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(telegram_model_timeout())
-        .build()
+    let client = hepta_gateway::bounded_blocking_http_client(telegram_model_timeout())
         .map_err(|error| format!("failed to build local MLX model client: {error}"))?;
     let response = client.post(endpoint).json(&body).send().map_err(|error| {
         format!(
@@ -1953,13 +1951,13 @@ pub(crate) fn telegram_hepta_kernel_runner_enabled() -> bool {
 
 fn telegram_hepta_intelligence_context_enabled() -> bool {
     env::var(TELEGRAM_HEPTA_INTELLIGENCE_CONTEXT_ENV)
-        .map(|value| parse_telegram_env_truthy_value(&value))
+        .map(|value| parse_gate_truthy(&value))
         .unwrap_or(true)
 }
 
 fn telegram_plugin_capability_context_enabled() -> bool {
     env::var(TELEGRAM_PLUGIN_CAPABILITY_CONTEXT_ENV)
-        .map(|value| parse_telegram_env_truthy_value(&value))
+        .map(|value| parse_gate_truthy(&value))
         .unwrap_or(true)
 }
 

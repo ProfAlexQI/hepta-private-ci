@@ -118,7 +118,7 @@ fn unique_header<'a>(request: &'a str, expected_name: &str) -> Result<Option<&'a
                 return Err(());
             }
             let value = value.trim();
-            if value.is_empty() || value.chars().any(|character| character.is_control()) {
+            if value.is_empty() || value.chars().any(char::is_control) {
                 return Err(());
             }
             result = Some(value);

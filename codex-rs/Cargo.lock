@@ -2059,6 +2059,7 @@ dependencies = [
  "core_test_support",
  "flate2",
  "futures",
+ "hepta-authority",
  "hepta-runtime",
  "hmac 0.12.1",
  "opentelemetry",
@@ -7471,6 +7472,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "hepta-authority"
+version = "0.0.0"
+
+[[package]]
 name = "hepta-cli"
 version = "0.0.0"
 dependencies = [
@@ -7567,8 +7572,11 @@ name = "hepta-native-gateway"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "codex-arg0",
  "codex-exec",
+ "flate2",
+ "hepta-authority",
  "hepta-contracts",
  "hepta-core",
  "hepta-gateway",

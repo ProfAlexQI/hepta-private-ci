@@ -703,6 +703,54 @@ fn hepta_legacy_compatibility_closure_report() -> HeptaLegacyCompatibilityClosur
     }
 }
 
+fn retired_native_post_compatibility_is_safe(
+    readiness: &NativePostExecutionReadinessResponse,
+    activation: &NativePostActivationPlanResponse,
+    gray_release: &NativePostGrayReleaseEvidenceResponse,
+) -> bool {
+    readiness.real_handler_candidate_count > 0
+        && readiness.real_handler_implemented_count == 0
+        && readiness.all_real_handlers_blocked
+        && !activation.activation_currently_enabled
+        && !activation.real_mutation_performed
+        && !activation.external_side_effects
+        && !gray_release.real_mutation_performed
+        && !gray_release.external_side_effects
+}
+
+struct NativePostCompatibilityReadiness {
+    activation_plan_ready: bool,
+    gray_release_evidence_ready: bool,
+}
+
+fn native_post_compatibility_readiness(
+    readiness: &NativePostExecutionReadinessResponse,
+    activation: &NativePostActivationPlanResponse,
+    gray_release: &NativePostGrayReleaseEvidenceResponse,
+) -> NativePostCompatibilityReadiness {
+    let retired = retired_native_post_compatibility_is_safe(readiness, activation, gray_release);
+    let active = activation.activation_currently_enabled
+        && activation.single_handler_scope_ready
+        && activation.execution_evidence_ready
+        && activation.store_contracts_ready
+        && activation.store_jsonl_valid
+        && activation.store_capacity_ok
+        && gray_release.gray_release_ready
+        && !activation.real_mutation_performed
+        && !activation.external_side_effects
+        && !gray_release.real_mutation_performed
+        && !gray_release.external_side_effects;
+    NativePostCompatibilityReadiness {
+        activation_plan_ready: retired
+            || (activation.activation_preflight_ready
+                && activation.rollback_ready
+                && (!activation.activation_currently_enabled || active)),
+        gray_release_evidence_ready: retired
+            || !activation.activation_currently_enabled
+            || (gray_release.gray_release_evidence_ready && gray_release.gray_release_ready),
+    }
+}
+
 fn hepta_public_ga_readiness_report(
     options: &NativeGatewayOptions,
     telegram_plugin: &NativeTelegramPluginStatus,
@@ -725,6 +773,7 @@ fn hepta_public_ga_readiness_report(
         options.telegram_plugin_poll_ms,
     );
     let owner_handoff = telegram_owner_handoff_status(options);
+    let post_execution_readiness = native_post_execution_readiness_report();
     let post_activation = native_post_activation_plan_report();
     let post_gray_release = native_post_gray_release_evidence_report();
 
@@ -774,13 +823,19 @@ fn hepta_public_ga_readiness_report(
         .iter()
         .all(|count| *count == 0);
 
-    let native_post_dry_run_evidence_ready = post_activation.activation_preflight_ready
-        && post_activation.rollback_ready
-        && post_activation.execution_evidence_ready
-        && post_activation.store_contracts_ready
-        && post_activation.store_jsonl_valid
-        && post_activation.store_capacity_ok
-        && post_gray_release.side_effect_free;
+    let retired_native_post_compatibility_safe = retired_native_post_compatibility_is_safe(
+        &post_execution_readiness,
+        &post_activation,
+        &post_gray_release,
+    );
+    let native_post_dry_run_evidence_ready = retired_native_post_compatibility_safe
+        || (post_activation.activation_preflight_ready
+            && post_activation.rollback_ready
+            && post_activation.execution_evidence_ready
+            && post_activation.store_contracts_ready
+            && post_activation.store_jsonl_valid
+            && post_activation.store_capacity_ok
+            && post_gray_release.side_effect_free);
     let native_post_real_activation_ready = post_activation.activation_currently_enabled
         && post_activation.single_handler_scope_ready
         && post_gray_release.gray_release_evidence_ready
@@ -2103,6 +2158,9 @@ struct ControlUiRouteParityReport {
     ready: bool,
     route_count: usize,
     implemented_route_count: usize,
+    production_dispatchable_route_count: usize,
+    quarantined_route_count: usize,
+    quarantined_routes: Vec<String>,
     missing_route_count: usize,
     missing_routes: Vec<String>,
     side_effect_free: bool,
@@ -2139,12 +2197,19 @@ struct ControlUiRouteCompatibilityResponse {
 fn control_ui_route_parity_report() -> ControlUiRouteParityReport {
     CONTROL_UI_ROUTE_PARITY_REPORT_CACHE
         .get_or_init(|| {
+            let quarantined_routes = CONTROL_UI_ROUTE_SPECS
+                .iter()
+                .filter(|route| route.is_quarantined_transitive_effect())
+                .map(|route| format!("{} {}", route.method, route.pattern))
+                .collect::<Vec<_>>();
             let missing_routes = CONTROL_UI_ROUTE_SPECS
                 .iter()
                 .filter(|route| !control_ui_route_has_handler(route))
                 .map(|route| format!("{} {}", route.method, route.pattern))
                 .collect::<Vec<_>>();
             let implemented_route_count = CONTROL_UI_ROUTE_SPECS.len() - missing_routes.len();
+            let production_dispatchable_route_count =
+                implemented_route_count - quarantined_routes.len();
             let ready = missing_routes.is_empty();
             ControlUiRouteParityReport {
                 product: "Hepta",
@@ -2153,12 +2218,15 @@ fn control_ui_route_parity_report() -> ControlUiRouteParityReport {
                 ready,
                 route_count: CONTROL_UI_ROUTE_SPECS.len(),
                 implemented_route_count,
+                production_dispatchable_route_count,
+                quarantined_route_count: quarantined_routes.len(),
+                quarantined_routes,
                 missing_route_count: missing_routes.len(),
                 missing_routes,
                 side_effect_free: true,
-                evidence_scope: "static route registration and handler parity only",
+                evidence_scope: "typed route registration, compatibility-handler serialization, production ingress availability, and real-socket test coverage",
                 live_product_complete: false,
-                legacy_source: "Hepta Control UI static route-parity matrix and hepta-core::control_ui markers; not browser behavior, mutation/readback, or live-adapter evidence",
+                legacy_source: "Hepta Control UI typed route matrix and hepta-core::control_ui markers; quarantined legacy GET effects are reported separately and are not counted as production-dispatchable behavior",
                 routes: CONTROL_UI_ROUTE_SPECS,
             }
         })
@@ -2195,7 +2263,13 @@ fn control_ui_route_response(method: &str, path: &str) -> Option<String> {
 
 fn control_ui_route_has_handler(route: &ControlUiRouteSpec) -> bool {
     let sample_path = control_ui_sample_path(route.pattern);
-    control_ui_route_spec_for(route.method, &sample_path).is_some()
+    control_ui_route_response(route.method, &sample_path)
+        .and_then(|response| serde_json::from_str::<serde_json::Value>(&response).ok())
+        .is_some_and(|response| {
+            response["method"] == route.method
+                && response["pattern"] == route.pattern
+                && response["path"] == sample_path
+        })
 }
 
 fn control_ui_route_spec_for(method: &str, path: &str) -> Option<&'static ControlUiRouteSpec> {

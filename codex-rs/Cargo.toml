@@ -82,6 +82,7 @@ members = [
     "utils/absolute-path",
     "utils/cargo-bin",
     "git-utils",
+    "hepta-authority",
     "hepta-contracts",
     "hepta-core",
     "hepta-cli",
@@ -185,6 +186,7 @@ codex-install-context = { path = "install-context" }
 codex-file-search = { path = "file-search" }
 codex-file-watcher = { path = "file-watcher" }
 codex-git-utils = { path = "git-utils" }
+hepta-authority = { path = "hepta-authority" }
 hepta-contracts = { path = "hepta-contracts" }
 hepta-core = { path = "hepta-core" }
 hepta-gateway = { path = "hepta-gateway" }

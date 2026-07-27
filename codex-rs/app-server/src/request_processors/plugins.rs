@@ -12,6 +12,10 @@ use codex_mcp::McpOAuthLoginSupport;
 use codex_mcp::oauth_login_support_with_http_client;
 use codex_mcp::should_retry_without_scopes;
 use codex_rmcp_client::perform_oauth_login_silent;
+use hepta_authority::PLUGIN_SHARE_CHECKOUT_OPERATION;
+use hepta_authority::PLUGIN_SHARE_DELETE_OPERATION;
+use hepta_authority::PLUGIN_SHARE_SAVE_OPERATION;
+use hepta_authority::PLUGIN_SHARE_UPDATE_TARGETS_OPERATION;
 use hepta_runtime::EffectBroker;
 use hepta_runtime::EffectPlan;
 use hepta_runtime::ExactExecutionAuthority;
@@ -914,7 +918,7 @@ impl PluginRequestProcessor {
         let mut lifecycle = match PluginMutationLifecycle::prepare::<PluginShareSaveResponse>(
             request_id,
             config.codex_home.as_path(),
-            "plugin-share-save",
+            PLUGIN_SHARE_SAVE_OPERATION,
             target,
             &PluginShareSaveParams {
                 plugin_path: plugin_path.clone(),
@@ -986,7 +990,7 @@ impl PluginRequestProcessor {
             match PluginMutationLifecycle::prepare::<PluginShareUpdateTargetsResponse>(
                 request_id,
                 config.codex_home.as_path(),
-                "plugin-share-update-targets",
+                PLUGIN_SHARE_UPDATE_TARGETS_OPERATION,
                 &remote_plugin_id,
                 &PluginShareUpdateTargetsParams {
                     remote_plugin_id: remote_plugin_id.clone(),
@@ -1081,7 +1085,7 @@ impl PluginRequestProcessor {
         let mut lifecycle = match PluginMutationLifecycle::prepare::<PluginShareCheckoutResponse>(
             request_id,
             config.codex_home.as_path(),
-            "plugin-share-checkout",
+            PLUGIN_SHARE_CHECKOUT_OPERATION,
             &remote_plugin_id,
             &PluginShareCheckoutParams {
                 remote_plugin_id: remote_plugin_id.clone(),
@@ -1137,7 +1141,7 @@ impl PluginRequestProcessor {
         let mut lifecycle = match PluginMutationLifecycle::prepare::<PluginShareDeleteResponse>(
             request_id,
             config.codex_home.as_path(),
-            "plugin-share-delete",
+            PLUGIN_SHARE_DELETE_OPERATION,
             &remote_plugin_id,
             &PluginShareDeleteParams {
                 remote_plugin_id: remote_plugin_id.clone(),
@@ -1947,7 +1951,7 @@ impl PluginMutationLifecycle {
             .record_effect_plan(plan)
             .map_err(plugin_lifecycle_error)?;
         let journal =
-            PluginMutationJournal::new(codex_home.join("hepta-plugin-mutation-journal.json"));
+            PluginMutationJournal::for_codex_home(codex_home).map_err(plugin_journal_error)?;
         let envelope = PluginMutationEnvelope {
             request_binding: request_binding.clone(),
             operation: operation.to_string(),

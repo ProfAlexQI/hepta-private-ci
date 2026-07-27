@@ -149,7 +149,8 @@ pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_APPROVAL_ENV: &str =
     "HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED";
 pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_SCOPE_ENV: &str =
     "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE";
-pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] =
+pub const HEPTA_KERNEL_NATIVE_POST_REAL_HANDLER_PLAN_KINDS: &[&str] = &[];
+pub const HEPTA_KERNEL_NATIVE_POST_COMPATIBILITY_HARNESS_PLAN_KINDS: &[&str] =
     &["approval_apply", "task_publish", "chat_send"];
 pub const HEPTA_KERNEL_NATIVE_POST_EXECUTION_READINESS_ENDPOINT: &str =
     "/api/native-post-execution-readiness";
@@ -1891,7 +1892,7 @@ pub fn hepta_kernel_native_post_execution_readiness_report(
         model_invoked: false,
         message_sent: false,
         cursor_written: false,
-        next_migration_slice: "activate the task-publish real-handler harness only under dual gate plus operator approval, then keep expanding one handler at a time",
+        next_migration_slice: "keep legacy control-UI POST routes plan-only; use governed plugin, preference, operator-note, or Telegram authority entrypoints for real effects",
     }
 }
 
@@ -1920,6 +1921,7 @@ fn hepta_kernel_native_post_execution_readiness_route(
         rate_limit_contract_ready: true,
         execution_evidence_contract_ready,
         ready_for_real_handler_wiring: allowlisted_for_real_handler
+            && real_handler_implemented
             && execution_evidence_contract_ready,
         current_plan_executes_real_handler: false,
         real_handler_implemented,
@@ -2110,6 +2112,28 @@ pub fn hepta_kernel_native_post_real_handler_harness(
     store_write_report: Option<HeptaKernelNativePostExecutionStoreWriteReport>,
     store_write_error: Option<&'static str>,
 ) -> HeptaKernelNativePostRealHandlerHarness {
+    let observation_allowed = execution_admission.current_plan_executes_real_handler;
+    let duplicate_check_performed = observation_allowed && duplicate_check_performed;
+    let duplicate_found = duplicate_check_performed && duplicate_found;
+    let duplicate_check_error = observation_allowed
+        .then_some(duplicate_check_error)
+        .flatten();
+    let rate_limit_check_performed = observation_allowed && rate_limit_check_performed;
+    let rate_limited = rate_limit_check_performed && rate_limited;
+    let rate_limit_check_error = observation_allowed
+        .then_some(rate_limit_check_error)
+        .flatten();
+    let capacity_check_performed = observation_allowed && capacity_check_performed;
+    let store_capacity_ok = observation_allowed && store_capacity_ok;
+    let store_capacity_check_error = observation_allowed
+        .then_some(store_capacity_check_error)
+        .flatten();
+    let store_write_attempted = observation_allowed && store_write_attempted;
+    let store_write_succeeded = store_write_attempted && store_write_succeeded;
+    let store_write_report = store_write_succeeded
+        .then_some(store_write_report)
+        .flatten();
+    let store_write_error = observation_allowed.then_some(store_write_error).flatten();
     let duplicate_suppressed = duplicate_check_performed && duplicate_found;
     let dual_gate_satisfied = execution_admission.enablement_gate_enabled
         && execution_admission.operator_approval_enabled;
@@ -2296,7 +2320,7 @@ pub fn hepta_kernel_native_post_plan_response(
         telegram_read_performed: false,
         message_sent: false,
         cursor_written: false,
-        next_migration_slice: "replace dry-run response with first real handler only after idempotency/audit/rollback stores are active",
+        next_migration_slice: "legacy control-UI POST remains compatibility-plan-only; use the governed mutation registry for real effects",
     }
 }
 
@@ -7194,15 +7218,19 @@ mod tests {
             Some(None)
         );
         assert!(task_publish.confirmation_required_for_real_mutation);
-        assert!(hepta_kernel_native_post_plan_kind_has_real_handler(
+        assert!(!hepta_kernel_native_post_plan_kind_has_real_handler(
             task_publish.plan_kind
         ));
-        assert!(hepta_kernel_native_post_plan_kind_has_real_handler(
+        assert!(!hepta_kernel_native_post_plan_kind_has_real_handler(
             "approval_apply"
         ));
         assert!(!hepta_kernel_native_post_plan_kind_has_real_handler(
             "readonly_command"
         ));
+        assert_eq!(
+            HEPTA_KERNEL_NATIVE_POST_COMPATIBILITY_HARNESS_PLAN_KINDS,
+            ["approval_apply", "task_publish", "chat_send"]
+        );
     }
 
     #[test]
@@ -7347,7 +7375,7 @@ mod tests {
             Some("task_publish"),
         );
         assert_eq!(mismatched.admission_status, "blocked");
-        assert_eq!(mismatched.blocked_reason, "handler_scope_not_selected");
+        assert_eq!(mismatched.blocked_reason, "real_handler_not_wired");
         assert!(!mismatched.current_plan_executes_real_handler);
         assert!(!hepta_kernel_native_post_duplicate_check_required(
             &mismatched,
@@ -7367,15 +7395,15 @@ mod tests {
             true,
             Some("task_publish, chat_send"),
         );
-        assert_eq!(matched.admission_status, "harness_ready");
-        assert_eq!(matched.blocked_reason, "real_handler_harness_dry_run_only");
-        assert!(matched.current_plan_executes_real_handler);
+        assert_eq!(matched.admission_status, "blocked");
+        assert_eq!(matched.blocked_reason, "real_handler_not_wired");
+        assert!(!matched.current_plan_executes_real_handler);
         assert!(matched.handler_scope_matches);
-        assert!(hepta_kernel_native_post_duplicate_check_required(
+        assert!(!hepta_kernel_native_post_duplicate_check_required(
             &matched,
             &idempotency
         ));
-        assert!(hepta_kernel_native_post_rate_limit_check_required(
+        assert!(!hepta_kernel_native_post_rate_limit_check_required(
             &matched, true, false, None
         ));
         assert!(!hepta_kernel_native_post_rate_limit_check_required(
@@ -7387,7 +7415,7 @@ mod tests {
             false,
             Some("native_post_idempotency_check_failed")
         ));
-        assert!(hepta_kernel_native_post_store_capacity_check_required(
+        assert!(!hepta_kernel_native_post_store_capacity_check_required(
             &matched, true, false, None, false, None
         ));
         assert!(!hepta_kernel_native_post_store_capacity_check_required(
@@ -7414,10 +7442,10 @@ mod tests {
             "approval_apply chat_send",
         ));
 
-        assert_eq!(selected, vec!["approval_apply", "chat_send"]);
+        assert!(selected.is_empty());
         assert_eq!(
             hepta_kernel_native_post_real_handler_scope_single_selected_kind(Some("task_publish")),
-            Some("task_publish")
+            None
         );
         assert_eq!(
             hepta_kernel_native_post_real_handler_scope_single_selected_kind(Some(
@@ -7453,16 +7481,17 @@ mod tests {
         );
         assert_eq!(report.post_route_count, 12);
         assert_eq!(report.real_handler_candidate_count, 3);
-        assert_eq!(report.real_handler_implemented_count, 3);
-        assert_eq!(report.selected_handler_count, 2);
+        assert_eq!(report.real_handler_implemented_count, 0);
+        assert_eq!(report.real_handler_ready_count, 0);
+        assert_eq!(report.selected_handler_count, 0);
         assert!(report.all_real_handlers_blocked);
         assert!(!report.real_handler_gate_enabled);
         assert!(!report.external_side_effects);
         assert!(!report.gateway_mutation_performed);
         assert!(report.routes.iter().any(|route| {
             route.plan_kind == "task_publish"
-                && route.ready_for_real_handler_wiring
-                && route.blocked_reason == "real_handler_gate_disabled"
+                && !route.ready_for_real_handler_wiring
+                && route.blocked_reason == "real_handler_not_wired"
         }));
     }
 
@@ -7477,19 +7506,19 @@ mod tests {
             true,
             true,
         );
-        assert_eq!(gated.status, "ready");
+        assert_eq!(gated.status, "attention");
         assert_eq!(
             gated.endpoint,
             HEPTA_KERNEL_NATIVE_POST_ACTIVATION_PLAN_ENDPOINT
         );
-        assert!(gated.activation_preflight_ready);
+        assert!(!gated.activation_preflight_ready);
         assert!(!gated.activation_currently_enabled);
         assert_eq!(
             gated.activation_blocked_reason,
-            "real_handler_gate_disabled"
+            "real_handler_not_implemented"
         );
-        assert!(gated.rollback_ready);
-        assert_eq!(gated.selected_handler_kinds, vec!["task_publish"]);
+        assert!(!gated.rollback_ready);
+        assert!(gated.selected_handler_kinds.is_empty());
         assert_eq!(gated.required_gates.len(), 3);
         assert!(!gated.external_side_effects);
         assert!(!gated.gateway_mutation_performed);
@@ -7503,10 +7532,10 @@ mod tests {
             true,
             true,
         );
-        assert!(live_ready.activation_currently_enabled);
+        assert!(!live_ready.activation_currently_enabled);
         assert_eq!(
             live_ready.activation_blocked_reason,
-            "single_handler_scope_satisfied_dry_run_harness_only"
+            "real_handler_not_implemented"
         );
 
         let ambiguous_scope = hepta_kernel_native_post_activation_plan_report(
@@ -7521,7 +7550,7 @@ mod tests {
         assert!(!ambiguous_scope.activation_currently_enabled);
         assert_eq!(
             ambiguous_scope.activation_blocked_reason,
-            "handler_scope_not_single"
+            "real_handler_not_implemented"
         );
     }
 
@@ -7687,19 +7716,16 @@ mod tests {
             },
         );
 
-        assert_eq!(recorded.status, "dry_run_recorded");
+        assert_eq!(recorded.status, "not_implemented");
         assert_eq!(recorded.handler_kind, "task_publish");
         assert!(recorded.dual_gate_satisfied);
         assert!(recorded.handler_scope_matches);
-        assert!(recorded.store_write_succeeded);
-        assert_eq!(
-            recorded
-                .store_write_report
-                .as_ref()
-                .unwrap()
-                .written_file_count,
-            4
-        );
+        assert!(!recorded.duplicate_check_performed);
+        assert!(!recorded.rate_limit_check_performed);
+        assert!(!recorded.capacity_check_performed);
+        assert!(!recorded.store_write_attempted);
+        assert!(!recorded.store_write_succeeded);
+        assert!(recorded.store_write_report.is_none());
         assert!(!recorded.raw_request_body_exposed);
         assert!(!recorded.gateway_mutation_performed);
 
@@ -7724,8 +7750,9 @@ mod tests {
             },
         );
 
-        assert_eq!(duplicate.status, "duplicate_suppressed");
-        assert!(duplicate.duplicate_suppressed);
+        assert_eq!(duplicate.status, "not_implemented");
+        assert!(!duplicate.duplicate_suppressed);
+        assert!(!duplicate.duplicate_check_performed);
         assert!(!duplicate.store_write_attempted);
     }
 
@@ -7797,13 +7824,13 @@ mod tests {
         assert_eq!(response.pattern, "/api/tasks/publish");
         assert_eq!(response.parameter_length, Some("redacted-param".len()));
         assert!(response.parameter_redacted);
-        assert!(!response.side_effect_free);
-        assert!(response.real_handler_harness.store_write_attempted);
-        assert!(response.idempotency_evidence.current_plan_lookup_performed);
-        assert!(response.idempotency_evidence.current_plan_store_written);
-        assert!(response.audit_event_contract.current_plan_emits_audit_event);
+        assert!(response.side_effect_free);
+        assert!(!response.real_handler_harness.store_write_attempted);
+        assert!(!response.idempotency_evidence.current_plan_lookup_performed);
+        assert!(!response.idempotency_evidence.current_plan_store_written);
+        assert!(!response.audit_event_contract.current_plan_emits_audit_event);
         assert!(
-            response
+            !response
                 .audit_event_contract
                 .current_plan_persists_audit_event
         );
@@ -8369,8 +8396,8 @@ not-json
             report.endpoint,
             HEPTA_KERNEL_NATIVE_POST_ROLLOUT_EVIDENCE_ENDPOINT
         );
-        assert!(report.single_handler_scope_ready);
-        assert_eq!(report.selected_handler_kinds, vec!["task_publish"]);
+        assert!(!report.single_handler_scope_ready);
+        assert!(report.selected_handler_kinds.is_empty());
         assert!(report.rollback_anchor_present);
         assert!(report.dry_run_record_present);
         assert!(report.raw_request_body_exposed);
@@ -8397,9 +8424,9 @@ not-json
             empty_selected,
         );
 
-        assert_eq!(staged.status, "staged");
-        assert_eq!(staged.gray_release_phase, "awaiting_scoped_dry_run_record");
-        assert!(staged.activation_currently_enabled);
+        assert_eq!(staged.status, "attention");
+        assert_eq!(staged.gray_release_phase, "activation_preflight_not_ready");
+        assert!(!staged.activation_currently_enabled);
         assert!(!staged.gray_release_ready);
 
         let content = r#"{"recorded_at_unix_ms":1,"plan_kind":"task_publish","rollback_strategy":"pending_real_handler_rollback_anchor","current_plan_executes_real_handler":true,"idempotency_key_redacted":true,"idempotency_key_fingerprint":"sha256:abc","raw_request_body_exposed":false,"raw_field_values_exposed":false,"raw_idempotency_key_exposed":false,"raw_audit_payload_exposed":false}"#;
@@ -8422,10 +8449,10 @@ not-json
             selected,
         );
 
-        assert_eq!(ready.status, "ready");
-        assert_eq!(ready.gray_release_phase, "gray_release_ready");
-        assert!(ready.gray_release_evidence_ready);
-        assert!(ready.gray_release_ready);
+        assert_eq!(ready.status, "attention");
+        assert_eq!(ready.gray_release_phase, "activation_preflight_not_ready");
+        assert!(!ready.gray_release_evidence_ready);
+        assert!(!ready.gray_release_ready);
         assert_eq!(
             ready.endpoint,
             HEPTA_KERNEL_NATIVE_POST_GRAY_RELEASE_EVIDENCE_ENDPOINT

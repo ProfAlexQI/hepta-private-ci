@@ -120,6 +120,8 @@ use crate::runtime_mutation::enabled as runtime_mutation_enabled;
 use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
+mod http_rejections;
+
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
 const HEPTA_CONTEXT_RECALL_WORKER_SCHEDULER_HANDOFF_APPROVED_ENV: &str =
@@ -377,18 +379,10 @@ fn handle_native_gateway_connection(
     configure_http_stream(stream)?;
     let request = match read_http_request_with_deadline(stream, deadline) {
         Ok(request) => request,
-        Err(error) => {
-            return write_http_response(
-                stream,
-                error.status(),
-                "application/json; charset=utf-8",
-                error.response_body(),
-            )
-            .with_context(|| format!("write bounded HTTP rejection for {error}"));
-        }
+        Err(error) => return http_rejections::request_error(stream, error),
     };
     let Some((method, path)) = request_method_and_path(&request) else {
-        return write_http_response(
+        return http_rejections::response(
             stream,
             "400 Bad Request",
             "application/json; charset=utf-8",
@@ -396,7 +390,7 @@ fn handle_native_gateway_connection(
         );
     };
     if !matches!(method, "GET" | "POST") {
-        return write_http_response(
+        return http_rejections::response(
             stream,
             "405 Method Not Allowed",
             "text/plain; charset=utf-8",
@@ -407,7 +401,7 @@ fn handle_native_gateway_connection(
         && crate::sensitive_http::requires_admission(path)
         && !crate::sensitive_http::admit(&request, &options.bind_addr)
     {
-        return write_http_response(
+        return http_rejections::response(
             stream,
             "403 Forbidden",
             "application/json; charset=utf-8",
@@ -415,16 +409,17 @@ fn handle_native_gateway_connection(
         );
     }
     let request_body = request_body_text(&request);
-    let preflight = runtime
-        .preflight_request(method, path, request_body)
-        .map_err(|error| anyhow::anyhow!("RuntimeKernel request preflight failed: {error}"))?;
+    let preflight = match runtime.preflight_request(method, path, request_body) {
+        Ok(preflight) => preflight,
+        Err(error) => return http_rejections::runtime_ingress(stream, method, path, &error),
+    };
     if !runtime_preflight_matches(method, path, &preflight)
         || preflight.mutation_authorized
         || preflight.durable_intent_recorded
         || preflight.provider_effect_ack_recorded
         || preflight.terminal_receipt_recorded
     {
-        return write_http_response(
+        return http_rejections::response(
             stream,
             "503 Service Unavailable",
             "application/json; charset=utf-8",
@@ -590,6 +585,16 @@ fn route_native_gateway_request_with_body(
     options: &NativeGatewayOptions,
     request_body: Option<&str>,
 ) -> (&'static str, &'static str, String) {
+    if tests::is_quarantined_control_ui_route(method, path) {
+        let preflight = tests::quarantined_preflight();
+        return route_native_gateway_request_after_preflight(
+            method,
+            path,
+            options,
+            request_body,
+            &preflight,
+        );
+    }
     let Some(lifecycle) = runtime_ingress_lifecycle(method, path) else {
         if crate::runtime_ingress::is_detached_control_ui_report_for_test(method, path) {
             let preflight = tests::quarantined_preflight();
@@ -601,11 +606,7 @@ fn route_native_gateway_request_with_body(
                 &preflight,
             );
         }
-        return (
-            "503 Service Unavailable",
-            "application/json; charset=utf-8",
-            r#"{"error":"runtime request ingress unclassified"}"#.to_string(),
-        );
+        return http_rejections::runtime_ingress_tuple(method, path);
     };
     let preflight = RuntimeRequestPreflightReceipt {
         request_binding_hash: "unit-test-request-binding".into(),
@@ -3220,7 +3221,7 @@ fn route_native_gateway_request_after_preflight(
                     )),
                 );
             }
-            TELEGRAM_LIVE_SOAK_ENDPOINT | TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT => {
+            path if TELEGRAM_LIVE_SOAK_ROUTE.matches(path) => {
                 return (
                     "200 OK",
                     "application/json; charset=utf-8",
@@ -5078,27 +5079,14 @@ fn operator_security_json(
     let post_gray_release_evidence = native_post_gray_release_evidence_report();
     let post_execution_stores_ready =
         hepta_gateway::native_post_execution_store_contracts_ready(&post_execution_stores);
-    let active_post_activation_ready = post_activation_plan.activation_currently_enabled
-        && post_activation_plan.single_handler_scope_ready
-        && post_activation_plan.execution_evidence_ready
-        && post_activation_plan.store_contracts_ready
-        && post_activation_plan.store_jsonl_valid
-        && post_activation_plan.store_capacity_ok
-        && post_gray_release_evidence.gray_release_ready
-        && !post_activation_plan.real_mutation_performed
-        && !post_activation_plan.external_side_effects
-        && !post_gray_release_evidence.real_mutation_performed
-        && !post_gray_release_evidence.external_side_effects;
-    let staged_post_activation_ready = !post_activation_plan.activation_currently_enabled;
-    let post_activation_plan_ready = post_activation_plan.activation_preflight_ready
-        && post_activation_plan.rollback_ready
-        && (staged_post_activation_ready || active_post_activation_ready);
-    let post_gray_release_evidence_ready = if post_activation_plan.activation_currently_enabled {
-        post_gray_release_evidence.gray_release_evidence_ready
-            && post_gray_release_evidence.gray_release_ready
-    } else {
-        true
-    };
+    let NativePostCompatibilityReadiness {
+        activation_plan_ready: post_activation_plan_ready,
+        gray_release_evidence_ready: post_gray_release_evidence_ready,
+    } = native_post_compatibility_readiness(
+        &post_execution_readiness,
+        &post_activation_plan,
+        &post_gray_release_evidence,
+    );
     let production_soak_ready = telegram_production_readiness_status.ready;
     let loopback_bound = is_loopback_bind_addr(&options.bind_addr);
     let telegram_owner_or_parallel_ready = telegram_owner_handoff_status.hepta_takeover_ready
@@ -5791,4 +5779,5 @@ include!("native_gateway/release_ui_reports.rs");
 #[cfg(test)]
 mod tests {
     include!("native_gateway/tests.rs");
+    include!("native_gateway/socket_tests.rs");
 }

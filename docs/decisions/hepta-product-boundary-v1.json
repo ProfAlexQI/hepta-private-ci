@@ -1,0 +1,16 @@
+{
+  "schema": "hepta_product_boundary_v1",
+  "status": "accepted",
+  "decided_at": "2026-07-27",
+  "product_role": "openclaw_governed_backend",
+  "channel_owner": "legacy_openclaw",
+  "defaults": {
+    "telegram_external_read": false,
+    "telegram_external_send": false,
+    "telegram_poll_loop_owner": false,
+    "native_real_mutation": false,
+    "formal_service_links_full_codex_provider_tool_runner": false
+  },
+  "upstream_intake": "semantic_selective",
+  "standalone_reconsideration_requires_controlled_live_approval": true
+}

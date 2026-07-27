@@ -13,7 +13,7 @@ use crate::route_registry::CONTROL_UI_ROUTE_PARITY_ENDPOINT;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::route_registry::GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT;
 use crate::route_registry::GATEWAY_REPLACEMENT_READINESS_ENDPOINT;
-use crate::route_registry::TELEGRAM_LIVE_SOAK_ENDPOINT;
+use crate::route_registry::TELEGRAM_LIVE_SOAK_ROUTE;
 use crate::runtime_composition::NativeGatewayRuntime;
 use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestDisposition;
@@ -34,45 +34,14 @@ pub(crate) const TELEGRAM_RECEIVE_ONCE_ENDPOINT: &str = "/api/telegram-receive-o
 pub(crate) const OPERATOR_AUTHORITY_CHALLENGE_ENDPOINT: &str =
     "/api/v2/operator-authority/challenge";
 pub(crate) const RUNTIME_INGRESS_REGISTRY_SCHEMA_VERSION: &str =
-    "hepta_runtime_ingress_lifecycle_registry_v1";
-
-const QUARANTINED_TRANSITIVE_CANARY_EFFECT_PATHS: &[&str] = &[
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-readback-receipt-acceptance-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-guarded-execution-readiness-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-plan-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-preflight-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-receipt-acceptance-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-rollback-tombstone-zero-residue-acceptance-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-store-write-single-shot-execution-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-durable-wal-receipt-persistence-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-execution-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-rollback-receipt-acceptance-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-tombstone-cleanup-acceptance-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-envelope-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-audit-trail-immutable-evidence-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-cancellation-supersession-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-export-query-observability-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-final-operator-acknowledgement-non-acceptance-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-operator-facing-summary-briefing-non-persistence-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-ordering-monotonicity-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-release-artifact-publication-result-receipt-no-persistence-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-replay-idempotency-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-retention-expiry-garbage-collection-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-dry-run-execution-result-receipt-terminal-operator-decision-public-claim-non-promotion-denial-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-operator-packet-acceptance-receipt-boundary",
-    "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-preflight-boundary",
-];
+    "hepta_runtime_ingress_lifecycle_registry_v2";
 
 #[cfg(test)]
 const DETACHED_CONTROL_UI_REPORT_PATHS: &[&str] = &[
     CONTROL_UI_ROUTE_PARITY_ENDPOINT,
     GATEWAY_REPLACEMENT_READINESS_ENDPOINT,
     GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT,
-    TELEGRAM_LIVE_SOAK_ENDPOINT,
+    TELEGRAM_LIVE_SOAK_ROUTE.canonical,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -320,7 +289,8 @@ const SPECIAL_INGRESS_LIFECYCLES: &[IngressLifecycleSpec] = &[
     metadata_read(CONTROL_UI_ROUTE_PARITY_ENDPOINT),
     metadata_read(GATEWAY_REPLACEMENT_READINESS_ENDPOINT),
     metadata_read(GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT),
-    metadata_read(TELEGRAM_LIVE_SOAK_ENDPOINT),
+    metadata_read(TELEGRAM_LIVE_SOAK_ROUTE.canonical),
+    metadata_read(TELEGRAM_LIVE_SOAK_ROUTE.aliases[0]),
     IngressLifecycleSpec {
         method: "POST",
         path_pattern: OPERATOR_AUTHORITY_CHALLENGE_ENDPOINT,
@@ -731,7 +701,7 @@ pub(crate) fn telegram_receive_once_response(
 
 fn control_ui_lifecycle(spec: &'static crate::gate_spec::GateSpec) -> Option<IngressLifecycleSpec> {
     let (effect_class, authority_owner, default_enablement, source) = match spec.method {
-        "GET" if QUARANTINED_TRANSITIVE_CANARY_EFFECT_PATHS.contains(&spec.pattern) => (
+        "GET" if spec.is_quarantined_transitive_effect() => (
             IngressEffectClass::QuarantinedLegacyMutation,
             IngressAuthorityOwner::UnassignedLegacyMutation,
             IngressDefaultEnablement::DisabledUnlessExplicitGate,
@@ -785,8 +755,35 @@ pub(crate) fn runtime_ingress_lifecycle(method: &str, path: &str) -> Option<Ingr
 #[cfg(test)]
 pub(crate) fn is_detached_control_ui_report_for_test(method: &str, path: &str) -> bool {
     method == "GET"
-        && (QUARANTINED_TRANSITIVE_CANARY_EFFECT_PATHS.contains(&path)
-            || DETACHED_CONTROL_UI_REPORT_PATHS.contains(&path))
+        && (CONTROL_UI_ROUTE_SPECS.iter().any(|route| {
+            route.is_quarantined_transitive_effect() && route_pattern_matches(route.pattern, path)
+        }) || DETACHED_CONTROL_UI_REPORT_PATHS.contains(&path))
+}
+
+pub(crate) fn runtime_ingress_rejection_response(
+    method: &str,
+    path: &str,
+) -> RuntimeIngressResponse {
+    if CONTROL_UI_ROUTE_SPECS.iter().any(|route| {
+        route.method == method
+            && route.is_quarantined_transitive_effect()
+            && route_pattern_matches(route.pattern, path)
+    }) {
+        return RuntimeIngressResponse {
+            status: "410 Gone",
+            body: r#"{"error":"runtime_ingress.route_retired","reason":"legacy_get_route_has_transitive_effects","replacement":"use an explicitly admitted POST mutation route"}"#.to_string(),
+        };
+    }
+    if runtime_ingress_lifecycle(method, path).is_none() {
+        return RuntimeIngressResponse {
+            status: "404 Not Found",
+            body: r#"{"error":"runtime_ingress.route_not_found"}"#.to_string(),
+        };
+    }
+    RuntimeIngressResponse {
+        status: "503 Service Unavailable",
+        body: r#"{"error":"runtime_ingress.preflight_unavailable"}"#.to_string(),
+    }
 }
 
 pub(crate) fn runtime_ingress_lifecycle_registry() -> Vec<IngressLifecycleSpec> {

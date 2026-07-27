@@ -20,6 +20,12 @@ use std::sync::Mutex;
 
 use anyhow::Context;
 use anyhow::Result;
+pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT;
+pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_ENABLED_ENV;
+pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_JOURNAL_FILE_ENV;
+use hepta_authority::TELEGRAM_AUTHORITY_JOURNAL_POLICY;
+pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_KEY_FILE_ENV;
+use hepta_authority::parse_gate_truthy;
 use hepta_gateway::telegram_delivery_lifecycle_record;
 use hepta_gateway::telegram_next_update_offset;
 use hmac::Hmac;
@@ -34,21 +40,14 @@ use crate::secure_key_file::read_private_key;
 use crate::telegram_durable_files::read_private_state;
 use crate::telegram_durable_files::update_private_state_atomically;
 
-pub(crate) const TELEGRAM_AUTHORITY_ENABLED_ENV: &str = "HEPTA_NATIVE_TELEGRAM_OPERATOR_AUTHORITY";
-pub(crate) const TELEGRAM_AUTHORITY_KEY_FILE_ENV: &str =
-    "HEPTA_NATIVE_TELEGRAM_OPERATOR_AUTH_KEY_FILE";
-pub(crate) const TELEGRAM_AUTHORITY_JOURNAL_FILE_ENV: &str =
-    "HEPTA_NATIVE_TELEGRAM_AUTHORITY_JOURNAL_FILE";
 pub(crate) const TELEGRAM_AUTHORITY_PLAN_ENDPOINT: &str = "/api/v2/telegram/drain/authority/plan";
-pub(crate) const TELEGRAM_AUTHORITY_COMMIT_ENDPOINT: &str =
-    "/api/v2/telegram/drain/authority/commit";
 pub(crate) const TELEGRAM_RECONCILIATION_INSPECT_ENDPOINT: &str =
     "/api/v2/telegram/drain/reconciliation/inspect";
 pub(crate) const TELEGRAM_RECONCILIATION_RESOLVE_ENDPOINT: &str =
     "/api/v2/telegram/drain/reconciliation/resolve";
 pub(crate) const TELEGRAM_PIPELINE_AUTHORITY_OWNER: &str = "TelegramPipelineAuthority";
 
-const SCHEMA: &str = "hepta.telegram.operator-authority.v1";
+const SCHEMA: &str = TELEGRAM_AUTHORITY_JOURNAL_POLICY.schema;
 const CHECKPOINT_SCHEMA: &str = "hepta.telegram.operator-authority.checkpoint.v1";
 const MONOTONIC_STATE_SCHEMA: &str = "hepta.telegram.operator-authority.monotonic-state.v1";
 const RECONCILIATION_SCHEMA: &str = "hepta.telegram.terminal-reconciliation.v1";
@@ -73,12 +72,13 @@ const GENESIS_HASH: &str = "sha256:telegram-authority-genesis";
 const MAX_BODY_BYTES: usize = 4096;
 const MAX_PROMPT_BYTES: usize = 64 * 1024;
 const MAX_REPLY_BYTES: usize = 4096;
-const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_JOURNAL_BYTES: u64 = TELEGRAM_AUTHORITY_JOURNAL_POLICY.max_journal_bytes;
 const MAX_DELIVERY_LEDGER_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_JOURNAL_EVENTS: usize = 4096;
-const MAX_CHECKPOINTED_AUTHORITIES: usize = 20_000;
+const MAX_JOURNAL_EVENTS: usize = TELEGRAM_AUTHORITY_JOURNAL_POLICY.max_active_records;
+const MAX_CHECKPOINTED_AUTHORITIES: usize =
+    TELEGRAM_AUTHORITY_JOURNAL_POLICY.max_checkpointed_authorities;
 const RETAIN_TERMINAL_PIPELINES: usize = 128;
-const MAX_EVENT_BYTES: usize = 8192;
+const MAX_EVENT_BYTES: usize = TELEGRAM_AUTHORITY_JOURNAL_POLICY.max_record_bytes;
 const MAX_CHECKPOINT_BYTES: usize = 4 * 1024 * 1024;
 const CHECKPOINT_GENESIS_HASH: &str = "sha256:telegram-authority-checkpoint-genesis";
 const JOURNAL_STAGING_PREFIX: &str = ".hepta-telegram-authority-journal";
@@ -102,12 +102,7 @@ impl TelegramAuthorityConfig {
     fn from_lookup(mut lookup: impl FnMut(&str) -> Option<OsString>) -> Result<Option<Self>> {
         let enabled = lookup(TELEGRAM_AUTHORITY_ENABLED_ENV)
             .and_then(|value| value.into_string().ok())
-            .is_some_and(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on"
-                )
-            });
+            .is_some_and(|value| parse_gate_truthy(&value));
         let key_file = lookup(TELEGRAM_AUTHORITY_KEY_FILE_ENV).filter(|value| !value.is_empty());
         let journal_file =
             lookup(TELEGRAM_AUTHORITY_JOURNAL_FILE_ENV).filter(|value| !value.is_empty());

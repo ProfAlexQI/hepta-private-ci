@@ -575,9 +575,7 @@ fn telegram_blocking_client(
     timeout: Duration,
     method: &str,
 ) -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
-        .timeout(timeout)
-        .build()
+    crate::bounded_blocking_http_client(timeout)
         .map_err(|error| native_telegram_bot_api_client_build_error(method, &error.to_string()))
 }
 

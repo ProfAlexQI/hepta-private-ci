@@ -2,12 +2,15 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::Context;
 use anyhow::Result;
+use base64::Engine as _;
+use flate2::read::GzDecoder;
 use serde::Deserialize;
 use sha2::Digest;
 use sha2::Sha256;
@@ -17,6 +20,8 @@ use crate::gate_spec::ReceiptStateMachine;
 
 const SHELL_GATE_PAIR_SPECS_JSON: &str =
     include_str!("../../../scripts/hepta-gate-pair-specs-v1.json");
+const COMPATIBILITY_PAYLOAD_MARKER: &str = "# hepta_gate_pair_gzip_base64_v1:";
+const MAX_COMPATIBILITY_PAYLOAD_BYTES: u64 = 4 * 1024 * 1024;
 
 #[allow(dead_code)]
 pub(crate) const CORE_ACTIVATION_CHAIN_GATE_SPECS: [GateSpec; 3] = [
@@ -906,7 +911,7 @@ fn validate_migrated_pairs(
                 if !implementation.starts_with(&scripts_root) {
                     anyhow::bail!("captured Hepta {kind} payload escapes scripts root: {id}");
                 }
-                let bytes = fs::read(&implementation).with_context(|| {
+                let bytes = captured_payload_bytes(&implementation).with_context(|| {
                     format!("failed to read captured Hepta {kind} payload: {id}")
                 })?;
                 let mut hasher = Sha256::new();
@@ -918,6 +923,31 @@ fn validate_migrated_pairs(
         }
     }
     Ok(())
+}
+
+fn captured_payload_bytes(path: &Path) -> Result<Vec<u8>> {
+    let bytes = fs::read(path)?;
+    let Some(payload) = std::str::from_utf8(&bytes)
+        .ok()
+        .and_then(|text| text.lines().nth(1))
+        .and_then(|line| line.split_once(COMPATIBILITY_PAYLOAD_MARKER))
+        .map(|(_, payload)| payload.trim())
+    else {
+        return Ok(bytes);
+    };
+    let compressed = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .context("decode compatibility payload base64")?;
+    let mut decoder = GzDecoder::new(compressed.as_slice())
+        .take(MAX_COMPATIBILITY_PAYLOAD_BYTES.saturating_add(1));
+    let mut decoded = Vec::new();
+    decoder
+        .read_to_end(&mut decoded)
+        .context("decode compatibility payload gzip")?;
+    if decoded.len() as u64 > MAX_COMPATIBILITY_PAYLOAD_BYTES {
+        anyhow::bail!("decoded compatibility payload exceeds byte limit");
+    }
+    Ok(decoded)
 }
 
 fn validate_thin_wrapper(path: &Path, kind: &str, id: &str) -> Result<()> {

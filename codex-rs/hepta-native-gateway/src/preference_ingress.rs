@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::Result;
+pub(crate) use hepta_authority::PREFERENCE_COMMIT_ENDPOINT;
 use hepta_contracts::CapabilityId;
 use hepta_contracts::CapabilityManifestRef;
 use hepta_contracts::ContentHash;
@@ -57,7 +58,6 @@ use crate::secure_key_file::PRIVATE_FILE_MODE;
 use std::path::Path;
 
 pub(crate) const PREFERENCE_CHALLENGE_ENDPOINT: &str = "/api/v2/preferences/challenge";
-pub(crate) const PREFERENCE_COMMIT_ENDPOINT: &str = "/api/v2/preferences/commit";
 
 const PREFERENCE_DATABASE_ENV: &str = "HEPTA_PREFERENCE_DATABASE";
 const PREFERENCE_INTEGRITY_KEY_FILE_ENV: &str = "HEPTA_PREFERENCE_INTEGRITY_KEY_FILE";
@@ -310,7 +310,7 @@ impl NativePreferenceIngress {
         request_binding_hash: &str,
         expected_session_binding_hash: &str,
     ) -> Option<PreferenceHttpResponse> {
-        let result = match (method, path) {
+        match (method, path) {
             ("POST", PREFERENCE_CHALLENGE_ENDPOINT) => Some(self.handle_challenge(
                 body,
                 request_binding_hash,
@@ -326,8 +326,7 @@ impl NativePreferenceIngress {
                 ))
             }
             _ => None,
-        };
-        result
+        }
     }
 
     pub(crate) fn prevalidate_commit_http(

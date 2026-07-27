@@ -10,6 +10,7 @@ pub use hepta_runtime::DEFAULT_NATIVE_POST_RATE_LIMIT_WINDOW_MS;
 pub use hepta_runtime::DEFAULT_NATIVE_POST_STORE_MAX_BYTES;
 pub use hepta_runtime::DEFAULT_NATIVE_POST_STORE_MAX_LINES;
 pub use hepta_runtime::NATIVE_POST_ACTIVATION_PLAN_ENDPOINT;
+pub use hepta_runtime::NATIVE_POST_COMPATIBILITY_HARNESS_PLAN_KINDS;
 pub use hepta_runtime::NATIVE_POST_EXECUTION_READINESS_ENDPOINT;
 pub use hepta_runtime::NATIVE_POST_EXECUTION_STORE_DIR_ENV;
 pub use hepta_runtime::NATIVE_POST_EXECUTION_STORES_ENDPOINT;
@@ -637,7 +638,7 @@ mod tests {
 
         for plan_kind in ["approval_apply", "task_publish", "chat_send"] {
             assert!(specs.iter().any(|spec| spec.plan_kind == plan_kind));
-            assert!(native_post_plan_kind_has_real_handler(plan_kind));
+            assert!(!native_post_plan_kind_has_real_handler(plan_kind));
         }
     }
 
@@ -680,10 +681,10 @@ mod tests {
 
         assert_eq!(schema.schema_id, "hepta.post.task_publish.v1");
         assert_eq!(admission.admission_status, "ready_for_real_handler");
-        assert_eq!(admission.ready_for_real_handler_input, true);
-        assert_eq!(admission.idempotency_key_present, true);
-        assert_eq!(admission.raw_body_exposed, false);
-        assert_eq!(admission.raw_field_values_exposed, false);
+        assert!(admission.ready_for_real_handler_input);
+        assert!(admission.idempotency_key_present);
+        assert!(!admission.raw_body_exposed);
+        assert!(!admission.raw_field_values_exposed);
         let fingerprint = admission
             .idempotency_key_fingerprint
             .as_deref()
@@ -706,10 +707,10 @@ mod tests {
             super::native_post_audit_event_contract(spec, &schema, &admission, &idempotency);
 
         assert_eq!(admission.admission_status, "missing_required_fields");
-        assert_eq!(idempotency.key_shape_valid, false);
-        assert_eq!(audit.ready_for_real_handler, false);
-        assert_eq!(audit.raw_body_exposed, false);
-        assert_eq!(audit.raw_idempotency_key_exposed, false);
+        assert!(!idempotency.key_shape_valid);
+        assert!(!audit.ready_for_real_handler);
+        assert!(!audit.raw_body_exposed);
+        assert!(!audit.raw_idempotency_key_exposed);
     }
 
     #[test]
@@ -740,8 +741,8 @@ mod tests {
             Some("task_publish"),
         );
         assert_eq!(mismatched.admission_status, "blocked");
-        assert_eq!(mismatched.blocked_reason, "handler_scope_not_selected");
-        assert_eq!(mismatched.current_plan_executes_real_handler, false);
+        assert_eq!(mismatched.blocked_reason, "real_handler_not_wired");
+        assert!(!mismatched.current_plan_executes_real_handler);
         assert!(!super::native_post_duplicate_check_required(
             &mismatched,
             &idempotency
@@ -756,20 +757,20 @@ mod tests {
             true,
             Some("task_publish, chat_send"),
         );
-        assert_eq!(matched.admission_status, "harness_ready");
-        assert_eq!(matched.current_plan_executes_real_handler, true);
-        assert_eq!(matched.blocked_reason, "real_handler_harness_dry_run_only");
-        assert!(super::native_post_duplicate_check_required(
+        assert_eq!(matched.admission_status, "blocked");
+        assert!(!matched.current_plan_executes_real_handler);
+        assert_eq!(matched.blocked_reason, "real_handler_not_wired");
+        assert!(!super::native_post_duplicate_check_required(
             &matched,
             &idempotency
         ));
-        assert!(super::native_post_rate_limit_check_required(
+        assert!(!super::native_post_rate_limit_check_required(
             &matched, true, false, None
         ));
         assert!(!super::native_post_rate_limit_check_required(
             &matched, true, true, None
         ));
-        assert!(super::native_post_store_capacity_check_required(
+        assert!(!super::native_post_store_capacity_check_required(
             &matched, true, false, None, false, None
         ));
         assert!(!super::native_post_store_capacity_check_required(
@@ -802,10 +803,10 @@ mod tests {
         let selected =
             super::native_post_real_handler_scope_selected_kinds(Some("approval_apply chat_send"));
 
-        assert_eq!(selected, vec!["approval_apply", "chat_send"]);
+        assert!(selected.is_empty());
         assert_eq!(
             super::native_post_real_handler_scope_single_selected_kind(Some("task_publish")),
-            Some("task_publish")
+            None
         );
         assert_eq!(
             super::native_post_real_handler_scope_single_selected_kind(Some(
@@ -831,14 +832,15 @@ mod tests {
         assert_eq!(report.status, "ready");
         assert_eq!(report.post_route_count, 12);
         assert_eq!(report.real_handler_candidate_count, 3);
-        assert_eq!(report.real_handler_implemented_count, 3);
-        assert_eq!(report.selected_handler_count, 2);
-        assert_eq!(report.all_real_handlers_blocked, true);
-        assert_eq!(report.real_handler_gate_enabled, false);
+        assert_eq!(report.real_handler_implemented_count, 0);
+        assert_eq!(report.real_handler_ready_count, 0);
+        assert_eq!(report.selected_handler_count, 0);
+        assert!(report.all_real_handlers_blocked);
+        assert!(!report.real_handler_gate_enabled);
         assert!(report.routes.iter().any(|route| {
             route.plan_kind == "task_publish"
-                && route.ready_for_real_handler_wiring
-                && route.blocked_reason == "real_handler_gate_disabled"
+                && !route.ready_for_real_handler_wiring
+                && route.blocked_reason == "real_handler_not_wired"
         }));
     }
 
@@ -885,23 +887,18 @@ mod tests {
             },
         );
 
-        assert_eq!(harness.status, "dry_run_recorded");
-        assert_eq!(harness.store_write_attempted, true);
-        assert_eq!(harness.store_write_succeeded, true);
-        assert_eq!(harness.task_published, false);
-        assert_eq!(harness.external_side_effects, false);
+        assert_eq!(harness.status, "not_implemented");
+        assert!(!harness.store_write_attempted);
+        assert!(!harness.store_write_succeeded);
+        assert!(!harness.task_published);
+        assert!(!harness.external_side_effects);
         for filename in [
             "idempotency.jsonl",
             "audit.jsonl",
             "rollback.jsonl",
             "rate-limit.jsonl",
         ] {
-            let content =
-                std::fs::read_to_string(temp.path().join(filename)).expect("store content");
-            assert!(content.contains("hepta.post.execution_store_record.v1"));
-            assert!(content.contains("\"current_plan_executes_real_handler\":true"));
-            assert!(!content.contains("secret gateway task"));
-            assert!(!content.contains("secret-gateway-idem"));
+            assert!(!temp.path().join(filename).exists());
         }
     }
 
@@ -959,13 +956,10 @@ mod tests {
             limits,
         );
 
-        assert_eq!(first.status, "dry_run_recorded");
-        assert_eq!(second.status, "duplicate_suppressed");
-        assert_eq!(second.store_write_attempted, false);
-        let idempotency_content =
-            std::fs::read_to_string(temp.path().join("idempotency.jsonl")).expect("store");
-        assert_eq!(idempotency_content.lines().count(), 1);
-        assert!(!idempotency_content.contains("secret duplicate gateway task"));
-        assert!(!idempotency_content.contains("secret-gateway-duplicate"));
+        assert_eq!(first.status, "not_implemented");
+        assert_eq!(second.status, "not_implemented");
+        assert!(!second.duplicate_suppressed);
+        assert!(!second.store_write_attempted);
+        assert!(!temp.path().join("idempotency.jsonl").exists());
     }
 }

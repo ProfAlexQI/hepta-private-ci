@@ -274,7 +274,7 @@ fn effect_lease_excludes_fault_checks_until_terminal_state_is_anchored() -> Resu
     let (started_tx, started_rx) = mpsc::sync_channel(0);
     let (finished_tx, finished_rx) = mpsc::sync_channel(1);
     let queued_anchor = Arc::clone(&anchor);
-    let queued_outcome = initial_outcome.clone();
+    let queued_outcome = initial_outcome;
     let queued_preference = preference.clone();
     let queued = std::thread::spawn(move || {
         started_tx.send(()).expect("queued anchor start");
@@ -432,7 +432,7 @@ fn state_is_sampled_only_after_cross_process_exclusion_without_false_rollback() 
     let second = Arc::new(ExternalMonotonicAnchor::open(config.clone())?);
     let (provider_entered_tx, provider_entered_rx) = mpsc::sync_channel(0);
     let (release_provider_tx, release_provider_rx) = mpsc::sync_channel(0);
-    let first_outcome = initial_outcome.clone();
+    let first_outcome = initial_outcome;
     let first_preference = preference.clone();
     let first_thread = std::thread::spawn(move || {
         first.verify_and_advance_with(|| {

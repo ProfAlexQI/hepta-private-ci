@@ -369,7 +369,7 @@ fn authenticated_preference_http_denies_tamper_replay_and_noncanonical_proofs_be
             .as_str()
             .expect("committed preference hash")
     );
-    let expected_attachment = attached.clone();
+    let expected_attachment = attached;
 
     let replay = preference_http_round_trip(
         &pool,

@@ -10,6 +10,10 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
+pub(crate) use hepta_authority::OPERATOR_MUTATION_ENABLED_ENV;
+use hepta_authority::OPERATOR_MUTATION_KEY_FILE_ENV;
+pub(crate) use hepta_authority::OPERATOR_NOTE_COMMIT_ENDPOINT as OPERATOR_MUTATION_COMMIT_ENDPOINT;
+use hepta_authority::parse_gate_truthy;
 use hepta_core::ApprovalRequirement;
 use hepta_runtime::EffectBroker;
 use hepta_runtime::EffectPlan;
@@ -33,9 +37,6 @@ use crate::operator_mutation_journal::OperatorMutationMonotonicState;
 use crate::secure_key_file::read_private_key;
 
 pub(crate) const OPERATOR_MUTATION_PLAN_ENDPOINT: &str = "/api/v2/operator-mutations/note/plan";
-pub(crate) const OPERATOR_MUTATION_COMMIT_ENDPOINT: &str = "/api/v2/operator-mutations/note/commit";
-pub(crate) const OPERATOR_MUTATION_ENABLED_ENV: &str = "HEPTA_OPERATOR_MUTATION_ENABLED";
-const OPERATOR_MUTATION_KEY_FILE_ENV: &str = "HEPTA_OPERATOR_MUTATION_AUTH_KEY_FILE";
 const MAX_NOTE_BYTES: usize = 8 * 1024;
 const PLAN_PROOF_DOMAIN: &[u8] = b"hepta.native.operator-note.plan.v1";
 const COMMIT_PROOF_DOMAIN: &[u8] = b"hepta.native.operator-note.commit.v1";
@@ -113,12 +114,7 @@ pub(crate) struct OperatorMutationCommitReceipt {
 pub(crate) fn enabled() -> bool {
     env::var(OPERATOR_MUTATION_ENABLED_ENV)
         .ok()
-        .is_some_and(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
+        .is_some_and(|value| parse_gate_truthy(&value))
 }
 
 pub(crate) fn monotonic_state() -> Result<Option<OperatorMutationMonotonicState>> {

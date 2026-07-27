@@ -1,5 +1,8 @@
 use serde::Serialize;
 
+const MINIMAL_SCOPED_MEMORY_EFFECT_ROUTE_PREFIX: &str = "/api/hepta-memory-live-mutation-operator-write-execution-minimal-scoped-memory-real-write-canary-";
+const PRODUCTION_MEMORY_EFFECT_ROUTE_PREFIX: &str = "/api/hepta-memory-live-mutation-operator-write-execution-scoped-production-durable-memory-write-";
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub(crate) struct GateSpec {
     pub(crate) method: &'static str,
@@ -36,6 +39,31 @@ impl GateSpec {
 
     pub(crate) fn requires_confirmation(&self) -> bool {
         self.is_post() && !self.is_read_only()
+    }
+
+    pub(crate) fn is_quarantined_transitive_effect(&self) -> bool {
+        if self.method != "GET" {
+            return false;
+        }
+        if self
+            .pattern
+            .starts_with(PRODUCTION_MEMORY_EFFECT_ROUTE_PREFIX)
+        {
+            return true;
+        }
+        let Some(suffix) = self
+            .pattern
+            .strip_prefix(MINIMAL_SCOPED_MEMORY_EFFECT_ROUTE_PREFIX)
+        else {
+            return false;
+        };
+        !matches!(
+            suffix,
+            "operator-approval-nonce-command-accepted-gate-boundary"
+                | "wal-receipt-binding-boundary"
+                | "post-write-readback-binding-boundary"
+                | "rollback-tombstone-proof-boundary"
+        )
     }
 
     pub(crate) fn receipt_state(&self) -> Option<ReceiptState> {

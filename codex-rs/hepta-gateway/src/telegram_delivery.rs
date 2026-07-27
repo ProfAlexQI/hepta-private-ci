@@ -212,7 +212,7 @@ mod tests {
         );
 
         assert_eq!(status.status, "disabled");
-        assert_eq!(status.ledger_file_present, false);
+        assert!(!status.ledger_file_present);
         assert_eq!(status.line_count, 0);
     }
 

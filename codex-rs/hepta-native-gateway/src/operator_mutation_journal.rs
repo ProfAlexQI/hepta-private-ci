@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_authority::OPERATOR_MUTATION_JOURNAL_POLICY;
 use hepta_runtime::RuntimeExecutionReceipt;
 use hmac::Hmac;
 use hmac::Mac;
@@ -22,13 +23,14 @@ use sha2::Sha256;
 use crate::telegram_durable_files::read_private_state;
 use crate::telegram_durable_files::update_private_state_atomically;
 
-const JOURNAL_SCHEMA: &str = "hepta.native.operator-mutation-journal.v2";
+const JOURNAL_SCHEMA: &str = OPERATOR_MUTATION_JOURNAL_POLICY.schema;
 const LEGACY_JOURNAL_SCHEMA: &str = "hepta.native.operator-mutation-journal.v1";
 const JOURNAL_MAC_DOMAIN: &[u8] = b"hepta.native.operator-mutation-journal.hmac-sha256.v1";
 const JOURNAL_STATE_HASH_DOMAIN: &[u8] = b"hepta.native.operator-mutation-journal.state-sha256.v1";
-const MAX_JOURNAL_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_JOURNAL_RECORDS: usize = 4096;
-const MAX_CHECKPOINTED_AUTHORITIES: usize = 20_000;
+const MAX_JOURNAL_BYTES: u64 = OPERATOR_MUTATION_JOURNAL_POLICY.max_journal_bytes;
+const MAX_JOURNAL_RECORDS: usize = OPERATOR_MUTATION_JOURNAL_POLICY.max_active_records;
+const MAX_CHECKPOINTED_AUTHORITIES: usize =
+    OPERATOR_MUTATION_JOURNAL_POLICY.max_checkpointed_authorities;
 const RETAIN_SUCCEEDED_RECORDS: usize = 512;
 const CHECKPOINT_GENESIS_HASH: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";

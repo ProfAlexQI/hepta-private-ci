@@ -1,0 +1,13 @@
+[package]
+name = "hepta-authority"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "hepta_authority"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true

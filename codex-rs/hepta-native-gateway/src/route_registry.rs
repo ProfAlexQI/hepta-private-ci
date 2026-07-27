@@ -10,6 +10,23 @@ use hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_ENDPOINT;
 use hepta_gateway::HEPTA_NAME_REPOSITORY_CLOSURE_SOURCE_COMMAND;
 
 use crate::gate_spec::GateSpec as ControlUiRouteSpec;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NativeRouteAliasSpec {
+    pub(crate) canonical: &'static str,
+    pub(crate) aliases: &'static [&'static str],
+}
+
+impl NativeRouteAliasSpec {
+    pub(crate) fn matches(self, path: &str) -> bool {
+        path == self.canonical || self.aliases.contains(&path)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn paths(self) -> impl Iterator<Item = &'static str> {
+        std::iter::once(self.canonical).chain(self.aliases.iter().copied())
+    }
+}
 pub(crate) const CONTROL_UI_ROUTE_PARITY_ENDPOINT: &str = "/api/control-ui-route-parity";
 pub(crate) const HEPTA_MERGE_COMPLETION_ENDPOINT: &str = "/api/hepta-merge-completion";
 pub(crate) const HEPTA_CLI_COMMAND_INVENTORY_ENDPOINT: &str = "/api/hepta-cli-command-inventory";
@@ -464,8 +481,12 @@ pub(crate) const HEPTA_PUBLIC_GA_READINESS_ENDPOINT: &str = "/api/hepta-public-g
 pub(crate) const GATEWAY_REPLACEMENT_READINESS_ENDPOINT: &str =
     "/api/gateway-replacement-readiness";
 pub(crate) const GATEWAY_LIVE_ACTIVATION_PLAN_ENDPOINT: &str = "/api/gateway-live-activation-plan";
-pub(crate) const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = "/api/telegram-live-soak";
-pub(crate) const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = "/api/telegram-live-soak-status";
+pub(crate) const TELEGRAM_LIVE_SOAK_ROUTE: NativeRouteAliasSpec = NativeRouteAliasSpec {
+    canonical: "/api/telegram-live-soak",
+    aliases: &["/api/telegram-live-soak-status"],
+};
+pub(crate) const TELEGRAM_LIVE_SOAK_ENDPOINT: &str = TELEGRAM_LIVE_SOAK_ROUTE.canonical;
+pub(crate) const TELEGRAM_LIVE_SOAK_STATUS_ENDPOINT: &str = TELEGRAM_LIVE_SOAK_ROUTE.aliases[0];
 pub(crate) const TELEGRAM_PRODUCTION_READINESS_ENDPOINT: &str =
     "/api/telegram-production-readiness";
 pub(crate) const TELEGRAM_DELIVERY_LEDGER_ENDPOINT: &str = "/api/telegram-delivery-ledger";
