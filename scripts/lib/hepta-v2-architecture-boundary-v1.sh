@@ -172,10 +172,9 @@ verify_trusted_preference_feedback_boundary() {
   local memory_tests="codex-rs/hepta-memory/src/preference_authority/tests.rs"
   local intelligence_authority="codex-rs/hepta-intelligence/src/trusted_preference_feedback.rs"
   local intelligence_tests="codex-rs/hepta-intelligence/src/trusted_preference_feedback/tests.rs"
-  local native_ingress="codex-rs/hepta-native-gateway/src/preference_ingress.rs"
+  local authority_registry="codex-rs/hepta-authority/src/lib.rs" native_ingress="codex-rs/hepta-native-gateway/src/preference_ingress.rs"
   local native_secure_key="codex-rs/hepta-native-gateway/src/secure_key_file.rs"
   local source requirement
-
   for source in \
     "$memory_authority" "$memory_types" "$memory_canonical" "$memory_tests" \
     "$intelligence_authority" "$intelligence_tests" "$native_ingress" "$native_secure_key"
@@ -289,7 +288,7 @@ verify_trusted_preference_feedback_boundary() {
 
   for requirement in \
     'pub(crate) const PREFERENCE_CHALLENGE_ENDPOINT: &str = "/api/v2/preferences/challenge"' \
-    'pub(crate) const PREFERENCE_COMMIT_ENDPOINT: &str = "/api/v2/preferences/commit"' \
+    'pub(crate) use hepta_authority::PREFERENCE_COMMIT_ENDPOINT;' \
     'PreferenceChallengeHttpEnvelope' \
     'trusted_preference_ingress.plan_proof_encoding_invalid' \
     'PreferenceIngressProof::from_hex(&request.proof)' \
@@ -305,6 +304,7 @@ verify_trusted_preference_feedback_boundary() {
       return 1
     }
   done
+  grep -Fq 'pub const PREFERENCE_COMMIT_ENDPOINT: &str = "/api/v2/preferences/commit";' "$ROOT/$authority_registry" || { echo "Architecture V2 typed authority registry is incomplete" >&2; return 1; }
   for requirement in \
     'libc::O_CLOEXEC | libc::O_NOFOLLOW' \
     'metadata.file_type().is_file()' \
@@ -1876,6 +1876,7 @@ self_test() (
   cp "$ROOT/codex-rs/Cargo.toml" "$fixture/codex-rs/Cargo.toml"
   for manifest in \
     hepta-contracts \
+    hepta-authority \
     hepta-core \
     hepta-memory \
     hepta-kg \
@@ -1897,6 +1898,9 @@ self_test() (
   mkdir -p "$fixture/codex-rs/hepta-contracts/tests"
   cp "$ROOT/codex-rs/hepta-contracts/tests/stable_contracts.rs" \
     "$fixture/codex-rs/hepta-contracts/tests/stable_contracts.rs"
+  mkdir -p "$fixture/codex-rs/hepta-authority/src"
+  cp "$ROOT/codex-rs/hepta-authority/src/lib.rs" \
+    "$fixture/codex-rs/hepta-authority/src/lib.rs"
   for source_root in hepta-runtime hepta-gateway hepta-native-gateway hepta-cli hepta-kernel
   do
     mkdir -p "$fixture/codex-rs/$source_root/src"

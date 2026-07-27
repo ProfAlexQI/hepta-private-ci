@@ -3,61 +3,40 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
+import hashlib, json, os, shutil, sys, tempfile
 from pathlib import Path
-import shutil
-import sys
-import tempfile
 from typing import Any
 
 
 SCHEMA = "hepta_panic_debt_inventory_v2"
 SCANNER_VERSION = 1
-DEFAULT_ROOTS = [
-    "codex-rs/hepta-cli",
-    "codex-rs/hepta-contracts",
-    "codex-rs/hepta-core",
-    "codex-rs/hepta-gateway",
-    "codex-rs/hepta-intelligence",
-    "codex-rs/hepta-kernel",
-    "codex-rs/hepta-kg",
-    "codex-rs/hepta-memory",
-    "codex-rs/hepta-native-gateway",
-    "codex-rs/hepta-plugins",
-    "codex-rs/hepta-runtime",
-]
+DEFAULT_ROOTS = """
+codex-rs/hepta-authority codex-rs/hepta-cli codex-rs/hepta-contracts codex-rs/hepta-core
+codex-rs/hepta-gateway codex-rs/hepta-intelligence codex-rs/hepta-kernel codex-rs/hepta-kg
+codex-rs/hepta-memory codex-rs/hepta-native-gateway codex-rs/hepta-plugins codex-rs/hepta-runtime
+""".split()
 KINDS = {"panic", "unwrap", "expect", "todo", "unimplemented", "unreachable"}
 SOURCE_CLASSES = {"production", "test", "generated_build", "fixture"}
-PRODUCTION_BOUNDARIES = {
-    "startup_config_fatal",
-    "trusted_static_invariant",
-    "request_runtime_path",
-    "persistence_serialization",
-    "concurrency_task",
-}
+PRODUCTION_BOUNDARIES = set(
+    "startup_config_fatal trusted_static_invariant request_runtime_path "
+    "persistence_serialization concurrency_task".split()
+)
 PRODUCTION_RISKS = {"accepted", "low", "medium", "high"}
 ROOT = Path(os.environ.get("HEPTA_PANIC_DEBT_ROOT", Path(__file__).resolve().parent.parent))
-LEDGER = Path(
-    os.environ.get(
-        "HEPTA_PANIC_DEBT_LEDGER",
-        ROOT / "scripts" / "hepta-panic-debt-baseline-v2.json",
-    )
-)
+LEDGER = Path(os.environ.get(
+    "HEPTA_PANIC_DEBT_LEDGER",
+    ROOT / "scripts" / "hepta-panic-debt-baseline-v2.json",
+))
 
 
 class VerificationError(RuntimeError):
     pass
 
-
 def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
-
 def canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-
 
 def expected_scope() -> dict[str, Any]:
     return {
@@ -65,10 +44,7 @@ def expected_scope() -> dict[str, Any]:
         "rust_files": "all *.rs recursively under each root",
         "only_ignored_path_component": "target",
         "production": "src Rust except test files and items requiring cfg(test)",
-        "test": (
-            "tests paths, *_tests.rs/tests.rs/test_support.rs files, "
-            "and items requiring cfg(test)"
-        ),
+        "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)",
         "generated_build": "build.rs",
         "fixture": "paths with a fixtures or generated component",
     }
@@ -555,6 +531,35 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def refresh(root: Path, ledger_path: Path) -> None:
+    try:
+        previous = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise VerificationError(f"cannot read ledger for refresh: {error}") from error
+    previous_by_fingerprint = {
+        entry["fingerprint"]: entry for entry in previous["production_occurrences"]
+    }
+    refreshed = snapshot(root)
+    classification_fields = ("boundary", "risk", "disposition", "rationale")
+    unclassified = []
+    for entry in refreshed["production_occurrences"]:
+        previous_entry = previous_by_fingerprint.get(entry["fingerprint"])
+        if previous_entry is None:
+            unclassified.append(entry["fingerprint"])
+            continue
+        for field in classification_fields:
+            entry[field] = previous_entry[field]
+    if unclassified:
+        raise VerificationError(
+            f"refresh requires explicit review for new production occurrences: {unclassified}"
+        )
+    refreshed["summary"] = ledger_summary(
+        refreshed["production_occurrences"], refreshed["aggregate_inventory"]
+    )
+    write_json(ledger_path, refreshed)
+    verify(root, ledger_path)
+
+
 def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix="hepta-panic-debt-") as directory:
         fixture_root = Path(directory)
@@ -659,7 +664,8 @@ mod tests { #[test] fn assertion() { Some(1).unwrap(); panic!(\"test sentinel\")
 
 
 def usage() -> None:
-    print("usage: scripts/hepta-panic-debt-baseline <report|verify|self-test|snapshot FILE>", file=sys.stderr)
+    print("usage: scripts/hepta-panic-debt-baseline "
+          "<report|verify|self-test|refresh|snapshot FILE>", file=sys.stderr)
     raise SystemExit(2)
 
 
@@ -679,6 +685,8 @@ def main() -> None:
             print(json.dumps(report, indent=2, sort_keys=True))
         elif command == "self-test" and len(sys.argv) == 2:
             self_test()
+        elif command == "refresh" and len(sys.argv) == 2:
+            refresh(ROOT, LEDGER)
         elif command == "snapshot" and len(sys.argv) == 3:
             write_json(Path(sys.argv[2]), snapshot(ROOT))
         else:

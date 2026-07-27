@@ -67,6 +67,13 @@ jobs:
         run: scripts/hepta-upstream-truth-gate verify-semantic
       - name: Exercise semantic and receipt denial fixtures
         run: scripts/hepta-upstream-truth-gate self-test
+      - name: Upload upstream truth evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-upstream-truth-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: error
 
   static:
     name: Static safety gates
@@ -126,6 +133,13 @@ jobs:
         env:
           CARGO_NET_OFFLINE: "true"
         run: scripts/hepta-ci-baseline rust-backend
+      - name: Upload backend security evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-backend-evidence-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: error
 
   full-workspace:
     name: Manual no-live full workspace (${{ matrix.platform }})
@@ -177,6 +191,13 @@ jobs:
       - name: Confirm successful receipt promotion eligibility
         if: success()
         run: scripts/hepta-full-workspace-evidence verify-success-receipt ${{ matrix.platform }} ${{ matrix.runner }} artifacts/full-workspace-${{ matrix.platform }}-receipt.json
+      - name: Upload full-workspace evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-full-workspace-${{ matrix.platform }}-${{ github.run_id }}
+          path: artifacts/full-workspace-${{ matrix.platform }}-receipt.json
+          if-no-files-found: error
 
   nightly-static:
     name: Nightly static contract only

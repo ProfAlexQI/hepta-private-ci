@@ -1,0 +1,66 @@
+{
+  "schema": "hepta.tree-classification.v1",
+  "product_boundary": "openclaw_governed_backend",
+  "classifications": {
+    "active": {
+      "policy": "Built, tested, budgeted, and eligible for the governed release artifact.",
+      "roots": [
+        "codex-rs/hepta-authority",
+        "codex-rs/hepta-cli",
+        "codex-rs/hepta-contracts",
+        "codex-rs/hepta-core",
+        "codex-rs/hepta-gateway",
+        "codex-rs/hepta-intelligence",
+        "codex-rs/hepta-kernel",
+        "codex-rs/hepta-kg",
+        "codex-rs/hepta-memory",
+        "codex-rs/hepta-native-gateway",
+        "codex-rs/hepta-plugins",
+        "codex-rs/hepta-runtime"
+      ],
+      "targeted_upstream_surfaces": [
+        "codex-rs/app-server",
+        "codex-rs/app-server-protocol",
+        "codex-rs/codex-mcp"
+      ]
+    },
+    "compat": {
+      "policy": "Preserve wire, symbol, JSON, hash, and operator compatibility without granting production authority.",
+      "roots": [
+        "scripts/hepta-gate-pair-compat-exec",
+        "scripts/hepta-gate-pair-compat-pack",
+        "scripts/hepta-gate-pair-specs-v1.json",
+        "codex-rs/hepta-runtime/codegen/workgraph-v1"
+      ],
+      "invariants": [
+        "compatibility handlers are never proof of production ingress",
+        "legacy Control UI POST routes remain plan-only",
+        "generated compatibility payloads retain their decoded SHA-256 identities"
+      ]
+    },
+    "archive": {
+      "policy": "Never merge archived history back into main; preserve it in a verified bundle before pruning refs.",
+      "tracked_roots": [
+        "docs/architecture/archive"
+      ],
+      "ephemeral_roots": [
+        "codex-rs/target",
+        "apps/hepta-native/target",
+        "target",
+        ".git/refs/archive"
+      ],
+      "restore_contract": [
+        "record every archived ref and object ID",
+        "verify the bundle",
+        "fetch the bundle into an empty bare repository",
+        "compare every restored ref and object ID before deleting source refs"
+      ]
+    }
+  },
+  "merge_policy": {
+    "whole_tree_merge": false,
+    "archive_ref_merge": false,
+    "targeted_semantic_intake_only": true,
+    "preserve_incremental_hepta_authority": true
+  }
+}

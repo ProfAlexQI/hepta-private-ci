@@ -14,27 +14,27 @@
     },
     "generated_build": {
       "by_kind": {
-        "expect": 0,
-        "panic": 0,
+        "expect": 10,
+        "panic": 1,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
         "unwrap": 0
       },
-      "fingerprints_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-      "total": 0
+      "fingerprints_sha256": "992cd880ed8f77db064ea1b8ca1bca33c6f7453ecdf8acc297ae8f27b2cc2b3a",
+      "total": 11
     },
     "test": {
       "by_kind": {
-        "expect": 4423,
-        "panic": 67,
+        "expect": 4435,
+        "panic": 72,
         "todo": 0,
         "unimplemented": 0,
         "unreachable": 0,
-        "unwrap": 321
+        "unwrap": 320
       },
-      "fingerprints_sha256": "5374c354a40ceba386a52d47410d97acba6cab00f800f4b823c2bdf72b8ce177",
-      "total": 4811
+      "fingerprints_sha256": "c8d868358e1b7d82160776e0f4c6922b71f5a3010402fecbc36a33caa75360c1",
+      "total": 4827
     }
   },
   "limitations": [
@@ -615,6 +615,7 @@
     "only_ignored_path_component": "target",
     "production": "src Rust except test files and items requiring cfg(test)",
     "roots": [
+      "codex-rs/hepta-authority",
       "codex-rs/hepta-cli",
       "codex-rs/hepta-contracts",
       "codex-rs/hepta-core",
@@ -631,35 +632,35 @@
     "test": "tests paths, *_tests.rs/tests.rs/test_support.rs files, and items requiring cfg(test)"
   },
   "source_set": {
-    "file_count": 1437,
-    "paths_and_classes_sha256": "fa876055e75fb12fc42fad0610467d3176df258af468d98acada2bd262c7f150"
+    "file_count": 1442,
+    "paths_and_classes_sha256": "563de5e31fb9e2a2ad0ec5870619e13d90edba7fd47933a715d64d69e0699f24"
   },
   "summary": {
     "actionable_high_risk_production_fingerprints": [],
     "by_kind": {
-      "expect": 4445,
-      "panic": 67,
+      "expect": 4467,
+      "panic": 73,
       "todo": 0,
       "unimplemented": 0,
       "unreachable": 25,
-      "unwrap": 321
+      "unwrap": 320
     },
     "by_risk": {
       "accepted": 47,
-      "excluded_nonproduction": 0,
+      "excluded_nonproduction": 11,
       "high": 0,
       "low": 0,
       "medium": 0,
-      "test_only": 4811,
+      "test_only": 4827,
       "unclassified": 0
     },
     "by_source_class": {
       "fixture": 0,
-      "generated_build": 0,
+      "generated_build": 11,
       "production": 47,
-      "test": 4811
+      "test": 4827
     },
     "classification_sha256": "62679f41085a4df8db243c8436b14ede4fcada14d58c5b0b0d47f56ad3b2be78",
-    "total": 4858
+    "total": 4885
   }
 }
