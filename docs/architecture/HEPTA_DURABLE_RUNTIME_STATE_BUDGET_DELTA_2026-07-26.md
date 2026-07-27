@@ -5,4 +5,5 @@
 - Module ceilings: 440 production-source lines and 120 unit-test lines.
 - Whole-tree ceiling: 1,109,900 lines, a cumulative bounded 1,300-line increase over the R11 A-stage baseline.
 - Repayment: E-stage semantic compaction must still return the Hepta-owned Rust whole-tree ceiling to 1,108,600 lines or lower before controlled-live cutover.
+- Repayment status: completed by `c4a78cd27e`; the E-stage measured total is 1,107,900 lines and the enforced ceiling is restored to 1,108,600.
 - Prohibition: this delta cannot fund unrelated features, compatibility ladders, report expansion, or WorkGraph growth.
