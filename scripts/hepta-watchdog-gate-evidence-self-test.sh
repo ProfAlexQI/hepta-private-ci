@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$ROOT/scripts/lib/hepta-watchdog-gate-evidence-v1.sh"
+source "$ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh"
 
 base_report='{
   "status":"ok",
@@ -192,5 +193,97 @@ unsupported_rc=0
 HEPTA_WATCHDOG_GATE_MODE=candidate-artifact hepta_watchdog_gate_mode >/dev/null 2>&1 \
   || unsupported_rc=$?
 [[ "$unsupported_rc" == "2" ]]
+
+product_boundary="$(jq -c . "$ROOT/docs/decisions/hepta-product-boundary-v1.json")"
+native_post_common='{
+  "product":"Hepta",
+  "runtime":"hepta",
+  "endpoint":"/api/native-post-activation-plan",
+  "source_command":"/native-post-activation-plan --json",
+  "native_route":true,
+  "compatibility_mode":"native_post_activation_plan",
+  "side_effect_free":true,
+  "activation_currently_enabled":false,
+  "handler_candidate_count":3,
+  "handler_scope_env":"HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE",
+  "handler_scope":"task_publish",
+  "handler_scope_configured":true,
+  "execution_evidence_ready":true,
+  "store_contracts_ready":true,
+  "store_jsonl_valid":true,
+  "store_capacity_ok":true,
+  "required_gates":[
+    {"env":"HEPTA_NATIVE_POST_REAL_HANDLERS","enabled":false,"required_for_activation":true},
+    {"env":"HEPTA_NATIVE_POST_REAL_HANDLER_APPROVED","enabled":false,"required_for_activation":true},
+    {"env":"HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE","enabled":false,"required_for_activation":true}
+  ],
+  "rollback_anchor_required":true,
+  "rollback_store_kind":"rollback",
+  "rollback_store_file":"rollback.jsonl",
+  "rollback_schema_id":"hepta.post.rollback_anchor.v1",
+  "dry_run_only":true,
+  "real_mutation_performed":false,
+  "store_write_attempted":false,
+  "approval_applied":false,
+  "task_published":false,
+  "chat_mutated":false,
+  "external_side_effects":false,
+  "gateway_mutation_performed":false,
+  "telegram_read_performed":false,
+  "model_invoked":false,
+  "message_sent":false,
+  "cursor_written":false,
+  "raw_request_body_exposed":false,
+  "raw_idempotency_key_exposed":false,
+  "raw_audit_payload_exposed":false
+}'
+legacy_native_post="$(
+  jq -c '. + {
+    status:"ready",
+    activation_preflight_ready:true,
+    activation_blocked_reason:"real_handler_gate_disabled",
+    handler_implemented_count:3,
+    all_handlers_implemented:true,
+    single_handler_scope_ready:true,
+    selected_handler_count:1,
+    selected_handler_kinds:["task_publish"],
+    rollback_ready:true,
+    required_gates:(.required_gates | map(
+      if .env == "HEPTA_NATIVE_POST_REAL_HANDLER_SCOPE"
+      then .enabled = true
+      else .
+      end
+    ))
+  }' <<<"$native_post_common"
+)"
+governed_native_post="$(
+  jq -c '. + {
+    status:"attention",
+    activation_preflight_ready:false,
+    activation_blocked_reason:"real_handler_not_implemented",
+    handler_implemented_count:0,
+    all_handlers_implemented:false,
+    single_handler_scope_ready:false,
+    selected_handler_count:0,
+    selected_handler_kinds:[],
+    rollback_ready:false
+  }' <<<"$native_post_common"
+)"
+jq -e '.ready == true and .mode == "legacy_plan_ready"' >/dev/null \
+  <<<"$(hepta_watchdog_native_post_contract_json "$product_boundary" "$legacy_native_post")"
+jq -e '.ready == true and .mode == "governed_backend_disabled"' >/dev/null \
+  <<<"$(hepta_watchdog_native_post_contract_json "$product_boundary" "$governed_native_post")"
+jq -e '.ready == false and .mode == "invalid"' >/dev/null \
+  <<<"$(hepta_watchdog_native_post_contract_json \
+    "$(jq -c '.defaults.native_real_mutation = true' <<<"$product_boundary")" \
+    "$governed_native_post")"
+jq -e '.ready == false and .mode == "invalid"' >/dev/null \
+  <<<"$(hepta_watchdog_native_post_contract_json \
+    "$product_boundary" \
+    "$(jq -c '.real_mutation_performed = true' <<<"$governed_native_post")")"
+jq -e '.ready == false and .mode == "invalid"' >/dev/null \
+  <<<"$(hepta_watchdog_native_post_contract_json \
+    "$product_boundary" \
+    "$(jq -c '.required_gates[0].enabled = true' <<<"$legacy_native_post")")"
 
 echo "Hepta watchdog gate evidence self-test passed"

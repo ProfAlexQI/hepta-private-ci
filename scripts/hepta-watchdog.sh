@@ -4,6 +4,7 @@ set -euo pipefail
 BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh"
+source "$REPO_ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh"
 
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}}"
 INSTALLED_BIN="${HEPTA_INSTALLED_BIN:-${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
@@ -11,6 +12,7 @@ WATCHDOG_MODE="${HEPTA_WATCHDOG_MODE:-deployment-consistency}"
 CANDIDATE_MANIFEST="${HEPTA_CANDIDATE_MANIFEST:-${HEPTA_RELEASE_MANIFEST:-${HEPTA_CODEX_RELEASE_MANIFEST:-}}}"
 INSTALLED_RECEIPT="${HEPTA_INSTALLED_RECEIPT:-${HEPTA_INSTALLED_MANIFEST:-${HEPTA_CODEX_INSTALLED_MANIFEST:-$INSTALLED_BIN.manifest}}}"
 EXPECTED_SOURCE_COMMIT="${HEPTA_EXPECTED_SOURCE_COMMIT:-}"
+PRODUCT_BOUNDARY="${HEPTA_PRODUCT_BOUNDARY:-$REPO_ROOT/docs/decisions/hepta-product-boundary-v1.json}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -146,6 +148,10 @@ adapter_alias_json="$(curl -fsS "$BASE_URL/api/hepta-codex-engine-adapter-bounda
 core_json="$(curl -fsS "$BASE_URL/api/hepta-core-fusion-readiness")"
 closure_json="$(curl -fsS "$BASE_URL/api/hepta-name-repository-closure")"
 dependency_json="$(curl -fsS "$BASE_URL/api/hepta-engine-dependency-closure")"
+product_boundary_json="$(jq -c . "$PRODUCT_BOUNDARY")"
+native_post_contract_json="$(
+  hepta_watchdog_native_post_contract_json "$product_boundary_json" "$post_json"
+)"
 
 report="$(jq -n \
   --arg product "Hepta" \
@@ -169,6 +175,7 @@ report="$(jq -n \
   --argjson owner "$owner_json" \
   --argjson poll "$poll_json" \
   --argjson post "$post_json" \
+  --argjson native_post_contract "$native_post_contract_json" \
   --argjson stores "$stores_json" \
   --argjson adapter "$adapter_json" \
   --argjson adapter_alias "$adapter_alias_json" \
@@ -239,7 +246,7 @@ report="$(jq -n \
         and $owner.double_poller_risk == false
         and $poll.external_network_read_by_status == false
         and $poll.external_send_by_status == false
-        and $post.status == "ready"
+        and $native_post_contract.ready == true
         and $post.real_mutation_performed == false
         and $post.external_side_effects == false
         and $stores.status == "ready"
@@ -456,6 +463,9 @@ report="$(jq -n \
     double_poller_risk:$owner.double_poller_risk,
     telegram_poll_loop_status:$poll.status,
     native_post_activation_enabled:$post.activation_currently_enabled,
+    native_post_contract_ready:$native_post_contract.ready,
+    native_post_contract_mode:$native_post_contract.mode,
+    product_role:$native_post_contract.product_role,
     native_post_store_lines:$stores.total_line_count,
     adapter_boundary_status:$adapter.status,
     adapter_canonical_endpoint:$adapter.canonical_endpoint,
