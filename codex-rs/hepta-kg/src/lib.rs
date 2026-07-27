@@ -357,6 +357,46 @@ pub struct KgRecallPlan {
     pub evidence_paths: Vec<KgEvidencePath>,
 }
 
+pub const KG_LOCAL_READ_ONLY_ADAPTER_CONTRACT: &str = "hepta-kg-local-read-only-adapter-v0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KgReadAdapterAudit {
+    pub contract: String,
+    pub credential_read_performed: bool,
+    pub network_call_performed: bool,
+    pub external_write_performed: bool,
+    pub live_write_performed: bool,
+    pub plan: KgRecallPlan,
+}
+
+pub trait KnowledgeGraphReadAdapter {
+    fn recall(&self, query: &KgReadQuery) -> KgReadAdapterAudit;
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalReadOnlyKnowledgeGraphAdapter<'a> {
+    candidates: &'a [KgWriteCandidate],
+}
+
+impl<'a> LocalReadOnlyKnowledgeGraphAdapter<'a> {
+    pub fn new(candidates: &'a [KgWriteCandidate]) -> Self {
+        Self { candidates }
+    }
+}
+
+impl KnowledgeGraphReadAdapter for LocalReadOnlyKnowledgeGraphAdapter<'_> {
+    fn recall(&self, query: &KgReadQuery) -> KgReadAdapterAudit {
+        KgReadAdapterAudit {
+            contract: KG_LOCAL_READ_ONLY_ADAPTER_CONTRACT.to_string(),
+            credential_read_performed: false,
+            network_call_performed: false,
+            external_write_performed: false,
+            live_write_performed: false,
+            plan: plan_kg_recall(query, self.candidates),
+        }
+    }
+}
+
 pub const KG_EXTERNAL_ADAPTER_DRY_RUN_CONTRACT: &str = "hepta-kg-external-adapter-dry-run-v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1190,10 +1230,9 @@ fn entity_matches_recall_query(entity: &KgEntity, query: &KgReadQuery) -> bool {
         .focus_entity_label
         .as_ref()
         .filter(|label| !label.trim().is_empty())
+        && entity_text_matches(entity, focus)
     {
-        if entity_text_matches(entity, focus) {
-            return true;
-        }
+        return true;
     }
 
     entity_text_matches(entity, &query.query_text)
@@ -1269,10 +1308,10 @@ fn text_matches_query(value: &str, query_text: &str) -> bool {
 }
 
 fn matched_entity_label(entity: &KgEntity, query: &KgReadQuery) -> String {
-    if let Some(focus) = query.focus_entity_label.as_ref() {
-        if text_matches_query(&entity.label, focus) {
-            return entity.label.clone();
-        }
+    if let Some(focus) = query.focus_entity_label.as_ref()
+        && text_matches_query(&entity.label, focus)
+    {
+        return entity.label.clone();
     }
     if text_matches_query(&entity.label, &query.query_text) {
         return entity.label.clone();
@@ -1800,6 +1839,30 @@ mod tests {
         assert!(!plan.external_read_allowed);
         assert!(!plan.network_call_allowed);
         assert!(!plan.live_write_allowed);
+    }
+
+    #[test]
+    fn local_read_adapter_never_reads_credentials_or_crosses_effect_boundaries() {
+        let candidates = [sample_candidate()];
+        let query = KgReadQuery {
+            id: "kg-adapter:hepta".to_string(),
+            contract: KG_READ_RECALL_CONTRACT.to_string(),
+            query_text: "Hepta".to_string(),
+            focus_entity_label: None,
+            relation_kinds: Vec::new(),
+            max_entities: 4,
+            max_relations: 4,
+            max_evidence_paths: 4,
+        };
+
+        let audit = LocalReadOnlyKnowledgeGraphAdapter::new(&candidates).recall(&query);
+
+        assert_eq!(audit.contract, KG_LOCAL_READ_ONLY_ADAPTER_CONTRACT);
+        assert!(!audit.credential_read_performed);
+        assert!(!audit.network_call_performed);
+        assert!(!audit.external_write_performed);
+        assert!(!audit.live_write_performed);
+        assert!(audit.plan.read_only);
     }
 
     #[test]

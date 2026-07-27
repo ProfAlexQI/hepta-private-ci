@@ -41,10 +41,11 @@ use hepta_kg::KgWriteCandidate;
 use hepta_kg::KgWriteMode;
 use hepta_kg::KgWritePlan;
 use hepta_kg::KgWritePolicy;
+use hepta_kg::KnowledgeGraphReadAdapter;
+use hepta_kg::LocalReadOnlyKnowledgeGraphAdapter;
 use hepta_kg::default_external_adapter_staging_configs;
 use hepta_kg::plan_external_adapter_dry_run;
 use hepta_kg::plan_external_adapter_staging_gate;
-use hepta_kg::plan_kg_recall;
 use hepta_kg::plan_kg_write;
 use hepta_kg::preview_disabled_external_adapter_write;
 use hepta_kg::read_all_external_adapter_staging_configs_from_env_pairs;
@@ -1862,9 +1863,10 @@ pub fn memory_kg_recall_plan_report(
         "memory-kg-recall",
     );
     let queries = memory_kg_recall_queries_for_candidates(&candidates);
+    let adapter = LocalReadOnlyKnowledgeGraphAdapter::new(&candidates);
     let plans = queries
         .iter()
-        .map(|query| plan_kg_recall(query, &candidates))
+        .map(|query| adapter.recall(query).plan)
         .collect::<Vec<_>>();
 
     let entity_match_count = plans.iter().map(|plan| plan.entity_match_count).sum();
