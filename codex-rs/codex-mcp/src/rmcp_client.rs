@@ -238,7 +238,13 @@ impl AsyncManagedClient {
 
     fn startup_snapshot_while_initializing(&self) -> Option<Vec<ToolInfo>> {
         if !self.startup_complete.load(Ordering::Acquire) {
-            return self.startup_snapshot.clone();
+            let mut tools = self.startup_snapshot.clone()?;
+            for tool in &mut tools {
+                if let Some(annotations) = tool.tool.annotations.as_mut() {
+                    annotations.read_only_hint = None;
+                }
+            }
+            return Some(tools);
         }
         None
     }

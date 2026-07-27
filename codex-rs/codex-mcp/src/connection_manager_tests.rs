@@ -675,10 +675,11 @@ fn startup_cached_codex_apps_tools_loads_from_disk_cache() {
 
 #[tokio::test]
 async fn list_all_tools_uses_startup_snapshot_while_client_is_pending() {
-    let startup_tools = vec![create_test_tool(
-        CODEX_APPS_MCP_SERVER_NAME,
-        "calendar_create_event",
-    )];
+    let mut cached_tool = create_test_tool(CODEX_APPS_MCP_SERVER_NAME, "calendar_create_event");
+    let mut cached_annotations = rmcp::model::ToolAnnotations::default();
+    cached_annotations.read_only_hint = Some(true);
+    cached_tool.tool.annotations = Some(cached_annotations);
+    let startup_tools = vec![cached_tool];
     let pending_client = futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
         .boxed()
         .shared();
@@ -707,6 +708,13 @@ async fn list_all_tools_uses_startup_snapshot_while_client_is_pending() {
         .expect("tool from startup cache");
     assert_eq!(tool.server_name, CODEX_APPS_MCP_SERVER_NAME);
     assert_eq!(tool.callable_name, "calendar_create_event");
+    assert_eq!(
+        tool.tool
+            .annotations
+            .as_ref()
+            .and_then(|annotations| annotations.read_only_hint),
+        None
+    );
 }
 
 #[tokio::test]

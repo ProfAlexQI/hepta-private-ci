@@ -1,0 +1,31 @@
+{
+  "schema": "hepta_g_upstream_targeted_semantic_intake_v1",
+  "observed_at": "2026-07-27",
+  "upstream_head": "3bbf1fe75701c97fb190e0867002ba2d9dbda5db",
+  "integration_mode": "selective_semantic_transplant",
+  "absorptions": [
+    {
+      "upstream_commit": "5a3808b77d18",
+      "scope": "explicit_in_process_outbound_router_shutdown",
+      "evidence": "codex-app-server in_process_outbound_router_shutdown_does_not_wait_for_retained_sender"
+    },
+    {
+      "upstream_commit": "9ca6df68dafe",
+      "scope": "terminal_turn_error_history_replay",
+      "evidence": "codex-app-server-protocol embedded and late terminal error tests"
+    },
+    {
+      "upstream_commit": "3bbf1fe75701",
+      "scope": "cached_mcp_tools_visible_before_startup_with_live_call_wait",
+      "evidence": "codex-mcp startup snapshot test and existing call_tool client startup await"
+    }
+  ],
+  "claims": {
+    "full_upstream_range_classified": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "provider_activation_performed": false,
+    "live_enablement_performed": false
+  }
+}
