@@ -25,12 +25,18 @@ verify_total_max() {
   fi
 }
 
+maintainable_tree_line_counts() {
+  local pattern="$1"
+  shift
+  find "$@" -type d -name target -prune -o -type f -name "$pattern" -exec wc -l {} +
+}
+
 verify_tree_total_max() {
   local max_lines="$1"
   local pattern="$2"
   shift 2
   local total
-  total="$({ find "$@" -type f -name "$pattern" -exec wc -l {} +; } \
+  total="$({ maintainable_tree_line_counts "$pattern" "$@"; } \
     | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
   if (( total > max_lines )); then
     echo "architecture tree line budget exceeded: ${total} > ${max_lines}: pattern=$pattern roots=$*" >&2
@@ -45,7 +51,7 @@ verify_tree_with_generated_total_max() {
   shift 3
   local total
   total="$({
-    find "$@" -type f -name "$pattern" -exec wc -l {} +
+    maintainable_tree_line_counts "$pattern" "$@"
     find "$generated_root" -type f -exec wc -l {} +
   } | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
   if (( total > max_lines )); then
@@ -801,6 +807,42 @@ self_test_line_budget_negative_fixture() {
   }
 }
 
+self_test_build_output_pruned() (
+  local denial
+  local fixture_root
+  local generated_root
+  local maintained_root
+
+  fixture_root="$(mktemp -d /tmp/hepta-architecture-budget-target-self.XXXXXX)"
+  trap 'rm -rf "$fixture_root"' EXIT
+  maintained_root="$fixture_root/maintained"
+  generated_root="$fixture_root/generated"
+  mkdir -p "$maintained_root/target/build" "$generated_root"
+  printf 'maintained-1\nmaintained-2\nmaintained-3\n' >"$maintained_root/source.txt"
+  printf 'generated-1\ngenerated-2\n' >"$generated_root/generated.txt"
+  printf 'ignored-1\nignored-2\nignored-3\nignored-4\n' >"$maintained_root/target/build/output.txt"
+
+  verify_tree_total_max 3 '*.txt' "$maintained_root"
+  if denial="$(verify_tree_total_max 2 '*.txt' "$maintained_root" 2>&1)"; then
+    echo "architecture target-pruning tree fixture unexpectedly passed" >&2
+    return 1
+  fi
+  [[ "$denial" == "architecture tree line budget exceeded: 3 > 2: pattern=*.txt roots=$maintained_root" ]] || {
+    echo "architecture target-pruning tree fixture failed unexpectedly: $denial" >&2
+    return 1
+  }
+
+  verify_tree_with_generated_total_max 5 '*.txt' "$generated_root" "$maintained_root"
+  if denial="$(verify_tree_with_generated_total_max 4 '*.txt' "$generated_root" "$maintained_root" 2>&1)"; then
+    echo "architecture target-pruning generated fixture unexpectedly passed" >&2
+    return 1
+  fi
+  [[ "$denial" == "architecture maintainable-source line budget exceeded: 5 > 4: pattern=*.txt generated=$generated_root roots=$maintained_root" ]] || {
+    echo "architecture target-pruning generated fixture failed unexpectedly: $denial" >&2
+    return 1
+  }
+)
+
 self_test_first_model_invocation_test_family_split() {
   local family_file="codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs"
   local parent_file="codex-rs/hepta-native-gateway/src/native_gateway/tests.rs"
@@ -846,6 +888,7 @@ self_test_report_dag_budget() (
 self_test() {
   verify >/dev/null
   self_test_line_budget_negative_fixture
+  self_test_build_output_pruned
   self_test_first_model_invocation_test_family_split
   scripts/hepta-budgeted-test self-test >/dev/null
   self_test_report_dag_budget
