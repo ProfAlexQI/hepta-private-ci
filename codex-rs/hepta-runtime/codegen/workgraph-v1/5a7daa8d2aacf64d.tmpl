@@ -1,0 +1,748 @@
+#![allow(dead_code)]
+
+use serde::Serialize;
+
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0001@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0002@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0003@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0004@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0005@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0006@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0007@@::@@HEPTA_WORKGRAPH_TOKEN_0008@@;
+use crate::@@HEPTA_WORKGRAPH_TOKEN_0007@@::@@HEPTA_WORKGRAPH_TOKEN_0009@@ as @@HEPTA_WORKGRAPH_TOKEN_0010@@;
+
+pub const @@HEPTA_WORKGRAPH_TOKEN_0011@@: &str =
+    @@HEPTA_WORKGRAPH_TOKEN_0012@@;
+pub const @@HEPTA_WORKGRAPH_TOKEN_0013@@: &str =
+    @@HEPTA_WORKGRAPH_TOKEN_0014@@;
+pub const @@HEPTA_WORKGRAPH_TOKEN_0015@@: &str =
+    @@HEPTA_WORKGRAPH_TOKEN_0016@@;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct @@HEPTA_WORKGRAPH_TOKEN_0017@@ {
+    pub product: &'static str,
+    pub runtime: &'static str,
+    pub status: &'static str,
+    pub gate: &'static str,
+    pub schema_version: &'static str,
+    pub preview_mode: &'static str,
+    pub source_surface_count: usize,
+    pub @@HEPTA_WORKGRAPH_TOKEN_0018@@: usize,
+    pub @@HEPTA_WORKGRAPH_TOKEN_0019@@: usize,
+    pub previous_ready_surface_count: usize,
+    pub event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready_source_count: usize,
+    pub previous_append_only_work_graph_events_primary_blocked_surface_count: usize,
+    pub @@HEPTA_WORKGRAPH_TOKEN_0020@@: usize,
+    pub append_only_work_graph_events_primary_blocked_surface_count: usize,
+    pub replay_readback_execution_blocked_surface_count: usize,
+    pub runtime_adapter_enforcement_blocked_surface_count: usize,
+    pub append_only_work_graph_events_enabled_source_count: usize,
+    pub event_store_enabled_source_count: usize,
+    pub replay_readback_enabled_source_count: usize,
+    pub runtime_canonical_adapter_enforcement_enabled_source_count: usize,
+    pub rerun_ready_surface_count: usize,
+    pub rerun_blocked_surface_count: usize,
+    pub decision_delta_count: usize,
+    pub cleared_blocker_count: usize,
+    pub residual_blocker_count: usize,
+    pub enforcement_stage_count: usize,
+    pub required_prior_gate_count: usize,
+    pub decision_deltas: Vec<@@HEPTA_WORKGRAPH_TOKEN_0021@@>,
+    pub cleared_blockers: Vec<@@HEPTA_WORKGRAPH_TOKEN_0022@@>,
+    pub residual_blockers: Vec<@@HEPTA_WORKGRAPH_TOKEN_0023@@>,
+    pub enforcement_stages: Vec<@@HEPTA_WORKGRAPH_TOKEN_0024@@>,
+    pub required_prior_gates: Vec<&'static str>,
+    pub recommended_next_gate: &'static str,
+    pub ready_for_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_preview: bool,
+    pub ready_for_append_only_work_graph_events: bool,
+    pub @@HEPTA_WORKGRAPH_TOKEN_0025@@: bool,
+    pub ready_for_replay_readback: bool,
+    pub ready_for_runtime_adapter_enforcement: bool,
+    pub ready_for_live_execution: bool,
+    pub side_effects:
+        @@HEPTA_WORKGRAPH_TOKEN_0026@@,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct @@HEPTA_WORKGRAPH_TOKEN_0021@@
+{
+    pub source_surface_id: &'static str,
+    pub source_category: &'static str,
+    pub previous_enforcement_decision: &'static str,
+    pub @@HEPTA_WORKGRAPH_TOKEN_0027@@:
+        &'static str,
+    pub covered_by_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview:
+        bool,
+    pub event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready:
+        bool,
+    pub event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_applied:
+        bool,
+    pub append_only_work_graph_events_enabled: bool,
+    pub event_store_enabled: bool,
+    pub replay_readback_execution_enabled: bool,
+    pub runtime_canonical_adapter_enforcement_enabled: bool,
+    pub residual_source_blocker_ids: Vec<&'static str>,
+    pub next_required_gate: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct @@HEPTA_WORKGRAPH_TOKEN_0022@@
+{
+    pub id: &'static str,
+    pub cleared_source_surface_ids: Vec<&'static str>,
+    pub source_count_before: usize,
+    pub source_count_after: usize,
+    pub closure_gate_id: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct @@HEPTA_WORKGRAPH_TOKEN_0023@@
+{
+    pub id: &'static str,
+    pub severity: &'static str,
+    pub category: &'static str,
+    pub affected_source_surface_ids: Vec<&'static str>,
+    pub required_before_projection_enforcement: bool,
+    pub recommended_fix: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct @@HEPTA_WORKGRAPH_TOKEN_0024@@
+{
+    pub id: &'static str,
+    pub observed_contract_count: usize,
+    pub ready_contract_count_before: usize,
+    pub ready_contract_count_after: usize,
+    pub hard_blocker_ids: Vec<&'static str>,
+    pub enforcement_enabled: bool,
+    pub next_gate: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct @@HEPTA_WORKGRAPH_TOKEN_0026@@
+{
+    pub filesystem_written: bool,
+    pub graph_state_persisted: bool,
+    pub work_graph_events_persisted: bool,
+    pub event_store_enabled: bool,
+    pub wal_written: bool,
+    pub checkpoint_written: bool,
+    pub replay_executed: bool,
+    pub readback_executed: bool,
+    pub adapter_projection_enforced: bool,
+    pub runtime_mutation_performed: bool,
+    pub approval_recorded: bool,
+    pub terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_established:
+        bool,
+    pub agent_spawn_performed: bool,
+    pub external_send_performed: bool,
+    pub model_invoked: bool,
+}
+
+pub fn @@HEPTA_WORKGRAPH_TOKEN_0028@@()
+-> @@HEPTA_WORKGRAPH_TOKEN_0017@@{
+    let previous_decisions =
+        @@HEPTA_WORKGRAPH_TOKEN_0010@@();
+    let application_outcomes =
+        @@HEPTA_WORKGRAPH_TOKEN_0006@@(
+        );
+    let application_blockers =
+        @@HEPTA_WORKGRAPH_TOKEN_0004@@(
+        );
+    let decision_deltas =
+        @@HEPTA_WORKGRAPH_TOKEN_0029@@(
+            &previous_decisions,
+            &application_outcomes,
+            &application_blockers,
+        );
+    let cleared_blockers =
+        @@HEPTA_WORKGRAPH_TOKEN_0030@@(
+            &previous_decisions,
+            &decision_deltas,
+        );
+    let residual_blockers =
+        @@HEPTA_WORKGRAPH_TOKEN_0031@@(
+            &application_blockers,
+        );
+    let enforcement_stages =
+        @@HEPTA_WORKGRAPH_TOKEN_0032@@(
+            &decision_deltas,
+            application_outcomes.len(),
+        );
+    let required_prior_gates =
+        @@HEPTA_WORKGRAPH_TOKEN_0033@@();
+
+    let previous_append_only_work_graph_events_primary_blocked_surface_count = previous_decisions
+        .iter()
+        .filter(|decision| {
+            decision
+                .@@HEPTA_WORKGRAPH_TOKEN_0034@@
+                == "deny_append_only_work_graph_events_disabled"
+        })
+        .count();
+    let @@HEPTA_WORKGRAPH_TOKEN_0020@@ = decision_deltas
+        .iter()
+        .filter(|decision| {
+            decision.@@HEPTA_WORKGRAPH_TOKEN_0027@@
+                == @@HEPTA_WORKGRAPH_TOKEN_0035@@
+        })
+        .count();
+    let append_only_work_graph_events_primary_blocked_surface_count = decision_deltas
+        .iter()
+        .filter(|decision| {
+            decision
+                .@@HEPTA_WORKGRAPH_TOKEN_0027@@
+                == "deny_append_only_work_graph_events_disabled"
+        })
+        .count();
+    let replay_readback_execution_blocked_surface_count = decision_deltas
+        .iter()
+        .filter(|decision| {
+            decision
+                .residual_source_blocker_ids
+                .contains(&"replay_readback_execution_disabled")
+        })
+        .count();
+    let runtime_adapter_enforcement_blocked_surface_count = decision_deltas
+        .iter()
+        .filter(|decision| {
+            decision
+                .residual_source_blocker_ids
+                .contains(&"runtime_canonical_adapter_enforcement_disabled")
+        })
+        .count();
+    let rerun_ready_surface_count = decision_deltas
+        .iter()
+        .filter(|decision| {
+            decision
+                .@@HEPTA_WORKGRAPH_TOKEN_0027@@
+                == "allow_preview_only"
+        })
+        .count();
+
+    @@HEPTA_WORKGRAPH_TOKEN_0017@@ {
+        product: "Hepta",
+        runtime: "hepta",
+        status: "ready",
+        gate:
+            @@HEPTA_WORKGRAPH_TOKEN_0011@@,
+        schema_version:
+            @@HEPTA_WORKGRAPH_TOKEN_0013@@,
+        preview_mode:
+            @@HEPTA_WORKGRAPH_TOKEN_0036@@,
+        source_surface_count: previous_decisions.len(),
+        @@HEPTA_WORKGRAPH_TOKEN_0018@@: application_outcomes.len(),
+        @@HEPTA_WORKGRAPH_TOKEN_0019@@: decision_deltas
+            .iter()
+            .filter(|decision| decision.covered_by_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview)
+            .count(),
+        previous_ready_surface_count: previous_decisions
+            .iter()
+            .filter(|decision| {
+                decision.@@HEPTA_WORKGRAPH_TOKEN_0034@@
+                    == "allow_preview_only"
+            })
+            .count(),
+        event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready_source_count: decision_deltas
+            .iter()
+            .filter(|decision| decision.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready)
+            .count(),
+        previous_append_only_work_graph_events_primary_blocked_surface_count,
+        @@HEPTA_WORKGRAPH_TOKEN_0020@@,
+        append_only_work_graph_events_primary_blocked_surface_count,
+        replay_readback_execution_blocked_surface_count,
+        runtime_adapter_enforcement_blocked_surface_count,
+        append_only_work_graph_events_enabled_source_count: 0,
+        event_store_enabled_source_count: 0,
+        replay_readback_enabled_source_count: 0,
+        runtime_canonical_adapter_enforcement_enabled_source_count: 0,
+        rerun_ready_surface_count,
+        rerun_blocked_surface_count: decision_deltas.len() - rerun_ready_surface_count,
+        decision_delta_count: decision_deltas.len(),
+        cleared_blocker_count: cleared_blockers.len(),
+        residual_blocker_count: residual_blockers.len(),
+        enforcement_stage_count: enforcement_stages.len(),
+        required_prior_gate_count: required_prior_gates.len(),
+        decision_deltas,
+        cleared_blockers,
+        residual_blockers,
+        enforcement_stages,
+        required_prior_gates,
+        recommended_next_gate:
+            @@HEPTA_WORKGRAPH_TOKEN_0015@@,
+        ready_for_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_preview: true,
+        ready_for_append_only_work_graph_events: false,
+        @@HEPTA_WORKGRAPH_TOKEN_0025@@: false,
+        ready_for_replay_readback: false,
+        ready_for_runtime_adapter_enforcement: false,
+        ready_for_live_execution: false,
+        side_effects:
+            @@HEPTA_WORKGRAPH_TOKEN_0026@@::none(),
+    }
+}
+
+pub fn @@HEPTA_WORKGRAPH_TOKEN_0037@@()
+-> Vec<@@HEPTA_WORKGRAPH_TOKEN_0021@@>{
+    let previous_decisions =
+        @@HEPTA_WORKGRAPH_TOKEN_0010@@();
+    let application_outcomes =
+        @@HEPTA_WORKGRAPH_TOKEN_0006@@(
+        );
+    let application_blockers =
+        @@HEPTA_WORKGRAPH_TOKEN_0004@@(
+        );
+    @@HEPTA_WORKGRAPH_TOKEN_0029@@(
+        &previous_decisions,
+        &application_outcomes,
+        &application_blockers,
+    )
+}
+
+pub fn @@HEPTA_WORKGRAPH_TOKEN_0038@@()
+-> Vec<@@HEPTA_WORKGRAPH_TOKEN_0023@@>{
+    @@HEPTA_WORKGRAPH_TOKEN_0031@@(
+        &@@HEPTA_WORKGRAPH_TOKEN_0004@@(),
+    )
+}
+
+pub fn @@HEPTA_WORKGRAPH_TOKEN_0039@@()
+-> Vec<@@HEPTA_WORKGRAPH_TOKEN_0024@@>{
+    let decisions =
+        @@HEPTA_WORKGRAPH_TOKEN_0037@@();
+    @@HEPTA_WORKGRAPH_TOKEN_0032@@(
+        &decisions,
+        decisions.len(),
+    )
+}
+
+pub fn @@HEPTA_WORKGRAPH_TOKEN_0033@@()
+-> Vec<&'static str> {
+    let mut gates =
+        @@HEPTA_WORKGRAPH_TOKEN_0005@@();
+    gates.push(
+        @@HEPTA_WORKGRAPH_TOKEN_0001@@,
+    );
+    gates
+}
+
+fn @@HEPTA_WORKGRAPH_TOKEN_0029@@(
+    previous_decisions: &[@@HEPTA_WORKGRAPH_TOKEN_0008@@],
+    application_outcomes: &[@@HEPTA_WORKGRAPH_TOKEN_0003@@],
+    application_blockers: &[@@HEPTA_WORKGRAPH_TOKEN_0002@@],
+) -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0021@@>{
+    previous_decisions
+        .iter()
+        .filter(|previous| {
+            previous
+                .@@HEPTA_WORKGRAPH_TOKEN_0034@@
+                == "allow_preview_only"
+        })
+        .map(|previous| {
+            let covered = application_outcomes.iter().any(|outcome| {
+                outcome.source_surface_id == previous.source_surface_id
+                    && outcome.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready_preview
+                    && !outcome.@@HEPTA_WORKGRAPH_TOKEN_0025@@
+            });
+            let residual_source_blocker_ids =
+                source_blocker_ids(application_blockers, previous.source_surface_id);
+            let decision = @@HEPTA_WORKGRAPH_TOKEN_0040@@(
+                covered,
+                &residual_source_blocker_ids,
+            );
+
+            @@HEPTA_WORKGRAPH_TOKEN_0021@@ {
+                source_surface_id: previous.source_surface_id,
+                source_category: previous.source_category,
+                previous_enforcement_decision: previous
+                    .@@HEPTA_WORKGRAPH_TOKEN_0034@@,
+                @@HEPTA_WORKGRAPH_TOKEN_0027@@:
+                    decision,
+                covered_by_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview: covered,
+                event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready: covered,
+                event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_applied: false,
+                append_only_work_graph_events_enabled: false,
+                event_store_enabled: false,
+                replay_readback_execution_enabled: false,
+                runtime_canonical_adapter_enforcement_enabled: false,
+                residual_source_blocker_ids,
+                next_required_gate: next_gate_for_decision(decision),
+            }
+        })
+        .collect()
+}
+
+fn @@HEPTA_WORKGRAPH_TOKEN_0030@@(
+    previous_decisions: &[@@HEPTA_WORKGRAPH_TOKEN_0008@@],
+    decision_deltas: &[@@HEPTA_WORKGRAPH_TOKEN_0021@@],
+) -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0022@@>{
+    let before = previous_decisions
+        .iter()
+        .filter(|decision| {
+            decision
+                .@@HEPTA_WORKGRAPH_TOKEN_0034@@
+                == "allow_preview_only"
+        })
+        .map(|decision| decision.source_surface_id)
+        .collect::<Vec<_>>();
+    let application_missing_after_count = decision_deltas
+        .iter()
+        .filter(|decision| {
+            decision
+                .@@HEPTA_WORKGRAPH_TOKEN_0027@@
+                == @@HEPTA_WORKGRAPH_TOKEN_0035@@
+        })
+        .count();
+    vec![@@HEPTA_WORKGRAPH_TOKEN_0022@@ {
+        id: @@HEPTA_WORKGRAPH_TOKEN_0041@@,
+        cleared_source_surface_ids: before.clone(),
+        source_count_before: before.len(),
+        source_count_after: application_missing_after_count,
+        closure_gate_id:
+            @@HEPTA_WORKGRAPH_TOKEN_0001@@,
+    }]
+}
+
+fn @@HEPTA_WORKGRAPH_TOKEN_0031@@(
+    application_blockers: &[@@HEPTA_WORKGRAPH_TOKEN_0002@@],
+) -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0023@@>{
+    application_blockers
+        .iter()
+        .filter(|blocker| !cleared_application_blocker(blocker.id))
+        .map(|blocker| {
+            @@HEPTA_WORKGRAPH_TOKEN_0023@@ {
+                id: blocker.id,
+                severity: blocker.severity,
+                category: blocker.category,
+                affected_source_surface_ids: blocker.affected_source_surface_ids.clone(),
+                required_before_projection_enforcement: true,
+                recommended_fix: blocker.recommended_fix,
+            }
+        })
+        .collect()
+}
+
+fn @@HEPTA_WORKGRAPH_TOKEN_0032@@(
+    decision_deltas: &[@@HEPTA_WORKGRAPH_TOKEN_0021@@],
+    @@HEPTA_WORKGRAPH_TOKEN_0018@@: usize,
+) -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0024@@>{
+    vec![
+        rerun_stage(
+            "work_graph_events_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout",
+            @@HEPTA_WORKGRAPH_TOKEN_0018@@,
+            0,
+            decision_deltas
+                .iter()
+                .filter(|decision| {
+                    decision.covered_by_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview
+                })
+                .count(),
+            vec![],
+        ),
+        rerun_stage(
+            "work_graph_events_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_non_recording",
+            decision_deltas.len(),
+            0,
+            decision_deltas.len(),
+            vec![],
+        ),
+        rerun_stage(
+            "work_graph_events_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_non_send_boundary",
+            decision_deltas.len(),
+            0,
+            decision_deltas.len(),
+            vec![],
+        ),
+        rerun_stage(
+            "work_graph_events_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_git_mutation_boundary",
+            decision_deltas.len(),
+            0,
+            decision_deltas.len(),
+            vec![],
+        ),
+        rerun_stage(
+            "work_graph_events_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_no_enablement_regression_guard",
+            decision_deltas.len(),
+            0,
+            decision_deltas.len(),
+            vec![],
+        ),
+        rerun_stage(
+            "work_graph_events_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_terminal_frontier_mapping",
+            decision_deltas.len(),
+            0,
+            decision_deltas.len(),
+            vec![],
+        ),
+    ]
+}
+
+fn source_blocker_ids(
+    application_blockers: &[@@HEPTA_WORKGRAPH_TOKEN_0002@@],
+    source_surface_id: &'static str,
+) -> Vec<&'static str> {
+    application_blockers
+        .iter()
+        .filter(|blocker| {
+            !cleared_application_blocker(blocker.id)
+                && blocker
+                    .affected_source_surface_ids
+                    .contains(&source_surface_id)
+        })
+        .map(|blocker| blocker.id)
+        .collect()
+}
+
+fn @@HEPTA_WORKGRAPH_TOKEN_0040@@(
+    contract_ready: bool,
+    source_blockers: &[&'static str],
+) -> &'static str {
+    if !contract_ready {
+        @@HEPTA_WORKGRAPH_TOKEN_0035@@
+    } else if source_blockers.contains(&"append_only_work_graph_events_disabled") {
+        "deny_append_only_work_graph_events_disabled"
+    } else if source_blockers.contains(&"runtime_canonical_adapter_enforcement_disabled") {
+        "deny_runtime_canonical_adapter_enforcement_disabled"
+    } else {
+        "allow_preview_only"
+    }
+}
+
+fn next_gate_for_decision(decision: &'static str) -> &'static str {
+    if decision
+        == @@HEPTA_WORKGRAPH_TOKEN_0035@@
+    {
+        @@HEPTA_WORKGRAPH_TOKEN_0001@@
+    } else {
+        @@HEPTA_WORKGRAPH_TOKEN_0015@@
+    }
+}
+
+fn cleared_application_blocker(blocker_id: &'static str) -> bool {
+    matches!(
+        blocker_id,
+        @@HEPTA_WORKGRAPH_TOKEN_0042@@
+    )
+}
+
+fn rerun_stage(
+    id: &'static str,
+    observed_contract_count: usize,
+    ready_contract_count_before: usize,
+    ready_contract_count_after: usize,
+    hard_blocker_ids: Vec<&'static str>,
+) -> @@HEPTA_WORKGRAPH_TOKEN_0024@@{
+    @@HEPTA_WORKGRAPH_TOKEN_0024@@ {
+        id,
+        observed_contract_count,
+        ready_contract_count_before,
+        ready_contract_count_after,
+        hard_blocker_ids,
+        enforcement_enabled: false,
+        next_gate:
+            @@HEPTA_WORKGRAPH_TOKEN_0015@@,
+    }
+}
+
+impl
+    @@HEPTA_WORKGRAPH_TOKEN_0026@@
+{
+    const fn none() -> Self {
+        Self {
+            filesystem_written: false,
+            graph_state_persisted: false,
+            work_graph_events_persisted: false,
+            event_store_enabled: false,
+            wal_written: false,
+            checkpoint_written: false,
+            replay_executed: false,
+            readback_executed: false,
+            adapter_projection_enforced: false,
+            runtime_mutation_performed: false,
+            approval_recorded: false,
+            terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_established: false,
+            agent_spawn_performed: false,
+            external_send_performed: false,
+            model_invoked: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn @@HEPTA_WORKGRAPH_TOKEN_0043@@()
+     {
+        let decisions =
+            @@HEPTA_WORKGRAPH_TOKEN_0029@@(
+                &sample_previous_decisions(),
+                &sample_application_outcomes(),
+                &sample_application_blockers(),
+            );
+
+        assert_eq!(decisions.len(), 2);
+        assert!(decisions.iter().all(|decision| {
+            decision.covered_by_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview
+                && decision.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready
+                && !decision.event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_applied
+                && decision.@@HEPTA_WORKGRAPH_TOKEN_0027@@
+                    == "allow_preview_only"
+                && decision.next_required_gate
+                    == @@HEPTA_WORKGRAPH_TOKEN_0015@@
+        }));
+    }
+
+    #[test]
+    fn @@HEPTA_WORKGRAPH_TOKEN_0044@@()
+     {
+        let decisions =
+            @@HEPTA_WORKGRAPH_TOKEN_0029@@(
+                &sample_previous_decisions(),
+                &sample_application_outcomes(),
+                &sample_application_blockers(),
+            );
+
+        assert!(decisions.iter().all(|decision| {
+            !decision.append_only_work_graph_events_enabled
+                && !decision.event_store_enabled
+                && !decision.replay_readback_execution_enabled
+                && !decision.runtime_canonical_adapter_enforcement_enabled
+        }));
+    }
+
+    #[test]
+    fn @@HEPTA_WORKGRAPH_TOKEN_0045@@()
+     {
+        let blockers =
+            @@HEPTA_WORKGRAPH_TOKEN_0031@@(
+                &sample_application_blockers(),
+            );
+        let decisions =
+            @@HEPTA_WORKGRAPH_TOKEN_0029@@(
+                &sample_previous_decisions(),
+                &sample_application_outcomes(),
+                &sample_application_blockers(),
+            );
+        let stages =
+            @@HEPTA_WORKGRAPH_TOKEN_0032@@(
+                &decisions, 2,
+            );
+
+        assert_eq!(
+            blockers
+                .iter()
+                .map(|blocker| blocker.id)
+                .collect::<Vec<_>>(),
+            Vec::<&str>::new()
+        );
+        assert_eq!(stages.len(), 6);
+        assert!(stages.iter().all(|stage| !stage.enforcement_enabled));
+    }
+
+    #[test]
+    fn @@HEPTA_WORKGRAPH_TOKEN_0046@@()
+     {
+        assert_eq!(
+            @@HEPTA_WORKGRAPH_TOKEN_0026@@::none(),
+            @@HEPTA_WORKGRAPH_TOKEN_0026@@ {
+                filesystem_written: false,
+                graph_state_persisted: false,
+                work_graph_events_persisted: false,
+                event_store_enabled: false,
+                wal_written: false,
+                checkpoint_written: false,
+                replay_executed: false,
+                readback_executed: false,
+                adapter_projection_enforced: false,
+                runtime_mutation_performed: false,
+                approval_recorded: false,
+                terminal_no_cutover_receipt_acknowledgement_replay_idempotency_closeout_receipt_acknowledgement_replay_idempotency_closeout_established: false,
+                agent_spawn_performed: false,
+                external_send_performed: false,
+                model_invoked: false,
+            }
+        );
+    }
+
+    fn sample_previous_decisions()
+    -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0008@@>{
+        vec![
+            sample_previous_decision("update_plan_tool", "planning"),
+            sample_previous_decision("multi_agent_v2_thread_spawn", "multi_agent"),
+        ]
+    }
+
+    fn sample_previous_decision(
+        source_surface_id: &'static str,
+        source_category: &'static str,
+    ) -> @@HEPTA_WORKGRAPH_TOKEN_0008@@{
+        @@HEPTA_WORKGRAPH_TOKEN_0008@@ {
+            source_surface_id,
+            source_category,
+            previous_enforcement_decision: "deny_append_only_work_graph_events_disabled",
+            @@HEPTA_WORKGRAPH_TOKEN_0034@@:
+                "allow_preview_only",
+            covered_by_event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_preview: true,
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready: true,
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_application_applied: false,
+            append_only_work_graph_events_enabled: false,
+            event_store_enabled: false,
+            replay_readback_execution_enabled: false,
+            runtime_canonical_adapter_enforcement_enabled: false,
+            residual_source_blocker_ids: Vec::new(),
+            next_required_gate:
+                @@HEPTA_WORKGRAPH_TOKEN_0015@@,
+        }
+    }
+
+    fn sample_application_outcomes()
+    -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0003@@>
+    {
+        vec![
+            sample_application_outcome("update_plan_tool", "planning"),
+            sample_application_outcome("multi_agent_v2_thread_spawn", "multi_agent"),
+        ]
+    }
+
+    fn sample_application_outcome(
+        source_surface_id: &'static str,
+        source_category: &'static str,
+    ) -> @@HEPTA_WORKGRAPH_TOKEN_0003@@
+    {
+        @@HEPTA_WORKGRAPH_TOKEN_0003@@ {
+            source_surface_id,
+            source_category,
+            application_plan_id: format!(
+                @@HEPTA_WORKGRAPH_TOKEN_0047@@
+            ),
+            @@HEPTA_WORKGRAPH_TOKEN_0048@@: @@HEPTA_WORKGRAPH_TOKEN_0049@@,
+            event_store_cutover_terminal_no_cutover_receipt_acknowledgement_replay_idempotency_contract_ready_preview: true,
+            @@HEPTA_WORKGRAPH_TOKEN_0050@@: true,
+            ready_for_append_only_work_graph_events: false,
+            @@HEPTA_WORKGRAPH_TOKEN_0025@@: false,
+        }
+    }
+
+    fn sample_application_blockers()
+    -> Vec<@@HEPTA_WORKGRAPH_TOKEN_0002@@>{
+        vec![@@HEPTA_WORKGRAPH_TOKEN_0002@@ {
+                id: @@HEPTA_WORKGRAPH_TOKEN_0042@@,
+                severity: "medium",
+                category: "readiness_rerun",
+                affected_source_surface_ids: vec![
+                    "update_plan_tool",
+                    "multi_agent_v2_thread_spawn",
+                ],
+                affected_application_plan_ids: vec![
+                    @@HEPTA_WORKGRAPH_TOKEN_0051@@
+                        .to_string(),
+                    @@HEPTA_WORKGRAPH_TOKEN_0052@@
+                        .to_string(),
+                ],
+                required_before_append_only_events: true,
+                recommended_fix:
+                    "rerun enforcement readiness after terminal no-cutover receipt acknowledgement replay idempotency closeout outcomes are available",
+            }]
+    }
+}

@@ -1,0 +1,43 @@
+use crate::wg_events_tnc_r12_readback_preview::define_tnc_readback_compat;
+
+define_tnc_readback_compat! {
+    preview_render = crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::render_current;
+    preview_required_gates = crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0001@@;
+    preview_gate = crate::@@HEPTA_WORKGRAPH_TOKEN_0000@@::@@HEPTA_WORKGRAPH_TOKEN_0002@@;
+    gate_const = @@HEPTA_WORKGRAPH_TOKEN_0003@@ => @@HEPTA_WORKGRAPH_TOKEN_0004@@;
+    schema_const = @@HEPTA_WORKGRAPH_TOKEN_0005@@ => @@HEPTA_WORKGRAPH_TOKEN_0006@@;
+    next_const = @@HEPTA_WORKGRAPH_TOKEN_0007@@ => @@HEPTA_WORKGRAPH_TOKEN_0008@@;
+    report_type = @@HEPTA_WORKGRAPH_TOKEN_0009@@;
+    plan_type = @@HEPTA_WORKGRAPH_TOKEN_0010@@;
+    stage_type = @@HEPTA_WORKGRAPH_TOKEN_0011@@;
+    evidence_type = @@HEPTA_WORKGRAPH_TOKEN_0012@@;
+    guard_type = @@HEPTA_WORKGRAPH_TOKEN_0013@@;
+    blocker_mapping_type = @@HEPTA_WORKGRAPH_TOKEN_0014@@;
+    drift_type = @@HEPTA_WORKGRAPH_TOKEN_0015@@;
+    blocker_type = @@HEPTA_WORKGRAPH_TOKEN_0016@@;
+    effects_type = @@HEPTA_WORKGRAPH_TOKEN_0017@@;
+    report_upstream_gate = @@HEPTA_WORKGRAPH_TOKEN_0018@@;
+    report_ready_application = @@HEPTA_WORKGRAPH_TOKEN_0019@@;
+    report_ready_event_store = @@HEPTA_WORKGRAPH_TOKEN_0020@@;
+    plan_id = @@HEPTA_WORKGRAPH_TOKEN_0021@@;
+    plan_event_store_enabled = @@HEPTA_WORKGRAPH_TOKEN_0022@@;
+    guard_required = @@HEPTA_WORKGRAPH_TOKEN_0023@@;
+    blocker_stage_ids = @@HEPTA_WORKGRAPH_TOKEN_0024@@;
+    blocker_blocks_event_store = @@HEPTA_WORKGRAPH_TOKEN_0025@@;
+    report_fn = @@HEPTA_WORKGRAPH_TOKEN_0026@@;
+    plans_fn = @@HEPTA_WORKGRAPH_TOKEN_0027@@;
+    drift_fn = @@HEPTA_WORKGRAPH_TOKEN_0028@@;
+    required_gates_fn = @@HEPTA_WORKGRAPH_TOKEN_0029@@;
+    preview_mode = @@HEPTA_WORKGRAPH_TOKEN_0030@@;
+    contract_drift_id = @@HEPTA_WORKGRAPH_TOKEN_0031@@;
+    contract_source_field = @@HEPTA_WORKGRAPH_TOKEN_0032@@;
+    readback_not_executed_id = @@HEPTA_WORKGRAPH_TOKEN_0033@@;
+    application_missing_id = @@HEPTA_WORKGRAPH_TOKEN_0034@@;
+    sample_plan_suffix = @@HEPTA_WORKGRAPH_TOKEN_0035@@;
+    plans_test = @@HEPTA_WORKGRAPH_TOKEN_0036@@;
+    assertions_test = @@HEPTA_WORKGRAPH_TOKEN_0037@@;
+    drift_test = @@HEPTA_WORKGRAPH_TOKEN_0038@@;
+    effects_test = @@HEPTA_WORKGRAPH_TOKEN_0039@@;
+    parity_test = @@HEPTA_WORKGRAPH_TOKEN_0040@@;
+    baseline_sha256 = @@HEPTA_WORKGRAPH_TOKEN_0041@@;
+}
