@@ -70,6 +70,9 @@ cargo check --offline --manifest-path "$MANIFEST" -q \
   -p hepta-runtime \
   -p hepta-gateway \
   -p hepta-cli --bin hepta
+echo "[hepta-preflight] source route/effect/gate manifest binary"
+cargo build --offline --manifest-path "$MANIFEST" -q -p hepta-cli --bin hepta
+export HEPTA_ROUTE_MANIFEST_BIN="$PREFLIGHT_RELEASE_TARGET_DIR/debug/hepta"
 echo "[hepta-preflight] Architecture V2 contract boundary tests"
 assert_test_inventory "Architecture V2 stable contracts" 12 '.*' \
   codex-rs/hepta-contracts/tests/stable_contracts.rs

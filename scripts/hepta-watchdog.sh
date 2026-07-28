@@ -7,6 +7,7 @@ source "$REPO_ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh"
 source "$REPO_ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh"
 
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}}"
+ROUTE_MANIFEST_BIN="${HEPTA_ROUTE_MANIFEST_BIN:-}"
 INSTALLED_BIN="${HEPTA_INSTALLED_BIN:-${HEPTA_CODEX_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}}"
 WATCHDOG_MODE="${HEPTA_WATCHDOG_MODE:-deployment-consistency}"
 CANDIDATE_MANIFEST="${HEPTA_CANDIDATE_MANIFEST:-${HEPTA_RELEASE_MANIFEST:-${HEPTA_CODEX_RELEASE_MANIFEST:-}}}"
@@ -139,7 +140,7 @@ fi
 health_json="$(curl -fsS "$BASE_URL/health")"
 route_manifest_bin=""
 route_manifest_json=""
-for candidate_bin in "$RELEASE_BIN" "$INSTALLED_BIN"; do
+for candidate_bin in "$ROUTE_MANIFEST_BIN" "$RELEASE_BIN" "$INSTALLED_BIN"; do
   [[ -x "$candidate_bin" ]] || continue
   candidate_manifest_json="$("$candidate_bin" manifest 2>/dev/null || true)"
   if jq -e '
