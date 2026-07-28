@@ -83,6 +83,8 @@ pub struct NetworkPolicyRequest {
     pub method: Option<String>,
     pub command: Option<String>,
     pub exec_policy_hint: Option<String>,
+    pub environment_id: Option<String>,
+    pub execution_id: Option<String>,
 }
 
 pub struct NetworkPolicyRequestArgs {
@@ -114,6 +116,8 @@ impl NetworkPolicyRequest {
             method,
             command,
             exec_policy_hint,
+            environment_id: None,
+            execution_id: None,
         }
     }
 }

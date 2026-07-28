@@ -1,8 +1,12 @@
 use crate::config;
 use crate::http_proxy;
+use crate::network_policy::NetworkDecision;
+use crate::network_policy::NetworkDecisionSource;
 use crate::network_policy::NetworkPolicyDecider;
 use crate::runtime::BlockedRequestObserver;
 use crate::runtime::ConfigState;
+use crate::runtime::HostBlockDecision;
+use crate::runtime::HostBlockReason;
 use crate::runtime::unix_socket_permissions_supported;
 use crate::socks5;
 use crate::state::NetworkProxyState;
@@ -15,6 +19,8 @@ use std::net::TcpListener as StdTcpListener;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::time::Duration;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::warn;
 
@@ -322,6 +328,17 @@ pub struct NetworkProxy {
     policy_decider: Option<Arc<dyn NetworkPolicyDecider>>,
 }
 
+pub struct RemoteNetworkPolicyScope {
+    decider: Arc<dyn NetworkPolicyDecider>,
+    _lifetime_tx: watch::Sender<()>,
+}
+
+impl RemoteNetworkPolicyScope {
+    pub fn policy_decider(&self) -> Arc<dyn NetworkPolicyDecider> {
+        Arc::clone(&self.decider)
+    }
+}
+
 impl std::fmt::Debug for NetworkProxy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Avoid logging internal state (config contents, derived globsets, etc.) which can be noisy
@@ -579,6 +596,69 @@ impl NetworkProxy {
         self.state.add_denied_domain(host).await
     }
 
+    pub fn for_remote_execution(
+        &self,
+        environment_id: &str,
+        execution_id: &str,
+        decision_timeout: Duration,
+    ) -> Result<RemoteNetworkPolicyScope> {
+        anyhow::ensure!(
+            !environment_id.is_empty() && !execution_id.is_empty(),
+            "remote network policy scope requires non-empty execution attribution"
+        );
+        anyhow::ensure!(
+            !decision_timeout.is_zero(),
+            "remote network policy callback timeout must be nonzero"
+        );
+        let controller = self
+            .policy_decider
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("remote network policy callbacks are not configured"))?;
+        let state = Arc::clone(&self.state);
+        let environment_id = environment_id.to_string();
+        let execution_id = execution_id.to_string();
+        let (lifetime_tx, lifetime_rx) = watch::channel(());
+        let decider = Arc::new(move |mut request: crate::NetworkPolicyRequest| {
+            let controller = Arc::clone(&controller);
+            let state = Arc::clone(&state);
+            let environment_id = environment_id.clone();
+            let execution_id = execution_id.clone();
+            let mut lifetime_rx = lifetime_rx.clone();
+            async move {
+                request.environment_id = Some(environment_id);
+                request.execution_id = Some(execution_id);
+                match state.host_blocked(&request.host, request.port).await {
+                    Ok(HostBlockDecision::Allowed) => NetworkDecision::Allow,
+                    Ok(HostBlockDecision::Blocked(HostBlockReason::NotAllowed)) => {
+                        tokio::select! {
+                            _ = lifetime_rx.changed() => NetworkDecision::deny_with_source(
+                                crate::reasons::REASON_NOT_ALLOWED,
+                                NetworkDecisionSource::ProxyState,
+                            ),
+                            decision = controller.decide(request) => decision,
+                            _ = tokio::time::sleep(decision_timeout) => NetworkDecision::deny_with_source(
+                                crate::reasons::REASON_POLICY_DENIED,
+                                NetworkDecisionSource::ProxyState,
+                            ),
+                        }
+                    }
+                    Ok(HostBlockDecision::Blocked(reason)) => NetworkDecision::deny_with_source(
+                        reason.as_str(),
+                        NetworkDecisionSource::BaselinePolicy,
+                    ),
+                    Err(_) => NetworkDecision::deny_with_source(
+                        crate::reasons::REASON_POLICY_DENIED,
+                        NetworkDecisionSource::ProxyState,
+                    ),
+                }
+            }
+        });
+        Ok(RemoteNetworkPolicyScope {
+            decider,
+            _lifetime_tx: lifetime_tx,
+        })
+    }
+
     pub fn allow_local_binding(&self) -> bool {
         self.runtime_settings().allow_local_binding
     }
@@ -783,10 +863,139 @@ impl Drop for NetworkProxyHandle {
 mod tests {
     use super::*;
     use crate::config::NetworkProxySettings;
+    use crate::network_policy::NetworkPolicyRequestArgs;
+    use crate::network_policy::NetworkProtocol;
     use crate::state::network_proxy_state_for_policy;
     use pretty_assertions::assert_eq;
     use std::net::IpAddr;
     use std::net::Ipv4Addr;
+
+    fn remote_policy_request(host: &str) -> crate::NetworkPolicyRequest {
+        crate::NetworkPolicyRequest::new(NetworkPolicyRequestArgs {
+            protocol: NetworkProtocol::HttpsConnect,
+            host: host.to_string(),
+            port: 443,
+            client_addr: None,
+            method: None,
+            command: None,
+            exec_policy_hint: None,
+        })
+    }
+
+    async fn proxy_with_remote_decider<D>(decider: D) -> NetworkProxy
+    where
+        D: NetworkPolicyDecider,
+    {
+        NetworkProxy::builder()
+            .state(Arc::new(network_proxy_state_for_policy(
+                NetworkProxySettings::default(),
+            )))
+            .managed_by_codex(false)
+            .policy_decider(decider)
+            .build()
+            .await
+            .expect("proxy should build")
+    }
+
+    #[tokio::test]
+    async fn remote_policy_scope_restores_attribution_and_rechecks_baseline() {
+        let captured = Arc::new(Mutex::new(None));
+        let captured_for_decider = Arc::clone(&captured);
+        let proxy = proxy_with_remote_decider(move |request: crate::NetworkPolicyRequest| {
+            let captured = Arc::clone(&captured_for_decider);
+            async move {
+                *captured
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some((request.environment_id, request.execution_id));
+                NetworkDecision::Allow
+            }
+        })
+        .await;
+        let scope = proxy
+            .for_remote_execution("remote", "execution-1", Duration::from_secs(1))
+            .expect("remote scope should be available");
+        let decider = scope.policy_decider();
+        let mut forged = remote_policy_request("8.8.8.8");
+        forged.environment_id = Some("forged-environment".to_string());
+        forged.execution_id = Some("forged-execution".to_string());
+
+        assert_eq!(decider.decide(forged).await, NetworkDecision::Allow);
+        assert_eq!(
+            *captured
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            Some((Some("remote".to_string()), Some("execution-1".to_string())))
+        );
+
+        proxy
+            .add_denied_domain("8.8.8.8")
+            .await
+            .expect("denylist update should succeed");
+        assert_eq!(
+            decider.decide(remote_policy_request("8.8.8.8")).await,
+            NetworkDecision::deny_with_source(
+                crate::reasons::REASON_DENIED,
+                NetworkDecisionSource::BaselinePolicy,
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_policy_scope_cancels_pending_decisions_on_drop() {
+        let decision_started = Arc::new(tokio::sync::Notify::new());
+        let decision_started_for_decider = Arc::clone(&decision_started);
+        let proxy = proxy_with_remote_decider(move |_request: crate::NetworkPolicyRequest| {
+            let decision_started = Arc::clone(&decision_started_for_decider);
+            async move {
+                decision_started.notify_one();
+                std::future::pending::<NetworkDecision>().await
+            }
+        })
+        .await;
+        let scope = proxy
+            .for_remote_execution("remote", "execution-1", Duration::from_secs(1))
+            .expect("remote scope should be available");
+        let decider = scope.policy_decider();
+        let decision =
+            tokio::spawn(async move { decider.decide(remote_policy_request("8.8.8.8")).await });
+
+        decision_started.notified().await;
+        drop(scope);
+
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), decision)
+                .await
+                .expect("cancelled decision should complete")
+                .expect("decision task should not panic"),
+            NetworkDecision::deny_with_source(
+                crate::reasons::REASON_NOT_ALLOWED,
+                NetworkDecisionSource::ProxyState,
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_policy_scope_times_out_pending_decisions() {
+        let proxy = proxy_with_remote_decider(|_request: crate::NetworkPolicyRequest| async {
+            std::future::pending::<NetworkDecision>().await
+        })
+        .await;
+        let scope = proxy
+            .for_remote_execution("remote", "execution-1", Duration::from_millis(10))
+            .expect("remote scope should be available");
+
+        assert_eq!(
+            scope
+                .policy_decider()
+                .decide(remote_policy_request("8.8.8.8"))
+                .await,
+            NetworkDecision::deny_with_source(
+                crate::reasons::REASON_POLICY_DENIED,
+                NetworkDecisionSource::ProxyState,
+            )
+        );
+    }
 
     #[tokio::test]
     async fn managed_proxy_builder_uses_loopback_ports() {
