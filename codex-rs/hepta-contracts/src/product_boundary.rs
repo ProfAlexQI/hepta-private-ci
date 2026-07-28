@@ -48,11 +48,13 @@ mod tests {
             OPENCLAW_GOVERNED_BACKEND_ROLE
         );
         assert_eq!(PRODUCT_BOUNDARY.channel_owner, "legacy_openclaw");
-        assert!(!PRODUCT_BOUNDARY.telegram_external_read);
-        assert!(!PRODUCT_BOUNDARY.telegram_external_send);
-        assert!(!PRODUCT_BOUNDARY.telegram_poll_loop_owner);
-        assert!(!PRODUCT_BOUNDARY.native_real_mutation);
-        assert!(!PRODUCT_BOUNDARY.formal_service_links_full_codex_provider_tool_runner);
+        const {
+            assert!(!PRODUCT_BOUNDARY.telegram_external_read);
+            assert!(!PRODUCT_BOUNDARY.telegram_external_send);
+            assert!(!PRODUCT_BOUNDARY.telegram_poll_loop_owner);
+            assert!(!PRODUCT_BOUNDARY.native_real_mutation);
+            assert!(!PRODUCT_BOUNDARY.formal_service_links_full_codex_provider_tool_runner);
+        }
         assert!(LEGACY_CONTROL_UI_MUTATION_DISPOSITION.contains("retired"));
         assert!(LEGACY_CONTROL_UI_MUTATION_NEXT_ACTION.contains("plan-only"));
         assert!(LEGACY_TELEGRAM_REPLACEMENT_DISPOSITION.contains("owner_remains_openclaw"));
