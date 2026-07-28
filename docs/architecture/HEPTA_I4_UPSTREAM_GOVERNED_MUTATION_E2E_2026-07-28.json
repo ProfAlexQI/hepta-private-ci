@@ -1,0 +1,120 @@
+{
+  "schema": "hepta_i4_upstream_governed_mutation_e2e_v1",
+  "status": "ready",
+  "source_base_head": "9067d3e542b7e0cbcb0e79e0693338fc2db07c01",
+  "i4_parent_head": "9a6cc34d44",
+  "upstream_head": "f029bb795ccbbd8471511f5a8b93e56d8f2b6d31",
+  "upstream_intake": "semantic_selective",
+  "whole_tree_merge": false,
+  "absorptions": [
+    {
+      "upstream_commit": "e8f0f64f2057740ca18d66dbeebe077156d7a2a9",
+      "title": "Preserve thread metadata when rollout files are missing",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "4d1f66bf8199713e4a77ad55458bc6e3dcbef5c5",
+      "title": "Preserve paginated thread metadata across resumes",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "8d6a91b1ff926bb6006aff94ef4f9e628863cc09",
+      "title": "Preserve item timestamps in thread history projections",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "63682c4e1ad8b4341b93a5e68c666f521806eb98",
+      "title": "Include empty-preview threads in relationship listings",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "2f19a57704fb7b1db032bc38cf995034254eaebb",
+      "title": "Preserve multi-agent settings across config representations",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "9f82ffed1b2fb63370055dad3f2ad63564eeebbf",
+      "title": "Test developer instruction inheritance for multi-agent workers",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "294d813263de08061cb303e7b601d7ea6a5e72e8",
+      "title": "Route curated plugins by authentication mode",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "bbeee9a40686975a1bfb5e8a4b6d98dccbb43dab",
+      "title": "Prepare MCP and plugin recommendations concurrently",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "462ed19a05917b1ec88a015b2cf6342cfe8f7c85",
+      "title": "Enable network policy callbacks for remote exec",
+      "status": "controller_side_fail_closed_boundary_only"
+    },
+    {
+      "upstream_commit": "0affaf2acb888304f91cadb2c497313e95b715b8",
+      "title": "Make OpenTelemetry provider shutdown idempotent",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "fea2d8b18f5fade817d0d3a9cf4f278b6210ab01",
+      "title": "Skip restored token usage replay for exec resumes",
+      "status": "absorbed"
+    },
+    {
+      "upstream_commit": "fbe65995bbcd4da249cfdafe0300ac3cb2cb3b3c",
+      "title": "Support model-owned token budget defaults",
+      "status": "protocol_and_config_substrate_only"
+    }
+  ],
+  "network_policy_boundary": {
+    "trusted_execution_attribution": true,
+    "baseline_policy_rechecked": true,
+    "scope_drop_cancels_pending_decisions": true,
+    "decision_timeout_fails_closed": true,
+    "remote_transport_connected": false,
+    "live_network_gate_enabled": false,
+    "deferred_requirement": "bidirectional exec protocol with process cancellation and timeout pairing"
+  },
+  "token_budget_boundary": {
+    "model_catalog_protocol_round_trip": true,
+    "explicit_config_wins": true,
+    "invalid_model_defaults_ignored": true,
+    "feature_default_enabled": false,
+    "goal_task_budget_remains_separate": true,
+    "runtime_context_rollover_imported": false
+  },
+  "governed_mutation_e2e": {
+    "rpc_method": "plugin/share/save",
+    "operation": "plugin-share-save",
+    "caller_boundary": "openclaw_app_server_stdio",
+    "provider_effect_observed": true,
+    "provider_effect_count": 1,
+    "terminal_status": "succeeded",
+    "provider_ack_hash_persisted": true,
+    "terminal_receipt_hash_persisted": true,
+    "journal_state_hmac_verified": true,
+    "external_anchor_hmac_verified": true,
+    "external_anchor_matches_journal_generation": true,
+    "focused_test": "suite::v2::plugin_share::plugin_share_save_persists_authenticated_terminal_receipt",
+    "additional_governed_mutation_surface_added": false
+  },
+  "product_boundary": {
+    "role": "openclaw_governed_backend",
+    "telegram_owner": "legacy_openclaw",
+    "telegram_external_read": false,
+    "telegram_external_send": false,
+    "telegram_poll_loop": false,
+    "native_real_mutation": false,
+    "full_provider_bundle_imported": false
+  },
+  "claims": {
+    "push": false,
+    "signing": false,
+    "notarization": false,
+    "public_release": false,
+    "whole_tree_merge": false,
+    "remote_network_controller_live": false
+  }
+}

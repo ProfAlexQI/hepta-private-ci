@@ -32,7 +32,13 @@ use codex_config::types::AuthCredentialsStoreMode;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use hepta_authority::AuthenticationFraming;
+use hepta_authority::PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV;
+use hepta_authority::PLUGIN_MUTATION_JOURNAL_ENGINE;
+use hepta_authority::PLUGIN_SHARE_SAVE_OPERATION;
 use pretty_assertions::assert_eq;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use tempfile::TempDir;
 use tokio::time::timeout;
@@ -187,6 +193,91 @@ async fn plugin_share_save_uploads_local_plugin() -> Result<()> {
             }],
         }
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn plugin_share_save_persists_authenticated_terminal_receipt() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    let plugin_root = TempDir::new()?;
+    let anchor_root = TempDir::new()?;
+    let plugin_path = write_test_plugin(plugin_root.path(), "receipt-plugin")?;
+    let anchor_path = anchor_root.path().join("plugin-mutation.anchor");
+    let anchor_path_text = anchor_path.to_string_lossy().into_owned();
+    let server = MockServer::start().await;
+    write_remote_plugin_config(codex_home.path(), &format!("{}/backend-api", server.uri()))?;
+    write_chatgpt_auth(
+        codex_home.path(),
+        ChatGptAuthFixture::new("chatgpt-token")
+            .account_id("account-123")
+            .chatgpt_user_id("user-123")
+            .chatgpt_account_id("account-123"),
+        AuthCredentialsStoreMode::File,
+    )?;
+
+    Mock::given(method("POST"))
+        .and(path("/backend-api/public/plugins/workspace/upload-url"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "file_id": "file_receipt",
+            "upload_url": format!("{}/upload/file_receipt", server.uri()),
+            "etag": "\"upload_etag_receipt\"",
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/upload/file_receipt"))
+        .respond_with(ResponseTemplate::new(201).insert_header("etag", "\"blob_etag_receipt\""))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/backend-api/public/plugins/workspace"))
+        .and(body_json(json!({
+            "file_id": "file_receipt",
+            "etag": "\"upload_etag_receipt\"",
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "plugin_id": "plugins_receipt",
+            "share_url": "https://chatgpt.example/plugins/share/receipt",
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut mcp = McpProcess::new_with_env(
+        codex_home.path(),
+        &[(
+            PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV,
+            Some(anchor_path_text.as_str()),
+        )],
+    )
+    .await?;
+    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let request_id = mcp
+        .send_raw_request(
+            "plugin/share/save",
+            Some(json!({
+                "pluginPath": AbsolutePathBuf::try_from(plugin_path)?,
+            })),
+        )
+        .await?;
+    let response: JSONRPCResponse = timeout(
+        DEFAULT_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let response: PluginShareSaveResponse = to_response(response)?;
+
+    assert_eq!(
+        response,
+        PluginShareSaveResponse {
+            remote_plugin_id: "plugins_receipt".to_string(),
+            share_url: "https://chatgpt.example/plugins/share/receipt".to_string(),
+        }
+    );
+    assert_authenticated_plugin_mutation_receipt(codex_home.path(), &anchor_path, &response)?;
+
     Ok(())
 }
 
@@ -1386,6 +1477,155 @@ fn expected_share_context(plugin_id: &str) -> PluginShareContext {
             },
         ]),
     }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPluginMutationEnvelope {
+    request_binding: String,
+    operation: String,
+    target_binding: String,
+    payload_digest: String,
+    idempotency_binding: String,
+    effect_plan_hash: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPluginMutationRecord {
+    envelope: PersistedPluginMutationEnvelope,
+    status: String,
+    provider_ack_hash: Option<String>,
+    terminal_receipt_hash: Option<String>,
+    response: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPluginMutationCheckpoint {
+    compacted_records: u64,
+    terminal_records: Vec<PersistedPluginMutationRecord>,
+    history_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPluginMutationState {
+    version: u32,
+    generation: u64,
+    checkpoint: PersistedPluginMutationCheckpoint,
+    records: Vec<PersistedPluginMutationRecord>,
+    state_hash: String,
+    mac: String,
+}
+
+#[derive(Serialize)]
+struct UnsignedPluginMutationState<'a> {
+    version: u32,
+    generation: u64,
+    checkpoint: &'a PersistedPluginMutationCheckpoint,
+    records: &'a [PersistedPluginMutationRecord],
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedPluginMutationAnchor {
+    version: u32,
+    generation: u64,
+    state_hash: String,
+    mac: String,
+}
+
+fn assert_authenticated_plugin_mutation_receipt(
+    codex_home: &Path,
+    anchor_path: &Path,
+    expected_response: &PluginShareSaveResponse,
+) -> Result<()> {
+    let journal_path = codex_home.join("hepta-plugin-mutation-journal.json");
+    let state: PersistedPluginMutationState =
+        serde_json::from_slice(&std::fs::read(&journal_path)?)?;
+    assert_eq!(state.version, 2);
+    assert_eq!(state.generation, 3);
+    assert!(state.checkpoint.terminal_records.is_empty());
+    assert_eq!(state.records.len(), 1);
+
+    let record = &state.records[0];
+    assert_eq!(record.envelope.operation, PLUGIN_SHARE_SAVE_OPERATION);
+    assert_eq!(
+        record.envelope.idempotency_binding,
+        record.envelope.request_binding
+    );
+    assert_eq!(record.status, "succeeded");
+    assert_content_hash(record.provider_ack_hash.as_deref());
+    assert_content_hash(record.terminal_receipt_hash.as_deref());
+    assert_content_hash(Some(record.envelope.payload_digest.as_str()));
+    assert_content_hash(Some(record.envelope.effect_plan_hash.as_str()));
+    assert_eq!(
+        record.response.as_ref(),
+        Some(&serde_json::to_value(expected_response)?)
+    );
+    assert_eq!(record.error, None);
+
+    let unsigned = UnsignedPluginMutationState {
+        version: state.version,
+        generation: state.generation,
+        checkpoint: &state.checkpoint,
+        records: &state.records,
+    };
+    let encoded = serde_json::to_vec(&unsigned)?;
+    let expected_state_hash = PLUGIN_MUTATION_JOURNAL_ENGINE.content_hash(
+        AuthenticationFraming::RawDomain,
+        b"hepta-plugin-mutation-journal-v2",
+        &[&encoded],
+    );
+    assert_eq!(state.state_hash, expected_state_hash);
+
+    let key = hepta_authority::hex_decode(
+        std::fs::read_to_string(journal_path.with_extension("key"))?.trim(),
+    )?;
+    let generation = state.generation.to_be_bytes();
+    PLUGIN_MUTATION_JOURNAL_ENGINE.verify_mac_hex(
+        &key,
+        AuthenticationFraming::RawDomain,
+        b"hepta.plugin-mutation-journal.hmac-sha256.v2",
+        &[state.state_hash.as_bytes(), &generation],
+        &state.mac,
+    )?;
+
+    let anchor: PersistedPluginMutationAnchor =
+        serde_json::from_slice(&std::fs::read(anchor_path)?)?;
+    assert_eq!(anchor.version, 1);
+    assert_eq!(anchor.generation, state.generation);
+    assert_eq!(anchor.state_hash, state.state_hash);
+    let anchor_version = anchor.version.to_be_bytes();
+    let anchor_generation = anchor.generation.to_be_bytes();
+    PLUGIN_MUTATION_JOURNAL_ENGINE.verify_mac_hex(
+        &key,
+        AuthenticationFraming::RawDomain,
+        b"hepta.plugin-mutation-anchor.hmac-sha256.v1",
+        &[
+            &anchor_version,
+            &anchor_generation,
+            anchor.state_hash.as_bytes(),
+        ],
+        &anchor.mac,
+    )?;
+
+    Ok(())
+}
+
+fn assert_content_hash(value: Option<&str>) {
+    let value = value.expect("content hash should be present");
+    let digest = value
+        .strip_prefix("sha256:")
+        .expect("content hash should use sha256 domain");
+    assert_eq!(digest.len(), 64);
+    assert!(
+        digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    );
 }
 
 fn write_test_plugin(root: &Path, plugin_name: &str) -> std::io::Result<PathBuf> {
