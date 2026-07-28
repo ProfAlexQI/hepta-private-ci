@@ -2114,6 +2114,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn thread_spawn_relationships_include_empty_preview_threads() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
+            .await
+            .expect("state db should initialize");
+        let parent_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000920").expect("valid thread id");
+        let child_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000921").expect("valid thread id");
+        let grandchild_thread_id =
+            ThreadId::from_string("00000000-0000-0000-0000-000000000922").expect("valid thread id");
+
+        for thread_id in [parent_thread_id, child_thread_id, grandchild_thread_id] {
+            let mut metadata = test_thread_metadata(&codex_home, thread_id, codex_home.clone());
+            if thread_id == child_thread_id {
+                metadata.preview = None;
+                metadata.first_user_message = None;
+            }
+            runtime
+                .upsert_thread(&metadata)
+                .await
+                .expect("thread insert should succeed");
+        }
+        runtime
+            .upsert_thread_spawn_edge(
+                parent_thread_id,
+                child_thread_id,
+                DirectionalThreadSpawnEdgeStatus::Open,
+            )
+            .await
+            .expect("child edge insert should succeed");
+        runtime
+            .upsert_thread_spawn_edge(
+                child_thread_id,
+                grandchild_thread_id,
+                DirectionalThreadSpawnEdgeStatus::Open,
+            )
+            .await
+            .expect("grandchild edge insert should succeed");
+
+        let global_page = runtime
+            .list_threads(
+                10,
+                ThreadFilterOptions {
+                    archived_only: false,
+                    allowed_sources: &[],
+                    model_providers: None,
+                    cwd_filters: None,
+                    anchor: None,
+                    sort_key: SortKey::UpdatedAt,
+                    sort_direction: SortDirection::Desc,
+                    search_term: None,
+                },
+            )
+            .await
+            .expect("global thread list should load");
+        assert!(
+            !global_page
+                .items
+                .iter()
+                .any(|thread| thread.id == child_thread_id)
+        );
+
+        let children = runtime
+            .list_thread_spawn_children(parent_thread_id)
+            .await
+            .expect("child relationships should load");
+        assert_eq!(children, vec![child_thread_id]);
+        let descendants = runtime
+            .list_thread_spawn_descendants(parent_thread_id)
+            .await
+            .expect("descendant relationships should load");
+        assert_eq!(descendants, vec![child_thread_id, grandchild_thread_id]);
+    }
+
+    #[tokio::test]
     async fn thread_spawn_children_without_status_filter_lists_all_statuses() {
         let codex_home = unique_temp_dir();
         let runtime = StateRuntime::init(codex_home, "test-provider".to_string())

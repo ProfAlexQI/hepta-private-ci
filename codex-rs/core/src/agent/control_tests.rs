@@ -655,6 +655,7 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items_impl() 
     let harness = AgentControlHarness::new().await;
     let mut parent_config = harness.config.clone();
     let _ = parent_config.features.enable(Feature::MultiAgentV2);
+    parent_config.developer_instructions = Some("Parent developer instructions.".to_string());
     parent_config.multi_agent_v2.root_agent_usage_hint_text =
         Some("Parent root guidance.".to_string());
     parent_config.multi_agent_v2.subagent_usage_hint_text =
@@ -704,6 +705,19 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items_impl() 
                     content: vec![ContentItem::InputText {
                         text: "Parent subagent guidance.".to_string(),
                     }],
+                    phase: None,
+                },
+                ResponseItem::Message {
+                    id: None,
+                    role: "developer".to_string(),
+                    content: vec![
+                        ContentItem::InputText {
+                            text: "Parent developer instructions.".to_string(),
+                        },
+                        ContentItem::InputText {
+                            text: "Preserved developer context.".to_string(),
+                        },
+                    ],
                     phase: None,
                 },
                 assistant_message("parent commentary", Some(MessagePhase::Commentary)),
@@ -770,12 +784,25 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items_impl() 
             }],
             phase: None,
         },
+        ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![
+                ContentItem::InputText {
+                    text: "Parent developer instructions.".to_string(),
+                },
+                ContentItem::InputText {
+                    text: "Preserved developer context.".to_string(),
+                },
+            ],
+            phase: None,
+        },
         assistant_message("parent final answer", Some(MessagePhase::FinalAnswer)),
     ];
     assert_eq!(
         history.raw_items(),
         &expected_history,
-        "forked child history should keep only parent user messages and assistant final answers"
+        "forked child history should preserve developer context while stripping usage hints and non-final assistant items"
     );
 
     let expected = (

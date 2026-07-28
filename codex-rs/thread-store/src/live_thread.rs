@@ -120,6 +120,18 @@ impl LiveThread {
             .unwrap_or(ThreadHistoryMode::Legacy);
         let should_load_history = params.history.is_none();
         let include_archived = params.include_archived;
+        let metadata = if history_mode == ThreadHistoryMode::Paginated
+            && let Some(local_store) = thread_store.as_any().downcast_ref::<LocalThreadStore>()
+            && let Some(state_db) = local_store.state_db().await
+        {
+            state_db.get_thread(thread_id).await.map_err(|err| {
+                crate::ThreadStoreError::Internal {
+                    message: format!("failed to read thread metadata for {thread_id}: {err}"),
+                }
+            })?
+        } else {
+            None
+        };
         thread_store.resume_thread(params.clone()).await?;
         if should_load_history {
             match thread_store
@@ -136,7 +148,11 @@ impl LiveThread {
                 }
             }
         }
-        let metadata_sync = ThreadMetadataSync::for_resume(&params);
+        let metadata_sync = if let Some(metadata) = metadata.as_ref() {
+            ThreadMetadataSync::for_resume_with_metadata(&params, Some(metadata))
+        } else {
+            ThreadMetadataSync::for_resume(&params)
+        };
         Ok(Self {
             thread_id,
             thread_store,

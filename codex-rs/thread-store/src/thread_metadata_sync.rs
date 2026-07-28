@@ -14,6 +14,7 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::protocol::ThreadMemoryMode;
 use codex_protocol::protocol::UserMessageEvent;
 use codex_protocol::protocol::strip_user_message_context;
+use codex_state::ThreadMetadata;
 
 use crate::CreateThreadParams;
 use crate::GitInfoPatch;
@@ -96,6 +97,13 @@ impl ThreadMetadataSync {
     }
 
     pub(crate) fn for_resume(params: &ResumeThreadParams) -> Self {
+        Self::for_resume_with_metadata(params, None)
+    }
+
+    pub(crate) fn for_resume_with_metadata(
+        params: &ResumeThreadParams,
+        metadata: Option<&ThreadMetadata>,
+    ) -> Self {
         let mut sync = Self {
             thread_id: params.thread_id,
             cwd_seen: params
@@ -103,9 +111,12 @@ impl ThreadMetadataSync {
                 .cwd
                 .as_ref()
                 .is_some_and(|cwd| !cwd.as_os_str().is_empty()),
-            preview_seen: false,
-            first_user_message_seen: false,
-            title_seen: false,
+            preview_seen: metadata
+                .and_then(|metadata| metadata.preview.as_deref())
+                .is_some_and(|preview| !preview.is_empty()),
+            first_user_message_seen: metadata
+                .is_some_and(|metadata| metadata.first_user_message.is_some()),
+            title_seen: metadata.is_some_and(|metadata| !metadata.title.is_empty()),
             pending_update: None,
             pending_update_generation: 0,
             last_touch_persisted_at: None,
@@ -557,6 +568,36 @@ mod tests {
         assert_eq!(update.patch.git_info, None);
         assert_eq!(update.patch.memory_mode, None);
         assert_eq!(update.patch.preview.as_deref(), Some("hello metadata"));
+    }
+
+    #[test]
+    fn resume_preserves_existing_display_metadata_and_initializes_missing_title() {
+        let thread_id = ThreadId::new();
+        let mut metadata = codex_state::ThreadMetadataBuilder::new(
+            thread_id,
+            Default::default(),
+            Utc::now(),
+            SessionSource::Exec,
+        )
+        .build("test-provider");
+        metadata.preview = Some("goal-first preview".to_string());
+        metadata.first_user_message = Some("[Image]".to_string());
+        let params = resume_params(
+            thread_id,
+            vec![RolloutItem::EventMsg(EventMsg::UserMessage(user_message(
+                "first textual user message",
+            )))],
+        );
+
+        let sync = ThreadMetadataSync::for_resume_with_metadata(&params, Some(&metadata));
+        let update = sync.take_pending_update().expect("pending metadata update");
+
+        assert_eq!(update.patch.preview, None);
+        assert_eq!(update.patch.first_user_message, None);
+        assert_eq!(
+            update.patch.title.as_deref(),
+            Some("first textual user message")
+        );
     }
 
     fn resume_params(thread_id: ThreadId, history: Vec<RolloutItem>) -> ResumeThreadParams {

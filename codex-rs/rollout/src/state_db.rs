@@ -376,7 +376,7 @@ pub async fn list_threads_db(
         return None;
     }
 
-    let anchor = cursor_to_anchor(cursor);
+    let mut anchor = cursor_to_anchor(cursor);
     let allowed_sources: Vec<String> = allowed_sources
         .iter()
         .map(|value| match serde_json::to_value(value) {
@@ -392,54 +392,71 @@ pub async fn list_threads_db(
             .map(|cwd| normalize_cwd_for_state_db(cwd))
             .collect::<Vec<_>>()
     });
-    match ctx
-        .list_threads(
-            page_size,
-            codex_state::ThreadFilterOptions {
-                archived_only: archived,
-                allowed_sources: allowed_sources.as_slice(),
-                model_providers: model_providers.as_deref(),
-                cwd_filters: normalized_cwd_filters.as_deref(),
-                anchor: anchor.as_ref(),
-                sort_key: match sort_key {
-                    ThreadSortKey::CreatedAt => codex_state::SortKey::CreatedAt,
-                    ThreadSortKey::UpdatedAt => codex_state::SortKey::UpdatedAt,
+    let state_sort_key = match sort_key {
+        ThreadSortKey::CreatedAt => codex_state::SortKey::CreatedAt,
+        ThreadSortKey::UpdatedAt => codex_state::SortKey::UpdatedAt,
+    };
+    let state_sort_direction = match sort_direction {
+        SortDirection::Asc => codex_state::SortDirection::Asc,
+        SortDirection::Desc => codex_state::SortDirection::Desc,
+    };
+    let mut items = Vec::with_capacity(page_size);
+    let mut next_anchor = None;
+    let mut num_scanned_rows = 0usize;
+
+    while items.len() < page_size {
+        let page = match ctx
+            .list_threads(
+                page_size - items.len(),
+                codex_state::ThreadFilterOptions {
+                    archived_only: archived,
+                    allowed_sources: allowed_sources.as_slice(),
+                    model_providers: model_providers.as_deref(),
+                    cwd_filters: normalized_cwd_filters.as_deref(),
+                    anchor: anchor.as_ref(),
+                    sort_key: state_sort_key,
+                    sort_direction: state_sort_direction,
+                    search_term,
                 },
-                sort_direction: match sort_direction {
-                    SortDirection::Asc => codex_state::SortDirection::Asc,
-                    SortDirection::Desc => codex_state::SortDirection::Desc,
-                },
-                search_term,
-            },
-        )
-        .await
-    {
-        Ok(mut page) => {
-            let mut valid_items = Vec::with_capacity(page.items.len());
-            for item in page.items {
-                if tokio::fs::try_exists(&item.rollout_path)
-                    .await
-                    .unwrap_or(false)
-                {
-                    valid_items.push(item);
-                } else {
-                    warn!(
-                        "state db list_threads returned stale rollout path for thread {}: {}",
-                        item.id,
-                        item.rollout_path.display()
-                    );
-                    warn!("state db discrepancy during list_threads_db: stale_db_path_dropped");
-                    let _ = ctx.delete_thread(item.id).await;
-                }
+            )
+            .await
+        {
+            Ok(page) => page,
+            Err(err) => {
+                warn!("state db list_threads failed: {err}");
+                return None;
             }
-            page.items = valid_items;
-            Some(page)
+        };
+        num_scanned_rows = num_scanned_rows.saturating_add(page.num_scanned_rows);
+        next_anchor = page.next_anchor;
+
+        for item in page.items {
+            if tokio::fs::try_exists(&item.rollout_path)
+                .await
+                .unwrap_or(false)
+            {
+                items.push(item);
+            } else {
+                warn!(
+                    "state db list_threads returned stale rollout path for thread {}: {}",
+                    item.id,
+                    item.rollout_path.display()
+                );
+                warn!("state db discrepancy during list_threads_db: stale_db_path_retained");
+            }
         }
-        Err(err) => {
-            warn!("state db list_threads failed: {err}");
-            None
+
+        if items.len() == page_size || next_anchor.is_none() {
+            break;
         }
+        anchor = next_anchor.clone();
     }
+
+    Some(codex_state::ThreadsPage {
+        items,
+        next_anchor,
+        num_scanned_rows,
+    })
 }
 
 /// Look up the rollout path for a thread id using SQLite.

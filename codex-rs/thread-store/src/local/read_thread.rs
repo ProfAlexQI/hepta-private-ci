@@ -49,7 +49,8 @@ pub(super) async fn read_thread(
             .await)
     {
         let mut thread = stored_thread_from_sqlite_metadata(store, metadata).await;
-        if !params.include_history
+        if thread.history_mode == ThreadHistoryMode::Legacy
+            && !params.include_history
             && let Some(rollout_path) = thread.rollout_path.clone()
             && let Ok(mut rollout_thread) = read_thread_from_rollout_path(store, rollout_path).await
             && rollout_thread.thread_id == thread_id
@@ -105,24 +106,17 @@ pub(super) async fn read_thread_by_rollout_path(
     include_history: bool,
 ) -> ThreadStoreResult<StoredThread> {
     let path = resolve_requested_rollout_path(store, rollout_path)?;
-    let mut thread = read_thread_from_rollout_path(store, path).await?;
+    let mut thread = read_thread_from_rollout_path(store, path.clone()).await?;
     if !include_archived && thread.archived_at.is_some() {
         return Err(ThreadStoreError::InvalidRequest {
             message: format!("thread {} is archived", thread.thread_id),
         });
     }
-    if let Some(metadata) = read_sqlite_metadata(store, thread.thread_id).await {
+    if let Some(mut metadata) = read_sqlite_metadata(store, thread.thread_id).await {
         if thread.history_mode == ThreadHistoryMode::Paginated {
-            thread.name = sqlite_thread_name(&metadata);
-        }
-        thread.git_info = if thread.history_mode == ThreadHistoryMode::Paginated {
-            // The rollout contains only its initial Git tuple. Preserve SQLite NULLs as explicit
-            // clears instead of falling back to stale rollout values.
-            git_info_from_parts(
-                metadata.git_sha,
-                metadata.git_branch,
-                metadata.git_origin_url,
-            )
+            metadata.rollout_path = path;
+            metadata.archived_at = thread.archived_at;
+            thread = stored_thread_from_sqlite_metadata(store, metadata).await;
         } else {
             let (fallback_sha, fallback_branch, fallback_origin_url) = match thread.git_info.take()
             {
@@ -133,12 +127,12 @@ pub(super) async fn read_thread_by_rollout_path(
                 ),
                 None => (None, None, None),
             };
-            git_info_from_parts(
+            thread.git_info = git_info_from_parts(
                 metadata.git_sha.or(fallback_sha),
                 metadata.git_branch.or(fallback_branch),
                 metadata.git_origin_url.or(fallback_origin_url),
-            )
-        };
+            );
+        }
     }
     attach_history_if_requested(&mut thread, include_history).await?;
     Ok(thread)
@@ -600,27 +594,52 @@ mod tests {
             Utc::now(),
             SessionSource::Cli,
         );
-        builder.model_provider = Some(config.default_model_provider_id.clone());
+        builder.model_provider = Some("sqlite-provider".to_string());
         builder.history_mode = ThreadHistoryMode::Paginated;
         builder.git_branch = Some("sqlite-branch".to_string());
+        let mut metadata = builder.build(config.default_model_provider_id.as_str());
+        metadata.preview = Some("sqlite preview".to_string());
+        metadata.first_user_message = Some("sqlite first user message".to_string());
+        metadata.title = "sqlite title".to_string();
+        metadata.name = Some("sqlite title".to_string());
+        metadata.model = Some("sqlite-model".to_string());
         runtime
-            .upsert_thread(&builder.build(config.default_model_provider_id.as_str()))
+            .upsert_thread(&metadata)
             .await
             .expect("state db upsert should succeed");
 
-        let thread = store
+        let thread_by_path = store
             .read_thread_by_rollout_path(
-                active_path,
+                active_path.clone(),
                 /*include_archived*/ false,
                 /*include_history*/ false,
             )
             .await
             .expect("read paginated thread by rollout path");
+        let thread_by_id = store
+            .read_thread(ReadThreadParams {
+                thread_id,
+                include_archived: false,
+                include_history: false,
+            })
+            .await
+            .expect("read paginated thread by id");
 
-        let git_info = thread.git_info.expect("sqlite branch should be present");
-        assert_eq!(git_info.commit_hash, None);
-        assert_eq!(git_info.branch.as_deref(), Some("sqlite-branch"));
-        assert_eq!(git_info.repository_url, None);
+        for thread in [thread_by_path, thread_by_id] {
+            assert_eq!(thread.rollout_path, Some(active_path.clone()));
+            assert_eq!(thread.preview, "sqlite preview");
+            assert_eq!(
+                thread.first_user_message.as_deref(),
+                Some("sqlite first user message")
+            );
+            assert_eq!(thread.name.as_deref(), Some("sqlite title"));
+            assert_eq!(thread.model_provider, "sqlite-provider");
+            assert_eq!(thread.model.as_deref(), Some("sqlite-model"));
+            let git_info = thread.git_info.expect("sqlite branch should be present");
+            assert_eq!(git_info.commit_hash, None);
+            assert_eq!(git_info.branch.as_deref(), Some("sqlite-branch"));
+            assert_eq!(git_info.repository_url, None);
+        }
     }
 
     #[tokio::test]
