@@ -1299,7 +1299,7 @@ self_test() {
   local missing_preflight_rc legacy_activation_rc tampered_manifest conflicting_preflight missing_source_preflight wrong_banner_preflight
   local different_preflight different_provenance different_sha cutover_receipt cutover_rc rollback_rc rollback_active
   local rollback_record rollback_receipt rollback_manifest failure_point failure_log failure_receipt
-  local receipts legacy_h_receipts mutated_receipts mutated_provenance negative_name negative_filter negative_root
+  local receipts legacy_i_receipts legacy_h_receipts mutated_receipts mutated_provenance negative_name negative_filter negative_root
   local evidence_variant_preflight evidence_variant_provenance evidence_variant_manifest tampered_release_dir
   local missing_receipts_verify_dir missing_receipts_manifest
   local dirty_source_fixture tampered_evidence_manifest tampered_evidence_file
@@ -1481,15 +1481,36 @@ self_test() {
     "missing bound gate receipts" \
     "$tool" "$artifact" "$source_commit" "$mutated_provenance" "$tmp/negative-missing-receipts"
   receipts="$(jq -c '.bound_gate_receipts' <<<"$provenance")"
+  legacy_i_receipts="$(
+    jq -c \
+      --arg source_commit "$HEPTA_LEGACY_I_SOURCE_COMMIT" \
+      --arg dependency_contract_sha "$HEPTA_LEGACY_I_DEPENDENCY_CONTRACT_SHA" '
+        .source.commit = $source_commit
+        | (.gates[] | select(.id == "dependency-security") | .receipt.contract_sha256) = $dependency_contract_sha
+        | (.gates[] | select(.id == "dependency-security") | .self_test_receipt)
+          |= del(.exception_policy_negative_fixtures)
+      ' <<<"$receipts"
+  )"
+  legacy_i_receipts="$(self_test_rehash_bound_gate_receipts "$legacy_i_receipts")"
+  hepta_release_validate_bound_gate_receipts_json \
+    "$legacy_i_receipts" \
+    "$HEPTA_LEGACY_I_SOURCE_COMMIT" \
+    "$HEPTA_LEGACY_I_CODEX_CARGO_LOCK_SHA" \
+    "$HEPTA_LEGACY_I_NATIVE_CARGO_LOCK_SHA" \
+    "$HEPTA_LEGACY_I_DEPENDENCY_CONTRACT_SHA"
   legacy_h_receipts="$(
     jq -c \
+      --arg source_commit "$HEPTA_LEGACY_H_SOURCE_COMMIT" \
       --arg codex_lock_sha "$HEPTA_LEGACY_H_CODEX_CARGO_LOCK_SHA" \
       --arg native_lock_sha "$HEPTA_LEGACY_H_NATIVE_CARGO_LOCK_SHA" \
       --arg dependency_contract_sha "$HEPTA_LEGACY_H_DEPENDENCY_CONTRACT_SHA" '
-        (.gates[] | select(.id == "native-ingress-composition") | .self_test_receipt.negative_fixtures) = 13
+        .source.commit = $source_commit
+        | (.gates[] | select(.id == "native-ingress-composition") | .self_test_receipt.negative_fixtures) = 13
         | (.gates[] | select(.id == "dependency-security") | .receipt.contract_sha256) = $dependency_contract_sha
         | (.gates[] | select(.id == "dependency-security") | .receipt.graphs[0].cargo_lock_sha256) = $codex_lock_sha
         | (.gates[] | select(.id == "dependency-security") | .receipt.graphs[1].cargo_lock_sha256) = $native_lock_sha
+        | (.gates[] | select(.id == "dependency-security") | .self_test_receipt)
+          |= del(.exception_policy_negative_fixtures)
         | (.gates[] | select(.id == "gate-compat-debt") | .receipt) = {
             schema:"hepta_gate_compat_debt_receipt_v1",
             status:"ready",
@@ -1507,7 +1528,7 @@ self_test() {
   legacy_h_receipts="$(self_test_rehash_bound_gate_receipts "$legacy_h_receipts")"
   hepta_release_validate_bound_gate_receipts_json \
     "$legacy_h_receipts" \
-    "$source_commit" \
+    "$HEPTA_LEGACY_H_SOURCE_COMMIT" \
     "$HEPTA_LEGACY_H_CODEX_CARGO_LOCK_SHA" \
     "$HEPTA_LEGACY_H_NATIVE_CARGO_LOCK_SHA" \
     "$HEPTA_LEGACY_H_DEPENDENCY_CONTRACT_SHA"
@@ -1827,7 +1848,7 @@ EOF
     fi
   done
   jq -n --arg status ready --arg schema_version "$SCHEMA_VERSION" --arg source_commit "$source_commit" --arg artifact_sha256 "$fixture_sha" \
-    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,artifact_override_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,legacy_h_bound_gate_profile_valid:true,mixed_bound_gate_profiles_denied:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,immutable_watchdog_closure_bound:true,immutable_watchdog_tamper_denied:true,immutable_watchdog_plist_release_path_bound:true,dirty_source_watchdog_ignored_after_materialization:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
+    '{status:$status,schema_version:$schema_version,source_commit:$source_commit,artifact_sha256:$artifact_sha256,real_short_banner_full_source_truth_ready:true,conflicting_resume_banner_denied:true,conflicting_full_source_truth_denied:true,missing_full_source_truth_denied:true,missing_preflight_denied:true,canonical_cargo_target_artifact_selected:true,artifact_override_denied:true,bound_gate_receipts_required_during_materialize:true,bound_gate_receipts_required_during_verify:true,bound_gate_source_and_lock_bound:true,legacy_i_bound_gate_profile_valid:true,legacy_h_bound_gate_profile_valid:true,mixed_bound_gate_profiles_denied:true,duplicate_missing_and_unknown_gate_ids_denied:true,blocked_receipt_and_self_test_denied:true,dependency_nonzero_findings_and_exceptions_denied:true,raw_configured_zero_new_exception_missing_modified_and_reordered_findings_denied:true,wrong_receipt_schema_hash_and_lock_denied:true,manifest_gate_receipt_tamper_denied:true,immutable_watchdog_closure_bound:true,immutable_watchdog_tamper_denied:true,immutable_watchdog_plist_release_path_bound:true,dirty_source_watchdog_ignored_after_materialization:true,existing_release_evidence_drift_denied:true,same_source_artifact_different_evidence_gets_distinct_identity:true,legacy_unbound_archival_fixture_valid:true,legacy_unbound_activation_denied:true,preflight_candidate_artifact_drift_denied:true,byte_preserving_activation_ready:true,different_bytes_activation_denied:true,stale_cutover_cas_denied:true,identical_bytes_cutover_denied:true,legacy_to_bound_byte_changing_cutover_ready:true,cutover_backup_verified:true,manifest_link_cutover_verified:true,durable_post_cutover_rollback_verified:true,rollback_bundle_reuse_verified:true,after_active_swap_rollback_verified:true,after_manifest_swap_rollback_verified:true,crash_consistent_pair:false,link_pair_consistency_verified_before_restart:true,runtime_deployment_consistency_required_after_restart:true,service_restarted:false,active_process_mutated:false,launchd_mutated:false,plist_mutated:false}'
   echo "hepta immutable release tree self-test passed"
 }
 [[ $# -gt 0 ]] || usage
