@@ -15,6 +15,7 @@ use serde::Deserialize;
 use sha2::Digest;
 use sha2::Sha256;
 
+use crate::gate_pair_archive::GatePairArchive;
 use crate::gate_spec::GateSpec;
 use crate::gate_spec::ReceiptStateMachine;
 
@@ -227,22 +228,22 @@ pub(crate) const PACKET_ACCEPTANCE_RECEIPT_GATE_SPECS: [GateSpec; 3] = [
 pub(crate) const ARTIFACT_SIGNING_RECEIPT_GATE_SPECS: [GateSpec; 3] = [
     GateSpec {
         method: "LOCAL",
-        pattern: "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
-        source_command: "bash scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
+        pattern: "scripts/i3-0ab8864aaedb1633ef2ca067.sh",
+        source_command: "bash scripts/i3-0ab8864aaedb1633ef2ca067.sh",
         capability: "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial",
         side_effect_boundary: "local read-only report-only artifact distribution signing/notarization receipt replay/idempotency denial gate; captures its no-state predecessor while never replaying, deduplicating, storing idempotency state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, notarizing, installing, or restarting",
     },
     GateSpec {
         method: "LOCAL",
-        pattern: "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
-        source_command: "bash scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
+        pattern: "scripts/i3-69e99f4efb35ecb295ceb839.sh",
+        source_command: "bash scripts/i3-69e99f4efb35ecb295ceb839.sh",
         capability: "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial",
         side_effect_boundary: "local read-only report-only artifact distribution signing/notarization receipt ordering/monotonicity denial gate; captures its replay/idempotency predecessor while never recording sequence or monotonicity state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, notarizing, installing, or restarting",
     },
     GateSpec {
         method: "LOCAL",
-        pattern: "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
-        source_command: "bash scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
+        pattern: "scripts/i3-71bd59c6d099c54edc1a3553.sh",
+        source_command: "bash scripts/i3-71bd59c6d099c54edc1a3553.sh",
         capability: "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial",
         side_effect_boundary: "local read-only report-only artifact distribution signing/notarization receipt cancellation/supersession denial gate; captures its ordering/monotonicity predecessor while never recording cancellation, replacement, tombstone, or supersession state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, notarizing, installing, or restarting",
     },
@@ -455,13 +456,23 @@ pub(crate) fn migrated_pair_registry_summary() -> Result<(&'static str, usize)> 
 
 fn execute_compatibility_script(id: &str, kind: GateScriptKind) -> Result<String> {
     let repo_root = execution_repo_root()?;
-    let script = resolve_compatibility_script(&repo_root, id, kind)?;
-    let output = Command::new("/bin/bash")
-        .arg(&script)
+    validate_id(id)?;
+    let migrated = migrated_pair_specs()?.contains_key(id);
+    let mut command = Command::new("/bin/bash");
+    let execution_label = if migrated {
+        let runner = repo_root.join("scripts/hepta-gate-pair-runner");
+        command.arg(&runner).arg(kind.label()).arg(id);
+        runner
+    } else {
+        let script = resolve_compatibility_script(&repo_root, id, kind)?;
+        command.arg(&script);
+        script
+    };
+    let output = command
         .current_dir(&repo_root)
         .env("HEPTA_REPO_ROOT", &repo_root)
         .output()
-        .with_context(|| format!("failed to execute {}", script.display()))?;
+        .with_context(|| format!("failed to execute {}", execution_label.display()))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -857,24 +868,31 @@ fn validate_migrated_pairs(
 ) -> Result<()> {
     let scripts_root = fs::canonicalize(repo_root.join("scripts"))
         .context("HEPTA_REPO_ROOT does not contain a scripts directory")?;
+    let archive = GatePairArchive::load(repo_root, SHELL_GATE_PAIR_SPECS_JSON.as_bytes())?;
     for (id, spec) in migrated {
         let availability = catalog
             .get(id)
             .with_context(|| format!("migrated Hepta gate pair is absent from catalog: {id}"))?;
-        let expected_gate = fs::canonicalize(scripts_root.join(format!("{id}-gate.sh")))
-            .with_context(|| format!("missing migrated Hepta gate wrapper: {id}"))?;
-        let expected_report = fs::canonicalize(repo_root.join(&spec.report_path))
-            .with_context(|| format!("missing migrated Hepta report wrapper: {id}"))?;
-        let source_report = fs::canonicalize(repo_root.join(&spec.source_report))
-            .with_context(|| format!("missing migrated Hepta source report: {id}"))?;
+        let gate_relative = format!("scripts/{id}-gate.sh");
+        let expected_gate = repo_root.join(&gate_relative);
+        let expected_report = repo_root.join(&spec.report_path);
+        let source_report = repo_root.join(&spec.source_report);
         if availability.gate.as_ref() != Some(&expected_gate)
             || availability.report.as_ref() != Some(&expected_report)
             || !source_report.starts_with(&scripts_root)
         {
             anyhow::bail!("migrated Hepta gate pair path mismatch: {id}");
         }
-        validate_thin_wrapper(&expected_gate, "gate", id)?;
-        validate_thin_wrapper(&expected_report, "report", id)?;
+        validate_entrypoint(&archive, &expected_gate, &gate_relative, "gate", id)?;
+        validate_entrypoint(&archive, &expected_report, &spec.report_path, "report", id)?;
+        if !source_report.is_file()
+            && archive.payload(&spec.source_report).is_none()
+            && !migrated
+                .values()
+                .any(|candidate| candidate.report_path == spec.source_report)
+        {
+            anyhow::bail!("missing migrated Hepta source report: {id}");
+        }
         if matches!(
             spec.template.as_str(),
             "captured_shell_compat_v1" | "legacy_workgraph_projection_v1"
@@ -906,14 +924,14 @@ fn validate_migrated_pairs(
                 implementations.push(("gate", gate_implementation, gate_implementation_sha256));
             }
             for (kind, relative_path, expected_sha) in implementations {
-                let implementation = fs::canonicalize(repo_root.join(relative_path))
-                    .with_context(|| format!("missing captured Hepta {kind} payload: {id}"))?;
+                let implementation = repo_root.join(relative_path);
                 if !implementation.starts_with(&scripts_root) {
                     anyhow::bail!("captured Hepta {kind} payload escapes scripts root: {id}");
                 }
-                let bytes = captured_payload_bytes(&implementation).with_context(|| {
-                    format!("failed to read captured Hepta {kind} payload: {id}")
-                })?;
+                let bytes = captured_payload_bytes(&implementation, relative_path, &archive)
+                    .with_context(|| {
+                        format!("failed to read captured Hepta {kind} payload: {id}")
+                    })?;
                 let mut hasher = Sha256::new();
                 hasher.update(bytes);
                 if hex_digest(hasher.finalize()) != expected_sha {
@@ -925,8 +943,17 @@ fn validate_migrated_pairs(
     Ok(())
 }
 
-fn captured_payload_bytes(path: &Path) -> Result<Vec<u8>> {
-    let bytes = fs::read(path)?;
+fn captured_payload_bytes(
+    path: &Path,
+    relative_path: &str,
+    archive: &GatePairArchive,
+) -> Result<Vec<u8>> {
+    let Some(bytes) = fs::read(path)
+        .ok()
+        .or_else(|| archive.payload(relative_path).map(<[u8]>::to_vec))
+    else {
+        anyhow::bail!("missing captured Hepta payload: {relative_path}");
+    };
     let Some(payload) = std::str::from_utf8(&bytes)
         .ok()
         .and_then(|text| text.lines().nth(1))
@@ -950,16 +977,39 @@ fn captured_payload_bytes(path: &Path) -> Result<Vec<u8>> {
     Ok(decoded)
 }
 
+fn validate_entrypoint(
+    archive: &GatePairArchive,
+    path: &Path,
+    relative_path: &str,
+    kind: &str,
+    id: &str,
+) -> Result<()> {
+    if archive.is_retained(relative_path) {
+        if !path.is_file() {
+            anyhow::bail!("missing retained migrated Hepta {kind} wrapper: {id}");
+        }
+        validate_thin_wrapper(path, kind, id)
+    } else if path.exists() {
+        anyhow::bail!("virtual migrated Hepta {kind} wrapper was materialized: {id}");
+    } else {
+        Ok(())
+    }
+}
+
 fn validate_thin_wrapper(path: &Path, kind: &str, id: &str) -> Result<()> {
-    let expected = format!(
-        "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")/..\" && pwd -P)\"\nexec \"$ROOT/scripts/hepta-gate-pair-runner\" {kind} \"{id}\"\n"
-    );
+    let expected = canonical_wrapper(kind, id);
     let actual = fs::read_to_string(path)
         .with_context(|| format!("failed to read thin Hepta {kind} wrapper: {id}"))?;
     if actual != expected {
         anyhow::bail!("Hepta {kind} wrapper is not canonical and thin: {id}");
     }
     Ok(())
+}
+
+fn canonical_wrapper(kind: &str, id: &str) -> String {
+    format!(
+        "#!/usr/bin/env bash\nset -euo pipefail\n\nROOT=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")/..\" && pwd -P)\"\nexec \"$ROOT/scripts/hepta-gate-pair-runner\" {kind} \"{id}\"\n"
+    )
 }
 
 fn resolve_compatibility_script(
@@ -971,9 +1021,15 @@ fn resolve_compatibility_script(
 
     let scripts_root = fs::canonicalize(repo_root.join("scripts"))
         .context("HEPTA_REPO_ROOT does not contain a scripts directory")?;
+    let archive = GatePairArchive::load(repo_root, SHELL_GATE_PAIR_SPECS_JSON.as_bytes())?;
     let mut resolved = Vec::new();
     for candidate_name in kind.candidate_names(id) {
-        let candidate = scripts_root.join(candidate_name);
+        let relative_path = format!("scripts/{candidate_name}");
+        let candidate = if let Some(entry) = archive.long_path_entry(&relative_path) {
+            repo_root.join(entry.relocated_path())
+        } else {
+            scripts_root.join(candidate_name)
+        };
         if !candidate.is_file() {
             continue;
         }
@@ -1023,6 +1079,7 @@ fn shell_gate_catalog_json_for_root(repo_root: &Path) -> Result<String> {
         .values()
         .filter(|availability| availability.gate.is_some() && availability.report.is_some())
         .count();
+    let archive = GatePairArchive::load(repo_root, SHELL_GATE_PAIR_SPECS_JSON.as_bytes())?;
     let entries = catalog
         .into_iter()
         .map(|(id, availability)| {
@@ -1050,6 +1107,9 @@ fn shell_gate_catalog_json_for_root(repo_root: &Path) -> Result<String> {
         "report_count": report_count,
         "exact_pair_count": exact_pair_count,
         "thin_wrapper_pair_count": migrated.len(),
+        "physical_thin_wrapper_entrypoint_count": archive.retained_entrypoint_count(),
+        "virtual_thin_wrapper_entrypoint_count": migrated.len().saturating_mul(2)
+            .saturating_sub(archive.retained_entrypoint_count()),
         "legacy_pair_count": exact_pair_count.saturating_sub(migrated.len()),
         "entry_count": entries.len(),
         "execution_requires_explicit_flag": true,
@@ -1074,14 +1134,29 @@ fn shell_gate_snapshot_json_for_root(repo_root: &Path) -> Result<String> {
         .values()
         .filter(|availability| availability.gate.is_some() && availability.report.is_some())
         .count();
+    let archive = GatePairArchive::load(repo_root, SHELL_GATE_PAIR_SPECS_JSON.as_bytes())?;
     let mut catalog_hasher = Sha256::new();
     let mut pair_id_hasher = Sha256::new();
     let mut entries = Vec::with_capacity(catalog.len());
 
     for (id, availability) in catalog {
         let migration = migrated.get(&id);
-        let gate = script_snapshot(repo_root, availability.gate.as_deref())?;
-        let report = script_snapshot(repo_root, availability.report.as_deref())?;
+        let gate = script_snapshot(
+            repo_root,
+            &id,
+            GateScriptKind::Gate,
+            availability.gate.as_deref(),
+            migration.is_some(),
+            &archive,
+        )?;
+        let report = script_snapshot(
+            repo_root,
+            &id,
+            GateScriptKind::Report,
+            availability.report.as_deref(),
+            migration.is_some(),
+            &archive,
+        )?;
         let exact_pair = gate.is_some() && report.is_some();
         let gate_path = gate
             .as_ref()
@@ -1138,6 +1213,9 @@ fn shell_gate_snapshot_json_for_root(repo_root: &Path) -> Result<String> {
         "report_count": report_count,
         "exact_pair_count": exact_pair_count,
         "thin_wrapper_pair_count": migrated.len(),
+        "physical_thin_wrapper_entrypoint_count": archive.retained_entrypoint_count(),
+        "virtual_thin_wrapper_entrypoint_count": migrated.len().saturating_mul(2)
+            .saturating_sub(archive.retained_entrypoint_count()),
         "legacy_pair_count": exact_pair_count.saturating_sub(migrated.len()),
         "entry_count": entries.len(),
         "catalog_sha256": hex_digest(catalog_hasher.finalize()),
@@ -1197,6 +1275,46 @@ fn shell_gate_catalog_for_root(
         }
         *slot = Some(path);
     }
+    let archive = GatePairArchive::load(repo_root, SHELL_GATE_PAIR_SPECS_JSON.as_bytes())?;
+    for entry in archive.long_script_entries() {
+        let filename = entry
+            .original_path()
+            .strip_prefix("scripts/")
+            .context("long-path script is outside scripts")?;
+        let (id, kind) = if let Some(id) = filename.strip_suffix("-gate.sh") {
+            (id, GateScriptKind::Gate)
+        } else if let Some(id) = filename.strip_suffix("-report.sh") {
+            (id, GateScriptKind::Report)
+        } else {
+            continue;
+        };
+        validate_id(id)?;
+        let availability = catalog.entry(id.to_string()).or_default();
+        let slot = match kind {
+            GateScriptKind::Gate => &mut availability.gate,
+            GateScriptKind::Report => &mut availability.report,
+        };
+        let logical_path = repo_root.join(entry.original_path());
+        if slot
+            .as_ref()
+            .is_some_and(|existing| existing != &logical_path)
+        {
+            anyhow::bail!(
+                "duplicate relocated Hepta {} catalog entry: {id}",
+                kind.label()
+            );
+        }
+        *slot = Some(logical_path);
+    }
+    for (id, spec) in migrated_pair_specs()? {
+        let availability = catalog.entry(id.clone()).or_default();
+        availability
+            .gate
+            .get_or_insert_with(|| scripts_root.join(format!("{id}-gate.sh")));
+        availability
+            .report
+            .get_or_insert_with(|| repo_root.join(spec.report_path));
+    }
     Ok(catalog)
 }
 
@@ -1206,7 +1324,14 @@ struct ScriptSnapshot {
     sha256: String,
 }
 
-fn script_snapshot(repo_root: &Path, path: Option<&Path>) -> Result<Option<ScriptSnapshot>> {
+fn script_snapshot(
+    repo_root: &Path,
+    id: &str,
+    kind: GateScriptKind,
+    path: Option<&Path>,
+    virtual_allowed: bool,
+    archive: &GatePairArchive,
+) -> Result<Option<ScriptSnapshot>> {
     let Some(path) = path else {
         return Ok(None);
     };
@@ -1215,12 +1340,23 @@ fn script_snapshot(repo_root: &Path, path: Option<&Path>) -> Result<Option<Scrip
         .with_context(|| format!("script is outside Hepta repo root: {}", path.display()))?
         .to_string_lossy()
         .into_owned();
-    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
+    let sha256 = if path.is_file() {
+        let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        hex_digest(hasher.finalize())
+    } else if let Some(entry) = archive.long_path_entry(&relative_path) {
+        entry.original_content_sha256().to_string()
+    } else if virtual_allowed {
+        let mut hasher = Sha256::new();
+        hasher.update(canonical_wrapper(kind.label(), id));
+        hex_digest(hasher.finalize())
+    } else {
+        anyhow::bail!("missing Hepta shell catalog entry: {}", path.display());
+    };
     Ok(Some(ScriptSnapshot {
         relative_path,
-        sha256: hex_digest(hasher.finalize()),
+        sha256,
     }))
 }
 

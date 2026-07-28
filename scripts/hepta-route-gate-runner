@@ -176,7 +176,7 @@ validate_registry() {
               )
             elif $requires_source_contract then
               (.source.capture_label | test("^[a-z0-9-]+-gate$"))
-              and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+              and (.source.script | test("^scripts/([a-z0-9-]+-gate|i3-[0-9a-f]{24})\\.sh$"))
               and (.source.validation_filter | type == "string" and length > 100)
             else true end
           )
@@ -192,6 +192,17 @@ validate_registry() {
           )
         ))
       ' "$ROOT/$external_registry" >/dev/null
+    while IFS= read -r source_script; do
+      [[ -f "$ROOT/$source_script" ]] || {
+        echo "missing Hepta route gate source script: $ROOT/$source_script" >&2
+        return 1
+      }
+      if [[ "$source_script" == scripts/i3-*.sh ]]; then
+        jq -e --arg source_script "$source_script" '
+          [.entries[] | select(.relocated_path == $source_script)] | length == 1
+        ' "$ROOT/scripts/lib/hepta-long-path-v1/registry.json" >/dev/null
+      fi
+    done < <(jq -r '.specs[].source.script // empty' "$ROOT/$external_registry")
     external_ids="$(jq -r '.specs[].id' "$ROOT/$external_registry")"
     all_ids="${all_ids}${all_ids:+$'\n'}${external_ids}"
   done < <(jq -c '.families[] | select(.execution_profile == "native_requirements_report_v1")' "$SPEC_FILE")

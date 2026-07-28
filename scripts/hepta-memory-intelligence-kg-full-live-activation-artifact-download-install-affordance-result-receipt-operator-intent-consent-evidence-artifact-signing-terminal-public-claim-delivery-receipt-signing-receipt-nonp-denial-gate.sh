@@ -21,7 +21,7 @@ sha256_text() {
   printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
 }
 
-SOURCE_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-notarization-denial-gate.sh"
+SOURCE_GATE="scripts/i3-28db7cdab62b7918fc731746.sh"
 [[ -x "$SOURCE_GATE" ]] || {
   echo "missing executable artifact signing receipt artifact signing/notarization surface denial gate: $SOURCE_GATE" >&2
   exit 1

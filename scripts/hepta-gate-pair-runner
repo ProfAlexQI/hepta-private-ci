@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
 COMPAT_EXECUTOR="$ROOT/scripts/hepta-gate-pair-compat-exec"
+PAYLOAD_BUNDLE="$ROOT/scripts/hepta-gate-pair-payload-bundle"
+LONG_PATH_RESOLVER="$ROOT/scripts/hepta-long-path-resolve"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-status-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-terminal-final-index-v1.sh"
 source "$ROOT/scripts/lib/hepta-gate-pair-public-status-v1.sh"
@@ -25,6 +27,45 @@ command -v jq >/dev/null 2>&1 || {
 [[ -f "$SPEC_FILE" ]] || {
   echo "missing Hepta gate pair spec registry: $SPEC_FILE" >&2
   exit 1
+}
+
+resolve_repo_file() {
+  local logical_path="$1"
+  local relocated_path
+  local compatibility_root
+  if [[ -e "$ROOT/$logical_path" ]]; then
+    printf '%s\n' "$ROOT/$logical_path"
+    return
+  fi
+  relocated_path="$("$LONG_PATH_RESOLVER" "$logical_path")"
+  if [[ -e "$ROOT/$relocated_path" ]]; then
+    printf '%s\n' "$ROOT/$relocated_path"
+    return
+  fi
+  compatibility_root="${HEPTA_COMPAT_OVERLAY_ROOT:-}"
+  if [[ -z "$compatibility_root" ]]; then
+    compatibility_root="$("$PAYLOAD_BUNDLE" materialize-overlay)"
+  fi
+  if [[ -e "$compatibility_root/$logical_path" ]]; then
+    printf '%s\n' "$compatibility_root/$logical_path"
+    return
+  fi
+  return 1
+}
+
+run_repo_executable() {
+  local logical_path="$1"
+  local missing_message="$2"
+  local executable
+  executable="$(resolve_repo_file "$logical_path")" || {
+    echo "$missing_message: $ROOT/$logical_path" >&2
+    return 1
+  }
+  [[ -x "$executable" ]] || {
+    echo "$missing_message: $executable" >&2
+    return 1
+  }
+  "$executable"
 }
 
 spec="$(jq -cer --arg id "$id" '.pairs[] | select(.id == $id)' "$SPEC_FILE")" || {
@@ -92,7 +133,7 @@ if [[ -z "${HEPTA_JSON_REPORT_CAPTURE_CACHE_DIR:-}" && ( "$template" == "capture
 fi
 
 execute_captured_shell_compat() {
-  local implementation expected_sha
+  local implementation expected_sha compatibility_root compatibility_executor
   if [[ "$kind" == "gate" ]]; then
     implementation="$gate_implementation"
     expected_sha="$gate_implementation_sha256"
@@ -109,21 +150,31 @@ execute_captured_shell_compat() {
     echo "invalid captured Hepta $kind implementation SHA-256 for: $id" >&2
     exit 1
   }
-  implementation="$ROOT/$implementation"
-  [[ -f "$implementation" ]] || {
-    echo "missing captured Hepta $kind implementation: $implementation" >&2
+  [[ -x "$PAYLOAD_BUNDLE" ]] || {
+    echo "missing Hepta gate-pair payload bundle: $PAYLOAD_BUNDLE" >&2
     exit 1
   }
-  [[ -x "$COMPAT_EXECUTOR" ]] || {
-    echo "missing Hepta gate-pair compatibility executor: $COMPAT_EXECUTOR" >&2
+  compatibility_root="${HEPTA_COMPAT_OVERLAY_ROOT:-}"
+  if [[ -z "$compatibility_root" ]]; then
+    compatibility_root="$("$PAYLOAD_BUNDLE" materialize-overlay)"
+    export HEPTA_COMPAT_OVERLAY_ROOT="$compatibility_root"
+  fi
+  [[ -d "$compatibility_root" ]] || {
+    echo "missing Hepta gate-pair compatibility overlay: $compatibility_root" >&2
+    exit 1
+  }
+  implementation="$compatibility_root/$implementation"
+  compatibility_executor="$compatibility_root/scripts/hepta-gate-pair-compat-exec"
+  [[ -f "$implementation" && -x "$compatibility_executor" ]] || {
+    echo "incomplete Hepta gate-pair compatibility overlay: $compatibility_root" >&2
     exit 1
   }
 
   # Evaluate inside this stable top-level runner so legacy BASH_SOURCE-based
   # repo-root discovery still resolves to scripts/ while the old pair bodies
   # live in a content-addressed compatibility store.
-  export HEPTA_REPO_ROOT="$ROOT"
-  export HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET="$ROOT/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh"
+  export HEPTA_REPO_ROOT="$compatibility_root"
+  export HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET="$compatibility_root/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh"
   [[ -x "$HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" ]] || {
     echo "missing Hepta runtime crate-root source-set resolver: $HEPTA_RUNTIME_CRATE_ROOT_SOURCE_SET" >&2
     exit 1
@@ -157,23 +208,23 @@ execute_captured_shell_compat() {
     fi
   }
   export -f grep rg
-  "$COMPAT_EXECUTOR" "$implementation"
+  "$compatibility_executor" "$implementation"
 }
 
 verify_legacy_workgraph_projection() {
-  local report="$ROOT/$report_rel"
+  local report
   local route="${id#hepta-systems-work-graph-}"
   local source_stem="work_graph_${route//-/_}"
   local rust_source="$ROOT/codex-rs/hepta-runtime/src/$source_stem.rs"
   local expected_gate="hepta_${source_stem}_gate"
   local expected_schema="${source_stem}_v1"
 
-  [[ -x "$report" ]] || {
-    echo "$missing_report_message: $report" >&2
+  report="$(resolve_repo_file "$report_rel")" || {
+    echo "$missing_report_message: $ROOT/$report_rel" >&2
     exit 1
   }
-  [[ -f "$rust_source" ]] || {
-    echo "missing legacy WorkGraph projection source: $rust_source" >&2
+  "$ROOT/scripts/hepta-workgraph-module-bundle" contains "$source_stem" || {
+    echo "missing bundled legacy WorkGraph projection source: $source_stem" >&2
     exit 1
   }
 
@@ -202,14 +253,8 @@ verify_legacy_workgraph_projection() {
 }
 
 render_report() {
-  local source_report="$ROOT/$source_report_rel"
-  [[ -x "$source_report" ]] || {
-    echo "$missing_source_message: $source_report" >&2
-    exit 1
-  }
-
   local source_json
-  source_json="$("$source_report")"
+  source_json="$(run_repo_executable "$source_report_rel" "$missing_source_message")"
   jq -e \
     --arg attachment_surface "$attachment_surface" \
     --arg attachment_ready_key "${attachment_surface}_ready" \
@@ -289,14 +334,8 @@ render_report() {
 }
 
 render_final_index_report() {
-  local source_report="$ROOT/$source_report_rel"
-  [[ -x "$source_report" ]] || {
-    echo "$missing_source_message: $source_report" >&2
-    exit 1
-  }
-
   local source_json
-  source_json="$("$source_report")"
+  source_json="$(run_repo_executable "$source_report_rel" "$missing_source_message")"
   jq -e \
     --arg source_surface "$attachment_surface" \
     --arg source_ready_key "${attachment_surface}_ready" \
@@ -384,11 +423,14 @@ render_final_index_report() {
 }
 
 render_signing_summary_attachment() {
-  local source_report="$ROOT/$source_report_rel"
-  local denial_gate="$ROOT/$denial_gate_rel"
-  local denial_doc="$ROOT/$denial_doc_rel"
-  [[ -x "$source_report" ]] || {
-    echo "$missing_source_message: $source_report" >&2
+  local denial_gate
+  local denial_doc
+  denial_gate="$(resolve_repo_file "$denial_gate_rel")" || {
+    echo "missing $denial_subject denial gate: $ROOT/$denial_gate_rel" >&2
+    exit 1
+  }
+  denial_doc="$(resolve_repo_file "$denial_doc_rel")" || {
+    echo "missing $denial_subject denial doc: $ROOT/$denial_doc_rel" >&2
     exit 1
   }
   [[ -f "$denial_gate" ]] || {
@@ -401,7 +443,7 @@ render_signing_summary_attachment() {
   }
 
   local source_json source_blocker_count static_mention_count
-  source_json="$("$source_report")"
+  source_json="$(run_repo_executable "$source_report_rel" "$missing_source_message")"
   source_blocker_count="$((blocker_count - 2))"
   jq -e \
     --arg source_surface "$attachment_surface" \
@@ -552,9 +594,9 @@ render_signing_summary_attachment() {
 }
 
 verify_signing_summary_attachment() {
-  local report="$ROOT/$report_rel"
-  [[ -x "$report" ]] || {
-    echo "$missing_report_message: $report" >&2
+  local report
+  report="$(resolve_repo_file "$report_rel")" || {
+    echo "$missing_report_message: $ROOT/$report_rel" >&2
     exit 1
   }
 
@@ -605,14 +647,8 @@ verify_signing_summary_attachment() {
 }
 
 render_summary_report() {
-  local source_report="$ROOT/$source_report_rel"
-  [[ -x "$source_report" ]] || {
-    echo "$missing_source_message: $source_report" >&2
-    exit 1
-  }
-
   local source_json
-  source_json="$("$source_report")"
+  source_json="$(run_repo_executable "$source_report_rel" "$missing_source_message")"
   jq -e \
     --arg attachment_surface "$attachment_surface" \
     --arg attachment_ready_key "${attachment_surface}_ready" \
@@ -699,9 +735,9 @@ render_summary_report() {
 }
 
 verify_gate() {
-  local report="$ROOT/$report_rel"
-  [[ -x "$report" ]] || {
-    echo "$missing_report_message: $report" >&2
+  local report
+  report="$(resolve_repo_file "$report_rel")" || {
+    echo "$missing_report_message: $ROOT/$report_rel" >&2
     exit 1
   }
 
@@ -742,9 +778,9 @@ verify_gate() {
 }
 
 verify_final_index_gate() {
-  local report="$ROOT/$report_rel"
-  [[ -x "$report" ]] || {
-    echo "$missing_report_message: $report" >&2
+  local report
+  report="$(resolve_repo_file "$report_rel")" || {
+    echo "$missing_report_message: $ROOT/$report_rel" >&2
     exit 1
   }
 
@@ -787,9 +823,9 @@ verify_final_index_gate() {
 }
 
 verify_summary_gate() {
-  local report="$ROOT/$report_rel"
-  [[ -x "$report" ]] || {
-    echo "$missing_report_message: $report" >&2
+  local report
+  report="$(resolve_repo_file "$report_rel")" || {
+    echo "$missing_report_message: $ROOT/$report_rel" >&2
     exit 1
   }
 

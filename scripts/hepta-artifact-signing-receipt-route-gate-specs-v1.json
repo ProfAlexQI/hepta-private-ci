@@ -16,7 +16,7 @@
       },
       "source": {
         "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate",
-        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
+        "script": "scripts/i3-0ab8864aaedb1633ef2ca067.sh",
         "validation_filter": ".runtime == \"hepta\" and .status == \"ready\" and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_replay_idempotency_denial_ready == true and .source_artifact_distribution_signing_notarization_result_receipt_ready == true and .artifact_distribution_signing_notarization_receipt_replay_idempotency_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_replay_idempotency_denied_count == 18 and (.side_effects | to_entries | all(.value == false))"
       },
       "native_requirements": [
@@ -60,7 +60,7 @@
       },
       "source": {
         "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate",
-        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
+        "script": "scripts/i3-69e99f4efb35ecb295ceb839.sh",
         "validation_filter": ".runtime == \"hepta\" and .status == \"ready\" and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denial_ready == true and .source_artifact_distribution_signing_notarization_receipt_replay_idempotency_ready == true and .artifact_distribution_signing_notarization_receipt_ordering_monotonicity_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denied_count == 18 and (.side_effects | to_entries | all(.value == false))"
       },
       "native_requirements": [
@@ -104,7 +104,7 @@
       },
       "source": {
         "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate",
-        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
+        "script": "scripts/i3-71bd59c6d099c54edc1a3553.sh",
         "validation_filter": ".runtime == \"hepta\" and .status == \"ready\" and .memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_cancellation_supersession_denial_ready == true and .source_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_ready == true and .artifact_distribution_signing_notarization_receipt_cancellation_supersession_surface_count == 18 and .artifact_distribution_signing_notarization_receipt_cancellation_supersession_denied_count == 18 and (.side_effects | to_entries | all(.value == false))"
       },
       "native_requirements": [

@@ -2294,9 +2294,9 @@ fn hepta_memory_intelligence_kg_full_enablement_runtime_provider_router_shadow_e
         complete_precondition_authority_denial_endpoint:
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_COMPLETE_PRECONDITION_AUTHORITY_DENIAL_ENDPOINT,
         complete_precondition_authority_denial_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_COMPLETE_PRECONDITION_AUTHORITY_DENIAL_GATE.md",
-        operator_approval_lane_separation_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_COMPLETE_PRECONDITION_OPERATOR_APPROVAL_LANE_SEPARATION_GATE.md",
+        operator_approval_lane_separation_doc: "docs/architecture/i3-22db34fe0658349e2c21700a.md",
         source_complete_precondition_authority_denial_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-authority-denial-gate.sh",
-        source_operator_approval_lane_separation_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-operator-approval-lane-separation-gate.sh",
+        source_operator_approval_lane_separation_gate: "scripts/i3-8f4088b416ad903f6ac4fe96.sh",
         native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,
         route_count: route_matrix.route_count,
         implemented_route_count: route_matrix.implemented_route_count,
@@ -2431,9 +2431,9 @@ fn hepta_memory_intelligence_kg_full_enablement_operator_approved_memory_live_mu
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_MEMORY_LIVE_MUTATION_DURABLE_LANE_ENDPOINT,
         operator_approval_lane_separation_endpoint:
             HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_SHADOW_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_COMPLETE_PRECONDITION_OPERATOR_APPROVAL_LANE_SEPARATION_ENDPOINT,
-        operator_approval_lane_separation_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_COMPLETE_PRECONDITION_OPERATOR_APPROVAL_LANE_SEPARATION_GATE.md",
+        operator_approval_lane_separation_doc: "docs/architecture/i3-22db34fe0658349e2c21700a.md",
         memory_live_mutation_durable_lane_doc: "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_APPROVED_MEMORY_LIVE_MUTATION_DURABLE_LANE_GATE.md",
-        source_operator_approval_lane_separation_gate: "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-operator-approval-lane-separation-gate.sh",
+        source_operator_approval_lane_separation_gate: "scripts/i3-8f4088b416ad903f6ac4fe96.sh",
         source_memory_live_mutation_durable_lane_gate:
             "scripts/hepta-memory-intelligence-kg-full-enablement-operator-approved-memory-live-mutation-durable-lane-gate.sh",
         native_gateway_source_command_count: NATIVE_GATEWAY_SOURCE_COMMAND_COUNT,

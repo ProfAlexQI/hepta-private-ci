@@ -2,12 +2,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-AUDIT_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
-DENIAL_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
-PACKET_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report"
-NONSEND_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.report"
-PLAN_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report"
-INDEX_REPORT="$ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report"
+PAYLOAD_BUNDLE="$ROOT/scripts/hepta-gate-pair-payload-bundle"
+COMPAT_ROOT="$("$PAYLOAD_BUNDLE" materialize-overlay)"
+AUDIT_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-audit-v2.report"
+DENIAL_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-readiness-denial-readback-index-v2.report"
+PACKET_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-preview-v2.report"
+NONSEND_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-operator-packet-non-send-readback-v2.report"
+PLAN_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-collection-plan-v2.report"
+INDEX_REPORT="$COMPAT_ROOT/scripts/lib/hepta-gate-pair-compat-v1/hepta-systems-controlled-live-required-evidence-readback-index-v2.report"
 LEDGER="$ROOT/scripts/hepta-controlled-live-v2-propagation-ledger.json"
 IMPACT="$ROOT/scripts/hepta-controlled-live-worktree-boundary-v2-impact.json"
 SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
@@ -39,7 +41,11 @@ fixture_root="$tmpdir/repo"
 mkdir -p "$fixture_root"
 
 for source_dir in scripts codex-rs docs plugins apps; do
-  ln -s "$ROOT/$source_dir" "$fixture_root/$source_dir"
+  source_root="$ROOT"
+  if [[ "$source_dir" == "scripts" ]]; then
+    source_root="$COMPAT_ROOT"
+  fi
+  ln -s "$source_root/$source_dir" "$fixture_root/$source_dir"
 done
 
 git -C "$fixture_root" init -q
@@ -330,16 +336,17 @@ for pair_id in "${PAIR_IDS[@]}"; do
   [[ "$source_report" == "$report_implementation" ]] || fail "pair source/report implementation mismatch: $pair_id"
   [[ "$report_implementation" == "$expected_report" ]] || fail "pair does not select impact-ledger v2 report: $pair_id"
   [[ "$gate_implementation" == "$expected_gate" ]] || fail "pair does not select impact-ledger v2 gate: $pair_id"
-  [[ "$(shasum -a 256 "$ROOT/$report_implementation" | awk '{print $1}')" == "$(jq -r '.report_implementation_sha256' <<<"$spec")" ]] \
+  [[ "$(shasum -a 256 "$COMPAT_ROOT/$report_implementation" | awk '{print $1}')" == "$(jq -r '.report_implementation_sha256' <<<"$spec")" ]] \
     || fail "v2 report hash mismatch: $pair_id"
-  [[ "$(shasum -a 256 "$ROOT/$gate_implementation" | awk '{print $1}')" == "$(jq -r '.gate_implementation_sha256' <<<"$spec")" ]] \
+  [[ "$(shasum -a 256 "$COMPAT_ROOT/$gate_implementation" | awk '{print $1}')" == "$(jq -r '.gate_implementation_sha256' <<<"$spec")" ]] \
     || fail "v2 gate hash mismatch: $pair_id"
   for legacy_key in legacy_report legacy_gate; do
     legacy_path="$(jq -r --arg key "$legacy_key" '.[$key]' <<<"$migration")"
     [[ "$legacy_path" == scripts/lib/hepta-gate-pair-compat-v1/* ]] || fail "invalid legacy path for $pair_id: $legacy_path"
-    [[ -f "$ROOT/$legacy_path" ]] || fail "missing legacy payload for $pair_id: $legacy_path"
     base_blob="$(git -C "$ROOT" rev-parse "$base_rc:$legacy_path")" || fail "legacy payload missing from base RC: $legacy_path"
-    current_blob="$(git -C "$ROOT" hash-object "$ROOT/$legacy_path")"
+    legacy_blob="$tmpdir/legacy-$(basename "$legacy_path")"
+    "$PAYLOAD_BUNDLE" --legacy-blob-to "$legacy_path" "$legacy_blob"
+    current_blob="$(git -C "$ROOT" hash-object "$legacy_blob")"
     [[ "$current_blob" == "$base_blob" ]] || fail "legacy payload changed since base RC: $legacy_path"
   done
 done

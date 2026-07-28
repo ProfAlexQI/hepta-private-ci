@@ -1,0 +1,450 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "base64"
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "stringio"
+require "tmpdir"
+require "zlib"
+
+ROOT = File.expand_path("..", __dir__)
+SCRIPTS_ROOT = File.join(ROOT, "scripts")
+SPEC_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-specs-v1.json")
+STORE_RELATIVE = "scripts/lib/hepta-gate-pair-compat-v1"
+STORE_ROOT = File.join(ROOT, STORE_RELATIVE)
+BUNDLE_ROOT = File.join(SCRIPTS_ROOT, "lib/hepta-gate-pair-compat-v2")
+BUNDLE_PATH = File.join(BUNDLE_ROOT, "payloads.bundle.gz")
+REGISTRY_PATH = File.join(BUNDLE_ROOT, "registry.json")
+LEGACY_ARCHIVE_PATH = File.join(BUNDLE_ROOT, "legacy-blobs.tar.gz")
+CURRENT_REALITY_REGISTRY_PATH = File.join(
+  BUNDLE_ROOT,
+  "current-reality-capabilities.json"
+)
+CURRENT_REALITY_PAYLOAD = [
+  STORE_RELATIVE,
+  "hepta-systems-current-reality-capability-matrix.report"
+].join("/")
+ENTRYPOINT_REGISTRY_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-entrypoints-v2.json")
+LONG_PATH_REGISTRY_PATH = File.join(
+  SCRIPTS_ROOT,
+  "lib/hepta-long-path-v1/registry.json"
+)
+SCHEMA = "hepta_gate_pair_payload_bundle_v2"
+MAGIC = "#{SCHEMA}\0".b
+MARKER = "# hepta_gate_pair_gzip_base64_v1:"
+EXPECTED_PAYLOAD_COUNT = 2512
+
+def usage
+  warn "usage: scripts/hepta-gate-pair-payload-bundle [pack|verify|unpack|materialize-overlay|--decode-to PATH OUTPUT|--legacy-blob-to PATH OUTPUT]"
+  exit 2
+end
+
+def atomic_write(path, content, mode = nil)
+  FileUtils.mkdir_p(File.dirname(path))
+  staging = File.join(
+    File.dirname(path),
+    ".hepta-gate-payload-#{Digest::SHA256.hexdigest(path)[0, 12]}-#{$$}.tmp"
+  )
+  File.binwrite(staging, content)
+  File.chmod(mode, staging) if mode
+  File.rename(staging, path)
+end
+
+def decode_envelope(path)
+  decode_envelope_bytes(File.binread(path))
+end
+
+def decode_envelope_bytes(body)
+  line = body.lines[1]
+  return body unless line&.include?(MARKER)
+  payload = line.split(MARKER, 2).fetch(1).strip
+  Zlib::GzipReader.new(StringIO.new(Base64.strict_decode64(payload))).read
+end
+
+def ensure_legacy_archive
+  return if File.file?(LEGACY_ARCHIVE_PATH)
+  tar, error, status = Open3.capture3(
+    "git",
+    "-C",
+    ROOT,
+    "archive",
+    "--format=tar",
+    "HEAD",
+    STORE_RELATIVE
+  )
+  raise "failed to archive legacy gate payload blobs: #{error}" unless status.success?
+  FileUtils.mkdir_p(BUNDLE_ROOT)
+  staging = "#{LEGACY_ARCHIVE_PATH}.#{$$}.tmp"
+  Zlib::GzipWriter.open(staging, Zlib::BEST_COMPRESSION) do |writer|
+    writer.mtime = 0
+    writer.write(tar)
+  end
+  File.rename(staging, LEGACY_ARCHIVE_PATH)
+end
+
+def legacy_archive_entries
+  Dir.mktmpdir("hepta-gate-pair-legacy-archive") do |directory|
+    _output, error, status = Open3.capture3(
+      "tar",
+      "-xzf",
+      LEGACY_ARCHIVE_PATH,
+      "-C",
+      directory
+    )
+    raise "failed to extract legacy gate payload archive: #{error}" unless status.success?
+    Dir.glob(File.join(directory, STORE_RELATIVE, "*.{gate,report}")).sort.to_h do |path|
+      [path.delete_prefix("#{directory}/"), File.binread(path)]
+    end
+  end
+end
+
+def encode_bundle(entries)
+  payload = MAGIC.dup
+  payload << [entries.length].pack("N")
+  entries.each do |logical_path, source|
+    path = logical_path.b
+    body = source.b
+    payload << [path.bytesize, body.bytesize].pack("NN")
+    payload << path
+    payload << Digest::SHA256.digest(body)
+    payload << body
+  end
+  payload
+end
+
+def decode_bundle
+  payload = Zlib::GzipReader.open(BUNDLE_PATH, &:read).b
+  cursor = 0
+  raise "invalid gate payload bundle magic" unless payload.byteslice(0, MAGIC.bytesize) == MAGIC
+  cursor += MAGIC.bytesize
+  count = payload.byteslice(cursor, 4)&.unpack1("N")
+  raise "missing gate payload count" unless count
+  cursor += 4
+  entries = {}
+  count.times do
+    lengths = payload.byteslice(cursor, 8)&.unpack("NN")
+    raise "truncated gate payload lengths" unless lengths&.length == 2
+    cursor += 8
+    path_length, source_length = lengths
+    logical_path = payload.byteslice(cursor, path_length)
+    raise "truncated gate payload path" unless logical_path&.bytesize == path_length
+    cursor += path_length
+    expected_sha = payload.byteslice(cursor, 32)
+    raise "truncated gate payload digest" unless expected_sha&.bytesize == 32
+    cursor += 32
+    source = payload.byteslice(cursor, source_length)
+    raise "truncated gate payload source" unless source&.bytesize == source_length
+    cursor += source_length
+    logical_path = logical_path.force_encoding(Encoding::UTF_8)
+    raise "invalid gate payload path: #{logical_path}" unless logical_path.match?(
+      %r{\Ascripts/lib/hepta-gate-pair-compat-v1/[a-z0-9-]+\.(?:gate|report)\z}
+    )
+    raise "gate payload SHA mismatch: #{logical_path}" unless Digest::SHA256.digest(source) == expected_sha
+    raise "duplicate gate payload path: #{logical_path}" if entries.key?(logical_path)
+    entries[logical_path] = source
+  end
+  raise "trailing bytes in gate payload bundle" unless cursor == payload.bytesize
+  entries
+end
+
+def spec
+  @spec ||= JSON.parse(File.binread(SPEC_PATH))
+end
+
+def registered_hashes
+  hashes = {}
+  spec.fetch("pairs").each do |pair|
+    [
+      ["gate_implementation", "gate_implementation_sha256"],
+      ["report_implementation", "report_implementation_sha256"]
+    ].each do |path_key, sha_key|
+      logical_path = pair[path_key]
+      expected_sha = pair[sha_key]
+      next unless logical_path && expected_sha
+      existing = hashes[logical_path]
+      raise "conflicting gate payload hash: #{logical_path}" if existing && existing != expected_sha
+      hashes[logical_path] = expected_sha
+    end
+  end
+  hashes
+end
+
+def aggregate_sha(entries)
+  digest = Digest::SHA256.new
+  entries.sort.each do |logical_path, source|
+    digest << logical_path << "\0" << Digest::SHA256.hexdigest(source) << "\n"
+  end
+  digest.hexdigest
+end
+
+def write_registry(entries)
+  ensure_legacy_archive
+  registry = {
+    schema: SCHEMA,
+    status: "packed",
+    payload_count: entries.length,
+    registered_payload_count: registered_hashes.length,
+    source_bytes: entries.sum { |_logical_path, source| source.bytesize },
+    aggregate_source_sha256: aggregate_sha(entries),
+    bundle_bytes: File.size(BUNDLE_PATH),
+    bundle_sha256: Digest::SHA256.file(BUNDLE_PATH).hexdigest,
+    source_registry_sha256: Digest::SHA256.file(SPEC_PATH).hexdigest,
+    legacy_archive_bytes: File.size(LEGACY_ARCHIVE_PATH),
+    legacy_archive_sha256: Digest::SHA256.file(LEGACY_ARCHIVE_PATH).hexdigest,
+    legacy_archive_payload_count: legacy_archive_entries.length,
+    source_files_materialized: false,
+    runtime_overlay_generation: true,
+    reversible_unpack: true
+  }
+  atomic_write(REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
+  write_current_reality_registry(entries)
+end
+
+def current_reality_registry(entries)
+  source = entries.fetch(CURRENT_REALITY_PAYLOAD)
+  close = source.index("\n  ] as $capabilities |")
+  raise "current-reality capability registry has no closing marker" unless close
+  prefix = source.byteslice(0, close)
+  open = prefix.rindex("\n  [\n    {\n      id:")
+  raise "current-reality capability registry has no opening marker" unless open
+  ids = prefix.byteslice(open, prefix.bytesize - open).scan(/\n      id:"([a-z0-9_]+)"/).flatten
+  raise "current-reality capability registry is empty" if ids.empty?
+  raise "current-reality capability registry has duplicate ids" unless ids.uniq.length == ids.length
+  {
+    schema: "hepta_current_reality_capability_registry_v1",
+    source_payload: CURRENT_REALITY_PAYLOAD,
+    source_sha256: Digest::SHA256.hexdigest(source),
+    capability_ids: ids
+  }
+end
+
+def write_current_reality_registry(entries)
+  atomic_write(
+    CURRENT_REALITY_REGISTRY_PATH,
+    JSON.pretty_generate(current_reality_registry(entries)) + "\n",
+    0o644
+  )
+end
+
+def pack
+  ensure_legacy_archive
+  if File.file?(BUNDLE_PATH) && !Dir.exist?(STORE_ROOT)
+    entries = decode_bundle
+    write_registry(entries)
+    verify
+    return
+  end
+  raise "missing compatibility payload store" unless Dir.exist?(STORE_ROOT)
+  entries = Dir.glob(File.join(STORE_ROOT, "*.{gate,report}")).sort.to_h do |path|
+    [path.delete_prefix("#{ROOT}/"), decode_envelope(path)]
+  end
+  raise "unexpected compatibility payload count: #{entries.length}" unless entries.length == EXPECTED_PAYLOAD_COUNT
+  registered_hashes.each do |logical_path, expected_sha|
+    source = entries.fetch(logical_path) { raise "missing registered payload: #{logical_path}" }
+    raise "registered payload SHA drifted: #{logical_path}" unless Digest::SHA256.hexdigest(source) == expected_sha
+  end
+  FileUtils.mkdir_p(BUNDLE_ROOT)
+  staging = File.join(BUNDLE_ROOT, ".payloads.bundle.#{$$}.gz")
+  Zlib::GzipWriter.open(staging, Zlib::BEST_COMPRESSION) do |writer|
+    writer.mtime = 0
+    writer.write(encode_bundle(entries))
+  end
+  File.rename(staging, BUNDLE_PATH)
+  write_registry(entries)
+  FileUtils.rm_rf(STORE_ROOT)
+  verify
+end
+
+def verify
+  raise "missing gate payload bundle" unless File.file?(BUNDLE_PATH) && File.file?(REGISTRY_PATH)
+  entries = decode_bundle
+  registry = JSON.parse(File.binread(REGISTRY_PATH))
+  raise "invalid gate payload registry schema" unless registry["schema"] == SCHEMA
+  raise "unexpected gate payload count" unless entries.length == EXPECTED_PAYLOAD_COUNT
+  raise "gate payload registry count drifted" unless registry["payload_count"] == entries.length
+  raise "gate payload bundle SHA drifted" unless registry["bundle_sha256"] == Digest::SHA256.file(BUNDLE_PATH).hexdigest
+  raise "gate payload aggregate SHA drifted" unless registry["aggregate_source_sha256"] == aggregate_sha(entries)
+  raise "gate payload source registry SHA drifted" unless registry["source_registry_sha256"] == Digest::SHA256.file(SPEC_PATH).hexdigest
+  raise "legacy gate payload archive is missing" unless File.file?(LEGACY_ARCHIVE_PATH)
+  raise "legacy gate payload archive SHA drifted" unless registry["legacy_archive_sha256"] == Digest::SHA256.file(LEGACY_ARCHIVE_PATH).hexdigest
+  raise "legacy gate payload archive byte count drifted" unless registry["legacy_archive_bytes"] == File.size(LEGACY_ARCHIVE_PATH)
+  legacy_entries = legacy_archive_entries
+  raise "legacy gate payload archive count drifted" unless registry["legacy_archive_payload_count"] == legacy_entries.length
+  raise "unexpected legacy gate payload archive count" unless legacy_entries.length == EXPECTED_PAYLOAD_COUNT
+  legacy_entries.each do |logical_path, raw|
+    source = entries.fetch(logical_path) { raise "legacy gate payload is not in active bundle: #{logical_path}" }
+    raise "legacy gate payload decode parity drifted: #{logical_path}" unless decode_envelope_bytes(raw) == source
+  end
+  expected_current_reality_registry = JSON.pretty_generate(current_reality_registry(entries)) + "\n"
+  raise "current-reality capability registry drifted" unless File.file?(CURRENT_REALITY_REGISTRY_PATH) &&
+    File.binread(CURRENT_REALITY_REGISTRY_PATH) == expected_current_reality_registry
+  registered_hashes.each do |logical_path, expected_sha|
+    source = entries.fetch(logical_path) { raise "missing registered bundled payload: #{logical_path}" }
+    raise "bundled payload SHA drifted: #{logical_path}" unless Digest::SHA256.hexdigest(source) == expected_sha
+  end
+  raise "materialized compatibility payload store remains" if Dir.exist?(STORE_ROOT)
+  puts "hepta-gate-pair-payload-bundle: PASS: #{entries.length} payloads"
+end
+
+def unpack
+  entries = decode_bundle
+  entries.each do |logical_path, source|
+    atomic_write(File.join(ROOT, logical_path), source, 0o755)
+  end
+  puts "hepta-gate-pair-payload-bundle: unpacked #{entries.length} payloads"
+end
+
+def decode_to(logical_path, output)
+  relative = logical_path.delete_prefix("#{ROOT}/")
+  source = decode_bundle.fetch(relative) { raise "unknown bundled gate payload: #{relative}" }
+  atomic_write(output, source, 0o600)
+end
+
+def legacy_blob_to(logical_path, output)
+  relative = logical_path.delete_prefix("#{ROOT}/")
+  raise "invalid legacy gate payload blob path: #{relative}" unless relative.match?(
+    %r{\A#{Regexp.escape(STORE_RELATIVE)}/[a-z0-9-]+\.(?:gate|report)\z}
+  )
+  raw, error, status = Open3.capture3(
+    "tar",
+    "-xOzf",
+    LEGACY_ARCHIVE_PATH,
+    relative
+  )
+  raise "unknown legacy gate payload blob: #{relative}: #{error}" unless status.success?
+  atomic_write(output, raw, 0o600)
+end
+
+def wrapper_body(kind, id)
+  <<~SH
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+    exec "$ROOT/scripts/hepta-gate-pair-runner" #{kind} "#{id}"
+  SH
+end
+
+def link_children(source_root, target_root, excluded)
+  FileUtils.mkdir_p(target_root)
+  Dir.children(source_root).sort.each do |name|
+    next if excluded.include?(name)
+    File.symlink(File.join(source_root, name), File.join(target_root, name))
+  end
+end
+
+def materialize_long_path_aliases(staging)
+  return unless File.file?(LONG_PATH_REGISTRY_PATH)
+  registry = JSON.parse(File.binread(LONG_PATH_REGISTRY_PATH))
+  raise "invalid Hepta long-path registry schema" unless registry["schema"] ==
+    "hepta_long_path_relocation_v1"
+  registry.fetch("entries").each do |entry|
+    original = entry.fetch("original_path")
+    relocated = entry.fetch("relocated_path")
+    raise "invalid Hepta long-path alias" if original.start_with?("/") ||
+      relocated.start_with?("/") ||
+      original.split("/").include?("..") ||
+      relocated.split("/").include?("..")
+    target = File.join(ROOT, relocated)
+    raise "missing relocated Hepta long-path target: #{relocated}" unless File.file?(target)
+    alias_path = File.join(staging, original)
+    FileUtils.mkdir_p(File.dirname(alias_path))
+    File.symlink(target, alias_path)
+  end
+end
+
+def materialize_overlay
+  registry = JSON.parse(File.binread(REGISTRY_PATH))
+  overlay_inputs = [
+    registry.fetch("bundle_sha256"),
+    Digest::SHA256.file(__FILE__).hexdigest,
+    Digest::SHA256.file(ENTRYPOINT_REGISTRY_PATH).hexdigest,
+    File.file?(LONG_PATH_REGISTRY_PATH) ?
+      Digest::SHA256.file(LONG_PATH_REGISTRY_PATH).hexdigest :
+      "no-long-path-registry"
+  ]
+  overlay_inputs_sha256 = Digest::SHA256.hexdigest(overlay_inputs.join("\n") + "\n")
+  cache_key = [
+    Digest::SHA256.hexdigest(ROOT)[0, 12],
+    overlay_inputs_sha256[0, 16]
+  ].join("-")
+  destination = File.join(Dir.tmpdir, "hepta-gate-pair-overlay-#{cache_key}")
+  marker = File.join(destination, ".hepta-gate-pair-overlay.json")
+  if File.file?(marker)
+    current = JSON.parse(File.binread(marker))
+    if current["repo_root"] == ROOT &&
+        current["overlay_inputs_sha256"] == overlay_inputs_sha256
+      puts destination
+      return
+    end
+  end
+  staging = "#{destination}.#{$$}.tmp"
+  FileUtils.rm_rf(staging)
+  FileUtils.mkdir_p(staging)
+  link_children(ROOT, staging, [".git", "docs", "scripts"])
+  overlay_docs = File.join(staging, "docs")
+  link_children(File.join(ROOT, "docs"), overlay_docs, ["architecture"])
+  link_children(
+    File.join(ROOT, "docs/architecture"),
+    File.join(overlay_docs, "architecture"),
+    []
+  )
+  overlay_scripts = File.join(staging, "scripts")
+  pair_wrapper_names = spec.fetch("pairs").flat_map do |pair|
+    ["#{pair.fetch("id")}-gate.sh", File.basename(pair.fetch("report_path"))]
+  end.each_with_object({}) { |name, names| names[name] = true }
+  link_children(SCRIPTS_ROOT, overlay_scripts, ["lib", *pair_wrapper_names.keys])
+  overlay_lib = File.join(overlay_scripts, "lib")
+  link_children(File.join(SCRIPTS_ROOT, "lib"), overlay_lib, [
+    "hepta-gate-pair-compat-v1",
+    "hepta-gate-pair-compat-v2"
+  ])
+  File.symlink(BUNDLE_ROOT, File.join(overlay_lib, "hepta-gate-pair-compat-v2"))
+  decode_bundle.each do |logical_path, source|
+    atomic_write(File.join(staging, logical_path), source, 0o755)
+  end
+  spec.fetch("pairs").each do |pair|
+    id = pair.fetch("id")
+    atomic_write(File.join(overlay_scripts, "#{id}-gate.sh"), wrapper_body("gate", id), 0o755)
+    atomic_write(
+      File.join(staging, pair.fetch("report_path")),
+      wrapper_body("report", id),
+      0o755
+    )
+  end
+  materialize_long_path_aliases(staging)
+  atomic_write(
+    File.join(staging, ".hepta-gate-pair-overlay.json"),
+    JSON.generate(
+      repo_root: ROOT,
+      bundle_sha256: registry.fetch("bundle_sha256"),
+      overlay_inputs_sha256: overlay_inputs_sha256
+    ) + "\n",
+    0o600
+  )
+  begin
+    File.rename(staging, destination)
+  rescue Errno::EEXIST, Errno::ENOTEMPTY
+    FileUtils.rm_rf(staging)
+  end
+  puts destination
+end
+
+if ARGV == ["pack"]
+  pack
+elsif ARGV == ["verify"]
+  verify
+elsif ARGV == ["unpack"]
+  unpack
+elsif ARGV == ["materialize-overlay"]
+  materialize_overlay
+elsif ARGV.length == 3 && ARGV.first == "--decode-to"
+  decode_to(ARGV.fetch(1), ARGV.fetch(2))
+elsif ARGV.length == 3 && ARGV.first == "--legacy-blob-to"
+  legacy_blob_to(ARGV.fetch(1), ARGV.fetch(2))
+else
+  usage
+end

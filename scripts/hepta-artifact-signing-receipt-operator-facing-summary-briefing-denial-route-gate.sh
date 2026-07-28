@@ -44,7 +44,7 @@ if [[ "$MIN_LONG_SOAK_SAMPLES" -lt 24 ]]; then
   exit 1
 fi
 
-SOURCE_SUMMARY_BRIEFING_GATE="scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-summary-briefing-denial-gate.sh"
+SOURCE_SUMMARY_BRIEFING_GATE="scripts/i3-04b4ddd17a52efa504c34208.sh"
 source "$REPO_ROOT/scripts/lib/hepta-source-set.sh"
 NATIVE_GATEWAY_SOURCE="hepta-native-gateway-source-set-v1"
 ROUTE_REGISTRY_SOURCE="codex-rs/hepta-native-gateway/src/route_registry.rs"

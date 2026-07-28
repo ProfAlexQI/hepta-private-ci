@@ -1,0 +1,13 @@
+{
+  "schema": "hepta_workgraph_module_bundle_v2",
+  "status": "packed",
+  "module_count": 711,
+  "source_bytes": 21815269,
+  "source_lines": 405519,
+  "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+  "bundle_bytes": 1733397,
+  "bundle_sha256": "92e786118408b36ea9f0843a37efc5f20ba45961a70c7ed541f614bc3284489e",
+  "source_files_materialized": false,
+  "build_time_module_generation": true,
+  "reversible_unpack": true
+}

@@ -1,0 +1,75 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+
+ROOT = File.expand_path("..", __dir__)
+LIB_PATH = File.join(ROOT, "codex-rs/hepta-kernel/src/lib.rs")
+TESTS_PATH = File.join(ROOT, "codex-rs/hepta-kernel/src/tests.rs")
+INLINE_MARKER = "\n#[cfg(test)]\nmod tests {\n"
+MODULE_MARKER = "\n#[cfg(test)]\n#[path = \"tests.rs\"]\nmod tests;\n"
+
+def usage
+  warn "usage: scripts/hepta-kernel-module-split [split|verify]"
+  exit 2
+end
+
+def atomic_write(path, content)
+  staging = "#{path}.#{$$}.tmp"
+  File.binwrite(staging, content)
+  File.rename(staging, path)
+end
+
+def split
+  source = File.binread(LIB_PATH)
+  if source.end_with?(MODULE_MARKER)
+    verify
+    return
+  end
+  offset = source.index(INLINE_MARKER)
+  raise "missing inline hepta-kernel test module" unless offset
+  prefix = source.byteslice(0, offset)
+  inline = source.byteslice(
+    offset + INLINE_MARKER.bytesize,
+    source.bytesize - offset - INLINE_MARKER.bytesize
+  )
+  raise "hepta-kernel inline test module has an unexpected ending" unless inline.end_with?("}\n")
+  body = inline.byteslice(0, inline.bytesize - 2)
+  tests = body.lines.map do |line|
+    line.start_with?("    ") ? line.delete_prefix("    ") : line
+  end.join
+  raise "hepta-kernel test module lost its parent import" unless tests.start_with?("use super::*;\n")
+  atomic_write(TESTS_PATH, tests)
+  atomic_write(LIB_PATH, prefix + MODULE_MARKER)
+  verify
+end
+
+def verify
+  source = File.binread(LIB_PATH)
+  tests = File.binread(TESTS_PATH)
+  raise "hepta-kernel library did not retain the split test module" unless source.end_with?(
+    MODULE_MARKER
+  )
+  raise "hepta-kernel inline tests remain" if source.include?(INLINE_MARKER)
+  raise "hepta-kernel split tests have no parent import" unless tests.start_with?("use super::*;\n")
+  test_count = tests.scan(/^\s*#\[test\]$/).length
+  raise "hepta-kernel split test count is unexpectedly small" if test_count < 50
+  puts({
+    schema: "hepta_kernel_module_split_v1",
+    status: "ready",
+    library_lines: source.lines.length,
+    test_module_lines: tests.lines.length,
+    test_count: test_count,
+    test_module_sha256: Digest::SHA256.hexdigest(tests)
+  }.to_json)
+end
+
+case ARGV
+when ["split"]
+  split
+when ["verify"]
+  verify
+else
+  usage
+end

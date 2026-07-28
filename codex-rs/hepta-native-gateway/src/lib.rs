@@ -2,6 +2,7 @@ mod canonical_manifest;
 mod durability_anchor;
 mod effect_reconciliation;
 mod gate_command;
+mod gate_pair_archive;
 mod gate_runner;
 mod gate_spec;
 mod gateway_options;

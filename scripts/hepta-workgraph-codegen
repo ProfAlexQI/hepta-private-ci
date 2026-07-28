@@ -342,6 +342,11 @@ def unpack
 end
 
 usage unless ARGV.length == 1
+bundle_registry = File.join(ROOT, "codex-rs/hepta-runtime/codegen/workgraph-v2/registry.json")
+if File.file?(bundle_registry)
+  bundle_tool = File.join(ROOT, "scripts/hepta-workgraph-module-bundle")
+  exec(bundle_tool, ARGV.fetch(0))
+end
 case ARGV.fetch(0)
 when "pack" then pack
 when "verify" then verify

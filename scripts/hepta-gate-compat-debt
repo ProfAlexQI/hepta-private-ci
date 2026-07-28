@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CONTRACT="${HEPTA_GATE_COMPAT_DEBT_CONTRACT:-$ROOT/scripts/hepta-gate-compat-debt-v1.json}"
-COMPAT_EXECUTOR="$ROOT/scripts/hepta-gate-pair-compat-exec"
-COMPAT_MARKER="# hepta_gate_pair_gzip_base64_v1:"
+BUNDLE_TOOL="$ROOT/scripts/hepta-gate-pair-payload-bundle"
+ENTRYPOINT_TOOL="$ROOT/scripts/hepta-gate-pair-entrypoint-prune"
 
 usage() {
   echo "usage: scripts/hepta-gate-compat-debt <verify|self-test>" >&2
@@ -13,7 +13,7 @@ usage() {
 
 require_tools() {
   local tool
-  for tool in jq shasum find sort comm mktemp rg sed grep; do
+  for tool in jq shasum mktemp rg sort; do
     command -v "$tool" >/dev/null || {
       echo "missing Hepta gate compatibility debt tool: $tool" >&2
       exit 1
@@ -23,26 +23,19 @@ require_tools() {
 
 verify_payload_dependency_closure() {
   local payload_root="$1"
-  local payload reference scan_payload
-  local tmp
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-gate-compat-closure.XXXXXX")"
-  trap 'rm -rf "$tmp"' RETURN
+  local dependency_root="${2:-$ROOT}"
+  local payload reference
   while IFS= read -r payload; do
-    scan_payload="$payload"
-    if sed -n '2p' "$payload" | grep -Fq "$COMPAT_MARKER"; then
-      scan_payload="$tmp/payload"
-      "$COMPAT_EXECUTOR" --decode-to "$scan_payload" "$payload"
-    fi
     while IFS= read -r reference; do
       reference="${reference#\$ROOT/}"
-      [[ -x "$ROOT/$reference" ]] || {
+      [[ -x "$dependency_root/$reference" ]] || {
         echo "missing executable Hepta gate compatibility dependency: $reference" >&2
         return 1
       }
     done < <(
       rg --no-filename --only-matching \
         '\$ROOT/scripts/[A-Za-z0-9._/-]+(\.gate|\.report|-gate\.sh|-report\.sh)' \
-        "$scan_payload" \
+        "$payload" \
         | LC_ALL=C sort -u
     )
   done < <(find "$payload_root" -type f \( -name '*.gate' -o -name '*.report' \) | LC_ALL=C sort)
@@ -51,28 +44,27 @@ verify_payload_dependency_closure() {
 verify() {
   require_tools
   jq -e '
-    .schema_version == "hepta_gate_compat_debt_v1"
+    .schema_version == "hepta_gate_compat_debt_v2"
     and .status == "bounded_migration_debt"
     and .migration_policy == {
       counts_may_only_improve:true,
       registered_payloads_are_sha256_bound:true,
       public_entrypoints_remain_thin_wrappers:true,
+      virtual_entrypoints_are_manifest_bound:true,
+      payloads_are_content_addressed:true,
       unregistered_payloads_must_not_grow:true,
       removal_requires_reference_graph_proof:true
     }
     and (.registry.sha256 | test("^[0-9a-f]{64}$"))
   ' "$CONTRACT" >/dev/null
 
-  local registry_rel registry store_rel store expected_registry_sha actual_registry_sha
+  local registry_rel registry expected_registry_sha actual_registry_sha
+  local payload_registry entrypoint_registry
   registry_rel="$(jq -er '.registry.path' "$CONTRACT")"
-  store_rel="$(jq -er '.compatibility_store' "$CONTRACT")"
-  [[ "$registry_rel" == scripts/*.json && "$store_rel" == scripts/lib/* ]] || {
-    echo "invalid Hepta gate compatibility debt paths" >&2
-    return 1
-  }
   registry="$ROOT/$registry_rel"
-  store="$ROOT/$store_rel"
-  [[ -f "$registry" && -d "$store" ]] || {
+  payload_registry="$ROOT/$(jq -er '.payload_registry' "$CONTRACT")"
+  entrypoint_registry="$ROOT/$(jq -er '.entrypoint_registry' "$CONTRACT")"
+  [[ "$registry_rel" == scripts/*.json && -f "$registry" && -f "$payload_registry" && -f "$entrypoint_registry" ]] || {
     echo "missing Hepta gate compatibility debt input" >&2
     return 1
   }
@@ -83,6 +75,8 @@ verify() {
     return 1
   }
 
+  "$BUNDLE_TOOL" verify >/dev/null
+  "$ENTRYPOINT_TOOL" verify >/dev/null
   jq -e '
     .schema_version == "hepta_gate_pair_specs_v1"
     and (.pairs | length == (map(.id) | unique | length))
@@ -93,16 +87,23 @@ verify() {
   ' "$registry" >/dev/null
 
   local pair_count captured_count legacy_count declarative_count payload_count
+  local registered_payload_count unregistered_count retained_entrypoint_count virtual_entrypoint_count
   pair_count="$(jq '.pairs | length' "$registry")"
   captured_count="$(jq '[.pairs[] | select(.template == "captured_shell_compat_v1")] | length' "$registry")"
   legacy_count="$(jq '[.pairs[] | select(.template == "legacy_workgraph_projection_v1")] | length' "$registry")"
   declarative_count="$((pair_count - captured_count - legacy_count))"
-  payload_count="$(find "$store" -type f \( -name '*.gate' -o -name '*.report' \) | wc -l | tr -d ' ')"
+  payload_count="$(jq -er '.payload_count' "$payload_registry")"
+  registered_payload_count="$(jq -er '.registered_payload_count' "$payload_registry")"
+  unregistered_count="$((payload_count - registered_payload_count))"
+  retained_entrypoint_count="$(jq -er '.retained_entrypoint_count' "$entrypoint_registry")"
+  virtual_entrypoint_count="$(jq -er '.virtual_entrypoint_count' "$entrypoint_registry")"
 
   [[ "$pair_count" -le "$(jq -er '.ceilings.pair_count' "$CONTRACT")" \
     && "$captured_count" -le "$(jq -er '.ceilings.captured_shell_pair_count' "$CONTRACT")" \
     && "$legacy_count" -le "$(jq -er '.ceilings.legacy_workgraph_pair_count' "$CONTRACT")" \
     && "$payload_count" -le "$(jq -er '.ceilings.compatibility_payload_count' "$CONTRACT")" \
+    && "$unregistered_count" -le "$(jq -er '.ceilings.unregistered_payload_count' "$CONTRACT")" \
+    && "$retained_entrypoint_count" -le "$(jq -er '.ceilings.physical_entrypoint_count' "$CONTRACT")" \
     && "$declarative_count" -ge "$(jq -er '.floors.declarative_pair_count' "$CONTRACT")" ]] || {
     echo "Hepta gate compatibility debt regressed" >&2
     return 1
@@ -111,38 +112,11 @@ verify() {
   local tmp
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/hepta-gate-compat-debt.XXXXXX")"
   trap 'rm -rf "$tmp"' RETURN
-  jq -r '.pairs[] | [.gate_implementation?, .report_implementation?][] | select(type == "string" and length > 0)' \
-    "$registry" | LC_ALL=C sort -u >"$tmp/registered"
-  find "$store" -type f \( -name '*.gate' -o -name '*.report' \) \
-    | sed "s#^$ROOT/##" | LC_ALL=C sort >"$tmp/payloads"
-  local unregistered_count
-  unregistered_count="$(comm -23 "$tmp/payloads" "$tmp/registered" | wc -l | tr -d ' ')"
-  [[ "$unregistered_count" -le "$(jq -er '.ceilings.unregistered_payload_count' "$CONTRACT")" ]] || {
-    echo "unregistered Hepta gate compatibility payload debt grew" >&2
-    return 1
-  }
-
+  local overlay
+  overlay="$("$BUNDLE_TOOL" materialize-overlay)"
   while IFS=$'\t' read -r id kind implementation expected_sha; do
-    [[ "$implementation" == "$store_rel"/*.$kind && -f "$ROOT/$implementation" ]] || {
-      echo "missing registered Hepta $kind compatibility payload for $id" >&2
-      return 1
-    }
-    local hash_input="$ROOT/$implementation"
-    if sed -n '2p' "$hash_input" | grep -Fq "$COMPAT_MARKER"; then
-      hash_input="$tmp/registered-payload"
-      "$COMPAT_EXECUTOR" --decode-to "$hash_input" "$ROOT/$implementation"
-    fi
-    [[ "$(shasum -a 256 "$hash_input" | awk '{print $1}')" == "$expected_sha" ]] || {
+    [[ "$(shasum -a 256 "$overlay/$implementation" | awk '{print $1}')" == "$expected_sha" ]] || {
       echo "registered Hepta $kind compatibility payload drifted for $id" >&2
-      return 1
-    }
-    local wrapper="$ROOT/scripts/$id-$kind.sh"
-    [[ -x "$wrapper" ]] || {
-      echo "missing executable thin Hepta $kind wrapper for $id" >&2
-      return 1
-    }
-    grep -Fqx "exec \"\$ROOT/scripts/hepta-gate-pair-runner\" $kind \"$id\"" "$wrapper" || {
-      echo "Hepta $kind wrapper is not canonical for $id" >&2
       return 1
     }
   done < <(jq -r '
@@ -156,22 +130,12 @@ verify() {
     | @tsv
   ' "$registry")
 
-  while IFS= read -r id; do
-    local gate_wrapper="$ROOT/scripts/$id-gate.sh"
-    [[ -x "$gate_wrapper" ]] || {
-      echo "missing executable thin Hepta gate wrapper for $id" >&2
-      return 1
-    }
-    grep -Fqx "exec \"\$ROOT/scripts/hepta-gate-pair-runner\" gate \"$id\"" "$gate_wrapper" || {
-      echo "Hepta gate wrapper is not canonical for $id" >&2
-      return 1
-    }
-  done < <(jq -r '.pairs[] | select(.template == "legacy_workgraph_projection_v1") | .id' "$registry")
-
-  verify_payload_dependency_closure "$store"
+  verify_payload_dependency_closure \
+    "$overlay/scripts/lib/hepta-gate-pair-compat-v1" \
+    "$overlay"
 
   jq -n \
-    --arg schema hepta_gate_compat_debt_receipt_v1 \
+    --arg schema hepta_gate_compat_debt_receipt_v2 \
     --arg status ready \
     --argjson pair_count "$pair_count" \
     --argjson captured_shell_pair_count "$captured_count" \
@@ -179,7 +143,23 @@ verify() {
     --argjson declarative_pair_count "$declarative_count" \
     --argjson compatibility_payload_count "$payload_count" \
     --argjson unregistered_payload_count "$unregistered_count" \
-    '{schema:$schema,status:$status,pair_count:$pair_count,captured_shell_pair_count:$captured_shell_pair_count,legacy_workgraph_pair_count:$legacy_workgraph_pair_count,declarative_pair_count:$declarative_pair_count,compatibility_payload_count:$compatibility_payload_count,unregistered_payload_count:$unregistered_payload_count,counts_may_only_improve:true}'
+    --argjson physical_entrypoint_count "$retained_entrypoint_count" \
+    --argjson virtual_entrypoint_count "$virtual_entrypoint_count" \
+    '{
+      schema:$schema,
+      status:$status,
+      pair_count:$pair_count,
+      captured_shell_pair_count:$captured_shell_pair_count,
+      legacy_workgraph_pair_count:$legacy_workgraph_pair_count,
+      declarative_pair_count:$declarative_pair_count,
+      compatibility_payload_count:$compatibility_payload_count,
+      unregistered_payload_count:$unregistered_payload_count,
+      physical_entrypoint_count:$physical_entrypoint_count,
+      virtual_entrypoint_count:$virtual_entrypoint_count,
+      payload_bundle_verified:true,
+      entrypoint_manifest_verified:true,
+      counts_may_only_improve:true
+    }'
 }
 
 self_test() {
@@ -196,14 +176,15 @@ self_test() {
     echo "Hepta gate compatibility debt accepted registry drift" >&2
     return 1
   fi
-  cat >"$tmp/missing-dependency.report" <<'EOF'
+  mkdir -p "$tmp/payloads"
+  cat >"$tmp/payloads/missing-dependency.report" <<'EOF'
 SOURCE_REPORT="$ROOT/scripts/hepta-gate-compat-debt-deliberately-missing-report.sh"
 EOF
-  if verify_payload_dependency_closure "$tmp" >/dev/null 2>&1; then
+  if verify_payload_dependency_closure "$tmp/payloads" "$ROOT" >/dev/null 2>&1; then
     echo "Hepta gate compatibility debt accepted a missing payload dependency" >&2
     return 1
   fi
-  echo '{"schema":"hepta_gate_compat_debt_self_test_v1","status":"ready","negative_fixtures":3}'
+  echo '{"schema":"hepta_gate_compat_debt_self_test_v2","status":"ready","negative_fixtures":3}'
 }
 
 [[ $# -eq 1 ]] || usage

@@ -1,0 +1,17 @@
+{
+  "schema": "hepta_gate_pair_payload_bundle_v2",
+  "status": "packed",
+  "payload_count": 2512,
+  "registered_payload_count": 2486,
+  "source_bytes": 23422350,
+  "aggregate_source_sha256": "8f27949692b263a034ce77a3bf1778ec6b16bae472cfb0231aa925d5552f0f5e",
+  "bundle_bytes": 1794282,
+  "bundle_sha256": "7b82642eb5311373b0c37b7e15ee42575dfb3d9e1454e818a6977220360c5faf",
+  "source_registry_sha256": "d2632b0d2d72b68a9515eea0c1523bc01b95ee61f76b51f92ea35e8c6d24a6e4",
+  "legacy_archive_bytes": 4710440,
+  "legacy_archive_sha256": "0e099415e1568f75d6563f125057e8ae689cbddce40e8a3f05e30a13209ca5bc",
+  "legacy_archive_payload_count": 2512,
+  "source_files_materialized": false,
+  "runtime_overlay_generation": true,
+  "reversible_unpack": true
+}

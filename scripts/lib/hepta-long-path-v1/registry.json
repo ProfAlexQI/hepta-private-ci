@@ -1,0 +1,1039 @@
+{
+  "schema": "hepta_long_path_relocation_v1",
+  "status": "relocated",
+  "audit_baseline_long_path_count": 496,
+  "prepack_materialized_long_path_count": 119,
+  "postpack_materialized_long_path_count": 0,
+  "max_tracked_path_bytes": 240,
+  "relocation_count": 119,
+  "rewritten_reference_file_count": 72,
+  "rewritten_reference_paths": [
+    "codex-rs/hepta-native-gateway/src/gate_runner.rs",
+    "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/canary_and_live_readiness.rs",
+    "codex-rs/hepta-native-gateway/src/native_gateway/memory_kg_reports/runtime_and_operator_lanes.rs",
+    "docs/architecture/HEPTA_READINESS_DENIAL_REVIEW_ACCEPTANCE_CLOSURE_SUMMARY_GATE.md",
+    "docs/architecture/i3-2080eafacc4f68f22d18134b.md",
+    "docs/architecture/i3-22db34fe0658349e2c21700a.md",
+    "docs/architecture/i3-2b59c6057dd565b427ed3c01.md",
+    "docs/architecture/i3-7f626607aeff7c955dd28312.md",
+    "docs/architecture/i3-a15088ca209bce14060e4eda.md",
+    "docs/architecture/i3-ae9036a6fd159447682b98c4.md",
+    "docs/architecture/i3-df113938d3124d3495d96af3.md",
+    "scripts/hepta-artifact-distribution-signing-notarization-surface-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-audit-evidence-denial-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-export-query-observability-denial-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-final-operator-acknowledgement-denial-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-gate-specs-v1.json",
+    "scripts/hepta-artifact-signing-receipt-no-persistence-denial-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-operator-facing-summary-briefing-denial-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-retention-expiry-garbage-collection-denial-route-gate.sh",
+    "scripts/hepta-artifact-signing-receipt-route-gate-specs-v1.json",
+    "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-no-persistence-route-gate.sh",
+    "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-nonp-denial-gate.sh",
+    "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-status-promotion-denial-gate.sh",
+    "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-query-export-observability-denial-gate.sh",
+    "scripts/hepta-preflight.sh",
+    "scripts/hepta-readiness-denial-review-acceptance-closure-summary-gate.sh",
+    "scripts/i3-02336bd6d61af2c26f7579d4.sh",
+    "scripts/i3-04b4ddd17a52efa504c34208.sh",
+    "scripts/i3-0b6a59611eb24a025779ad44.sh",
+    "scripts/i3-0df2e0b068b5f70144fbdc8c.sh",
+    "scripts/i3-0ed7f4b441547eece5fb85af.sh",
+    "scripts/i3-107975edf2e81655b17c8989.sh",
+    "scripts/i3-23c50392cf7a14a65c29adf5.sh",
+    "scripts/i3-26f905697c92679a53e60df6.sh",
+    "scripts/i3-28db7cdab62b7918fc731746.sh",
+    "scripts/i3-292f5fe543451e766e6f5629.sh",
+    "scripts/i3-2b5cb24691db871e2f20287b.sh",
+    "scripts/i3-2c9e4249f5cdf74436dc1688.sh",
+    "scripts/i3-3122f3f1a9934a3985d1b843.sh",
+    "scripts/i3-375c41ef6a049833021081a2.sh",
+    "scripts/i3-3e2bc76030729ec1bd22c4f8.sh",
+    "scripts/i3-43ddaf02052dd8d5ee8864d1.sh",
+    "scripts/i3-473ca3ed3d5ff6d0741bec38.sh",
+    "scripts/i3-4fcc2b6821abea109c73da5a.sh",
+    "scripts/i3-5680f0b69a64c499f203e253.sh",
+    "scripts/i3-56ccc14f7255b02cc8de372a.sh",
+    "scripts/i3-5d8ca7d977747ccbeadffb2c.sh",
+    "scripts/i3-665c921c942af0fc16fb6eae.sh",
+    "scripts/i3-67231907613b4f92a74ac01a.sh",
+    "scripts/i3-70337a51ae9ff9614b36dc0a.sh",
+    "scripts/i3-782cbc8f3b263f056584870b.sh",
+    "scripts/i3-805519f77fce19f768f30d6d.sh",
+    "scripts/i3-8180fc6e942219a6038be320.sh",
+    "scripts/i3-8695f13a365f7ff86105233c.sh",
+    "scripts/i3-9ad4f61b36651cf10ace81f3.sh",
+    "scripts/i3-a0ce89e5df38b1e856f25abc.sh",
+    "scripts/i3-a6ed4263505735015a2ed212.sh",
+    "scripts/i3-aef1d246e635bd6d22c22d02.sh",
+    "scripts/i3-b0f3c9318ab22c55487cb1e2.sh",
+    "scripts/i3-bd8d80ceddedb3b347618aec.sh",
+    "scripts/i3-be39de880743a92dba381036.sh",
+    "scripts/i3-cc74292b96d66267d21128d9.sh",
+    "scripts/i3-d4091c000c5aec055d0e0396.sh",
+    "scripts/i3-d74520fde78bf8eca3db467c.sh",
+    "scripts/i3-de5799b1fa31e4a503c20fb2.sh",
+    "scripts/i3-e08c8c0b4e1b74cb4ad1d7b3.sh",
+    "scripts/i3-e1d563531a7291dabb6abc37.sh",
+    "scripts/i3-edae094ad2872dfe007f2689.sh",
+    "scripts/i3-ee1f0cd8da68b96f743161d3.sh",
+    "scripts/i3-f11e5031101b4efb75c26d90.sh",
+    "scripts/i3-f5f3eae81cdb925789bc7a97.sh",
+    "scripts/i3-fb820432c970169e53d4fe32.sh"
+  ],
+  "entries": [
+    {
+      "original_path": "docs/architecture/HEPTA_LIVE_MUTATION_PRE_ACTIVATION_SOAK_EVIDENCE_PERSISTENCE_PAYLOAD_REDACTION_ACCEPTANCE_RECEIPT_FILESYSTEM_PERSISTENCE_LEDGER_PERSISTENCE_REHEARSAL_RECEIPT_REVIEW_ACCEPTANCE_SCOREBOARD_REVIEW_ACCEPTANCE_READINESS_DENIAL_REVIEW_ACCEPTANCE_CLOSURE_GATE.md",
+      "relocated_path": "docs/architecture/i3-2080eafacc4f68f22d18134b.md",
+      "original_path_sha256": "2080eafacc4f68f22d18134b3119b0fee21fc529f16eb832d1e7be02aab5b633",
+      "original_content_sha256": "40283700cc01916d931778c026942ec9a0d55e6112f56c720a25163c71933c2b",
+      "mode": 384,
+      "relocated_content_sha256": "909857dcd1cc47796b745a153e8cf3134fadd6e49be410d1798ceba8205f43f9"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_LIVE_MUTATION_PRE_ACTIVATION_SOAK_EVIDENCE_PERSISTENCE_PAYLOAD_REDACTION_ACCEPTANCE_RECEIPT_FILESYSTEM_PERSISTENCE_LEDGER_PERSISTENCE_REHEARSAL_RECEIPT_REVIEW_ACCEPTANCE_SCOREBOARD_REVIEW_ACCEPTANCE_READINESS_DENIAL_REVIEW_ACCEPTANCE_GATE.md",
+      "relocated_path": "docs/architecture/i3-7f626607aeff7c955dd28312.md",
+      "original_path_sha256": "7f626607aeff7c955dd283123811f5a59fdab028612f2cb705e8412b8eba5f04",
+      "original_content_sha256": "7cb5c38329815c0c0a9aae1cca7c2281e9b3e182cac97bd5fff83c53a47985f3",
+      "mode": 384,
+      "relocated_content_sha256": "67a99c57fbbb2d57d7c59c07e0ea6a97201d1e4570fba0c03b0cc310d6354431"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_LIVE_MUTATION_PRE_ACTIVATION_SOAK_EVIDENCE_PERSISTENCE_PAYLOAD_REDACTION_ACCEPTANCE_RECEIPT_FILESYSTEM_PERSISTENCE_LEDGER_PERSISTENCE_REHEARSAL_RECEIPT_REVIEW_ACCEPTANCE_SCOREBOARD_REVIEW_ACCEPTANCE_READINESS_DENIAL_REVIEW_GATE.md",
+      "relocated_path": "docs/architecture/i3-3f5474d99130a262a95b1bc4.md",
+      "original_path_sha256": "3f5474d99130a262a95b1bc48c89511ea84ee1ad6aa0049ac3340abddecb99f7",
+      "original_content_sha256": "1c7853c90c077c4d5cfe8532659138b2e35632a95d73a1b00bfc72fee11ee306",
+      "mode": 384,
+      "relocated_content_sha256": "1c7853c90c077c4d5cfe8532659138b2e35632a95d73a1b00bfc72fee11ee306"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_ROUTE_GATE.md",
+      "relocated_path": "docs/architecture/i3-b7b8388443e0f436f3d6f6d6.md",
+      "original_path_sha256": "b7b8388443e0f436f3d6f6d6fbefb8c58233e3554b09e931ad96ad749a7d62c8",
+      "original_content_sha256": "dcd52ec68b3a5b11bcf3f8c8e3bd8a81ec02dfa57aa4da38c5c271c877db9f6d",
+      "mode": 384,
+      "relocated_content_sha256": "dcd52ec68b3a5b11bcf3f8c8e3bd8a81ec02dfa57aa4da38c5c271c877db9f6d"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_RELEASE_ARTIFACT_PUBLICATION_RESULT_RECEIPT_NO_PERSISTENCE_ROUTE_GATE.md",
+      "relocated_path": "docs/architecture/i3-cb5f2426a8596a77a7d84915.md",
+      "original_path_sha256": "cb5f2426a8596a77a7d8491534ef3f2d2150fe9b877f48b48593c44dec179654",
+      "original_content_sha256": "daab3bd678e2f59dd25b3afda9dcc441938181059d8c73ec2759425e322f215d",
+      "mode": 384,
+      "relocated_content_sha256": "daab3bd678e2f59dd25b3afda9dcc441938181059d8c73ec2759425e322f215d"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_OPERATOR_CANARY_CONTROLLED_REQUEST_HARNESS_OPERATOR_REVIEW_ACKNOWLEDGEMENT_ACTIVATION_COMMAND_RESULT_RECEIPT_TERMINAL_OPERATOR_DECISION_PUBLIC_CLAIM_NON_PROMOTION_DENIAL_ROUTE_GATE.md",
+      "relocated_path": "docs/architecture/i3-6301d9d7cf662d71e7d154f6.md",
+      "original_path_sha256": "6301d9d7cf662d71e7d154f6271ca0cbd73ebd187ad30eba9f67ed803501ea09",
+      "original_content_sha256": "84b59ed6e07e87657ad57f0cc077f90e3a0959fba84722ccc08600107b094a5a",
+      "mode": 384,
+      "relocated_content_sha256": "84b59ed6e07e87657ad57f0cc077f90e3a0959fba84722ccc08600107b094a5a"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_ENABLEMENT_RUNTIME_PROVIDER_ROUTER_OPERATOR_APPROVED_SHADOW_CONTEXT_ACTIVATION_EXECUTION_CONTROLLED_READBACK_RECEIPT_TRUSTED_OPERATOR_PACKET_COMPLETE_PRECONDITION_OPERATOR_APPROVAL_LANE_SEPARATION_GATE.md",
+      "relocated_path": "docs/architecture/i3-22db34fe0658349e2c21700a.md",
+      "original_path_sha256": "22db34fe0658349e2c21700ab924dad3439be8c5e9270ad13f82f244ef96101b",
+      "original_content_sha256": "27c6b780603677fe2a68c4f768f22a3509e76891a77586382f38d1a1ee693757",
+      "mode": 384,
+      "relocated_content_sha256": "31bcbd46bfa88774332155b53b6da7b1a0a8fd180867d91b04c7a97291d05a45"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-30d86016e888d33ec1ad91e5.md",
+      "original_path_sha256": "30d86016e888d33ec1ad91e5d3f62420fc1ed288653253ba92a819f293348925",
+      "original_content_sha256": "8e76dcc01d1720d0f572fafb4a899867035fa4e90d08307f27e7a26d263c1f17",
+      "mode": 384,
+      "relocated_content_sha256": "8e76dcc01d1720d0f572fafb4a899867035fa4e90d08307f27e7a26d263c1f17"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_FACING_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-342e86d2da8bc0453f3dda02.md",
+      "original_path_sha256": "342e86d2da8bc0453f3dda0285bb83a19ff61889eaa49259d8d2a33b5e35ffbe",
+      "original_content_sha256": "f685add3eb53c532bc16687a1ee0fcfe676f173b3a08e9351af85dfffa7a51fc",
+      "mode": 384,
+      "relocated_content_sha256": "f685add3eb53c532bc16687a1ee0fcfe676f173b3a08e9351af85dfffa7a51fc"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_AUDIT_EVIDENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-627d8a9feb885b239f2f4a1a.md",
+      "original_path_sha256": "627d8a9feb885b239f2f4a1a4be107302b80750a355464b5626a2a95fe5f1424",
+      "original_content_sha256": "88eb4031ca058d9ee3540d94b8d25c019d6033d4c0b730aa251205f9e6f33810",
+      "mode": 384,
+      "relocated_content_sha256": "88eb4031ca058d9ee3540d94b8d25c019d6033d4c0b730aa251205f9e6f33810"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_CANCEL_SUPERSESSION_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-cb720b2e196d83c900087490.md",
+      "original_path_sha256": "cb720b2e196d83c90008749031827b963faea01e03b3409691cd80a36763ab6c",
+      "original_content_sha256": "7f5595ba36041eeee07e0d596b538c4e61b833694ceeaa8ab07d5149f9112468",
+      "mode": 384,
+      "relocated_content_sha256": "7f5595ba36041eeee07e0d596b538c4e61b833694ceeaa8ab07d5149f9112468"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_FINAL_ACK_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-0610ac99698b0505b0e9e754.md",
+      "original_path_sha256": "0610ac99698b0505b0e9e75485c0e2e2903b2e14c51ed063bb4fd92a600ce1ef",
+      "original_content_sha256": "70c0236aa2f10d1f6a726a053aa57d262c434a84a8c5efdd1ab0295638f915ff",
+      "mode": 384,
+      "relocated_content_sha256": "70c0236aa2f10d1f6a726a053aa57d262c434a84a8c5efdd1ab0295638f915ff"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_NOTARIZATION_SURFACE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-94231a05ac41bf430517ad69.md",
+      "original_path_sha256": "94231a05ac41bf430517ad69704248c25a96f105660f14c213cb19d4933c1c54",
+      "original_content_sha256": "c06f3f5ce88ec2d22093e12f9326b062d8bb2affe025a824d286c6dc749b0322",
+      "mode": 384,
+      "relocated_content_sha256": "c06f3f5ce88ec2d22093e12f9326b062d8bb2affe025a824d286c6dc749b0322"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_OBSERVABILITY_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-3267c173c6fa63fc46c11de0.md",
+      "original_path_sha256": "3267c173c6fa63fc46c11de0c0d1e5c9548242daee9abda3105ce184508b5186",
+      "original_content_sha256": "fd9b1b13f65ed005ed76992ad6b718c040bc88cc9958937637c207cf42879b79",
+      "mode": 384,
+      "relocated_content_sha256": "fd9b1b13f65ed005ed76992ad6b718c040bc88cc9958937637c207cf42879b79"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_ORDERING_MONOTONICITY_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-12217bd90cd254a79ed7d410.md",
+      "original_path_sha256": "12217bd90cd254a79ed7d410a626b661833b1a8f60c4d2e0224a201aee7d932e",
+      "original_content_sha256": "d0ce3c6db477064e6719a8104507a3dc5014d8cfb0240f967559a8ee6007a18c",
+      "mode": 384,
+      "relocated_content_sha256": "d0ce3c6db477064e6719a8104507a3dc5014d8cfb0240f967559a8ee6007a18c"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RECEIPT_NO_PERSISTENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-6e125b4c6f90a5d3b0fc578a.md",
+      "original_path_sha256": "6e125b4c6f90a5d3b0fc578a78c4b6375f1cd0c0c245345e5daf9ccd776a3be7",
+      "original_content_sha256": "3b6480ecbe747475078d685869ce8e7841debd14ea0211f42b30e23879b5954d",
+      "mode": 384,
+      "relocated_content_sha256": "3b6480ecbe747475078d685869ce8e7841debd14ea0211f42b30e23879b5954d"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_REPLAY_IDEMPOTENCY_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-c40f4b7e35ff0a54574d0f9f.md",
+      "original_path_sha256": "c40f4b7e35ff0a54574d0f9fb17b5af71faba11ad6861e35a3a685cfc0d0adb3",
+      "original_content_sha256": "b1358359d6e2d04e68053680d9484a72beea645bda476d6afd6a33c52842df3c",
+      "mode": 384,
+      "relocated_content_sha256": "b1358359d6e2d04e68053680d9484a72beea645bda476d6afd6a33c52842df3c"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_RETENTION_GC_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-0ad4b0d0a7c3ca566652259b.md",
+      "original_path_sha256": "0ad4b0d0a7c3ca566652259b65cccf77dd264dd6a4edd524422a40b577523932",
+      "original_content_sha256": "67f74c16cfcd9e3243348994a2298262117ff5507533727789f7d210752d019e",
+      "mode": 384,
+      "relocated_content_sha256": "67f74c16cfcd9e3243348994a2298262117ff5507533727789f7d210752d019e"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_SUMMARY_BRIEFING_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-1e8c894ae7bee426e3ea249c.md",
+      "original_path_sha256": "1e8c894ae7bee426e3ea249c6e9c7a39fc4a239598ddb00dd3f61104a42e9221",
+      "original_content_sha256": "f409422288895742992f1c511f039a57f9ef3337ebea206965bfc6872a198876",
+      "mode": 384,
+      "relocated_content_sha256": "f409422288895742992f1c511f039a57f9ef3337ebea206965bfc6872a198876"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_DISTRIBUTION_ARTIFACT_MANIFEST_STATUS_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-ce7bfac34883dc7e365665dd.md",
+      "original_path_sha256": "ce7bfac34883dc7e365665ddae905a561e902f10bdc8126ad08182d34bb66ce7",
+      "original_content_sha256": "dd2bdbb7011d61f55d102a2fbb172cc118ecdf310ebbceae3ce3acab97df7356",
+      "mode": 384,
+      "relocated_content_sha256": "dd2bdbb7011d61f55d102a2fbb172cc118ecdf310ebbceae3ce3acab97df7356"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_EXPORT_QUERY_OBSERVABILITY_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-97b8e4fcec55f35911e66812.md",
+      "original_path_sha256": "97b8e4fcec55f35911e66812bea1a1227d871a9c2bf4c3ef26bf8cc8ec7619ec",
+      "original_content_sha256": "417a63951d74c2399204ec250b8b2742a6ea54a9abfa816f5993b9501be20546",
+      "mode": 384,
+      "relocated_content_sha256": "417a63951d74c2399204ec250b8b2742a6ea54a9abfa816f5993b9501be20546"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_FINAL_ACK_NON_ACCEPTANCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-2b59c6057dd565b427ed3c01.md",
+      "original_path_sha256": "2b59c6057dd565b427ed3c01b06755f181a95a1e048bbc53213aba18cc6269c6",
+      "original_content_sha256": "8a4d5083dad60b8200dac62fcbfebeffaff2dd36e9cfdf40d54ae7c05d4d945c",
+      "mode": 384,
+      "relocated_content_sha256": "4182413985079e606a349886fae0aa8d92415fd54d1bac16e9e054747ecd348d"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_PACKAGE_RELEASE_CHANNEL_STATUS_EXPOSURE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-df113938d3124d3495d96af3.md",
+      "original_path_sha256": "df113938d3124d3495d96af34f70dabe8d73cb6979edf0c5d20ea3095e1ea581",
+      "original_content_sha256": "c9945587ef8f269a801964d5fab3155fbf85b4b6aa429f0840c5580049e1e4c1",
+      "mode": 384,
+      "relocated_content_sha256": "8ddd2f1b8d31435f1e73b39278d1829de5b0bca111ddc81c8e55aec68948a85c"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_PERSISTENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-04b22b8cfade7ba822c366ab.md",
+      "original_path_sha256": "04b22b8cfade7ba822c366ab0019b51a6d7e8c708eab4b207addafeac16b6b83",
+      "original_content_sha256": "d3ff79dafe8ebb85c294ab8cbe48e6bf19ffa6d9f94604bf9402ccec5703e519",
+      "mode": 384,
+      "relocated_content_sha256": "d3ff79dafe8ebb85c294ab8cbe48e6bf19ffa6d9f94604bf9402ccec5703e519"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_SUMMARY_BRIEFING_NON_PERSISTENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-d611c40aa85a576126586ef4.md",
+      "original_path_sha256": "d611c40aa85a576126586ef44232cc89a21df82d3f1dc2a95dd4104b234ca4fd",
+      "original_content_sha256": "166a32ea5bd50522c21147b5e59847759f455a34078af0173cfde3a0da33b04e",
+      "mode": 384,
+      "relocated_content_sha256": "166a32ea5bd50522c21147b5e59847759f455a34078af0173cfde3a0da33b04e"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-a15088ca209bce14060e4eda.md",
+      "original_path_sha256": "a15088ca209bce14060e4edad8c9f8c6639eec0d257082618dd36c1a3f0a4db8",
+      "original_content_sha256": "fb2f3f40e53d1c5b76ad2dd0157878008796e1d756fe250348c685e264ec98f0",
+      "mode": 384,
+      "relocated_content_sha256": "48d94f7351f576e03b254a39d2f5427d2500ea0c10328b010eed7472b1d241c0"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_RESULT_RECEIPT_OPERATOR_IDENTITY_SESSION_REVOCATION_LOGOUT_REPLAY_REINSTATEMENT_OPERATOR_INTENT_CONSENT_EVIDENCE_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-ae9036a6fd159447682b98c4.md",
+      "original_path_sha256": "ae9036a6fd159447682b98c412c762815e2d3931554435d811f836ceb6c05a5d",
+      "original_content_sha256": "3250bd38e59993e9d1b3a96444acbdeee5c3264e8efe82d3c0454c3092024b9a",
+      "mode": 384,
+      "relocated_content_sha256": "7a64d5000131c41a71e3a3de06ae3e9287e89c7cba0a0bda25827cc734d49837"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_SURFACE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-80f769de7d5e32fa611157ab.md",
+      "original_path_sha256": "80f769de7d5e32fa611157abfeb11922e192c5bebb5416f58f9b7ef8034fda66",
+      "original_content_sha256": "6704e1334b47f968945049aab352280fc0cb0c519278bdcea7e7bf18794f46c9",
+      "mode": 384,
+      "relocated_content_sha256": "6704e1334b47f968945049aab352280fc0cb0c519278bdcea7e7bf18794f46c9"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_ARTIFACT_DOWNLOAD_INSTALL_AFFORDANCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-ced2b4d79843bf33c16999e4.md",
+      "original_path_sha256": "ced2b4d79843bf33c16999e4207079e3dab1dfd766d51f7b7617a6a8f2c7bc6f",
+      "original_content_sha256": "44e03c3fb24e890467e2396f670c3e8e0a474776c718cbc2302dad5ad29f5393",
+      "mode": 384,
+      "relocated_content_sha256": "44e03c3fb24e890467e2396f670c3e8e0a474776c718cbc2302dad5ad29f5393"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_DISTRIBUTION_ARTIFACT_MANIFEST_STATUS_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-3abf8a2b6990377af6ad71bb.md",
+      "original_path_sha256": "3abf8a2b6990377af6ad71bb31ece22b1666f1a0e0041aafadd2c73a761112bf",
+      "original_content_sha256": "6cd09744ff9dfa970f3b1fbfead90e7ae41807ce7b7e316b69b7970f5ea8e7b1",
+      "mode": 384,
+      "relocated_content_sha256": "6cd09744ff9dfa970f3b1fbfead90e7ae41807ce7b7e316b69b7970f5ea8e7b1"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_EXTERNAL_DELIVERY_NON_PERSISTENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-dcaf42dcf3481e82122b5ed5.md",
+      "original_path_sha256": "dcaf42dcf3481e82122b5ed5b61141111b4bc8cb7853c3f835a350949763a025",
+      "original_content_sha256": "eb16ac7edcfbc6acdef673e8d289a324574ba147af57c162c518560a1e26b99a",
+      "mode": 384,
+      "relocated_content_sha256": "eb16ac7edcfbc6acdef673e8d289a324574ba147af57c162c518560a1e26b99a"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_FINAL_OPERATOR_ACKNOWLEDGEMENT_NON_ACCEPTANCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-c4a007dc351d073eb2400ffb.md",
+      "original_path_sha256": "c4a007dc351d073eb2400ffb00d80bbc83fa77e1371fa050b744a799301e63b3",
+      "original_content_sha256": "1a5a2eab5dbb63d69b039b47e26d966920ff9411ab328d04ba789c1fcf352da3",
+      "mode": 384,
+      "relocated_content_sha256": "1a5a2eab5dbb63d69b039b47e26d966920ff9411ab328d04ba789c1fcf352da3"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_OPERATOR_BRIEFING_NON_PERSISTENCE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-3124ff888d7bb53c86104ac4.md",
+      "original_path_sha256": "3124ff888d7bb53c86104ac450b9a3e57bf804ba355245b96b3193006776647d",
+      "original_content_sha256": "0f0b63db8967a7ff0fcc7ebd079474d3eb9d585923adb0feeb321f4ff741055b",
+      "mode": 384,
+      "relocated_content_sha256": "0f0b63db8967a7ff0fcc7ebd079474d3eb9d585923adb0feeb321f4ff741055b"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_PACKAGE_RELEASE_CHANNEL_STATUS_EXPOSURE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-47a74f8b8fa330a558a02ce7.md",
+      "original_path_sha256": "47a74f8b8fa330a558a02ce707b9b3555f059c971fe14ae0eeed9c70e98b97e8",
+      "original_content_sha256": "539e2ab1fc9d9c239b10231b28401f8310f2a62cbed5a8f89fe0ded0230a6b17",
+      "mode": 384,
+      "relocated_content_sha256": "539e2ab1fc9d9c239b10231b28401f8310f2a62cbed5a8f89fe0ded0230a6b17"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_PRIVACY_REDACTION_EXPOSURE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-b1976fa79e00cdbead4d9c21.md",
+      "original_path_sha256": "b1976fa79e00cdbead4d9c216913cdc9578fc0f355993fce4cb87e506be7ed0b",
+      "original_content_sha256": "4345ffee9ef41961573f2693c50c99137275d429749d2131de5c8ee0ec60fb76",
+      "mode": 384,
+      "relocated_content_sha256": "4345ffee9ef41961573f2693c50c99137275d429749d2131de5c8ee0ec60fb76"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_QUERY_EXPORT_OBSERVABILITY_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-31011d89e15554db83b52372.md",
+      "original_path_sha256": "31011d89e15554db83b52372fbc78e70cfc7a9cc894a679071a1dfeb1e678fb3",
+      "original_content_sha256": "0d0150d3595a8f70e5bd2797750c9943e154c73d79c31d21fbd018f3eddeb2fa",
+      "mode": 384,
+      "relocated_content_sha256": "0d0150d3595a8f70e5bd2797750c9943e154c73d79c31d21fbd018f3eddeb2fa"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_TERMINAL_DECISION_STATUS_PROMOTION_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-3a6430ae58521c396e709f71.md",
+      "original_path_sha256": "3a6430ae58521c396e709f71f6e126e48b857983efbeeb6a3110855f72526c8c",
+      "original_content_sha256": "fce78022bd608f5732eee88437e2ecd0238a9e35792caae35149606eb9a2f204",
+      "mode": 384,
+      "relocated_content_sha256": "fce78022bd608f5732eee88437e2ecd0238a9e35792caae35149606eb9a2f204"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_TERMINAL_PUBLIC_CLAIM_STATUS_EXPOSURE_DENIAL_GATE.md",
+      "relocated_path": "docs/architecture/i3-6d9b2d0009ebf91d0efff1dd.md",
+      "original_path_sha256": "6d9b2d0009ebf91d0efff1dde7d91591d39983bc77d1a7e7b8bfdfcd889e327b",
+      "original_content_sha256": "e4c1c1db974bae4c77e18ee8efb26a0451e2231b940e5adbd2a6398344c57391",
+      "mode": 384,
+      "relocated_content_sha256": "e4c1c1db974bae4c77e18ee8efb26a0451e2231b940e5adbd2a6398344c57391"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_MEMORY_INTELLIGENCE_KG_FULL_LIVE_ACTIVATION_OPERATOR_READINESS_PACKET_TEMPLATE_PACKET_ACCEPTANCE_RECEIPT_RELEASE_PUBLICATION_RESULT_RECEIPT_TERMINAL_DISTRIBUTION_QUEUE_ARTIFACT_AVAILABILITY_STATUS_DENIAL_ROUTE_GATE.md",
+      "relocated_path": "docs/architecture/i3-8e0d6c58d21bca8c688be48b.md",
+      "original_path_sha256": "8e0d6c58d21bca8c688be48b2eb1ad23aee50b94efc1b82ca74e7df0df47f12c",
+      "original_content_sha256": "8523c91913fe7b1baa74806db044aa4f7683114609a715a3ac8b2f3ccef3f493",
+      "mode": 384,
+      "relocated_content_sha256": "8523c91913fe7b1baa74806db044aa4f7683114609a715a3ac8b2f3ccef3f493"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_AUDIT_EVIDENCE_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_RETENTION_EXPIRY_GC_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-855f38d8d942ad30edaf74d8.md",
+      "original_path_sha256": "855f38d8d942ad30edaf74d82f783c4a078fde7cf8c9810e98d9ed980dca144b",
+      "original_content_sha256": "7b1e16692af92d1b309e2c4263e06616f0e17e88ed7db7daa8b2883634ad590c",
+      "mode": 384,
+      "relocated_content_sha256": "7b1e16692af92d1b309e2c4263e06616f0e17e88ed7db7daa8b2883634ad590c"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_CANCELLATION_SUPERSESSION_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_AUDIT_EVIDENCE_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-3844e87c229be9559df25297.md",
+      "original_path_sha256": "3844e87c229be9559df25297654b5432b6ee494a7e4374cd24076b8fcdeb8096",
+      "original_content_sha256": "965c28c076d8d4d7f3675349d6b131010ffae748054b00202b0c33b9ad299b19",
+      "mode": 384,
+      "relocated_content_sha256": "965c28c076d8d4d7f3675349d6b131010ffae748054b00202b0c33b9ad299b19"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_EXPORT_QUERY_OBSERVABILITY_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SUMMARY_BRIEFING_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-c56eb605dcf042f5dc041e21.md",
+      "original_path_sha256": "c56eb605dcf042f5dc041e2120ba93f2bcd467bd5cfef81d50d8af4c369a8f2b",
+      "original_content_sha256": "5e76b7385c505f4d475af29abbe47b71024e8e3f84f0b6ceb780203f09d5fd91",
+      "mode": 384,
+      "relocated_content_sha256": "5e76b7385c505f4d475af29abbe47b71024e8e3f84f0b6ceb780203f09d5fd91"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_NON_PERSISTENCE_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_REPLAY_IDEMPOTENCY_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-1f9d7b777059b77afd369504.md",
+      "original_path_sha256": "1f9d7b777059b77afd3695046608d9e0bb51f28cb8d7afda53521ecc9d859f0d",
+      "original_content_sha256": "4b64877432770616328c41ca5491a01fb34a696e3cd1afceef472b11d44efbfe",
+      "mode": 384,
+      "relocated_content_sha256": "4b64877432770616328c41ca5491a01fb34a696e3cd1afceef472b11d44efbfe"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_ORDERING_MONOTONICITY_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_CANCELLATION_SUPERSESSION_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-0a08fd05c64636ab5df702fe.md",
+      "original_path_sha256": "0a08fd05c64636ab5df702fe145ddb9d9c6da12aec3aa531b88fbdfce886c230",
+      "original_content_sha256": "1a38e376357123324ecde5a1befeb8dac2d38f1bc69d393372b2269dbb592020",
+      "mode": 384,
+      "relocated_content_sha256": "1a38e376357123324ecde5a1befeb8dac2d38f1bc69d393372b2269dbb592020"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_REPLAY_IDEMPOTENCY_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_ORDERING_MONOTONICITY_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-68bd665262ee36a5770510c3.md",
+      "original_path_sha256": "68bd665262ee36a5770510c36ddff54693b195ad735dcc271b08b1d60dced0df",
+      "original_content_sha256": "b3eb6a5eeddd64ad89e64438bc8b8b8fdebeafe303f94224ef574b0508fe829f",
+      "mode": 384,
+      "relocated_content_sha256": "b3eb6a5eeddd64ad89e64438bc8b8b8fdebeafe303f94224ef574b0508fe829f"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_RETENTION_EXPIRY_GC_FINAL_INDEX_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_EXPORT_QUERY_OBSERVABILITY_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-84bb8fe5e104d65750a0b689.md",
+      "original_path_sha256": "84bb8fe5e104d65750a0b6894f78fe0a32e1b819d91abb00db79dab4369ede0f",
+      "original_content_sha256": "be7667a3af7e6c818bfc4465ebddf132d0b67fbe0ab3252f91eaede0163f736a",
+      "mode": 384,
+      "relocated_content_sha256": "be7667a3af7e6c818bfc4465ebddf132d0b67fbe0ab3252f91eaede0163f736a"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_DISTRIBUTION_MANIFEST_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_NOTARIZATION_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-4303804597a2d2a9bd2a34ce.md",
+      "original_path_sha256": "4303804597a2d2a9bd2a34ce6c2196014b50d309776d7922f7d99301ab2825f2",
+      "original_content_sha256": "0370b2eac33f46e7a19eb19b3a05f16048a69da59fd7194bee54693932abba22",
+      "mode": 384,
+      "relocated_content_sha256": "0370b2eac33f46e7a19eb19b3a05f16048a69da59fd7194bee54693932abba22"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_PACKAGE_CHANNEL_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_DISTRIBUTION_MANIFEST_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-01e540404791cc7ddd5bdfbd.md",
+      "original_path_sha256": "01e540404791cc7ddd5bdfbdd90d9326d544f7ad4659f2eebeea3584330c723d",
+      "original_content_sha256": "03cedcd311b963069fa64331c2d41d277f55129da26c871bd18dfd4e32243b76",
+      "mode": 384,
+      "relocated_content_sha256": "03cedcd311b963069fa64331c2d41d277f55129da26c871bd18dfd4e32243b76"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_NOTARIZATION_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_NONP_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-cd78466079884da0fb9fada8.md",
+      "original_path_sha256": "cd78466079884da0fb9fada88b1d481d4b2ed1490ae730d4ab9c00d1d4db710e",
+      "original_content_sha256": "2c99d2728591406991c17a21de0b973d9da0430f5225ae06ced175130db4c0da",
+      "mode": 384,
+      "relocated_content_sha256": "2c99d2728591406991c17a21de0b973d9da0430f5225ae06ced175130db4c0da"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_AUDIT_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_RETENTION_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-250871b5c2a356fa86f09b4a.md",
+      "original_path_sha256": "250871b5c2a356fa86f09b4a2e8540b76ff8b2fad837f7236dff7c75f3d504ef",
+      "original_content_sha256": "5c9e20406adae6d0b73b51be34a22801523ae328256f48c57a6bb7b7d7133f98",
+      "mode": 384,
+      "relocated_content_sha256": "5c9e20406adae6d0b73b51be34a22801523ae328256f48c57a6bb7b7d7133f98"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_CANCEL_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_AUDIT_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-0b4752cbcd647989d509c947.md",
+      "original_path_sha256": "0b4752cbcd647989d509c947e6dcdd4f2ce7886665e24878186fdd98f0ee28e5",
+      "original_content_sha256": "3d9362be0a044ec2bfb6f65034e2a256574da6c06be52344653551d57e42ff34",
+      "mode": 384,
+      "relocated_content_sha256": "3d9362be0a044ec2bfb6f65034e2a256574da6c06be52344653551d57e42ff34"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_DIST_MANIFEST_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_SIGN_NOTARY_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-dd1304a892e84fec636c9e4e.md",
+      "original_path_sha256": "dd1304a892e84fec636c9e4e84732919005a56d383248fcaf188453bca9e82e5",
+      "original_content_sha256": "74f5340de463e554225305b8c92546276b15550772c0691d734326428590a37f",
+      "mode": 384,
+      "relocated_content_sha256": "74f5340de463e554225305b8c92546276b15550772c0691d734326428590a37f"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_EXPORT_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_SUMMARY_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-ba2fad8c9f929019875acf4d.md",
+      "original_path_sha256": "ba2fad8c9f929019875acf4d316937ae892f4c2a629d8c43f267c72ae097efa3",
+      "original_content_sha256": "6866d1bd7224d061d487efb62e9a73cdb8cf745ada1b60c4d6fc93060b9baa02",
+      "mode": 384,
+      "relocated_content_sha256": "6866d1bd7224d061d487efb62e9a73cdb8cf745ada1b60c4d6fc93060b9baa02"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_FINAL_ACK_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_TERMINAL_STATUS_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-dc472f9ad3e41c12629a58bc.md",
+      "original_path_sha256": "dc472f9ad3e41c12629a58bc102b49de9f3e4e24e931e9fbf75df401ca95e8ae",
+      "original_content_sha256": "6c4f70531198b91aa19e592739f2b7d47ed2799f4e9aba3c6ed9087e9b255532",
+      "mode": 384,
+      "relocated_content_sha256": "6c4f70531198b91aa19e592739f2b7d47ed2799f4e9aba3c6ed9087e9b255532"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_NONP_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_REPLAY_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-f459e1e9d358a332e9eaa3df.md",
+      "original_path_sha256": "f459e1e9d358a332e9eaa3df3752aaae602caa8fe233cdf0822d6fdcfc89c5b4",
+      "original_content_sha256": "90df733d4d2f07848f403e081f1353434c8749a55fa3a785ddda4802ec94d608",
+      "mode": 384,
+      "relocated_content_sha256": "90df733d4d2f07848f403e081f1353434c8749a55fa3a785ddda4802ec94d608"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_ORDERING_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_CANCEL_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-cd6a4c979a269c5faf59af7e.md",
+      "original_path_sha256": "cd6a4c979a269c5faf59af7e849d24ccf6fff794945ac21366e68976edf142ea",
+      "original_content_sha256": "e92febaaeabd595ce4eb0aadc1b1d1eecde4ccf5161f62046a0b2ae9c4ff51d3",
+      "mode": 384,
+      "relocated_content_sha256": "e92febaaeabd595ce4eb0aadc1b1d1eecde4ccf5161f62046a0b2ae9c4ff51d3"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_PACKAGE_CHANNEL_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_DIST_MANIFEST_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-b7902a1aea32c38730e7ade9.md",
+      "original_path_sha256": "b7902a1aea32c38730e7ade9908098d2616729252a732f88c647ab0355c6423a",
+      "original_content_sha256": "d5cf44d7681a58b0ede359dc4cb47191233483e9f3f761fb3c534494a0f7ca2f",
+      "mode": 384,
+      "relocated_content_sha256": "d5cf44d7681a58b0ede359dc4cb47191233483e9f3f761fb3c534494a0f7ca2f"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_PUBLIC_STATUS_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_PACKAGE_CHANNEL_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-7f60899dd91c9fdf2ccbc38e.md",
+      "original_path_sha256": "7f60899dd91c9fdf2ccbc38e2e845f280179087537ae6a37c2c5a41edda5dd66",
+      "original_content_sha256": "8287a443d788b32e595f8008b432b0cfa611d1c12d52e60f77ba3a275f709e2a",
+      "mode": 384,
+      "relocated_content_sha256": "8287a443d788b32e595f8008b432b0cfa611d1c12d52e60f77ba3a275f709e2a"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_REPLAY_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_ORDERING_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-b9e5f86c803d6d24ebefe7fe.md",
+      "original_path_sha256": "b9e5f86c803d6d24ebefe7fe897fba4817647962d6b983fb0cf9e1ec3250e8a8",
+      "original_content_sha256": "8725855281269536fa57d83c7c53a271fe4939f8fcbc80f1354e71a4bf86421a",
+      "mode": 384,
+      "relocated_content_sha256": "8725855281269536fa57d83c7c53a271fe4939f8fcbc80f1354e71a4bf86421a"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_RETENTION_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_EXPORT_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-ac310e0dd0db88c5228fd95c.md",
+      "original_path_sha256": "ac310e0dd0db88c5228fd95c1e7675dca340d92e7aa4af085854d6fc96d2342a",
+      "original_content_sha256": "79a1a2486967109c6c9b7af57c4fd085fa24996162d3a5bc63b5fddcb59cc338",
+      "mode": 384,
+      "relocated_content_sha256": "79a1a2486967109c6c9b7af57c4fd085fa24996162d3a5bc63b5fddcb59cc338"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_SIGN_NOTARY_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_NONP_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-312ed51e911dee6cd3869313.md",
+      "original_path_sha256": "312ed51e911dee6cd3869313c2dcdeb03d5becfccae0abe5d53afb435f1df95e",
+      "original_content_sha256": "54c132d14956dcf583d35d52eb1a62c0f993955829316d3f32b4e0c73ee67a5d",
+      "mode": 384,
+      "relocated_content_sha256": "54c132d14956dcf583d35d52eb1a62c0f993955829316d3f32b4e0c73ee67a5d"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_SUMMARY_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_FINAL_ACK_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-557fd74990e37fddba4abbb3.md",
+      "original_path_sha256": "557fd74990e37fddba4abbb3ef436f7ab927c511c5512d769a0870851b4d8469",
+      "original_content_sha256": "c3f4c7decf1853615b511ef85546bb821686b0e060a61e3ac979e3a10d8a6ac6",
+      "mode": 384,
+      "relocated_content_sha256": "c3f4c7decf1853615b511ef85546bb821686b0e060a61e3ac979e3a10d8a6ac6"
+    },
+    {
+      "original_path": "docs/architecture/HEPTA_SYSTEMS_PUBLIC_GA_OPERATOR_INTENT_CONSENT_EVIDENCE_ARTIFACT_SIGNING_TERMINAL_PUBLIC_CLAIM_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_TERMINAL_STATUS_FINAL_INDEX_DELIVERY_RECEIPT_SIGNING_RECEIPT_SIGNING_RECEIPT_PUBLIC_STATUS_2026-06-21.md",
+      "relocated_path": "docs/architecture/i3-12702f8e5bbb502f6f625b39.md",
+      "original_path_sha256": "12702f8e5bbb502f6f625b390237579f87cbc0ceef6e2483cd7ecedd0b49783a",
+      "original_content_sha256": "cdb4a17927e66060e3433342d6719f75af4703aa53a74cabe0843e7c79f58299",
+      "mode": 384,
+      "relocated_content_sha256": "cdb4a17927e66060e3433342d6719f75af4703aa53a74cabe0843e7c79f58299"
+    },
+    {
+      "original_path": "scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-receipt-review-acceptance-scoreboard-review-acceptance-readiness-denial-review-acceptance-closure-gate.sh",
+      "relocated_path": "scripts/i3-e08c8c0b4e1b74cb4ad1d7b3.sh",
+      "original_path_sha256": "e08c8c0b4e1b74cb4ad1d7b3cea560348a642b16ead5c04f45f01843e2910ac0",
+      "original_content_sha256": "c0a5a054b683b3a41756591ee40fc0ebcfabede9a552acc5093b54944534e56a",
+      "mode": 448,
+      "relocated_content_sha256": "711f2cbea00ec28beb965d2614a98a0a2e17ec30e9782617bc325190c86a4813"
+    },
+    {
+      "original_path": "scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-receipt-review-acceptance-scoreboard-review-acceptance-readiness-denial-review-acceptance-gate.sh",
+      "relocated_path": "scripts/i3-fb820432c970169e53d4fe32.sh",
+      "original_path_sha256": "fb820432c970169e53d4fe3256393529e18f7f1cba5cc370f706817eed4dd2a9",
+      "original_content_sha256": "ed3c426f962eb2de16c260286ad6d2f9f22141200e473401c3017d9c0159bc35",
+      "mode": 448,
+      "relocated_content_sha256": "c94b08ab557f636b7316a5636ef5df64759905e5554a7c9a4e41d8b8e68c0fb5"
+    },
+    {
+      "original_path": "scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-receipt-review-acceptance-scoreboard-review-acceptance-readiness-denial-review-gate.sh",
+      "relocated_path": "scripts/i3-d51cc18c971f80a7435a2d24.sh",
+      "original_path_sha256": "d51cc18c971f80a7435a2d24f0560928741ba6ace586de146e4188566839ca63",
+      "original_content_sha256": "aaadae0b73d94229e26cd1c1767a1c02bed9f0df6e614c3907991280dc85072f",
+      "mode": 448,
+      "relocated_content_sha256": "aaadae0b73d94229e26cd1c1767a1c02bed9f0df6e614c3907991280dc85072f"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-enablement-runtime-provider-router-operator-approved-shadow-context-activation-execution-controlled-readback-receipt-trusted-operator-packet-complete-precondition-operator-approval-lane-separation-gate.sh",
+      "relocated_path": "scripts/i3-8f4088b416ad903f6ac4fe96.sh",
+      "original_path_sha256": "8f4088b416ad903f6ac4fe96708003c006cd70669cfee83ef4c2d976efee7feb",
+      "original_content_sha256": "4081b05812023714daf56b59a877f5eaef2ec90ff1d9e56cb60c066cef20ce9c",
+      "mode": 448,
+      "relocated_content_sha256": "4081b05812023714daf56b59a877f5eaef2ec90ff1d9e56cb60c066cef20ce9c"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-audit-evidence-denial-gate.sh",
+      "relocated_path": "scripts/i3-b0f3c9318ab22c55487cb1e2.sh",
+      "original_path_sha256": "b0f3c9318ab22c55487cb1e26dcc01b552e7cc7ee2f91d2c27c32f9e3824efd9",
+      "original_content_sha256": "22ed081f8900eb8ca573b9f58904872c55dcad81e174580050ef2245ea998dbc",
+      "mode": 448,
+      "relocated_content_sha256": "df8c0cf2d1a0a848c7356008c67437a9c0bb9eb82dc1b20f3b3f0a4a0005e9ba"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
+      "relocated_path": "scripts/i3-71bd59c6d099c54edc1a3553.sh",
+      "original_path_sha256": "71bd59c6d099c54edc1a355328a47f87a81a78fe4a34ada907065ca4f36e1017",
+      "original_content_sha256": "9ecf0efd48bd9739468fc13180ac8d5a173f32b1ea919c6f95a3a1d09b985a75",
+      "mode": 448,
+      "relocated_content_sha256": "9ecf0efd48bd9739468fc13180ac8d5a173f32b1ea919c6f95a3a1d09b985a75"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-final-ack-denial-gate.sh",
+      "relocated_path": "scripts/i3-70337a51ae9ff9614b36dc0a.sh",
+      "original_path_sha256": "70337a51ae9ff9614b36dc0a0e15c6bc816d881a3a960084a678eb0b1da37971",
+      "original_content_sha256": "20e98ce51a7027e8e4de6ee947606849dd3aaeaa480044f90b2f91085ba11fb2",
+      "mode": 448,
+      "relocated_content_sha256": "c50f38d45199771744fe12fc812d36bc31ebf50c74739ccfb706d741638f2477"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-notarization-surface-denial-gate.sh",
+      "relocated_path": "scripts/i3-a6ed4263505735015a2ed212.sh",
+      "original_path_sha256": "a6ed4263505735015a2ed2128089056003253cdbb8cb6dab26158037d1c8251e",
+      "original_content_sha256": "e8a1594e21d5ff080aa5b6cad5f078654a72c7d03cac80fd2379749d0d609fb6",
+      "mode": 448,
+      "relocated_content_sha256": "2660006e36eff7785e69c79f9e92f7a800544857024d66d9bbab13957ce2f0c7"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-observability-denial-gate.sh",
+      "relocated_path": "scripts/i3-3e2bc76030729ec1bd22c4f8.sh",
+      "original_path_sha256": "3e2bc76030729ec1bd22c4f8a311ba108cbc165cd725a0771d94f108a53eb00e",
+      "original_content_sha256": "1dc7d062d38670155ed2aa04582db93e9adf7732d6d68022f6f93454b40f1b6b",
+      "mode": 448,
+      "relocated_content_sha256": "a550bc7fef21caa7309a5527bdc1a41e0090c272325b0ce66dc382d94261b321"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
+      "relocated_path": "scripts/i3-69e99f4efb35ecb295ceb839.sh",
+      "original_path_sha256": "69e99f4efb35ecb295ceb839a55ccc343ba8efd36841f5fdcacdb1f3af7c3bd8",
+      "original_content_sha256": "591f80071420b5fb53ab15222a10cf365b793fbb7cb5f48fd517cd5196391a91",
+      "mode": 448,
+      "relocated_content_sha256": "591f80071420b5fb53ab15222a10cf365b793fbb7cb5f48fd517cd5196391a91"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-no-persistence-denial-gate.sh",
+      "relocated_path": "scripts/i3-782cbc8f3b263f056584870b.sh",
+      "original_path_sha256": "782cbc8f3b263f056584870b0da8110a5590b8f040e175a2700e7d3f9cb66354",
+      "original_content_sha256": "e691e1dff0e73c9b148e5c934083a53a9ce4f9567d7377c7ed3f394a51ef2ffd",
+      "mode": 448,
+      "relocated_content_sha256": "7a8f7f088860b6c83c379ea12aa950550d438efade94b721815661f3259020ed"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
+      "relocated_path": "scripts/i3-0ab8864aaedb1633ef2ca067.sh",
+      "original_path_sha256": "0ab8864aaedb1633ef2ca067610f24990061b73971f7c1df467f38fe93638373",
+      "original_content_sha256": "5e4dc667d08b58ffa8cf08553843a2e377f7e15234f80a9f8dae145f106669d8",
+      "mode": 448,
+      "relocated_content_sha256": "5e4dc667d08b58ffa8cf08553843a2e377f7e15234f80a9f8dae145f106669d8"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-retention-gc-denial-gate.sh",
+      "relocated_path": "scripts/i3-23c50392cf7a14a65c29adf5.sh",
+      "original_path_sha256": "23c50392cf7a14a65c29adf5160f272ecd8f006ae89fee21d0c752e996943863",
+      "original_content_sha256": "efe5a4e9160d9b7a4eb0e35cf5c5b949d967ab65e80d7eb89223dc4c89f878ec",
+      "mode": 448,
+      "relocated_content_sha256": "b5fde0b15dbca1966c31722450952c2889701e8cd02e539fc56aa0fc0f44f499"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-summary-briefing-denial-gate.sh",
+      "relocated_path": "scripts/i3-04b4ddd17a52efa504c34208.sh",
+      "original_path_sha256": "04b4ddd17a52efa504c342086a1d5deabe7faf1ef5c28d8304dd90c824a4a423",
+      "original_content_sha256": "87616117c5d82da13b06cb498356dc5fd482a0795896f20b73795776e86d3864",
+      "mode": 448,
+      "relocated_content_sha256": "6c99724f94992e24c98b070596b468699027aef36cf9e1894f14aa017df0b4e2"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-distribution-artifact-manifest-status-denial-gate.sh",
+      "relocated_path": "scripts/i3-d4091c000c5aec055d0e0396.sh",
+      "original_path_sha256": "d4091c000c5aec055d0e039677770c85e2a079f600497911f34526cdf033dab8",
+      "original_content_sha256": "79c5a8e36f1adf895f3232ec95de4677cb12a91c92e93846278467dd3be4fc74",
+      "mode": 448,
+      "relocated_content_sha256": "6df875f48de03a774f07cb61a6e30b4df01ab3bd16d48bc5546ced473922eabf"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-export-query-observability-denial-gate.sh",
+      "relocated_path": "scripts/i3-54bcd43581b4b055aaa2f66d.sh",
+      "original_path_sha256": "54bcd43581b4b055aaa2f66d4df428e7665d4dbfe26332b3258f72360adc2fba",
+      "original_content_sha256": "0feb5345556937a4575c2b055adbf13cb548f7fad82b98ca32fc8e9291e122dc",
+      "mode": 448,
+      "relocated_content_sha256": "0feb5345556937a4575c2b055adbf13cb548f7fad82b98ca32fc8e9291e122dc"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-final-ack-non-acceptance-denial-gate.sh",
+      "relocated_path": "scripts/i3-56ccc14f7255b02cc8de372a.sh",
+      "original_path_sha256": "56ccc14f7255b02cc8de372a4b0732c975b5b43afb4fece6040d28518384bd2c",
+      "original_content_sha256": "12e4e794889f0673a6dc24b16769cb698a3b9cd951e46501ac4c5259d5dc2373",
+      "mode": 448,
+      "relocated_content_sha256": "bc543bc7bf03f731f0470e9541866c7ba21d8b458d6f75129919de61406c63da"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-package-release-channel-status-exposure-denial-gate.sh",
+      "relocated_path": "scripts/i3-d74520fde78bf8eca3db467c.sh",
+      "original_path_sha256": "d74520fde78bf8eca3db467c032bcce5edec493a0e70193c2f7e9aa7befb5697",
+      "original_content_sha256": "566478151fd0f93eb6bf0623dd3f537c17b5b8db311c912860058add66d5a0e1",
+      "mode": 448,
+      "relocated_content_sha256": "fe31f0195bc84a8bb8596d8f7f795cb9b4d576acf62e3f8bf76d45a64e31e936"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-summary-briefing-non-persistence-denial-gate.sh",
+      "relocated_path": "scripts/i3-473ca3ed3d5ff6d0741bec38.sh",
+      "original_path_sha256": "473ca3ed3d5ff6d0741bec389a01bb4dfe32a562eb7fc5f6bb0fe7f68c0ee04a",
+      "original_content_sha256": "761947a0ade56ecc163ba165dd17161cf1bf6128e3149747ab1519409185d223",
+      "mode": 448,
+      "relocated_content_sha256": "677351e839dd582e79fb2835655e4f28b0d1bd3e2311d7831c12af144ffc15a0"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-terminal-decision-status-promotion-denial-gate.sh",
+      "relocated_path": "scripts/i3-ee1f0cd8da68b96f743161d3.sh",
+      "original_path_sha256": "ee1f0cd8da68b96f743161d37da0f605fa2c82e8411726ad864f42d84da425bd",
+      "original_content_sha256": "aeb924f5bddb6e8c987d534233e7bea56651a34e6c94a260fb164c659561ff72",
+      "mode": 448,
+      "relocated_content_sha256": "b6e7cc88d18f8c7deb23b9da2a2e485108fcf48f162abb44ccbdf3e1f63dc3ab"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-terminal-public-claim-status-exposure-denial-gate.sh",
+      "relocated_path": "scripts/i3-375c41ef6a049833021081a2.sh",
+      "original_path_sha256": "375c41ef6a049833021081a217caea882d5eb0bd67f77b57c8b858396ab42674",
+      "original_content_sha256": "40786e5edfa7478053a4f34eaad8db57fe009c6cb84b0a83cf8e7fe3097b2642",
+      "mode": 448,
+      "relocated_content_sha256": "1d6f048ca9fac9b91fccc2f2027a33346160939409309a37d89146d29566b161"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-distribution-manifest-denial-gate.sh",
+      "relocated_path": "scripts/i3-d111c94570e379a3d025b843.sh",
+      "original_path_sha256": "d111c94570e379a3d025b843974e599a269b5b125650fe8c5542819d95de7706",
+      "original_content_sha256": "6ecf2d72c47bdbcf23351a2772df02cb766f0916b79f72e142cf5f882b1986f4",
+      "mode": 448,
+      "relocated_content_sha256": "6ecf2d72c47bdbcf23351a2772df02cb766f0916b79f72e142cf5f882b1986f4"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-distribution-manifest-denial-gate.sh",
+      "relocated_path": "scripts/i3-0ed7f4b441547eece5fb85af.sh",
+      "original_path_sha256": "0ed7f4b441547eece5fb85afd31613f8dcdb4d27603e7a1fb2c2f2fe40a7f413",
+      "original_content_sha256": "01cbd8f2e92bc4a422cc24b5f9b5e2496f029cb488c7104df0953e56882f0fd3",
+      "mode": 448,
+      "relocated_content_sha256": "8fc5b18b71338593d19e464200b2b106c85a17c600b9f65f815291970248ca44"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-notarization-denial-gate.sh",
+      "relocated_path": "scripts/i3-28db7cdab62b7918fc731746.sh",
+      "original_path_sha256": "28db7cdab62b7918fc731746606279d39a8ff75820faf4acdf574f5a13c6ec69",
+      "original_content_sha256": "0f39e7c5a338bf4b7a65ee734d04212f3b83bc1059350e7fabc02516b670b24f",
+      "mode": 448,
+      "relocated_content_sha256": "1d7a14e74980ed5ac7e993fb143de915f96df7d62370b53f8614528e2cb58cd0"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-package-channel-denial-gate.sh",
+      "relocated_path": "scripts/i3-f5f3eae81cdb925789bc7a97.sh",
+      "original_path_sha256": "f5f3eae81cdb925789bc7a974426e0a23022af926c58a2be9d896ed2c0de0504",
+      "original_content_sha256": "2bab3ea9d58fb252a866aca1bf4e0bccf452886cb1cfe5ccc22657868a7ee81a",
+      "mode": 448,
+      "relocated_content_sha256": "922475c117cea7884b61d33e3b20382170b518a1edbdfa0b6501608b5761e33c"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-public-status-denial-gate.sh",
+      "relocated_path": "scripts/i3-be39de880743a92dba381036.sh",
+      "original_path_sha256": "be39de880743a92dba3810367ead1b6bd75ecf2e77fafd2f86e67ddd28065cdb",
+      "original_content_sha256": "dcd9f5be9b23cee5f7708e625563195b9c0cd77f2ab6ff4acdfb287bf5a8b836",
+      "mode": 448,
+      "relocated_content_sha256": "c3806bd9ecc908e56f3f3dc2734f8253eeeb62a63f923881aa64b0074abab30d"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-notarization-denial-gate.sh",
+      "relocated_path": "scripts/i3-8180fc6e942219a6038be320.sh",
+      "original_path_sha256": "8180fc6e942219a6038be320b09b1bf73677ecdfe5f83acd81e9864f8fbd301b",
+      "original_content_sha256": "dacae0a5ff354cf0c4463c2f77f3b396e08407f62c3df38a72600981e70e65f7",
+      "mode": 448,
+      "relocated_content_sha256": "e9646d9c585f2f53e803e6a8cfed6e0a0d7346a59b1dff6af770194c80e45428"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-audit-denial-gate.sh",
+      "relocated_path": "scripts/i3-f11e5031101b4efb75c26d90.sh",
+      "original_path_sha256": "f11e5031101b4efb75c26d90eef2925681e579523a4ced8c87da4705e141fed0",
+      "original_content_sha256": "a1ea49efd6ba3f53c35e57bf18aa06a417ddfe4b8e1070a10002b95a8cdd5ece",
+      "mode": 448,
+      "relocated_content_sha256": "a7d1e9e8704528fdb8f4a52738f79cb00fc62c3c62fb11c65b536eeeff64f8d4"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-cancel-denial-gate.sh",
+      "relocated_path": "scripts/i3-292f5fe543451e766e6f5629.sh",
+      "original_path_sha256": "292f5fe543451e766e6f56293f2db0ff086c95cba7dc75e8507d6171aff62323",
+      "original_content_sha256": "1ae5decb01498e0abb2457efe0ef80e53f3541797d42a52e9458c070ebfbdb7d",
+      "mode": 448,
+      "relocated_content_sha256": "24ce9062dab08ce635e2c6af6aacd67dbc112531806c2faf95480e53b05f05e8"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-dist-manifest-denial-gate.sh",
+      "relocated_path": "scripts/i3-665c921c942af0fc16fb6eae.sh",
+      "original_path_sha256": "665c921c942af0fc16fb6eaee22708b29f9e604b2b1675466f2037aed10349a8",
+      "original_content_sha256": "756671cf3e4e8566e2099223e2bfa155895d05ed6a92fb840396e5cbec7a31c7",
+      "mode": 448,
+      "relocated_content_sha256": "2ba27f0769587f01afab958584f010542ecae26747107d487e8cdbaec96e5bf2"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-export-denial-gate.sh",
+      "relocated_path": "scripts/i3-5d8ca7d977747ccbeadffb2c.sh",
+      "original_path_sha256": "5d8ca7d977747ccbeadffb2c4b3a259ed70e53d11381575a2d174fd2c74eec81",
+      "original_content_sha256": "1160bc8a4f7471944b4ac5c358b03096f0df032f18a22fe91ed0a215bc488eb0",
+      "mode": 448,
+      "relocated_content_sha256": "fd09e1901f3687650da4f3c5ef753d1c266e0d04d02f9048f0311b3d310ba660"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-final-ack-denial-gate.sh",
+      "relocated_path": "scripts/i3-2c9e4249f5cdf74436dc1688.sh",
+      "original_path_sha256": "2c9e4249f5cdf74436dc1688b8176b9984d1ccdc6bb208d13944aee70b15fc13",
+      "original_content_sha256": "e587a73530895a5df2de2e600456dc406b31acd27bfd417e8f8fc500d7e9052e",
+      "mode": 448,
+      "relocated_content_sha256": "002429579f9d172748c39d4f6d6d4a98d4523ef229bfe7fefa042fed1ea3e2b7"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-nonp-denial-gate.sh",
+      "relocated_path": "scripts/i3-e1d563531a7291dabb6abc37.sh",
+      "original_path_sha256": "e1d563531a7291dabb6abc37bf8c66bd0a9c76d723f76275f5e32210413d15f0",
+      "original_content_sha256": "12e70cbe5f678a400882955348fd1c7ca98cd884f8de5e5769b97a7f3df38c8f",
+      "mode": 448,
+      "relocated_content_sha256": "808fb4617400a114efa3e30394f77f0d286a98f70816119633c463e2fb72ca3d"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-ordering-denial-gate.sh",
+      "relocated_path": "scripts/i3-5680f0b69a64c499f203e253.sh",
+      "original_path_sha256": "5680f0b69a64c499f203e253f71b87abc5dbc6c7de27955119ffe46fdd1eb542",
+      "original_content_sha256": "8ea06119c03811a7cac6b40ac6fae7762e8d0b25c82896df44ce0de2180f7670",
+      "mode": 448,
+      "relocated_content_sha256": "1728a27a06c2575353d75e2fd1ab4ef8561f5b1b0ab99f887a9153eefbac972b"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-package-channel-denial-gate.sh",
+      "relocated_path": "scripts/i3-9ad4f61b36651cf10ace81f3.sh",
+      "original_path_sha256": "9ad4f61b36651cf10ace81f3c7c8180de37a323eff0d4adb986de9480a687b1b",
+      "original_content_sha256": "f2d92ea0ead69169e58bbfd82de488290223e4d2a02087b58daa2e9c3a98d6df",
+      "mode": 448,
+      "relocated_content_sha256": "498f292a05ff35bbf7e748835de1619f1e4e29593ebcb0f9bd47ef63a0b4e3b6"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-public-status-denial-gate.sh",
+      "relocated_path": "scripts/i3-26f905697c92679a53e60df6.sh",
+      "original_path_sha256": "26f905697c92679a53e60df65effc7d14dfe897b0921ddc1b5edfd74b2d0399e",
+      "original_content_sha256": "311c4ea1574b45527d2291e707360f7dfb4c38e24a8d3f8e4447296634b756e3",
+      "mode": 448,
+      "relocated_content_sha256": "e978b612ef5e3d6a9efd1e114a10c0fc52e567648cbb9c1f5504d2295aa6777a"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-replay-denial-gate.sh",
+      "relocated_path": "scripts/i3-cc74292b96d66267d21128d9.sh",
+      "original_path_sha256": "cc74292b96d66267d21128d9a6aaadb13dd4efe44fde51a31dee86c8ce1b96a5",
+      "original_content_sha256": "4e57afe06fa31272ead37b572fe07420f7af6c5ee0da53d6a387b6bc2b778e33",
+      "mode": 448,
+      "relocated_content_sha256": "26f5c393bcbd44a5782a02c1b19c061919a0cfab80fb7d4ddaa6e2836d2cef2d"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-retention-denial-gate.sh",
+      "relocated_path": "scripts/i3-805519f77fce19f768f30d6d.sh",
+      "original_path_sha256": "805519f77fce19f768f30d6dce2f4d73d9d459e7ba41e2cb6960c0b5d9272241",
+      "original_content_sha256": "5f390b2241cff7ce2cb20935be10dca5105722601273f4f286048bf28da6f603",
+      "mode": 448,
+      "relocated_content_sha256": "44f2b42ca81b8ffe6626c7c4181bd366199f5fcfee97920a9a8beceeff01e5ad"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-sign-notary-denial-gate.sh",
+      "relocated_path": "scripts/i3-bd8d80ceddedb3b347618aec.sh",
+      "original_path_sha256": "bd8d80ceddedb3b347618aec8e893110dd5103668ccad08aed720437b8e3edeb",
+      "original_content_sha256": "4cc3d155bbad1b1f765bdfb7f872cc2827d0f22e779dbc557979f2be6204fcd1",
+      "mode": 448,
+      "relocated_content_sha256": "87a584f688c2b53d0a826591ca35516c2c12735f59e2a8dc2326e0b24efdd349"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-summary-denial-gate.sh",
+      "relocated_path": "scripts/i3-43ddaf02052dd8d5ee8864d1.sh",
+      "original_path_sha256": "43ddaf02052dd8d5ee8864d153f83a90e850827afe588bf73ffa5751df3be91d",
+      "original_content_sha256": "975a113bf09ab882cdba4acb11c82aba69ad64249ae766839a065e6d957f172e",
+      "mode": 448,
+      "relocated_content_sha256": "10043b6ee32a82c5e70ff4fe75ab2d6dd1ed486cb3f8c9cd8f5b1f4591c6df05"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-signing-receipt-terminal-status-denial-gate.sh",
+      "relocated_path": "scripts/i3-02336bd6d61af2c26f7579d4.sh",
+      "original_path_sha256": "02336bd6d61af2c26f7579d47c041433f4816eeb0d29651403218b4ff6eb61ad",
+      "original_content_sha256": "5f9c356877d50684031cb39cc5d279ed4712b9abe099b2424fc4cef5a014456c",
+      "mode": 448,
+      "relocated_content_sha256": "1051964067c1f3c96e20d8a02592b80c39504da4c947154f5329d24a1ed597ad"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-intent-consent-evidence-artifact-signing-terminal-public-claim-delivery-receipt-signing-receipt-terminal-status-denial-gate.sh",
+      "relocated_path": "scripts/i3-27540020682576a3e9d15b97.sh",
+      "original_path_sha256": "27540020682576a3e9d15b978a51b12349d8add83642bad2049e36f222e4fd73",
+      "original_content_sha256": "80264379e3b09f1f53a2a336b98c1ebcebb437837aec5d1079ef40f88fd77b72",
+      "mode": 448,
+      "relocated_content_sha256": "80264379e3b09f1f53a2a336b98c1ebcebb437837aec5d1079ef40f88fd77b72"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial-gate.sh",
+      "relocated_path": "scripts/i3-0df2e0b068b5f70144fbdc8c.sh",
+      "original_path_sha256": "0df2e0b068b5f70144fbdc8c5fc1a10249d061deaa8779c6fb2f4d47dae3af87",
+      "original_content_sha256": "dc30b31c3a11630bca6aa9846bc11cb2be31fa35cfac73b7530495bf1ac561ea",
+      "mode": 448,
+      "relocated_content_sha256": "e3d2e8b98e3cbe34b6c1dc87fad6d6a64440a30e7fc3097f41e84660ed01f298"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial-gate.sh",
+      "relocated_path": "scripts/i3-107975edf2e81655b17c8989.sh",
+      "original_path_sha256": "107975edf2e81655b17c89897ee5597fdcf7eea4ff2ae82d720c03fb5680dfc9",
+      "original_content_sha256": "8c0b7a23a9102d679ee709e42834282a12761c3306e3e75e3d535673aa839e6d",
+      "mode": 448,
+      "relocated_content_sha256": "61461878347de126729a751799ea48ea8ab8294c55d9b1144540b41f51a6ccdc"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial-gate.sh",
+      "relocated_path": "scripts/i3-8695f13a365f7ff86105233c.sh",
+      "original_path_sha256": "8695f13a365f7ff86105233c41977d27df4636cebe3b75badce20411980941ed",
+      "original_content_sha256": "750dc1b2c77771221c027146d9d5ae60591c470eb6cccc515c3f653766e40bea",
+      "mode": 448,
+      "relocated_content_sha256": "30f7afa73566a3ad4edbd6d3f4cf9091a4779d83df92b6cdd5280a448e46c116"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-download-install-affordance-denial-route-gate.sh",
+      "relocated_path": "scripts/i3-2b5cb24691db871e2f20287b.sh",
+      "original_path_sha256": "2b5cb24691db871e2f20287b24782556d3ddb10ec41987cdc56625c6e787c5c5",
+      "original_content_sha256": "f7a38e5ddf122e036fdb2536d4227003d3dffbe7ece9ae95608d2f02f3f7559c",
+      "mode": 448,
+      "relocated_content_sha256": "93d24b6f47af2f3ba19b031793c673679883208cda9bb030a4ac3df0d8ebd9b9"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial-gate.sh",
+      "relocated_path": "scripts/i3-edae094ad2872dfe007f2689.sh",
+      "original_path_sha256": "edae094ad2872dfe007f2689d202755480cbde6aaa065d3cd849205dda5d8305",
+      "original_content_sha256": "4f72ca2856e9395edabb87610d9a5795b23b87754667e9b615a0866525473bfc",
+      "mode": 448,
+      "relocated_content_sha256": "49cc6e8b4737d96629f3a6e8dfafbd30cfe4db7e76c7b29ed57fed00079dcfea"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-distribution-artifact-manifest-status-denial-route-gate.sh",
+      "relocated_path": "scripts/i3-67231907613b4f92a74ac01a.sh",
+      "original_path_sha256": "67231907613b4f92a74ac01a8e496a1d23eb65ee4127aeebee519b070691f850",
+      "original_content_sha256": "b25881c2a89ae0e46110ae33f0041260969a300de383d410b71fa3df8fa79194",
+      "mode": 448,
+      "relocated_content_sha256": "fa222cd68e1119d38a4b4c56fc7e17dfb6fd65fd0ca01180cba8d485f89c84ab"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial-gate.sh",
+      "relocated_path": "scripts/i3-8e57fd3253c2832bb2f909c4.sh",
+      "original_path_sha256": "8e57fd3253c2832bb2f909c4e4eac4f615a60a70468645dcf4b7e44e80994d50",
+      "original_content_sha256": "9cded25c234d3034abed1f8c11b7f0c5bd8a9e0532f308e84ed32ba3d38fe58c",
+      "mode": 448,
+      "relocated_content_sha256": "9cded25c234d3034abed1f8c11b7f0c5bd8a9e0532f308e84ed32ba3d38fe58c"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial-route-gate.sh",
+      "relocated_path": "scripts/i3-de5799b1fa31e4a503c20fb2.sh",
+      "original_path_sha256": "de5799b1fa31e4a503c20fb2a7c62ebb3b713ee6395d379e17124ec9b43e003b",
+      "original_content_sha256": "bb97c69b2ea6218826edac7bdec7ca14667a6e8c50474f3818b2a04dfbf1af2d",
+      "mode": 448,
+      "relocated_content_sha256": "a35f4754f13e20a6fca0ab992f80436d032029c2be778942525a650a54e66048"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-final-operator-acknowledgement-non-acceptance-denial-gate.sh",
+      "relocated_path": "scripts/i3-3122f3f1a9934a3985d1b843.sh",
+      "original_path_sha256": "3122f3f1a9934a3985d1b8435f609db9d8518117b72bc84042baf21844e7f115",
+      "original_content_sha256": "0c6cec397df3c556888b03df4d65565c20d201278b58b34eec5e11505877bd97",
+      "mode": 448,
+      "relocated_content_sha256": "c2dec8d3f585b4f73d8ebb5dd764f4ea27ef10a064706ebd06c73c0ea9926369"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-operator-briefing-non-persistence-denial-gate.sh",
+      "relocated_path": "scripts/i3-9bf89e5480c033d54fbb7109.sh",
+      "original_path_sha256": "9bf89e5480c033d54fbb7109e27cad8741d95e82aadb897335782a8251c16184",
+      "original_content_sha256": "050712f0e07a8ca5c8fb2d1519ed4c0bc721d60e3414a00a9bd284f674eaeb86",
+      "mode": 448,
+      "relocated_content_sha256": "050712f0e07a8ca5c8fb2d1519ed4c0bc721d60e3414a00a9bd284f674eaeb86"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-package-release-channel-status-exposure-denial-gate.sh",
+      "relocated_path": "scripts/i3-a0ce89e5df38b1e856f25abc.sh",
+      "original_path_sha256": "a0ce89e5df38b1e856f25abc5878000d78f6430da27409d59e3d7aab8cf0bb03",
+      "original_content_sha256": "c39dad2bd09d9cc329f6bcebdf82ae9c56d921e1aa504d7fc580b0cc09200abf",
+      "mode": 448,
+      "relocated_content_sha256": "986d76ee9cda426ef0361b7a6f9b6af4aee66119ba11a00a8cf7b3b01982f85e"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-package-release-channel-status-exposure-denial-route-gate.sh",
+      "relocated_path": "scripts/i3-4fcc2b6821abea109c73da5a.sh",
+      "original_path_sha256": "4fcc2b6821abea109c73da5a6c44e537b7431588263ac9888050ca4fcc23f9d0",
+      "original_content_sha256": "cf41763cf51129e8deacecaf6ed98ed31cae6eeed8a94c2629e962ea8e9ef1f3",
+      "mode": 448,
+      "relocated_content_sha256": "a6053e7f2a3d7ef9cee1759c5146bbbeafc0ea3045432c49101cca5c8171ed21"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-terminal-decision-status-promotion-denial-gate.sh",
+      "relocated_path": "scripts/i3-aef1d246e635bd6d22c22d02.sh",
+      "original_path_sha256": "aef1d246e635bd6d22c22d02d3aa93b0028ad01eded6027684f29d367251b1b4",
+      "original_content_sha256": "11864e1a071ed04e349b98f9e6d73a290168b7c3838c65ea0574f1786409b219",
+      "mode": 448,
+      "relocated_content_sha256": "3a853d04972725094321af815b2e936d6e3a30a4b5271ffd98044b25bb57b531"
+    },
+    {
+      "original_path": "scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-terminal-public-claim-status-exposure-denial-gate.sh",
+      "relocated_path": "scripts/i3-0b6a59611eb24a025779ad44.sh",
+      "original_path_sha256": "0b6a59611eb24a025779ad446745feb117d2c3aeff244e1bbe7496e1b769f828",
+      "original_content_sha256": "ef89de349f4dc030bc2a40477db3797283dfb7c85949713cd7b5838d996e1d03",
+      "mode": 448,
+      "relocated_content_sha256": "aec452b6fe995716459630565c53a5d60705c86e2e4d9a8eb9ebf73e0df13973"
+    }
+  ],
+  "reversible_unpack": true
+}

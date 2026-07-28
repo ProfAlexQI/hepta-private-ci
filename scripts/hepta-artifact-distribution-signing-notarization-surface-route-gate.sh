@@ -49,7 +49,7 @@ ARTIFACT_DISTRIBUTION_SIGNING_NOTARIZATION_JSON="$(
     "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial-gate" \
     env HEPTA_LIVE_URL="$BASE_URL" \
       HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
-      scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-artifact-distribution-signing-notarization-surface-denial-gate.sh
+      scripts/i3-107975edf2e81655b17c8989.sh
 )"
 
 jq -e '

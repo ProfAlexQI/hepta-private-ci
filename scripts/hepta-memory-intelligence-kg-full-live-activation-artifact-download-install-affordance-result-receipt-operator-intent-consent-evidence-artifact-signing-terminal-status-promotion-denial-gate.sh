@@ -22,7 +22,7 @@ FINAL_ACKNOWLEDGEMENT_JSON="$(
   HEPTA_LIVE_URL="$BASE_URL" \
     HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
     capture_json_report "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-final-ack-denial-gate" \
-    scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-final-ack-denial-gate.sh
+    scripts/i3-70337a51ae9ff9614b36dc0a.sh
 )"
 
 source_final_acknowledgement_report_sha256="$(sha256_text "$FINAL_ACKNOWLEDGEMENT_JSON")"

@@ -1,0 +1,66 @@
+{
+  "schema": "hepta_i3_topology_compaction_v1",
+  "status": "ready",
+  "work_graph": {
+    "baseline_physical_file_count": 712,
+    "physical_file_count": 1,
+    "physical_file_cap": 199,
+    "bundled_module_count": 711,
+    "effective_source_lines": 405593,
+    "effective_source_line_cap": 417761,
+    "aggregate_source_sha256": "e0fd95b1d8d3515065e086b289331a4918c1fe92467bbbdd29efdfe050a97f9c",
+    "bundle_sha256": "92e786118408b36ea9f0843a37efc5f20ba45961a70c7ed541f614bc3284489e",
+    "build_time_generation": true,
+    "reversible_unpack": true
+  },
+  "gate_pair_compatibility": {
+    "payload_count": 2512,
+    "payload_source_bytes": 23422350,
+    "payload_bundle_sha256": "7b82642eb5311373b0c37b7e15ee42575dfb3d9e1454e818a6977220360c5faf",
+    "exact_legacy_blob_archive_sha256": "0e099415e1568f75d6563f125057e8ae689cbddce40e8a3f05e30a13209ca5bc",
+    "exact_legacy_blob_archive_bytes": 4710440,
+    "pair_count": 1282,
+    "original_entrypoint_count": 2564,
+    "physical_entrypoint_count": 165,
+    "physical_entrypoint_cap": 299,
+    "virtual_entrypoint_count": 2399,
+    "reversible_unpack": true
+  },
+  "long_paths": {
+    "audit_baseline_count": 496,
+    "prepack_materialized_count": 119,
+    "postpack_materialized_count": 0,
+    "max_tracked_path_bytes": 240,
+    "relocation_count": 119,
+    "logical_path_resolution_preserved": true,
+    "reversible_unpack": true
+  },
+  "giant_module_split": {
+    "module": "codex-rs/hepta-kernel/src/lib.rs",
+    "baseline_lines": 11568,
+    "library_lines": 7189,
+    "test_module": "codex-rs/hepta-kernel/src/tests.rs",
+    "test_module_lines": 4341,
+    "test_count": 92
+  },
+  "real_budgets": {
+    "runtime_effective_lines": 611645,
+    "runtime_effective_line_cap": 629992,
+    "owned_rust_effective_lines": 1109165,
+    "owned_rust_effective_line_cap": 1142319,
+    "complete_first_party_rust_effective_lines": 1127355,
+    "complete_first_party_rust_effective_line_cap": 1161055,
+    "scripts_lines": 431391,
+    "scripts_line_cap": 443991,
+    "maintenance_headroom_percent": 3,
+    "generated_source_counted": true
+  },
+  "compatibility": {
+    "gate_pair_spec_sha256": "d2632b0d2d72b68a9515eea0c1523bc01b95ee61f76b51f92ea35e8c6d24a6e4",
+    "legacy_symbol_json_hash_and_golden_compatibility_preserved": true,
+    "native_gate_runner_tests_passed": 26,
+    "kernel_tests_passed": 118,
+    "controlled_live_propagation_self_test": true,
+    "architecture_budget_self_test": true
+  }
+}

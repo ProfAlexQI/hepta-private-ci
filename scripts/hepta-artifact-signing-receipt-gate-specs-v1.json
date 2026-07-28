@@ -22,15 +22,15 @@
       "id": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial",
       "gate_spec": {
         "method": "LOCAL",
-        "pattern": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
-        "source_command": "bash scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
+        "pattern": "scripts/i3-0ab8864aaedb1633ef2ca067.sh",
+        "source_command": "bash scripts/i3-0ab8864aaedb1633ef2ca067.sh",
         "capability": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial",
         "side_effect_boundary": "local read-only report-only artifact distribution signing/notarization receipt replay/idempotency denial gate; captures its no-state predecessor while never replaying, deduplicating, storing idempotency state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, notarizing, installing, or restarting",
         "receipt_state": "receipt"
       },
       "source": {
         "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-no-persistence-denial",
-        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-receipt-no-persistence-denial-gate.sh",
+        "script": "scripts/i3-782cbc8f3b263f056584870b.sh",
         "expected_gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_result_receipt_no_persistence_denial_gate",
         "ready_field": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_result_receipt_no_persistence_denial_ready",
         "report_hash_field": "source_artifact_distribution_signing_notarization_result_receipt_report_sha256",
@@ -1628,15 +1628,15 @@
       "id": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial",
       "gate_spec": {
         "method": "LOCAL",
-        "pattern": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
-        "source_command": "bash scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
+        "pattern": "scripts/i3-69e99f4efb35ecb295ceb839.sh",
+        "source_command": "bash scripts/i3-69e99f4efb35ecb295ceb839.sh",
         "capability": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial",
         "side_effect_boundary": "local read-only report-only artifact distribution signing/notarization receipt ordering/monotonicity denial gate; captures its replay/idempotency predecessor while never recording sequence or monotonicity state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, notarizing, installing, or restarting",
         "receipt_state": "receipt"
       },
       "source": {
         "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial",
-        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-replay-idempotency-denial-gate.sh",
+        "script": "scripts/i3-0ab8864aaedb1633ef2ca067.sh",
         "expected_gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_replay_idempotency_denial_gate",
         "ready_field": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_replay_idempotency_denial_ready",
         "report_hash_field": "source_artifact_distribution_signing_notarization_receipt_replay_idempotency_report_sha256",
@@ -3145,15 +3145,15 @@
       "id": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial",
       "gate_spec": {
         "method": "LOCAL",
-        "pattern": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
-        "source_command": "bash scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial-gate.sh",
+        "pattern": "scripts/i3-71bd59c6d099c54edc1a3553.sh",
+        "source_command": "bash scripts/i3-71bd59c6d099c54edc1a3553.sh",
         "capability": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-cancel-supersession-denial",
         "side_effect_boundary": "local read-only report-only artifact distribution signing/notarization receipt cancellation/supersession denial gate; captures its ordering/monotonicity predecessor while never recording cancellation, replacement, tombstone, or supersession state, mutating runtime, invoking providers/models, writing Memory/KG, reading secrets, sending channels, publishing, signing, notarizing, installing, or restarting",
         "receipt_state": "receipt"
       },
       "source": {
         "capture_label": "hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial",
-        "script": "scripts/hepta-memory-intelligence-kg-full-live-activation-artifact-download-install-affordance-result-receipt-operator-identity-session-revocation-logout-replay-reinstatement-operator-intent-consent-evidence-artifact-signing-ordering-monotonicity-denial-gate.sh",
+        "script": "scripts/i3-69e99f4efb35ecb295ceb839.sh",
         "expected_gate": "hepta_memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denial_gate",
         "ready_field": "memory_intelligence_kg_full_live_activation_operator_readiness_packet_template_packet_acceptance_receipt_release_publication_result_receipt_terminal_distribution_delivery_receipt_artifact_download_install_affordance_result_receipt_operator_identity_session_revocation_logout_replay_reinstatement_operator_intent_consent_evidence_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_denial_ready",
         "report_hash_field": "source_artifact_distribution_signing_notarization_receipt_ordering_monotonicity_report_sha256",

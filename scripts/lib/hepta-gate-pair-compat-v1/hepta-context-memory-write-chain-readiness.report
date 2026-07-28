@@ -1,2 +1,0 @@
-#!/usr/bin/env bash
-exec "${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}/scripts/hepta-gate-pair-compat-exec" "$0" "$@" # hepta_gate_pair_gzip_base64_v1:H4sIAAAAAAAAA6WUsVLFIBBF+3xFHItXYbSxeim19Rs2sAZGYJHdJObvJY6OM1YBO+DuuRd2gNubYeE8TC4OGNd+ArYdo/QKF+qTS/gKznedBumv18vTy/Ol0xQFP0QFDJR3tWUnqLQFF1VGMC4i85iA+VTlXYLdExjl3WylgmNtMcD4cK46QkBOoItCS5Tx8WSIwIxl/r64jKaFPQ5Ux6VMiRi/1WN9rzQg7/SuIBWnFXyLBSXMIJT/ZcIWDG1qa6OP0QT6rYXVEKGILankfWtq6ZRZtDiKPwVf9P05es6QbAv4N3Y0jmHyaKpzK0lLUq63tMFl1yGJKq8Dw+T3Q49zrUkubXIBFZTjr3C04Neg/FXdJ+ymL7DeBAAA

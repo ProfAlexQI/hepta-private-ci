@@ -21,7 +21,7 @@ CLOSURE_JSON="$(
   HEPTA_LIVE_URL="$BASE_URL" \
     HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
     capture_json_report "hepta-readiness-denial-review-acceptance-closure-gate" \
-    scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-receipt-review-acceptance-scoreboard-review-acceptance-readiness-denial-review-acceptance-closure-gate.sh
+    scripts/i3-e08c8c0b4e1b74cb4ad1d7b3.sh
 )"
 
 closure_report_sha256="$(printf '%s' "$CLOSURE_JSON" | shasum -a 256 | awk '{print $1}')"

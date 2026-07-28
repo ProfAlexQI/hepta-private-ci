@@ -22,7 +22,7 @@ TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_JSON="$(
   HEPTA_LIVE_URL="$BASE_URL" \
     HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
     capture_json_report "hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial-gate" \
-    scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-distribution-delivery-receipt-external-delivery-non-persistence-denial-gate.sh
+    scripts/i3-8e57fd3253c2832bb2f909c4.sh
 )"
 
 terminal_distribution_delivery_receipt_report_sha256="$(sha256_text "$TERMINAL_DISTRIBUTION_DELIVERY_RECEIPT_JSON")"

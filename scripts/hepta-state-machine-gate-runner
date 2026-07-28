@@ -80,13 +80,17 @@ jq -e \
     and (.specs | all(
       (.id | test("^[a-z0-9-]+$"))
       and .gate_spec.method == "LOCAL"
-      and .gate_spec.pattern == ("scripts/" + .id + "-gate.sh")
-      and .gate_spec.source_command == ("bash scripts/" + .id + "-gate.sh")
+      and (
+        . as $spec
+        | $spec.gate_spec.pattern == ("scripts/" + $spec.id + "-gate.sh")
+          or ($spec.gate_spec.pattern | test("^scripts/i3-[0-9a-f]{24}\\.sh$"))
+      )
+      and .gate_spec.source_command == ("bash " + .gate_spec.pattern)
       and .gate_spec.capability == .id
       and .gate_spec.receipt_state == "receipt"
       and (.gate_spec.side_effect_boundary | contains("read-only"))
       and (.source.capture_label | length > 0)
-      and (.source.script | test("^scripts/[a-z0-9-]+-gate\\.sh$"))
+      and (.source.script | test("^scripts/([a-z0-9-]+-gate|i3-[0-9a-f]{24})\\.sh$"))
       and (.source.expected_gate | length > 0)
       and (.source.ready_field | length > 0)
       and (.source.report_hash_field | endswith("sha256"))
@@ -109,6 +113,33 @@ jq -e \
       and (.pass_message | length > 0)
     ))
   ' "$spec_file" >/dev/null
+
+while IFS=$'\t' read -r spec_id gate_pattern; do
+  logical_gate="scripts/${spec_id}-gate.sh"
+  if [[ "$gate_pattern" == scripts/i3-*.sh ]]; then
+    jq -e \
+      --arg logical_gate "$logical_gate" \
+      --arg gate_pattern "$gate_pattern" '
+        [.entries[] | select(
+          .original_path == $logical_gate and .relocated_path == $gate_pattern
+        )] | length == 1
+      ' "$ROOT/scripts/lib/hepta-long-path-v1/registry.json" >/dev/null
+  else
+    [[ "$gate_pattern" == "$logical_gate" ]]
+  fi
+done < <(jq -r '.specs[] | [.id, .gate_spec.pattern] | @tsv' "$spec_file")
+
+while IFS= read -r source_script; do
+  [[ -f "$ROOT/$source_script" ]] || {
+    echo "missing Hepta state-machine source script: $ROOT/$source_script" >&2
+    exit 1
+  }
+  if [[ "$source_script" == scripts/i3-*.sh ]]; then
+    jq -e --arg source_script "$source_script" '
+      [.entries[] | select(.relocated_path == $source_script)] | length == 1
+    ' "$ROOT/scripts/lib/hepta-long-path-v1/registry.json" >/dev/null
+  fi
+done < <(jq -r '.specs[].source.script' "$spec_file")
 
 if [[ "$command" == "--validate" ]]; then
   jq -cn \

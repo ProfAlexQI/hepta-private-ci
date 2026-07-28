@@ -1,0 +1,155 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "set"
+
+ROOT = File.expand_path("..", __dir__)
+SCRIPTS_ROOT = File.join(ROOT, "scripts")
+SPEC_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-specs-v1.json")
+REGISTRY_PATH = File.join(SCRIPTS_ROOT, "hepta-gate-pair-entrypoints-v2.json")
+SCHEMA = "hepta_gate_pair_entrypoints_v2"
+MAX_RETAINED_ENTRYPOINTS = 299
+MAX_TRACKED_PATH_BYTES = 240
+
+def usage
+  warn "usage: scripts/hepta-gate-pair-entrypoint-prune [pack|verify|unpack]"
+  exit 2
+end
+
+def spec
+  @spec ||= JSON.parse(File.binread(SPEC_PATH))
+end
+
+def pair_entrypoints
+  spec.fetch("pairs").flat_map do |pair|
+    [
+      ["scripts/#{pair.fetch("id")}-gate.sh", "gate", pair.fetch("id")],
+      [pair.fetch("report_path"), "report", pair.fetch("id")]
+    ]
+  end.sort
+end
+
+def wrapper_body(kind, id)
+  <<~SH
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+    exec "$ROOT/scripts/hepta-gate-pair-runner" #{kind} "#{id}"
+  SH
+end
+
+def atomic_write(path, content, mode = nil)
+  staging = "#{path}.#{$$}.tmp"
+  File.binwrite(staging, content)
+  File.chmod(mode, staging) if mode
+  File.rename(staging, path)
+end
+
+def scan_references(entrypoint_paths)
+  path_set = entrypoint_paths.to_set
+  referenced = Set.new
+  excluded_prefixes = [
+    File.join(ROOT, ".git/"),
+    File.join(ROOT, "docs/"),
+    File.join(ROOT, "codex-rs/target/"),
+    File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v1/"),
+    File.join(ROOT, "scripts/lib/hepta-gate-pair-compat-v2/")
+  ]
+  Dir.glob(File.join(ROOT, "**/*"), File::FNM_DOTMATCH).sort.each do |path|
+    next unless File.file?(path)
+    next if excluded_prefixes.any? { |prefix| path.start_with?(prefix) }
+    relative = path.delete_prefix("#{ROOT}/")
+    next if path_set.include?(relative) || relative == "scripts/hepta-gate-pair-specs-v1.json"
+    next if File.size(path) > 20 * 1024 * 1024
+    source = File.binread(path)
+    next unless source.valid_encoding?
+    source.scan(%r{scripts/[a-z0-9-]+-(?:gate|report)\.sh}) do |candidate|
+      referenced << candidate if path_set.include?(candidate)
+    end
+  end
+  referenced
+end
+
+def pack
+  entries = pair_entrypoints
+  entrypoint_paths = entries.map(&:first)
+  referenced = scan_references(entrypoint_paths)
+  template_retained_ids = spec.fetch("pairs").each_with_object(Set.new) do |pair, retained_ids|
+    retained_ids << pair.fetch("id") unless pair.fetch("template") == "captured_shell_compat_v1"
+  end
+  retained = entries.select do |path, _kind, id|
+    path.bytesize <= MAX_TRACKED_PATH_BYTES &&
+      (referenced.include?(path) || template_retained_ids.include?(id))
+  end
+  raise "retained gate-pair entrypoint budget exceeded: #{retained.length}" if retained.length > MAX_RETAINED_ENTRYPOINTS
+  retained_paths = retained.map(&:first).to_set
+  virtual = entries.reject { |path, _kind, _id| retained_paths.include?(path) }
+  registry = {
+    schema: SCHEMA,
+    status: "pruned",
+    source_registry_sha256: Digest::SHA256.file(SPEC_PATH).hexdigest,
+    pair_count: spec.fetch("pairs").length,
+    original_entrypoint_count: entries.length,
+    retained_entrypoint_count: retained.length,
+    virtual_entrypoint_count: virtual.length,
+    virtual_long_path_count: virtual.count { |path, _kind, _id| path.bytesize > MAX_TRACKED_PATH_BYTES },
+    max_retained_entrypoints: MAX_RETAINED_ENTRYPOINTS,
+    max_tracked_path_bytes: MAX_TRACKED_PATH_BYTES,
+    launcher: "scripts/hepta-gate-pair-launch",
+    retained_paths: retained.map(&:first),
+    virtual_paths_sha256: Digest::SHA256.hexdigest(virtual.map(&:first).join("\n") + "\n"),
+    reversible_unpack: true
+  }
+  atomic_write(REGISTRY_PATH, JSON.pretty_generate(registry) + "\n", 0o644)
+  virtual.each { |path, _kind, _id| FileUtils.rm_f(File.join(ROOT, path)) }
+  verify
+end
+
+def verify
+  registry = JSON.parse(File.binread(REGISTRY_PATH))
+  raise "invalid gate-pair entrypoint registry schema" unless registry["schema"] == SCHEMA
+  raise "gate-pair source registry SHA drifted" unless registry["source_registry_sha256"] == Digest::SHA256.file(SPEC_PATH).hexdigest
+  entries = pair_entrypoints
+  retained_paths = registry.fetch("retained_paths").to_set
+  raise "retained gate-pair entrypoint budget exceeded" if retained_paths.length > MAX_RETAINED_ENTRYPOINTS
+  raise "retained gate-pair entrypoint count drifted" unless registry["retained_entrypoint_count"] == retained_paths.length
+  raise "gate-pair entrypoint total drifted" unless registry["original_entrypoint_count"] == entries.length
+  virtual_paths = entries.map(&:first).reject { |path| retained_paths.include?(path) }
+  raise "virtual gate-pair entrypoint count drifted" unless registry["virtual_entrypoint_count"] == virtual_paths.length
+  raise "virtual gate-pair path digest drifted" unless registry["virtual_paths_sha256"] == Digest::SHA256.hexdigest(virtual_paths.join("\n") + "\n")
+  entries.each do |relative, kind, id|
+    path = File.join(ROOT, relative)
+    if retained_paths.include?(relative)
+      raise "retained gate-pair path is too long: #{relative}" if relative.bytesize > MAX_TRACKED_PATH_BYTES
+      raise "missing retained gate-pair entrypoint: #{relative}" unless File.file?(path)
+      raise "retained gate-pair entrypoint drifted: #{relative}" unless File.binread(path) == wrapper_body(kind, id)
+      raise "retained gate-pair entrypoint is not executable: #{relative}" unless File.executable?(path)
+    elsif File.exist?(path)
+      raise "virtual gate-pair entrypoint was materialized: #{relative}"
+    end
+  end
+  puts "hepta-gate-pair-entrypoint-prune: PASS: #{retained_paths.length} retained, #{virtual_paths.length} virtual"
+end
+
+def unpack
+  pair_entrypoints.each do |relative, kind, id|
+    path = File.join(ROOT, relative)
+    FileUtils.mkdir_p(File.dirname(path))
+    atomic_write(path, wrapper_body(kind, id), 0o755)
+  end
+  puts "hepta-gate-pair-entrypoint-prune: unpacked #{pair_entrypoints.length} entrypoints"
+end
+
+if ARGV == ["pack"]
+  pack
+elsif ARGV == ["verify"]
+  verify
+elsif ARGV == ["unpack"]
+  unpack
+else
+  usage
+end

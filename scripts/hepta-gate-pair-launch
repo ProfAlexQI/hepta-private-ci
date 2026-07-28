@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+[[ $# == 2 && ( "$1" == "gate" || "$1" == "report" ) && "$2" =~ ^[a-z0-9-]+$ ]] || {
+  echo "usage: scripts/hepta-gate-pair-launch <gate|report> <id>" >&2
+  exit 2
+}
+exec "$ROOT/scripts/hepta-gate-pair-runner" "$1" "$2"

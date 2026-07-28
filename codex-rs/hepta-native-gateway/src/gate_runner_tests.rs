@@ -1666,6 +1666,8 @@ fn parameterized_artifact_signing_receipt_fixtures_match_canonical_gate_specs() 
         .as_array()
         .expect("parameterized artifact-signing receipt family");
     assert_eq!(fixtures.len(), ARTIFACT_SIGNING_RECEIPT_GATE_SPECS.len());
+    let archive = GatePairArchive::load(repo_root(), SHELL_GATE_PAIR_SPECS_JSON.as_bytes())
+        .expect("gate-pair archive");
 
     for fixture in fixtures {
         let id = fixture["id"]
@@ -1692,7 +1694,11 @@ fn parameterized_artifact_signing_receipt_fixtures_match_canonical_gate_specs() 
                 .map(super::super::gate_spec::ReceiptState::as_str)
         );
 
-        let wrapper_path = repo_root().join(format!("scripts/{id}-gate.sh"));
+        let logical_wrapper_path = format!("scripts/{id}-gate.sh");
+        let wrapper_path = archive
+            .long_path_entry(&logical_wrapper_path)
+            .map(|entry| repo_root().join(entry.relocated_path()))
+            .unwrap_or_else(|| repo_root().join(&logical_wrapper_path));
         let wrapper = fs::read_to_string(&wrapper_path)
             .with_context(|| format!("failed to read {}", wrapper_path.display()))
             .expect("parameterized artifact-signing receipt wrapper");

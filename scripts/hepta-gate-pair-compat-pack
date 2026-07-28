@@ -2,177 +2,29 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
-EXECUTOR="$ROOT/scripts/hepta-gate-pair-compat-exec"
-MARKER="# hepta_gate_pair_gzip_base64_v1:"
+PAYLOAD_TOOL="$ROOT/scripts/hepta-gate-pair-payload-bundle"
+ENTRYPOINT_TOOL="$ROOT/scripts/hepta-gate-pair-entrypoint-prune"
 
 usage() {
   printf '%s\n' 'usage: scripts/hepta-gate-pair-compat-pack [pack|verify|unpack]' >&2
   exit 2
 }
 
-decode_to() {
-  "$EXECUTOR" --decode-to "$2" "$1"
-}
-
-atomic_publish() {
-  local source="$1"
-  local destination="$2"
-  local staging
-  staging="$(mktemp "$(dirname "$destination")/.hepta-pair-publish.XXXXXX")"
-  if ! install -m 0755 "$source" "$staging"; then
-    rm -f "$staging"
-    return 1
-  fi
-  if ! mv -f "$staging" "$destination"; then
-    rm -f "$staging"
-    return 1
-  fi
-}
-
-pack_artifact() {
-  local relative="$1"
-  local expected_sha="$2"
-  local artifact="$ROOT/$relative"
-  local plaintext
-  local envelope
-  local payload
-  local actual_sha
-
-  plaintext="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-plain.XXXXXX")"
-  envelope="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-envelope.XXXXXX")"
-  if sed -n '2p' "$artifact" | grep -Fq "$MARKER"; then
-    decode_to "$artifact" "$plaintext"
-  else
-    cp "$artifact" "$plaintext"
-  fi
-  actual_sha="$(shasum -a 256 "$plaintext" | awk '{print $1}')"
-  [[ "$actual_sha" == "$expected_sha" ]] || {
-    printf 'refusing to pack compatibility artifact with unexpected SHA-256: %s\n' "$relative" >&2
-    rm -f "$plaintext" "$envelope"
-    return 1
-  }
-  payload="$(gzip -n -c "$plaintext" | base64 | tr -d '\r\n')"
-  {
-    printf '%s\n' '#!/usr/bin/env bash'
-    printf '%s%s\n' \
-      'exec "${HEPTA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}/scripts/hepta-gate-pair-compat-exec" "$0" "$@" ' \
-      "$MARKER$payload"
-  } >"$envelope"
-  atomic_publish "$envelope" "$artifact"
-  rm -f "$plaintext" "$envelope"
-}
-
-wrapper_body() {
-  local kind="$1"
-  local id="$2"
-  printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'set -euo pipefail' \
-    '' \
-    'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"' \
-    "exec \"\$ROOT/scripts/hepta-gate-pair-runner\" $kind \"$id\""
-}
-
-publish_wrapper() {
-  local relative="$1"
-  local kind="$2"
-  local id="$3"
-  local wrapper="$ROOT/$relative"
-  local body
-  body="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-wrapper.XXXXXX")"
-  wrapper_body "$kind" "$id" >"$body"
-  atomic_publish "$body" "$wrapper"
-  rm -f "$body"
-}
-
-pack_all() {
-  while IFS='|' read -r id gate_path gate_sha report_path report_sha wrapper_report; do
-    if [[ "$gate_path" == scripts/lib/hepta-gate-pair-compat-v1/*.gate ]]; then
-      pack_artifact "$gate_path" "$gate_sha"
-    fi
-    if [[ "$report_path" == scripts/lib/hepta-gate-pair-compat-v1/*.report ]]; then
-      pack_artifact "$report_path" "$report_sha"
-    fi
-    publish_wrapper "scripts/${id}-gate.sh" gate "$id"
-    publish_wrapper "$wrapper_report" report "$id"
-  done < <(
-    jq -r '
-      .pairs[]
-      | [
-          .id,
-          .gate_implementation,
-          .gate_implementation_sha256,
-          .report_implementation,
-          .report_implementation_sha256,
-          .report_path
-        ]
-      | join("|")
-    ' "$SPEC_FILE"
-  )
-}
-
-verify_all() {
-  local count=0
-  local plaintext
-  local expected_gate_wrapper
-  local expected_report_wrapper
-  plaintext="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-verify.XXXXXX")"
-  expected_gate_wrapper="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-gate-wrapper-verify.XXXXXX")"
-  expected_report_wrapper="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-report-wrapper-verify.XXXXXX")"
-  while IFS='|' read -r id gate_path report_path wrapper_report; do
-    if [[ "$gate_path" == scripts/lib/hepta-gate-pair-compat-v1/*.gate ]]; then
-      decode_to "$ROOT/$gate_path" "$plaintext"
-    fi
-    if [[ "$report_path" == scripts/lib/hepta-gate-pair-compat-v1/*.report ]]; then
-      decode_to "$ROOT/$report_path" "$plaintext"
-    fi
-    wrapper_body gate "$id" >"$expected_gate_wrapper"
-    wrapper_body report "$id" >"$expected_report_wrapper"
-    cmp -s "$expected_gate_wrapper" "$ROOT/scripts/${id}-gate.sh" || {
-      printf 'generated gate wrapper drifted: scripts/%s-gate.sh\n' "$id" >&2
-      return 1
-    }
-    cmp -s "$expected_report_wrapper" "$ROOT/$wrapper_report" || {
-      printf 'generated report wrapper drifted: %s\n' "$wrapper_report" >&2
-      return 1
-    }
-    [[ -x "$ROOT/scripts/${id}-gate.sh" && -x "$ROOT/$wrapper_report" ]] || {
-      printf 'generated gate-pair wrapper is not executable: %s\n' "$id" >&2
-      return 1
-    }
-    count=$((count + 1))
-  done < <(
-    jq -r '.pairs[] | [.id, .gate_implementation, .report_implementation, .report_path] | join("|")' \
-      "$SPEC_FILE"
-  )
-  rm -f "$plaintext" "$expected_gate_wrapper" "$expected_report_wrapper"
-  [[ "$count" == "$(jq '.pairs | length' "$SPEC_FILE")" ]]
-  printf 'hepta-gate-pair-compat-pack: PASS: %d generated pairs verified\n' "$count"
-}
-
-unpack_all() {
-  local plaintext
-  while IFS='|' read -r id gate_path report_path wrapper_report; do
-    for relative in "$gate_path" "$report_path"; do
-      [[ "$relative" == scripts/lib/hepta-gate-pair-compat-v1/* ]] || continue
-      plaintext="$(mktemp "${TMPDIR:-/tmp}/hepta-gate-pair-unpack.XXXXXX")"
-      decode_to "$ROOT/$relative" "$plaintext"
-      atomic_publish "$plaintext" "$ROOT/$relative"
-      rm -f "$plaintext"
-    done
-    publish_wrapper "scripts/${id}-gate.sh" gate "$id"
-    publish_wrapper "$wrapper_report" report "$id"
-  done < <(
-    jq -r '.pairs[] | [.id, .gate_implementation, .report_implementation, .report_path] | join("|")' \
-      "$SPEC_FILE"
-  )
-}
-
 [[ $# == 1 ]] || usage
 case "$1" in
-  pack) pack_all ;;
-  verify) verify_all ;;
-  unpack) unpack_all ;;
-  *) usage ;;
+  pack)
+    "$PAYLOAD_TOOL" pack
+    "$ENTRYPOINT_TOOL" pack
+    ;;
+  verify)
+    "$PAYLOAD_TOOL" verify
+    "$ENTRYPOINT_TOOL" verify
+    ;;
+  unpack)
+    "$PAYLOAD_TOOL" unpack
+    "$ENTRYPOINT_TOOL" unpack
+    ;;
+  *)
+    usage
+    ;;
 esac

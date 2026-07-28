@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SPEC_FILE="$ROOT/scripts/hepta-gate-pair-specs-v1.json"
+BUNDLE_TOOL="$ROOT/scripts/hepta-gate-pair-payload-bundle"
 MARKER="# hepta_gate_pair_gzip_base64_v1:"
 MAX_ARCHIVE_BYTES=$((4 * 1024 * 1024))
 
@@ -37,27 +38,6 @@ decode_to() {
   local expected_sha
   local actual_sha
 
-  [[ -f "$artifact" ]] || {
-    printf 'missing Hepta gate-pair compatibility artifact: %s\n' "$artifact" >&2
-    return 1
-  }
-  artifact_size="$(wc -c <"$artifact" | tr -d '[:space:]')"
-  (( artifact_size <= MAX_ARCHIVE_BYTES )) || {
-    printf 'Hepta gate-pair compatibility artifact exceeds byte limit: %s\n' "$artifact" >&2
-    return 1
-  }
-  line="$(sed -n '2p' "$artifact")"
-  [[ "$line" == *"$MARKER"* ]] || {
-    printf 'invalid Hepta gate-pair compatibility envelope: %s\n' "$artifact" >&2
-    return 1
-  }
-  payload="${line#*"$MARKER"}"
-  [[ -n "$payload" ]] || {
-    printf 'empty Hepta gate-pair compatibility payload: %s\n' "$artifact" >&2
-    return 1
-  }
-  decode_base64 "$payload" "$output"
-
   basename="${artifact##*/}"
   case "$basename" in
     *.gate)
@@ -72,6 +52,30 @@ decode_to() {
       ;;
   esac
   relative="${artifact#"$ROOT/"}"
+  if [[ -f "$artifact" ]]; then
+    artifact_size="$(wc -c <"$artifact" | tr -d '[:space:]')"
+    (( artifact_size <= MAX_ARCHIVE_BYTES )) || {
+      printf 'Hepta gate-pair compatibility artifact exceeds byte limit: %s\n' "$artifact" >&2
+      return 1
+    }
+    line="$(sed -n '2p' "$artifact")"
+    if [[ "$line" == *"$MARKER"* ]]; then
+      payload="${line#*"$MARKER"}"
+      [[ -n "$payload" ]] || {
+        printf 'empty Hepta gate-pair compatibility payload: %s\n' "$artifact" >&2
+        return 1
+      }
+      decode_base64 "$payload" "$output"
+    else
+      cp "$artifact" "$output"
+    fi
+  else
+    [[ -x "$BUNDLE_TOOL" ]] || {
+      printf 'missing Hepta gate-pair payload bundle tool: %s\n' "$BUNDLE_TOOL" >&2
+      return 1
+    }
+    "$BUNDLE_TOOL" --decode-to "$relative" "$output"
+  fi
   expected_sha="$(
     jq -er \
       --arg path "$relative" \

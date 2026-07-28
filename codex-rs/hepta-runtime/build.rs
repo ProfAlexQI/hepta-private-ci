@@ -1,101 +1,120 @@
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
+use std::io::Cursor;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
-const SCHEMA: &str = "hepta_workgraph_codegen_v1";
-const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v1";
+use flate2::read::GzDecoder;
+use sha2::Digest;
+use sha2::Sha256;
+
+const SCHEMA: &str = "hepta_workgraph_module_bundle_v2";
+const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v2";
+const BUNDLE_FILE: &str = "modules.bundle.gz";
+const EXPECTED_MODULE_COUNT: usize = 711;
 
 fn main() {
     println!("cargo:rerun-if-changed={CODEGEN_DIRECTORY}");
     let output_root = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is required"))
-        .join("hepta_workgraph_codegen");
-    fs::create_dir_all(&output_root).expect("create WorkGraph codegen output directory");
-    let mut manifests = fs::read_dir(CODEGEN_DIRECTORY)
-        .expect("read WorkGraph codegen directory")
-        .map(|entry| entry.expect("read WorkGraph codegen entry").path())
-        .filter(|path| path.extension().is_some_and(|extension| extension == "tsv"))
-        .filter(|path| path.file_name().is_some_and(|name| name != "registry.tsv"))
-        .collect::<Vec<_>>();
-    manifests.sort();
-    for manifest in manifests {
-        expand_manifest(&manifest, &output_root);
-    }
-}
-
-fn expand_manifest(manifest_path: &Path, output_root: &Path) {
-    let stem = manifest_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .expect("WorkGraph manifest must have a UTF-8 stem");
-    let template_path = manifest_path.with_file_name(format!("{stem}.tmpl"));
-    let template = fs::read_to_string(&template_path).expect("read WorkGraph template");
-    let manifest = fs::read_to_string(manifest_path).expect("read WorkGraph manifest");
-    let mut lines = manifest.lines();
+        .join("hepta_workgraph_bundle");
+    fs::create_dir_all(&output_root).expect("create WorkGraph bundle output directory");
+    let bundle_path = Path::new(CODEGEN_DIRECTORY).join(BUNDLE_FILE);
+    let compressed = fs::read(&bundle_path).expect("read WorkGraph module bundle");
+    let mut decoder = GzDecoder::new(compressed.as_slice());
+    let mut payload = Vec::new();
+    decoder
+        .read_to_end(&mut payload)
+        .expect("decode WorkGraph module bundle");
+    let modules = decode_bundle(&payload);
     assert_eq!(
-        lines.next(),
-        Some(SCHEMA),
-        "invalid WorkGraph manifest schema"
+        modules.len(),
+        EXPECTED_MODULE_COUNT,
+        "unexpected WorkGraph module count"
     );
-    for line in lines {
-        if line.is_empty() {
-            continue;
-        }
-        let fields = line.split('\t').collect::<Vec<_>>();
-        assert!(fields.len() >= 3, "invalid WorkGraph manifest row");
-        let module = fields[0];
-        let placeholder_count = fields[2]
-            .parse::<usize>()
-            .expect("parse WorkGraph placeholder count");
-        assert_eq!(
-            fields.len(),
-            placeholder_count + 3,
-            "WorkGraph replacement count mismatch for {module}"
-        );
-        let mut expanded = template.clone();
-        for (index, encoded) in fields[3..].iter().enumerate() {
-            let placeholder = format!("@@HEPTA_WORKGRAPH_TOKEN_{index:04}@@");
-            let replacement = decode_hex(encoded);
-            expanded = expanded.replace(&placeholder, &replacement);
-        }
+    let mut declarations = String::new();
+    for module in modules {
+        let source_path = output_root.join(format!("{}.rs", module.name));
+        fs::write(&source_path, module.source).expect("write generated WorkGraph module");
+        let escaped_path = source_path
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        writeln!(
+            &mut declarations,
+            "#[path = \"{escaped_path}\"]\nmod {};",
+            module.name
+        )
+        .expect("write generated WorkGraph declaration");
+    }
+    fs::write(output_root.join("modules.rs"), declarations)
+        .expect("write generated WorkGraph module declarations");
+}
+
+struct BundledModule<'a> {
+    name: &'a str,
+    source: &'a [u8],
+}
+
+fn decode_bundle(payload: &[u8]) -> Vec<BundledModule<'_>> {
+    let mut cursor = Cursor::new(payload);
+    let mut magic = vec![0; SCHEMA.len() + 1];
+    cursor
+        .read_exact(&mut magic)
+        .expect("read WorkGraph bundle magic");
+    assert_eq!(magic, format!("{SCHEMA}\0").as_bytes());
+    let module_count = read_u32(&mut cursor) as usize;
+    let mut modules = Vec::with_capacity(module_count);
+    for _ in 0..module_count {
+        let name_length = read_u32(&mut cursor) as usize;
+        let source_length = read_u32(&mut cursor) as usize;
+        let name_start = cursor.position() as usize;
+        let name_end = name_start
+            .checked_add(name_length)
+            .expect("WorkGraph name length overflow");
+        let digest_end = name_end
+            .checked_add(32)
+            .expect("WorkGraph digest length overflow");
+        let source_end = digest_end
+            .checked_add(source_length)
+            .expect("WorkGraph source length overflow");
+        assert!(source_end <= payload.len(), "truncated WorkGraph bundle");
+        let name = std::str::from_utf8(&payload[name_start..name_end])
+            .expect("WorkGraph module name must be UTF-8");
         assert!(
-            !expanded.contains("@@HEPTA_WORKGRAPH_TOKEN_"),
-            "unexpanded WorkGraph placeholder for {module}"
+            valid_module_name(name),
+            "invalid WorkGraph module name: {name}"
         );
-        let expanded = strip_leading_inner_attributes(&expanded);
-        fs::write(output_root.join(format!("{module}.rs")), expanded)
-            .expect("write generated WorkGraph module");
+        let expected_digest = &payload[name_end..digest_end];
+        let source = &payload[digest_end..source_end];
+        assert_eq!(
+            Sha256::digest(source).as_slice(),
+            expected_digest,
+            "WorkGraph module SHA mismatch: {name}"
+        );
+        cursor.set_position(source_end as u64);
+        modules.push(BundledModule { name, source });
     }
+    assert_eq!(
+        cursor.position() as usize,
+        payload.len(),
+        "trailing WorkGraph bundle bytes"
+    );
+    modules
 }
 
-fn strip_leading_inner_attributes(mut source: &str) -> &str {
-    while source.starts_with("#![") {
-        let Some(newline) = source.find('\n') else {
-            return "";
-        };
-        source = &source[newline + 1..];
-    }
-    source
+fn read_u32(cursor: &mut Cursor<&[u8]>) -> u32 {
+    let mut bytes = [0; 4];
+    cursor
+        .read_exact(&mut bytes)
+        .expect("read WorkGraph bundle integer");
+    u32::from_be_bytes(bytes)
 }
 
-fn decode_hex(encoded: &str) -> String {
-    assert!(encoded.len().is_multiple_of(2), "invalid WorkGraph hex");
-    let bytes = encoded
-        .as_bytes()
-        .chunks_exact(2)
-        .map(|pair| {
-            let high = hex_nibble(pair[0]);
-            let low = hex_nibble(pair[1]);
-            (high << 4) | low
-        })
-        .collect::<Vec<_>>();
-    String::from_utf8(bytes).expect("WorkGraph replacement must be UTF-8")
-}
-
-fn hex_nibble(value: u8) -> u8 {
-    match value {
-        b'0'..=b'9' => value - b'0',
-        b'a'..=b'f' => value - b'a' + 10,
-        _ => panic!("invalid WorkGraph hex digit"),
-    }
+fn valid_module_name(name: &str) -> bool {
+    (name.starts_with("wg_") || name.starts_with("work_graph_"))
+        && name
+            .bytes()
+            .all(|byte| byte == b'_' || byte.is_ascii_lowercase() || byte.is_ascii_digit())
 }

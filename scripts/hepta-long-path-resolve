@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REGISTRY="$ROOT/scripts/lib/hepta-long-path-v1/registry.json"
+
+[[ $# == 1 && "$1" != /* && "$1" != *".."* ]] || {
+  echo "usage: scripts/hepta-long-path-resolve <repo-relative-path>" >&2
+  exit 2
+}
+
+logical_path="$1"
+if [[ -f "$REGISTRY" ]]; then
+  relocated_path="$(
+    jq -er \
+      --arg logical_path "$logical_path" \
+      '[.entries[] | select(.original_path == $logical_path) | .relocated_path]
+       | if length == 0 then $logical_path
+         elif length == 1 then .[0]
+         else error("ambiguous long-path relocation")
+         end' \
+      "$REGISTRY"
+  )"
+else
+  relocated_path="$logical_path"
+fi
+
+[[ "$relocated_path" != /* && "$relocated_path" != *".."* ]] || {
+  echo "invalid Hepta long-path relocation result" >&2
+  exit 1
+}
+printf '%s\n' "$relocated_path"

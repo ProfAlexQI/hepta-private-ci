@@ -45,7 +45,7 @@ RESULT_RECEIPT_NO_PERSISTENCE_JSON="$(
     env HEPTA_LIVE_URL="$BASE_URL" \
       HEPTA_RELEASE_BIN="$RELEASE_BIN" \
       HEPTA_LIVE_MUTATION_MIN_SOAK_SAMPLES="$MIN_LONG_SOAK_SAMPLES" \
-      scripts/hepta-memory-intelligence-kg-full-live-activation-operator-readiness-packet-template-packet-acceptance-receipt-release-publication-result-receipt-terminal-delivery-receipt-artifact-download-install-affordance-result-receipt-no-persistence-denial-gate.sh
+      scripts/i3-0df2e0b068b5f70144fbdc8c.sh
 )"
 
 jq -e '

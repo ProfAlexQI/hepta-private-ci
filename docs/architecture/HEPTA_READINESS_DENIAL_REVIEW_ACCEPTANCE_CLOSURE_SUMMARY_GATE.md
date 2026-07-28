@@ -6,7 +6,7 @@ It does not create approval, activation, evidence, receipt, ledger, or filesyste
 
 ## Contract
 
-- Source gate: `scripts/hepta-live-mutation-pre-activation-soak-evidence-persistence-payload-redaction-acceptance-receipt-filesystem-persistence-ledger-persistence-rehearsal-receipt-review-acceptance-scoreboard-review-acceptance-readiness-denial-review-acceptance-closure-gate.sh`
+- Source gate: `scripts/i3-e08c8c0b4e1b74cb4ad1d7b3.sh`
 - Summary gate: `scripts/hepta-readiness-denial-review-acceptance-closure-summary-gate.sh`
 - Schema version: `readiness_denial_review_acceptance_closure_summary_v1`
 - Minimum inherited live-soak sample requirement: `24`

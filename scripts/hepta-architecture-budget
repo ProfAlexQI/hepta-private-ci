@@ -3,10 +3,54 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+resolve_budget_file() {
+  local logical_path="$1"
+  local relocated_path
+  local compatibility_root
+  if [[ -e "$logical_path" ]]; then
+    printf '%s\n' "$logical_path"
+    return
+  fi
+  relocated_path="$(scripts/hepta-long-path-resolve "$logical_path")"
+  if [[ -e "$relocated_path" ]]; then
+    printf '%s\n' "$relocated_path"
+    return
+  fi
+  compatibility_root="${HEPTA_COMPAT_OVERLAY_ROOT:-}"
+  if [[ -z "$compatibility_root" ]]; then
+    compatibility_root="$(scripts/hepta-gate-pair-payload-bundle materialize-overlay)"
+    export HEPTA_COMPAT_OVERLAY_ROOT="$compatibility_root"
+  fi
+  if [[ -e "$compatibility_root/$logical_path" ]]; then
+    printf '%s\n' "$compatibility_root/$logical_path"
+    return
+  fi
+  return 1
+}
+
+rg() {
+  local arguments=("$@")
+  local last_index=$((${#arguments[@]} - 1))
+  local candidate="${arguments[$last_index]}"
+  local resolved
+  if [[ "$candidate" != -* && ! -e "$candidate" ]]; then
+    resolved="$(resolve_budget_file "$candidate")" || {
+      command rg "$@"
+      return
+    }
+    arguments[$last_index]="$resolved"
+  fi
+  command rg "${arguments[@]}"
+}
+
 verify_file_max() {
   local file="$1"
   local max_lines="$2"
   local actual
+  file="$(resolve_budget_file "$file")" || {
+    echo "missing architecture budget file: $file" >&2
+    return 1
+  }
   actual="$(wc -l <"$file" | tr -d '[:space:]')"
   if (( actual > max_lines )); then
     echo "architecture line budget exceeded: ${file} has ${actual}, max ${max_lines}" >&2
@@ -31,13 +75,36 @@ maintainable_tree_line_counts() {
   find "$@" -type d -name target -prune -o -type f -name "$pattern" -exec wc -l {} +
 }
 
+maintainable_tree_line_total() {
+  local pattern="$1"
+  shift
+  maintainable_tree_line_counts "$pattern" "$@" \
+    | awk '$2 != "total" { total += $1 } END { print total + 0 }'
+}
+
+maintainable_tree_with_generated_line_total() {
+  local pattern="$1"
+  local generated_root="$2"
+  shift 2
+  {
+    maintainable_tree_line_counts "$pattern" "$@"
+    if [[ -f "$generated_root/registry.json" ]] \
+      && jq -e '.schema == "hepta_workgraph_module_bundle_v2"' \
+        "$generated_root/registry.json" >/dev/null 2>&1
+    then
+      jq -r '.source_lines' "$generated_root/registry.json"
+    else
+      find "$generated_root" -type f -exec wc -l {} +
+    fi
+  } | awk '$2 != "total" { total += $1 } END { print total + 0 }'
+}
+
 verify_tree_total_max() {
   local max_lines="$1"
   local pattern="$2"
   shift 2
   local total
-  total="$({ maintainable_tree_line_counts "$pattern" "$@"; } \
-    | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
+  total="$(maintainable_tree_line_total "$pattern" "$@")"
   if (( total > max_lines )); then
     echo "architecture tree line budget exceeded: ${total} > ${max_lines}: pattern=$pattern roots=$*" >&2
     return 1
@@ -50,10 +117,7 @@ verify_tree_with_generated_total_max() {
   local generated_root="$3"
   shift 3
   local total
-  total="$({
-    maintainable_tree_line_counts "$pattern" "$@"
-    find "$generated_root" -type f -exec wc -l {} +
-  } | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
+  total="$(maintainable_tree_with_generated_line_total "$pattern" "$generated_root" "$@")"
   if (( total > max_lines )); then
     echo "architecture maintainable-source line budget exceeded: ${total} > ${max_lines}: pattern=$pattern generated=$generated_root roots=$*" >&2
     return 1
@@ -68,6 +132,12 @@ verify() {
   local work_graph_generated_line_count
   local work_graph_line_count
   local work_graph_long_filename_count
+  local materialized_long_path_count
+  local single_exec_wrapper_count
+  local runtime_effective_line_count
+  local owned_rust_effective_line_count
+  local complete_rust_effective_line_count
+  local scripts_line_count
 
   source scripts/lib/hepta-source-set.sh
 
@@ -94,7 +164,11 @@ verify() {
     codex-rs/hepta-native-gateway/src/native_gateway/*.rs \
     codex-rs/hepta-native-gateway/src/native_gateway/*/*.rs
 
-  verify_file_max codex-rs/hepta-kernel/src/lib.rs 11600
+  verify_file_max codex-rs/hepta-kernel/src/lib.rs 7200
+  verify_file_max codex-rs/hepta-kernel/src/tests.rs 4400
+  verify_total_max 11600 \
+    codex-rs/hepta-kernel/src/lib.rs \
+    codex-rs/hepta-kernel/src/tests.rs
   verify_file_max codex-rs/hepta-kernel/src/telegram_config.rs 350
   verify_file_max codex-rs/hepta-kernel/src/telegram_cursor.rs 300
   verify_file_max codex-rs/hepta-kernel/src/telegram_cursor_tests.rs 300
@@ -193,11 +267,11 @@ verify() {
   verify_file_max apps/hepta-native/src/home/room_screen.rs 38000
   verify_file_max codex-rs/hepta-runtime/src/execution_admission.rs 360
   scripts/hepta-workgraph-codegen verify >/dev/null
-  verify_tree_with_generated_total_max 598490 '*.rs' \
-    codex-rs/hepta-runtime/codegen/workgraph-v1 \
+  verify_tree_with_generated_total_max 629992 '*.rs' \
+    codex-rs/hepta-runtime/codegen/workgraph-v2 \
     codex-rs/hepta-runtime/src
-  verify_tree_with_generated_total_max 1075342 '*.rs' \
-    codex-rs/hepta-runtime/codegen/workgraph-v1 \
+  verify_tree_with_generated_total_max 1142319 '*.rs' \
+    codex-rs/hepta-runtime/codegen/workgraph-v2 \
     codex-rs/hepta-contracts/src \
     codex-rs/hepta-core/src \
     codex-rs/hepta-memory/src \
@@ -210,8 +284,8 @@ verify() {
     codex-rs/hepta-cli/src \
     codex-rs/hepta-authority/src \
     apps/hepta-native/src
-  verify_tree_with_generated_total_max 1130147 '*.rs' \
-    codex-rs/hepta-runtime/codegen/workgraph-v1 \
+  verify_tree_with_generated_total_max 1161055 '*.rs' \
+    codex-rs/hepta-runtime/codegen/workgraph-v2 \
     codex-rs/hepta-contracts \
     codex-rs/hepta-core \
     codex-rs/hepta-memory \
@@ -225,7 +299,57 @@ verify() {
     codex-rs/hepta-kg \
     codex-rs/hepta-authority \
     apps/hepta-native
-  verify_tree_total_max 756794 '*' scripts
+  verify_tree_total_max 443991 '*' scripts
+  runtime_effective_line_count="$(
+    maintainable_tree_with_generated_line_total '*.rs' \
+      codex-rs/hepta-runtime/codegen/workgraph-v2 \
+      codex-rs/hepta-runtime/src
+  )"
+  owned_rust_effective_line_count="$(
+    maintainable_tree_with_generated_line_total '*.rs' \
+      codex-rs/hepta-runtime/codegen/workgraph-v2 \
+      codex-rs/hepta-contracts/src \
+      codex-rs/hepta-core/src \
+      codex-rs/hepta-memory/src \
+      codex-rs/hepta-intelligence/src \
+      codex-rs/hepta-plugins/src \
+      codex-rs/hepta-kernel/src \
+      codex-rs/hepta-runtime/src \
+      codex-rs/hepta-gateway/src \
+      codex-rs/hepta-native-gateway/src \
+      codex-rs/hepta-cli/src \
+      codex-rs/hepta-authority/src \
+      apps/hepta-native/src
+  )"
+  complete_rust_effective_line_count="$(
+    maintainable_tree_with_generated_line_total '*.rs' \
+      codex-rs/hepta-runtime/codegen/workgraph-v2 \
+      codex-rs/hepta-contracts \
+      codex-rs/hepta-core \
+      codex-rs/hepta-memory \
+      codex-rs/hepta-intelligence \
+      codex-rs/hepta-plugins \
+      codex-rs/hepta-kernel \
+      codex-rs/hepta-runtime \
+      codex-rs/hepta-gateway \
+      codex-rs/hepta-native-gateway \
+      codex-rs/hepta-cli \
+      codex-rs/hepta-kg \
+      codex-rs/hepta-authority \
+      apps/hepta-native
+  )"
+  scripts_line_count="$(maintainable_tree_line_total '*' scripts)"
+  verify_file_max scripts/hepta-kernel-module-split 90
+  verify_file_max scripts/hepta-long-path-relocate 240
+  verify_file_max scripts/hepta-long-path-resolve 50
+  verify_file_max scripts/hepta-workgraph-module-bundle 330
+  verify_file_max scripts/hepta-gate-pair-payload-bundle 465
+  verify_file_max scripts/hepta-gate-pair-entrypoint-prune 210
+  verify_file_max scripts/hepta-gate-pair-launch 20
+  verify_file_max scripts/hepta-gate-pair-compat-pack 40
+  verify_file_max scripts/hepta-gate-compat-debt 240
+  verify_file_max codex-rs/hepta-native-gateway/src/gate_pair_archive.rs 400
+  verify_file_max codex-rs/hepta-native-gateway/src/gate_runner.rs 1450
   verify_file_max scripts/hepta-state-machine-gate-runner 260
   verify_file_max scripts/hepta-state-machine-gate-runner-self-test 80
   verify_file_max scripts/hepta-state-machine-gate-families-v1.json 100
@@ -297,7 +421,35 @@ verify() {
     and .unknown_route_structured_rejection == true
     and .retired_route_structured_rejection == true
   ' docs/architecture/HEPTA_I2_ROUTE_EFFECT_GATE_MANIFEST_2026-07-28.json >/dev/null
-  rg -Fq 'route_manifest_entry(method, path)' \
+  verify_file_max docs/architecture/HEPTA_I3_TOPOLOGY_COMPACTION_2026-07-28.json 120
+  jq -e '
+    .schema == "hepta_i3_topology_compaction_v1"
+    and .status == "ready"
+    and .work_graph.baseline_physical_file_count == 712
+    and .work_graph.physical_file_count == 1
+    and .work_graph.physical_file_cap == 199
+    and .work_graph.bundled_module_count == 711
+    and .work_graph.effective_source_lines == 405593
+    and .work_graph.effective_source_line_cap == 417761
+    and .work_graph.build_time_generation == true
+    and .work_graph.reversible_unpack == true
+    and .gate_pair_compatibility.payload_count == 2512
+    and .gate_pair_compatibility.pair_count == 1282
+    and .gate_pair_compatibility.physical_entrypoint_count == 165
+    and .gate_pair_compatibility.physical_entrypoint_cap == 299
+    and .gate_pair_compatibility.virtual_entrypoint_count == 2399
+    and .long_paths.audit_baseline_count == 496
+    and .long_paths.postpack_materialized_count == 0
+    and .long_paths.max_tracked_path_bytes == 240
+    and .giant_module_split.library_lines <= 7200
+    and .giant_module_split.test_module_lines <= 4400
+    and .real_budgets.maintenance_headroom_percent == 3
+    and .real_budgets.generated_source_counted == true
+    and .compatibility.legacy_symbol_json_hash_and_golden_compatibility_preserved == true
+    and .compatibility.native_gate_runner_tests_passed == 26
+    and .compatibility.kernel_tests_passed == 118
+  ' docs/architecture/HEPTA_I3_TOPOLOGY_COMPACTION_2026-07-28.json >/dev/null
+  rg -Fq 'fn route_manifest_entry(' \
     codex-rs/hepta-native-gateway/src/route_manifest.rs
   rg -Fq 'manifest_dispatch::dispatch_manifest_route(' \
     codex-rs/hepta-native-gateway/src/native_gateway.rs
@@ -425,16 +577,57 @@ verify() {
   work_graph_line_count="$(find codex-rs/hepta-runtime/src -maxdepth 1 -type f \
     \( -name 'work_graph*.rs' -o -name 'wg_*.rs' \) -exec wc -l {} + \
     | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
-  work_graph_generated_line_count="$(find codex-rs/hepta-runtime/codegen/workgraph-v1 \
-    -type f -exec wc -l {} + \
-    | awk '$2 != "total" { total += $1 } END { print total + 0 }')"
+  work_graph_generated_line_count="$(
+    jq -er '
+      select(.schema == "hepta_workgraph_module_bundle_v2")
+      | .source_lines
+    ' codex-rs/hepta-runtime/codegen/workgraph-v2/registry.json
+  )"
   work_graph_line_count="$((work_graph_line_count + work_graph_generated_line_count))"
   work_graph_long_filename_count="$(find codex-rs/hepta-runtime/src -maxdepth 1 -type f -name '*.rs' \
     -exec basename {} \; | awk 'length($0) > 240 { count += 1 } END { print count + 0 }')"
-  if (( work_graph_file_count > 712 || work_graph_line_count > 393425 || work_graph_long_filename_count > 17 )); then
-    echo "WorkGraph structural debt grew: files=$work_graph_file_count/712 effective_lines=$work_graph_line_count/393425 long_names=$work_graph_long_filename_count/17" >&2
+  if (( work_graph_file_count > 199 || work_graph_line_count > 417761 || work_graph_long_filename_count > 0 )); then
+    echo "WorkGraph structural debt grew: files=$work_graph_file_count/199 effective_lines=$work_graph_line_count/417761 long_names=$work_graph_long_filename_count/0" >&2
     return 1
   fi
+  single_exec_wrapper_count="$(
+    find scripts -type f -perm -111 -print0 \
+      | while IFS= read -r -d '' file; do
+          awk '
+            BEGIN { lines = 0; execs = 0 }
+            /^[[:space:]]*(#|$)/ { next }
+            { lines += 1 }
+            /^[[:space:]]*exec[[:space:]]/ { execs += 1 }
+            END { if (lines <= 4 && execs == 1) print 1 }
+          ' "$file"
+        done \
+      | wc -l \
+      | tr -d '[:space:]'
+  )"
+  if (( single_exec_wrapper_count > 299 )); then
+    echo "single-exec wrapper debt grew: $single_exec_wrapper_count/299" >&2
+    return 1
+  fi
+  materialized_long_path_count="$(
+    git ls-files -co --exclude-standard -z \
+      | while IFS= read -r -d '' file; do
+          if [[ -e "$file" && ${#file} -gt 240 ]]; then
+            printf '%s\n' "$file"
+          fi
+        done \
+      | wc -l \
+      | tr -d '[:space:]'
+  )"
+  if (( materialized_long_path_count > 0 )); then
+    echo "materialized tracked path exceeds 240 bytes: count=$materialized_long_path_count" >&2
+    return 1
+  fi
+  scripts/hepta-workgraph-module-bundle verify >/dev/null
+  scripts/hepta-gate-pair-payload-bundle verify >/dev/null
+  scripts/hepta-gate-pair-entrypoint-prune verify >/dev/null
+  scripts/hepta-long-path-relocate verify >/dev/null
+  scripts/hepta-kernel-module-split verify >/dev/null
+  scripts/hepta-gate-compat-debt verify >/dev/null
   verify_file_max codex-rs/hepta-core/src/hepta_contracts.rs 700
 
   [[ -x scripts/hepta-budgeted-test ]]
@@ -830,7 +1023,51 @@ verify() {
     return 1
   fi
 
-  echo '{"schema":"hepta_architecture_budget_v1","status":"ready","native_gateway_main_max_lines":5800,"native_gateway_domain_max_lines":59000,"native_gateway_tests_max_lines":54515,"native_gateway_first_model_invocation_tests_max_lines":3800,"native_gateway_total_max_lines":180500,"runtime_lib_max_lines":1200,"runtime_domain_max_lines":5900,"runtime_turn_coordinator_max_lines":300,"runtime_approval_state_max_lines":430,"runtime_context_freezer_max_lines":400,"runtime_safety_gate_client_max_lines":320,"runtime_safety_gate_client_admission_max_lines":80,"runtime_execution_admission_max_lines":360,"runtime_execution_lease_max_lines":390,"runtime_execution_attempt_max_lines":750,"runtime_execution_bus_max_lines":580,"runtime_cross_process_write_lock_max_lines":540,"runtime_outcome_recorder_max_lines":430,"runtime_outcome_sink_max_lines":880,"runtime_outcome_sink_tests_max_lines":1200,"runtime_terminal_outcome_max_lines":370,"runtime_terminal_outcome_canonical_max_lines":300,"runtime_terminal_outcome_hashing_max_lines":225,"runtime_exact_safety_tests_max_lines":320,"runtime_exact_safety_support_max_lines":70,"runtime_execution_lease_tests_max_lines":220,"runtime_terminal_outcome_tests_max_lines":480,"runtime_terminal_outcome_support_max_lines":130,"runtime_outcome_flow_tests_max_lines":580,"runtime_resource_reservation_tests_max_lines":340,"runtime_capability_descriptor_tests_max_lines":210,"runtime_symlink_reservation_tests_max_lines":320,"runtime_process_reservation_tests_max_lines":380,"runtime_dispatch_selector_tests_max_lines":190,"runtime_native_mutation_tests_max_lines":650,"runtime_native_mutation_support_max_lines":180,"runtime_sealed_read_tests_max_lines":500,"runtime_process_control_tests_max_lines":120,"runtime_provider_idempotency_tests_max_lines":130,"runtime_maintenance_mutation_tests_max_lines":540,"runtime_outcome_slice_total_max_lines":5700,"runtime_total_max_lines":41800,"runtime_query_main_max_lines":5500,"runtime_query_domain_max_lines":3700,"runtime_query_total_max_lines":11000,"runtime_whole_tree_legacy_ceiling_lines":617000,"runtime_whole_tree_max_lines":598490,"work_graph_family_max_files":712,"work_graph_family_legacy_ceiling_lines":405593,"work_graph_family_max_lines":393425,"work_graph_long_filename_max_count":17,"core_legacy_contract_entrypoint_max_lines":700,"hepta_owned_rust_whole_tree_legacy_ceiling_lines":1108600,"hepta_owned_rust_whole_tree_max_lines":1075342,"hepta_first_party_rust_complete_legacy_ceiling_lines":1165100,"hepta_first_party_rust_complete_max_lines":1130147,"scripts_whole_tree_legacy_ceiling_lines":780200,"scripts_whole_tree_max_lines":756794,"maintenance_headroom_percent":3,"generated_source_is_counted":true,"architecture_v2_boundary_entrypoint_max_lines":20,"architecture_v2_boundary_implementation_max_lines":2500,"architecture_v2_test_inventory_helper_max_lines":90,"contracts_domain_max_lines":480,"contracts_tests_max_lines":720,"contracts_total_max_lines":2600,"intelligence_neuron_activation_main_max_lines":360,"intelligence_neuron_activation_links_max_lines":250,"intelligence_neuron_activation_tests_max_lines":350,"intelligence_feedback_main_max_lines":320,"intelligence_feedback_tests_max_lines":250,"intelligence_feedback_total_max_lines":570,"intelligence_planner_main_max_lines":850,"intelligence_planner_tests_max_lines":360,"intelligence_planner_total_max_lines":1210,"intelligence_tool_candidate_max_lines":280,"intelligence_preference_feedback_main_max_lines":340,"intelligence_preference_feedback_canonical_max_lines":215,"intelligence_preference_feedback_tests_max_lines":390,"intelligence_preference_feedback_total_max_lines":930,"kernel_safety_gate_max_lines":450,"kernel_safety_gate_admission_max_lines":270,"kernel_safety_gate_policy_evidence_max_lines":350,"kernel_safety_gate_test_support_max_lines":270,"kernel_safety_gate_tests_max_lines":230,"kernel_safety_gate_admission_tests_max_lines":230,"kernel_safety_gate_total_max_lines":1700,"memory_durable_max_lines":400,"memory_durable_opening_max_lines":230,"memory_durable_opening_filesystem_max_lines":560,"memory_runtime_state_store_max_lines":440,"memory_runtime_state_store_tests_max_lines":120,"memory_contract_codec_max_lines":480,"memory_preference_cas_max_lines":530,"memory_preference_cas_durable_max_lines":950,"memory_preference_cas_legacy_max_lines":175,"memory_preference_cas_entry_tests_max_lines":10,"memory_preference_cas_fixture_tests_max_lines":195,"memory_preference_cas_legacy_tests_max_lines":330,"memory_preference_cas_document_tests_max_lines":405,"memory_preference_cas_durable_tests_max_lines":330,"memory_preference_cas_durable_concurrency_tests_max_lines":90,"memory_preference_cas_durable_opening_tests_max_lines":170,"memory_preference_cas_durable_opening_security_tests_max_lines":210,"memory_preference_cas_total_max_lines":3300,"memory_outcome_store_max_lines":450,"memory_outcome_execution_intent_max_lines":350,"memory_outcome_candidate_reference_max_lines":110,"memory_outcome_store_durable_max_lines":440,"memory_outcome_durable_execution_intent_max_lines":660,"memory_outcome_terminal_evidence_max_lines":1050,"memory_outcome_store_durable_intent_max_lines":760,"memory_outcome_store_intent_max_lines":90,"memory_outcome_store_sync_writer_max_lines":680,"memory_outcome_store_sync_writer_intent_max_lines":400,"memory_outcome_store_tests_max_lines":410,"memory_outcome_store_durable_tests_max_lines":350,"memory_outcome_execution_intent_tests_max_lines":1120,"memory_outcome_store_pending_intent_tests_max_lines":220,"memory_outcome_store_sync_writer_tests_max_lines":520,"memory_outcome_store_total_max_lines":8200,"kernel_lib_max_lines":11600,"kernel_telegram_config_max_lines":350,"kernel_telegram_cursor_max_lines":300,"kernel_telegram_cursor_tests_max_lines":300,"kernel_telegram_production_guard_max_lines":250,"kernel_telegram_production_guard_tests_max_lines":200,"kernel_telegram_transport_max_lines":450,"kernel_telegram_transport_tests_max_lines":400,"native_room_screen_max_lines":38000,"report_dag_max_entries":2048,"report_dag_max_bytes":134217728,"report_max_bytes":2097152}'
+  jq -cn \
+    --argjson runtime_lines "$runtime_effective_line_count" \
+    --argjson owned_rust_lines "$owned_rust_effective_line_count" \
+    --argjson complete_rust_lines "$complete_rust_effective_line_count" \
+    --argjson scripts_lines "$scripts_line_count" \
+    --argjson work_graph_files "$work_graph_file_count" \
+    --argjson work_graph_lines "$work_graph_line_count" \
+    --argjson work_graph_long_names "$work_graph_long_filename_count" \
+    --argjson single_exec_wrappers "$single_exec_wrapper_count" \
+    --argjson materialized_long_paths "$materialized_long_path_count" \
+    --argjson kernel_lib_lines "$(wc -l <codex-rs/hepta-kernel/src/lib.rs | tr -d '[:space:]')" \
+    --argjson kernel_test_lines "$(wc -l <codex-rs/hepta-kernel/src/tests.rs | tr -d '[:space:]')" '
+    {
+      schema:"hepta_architecture_budget_v1",
+      status:"ready",
+      runtime_whole_tree_actual_lines:$runtime_lines,
+      runtime_whole_tree_max_lines:629992,
+      work_graph_family_actual_files:$work_graph_files,
+      work_graph_family_max_files:199,
+      work_graph_family_actual_lines:$work_graph_lines,
+      work_graph_family_max_lines:417761,
+      work_graph_long_filename_count:$work_graph_long_names,
+      work_graph_long_filename_max_count:0,
+      hepta_owned_rust_whole_tree_actual_lines:$owned_rust_lines,
+      hepta_owned_rust_whole_tree_max_lines:1142319,
+      hepta_first_party_rust_complete_actual_lines:$complete_rust_lines,
+      hepta_first_party_rust_complete_max_lines:1161055,
+      scripts_whole_tree_actual_lines:$scripts_lines,
+      scripts_whole_tree_max_lines:443991,
+      single_exec_wrapper_actual_count:$single_exec_wrappers,
+      single_exec_wrapper_max_count:299,
+      materialized_long_path_actual_count:$materialized_long_paths,
+      materialized_long_path_max_count:0,
+      kernel_lib_actual_lines:$kernel_lib_lines,
+      kernel_lib_max_lines:7200,
+      kernel_tests_actual_lines:$kernel_test_lines,
+      kernel_tests_max_lines:4400,
+      kernel_aggregate_max_lines:11600,
+      maintenance_headroom_percent:3,
+      generated_source_is_counted:true,
+      report_dag_max_entries:2048,
+      report_dag_max_bytes:134217728,
+      report_max_bytes:2097152
+    }
+  '
 }
 
 self_test_line_budget_negative_fixture() {
