@@ -41,6 +41,7 @@
     "native_deny_config": {"path":"apps/hepta-native/deny.toml","sha256":"854f5aec04140f06f15eba9604e16e0d245eba41cbe29335203c1065f78d80ad"},
     "native_source_policy": {"path":"apps/hepta-native/dependency-source-policy-v1.json","sha256":"7f32dd7b3e4f95daa6322ae0d5ed8e5781eadc8e3e3f81f1e19207b51ca7458d"},
     "native_source_policy_runner": {"path":"apps/hepta-native/hepta-native-dependency-policy","sha256":"dd56778b094d276deaf9eff41ff8dfb221518848b26b4a0ef67482aa9f268fd8"},
+    "exception_policy": {"path":"scripts/hepta-dependency-exception-policy-v1.json","sha256":"21ad087c347f53da037586b1abd749a80baaa835f5ee2cb527326049598c0154"},
     "ratatui_source_receipt": {"path":"codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json","sha256":"42368d273c4d3e38ff28e0258e8560fc0b787f8a8f926540ca114a64ea23a44e"}
   },
   "vendored_sources": {

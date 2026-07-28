@@ -1,0 +1,116 @@
+{
+  "schema": "hepta_dependency_exception_policy_v1",
+  "status": "ready",
+  "owner": "hepta-backend-maintainers",
+  "reviewed_at_utc": "2026-07-28T11:20:00Z",
+  "policy": {
+    "fail_if_expired": true,
+    "fail_if_owner_missing": true,
+    "fail_if_reachability_missing": true,
+    "active_binary_package": "hepta-cli",
+    "active_binary_normal_graph_check": "cargo tree --locked -p hepta-cli -e normal",
+    "new_exception_requires_explicit_contract_update": true
+  },
+  "exceptions": [
+    {
+      "advisory_id": "RUSTSEC-2026-0118",
+      "kind": "vulnerability",
+      "package": "hickory-proto",
+      "version": "0.25.2",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-08-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade hickory-proto or remove the workspace network-proxy dependency chain before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2026-0119",
+      "kind": "vulnerability",
+      "package": "hickory-proto",
+      "version": "0.25.2",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-08-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade hickory-proto or remove the workspace network-proxy dependency chain before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2026-0194",
+      "kind": "vulnerability",
+      "package": "quick-xml",
+      "version": "0.39.4",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-08-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade quick-xml through plist/syntect or prove the affected parser path unreachable before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2026-0195",
+      "kind": "vulnerability",
+      "package": "quick-xml",
+      "version": "0.39.4",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-08-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade quick-xml through plist/syntect or prove the affected parser path unreachable before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2023-0089",
+      "kind": "unmaintained",
+      "package": "atomic-polyfill",
+      "version": "1.0.3",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-10-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "remove or replace the transitive atomic-polyfill consumer before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2025-0141",
+      "kind": "unmaintained",
+      "package": "bincode",
+      "version": "1.3.3",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-10-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "move the syntect/two-face dependency chain away from bincode 1 before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2024-0388",
+      "kind": "unmaintained",
+      "package": "derivative",
+      "version": "2.2.0",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-10-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade starlark or replace derivative-generated implementations before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2025-0057",
+      "kind": "unmaintained",
+      "package": "fxhash",
+      "version": "0.2.1",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-10-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade bm25 or replace fxhash before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2024-0436",
+      "kind": "unmaintained",
+      "package": "paste",
+      "version": "1.0.15",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-10-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade starlark or remove paste-generated code before expiry"
+    },
+    {
+      "advisory_id": "RUSTSEC-2024-0320",
+      "kind": "unmaintained",
+      "package": "yaml-rust",
+      "version": "0.4.5",
+      "owner": "hepta-backend-maintainers",
+      "expires_at_utc": "2026-10-31T23:59:59Z",
+      "reachability": "absent_from_hepta_cli_normal_dependency_graph",
+      "upgrade_trigger": "upgrade syntect/two-face to a maintained YAML parser before expiry"
+    }
+  ]
+}

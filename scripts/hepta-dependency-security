@@ -227,6 +227,100 @@ for package in lock["package"]:
         fail(f"forbidden lru dependency remains: {package['version']}")
 PY
 }
+verify_exception_policy() {
+  local policy_path
+  policy_path="$ROOT/$(contract_value '.inputs.exception_policy.path')"
+  python3 - "$CONTRACT" "$policy_path" <<'PY'
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import sys
+
+contract = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+policy = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+
+def fail(message: str) -> None:
+    raise SystemExit(f"Hepta dependency exception policy verification failed: {message}")
+
+if policy.get("schema") != "hepta_dependency_exception_policy_v1":
+    fail("schema drifted")
+if policy.get("status") != "ready":
+    fail("status is not ready")
+owner = policy.get("owner")
+if not isinstance(owner, str) or not owner:
+    fail("owner is missing")
+policy_contract = policy.get("policy")
+if policy_contract != {
+    "fail_if_expired": True,
+    "fail_if_owner_missing": True,
+    "fail_if_reachability_missing": True,
+    "active_binary_package": "hepta-cli",
+    "active_binary_normal_graph_check": "cargo tree --locked -p hepta-cli -e normal",
+    "new_exception_requires_explicit_contract_update": True,
+}:
+    fail("policy contract drifted")
+
+expected = {
+    (
+        finding["advisory_id"],
+        finding["kind"],
+        finding["package"],
+        finding["version"],
+    )
+    for graph in contract["scans"]["audit"]["expected_raw_findings"].values()
+    for key in ("raw_vulnerabilities", "raw_unsafe_warnings")
+    for finding in graph[key]
+}
+exceptions = policy.get("exceptions")
+if not isinstance(exceptions, list):
+    fail("exceptions must be an array")
+observed = {
+    (
+        entry.get("advisory_id"),
+        entry.get("kind"),
+        entry.get("package"),
+        entry.get("version"),
+    )
+    for entry in exceptions
+}
+if len(exceptions) != len(observed) or observed != expected:
+    fail("exception identities do not exactly match expected raw findings")
+
+now = datetime.now(timezone.utc)
+for entry in exceptions:
+    if entry.get("owner") != owner:
+        fail(f"owner drifted for {entry.get('advisory_id')}")
+    if entry.get("reachability") != "absent_from_hepta_cli_normal_dependency_graph":
+        fail(f"reachability evidence is missing for {entry.get('advisory_id')}")
+    trigger = entry.get("upgrade_trigger")
+    if not isinstance(trigger, str) or not trigger:
+        fail(f"upgrade trigger is missing for {entry.get('advisory_id')}")
+    raw_expiry = entry.get("expires_at_utc")
+    if not isinstance(raw_expiry, str) or not raw_expiry.endswith("Z"):
+        fail(f"expiry is invalid for {entry.get('advisory_id')}")
+    try:
+        expiry = datetime.fromisoformat(raw_expiry.removesuffix("Z") + "+00:00")
+    except ValueError as error:
+        fail(f"expiry is invalid for {entry.get('advisory_id')}: {error}")
+    if expiry <= now:
+        fail(f"exception expired: {entry.get('advisory_id')}")
+PY
+
+  if [[ -f "$ROOT/codex-rs/hepta-cli/Cargo.toml" ]]; then
+    local active_tree exception_package
+    active_tree="$(
+      cd "$ROOT/codex-rs"
+      cargo tree --locked -p hepta-cli -e normal --prefix none
+    )"
+    while IFS= read -r exception_package; do
+      [[ -n "$exception_package" ]] || continue
+      if rg -q "^${exception_package//./\\.} v" <<<"$active_tree"; then
+        echo "dependency exception entered the active hepta-cli normal graph: $exception_package" >&2
+        return 1
+      fi
+    done < <(jq -r '.exceptions[].package' "$policy_path" | sort -u)
+  fi
+}
 verify_contract() {
   command -v git >/dev/null
   command -v jq >/dev/null
@@ -283,6 +377,10 @@ verify_contract() {
         path:"apps/hepta-native/hepta-native-dependency-policy",
         sha256:"dd56778b094d276deaf9eff41ff8dfb221518848b26b4a0ef67482aa9f268fd8"
       },
+      exception_policy:{
+        path:"scripts/hepta-dependency-exception-policy-v1.json",
+        sha256:"21ad087c347f53da037586b1abd749a80baaa835f5ee2cb527326049598c0154"
+      },
       ratatui_source_receipt:{
         path:"codex-rs/third_party/ratatui-0.30.2-hepta/HEPTA_SOURCE_RECEIPT_V1.json",
         sha256:"42368d273c4d3e38ff28e0258e8560fc0b787f8a8f926540ca114a64ea23a44e"
@@ -327,6 +425,7 @@ verify_contract() {
         .inputs.native_deny_config,
         .inputs.native_source_policy,
         .inputs.native_source_policy_runner,
+        .inputs.exception_policy,
         .inputs.ratatui_source_receipt
       ][]
       | [.path,.sha256]
@@ -339,6 +438,7 @@ verify_contract() {
       return 1
     }
   done < <(jq -r '.inputs.cargo_locks[].manifest_path' "$CONTRACT")
+  verify_exception_policy
   verify_vendored_ratatui
 }
 verify_tools() {
@@ -518,7 +618,7 @@ scan() {
   ' "$receipt" >/dev/null
 }
 self_test() {
-  local fixture kind vendor_fixture_root fixture_contract
+  local fixture kind vendor_fixture_root fixture_contract policy_sha staged_contract
   verify_contract
   if HEPTA_DEPENDENCY_SECURITY_CONTRACT=/dev/null "$0" verify >/dev/null 2>&1; then
     echo "Hepta dependency-security self-test accepted an invalid contract" >&2
@@ -550,6 +650,9 @@ self_test() {
     "$vendor_fixture_root/codex-rs/.cargo" \
     "$vendor_fixture_root/codex-rs/third_party"
   cp "$CONTRACT" "$fixture_contract"
+  cp \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
   cp "$ROOT/codex-rs/Cargo.toml" "$vendor_fixture_root/codex-rs/Cargo.toml"
   cp "$ROOT/codex-rs/Cargo.lock" "$vendor_fixture_root/codex-rs/Cargo.lock"
   cp "$ROOT/codex-rs/deny.toml" "$vendor_fixture_root/codex-rs/deny.toml"
@@ -569,6 +672,64 @@ self_test() {
   HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
     HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
     "$0" verify >/dev/null
+  jq '.owner = ""' \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    >"$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  policy_sha="$(
+    sha256_file "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  )"
+  staged_contract="$fixture/owner-contract.json"
+  jq --arg sha "$policy_sha" '.inputs.exception_policy.sha256 = $sha' \
+    "$fixture_contract" >"$staged_contract"
+  mv "$staged_contract" "$fixture_contract"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted missing exception ownership" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  jq '.exceptions[0].expires_at_utc = "2026-01-01T00:00:00Z"' \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    >"$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  policy_sha="$(
+    sha256_file "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  )"
+  staged_contract="$fixture/expiry-contract.json"
+  jq --arg sha "$policy_sha" '.inputs.exception_policy.sha256 = $sha' \
+    "$fixture_contract" >"$staged_contract"
+  mv "$staged_contract" "$fixture_contract"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted an expired exception" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  jq '.exceptions[0].reachability = ""' \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    >"$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  policy_sha="$(
+    sha256_file "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  )"
+  staged_contract="$fixture/reachability-contract.json"
+  jq --arg sha "$policy_sha" '.inputs.exception_policy.sha256 = $sha' \
+    "$fixture_contract" >"$staged_contract"
+  mv "$staged_contract" "$fixture_contract"
+  if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
+    HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
+    "$0" verify >/dev/null 2>&1; then
+    echo "Hepta dependency-security self-test accepted missing reachability evidence" >&2
+    return 1
+  fi
+  cp \
+    "$ROOT/scripts/hepta-dependency-exception-policy-v1.json" \
+    "$vendor_fixture_root/scripts/hepta-dependency-exception-policy-v1.json"
+  cp "$CONTRACT" "$fixture_contract"
   printf '\n' >>"$vendor_fixture_root/apps/hepta-native/dependency-source-policy-v1.json"
   if HEPTA_DEPENDENCY_SECURITY_ROOT="$vendor_fixture_root" \
     HEPTA_DEPENDENCY_SECURITY_CONTRACT="$fixture_contract" \
@@ -641,7 +802,7 @@ self_test() {
     echo "Hepta dependency-security self-test accepted source receipt drift" >&2
     return 1
   fi
-  jq -n '{schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:12,vendored_source_negative_fixtures:5}'
+  jq -n '{schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:12,vendored_source_negative_fixtures:5,exception_policy_negative_fixtures:3}'
 }
 [[ $# -ge 1 ]] || usage
 case "$1" in
