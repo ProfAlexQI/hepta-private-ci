@@ -264,6 +264,29 @@ verify() {
     and .copy_outside_openclaw_tmp == true
   ' docs/architecture/HEPTA_I0_DURABLE_ARCHIVE_2026-07-28.json >/dev/null
   jq -e '
+    .schema == "hepta_i1_authenticated_journal_engine_v1"
+    and .status == "ready"
+    and .engine == "hepta-authority::AuthenticatedJournalEngine"
+    and .compatibility_framing == ["raw_domain","framed_domain"]
+    and (.consumers | length) == 3
+    and .domain_state_machines_remain_separate == true
+    and .persisted_schema_or_hash_change == false
+    and .frozen_compatibility_vectors == true
+    and .legacy_migration_tests == true
+    and .rollback_and_replay_tests == true
+  ' docs/architecture/HEPTA_I1_AUTHENTICATED_JOURNAL_ENGINE_2026-07-28.json >/dev/null
+  for journal in \
+    codex-rs/app-server/src/request_processors/plugin_mutation_journal.rs \
+    codex-rs/hepta-native-gateway/src/operator_mutation_journal.rs \
+    codex-rs/hepta-native-gateway/src/telegram_authority.rs
+  do
+    if rg -q '^use hmac::|^type HmacSha256|^fn update_(mac|hash)' "$journal"; then
+      echo "journal bypasses shared authenticated engine: $journal" >&2
+      return 1
+    fi
+    rg -q '_JOURNAL_ENGINE' "$journal"
+  done
+  jq -e '
     .schema == "hepta_g_upstream_targeted_semantic_intake_v1"
     and .upstream_head == "3bbf1fe75701c97fb190e0867002ba2d9dbda5db"
     and (.absorptions | length) == 3

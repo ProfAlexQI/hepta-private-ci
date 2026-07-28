@@ -11,14 +11,13 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_authority::AuthenticationFraming;
+use hepta_authority::OPERATOR_MUTATION_JOURNAL_ENGINE;
 use hepta_authority::OPERATOR_MUTATION_JOURNAL_POLICY;
+use hepta_authority::decode_sha256_hex;
 use hepta_runtime::RuntimeExecutionReceipt;
-use hmac::Hmac;
-use hmac::Mac;
 use serde::Deserialize;
 use serde::Serialize;
-use sha2::Digest;
-use sha2::Sha256;
 
 use crate::telegram_durable_files::read_private_state;
 use crate::telegram_durable_files::update_private_state_atomically;
@@ -36,8 +35,6 @@ const CHECKPOINT_GENESIS_HASH: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 const CHECKPOINT_HASH_DOMAIN: &[u8] = b"hepta.native.operator-mutation-checkpoint.sha256.v1";
 const STAGING_PREFIX: &str = ".hepta-operator-mutation-journal";
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperatorMutationJournal {
@@ -411,13 +408,14 @@ impl OperatorMutationJournal {
         let state = self.read(key)?;
         let encoded =
             serde_json::to_vec(&state).context("encode operator mutation monotonic state")?;
-        let mut hasher = Sha256::new();
-        update_hash_frame(&mut hasher, JOURNAL_STATE_HASH_DOMAIN);
-        update_hash_frame(&mut hasher, &encoded);
         Ok(OperatorMutationMonotonicState {
             schema: JOURNAL_SCHEMA,
             journal_revision: state.revision,
-            state_hash: format!("sha256:{:x}", hasher.finalize()),
+            state_hash: OPERATOR_MUTATION_JOURNAL_ENGINE.content_hash(
+                AuthenticationFraming::FramedDomain,
+                JOURNAL_STATE_HASH_DOMAIN,
+                &[&encoded],
+            ),
         })
     }
 
@@ -495,8 +493,12 @@ fn decode_and_verify(bytes: &[u8], key: &[u8]) -> Result<JournalState> {
     if !matches!(
         state.schema.as_str(),
         JOURNAL_SCHEMA | LEGACY_JOURNAL_SCHEMA
-    ) || state.records.len() > MAX_JOURNAL_RECORDS
-        || state.checkpoint.consumed_authorities.len() > MAX_CHECKPOINTED_AUTHORITIES
+    ) || OPERATOR_MUTATION_JOURNAL_ENGINE
+        .validate_counts(
+            state.records.len(),
+            state.checkpoint.consumed_authorities.len(),
+        )
+        .is_err()
         || state.mac.len() != 64
     {
         anyhow::bail!("operator mutation journal schema or bounds are invalid");
@@ -506,10 +508,8 @@ fn decode_and_verify(bytes: &[u8], key: &[u8]) -> Result<JournalState> {
     } else {
         sign_state(&state, key)?
     };
-    let actual = decode_hex(&state.mac).context("decode operator mutation journal MAC")?;
-    let expected =
-        decode_hex(&expected).context("decode expected operator mutation journal MAC")?;
-    if actual != expected {
+    decode_sha256_hex(&state.mac).context("decode operator mutation journal MAC")?;
+    if !OPERATOR_MUTATION_JOURNAL_ENGINE.constant_time_equal(&state.mac, &expected) {
         anyhow::bail!("operator mutation journal MAC is invalid");
     }
     if state.schema == LEGACY_JOURNAL_SCHEMA {
@@ -632,11 +632,11 @@ fn compact_succeeded_records(state: &mut JournalState, retain: usize) -> Result<
 fn checkpoint_history_hash(previous: &str, record: &JournalRecord) -> Result<String> {
     let encoded =
         serde_json::to_vec(record).context("encode compacted operator mutation record")?;
-    let mut hasher = Sha256::new();
-    update_hash_frame(&mut hasher, CHECKPOINT_HASH_DOMAIN);
-    update_hash_frame(&mut hasher, previous.as_bytes());
-    update_hash_frame(&mut hasher, &encoded);
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(OPERATOR_MUTATION_JOURNAL_ENGINE.content_hash(
+        AuthenticationFraming::FramedDomain,
+        CHECKPOINT_HASH_DOMAIN,
+        &[previous.as_bytes(), &encoded],
+    ))
 }
 
 fn validate_record(record: &JournalRecord) -> Result<()> {
@@ -838,13 +838,14 @@ fn sign_state(state: &JournalState, key: &[u8]) -> Result<String> {
     };
     let encoded =
         serde_json::to_vec(&unsigned).context("encode operator mutation journal MAC payload")?;
-    let mut mac =
-        HmacSha256::new_from_slice(key).context("initialize operator mutation journal HMAC")?;
-    mac.update(&(JOURNAL_MAC_DOMAIN.len() as u64).to_be_bytes());
-    mac.update(JOURNAL_MAC_DOMAIN);
-    mac.update(&(encoded.len() as u64).to_be_bytes());
-    mac.update(&encoded);
-    Ok(hex_encode(&mac.finalize().into_bytes()))
+    OPERATOR_MUTATION_JOURNAL_ENGINE
+        .mac_hex(
+            key,
+            AuthenticationFraming::FramedDomain,
+            JOURNAL_MAC_DOMAIN,
+            &[&encoded],
+        )
+        .context("initialize operator mutation journal HMAC")
 }
 
 fn sign_legacy_state(state: &JournalState, key: &[u8]) -> Result<String> {
@@ -860,26 +861,18 @@ fn sign_legacy_state(state: &JournalState, key: &[u8]) -> Result<String> {
         records: &state.records,
     })
     .context("encode legacy operator mutation journal MAC payload")?;
-    let mut mac =
-        HmacSha256::new_from_slice(key).context("initialize operator mutation journal HMAC")?;
-    mac.update(&(JOURNAL_MAC_DOMAIN.len() as u64).to_be_bytes());
-    mac.update(JOURNAL_MAC_DOMAIN);
-    mac.update(&(encoded.len() as u64).to_be_bytes());
-    mac.update(&encoded);
-    Ok(hex_encode(&mac.finalize().into_bytes()))
-}
-
-fn update_hash_frame(hasher: &mut Sha256, value: &[u8]) {
-    hasher.update((value.len() as u64).to_be_bytes());
-    hasher.update(value);
+    OPERATOR_MUTATION_JOURNAL_ENGINE
+        .mac_hex(
+            key,
+            AuthenticationFraming::FramedDomain,
+            JOURNAL_MAC_DOMAIN,
+            &[&encoded],
+        )
+        .context("initialize legacy operator mutation journal HMAC")
 }
 
 fn validate_hex(value: &str, name: &str) -> Result<()> {
-    if value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-    {
+    if decode_sha256_hex(value).is_ok() {
         return Ok(());
     }
     anyhow::bail!("{name} must be canonical lowercase SHA-256 hex")
@@ -902,33 +895,6 @@ fn validate_content_hash(value: &str, name: &str) -> Result<()> {
         .strip_prefix("sha256:")
         .with_context(|| format!("{name} must use the sha256 content-hash domain"))?;
     validate_hex(digest, name)
-}
-
-fn decode_hex(value: &str) -> Result<[u8; 32]> {
-    validate_hex(value, "hex value")?;
-    let mut decoded = [0_u8; 32];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
-        decoded[index] = (hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?;
-    }
-    Ok(decoded)
-}
-
-fn hex_nibble(value: u8) -> Result<u8> {
-    match value {
-        b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
-        _ => anyhow::bail!("non-canonical hexadecimal value"),
-    }
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        encoded.push(char::from(HEX[(byte >> 4) as usize]));
-        encoded.push(char::from(HEX[(byte & 0x0f) as usize]));
-    }
-    encoded
 }
 
 #[cfg(all(test, unix))]

@@ -5,6 +5,15 @@
 //! schemas, while this crate owns the limits, external-anchor requirements,
 //! gate names, and default-off product boundary they must all obey.
 
+mod authenticated_journal;
+
+pub use authenticated_journal::AuthenticatedJournalEngine;
+pub use authenticated_journal::AuthenticatedJournalError;
+pub use authenticated_journal::AuthenticationFraming;
+pub use authenticated_journal::decode_sha256_hex;
+pub use authenticated_journal::hex_decode;
+pub use authenticated_journal::hex_encode;
+
 /// Persistent authority journal family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthorityJournalKind {
@@ -106,6 +115,16 @@ pub const TELEGRAM_AUTHORITY_JOURNAL_POLICY: AuthorityJournalPolicy = AuthorityJ
     anchor_strategy: AuthorityAnchorStrategy::SharedExternalMonotonicAnchor,
     default_effects_enabled: false,
 };
+
+/// Shared engine for the plugin mutation journal.
+pub const PLUGIN_MUTATION_JOURNAL_ENGINE: AuthenticatedJournalEngine =
+    AuthenticatedJournalEngine::new(PLUGIN_MUTATION_JOURNAL_POLICY);
+/// Shared engine for the operator mutation journal.
+pub const OPERATOR_MUTATION_JOURNAL_ENGINE: AuthenticatedJournalEngine =
+    AuthenticatedJournalEngine::new(OPERATOR_MUTATION_JOURNAL_POLICY);
+/// Shared engine for the Telegram authority journal.
+pub const TELEGRAM_AUTHORITY_JOURNAL_ENGINE: AuthenticatedJournalEngine =
+    AuthenticatedJournalEngine::new(TELEGRAM_AUTHORITY_JOURNAL_POLICY);
 
 /// All production authority journals.
 pub const AUTHORITY_JOURNAL_POLICIES: &[AuthorityJournalPolicy] = &[

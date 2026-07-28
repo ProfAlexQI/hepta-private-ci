@@ -1,0 +1,29 @@
+{
+  "schema": "hepta_i1_authenticated_journal_engine_v1",
+  "status": "ready",
+  "engine": "hepta-authority::AuthenticatedJournalEngine",
+  "compatibility_framing": [
+    "raw_domain",
+    "framed_domain"
+  ],
+  "shared_primitives": [
+    "hmac_sha256",
+    "sha256_content_hash",
+    "canonical_lowercase_hex",
+    "constant_time_verification",
+    "active_record_bounds",
+    "checkpointed_authority_bounds",
+    "journal_byte_bounds",
+    "record_byte_bounds"
+  ],
+  "consumers": [
+    "codex-app-server::plugin_mutation_journal",
+    "hepta-native-gateway::operator_mutation_journal",
+    "hepta-native-gateway::telegram_authority"
+  ],
+  "domain_state_machines_remain_separate": true,
+  "persisted_schema_or_hash_change": false,
+  "frozen_compatibility_vectors": true,
+  "legacy_migration_tests": true,
+  "rollback_and_replay_tests": true
+}

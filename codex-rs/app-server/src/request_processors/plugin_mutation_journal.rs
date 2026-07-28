@@ -1,7 +1,10 @@
+use hepta_authority::AuthenticationFraming;
 use hepta_authority::PLUGIN_MUTATION_EXTERNAL_ANCHOR_FILE_ENV;
+use hepta_authority::PLUGIN_MUTATION_JOURNAL_ENGINE;
 use hepta_authority::PLUGIN_MUTATION_JOURNAL_POLICY;
-use hmac::Hmac;
-use hmac::Mac;
+use hepta_authority::decode_sha256_hex;
+use hepta_authority::hex_decode as decode_canonical_hex;
+use hepta_authority::hex_encode;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -43,8 +46,6 @@ const CHECKPOINT_GENESIS_HASH: &str =
 const LOCK_EXCLUSIVE: std::ffi::c_int = 2;
 #[cfg(unix)]
 const LOCK_RELEASE: std::ffi::c_int = 8;
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -234,8 +235,9 @@ impl PluginMutationState {
         )?;
         let mut candidate = self.clone();
         candidate.refresh_integrity(key)?;
-        if !constant_time_equal(&candidate.state_hash, &self.state_hash)
-            || !constant_time_equal(&candidate.mac, &self.mac)
+        if !PLUGIN_MUTATION_JOURNAL_ENGINE
+            .constant_time_equal(&candidate.state_hash, &self.state_hash)
+            || !PLUGIN_MUTATION_JOURNAL_ENGINE.constant_time_equal(&candidate.mac, &self.mac)
         {
             return Err(PluginMutationJournalError::new(
                 "plugin mutation journal integrity check failed",
@@ -279,7 +281,9 @@ impl LegacyPluginMutationState {
         validate_unique_request_bindings(self.records.iter())?;
         let mut candidate = self.clone();
         candidate.refresh_hash()?;
-        if !constant_time_equal(&candidate.state_hash, &self.state_hash) {
+        if !PLUGIN_MUTATION_JOURNAL_ENGINE
+            .constant_time_equal(&candidate.state_hash, &self.state_hash)
+        {
             return Err(PluginMutationJournalError::new(
                 "legacy plugin mutation journal integrity check failed",
             ));
@@ -338,7 +342,7 @@ impl PluginMutationAnchor {
         require_content_hash(&self.state_hash, "plugin mutation anchor state hash")?;
         let mut candidate = self.clone();
         candidate.refresh_mac(key)?;
-        if !constant_time_equal(&candidate.mac, &self.mac) {
+        if !PLUGIN_MUTATION_JOURNAL_ENGINE.constant_time_equal(&candidate.mac, &self.mac) {
             return Err(PluginMutationJournalError::new(
                 "plugin mutation anchor integrity check failed",
             ));
@@ -1025,7 +1029,11 @@ fn checkpoint_history_hash(
 }
 
 fn validate_state(state: &PluginMutationState) -> Result<(), PluginMutationJournalError> {
-    if state.version != JOURNAL_VERSION || state.records.len() > MAX_RECORDS {
+    if state.version != JOURNAL_VERSION
+        || PLUGIN_MUTATION_JOURNAL_ENGINE
+            .validate_counts(state.records.len(), state.checkpoint.terminal_records.len())
+            .is_err()
+    {
         return Err(PluginMutationJournalError::new(
             "plugin mutation journal bounds are invalid",
         ));
@@ -1045,9 +1053,7 @@ fn validate_state(state: &PluginMutationState) -> Result<(), PluginMutationJourn
 fn validate_checkpoint(
     checkpoint: &PluginMutationCheckpoint,
 ) -> Result<(), PluginMutationJournalError> {
-    if checkpoint.compacted_records != checkpoint.terminal_records.len() as u64
-        || checkpoint.terminal_records.len() > MAX_CHECKPOINTED_TERMINALS
-    {
+    if checkpoint.compacted_records != checkpoint.terminal_records.len() as u64 {
         return Err(PluginMutationJournalError::new(
             "plugin mutation checkpoint count is invalid",
         ));
@@ -1148,11 +1154,7 @@ fn require_label(value: &str, name: &str) -> Result<(), PluginMutationJournalErr
 }
 
 fn require_sha256_hex(value: &str, name: &str) -> Result<(), PluginMutationJournalError> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-    {
+    if decode_sha256_hex(value).is_err() {
         return Err(PluginMutationJournalError::new(format!(
             "{name} must be lowercase SHA-256 hex"
         )));
@@ -1170,13 +1172,11 @@ fn require_content_hash(value: &str, name: &str) -> Result<(), PluginMutationJou
 }
 
 fn content_hash(domain: &str, values: &[&[u8]]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(domain.as_bytes());
-    for value in values {
-        hasher.update((value.len() as u64).to_be_bytes());
-        hasher.update(value);
-    }
-    format!("sha256:{:x}", hasher.finalize())
+    PLUGIN_MUTATION_JOURNAL_ENGINE.content_hash(
+        AuthenticationFraming::RawDomain,
+        domain.as_bytes(),
+        values,
+    )
 }
 
 fn hmac_hex(
@@ -1184,47 +1184,16 @@ fn hmac_hex(
     domain: &[u8],
     values: &[&[u8]],
 ) -> Result<String, PluginMutationJournalError> {
-    let mut mac = HmacSha256::new_from_slice(key).map_err(|error| {
-        PluginMutationJournalError::new(format!("initialize plugin mutation HMAC: {error}"))
-    })?;
-    mac.update(domain);
-    for value in values {
-        mac.update(&(value.len() as u64).to_be_bytes());
-        mac.update(value);
-    }
-    Ok(hex_encode(&mac.finalize().into_bytes()))
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    PLUGIN_MUTATION_JOURNAL_ENGINE
+        .mac_hex(key, AuthenticationFraming::RawDomain, domain, values)
+        .map_err(|error| {
+            PluginMutationJournalError::new(format!("initialize plugin mutation HMAC: {error}"))
+        })
 }
 
 fn hex_decode(value: &str) -> Result<Vec<u8>, PluginMutationJournalError> {
-    if !value.len().is_multiple_of(2) {
-        return Err(PluginMutationJournalError::new(
-            "hex value has an odd length",
-        ));
-    }
-    (0..value.len())
-        .step_by(2)
-        .map(|index| {
-            u8::from_str_radix(&value[index..index + 2], 16).map_err(|error| {
-                PluginMutationJournalError::new(format!("decode hex value: {error}"))
-            })
-        })
-        .collect()
-}
-
-fn constant_time_equal(left: &str, right: &str) -> bool {
-    if left.len() != right.len() {
-        return false;
-    }
-    left.bytes()
-        .zip(right.bytes())
-        .fold(0_u8, |difference, (left, right)| {
-            difference | (left ^ right)
-        })
-        == 0
+    decode_canonical_hex(value)
+        .map_err(|error| PluginMutationJournalError::new(format!("decode hex value: {error}")))
 }
 
 #[cfg(test)]

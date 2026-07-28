@@ -20,16 +20,18 @@ use std::sync::Mutex;
 
 use anyhow::Context;
 use anyhow::Result;
+use hepta_authority::AuthenticationFraming;
 pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_COMMIT_ENDPOINT;
 pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_ENABLED_ENV;
+use hepta_authority::TELEGRAM_AUTHORITY_JOURNAL_ENGINE;
 pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_JOURNAL_FILE_ENV;
 use hepta_authority::TELEGRAM_AUTHORITY_JOURNAL_POLICY;
 pub(crate) use hepta_authority::TELEGRAM_AUTHORITY_KEY_FILE_ENV;
+use hepta_authority::decode_sha256_hex;
+use hepta_authority::hex_encode;
 use hepta_authority::parse_gate_truthy;
 use hepta_gateway::telegram_delivery_lifecycle_record;
 use hepta_gateway::telegram_next_update_offset;
-use hmac::Hmac;
-use hmac::Mac;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
@@ -85,8 +87,6 @@ const JOURNAL_STAGING_PREFIX: &str = ".hepta-telegram-authority-journal";
 #[cfg(test)]
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TelegramAuthorityConfig {
@@ -1719,10 +1719,13 @@ fn append_event(
         anyhow::bail!("Telegram authority journal reached its bounded event limit");
     }
     event.mac = event_mac(&event, key)?;
-    if serde_json::to_vec(&event)
-        .context("encode Telegram authority event")?
-        .len()
-        > MAX_EVENT_BYTES
+    if TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .validate_record_bytes(
+            serde_json::to_vec(&event)
+                .context("encode Telegram authority event")?
+                .len(),
+        )
+        .is_err()
     {
         anyhow::bail!("Telegram authority event exceeds its bounded size");
     }
@@ -1731,7 +1734,10 @@ fn append_event(
 }
 
 fn read_journal_snapshot(bytes: &[u8], key: &[u8; 32]) -> Result<JournalSnapshot> {
-    if bytes.len() as u64 > MAX_JOURNAL_BYTES {
+    if TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .validate_journal_bytes(bytes.len() as u64)
+        .is_err()
+    {
         anyhow::bail!("Telegram authority journal exceeds its bounded size");
     }
     let mut lines = bytes
@@ -1759,7 +1765,11 @@ fn read_journal_snapshot(bytes: &[u8], key: &[u8; 32]) -> Result<JournalSnapshot
     let first_sequence = checkpoint.as_ref().map_or(1, |value| value.sequence + 1);
     let mut events = Vec::new();
     for (expected_sequence, line) in (first_sequence..).zip(lines) {
-        if line.len() > MAX_EVENT_BYTES || events.len() >= MAX_JOURNAL_EVENTS {
+        if TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+            .validate_record_bytes(line.len())
+            .is_err()
+            || events.len() >= MAX_JOURNAL_EVENTS
+        {
             anyhow::bail!("Telegram authority journal exceeds bounded record limits");
         }
         let event: JournalEvent =
@@ -1768,7 +1778,8 @@ fn read_journal_snapshot(bytes: &[u8], key: &[u8; 32]) -> Result<JournalSnapshot
             || event.sequence != expected_sequence
             || event.previous_entry_hash != previous
             || event.mac.len() != 64
-            || !constant_time_equal(&event.mac, &event_mac(&event, key)?)
+            || !TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+                .constant_time_equal(&event.mac, &event_mac(&event, key)?)
         {
             anyhow::bail!("Telegram authority journal chain or MAC is invalid");
         }
@@ -1791,13 +1802,19 @@ fn encode_journal_snapshot(snapshot: &JournalSnapshot) -> Result<Vec<u8>> {
     }
     for event in &snapshot.events {
         let encoded = serde_json::to_vec(event).context("encode Telegram authority event")?;
-        if encoded.len() > MAX_EVENT_BYTES {
+        if TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+            .validate_record_bytes(encoded.len())
+            .is_err()
+        {
             anyhow::bail!("Telegram authority event exceeds its bounded size");
         }
         bytes.extend(encoded);
         bytes.push(b'\n');
     }
-    if bytes.len() as u64 > MAX_JOURNAL_BYTES {
+    if TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .validate_journal_bytes(bytes.len() as u64)
+        .is_err()
+    {
         anyhow::bail!("Telegram authority journal exceeds its bounded size");
     }
     Ok(bytes)
@@ -1945,10 +1962,13 @@ fn validate_checkpoint(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result
         || checkpoint.revision == 0
         || checkpoint.sequence == 0
         || checkpoint.consumed_authorities.is_empty()
-        || checkpoint.consumed_authorities.len() > MAX_CHECKPOINTED_AUTHORITIES
+        || TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+            .validate_counts(0, checkpoint.consumed_authorities.len())
+            .is_err()
         || checkpoint.compacted_events == 0
         || checkpoint.mac.len() != 64
-        || !constant_time_equal(&checkpoint.mac, &checkpoint_mac(checkpoint, key)?)
+        || !TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+            .constant_time_equal(&checkpoint.mac, &checkpoint_mac(checkpoint, key)?)
     {
         anyhow::bail!("Telegram authority checkpoint binding or MAC is invalid");
     }
@@ -1977,22 +1997,27 @@ fn validate_checkpoint(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result
 }
 
 fn checkpoint_mac(checkpoint: &JournalCheckpoint, key: &[u8; 32]) -> Result<String> {
-    let mut mac = HmacSha256::new_from_slice(key)?;
-    update_mac(&mut mac, CHECKPOINT_MAC_DOMAIN);
-    for field in checkpoint_fields(checkpoint) {
-        update_mac(&mut mac, field.as_bytes());
-    }
-    Ok(hex_encode(&mac.finalize().into_bytes()))
+    let fields = checkpoint_fields(checkpoint);
+    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .mac_hex(
+            key,
+            AuthenticationFraming::FramedDomain,
+            CHECKPOINT_MAC_DOMAIN,
+            &fields,
+        )
+        .context("initialize Telegram checkpoint HMAC")
 }
 
 fn checkpoint_hash(checkpoint: &JournalCheckpoint) -> String {
-    let mut hasher = Sha256::new();
-    update_hash(&mut hasher, CHECKPOINT_HASH_DOMAIN);
-    for field in checkpoint_fields(checkpoint) {
-        update_hash(&mut hasher, field.as_bytes());
-    }
-    update_hash(&mut hasher, checkpoint.mac.as_bytes());
-    format!("sha256:{:x}", hasher.finalize())
+    let mut fields = checkpoint_fields(checkpoint);
+    fields.push(checkpoint.mac.clone());
+    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE.content_hash(
+        AuthenticationFraming::FramedDomain,
+        CHECKPOINT_HASH_DOMAIN,
+        &fields,
+    )
 }
 
 fn checkpoint_fields(checkpoint: &JournalCheckpoint) -> Vec<String> {
@@ -2012,22 +2037,27 @@ fn checkpoint_fields(checkpoint: &JournalCheckpoint) -> Vec<String> {
 }
 
 fn event_mac(event: &JournalEvent, key: &[u8; 32]) -> Result<String> {
-    let mut mac = HmacSha256::new_from_slice(key)?;
-    update_mac(&mut mac, EVENT_MAC_DOMAIN);
-    for value in event_fields(event) {
-        update_mac(&mut mac, value.as_bytes());
-    }
-    Ok(hex_encode(&mac.finalize().into_bytes()))
+    let fields = event_fields(event);
+    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .mac_hex(
+            key,
+            AuthenticationFraming::FramedDomain,
+            EVENT_MAC_DOMAIN,
+            &fields,
+        )
+        .context("initialize Telegram event HMAC")
 }
 
 fn event_hash(event: &JournalEvent) -> String {
-    let mut hasher = Sha256::new();
-    update_hash(&mut hasher, EVENT_HASH_DOMAIN);
-    for value in event_fields(event) {
-        update_hash(&mut hasher, value.as_bytes());
-    }
-    update_hash(&mut hasher, event.mac.as_bytes());
-    format!("sha256:{:x}", hasher.finalize())
+    let mut fields = event_fields(event);
+    fields.push(event.mac.clone());
+    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE.content_hash(
+        AuthenticationFraming::FramedDomain,
+        EVENT_HASH_DOMAIN,
+        &fields,
+    )
 }
 
 fn event_fields(event: &JournalEvent) -> Vec<String> {
@@ -2192,7 +2222,8 @@ fn exact_authenticated_delivery_ack(
         if matching.is_some()
             || !exact_delivery_ack_binding(&authority, request, delivery_ledger_path, cursor_path)
             || !exact_acked_lifecycle_record(&record, request.next_update_offset)
-            || !constant_time_equal(&authority.mac, &delivery_ack_mac(&authority, key)?)
+            || !TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+                .constant_time_equal(&authority.mac, &delivery_ack_mac(&authority, key)?)
         {
             anyhow::bail!("Telegram reconciliation delivery ACK is ambiguous or substituted");
         }
@@ -2273,27 +2304,31 @@ fn exact_acked_lifecycle_record(record: &serde_json::Value, next_update_offset: 
 }
 
 fn delivery_ack_mac(authority: &AuthenticatedDeliveryAckBinding, key: &[u8; 32]) -> Result<String> {
-    let mut mac = HmacSha256::new_from_slice(key)?;
-    update_mac(&mut mac, DELIVERY_ACK_MAC_DOMAIN);
-    for value in [
-        authority.schema.as_str(),
-        authority.request_id.as_str(),
-        authority.plan_hash.as_str(),
-        authority.plan_request_binding_hash.as_str(),
-        authority.commit_request_binding_hash.as_str(),
-        authority.session_binding_hash.as_str(),
-        cursor_binding(authority.cursor).as_str(),
-        authority.update_id.to_string().as_str(),
-        authority.next_update_offset.to_string().as_str(),
-        authority.effect_plan_hash.as_str(),
-        authority.provider_ack_hash.as_str(),
-        authority.delivery_ledger_path_hash.as_str(),
-        authority.cursor_path_hash.as_str(),
-        "acked",
-    ] {
-        update_mac(&mut mac, value.as_bytes());
-    }
-    Ok(hex_encode(&mac.finalize().into_bytes()))
+    let fields = vec![
+        authority.schema.clone(),
+        authority.request_id.clone(),
+        authority.plan_hash.clone(),
+        authority.plan_request_binding_hash.clone(),
+        authority.commit_request_binding_hash.clone(),
+        authority.session_binding_hash.clone(),
+        cursor_binding(authority.cursor),
+        authority.update_id.to_string(),
+        authority.next_update_offset.to_string(),
+        authority.effect_plan_hash.clone(),
+        authority.provider_ack_hash.clone(),
+        authority.delivery_ledger_path_hash.clone(),
+        authority.cursor_path_hash.clone(),
+        "acked".to_owned(),
+    ];
+    let fields = fields.iter().map(String::as_bytes).collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .mac_hex(
+            key,
+            AuthenticationFraming::FramedDomain,
+            DELIVERY_ACK_MAC_DOMAIN,
+            &fields,
+        )
+        .context("initialize Telegram delivery ACK HMAC")
 }
 
 fn validate_read_result(result: &TelegramReadResult, cursor: Option<i64>) -> Result<()> {
@@ -2422,31 +2457,35 @@ fn hash_read_result(result: &TelegramReadResult) -> String {
 }
 
 fn verify_proof(key: &[u8; 32], domain: &[u8], fields: &[&str], proof: &str) -> Result<()> {
-    let proof = decode_hex(proof)?;
-    let mut mac = HmacSha256::new_from_slice(key)?;
-    update_mac(&mut mac, domain);
-    for value in fields {
-        update_mac(&mut mac, value.as_bytes());
-    }
-    mac.verify_slice(&proof)
+    let fields = fields
+        .iter()
+        .map(|field| field.as_bytes())
+        .collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .verify_mac_hex(
+            key,
+            AuthenticationFraming::FramedDomain,
+            domain,
+            &fields,
+            proof,
+        )
         .map_err(|_| anyhow::anyhow!("Telegram operator proof is invalid"))
 }
 
 fn digest(domain: &[u8], fields: &[&str]) -> String {
-    let mut hasher = Sha256::new();
-    update_hash(&mut hasher, domain);
-    for value in fields {
-        update_hash(&mut hasher, value.as_bytes());
-    }
-    format!("{:x}", hasher.finalize())
+    let fields = fields
+        .iter()
+        .map(|field| field.as_bytes())
+        .collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE.digest_hex(
+        AuthenticationFraming::FramedDomain,
+        domain,
+        &fields,
+    )
 }
 
 fn validate_hash(value: &str, name: &str) -> Result<()> {
-    if value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-    {
+    if decode_sha256_hex(value).is_ok() {
         return Ok(());
     }
     anyhow::bail!("{name} must be canonical lowercase SHA-256 hex")
@@ -2467,23 +2506,6 @@ fn optional_i64(value: Option<i64>) -> String {
     value.map_or_else(|| "none".into(), |value| value.to_string())
 }
 
-fn decode_hex(value: &str) -> Result<[u8; 32]> {
-    validate_hash(value, "proof")?;
-    let mut bytes = [0_u8; 32];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
-        bytes[index] = (hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?;
-    }
-    Ok(bytes)
-}
-
-fn hex_nibble(value: u8) -> Result<u8> {
-    match value {
-        b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
-        _ => anyhow::bail!("invalid lowercase hexadecimal value"),
-    }
-}
-
 fn random_owner_nonce() -> Result<String> {
     let mut random = [0_u8; 32];
     OpenOptions::new()
@@ -2493,37 +2515,6 @@ fn random_owner_nonce() -> Result<String> {
         .read_exact(&mut random)
         .context("read Telegram authority owner nonce")?;
     Ok(hex_encode(&random))
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(char::from(HEX[usize::from(byte >> 4)]));
-        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    output
-}
-
-fn update_mac(mac: &mut HmacSha256, value: &[u8]) {
-    mac.update(&(value.len() as u64).to_be_bytes());
-    mac.update(value);
-}
-
-fn update_hash(hasher: &mut Sha256, value: &[u8]) {
-    hasher.update((value.len() as u64).to_be_bytes());
-    hasher.update(value);
-}
-
-fn constant_time_equal(left: &str, right: &str) -> bool {
-    left.len() == right.len()
-        && left
-            .bytes()
-            .zip(right.bytes())
-            .fold(0_u8, |difference, (left, right)| {
-                difference | (left ^ right)
-            })
-            == 0
 }
 
 #[cfg(unix)]
@@ -2555,12 +2546,13 @@ fn effective_uid() -> u32 {
 
 #[cfg(test)]
 fn proof(key: &[u8; 32], domain: &[u8], fields: &[&str]) -> String {
-    let mut mac = HmacSha256::new_from_slice(key).expect("test HMAC");
-    update_mac(&mut mac, domain);
-    for value in fields {
-        update_mac(&mut mac, value.as_bytes());
-    }
-    hex_encode(&mac.finalize().into_bytes())
+    let fields = fields
+        .iter()
+        .map(|field| field.as_bytes())
+        .collect::<Vec<_>>();
+    TELEGRAM_AUTHORITY_JOURNAL_ENGINE
+        .mac_hex(key, AuthenticationFraming::FramedDomain, domain, &fields)
+        .expect("test HMAC")
 }
 
 #[cfg(all(test, unix))]

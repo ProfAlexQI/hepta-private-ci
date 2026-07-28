@@ -9,5 +9,9 @@ name = "hepta_authority"
 path = "src/lib.rs"
 doctest = false
 
+[dependencies]
+hmac = { workspace = true }
+sha2 = { workspace = true }
+
 [lints]
 workspace = true

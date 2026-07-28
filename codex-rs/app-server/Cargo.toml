@@ -78,7 +78,6 @@ clap = { workspace = true, features = ["derive"] }
 futures = { workspace = true }
 hepta-authority = { workspace = true }
 hepta-runtime = { workspace = true }
-hmac = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -111,6 +110,7 @@ codex-model-provider-info = { workspace = true }
 codex-utils-cargo-bin = { workspace = true }
 core_test_support = { workspace = true }
 flate2 = { workspace = true }
+hmac = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pretty_assertions = { workspace = true }
