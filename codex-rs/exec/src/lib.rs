@@ -1128,6 +1128,7 @@ fn thread_resume_params_from_config(config: &Config, thread_id: String) -> Threa
         sandbox: sandbox.flatten(),
         permissions,
         config: config_request_overrides_from_config(config),
+        exclude_turns: true,
         ..ThreadResumeParams::default()
     }
 }
