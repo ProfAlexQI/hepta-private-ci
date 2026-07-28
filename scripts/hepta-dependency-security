@@ -277,7 +277,7 @@ verify_contract() {
       },
       native_source_policy:{
         path:"apps/hepta-native/dependency-source-policy-v1.json",
-        sha256:"3aef19ab2ae755074dc2e003904aac403fd9556919f0ed062b006c20b47cfc87"
+        sha256:"7f32dd7b3e4f95daa6322ae0d5ed8e5781eadc8e3e3f81f1e19207b51ca7458d"
       },
       native_source_policy_runner:{
         path:"apps/hepta-native/hepta-native-dependency-policy",
