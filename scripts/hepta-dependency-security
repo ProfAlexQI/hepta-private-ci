@@ -253,14 +253,14 @@ verify_contract() {
           manifest_path:"codex-rs/Cargo.toml",
           path:"codex-rs/Cargo.lock",
           deny_config_path:"codex-rs/deny.toml",
-          sha256:"08b8d8bc93fd1bf5e59825276ba7d271c6da8a15640d1f6cb8170c108fc3b072"
+          sha256:"358634c200decbe1e28a9391b520b19379c7cb555b19a01eeb4c1bc32f4f6836"
         },
         {
           id:"native-app",
           manifest_path:"apps/hepta-native/Cargo.toml",
           path:"apps/hepta-native/Cargo.lock",
           deny_config_path:"apps/hepta-native/deny.toml",
-          sha256:"cc00e4709504db6a8b734b662ec0b14d3ade0eb90adc0c3e6c644fb21d250723"
+          sha256:"9ef7a327cb828068e6c307bdd352d384b8efc52a6ade3c1f1def33b3ce7eb8ad"
         }
       ],
       deny_config:{
