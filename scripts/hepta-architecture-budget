@@ -246,7 +246,23 @@ verify() {
     and (.defaults | all(. == false))
     and .upstream_intake == "semantic_selective"
     and .standalone_reconsideration_requires_controlled_live_approval == true
+    and .compatibility_surfaces.legacy_control_ui_mutation == {
+      disposition:"compatibility_plan_only_retired_for_real_effects",
+      real_handler_activation_recommended:false
+    }
+    and .compatibility_surfaces.legacy_telegram_replacement == {
+      disposition:"compatibility_readiness_only_owner_remains_openclaw",
+      owner_replacement_recommended:false
+    }
   ' docs/decisions/hepta-product-boundary-v1.json >/dev/null
+  jq -e '
+    .schema == "hepta_i0_durable_archive_v1"
+    and .status == "ready"
+    and .archive_ref_count == 19
+    and .bundle_sha256 == "63ebd3ee397b2477e454baab7477a02ed0da85763cb9f38eb199f99f858cbce6"
+    and .bundle_verified == true
+    and .copy_outside_openclaw_tmp == true
+  ' docs/architecture/HEPTA_I0_DURABLE_ARCHIVE_2026-07-28.json >/dev/null
   jq -e '
     .schema == "hepta_g_upstream_targeted_semantic_intake_v1"
     and .upstream_head == "3bbf1fe75701c97fb190e0867002ba2d9dbda5db"

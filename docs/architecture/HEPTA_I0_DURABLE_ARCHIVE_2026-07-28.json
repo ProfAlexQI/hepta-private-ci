@@ -1,0 +1,14 @@
+{
+  "schema": "hepta_i0_durable_archive_v1",
+  "status": "ready",
+  "source_head": "9067d3e542b7e0cbcb0e79e0693338fc2db07c01",
+  "archive_ref_count": 19,
+  "durable_archive_root": "/Users/qianqi/.local/share/hepta/archive/H/20260727T145049Z",
+  "bundle": "hepta-archive-refs.bundle",
+  "bundle_sha256": "63ebd3ee397b2477e454baab7477a02ed0da85763cb9f38eb199f99f858cbce6",
+  "heads_manifest": "heads.txt",
+  "heads_manifest_sha256": "b140417e151ddbed3a130e416886ed904efb306cbb206ce726b08237f812cdc5",
+  "bundle_verified": true,
+  "copy_outside_openclaw_tmp": true,
+  "off_device_copy_recorded": false
+}

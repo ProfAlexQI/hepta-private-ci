@@ -12,5 +12,15 @@
     "formal_service_links_full_codex_provider_tool_runner": false
   },
   "upstream_intake": "semantic_selective",
-  "standalone_reconsideration_requires_controlled_live_approval": true
+  "standalone_reconsideration_requires_controlled_live_approval": true,
+  "compatibility_surfaces": {
+    "legacy_control_ui_mutation": {
+      "disposition": "compatibility_plan_only_retired_for_real_effects",
+      "real_handler_activation_recommended": false
+    },
+    "legacy_telegram_replacement": {
+      "disposition": "compatibility_readiness_only_owner_remains_openclaw",
+      "owner_replacement_recommended": false
+    }
+  }
 }

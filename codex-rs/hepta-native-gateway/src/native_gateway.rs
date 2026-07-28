@@ -5121,6 +5121,8 @@ fn operator_security_json(
         native_route: true,
         compatibility_mode: "native_operator_security",
         side_effect_free: true,
+        product_role: hepta_contracts::OPENCLAW_GOVERNED_BACKEND_ROLE,
+        product_disposition: hepta_contracts::LEGACY_CONTROL_UI_MUTATION_DISPOSITION,
         security_mode: if ready {
             "active_replacement_ready"
         } else if legacy_owner_coexistence_ready {
@@ -5180,7 +5182,7 @@ fn operator_security_json(
             message_sent: false,
             cursor_written: false,
         },
-        next_migration_slice: "keep POST routes dry-run until one selected handler is wired through the native execution stores with operator approval",
+        next_migration_slice: hepta_contracts::LEGACY_CONTROL_UI_MUTATION_NEXT_ACTION,
     })
 }
 
@@ -5585,12 +5587,6 @@ fn gateway_replacement_readiness(
     let ready = blockers.is_empty();
     let status = if ready { "ready" } else { "blocked" };
 
-    let next_migration_slice = if ready {
-        "active replacement gates are satisfied; keep /api/telegram-live-soak green before broadening traffic or relaxing guards"
-    } else {
-        "run explicit live Telegram gate smoke only with operator approval, then replace the active gateway"
-    };
-
     NativeGatewayReplacementReadiness {
         product: "Hepta",
         runtime: "hepta",
@@ -5598,6 +5594,9 @@ fn gateway_replacement_readiness(
         ready,
         active_install_allowed: ready,
         side_effect_free,
+        product_role: hepta_contracts::OPENCLAW_GOVERNED_BACKEND_ROLE,
+        product_disposition: hepta_contracts::LEGACY_TELEGRAM_REPLACEMENT_DISPOSITION,
+        compatibility_surface: true,
         blocker_count: blockers.len(),
         blockers,
         checks,
@@ -5642,7 +5641,7 @@ fn gateway_replacement_readiness(
         telegram_owner_handoff_endpoint: TELEGRAM_OWNER_HANDOFF_ENDPOINT,
         telegram_owner_handoff_status,
         control_ui_route_parity,
-        next_migration_slice,
+        next_migration_slice: hepta_contracts::LEGACY_TELEGRAM_REPLACEMENT_NEXT_ACTION,
     }
 }
 
@@ -5761,11 +5760,7 @@ fn gateway_live_activation_plan(
             raw_prompt_text_exposed: false,
             raw_response_text_exposed: false,
         },
-        next_migration_slice: if readiness.ready {
-            "active gateway is live; continue soak, keep rollback anchors, and watch /api/telegram-live-soak"
-        } else {
-            "perform an explicit operator-approved live Telegram drain smoke, then replace the active gateway if readiness is green"
-        },
+        next_migration_slice: hepta_contracts::LEGACY_TELEGRAM_REPLACEMENT_NEXT_ACTION,
     }
 }
 

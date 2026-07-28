@@ -23,6 +23,16 @@ hepta_watchdog_native_post_contract_json() {
         }
         and $boundary.upstream_intake == "semantic_selective"
         and $boundary.standalone_reconsideration_requires_controlled_live_approval == true
+        and $boundary.compatibility_surfaces == {
+          legacy_control_ui_mutation:{
+            disposition:"compatibility_plan_only_retired_for_real_effects",
+            real_handler_activation_recommended:false
+          },
+          legacy_telegram_replacement:{
+            disposition:"compatibility_readiness_only_owner_remains_openclaw",
+            owner_replacement_recommended:false
+          }
+        }
       ) as $boundary_ready
       | ($post.required_gates | INDEX(.env)) as $required_gates
       | (

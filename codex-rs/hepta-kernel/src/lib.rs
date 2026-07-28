@@ -5,6 +5,7 @@
 //! planning, memory/intelligence context, plugin capability posture, and
 //! post-turn persistence boundaries.
 
+use hepta_contracts::LEGACY_CONTROL_UI_MUTATION_NEXT_ACTION;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -1892,7 +1893,7 @@ pub fn hepta_kernel_native_post_execution_readiness_report(
         model_invoked: false,
         message_sent: false,
         cursor_written: false,
-        next_migration_slice: "keep legacy control-UI POST routes plan-only; use governed plugin, preference, operator-note, or Telegram authority entrypoints for real effects",
+        next_migration_slice: LEGACY_CONTROL_UI_MUTATION_NEXT_ACTION,
     }
 }
 
@@ -2055,7 +2056,7 @@ pub fn hepta_kernel_native_post_activation_plan_report(
         raw_request_body_exposed: false,
         raw_idempotency_key_exposed: false,
         raw_audit_payload_exposed: false,
-        next_migration_slice: "activate one handler only under dual gate after this plan remains ready and rollback anchors are observed",
+        next_migration_slice: LEGACY_CONTROL_UI_MUTATION_NEXT_ACTION,
     }
 }
 
