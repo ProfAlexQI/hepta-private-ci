@@ -137,6 +137,45 @@ if [[ "$require_active_health" != "true" || "$release_evidence_ready" != "true" 
 fi
 
 health_json="$(curl -fsS "$BASE_URL/health")"
+route_manifest_bin=""
+route_manifest_json=""
+for candidate_bin in "$RELEASE_BIN" "$INSTALLED_BIN"; do
+  [[ -x "$candidate_bin" ]] || continue
+  candidate_manifest_json="$("$candidate_bin" manifest 2>/dev/null || true)"
+  if jq -e '
+    .route_effect_gate_manifest.schema_version == "hepta_route_effect_gate_manifest_v1"
+    and (.route_effect_gate_manifest.entries | type == "array")
+  ' >/dev/null 2>&1 <<<"$candidate_manifest_json"; then
+    route_manifest_bin="$candidate_bin"
+    route_manifest_json="$candidate_manifest_json"
+    break
+  fi
+done
+if [[ -z "$route_manifest_bin" ]]; then
+  echo "Hepta watchdog could not load the generated route/effect/gate manifest" >&2
+  exit 1
+fi
+mapfile -t generated_watchdog_probe_paths < <(
+  jq -r '
+    .route_effect_gate_manifest.entries[]
+    | select(.watchdog_probe == true and .method == "GET")
+    | .path_pattern
+  ' <<<"$route_manifest_json"
+)
+generated_watchdog_probe_failures='[]'
+for probe_path in "${generated_watchdog_probe_paths[@]}"; do
+  if ! curl -fsS "$BASE_URL$probe_path" >/dev/null; then
+    generated_watchdog_probe_failures="$(
+      jq -c --arg path "$probe_path" '. + [$path]' <<<"$generated_watchdog_probe_failures"
+    )"
+  fi
+done
+route_manifest_schema="$(
+  jq -r '.route_effect_gate_manifest.schema_version' <<<"$route_manifest_json"
+)"
+route_manifest_sha256="$(
+  jq -r '.route_effect_gate_manifest.sha256' <<<"$route_manifest_json"
+)"
 route_json="$(curl -fsS "$BASE_URL/api/control-ui-route-parity")"
 operator_json="$(curl -fsS "$BASE_URL/api/operator-security")"
 owner_json="$(curl -fsS "$BASE_URL/api/telegram-owner-handoff")"
@@ -159,6 +198,9 @@ report="$(jq -n \
   --arg base_url "$BASE_URL" \
   --arg installed_bin "$INSTALLED_BIN" \
   --arg watchdog_mode "$WATCHDOG_MODE" \
+  --arg route_manifest_bin "$route_manifest_bin" \
+  --arg route_manifest_schema "$route_manifest_schema" \
+  --arg route_manifest_sha256 "$route_manifest_sha256" \
   --arg release_sha "$release_sha" \
   --arg installed_sha "$installed_sha" \
   --argjson release_evidence_ready "$release_evidence_ready" \
@@ -170,6 +212,8 @@ report="$(jq -n \
   --argjson deployed_evidence "$deployed_evidence" \
   --argjson release_evidence_failure_reasons "$release_evidence_failure_reasons" \
   --argjson health "$health_json" \
+  --argjson generated_watchdog_probe_count "${#generated_watchdog_probe_paths[@]}" \
+  --argjson generated_watchdog_probe_failures "$generated_watchdog_probe_failures" \
   --argjson route "$route_json" \
   --argjson operator "$operator_json" \
   --argjson owner "$owner_json" \
@@ -241,6 +285,10 @@ report="$(jq -n \
     status: (
       if $release_evidence_ready == true
         and $health.status == "ready"
+        and $route_manifest_schema == "hepta_route_effect_gate_manifest_v1"
+        and ($route_manifest_sha256 | length) == 64
+        and $generated_watchdog_probe_count >= 12
+        and ($generated_watchdog_probe_failures | length) == 0
         and $route.status == "ready"
         and $route.missing_route_count == 0
         and $owner.double_poller_risk == false
@@ -426,6 +474,13 @@ report="$(jq -n \
     installed_sha256:$installed_sha,
     binary_sha_match:$binary_sha_match,
     active_health:{required:true,status:(if $health.status == "ready" then "ready" else "failed" end)},
+    route_effect_gate_manifest:{
+      schema_version:$route_manifest_schema,
+      sha256:$route_manifest_sha256,
+      source_binary:$route_manifest_bin,
+      generated_watchdog_probe_count:$generated_watchdog_probe_count,
+      generated_watchdog_probe_failures:$generated_watchdog_probe_failures
+    },
     candidate_artifact:{required:$candidate_required,evidence:$candidate_evidence},
     deployed_receipt:{required:$deployed_required,evidence:$deployed_evidence},
     deployment_consistency_required:$deployment_match_required,

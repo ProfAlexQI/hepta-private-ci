@@ -14,6 +14,7 @@ mod operator_mutation_reconciliation;
 mod preference_attachment;
 mod preference_ingress;
 mod provider_domain;
+mod route_manifest;
 mod route_registry;
 mod runtime_composition;
 mod runtime_ingress;

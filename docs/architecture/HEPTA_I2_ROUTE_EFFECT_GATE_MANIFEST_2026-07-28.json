@@ -1,0 +1,22 @@
+{
+  "schema": "hepta_i2_route_effect_gate_manifest_v1",
+  "status": "ready",
+  "manifest_schema": "hepta_route_effect_gate_manifest_v1",
+  "canonical_source": "hepta_native_gateway::route_manifest",
+  "compatibility_route_count": 283,
+  "route_manifest_entry_count": 321,
+  "quarantined_legacy_effect_route_count": 28,
+  "watchdog_probe_count": 12,
+  "entry_count_derived_at_runtime": true,
+  "generates": [
+    "runtime_lifecycle_lookup",
+    "socket_dispatch_handler_selection",
+    "gate_registry_schema",
+    "canonical_manifest_schema",
+    "route_manifest_tests",
+    "watchdog_probes"
+  ],
+  "legacy_route_hash_preserved": true,
+  "unknown_route_structured_rejection": true,
+  "retired_route_structured_rejection": true
+}

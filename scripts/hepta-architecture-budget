@@ -72,6 +72,13 @@ verify() {
   source scripts/lib/hepta-source-set.sh
 
   verify_file_max codex-rs/hepta-native-gateway/src/native_gateway.rs 5800
+  verify_file_max codex-rs/hepta-native-gateway/src/route_manifest.rs 230
+  verify_file_max \
+    codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs \
+    230
+  verify_file_max codex-rs/hepta-native-gateway/src/runtime_ingress.rs 900
+  verify_file_max codex-rs/hepta-native-gateway/src/canonical_manifest.rs 180
+  verify_file_max codex-rs/hepta-native-gateway/src/gate_command.rs 150
   for file in codex-rs/hepta-native-gateway/src/native_gateway/*.rs; do
     verify_file_max "$file" 59000
   done
@@ -275,6 +282,28 @@ verify() {
     and .legacy_migration_tests == true
     and .rollback_and_replay_tests == true
   ' docs/architecture/HEPTA_I1_AUTHENTICATED_JOURNAL_ENGINE_2026-07-28.json >/dev/null
+  jq -e '
+    .schema == "hepta_i2_route_effect_gate_manifest_v1"
+    and .status == "ready"
+    and .manifest_schema == "hepta_route_effect_gate_manifest_v1"
+    and .canonical_source == "hepta_native_gateway::route_manifest"
+    and .compatibility_route_count == 283
+    and .route_manifest_entry_count == 321
+    and .quarantined_legacy_effect_route_count == 28
+    and .watchdog_probe_count == 12
+    and .entry_count_derived_at_runtime == true
+    and (.generates | length) == 6
+    and .legacy_route_hash_preserved == true
+    and .unknown_route_structured_rejection == true
+    and .retired_route_structured_rejection == true
+  ' docs/architecture/HEPTA_I2_ROUTE_EFFECT_GATE_MANIFEST_2026-07-28.json >/dev/null
+  rg -Fq 'route_manifest_entry(method, path)' \
+    codex-rs/hepta-native-gateway/src/route_manifest.rs
+  rg -Fq 'manifest_dispatch::dispatch_manifest_route(' \
+    codex-rs/hepta-native-gateway/src/native_gateway.rs
+  rg -Fq '.route_effect_gate_manifest.entries[]' scripts/hepta-watchdog.sh
+  rg -Fq '"route_effect_gate_manifest": route_manifest' \
+    codex-rs/hepta-native-gateway/src/canonical_manifest.rs
   for journal in \
     codex-rs/app-server/src/request_processors/plugin_mutation_journal.rs \
     codex-rs/hepta-native-gateway/src/operator_mutation_journal.rs \

@@ -102,18 +102,17 @@ use crate::native_telegram::NativeTelegramPluginStatus;
 use crate::operator_mutation::enabled as operator_mutation_enabled;
 use crate::provider_domain::ProviderChannelDryRunPlanResponse;
 use crate::provider_domain::ProviderReportContext;
+use crate::route_manifest::RouteDispatchHandler;
+use crate::route_manifest::route_manifest_entry;
 use crate::route_registry::*;
 use crate::runtime_composition::NativeGatewayRuntime;
-use crate::runtime_composition::RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT;
 use crate::runtime_composition::RuntimeRequestPreflightReceipt;
 use crate::runtime_composition::runtime_kernel_canary_body_admitted;
-use crate::runtime_ingress::TELEGRAM_RECEIVE_ONCE_ENDPOINT;
 use crate::runtime_ingress::operator_execution_response;
 #[cfg(test)]
 use crate::runtime_ingress::runtime_ingress_lifecycle;
 use crate::runtime_ingress::runtime_preflight_matches;
 use crate::runtime_ingress::telegram_receive_once_response;
-use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENDPOINT;
 use crate::runtime_mutation::RUNTIME_MUTATION_CANARY_ENV;
 use crate::runtime_mutation::body_admitted as runtime_mutation_body_admitted;
 use crate::runtime_mutation::enabled as runtime_mutation_enabled;
@@ -121,6 +120,7 @@ use crate::ui_domain::index_html;
 use crate::ui_domain::route_native_gateway_binary_asset;
 
 mod http_rejections;
+mod manifest_dispatch;
 
 const RELEASE_BUILD_VERIFIED_ENV: &str = "HEPTA_CODEX_RELEASE_BUILD_VERIFIED";
 const CONTROL_UI_PARITY_VERIFIED_ENV: &str = "HEPTA_CODEX_CONTROL_UI_PARITY_VERIFIED";
@@ -426,147 +426,15 @@ fn handle_native_gateway_connection(
             br#"{"error":"runtime request preflight invalid"}"#,
         );
     }
-    if let Some(response) = runtime.route_preference_ingress(
-        method,
-        path,
-        request_body,
-        &preflight.request_binding_hash,
-    ) {
-        return write_http_response(
-            stream,
-            response.status,
-            "application/json; charset=utf-8",
-            response.body.as_bytes(),
-        );
-    }
-    if let Some(response) = runtime.route_effect_reconciliation(
-        method,
-        path,
-        request_body,
-        &preflight.request_binding_hash,
-    ) {
-        return write_http_response(
-            stream,
-            response.status,
-            "application/json; charset=utf-8",
-            response.body.as_bytes(),
-        );
-    }
-    if let Some(response) = runtime.route_telegram_reconciliation(
-        method,
-        path,
-        request_body,
-        &preflight.request_binding_hash,
-    ) {
-        return write_http_response(
-            stream,
-            response.status,
-            "application/json; charset=utf-8",
-            response.body.as_bytes(),
-        );
-    }
-    if method == "POST" && path == RUNTIME_KERNEL_CANARY_ACTION_ENDPOINT {
-        if !runtime_kernel_canary_body_admitted(request_body) {
-            return write_http_response(
-                stream,
-                "400 Bad Request",
-                "application/json; charset=utf-8",
-                br#"{"error":"runtime_kernel_canary_requires_exact_dry_run"}"#,
-            );
-        }
-        return match runtime.execute_runtime_kernel_canary(&preflight.request_binding_hash) {
-            Ok(receipt) => write_http_response(
-                stream,
-                "200 OK",
-                "application/json; charset=utf-8",
-                json_or_error(&receipt).as_bytes(),
-            ),
-            Err(error) => {
-                eprintln!("RuntimeKernel canary failed: {error:#}");
-                write_http_response(
-                    stream,
-                    "503 Service Unavailable",
-                    "application/json; charset=utf-8",
-                    br#"{"error":"runtime_kernel_canary_failed"}"#,
-                )
-            }
-        };
-    }
-    if method == "POST" && path == RUNTIME_MUTATION_CANARY_ENDPOINT {
-        if !runtime_mutation_enabled() {
-            return write_http_response(
-                stream,
-                "403 Forbidden",
-                "application/json; charset=utf-8",
-                format!(
-                    r#"{{"error":"runtime_mutation_canary.disabled","required_gate":"{RUNTIME_MUTATION_CANARY_ENV}","durable_intent_recorded":false,"provider_effect_ack_recorded":false,"terminal_receipt_recorded":false,"filesystem_mutated":false}}"#
-                )
-                .as_bytes(),
-            );
-        }
-        let Some(idempotency_key) = runtime_mutation_body_admitted(request_body) else {
-            return write_http_response(
-                stream,
-                "400 Bad Request",
-                "application/json; charset=utf-8",
-                br#"{"error":"runtime_mutation_canary.exact_confirmation_required"}"#,
-            );
-        };
-        return match runtime
-            .execute_runtime_mutation_canary(&preflight.request_binding_hash, &idempotency_key)
-        {
-            Ok(receipt) => write_http_response(
-                stream,
-                "200 OK",
-                "application/json; charset=utf-8",
-                json_or_error(&receipt).as_bytes(),
-            ),
-            Err(error) => {
-                eprintln!("RuntimeKernel mutation canary failed: {error:#}");
-                write_http_response(
-                    stream,
-                    "503 Service Unavailable",
-                    "application/json; charset=utf-8",
-                    br#"{"error":"runtime_mutation_canary.failed"}"#,
-                )
-            }
-        };
-    }
-    if let Some(response) = operator_execution_response(
-        runtime,
-        method,
-        path,
-        request_body,
-        &preflight.request_binding_hash,
-    ) {
-        return write_http_response(
-            stream,
-            response.status,
-            "application/json; charset=utf-8",
-            response.body.as_bytes(),
-        );
-    }
-    if method == "POST" && path == TELEGRAM_RECEIVE_ONCE_ENDPOINT {
-        let response =
-            telegram_receive_once_response(Some(runtime), options.with_telegram_plugin, 20);
-        return write_http_response(
-            stream,
-            response.status,
-            "application/json; charset=utf-8",
-            response.body.as_bytes(),
-        );
-    }
-    if let Some((status, content_type, body)) = route_native_gateway_binary_asset(method, path) {
-        return write_http_response(stream, status, content_type, body);
-    }
-    let (status, content_type, body) = route_native_gateway_request_with_preflight(
+    manifest_dispatch::dispatch_manifest_route(
+        stream,
         method,
         path,
         options,
+        runtime,
         request_body,
         &preflight,
-    );
-    write_http_response(stream, status, content_type, body.as_bytes())
+    )
 }
 
 #[cfg(test)]

@@ -8,6 +8,9 @@ use sha2::Sha256;
 
 use crate::gate_runner;
 use crate::gate_spec::ReceiptStateMachine;
+use crate::route_manifest::ROUTE_EFFECT_GATE_MANIFEST_SCHEMA;
+use crate::route_manifest::route_effect_gate_manifest;
+use crate::route_manifest::validate_route_manifest;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 
 const MANIFEST_SCHEMA: &str = "hepta_canonical_integration_manifest_v1";
@@ -15,7 +18,6 @@ const READINESS_DAG_SCHEMA: &str = "hepta_release_readiness_dag_v1";
 const CAPABILITY_REGISTRY_SCHEMA: &str = "hepta_native_capability_registry_v1";
 const CURRENT_REALITY_CAPABILITY_REGISTRY_SCHEMA: &str =
     "hepta_current_reality_capability_registry_v1";
-const ROUTE_REGISTRY_SCHEMA: &str = "hepta_control_ui_route_registry_v1";
 const IMMUTABLE_RELEASE_MANIFEST_SCHEMA: &str = "hepta_immutable_release_manifest_v1";
 const ROUTE_REGISTRY_NORMALIZED_SHA256: &str =
     "aabbfa3b6a873716afb5ad49bfd1e1d4fa7717ce495dde7bc94d8674aba320a1";
@@ -39,6 +41,8 @@ pub fn canonical_manifest_json() -> Result<String> {
     let production = production_surface_report();
     let (gate_pair_schema, migrated_gate_pair_count) =
         gate_runner::migrated_pair_registry_summary()?;
+    validate_route_manifest()?;
+    let route_manifest = route_effect_gate_manifest()?;
 
     let manifest = serde_json::json!({
         "product": "Hepta",
@@ -61,9 +65,9 @@ pub fn canonical_manifest_json() -> Result<String> {
                 derived_entry_count: capabilities.capability_count,
             },
             "routes": RegistryBinding {
-                schema_version: ROUTE_REGISTRY_SCHEMA,
-                source: "hepta_native_gateway::route_registry::CONTROL_UI_ROUTE_SPECS",
-                derived_entry_count: CONTROL_UI_ROUTE_SPECS.len(),
+                schema_version: ROUTE_EFFECT_GATE_MANIFEST_SCHEMA,
+                source: "hepta_native_gateway::route_manifest",
+                derived_entry_count: route_manifest.entry_count,
             },
             "migrated_gate_pairs": RegistryBinding {
                 schema_version: gate_pair_schema,
@@ -76,6 +80,7 @@ pub fn canonical_manifest_json() -> Result<String> {
                 derived_entry_count: ReceiptStateMachine::ORDERED_STATES.len(),
             },
         },
+        "route_effect_gate_manifest": route_manifest,
         "readiness_dag": {
             "schema_version": READINESS_DAG_SCHEMA,
             "nodes": readiness_nodes(),
@@ -114,9 +119,10 @@ pub fn canonical_manifest_json() -> Result<String> {
 }
 
 fn route_registry_normalized_sha256() -> String {
-    let canonical =
-        serde_json::to_vec(CONTROL_UI_ROUTE_SPECS).expect("static route registry must serialize");
-    format!("{:x}", Sha256::digest(canonical))
+    serde_json::to_vec(CONTROL_UI_ROUTE_SPECS).map_or_else(
+        |_| "serialization_failed".to_string(),
+        |canonical| format!("{:x}", Sha256::digest(canonical)),
+    )
 }
 
 fn readiness_nodes() -> [ReadinessNode; 6] {

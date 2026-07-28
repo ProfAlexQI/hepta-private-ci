@@ -737,7 +737,10 @@ fn control_ui_lifecycle(spec: &'static crate::gate_spec::GateSpec) -> Option<Ing
     })
 }
 
-pub(crate) fn runtime_ingress_lifecycle(method: &str, path: &str) -> Option<IngressLifecycleSpec> {
+pub(crate) fn declared_runtime_ingress_lifecycle(
+    method: &str,
+    path: &str,
+) -> Option<IngressLifecycleSpec> {
     SPECIAL_INGRESS_LIFECYCLES
         .iter()
         .copied()
@@ -749,6 +752,11 @@ pub(crate) fn runtime_ingress_lifecycle(method: &str, path: &str) -> Option<Ingr
                     .flatten()
             })
         })
+}
+
+pub(crate) fn runtime_ingress_lifecycle(method: &str, path: &str) -> Option<IngressLifecycleSpec> {
+    crate::route_manifest::route_manifest_entry(method, path)
+        .map(|entry| entry.lifecycle)
         .filter(|spec| validate_lifecycle(*spec).is_ok())
 }
 
@@ -804,7 +812,7 @@ pub(crate) fn runtime_ingress_lifecycle_registry_digest() -> Result<String, serd
     Ok(format!("{:x}", Sha256::digest(canonical)))
 }
 
-fn route_pattern_matches(pattern: &str, path: &str) -> bool {
+pub(crate) fn route_pattern_matches(pattern: &str, path: &str) -> bool {
     let mut pattern_segments = pattern.split('/');
     let mut path_segments = path.split('/');
     loop {

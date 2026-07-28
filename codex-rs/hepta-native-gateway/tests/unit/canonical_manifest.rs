@@ -1,4 +1,5 @@
 use super::*;
+use crate::route_manifest::route_manifest_registry;
 
 #[test]
 fn canonical_manifest_uses_registry_derived_counts_and_fail_closed_release_policy() {
@@ -17,7 +18,15 @@ fn canonical_manifest_uses_registry_derived_counts_and_fail_closed_release_polic
     );
     assert_eq!(
         value["registries"]["routes"]["derived_entry_count"],
-        CONTROL_UI_ROUTE_SPECS.len()
+        route_manifest_registry().len()
+    );
+    assert_eq!(
+        value["registries"]["routes"]["schema_version"],
+        ROUTE_EFFECT_GATE_MANIFEST_SCHEMA
+    );
+    assert_eq!(
+        value["route_effect_gate_manifest"]["entry_count"],
+        route_manifest_registry().len()
     );
     assert_eq!(
         value["readiness_dag"]["nodes"].as_array().map(Vec::len),

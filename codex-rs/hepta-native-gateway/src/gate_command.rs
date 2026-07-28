@@ -4,10 +4,12 @@ use serde::Serialize;
 use crate::gate_runner;
 use crate::gate_spec::GateSpec;
 use crate::gate_spec::ReceiptStateMachine;
+use crate::route_manifest::ROUTE_EFFECT_GATE_MANIFEST_SCHEMA;
+use crate::route_manifest::route_manifest_digest;
+use crate::route_manifest::route_manifest_registry;
 use crate::route_registry::CONTROL_UI_ROUTE_SPECS;
 use crate::runtime_ingress::IngressEffectClass;
 use crate::runtime_ingress::RUNTIME_INGRESS_REGISTRY_SCHEMA_VERSION;
-use crate::runtime_ingress::runtime_ingress_lifecycle_registry;
 use crate::runtime_ingress::runtime_ingress_lifecycle_registry_digest;
 
 pub fn gate_command_json(raw_args: &[String]) -> Result<String> {
@@ -29,17 +31,25 @@ pub fn gate_command_json(raw_args: &[String]) -> Result<String> {
 }
 
 fn gate_registry_json() -> Result<String> {
-    let ingress_lifecycle_registry = runtime_ingress_lifecycle_registry();
-    let ingress_lifecycle_registry_digest = runtime_ingress_lifecycle_registry_digest()?;
-    let quarantined_effect_route_count = ingress_lifecycle_registry
+    let route_manifest = route_manifest_registry();
+    let route_manifest_digest = route_manifest_digest()?;
+    let ingress_lifecycle_registry = route_manifest
         .iter()
-        .filter(|lifecycle| lifecycle.effect_class == IngressEffectClass::QuarantinedLegacyMutation)
+        .map(|entry| entry.lifecycle)
+        .collect::<Vec<_>>();
+    let ingress_lifecycle_registry_digest = runtime_ingress_lifecycle_registry_digest()?;
+    let quarantined_effect_route_count = route_manifest
+        .iter()
+        .filter(|entry| {
+            entry.lifecycle.effect_class == IngressEffectClass::QuarantinedLegacyMutation
+        })
         .count();
     let gates = CONTROL_UI_ROUTE_SPECS
         .iter()
         .map(|spec| {
-            let ingress_lifecycle = ingress_lifecycle_registry.iter().find(|lifecycle| {
-                lifecycle.method == spec.method && lifecycle.path_pattern == spec.pattern
+            let route_manifest_entry = route_manifest.iter().find(|entry| {
+                entry.lifecycle.method == spec.method
+                    && entry.lifecycle.path_pattern == spec.pattern
             });
             serde_json::json!({
                 "id": spec.capability,
@@ -52,7 +62,7 @@ fn gate_registry_json() -> Result<String> {
                 "guarded": spec.is_guarded(),
                 "requires_confirmation": spec.requires_confirmation(),
                 "receipt_state": spec.receipt_state(),
-                "ingress_lifecycle": ingress_lifecycle,
+                "route_manifest_entry": route_manifest_entry,
             })
         })
         .collect::<Vec<_>>();
@@ -64,13 +74,17 @@ fn gate_registry_json() -> Result<String> {
         "runner": "hepta gate",
         "mode": "declarative_registry_read_only",
         "gate_count": gates.len(),
-        "route_count_source": "CONTROL_UI_ROUTE_SPECS",
+        "route_count_source": "hepta_native_gateway::route_manifest",
+        "route_effect_gate_manifest_schema_version": ROUTE_EFFECT_GATE_MANIFEST_SCHEMA,
+        "route_effect_gate_manifest_sha256": route_manifest_digest,
+        "route_effect_gate_manifest_count": route_manifest.len(),
         "ingress_lifecycle_registry_schema_version": RUNTIME_INGRESS_REGISTRY_SCHEMA_VERSION,
         "ingress_lifecycle_registry_sha256": ingress_lifecycle_registry_digest,
         "ingress_lifecycle_count": ingress_lifecycle_registry.len(),
+        "ingress_lifecycle_registry": ingress_lifecycle_registry,
         "quarantined_effect_route_count": quarantined_effect_route_count,
         "release_dispatch_ready": quarantined_effect_route_count == 0,
-        "ingress_lifecycle_registry": ingress_lifecycle_registry,
+        "route_effect_gate_manifest": route_manifest,
         "receipt_state_machine": ReceiptStateMachine::ORDERED_STATES,
         "report_execution_performed": false,
         "side_effect_free": true,
