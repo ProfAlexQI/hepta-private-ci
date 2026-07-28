@@ -430,6 +430,33 @@ fn apply_merge(
         ));
     };
 
+    let multi_agent_v2_feature_depth = match segments {
+        [features, feature, ..] if features == "features" && feature == "multi_agent_v2" => Some(2),
+        [profiles, _, features, feature, ..]
+            if profiles == "profiles" && features == "features" && feature == "multi_agent_v2" =>
+        {
+            Some(4)
+        }
+        _ => None,
+    };
+    let preserves_multi_agent_v2_feature_config =
+        multi_agent_v2_feature_depth.is_some_and(|feature_depth| {
+            match value_at_path(root, &segments[..feature_depth]) {
+                Some(TomlValue::Boolean(_)) => {
+                    segments.len() > feature_depth || matches!(value, TomlValue::Table(_))
+                }
+                Some(TomlValue::Table(_)) => {
+                    segments.len() == feature_depth && matches!(value, TomlValue::Boolean(_))
+                }
+                _ => false,
+            }
+        });
+    if preserves_multi_agent_v2_feature_config {
+        let overlay = sparse_overlay(segments, value);
+        merge_toml_values(root, &overlay);
+        return Ok(true);
+    }
+
     let mut current = root;
 
     for segment in parents {
@@ -469,6 +496,12 @@ fn apply_merge(
         .unwrap_or(true);
     table.insert(last.clone(), value.clone());
     Ok(changed)
+}
+
+fn sparse_overlay(path: &[String], value: &TomlValue) -> TomlValue {
+    path.iter().rev().fold(value.clone(), |value, segment| {
+        TomlValue::Table(toml::map::Map::from_iter([(segment.clone(), value)]))
+    })
 }
 
 fn clear_path(root: &mut TomlValue, segments: &[String]) -> Result<bool, MergeError> {
@@ -563,6 +596,27 @@ fn value_at_path<'a>(root: &'a TomlValue, segments: &[String]) -> Option<&'a Tom
     Some(current)
 }
 
+fn value_at_semantic_path<'a>(root: &'a TomlValue, segments: &[String]) -> Option<&'a TomlValue> {
+    value_at_path(root, segments).or_else(|| {
+        let (field, parents) = segments.split_last()?;
+        if field != "enabled" {
+            return None;
+        }
+        let is_multi_agent_v2_feature = match parents {
+            [features, feature] => features == "features" && feature == "multi_agent_v2",
+            [profiles, _, features, feature] => {
+                profiles == "profiles" && features == "features" && feature == "multi_agent_v2"
+            }
+            _ => false,
+        };
+        if !is_multi_agent_v2_feature {
+            return None;
+        }
+        let feature = value_at_path(root, parents)?;
+        matches!(feature, TomlValue::Boolean(_)).then_some(feature)
+    })
+}
+
 fn override_message(layer: &ConfigLayerSource) -> String {
     match layer {
         ConfigLayerSource::Mdm { domain, key: _ } => {
@@ -597,10 +651,10 @@ fn compute_override_metadata(
     segments: &[String],
 ) -> Option<OverriddenMetadata> {
     let user_value = match layers.get_active_user_layer() {
-        Some(user_layer) => value_at_path(&user_layer.config, segments),
+        Some(user_layer) => value_at_semantic_path(&user_layer.config, segments),
         None => return None,
     };
-    let effective_value = value_at_path(effective, segments);
+    let effective_value = value_at_semantic_path(effective, segments);
 
     if user_value.is_some() && user_value == effective_value {
         return None;
@@ -640,7 +694,9 @@ fn find_effective_layer(
     segments: &[String],
 ) -> Option<ConfigLayerMetadata> {
     for layer in layers.layers_high_to_low() {
-        if let Some(meta) = value_at_path(&layer.config, segments).map(|_| layer.metadata()) {
+        if let Some(meta) =
+            value_at_semantic_path(&layer.config, segments).map(|_| layer.metadata())
+        {
             return Some(meta);
         }
     }

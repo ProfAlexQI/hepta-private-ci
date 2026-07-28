@@ -61,6 +61,60 @@ X-Doc = "42"
     );
 }
 
+#[test]
+fn apply_merge_preserves_multi_agent_v2_representations() {
+    let mut config: TomlValue =
+        toml::from_str("[features]\nmulti_agent_v2 = true\n").expect("parse config");
+    apply_merge(
+        &mut config,
+        &[
+            "features".to_string(),
+            "multi_agent_v2".to_string(),
+            "subagent_usage_hint_text".to_string(),
+        ],
+        Some(&TomlValue::String("Delegate carefully.".to_string())),
+        MergeStrategy::Upsert,
+    )
+    .expect("merge nested setting");
+    assert_eq!(
+        config,
+        toml::from_str(
+            "[features.multi_agent_v2]\nenabled = true\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+        )
+        .expect("parse expected config")
+    );
+
+    apply_merge(
+        &mut config,
+        &["features".to_string(), "multi_agent_v2".to_string()],
+        Some(&TomlValue::Boolean(false)),
+        MergeStrategy::Replace,
+    )
+    .expect("merge legacy toggle");
+    assert_eq!(
+        value_at_semantic_path(
+            &config,
+            &[
+                "features".to_string(),
+                "multi_agent_v2".to_string(),
+                "enabled".to_string(),
+            ],
+        ),
+        Some(&TomlValue::Boolean(false))
+    );
+    assert_eq!(
+        value_at_path(
+            &config,
+            &[
+                "features".to_string(),
+                "multi_agent_v2".to_string(),
+                "subagent_usage_hint_text".to_string(),
+            ],
+        ),
+        Some(&TomlValue::String("Delegate carefully.".to_string()))
+    );
+}
+
 #[tokio::test]
 async fn write_value_preserves_comments_and_order() -> Result<()> {
     let tmp = tempdir().expect("tempdir");

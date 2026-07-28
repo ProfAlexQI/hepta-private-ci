@@ -80,6 +80,34 @@ fn builder_with_edits_applies_custom_paths() {
 }
 
 #[test]
+fn multi_agent_v2_feature_toggle_preserves_nested_configuration() {
+    let tmp = tempdir().expect("tmpdir");
+    let config_path = tmp.path().join(CONFIG_TOML_FILE);
+    std::fs::write(
+        &config_path,
+        "[features.multi_agent_v2]\nenabled = true\nsubagent_usage_hint_text = \"Delegate carefully.\"\n",
+    )
+    .expect("write config");
+
+    ConfigEditsBuilder::new(tmp.path())
+        .set_feature_enabled("multi_agent_v2", false)
+        .apply_blocking()
+        .expect("disable feature");
+
+    let updated = std::fs::read_to_string(config_path)
+        .expect("read config")
+        .parse::<TomlValue>()
+        .expect("parse config");
+    assert_eq!(
+        updated,
+        toml::from_str::<TomlValue>(
+            "[features.multi_agent_v2]\nenabled = false\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+        )
+        .expect("parse expected config")
+    );
+}
+
+#[test]
 fn session_picker_view_edit_writes_root_tui_setting() {
     let tmp = tempdir().expect("tmpdir");
     let codex_home = tmp.path();

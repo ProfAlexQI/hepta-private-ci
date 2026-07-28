@@ -653,7 +653,20 @@ impl ConfigDocument {
             ConfigEdit::SetSkillConfigByName { name, enabled } => {
                 Ok(self.set_skill_config(SkillConfigSelector::Name(name.clone()), *enabled))
             }
-            ConfigEdit::SetPath { segments, value } => Ok(self.insert(segments, value.clone())),
+            ConfigEdit::SetPath { segments, value } => {
+                if is_multi_agent_v2_feature_path(segments) && value.as_bool().is_some() {
+                    let mut existing = Some(self.doc.as_item());
+                    for segment in segments {
+                        existing = existing.and_then(|item| item.as_table_like()?.get(segment));
+                    }
+                    if existing.and_then(TomlItem::as_table_like).is_some() {
+                        let mut enabled_segments = segments.clone();
+                        enabled_segments.push("enabled".to_string());
+                        return Ok(self.insert(&enabled_segments, value.clone()));
+                    }
+                }
+                Ok(self.insert(segments, value.clone()))
+            }
             ConfigEdit::ClearPath { segments } => Ok(self.clear_owned(segments)),
             ConfigEdit::SetProjectTrustLevel { path, level } => {
                 // Delegate to the existing, tested logic in config.rs to
@@ -940,7 +953,7 @@ impl ConfigDocument {
     fn descend(&mut self, segments: &[String], mode: TraversalMode) -> Option<&mut TomlTable> {
         let mut current = self.doc.as_table_mut();
 
-        for segment in segments {
+        for (index, segment) in segments.iter().enumerate() {
             match mode {
                 TraversalMode::Create => {
                     if !current.contains_key(segment.as_str()) {
@@ -951,6 +964,13 @@ impl ConfigDocument {
                     }
 
                     let item = current.get_mut(segment.as_str())?;
+                    if is_multi_agent_v2_feature_path(&segments[..=index])
+                        && let Some(enabled) = item.as_bool()
+                    {
+                        let mut feature = document_helpers::new_implicit_table();
+                        feature.insert("enabled", value(enabled));
+                        *item = TomlItem::Table(feature);
+                    }
                     current = document_helpers::ensure_table_for_write(item)?;
                 }
                 TraversalMode::Existing => {
@@ -992,6 +1012,16 @@ impl ConfigDocument {
             }
             _ => {}
         }
+    }
+}
+
+fn is_multi_agent_v2_feature_path(segments: &[String]) -> bool {
+    match segments {
+        [features, feature] => features == "features" && feature == "multi_agent_v2",
+        [profiles, _, features, feature] => {
+            profiles == "profiles" && features == "features" && feature == "multi_agent_v2"
+        }
+        _ => false,
     }
 }
 

@@ -98,3 +98,51 @@ disable_on_external_context = true
     );
     assert_eq!(base, expected);
 }
+
+#[test]
+fn merge_multi_agent_v2_preserves_toggle_and_nested_configuration() {
+    for feature_path in ["features", "profiles.work.features"] {
+        let mut boolean_base = parse_toml(&format!("[{feature_path}]\nmulti_agent_v2 = true\n"));
+        let table_overlay = parse_toml(&format!(
+            "[{feature_path}.multi_agent_v2]\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+        ));
+        merge_toml_values(&mut boolean_base, &table_overlay);
+        let enabled_table = parse_toml(&format!(
+            "[{feature_path}.multi_agent_v2]\nenabled = true\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+        ));
+        assert_eq!(boolean_base, enabled_table);
+
+        let mut table_base = enabled_table;
+        let boolean_overlay = parse_toml(&format!("[{feature_path}]\nmulti_agent_v2 = false\n"));
+        merge_toml_values(&mut table_base, &boolean_overlay);
+        assert_eq!(
+            table_base,
+            parse_toml(&format!(
+                "[{feature_path}.multi_agent_v2]\nenabled = false\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+            ))
+        );
+    }
+}
+
+#[test]
+fn multi_agent_v2_cli_overrides_preserve_toggle_and_nested_configuration() {
+    for feature_path in ["features", "profiles.work.features"] {
+        let enabled = (
+            format!("{feature_path}.multi_agent_v2"),
+            TomlValue::Boolean(true),
+        );
+        let hint = (
+            format!("{feature_path}.multi_agent_v2.subagent_usage_hint_text"),
+            TomlValue::String("Delegate carefully.".to_string()),
+        );
+        let expected = parse_toml(&format!(
+            "[{feature_path}.multi_agent_v2]\nenabled = true\nsubagent_usage_hint_text = \"Delegate carefully.\"\n"
+        ));
+
+        assert_eq!(
+            crate::build_cli_overrides_layer(&[enabled.clone(), hint.clone()]),
+            expected
+        );
+        assert_eq!(crate::build_cli_overrides_layer(&[hint, enabled]), expected);
+    }
+}
