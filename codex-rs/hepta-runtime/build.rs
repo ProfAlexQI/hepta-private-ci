@@ -13,10 +13,12 @@ use sha2::Sha256;
 const SCHEMA: &str = "hepta_workgraph_module_bundle_v2";
 const CODEGEN_DIRECTORY: &str = "codegen/workgraph-v2";
 const BUNDLE_FILE: &str = "modules.bundle.gz";
+const CONTROL_PLANE_TESTS: &str = "src/work_graph_control_plane_tests.rs";
 const EXPECTED_MODULE_COUNT: usize = 711;
 
 fn main() {
     println!("cargo:rerun-if-changed={CODEGEN_DIRECTORY}");
+    println!("cargo:rerun-if-changed={CONTROL_PLANE_TESTS}");
     let output_root = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is required"))
         .join("hepta_workgraph_bundle");
     fs::create_dir_all(&output_root).expect("create WorkGraph bundle output directory");
@@ -48,6 +50,11 @@ fn main() {
         )
         .expect("write generated WorkGraph declaration");
     }
+    fs::copy(
+        CONTROL_PLANE_TESTS,
+        output_root.join("work_graph_control_plane_tests.rs"),
+    )
+    .expect("copy WorkGraph control-plane tests");
     fs::write(output_root.join("modules.rs"), declarations)
         .expect("write generated WorkGraph module declarations");
 }
