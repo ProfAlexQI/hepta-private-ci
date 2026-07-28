@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SOURCE_SET="$ROOT/scripts/lib/hepta-runtime-crate-root-source-set-v1.sh"
 LIB_SOURCE="$ROOT/codex-rs/hepta-runtime/src/lib.rs"
 AUDIT_REPORT="$ROOT/scripts/hepta-systems-controlled-live-readiness-audit-report.sh"
+GATE_PAIR_BUNDLE="$ROOT/scripts/hepta-gate-pair-payload-bundle"
 
 fail() {
   printf 'hepta-runtime-crate-root-source-set-self-test: FAIL: %s\n' "$1" >&2
@@ -13,6 +14,7 @@ fail() {
 
 [[ -x "$SOURCE_SET" ]] || fail "missing executable source-set resolver: $SOURCE_SET"
 [[ -x "$AUDIT_REPORT" ]] || fail "missing controlled-live audit report: $AUDIT_REPORT"
+[[ -x "$GATE_PAIR_BUNDLE" ]] || fail "missing gate-pair payload bundle: $GATE_PAIR_BUNDLE"
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 command -v rg >/dev/null 2>&1 || fail 'rg is required'
 
@@ -37,11 +39,14 @@ if HEPTA_REPO_ROOT="$ROOT" "$SOURCE_SET" grep -q \
 fi
 
 runtime_report_files=()
+compatibility_root="$("$GATE_PAIR_BUNDLE" materialize-overlay)"
+[[ -d "$compatibility_root/scripts/lib/hepta-gate-pair-compat-v1" ]] \
+  || fail 'materialized gate-pair compatibility store is missing'
 while IFS= read -r report_file; do
   runtime_report_files+=("$report_file")
 done < <(
   rg -l '(LIB_SOURCE|HEPTA_RUNTIME_LIB_SOURCE)="\$ROOT/codex-rs/hepta-runtime/src/lib\.rs"' \
-    "$ROOT/scripts/lib/hepta-gate-pair-compat-v1"
+    "$compatibility_root/scripts/lib/hepta-gate-pair-compat-v1"
 )
 [[ "${#runtime_report_files[@]}" -gt 0 ]] \
   || fail 'no captured reports declare the hepta-runtime lib source'
