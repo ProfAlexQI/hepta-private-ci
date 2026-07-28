@@ -672,6 +672,43 @@ fn materialize_resolved_enabled_writes_all_features_and_preserves_custom_config(
 }
 
 #[test]
+fn token_budget_custom_config_materializes_without_losing_fields() {
+    let token_budget = crate::TokenBudgetConfigToml {
+        enabled: Some(false),
+        reminder_threshold_tokens: Some(6_144),
+        reminder_message_template: Some("Wrap up with {n_remaining} tokens left.".to_string()),
+        guidance_message: Some("Preserve durable state before rollover.".to_string()),
+        auto_compact_fallback_prompt: Some("Record the remaining state.".to_string()),
+        auto_compact_fallback_buffer_tokens: Some(16_384),
+    };
+    let mut features_toml = FeaturesToml {
+        token_budget: Some(FeatureToml::Config(token_budget.clone())),
+        ..Default::default()
+    };
+    let mut features = Features::with_defaults();
+    features.enable(Feature::TokenBudget);
+
+    features_toml.materialize_resolved_enabled(&features);
+
+    assert_eq!(
+        features_toml.token_budget,
+        Some(FeatureToml::Config(crate::TokenBudgetConfigToml {
+            enabled: Some(true),
+            ..token_budget
+        }))
+    );
+    let replayed = Features::from_sources(
+        FeatureConfigSource {
+            features: Some(&features_toml),
+            ..Default::default()
+        },
+        FeatureConfigSource::default(),
+        FeatureOverrides::default(),
+    );
+    assert!(replayed.enabled(Feature::TokenBudget));
+}
+
+#[test]
 fn unstable_warning_event_only_mentions_enabled_under_development_features() {
     let mut configured_features = Table::new();
     configured_features.insert("child_agents_md".to_string(), TomlValue::Boolean(true));

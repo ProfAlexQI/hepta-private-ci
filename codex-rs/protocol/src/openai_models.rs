@@ -366,6 +366,18 @@ impl ModelInfo {
 pub struct ModelMessages {
     pub instructions_template: Option<String>,
     pub instructions_variables: Option<ModelInstructionsVariables>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<ModelTokenBudgetConfig>,
+}
+
+/// Model-owned defaults for context-window token-budget behavior.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema)]
+pub struct ModelTokenBudgetConfig {
+    pub reminder_threshold_tokens: i64,
+    pub reminder_message_template: String,
+    pub guidance_message: String,
+    pub auto_compact_fallback_prompt: String,
+    pub auto_compact_fallback_buffer_tokens: i64,
 }
 
 impl ModelMessages {
@@ -623,10 +635,46 @@ mod tests {
     }
 
     #[test]
+    fn model_messages_deserialize_without_token_budget() {
+        let messages: ModelMessages = serde_json::from_value(serde_json::json!({
+            "instructions_template": "Hello {{ personality }}",
+            "instructions_variables": null
+        }))
+        .expect("legacy model messages should deserialize");
+
+        assert_eq!(messages.token_budget, None);
+        let serialized = serde_json::to_value(messages).expect("model messages should serialize");
+        assert_eq!(serialized.get("token_budget"), None);
+    }
+
+    #[test]
+    fn model_messages_round_trip_model_owned_token_budget() {
+        let token_budget = ModelTokenBudgetConfig {
+            reminder_threshold_tokens: 6_144,
+            reminder_message_template: "Wrap up with {n_remaining} tokens left.".to_string(),
+            guidance_message: "Preserve durable state before rollover.".to_string(),
+            auto_compact_fallback_prompt: "Record the remaining state.".to_string(),
+            auto_compact_fallback_buffer_tokens: 16_384,
+        };
+        let messages = ModelMessages {
+            instructions_template: None,
+            instructions_variables: None,
+            token_budget: Some(token_budget.clone()),
+        };
+
+        let serialized = serde_json::to_string(&messages).expect("model messages should serialize");
+        let decoded: ModelMessages =
+            serde_json::from_str(&serialized).expect("model messages should deserialize");
+
+        assert_eq!(decoded.token_budget, Some(token_budget));
+    }
+
+    #[test]
     fn get_model_instructions_uses_template_when_placeholder_present() {
         let model = test_model(Some(ModelMessages {
             instructions_template: Some("Hello {{ personality }}".to_string()),
             instructions_variables: Some(personality_variables()),
+            token_budget: None,
         }));
 
         let instructions = model.get_model_instructions(Some(Personality::Friendly));
@@ -643,6 +691,7 @@ mod tests {
                 personality_friendly: Some("friendly".to_string()),
                 personality_pragmatic: None,
             }),
+            token_budget: None,
         }));
         assert_eq!(
             model.get_model_instructions(Some(Personality::Friendly)),
@@ -668,6 +717,7 @@ mod tests {
                 personality_friendly: None,
                 personality_pragmatic: None,
             }),
+            token_budget: None,
         }));
         assert_eq!(
             model_no_personality.get_model_instructions(Some(Personality::Friendly)),
@@ -696,6 +746,7 @@ mod tests {
                 personality_friendly: None,
                 personality_pragmatic: None,
             }),
+            token_budget: None,
         }));
 
         let instructions = model.get_model_instructions(Some(Personality::Friendly));

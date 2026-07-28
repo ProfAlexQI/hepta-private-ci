@@ -8059,6 +8059,8 @@ async fn test_precedence_fixture_with_o3_profile() -> std::io::Result<()> {
             background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
             ghost_snapshot: GhostSnapshotConfig::default(),
             multi_agent_v2: MultiAgentV2Config::default(),
+            token_budget: None,
+            token_budget_has_explicit_settings: false,
             features: Features::with_defaults().into(),
             suppress_unstable_features_warning: false,
             active_profile: Some("o3".to_string()),
@@ -8512,6 +8514,8 @@ async fn test_precedence_fixture_with_gpt3_profile() -> std::io::Result<()> {
         background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
         ghost_snapshot: GhostSnapshotConfig::default(),
         multi_agent_v2: MultiAgentV2Config::default(),
+        token_budget: None,
+        token_budget_has_explicit_settings: false,
         features: Features::with_defaults().into(),
         suppress_unstable_features_warning: false,
         active_profile: Some("gpt3".to_string()),
@@ -8679,6 +8683,8 @@ async fn test_precedence_fixture_with_zdr_profile() -> std::io::Result<()> {
         background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
         ghost_snapshot: GhostSnapshotConfig::default(),
         multi_agent_v2: MultiAgentV2Config::default(),
+        token_budget: None,
+        token_budget_has_explicit_settings: false,
         features: Features::with_defaults().into(),
         suppress_unstable_features_warning: false,
         active_profile: Some("zdr".to_string()),
@@ -8831,6 +8837,8 @@ async fn test_precedence_fixture_with_gpt5_profile() -> std::io::Result<()> {
         background_terminal_max_timeout: DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS,
         ghost_snapshot: GhostSnapshotConfig::default(),
         multi_agent_v2: MultiAgentV2Config::default(),
+        token_budget: None,
+        token_budget_has_explicit_settings: false,
         features: Features::with_defaults().into(),
         suppress_unstable_features_warning: false,
         active_profile: Some("gpt5".to_string()),
@@ -10419,6 +10427,181 @@ smart_approvals = true
     assert!(serialized.contains("smart_approvals = true"));
     assert!(!serialized.contains("guardian_approval"));
     assert!(!serialized.contains("approvals_reviewer"));
+
+    Ok(())
+}
+
+fn model_owned_token_budget_defaults() -> ModelTokenBudgetConfig {
+    ModelTokenBudgetConfig {
+        reminder_threshold_tokens: 6_144,
+        reminder_message_template: "Model reminder: {n_remaining} tokens remain.".to_string(),
+        guidance_message: "Preserve durable state before rollover.".to_string(),
+        auto_compact_fallback_prompt: "Record the remaining state.".to_string(),
+        auto_compact_fallback_buffer_tokens: 16_384,
+    }
+}
+
+#[tokio::test]
+async fn token_budget_uses_model_defaults_only_when_enabled() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        "[features.token_budget]\nenabled = true\n",
+    )?;
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+    let model_defaults = model_owned_token_budget_defaults();
+
+    assert!(!config.has_explicit_token_budget_settings());
+    assert_eq!(
+        config.resolve_token_budget_with_model_defaults(Some(&model_defaults)),
+        Some(TokenBudgetConfig {
+            reminder_threshold_tokens: Some(model_defaults.reminder_threshold_tokens),
+            reminder_message_template: model_defaults.reminder_message_template,
+            guidance_message: Some(model_defaults.guidance_message),
+            auto_compact_fallback_prompt: Some(model_defaults.auto_compact_fallback_prompt),
+            auto_compact_fallback_buffer_tokens: Some(
+                model_defaults.auto_compact_fallback_buffer_tokens
+            ),
+        })
+    );
+
+    let disabled_home = TempDir::new()?;
+    let disabled_config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(disabled_home.path().to_path_buf())
+        .fallback_cwd(Some(disabled_home.path().to_path_buf()))
+        .build()
+        .await?;
+    assert_eq!(
+        disabled_config
+            .resolve_token_budget_with_model_defaults(Some(&model_owned_token_budget_defaults())),
+        None
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_token_budget_setting_wins_even_when_equal_to_builtin_default()
+-> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let default_template = TokenBudgetConfig::default().reminder_message_template;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        format!(
+            "[features.token_budget]\nenabled = true\nreminder_message_template = {default_template:?}\n"
+        ),
+    )?;
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert!(config.has_explicit_token_budget_settings());
+    assert_eq!(
+        config.resolve_token_budget_with_model_defaults(Some(&model_owned_token_budget_defaults())),
+        config.token_budget.clone()
+    );
+    assert_eq!(
+        config
+            .token_budget
+            .as_ref()
+            .and_then(|token_budget| token_budget.guidance_message.as_deref()),
+        None
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn profile_token_budget_fields_override_base_fields() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"profile = "bounded"
+
+[features.token_budget]
+enabled = true
+reminder_threshold_tokens = 4096
+guidance_message = "base guidance"
+
+[profiles.bounded.features.token_budget]
+enabled = true
+reminder_threshold_tokens = 2048
+"#,
+    )?;
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(
+        config.token_budget.clone(),
+        Some(TokenBudgetConfig {
+            reminder_threshold_tokens: Some(2_048),
+            reminder_message_template: DEFAULT_TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE.to_string(),
+            guidance_message: Some("base guidance".to_string()),
+            auto_compact_fallback_prompt: None,
+            auto_compact_fallback_buffer_tokens: None,
+        })
+    );
+    assert!(config.has_explicit_token_budget_settings());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn invalid_model_owned_token_budget_defaults_are_ignored() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        "[features.token_budget]\nenabled = true\n",
+    )?;
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+    let mut invalid_defaults = model_owned_token_budget_defaults();
+    invalid_defaults.reminder_threshold_tokens = 0;
+
+    assert_eq!(
+        config.resolve_token_budget_with_model_defaults(Some(&invalid_defaults)),
+        config.token_budget.clone()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_token_budget_fallback_requires_positive_buffer() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[features.token_budget]
+enabled = true
+auto_compact_fallback_prompt = "Record the remaining state."
+"#,
+    )?;
+
+    let error = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await
+        .expect_err("fallback prompt without a buffer should fail");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(
+        error
+            .to_string()
+            .contains("auto_compact_fallback_buffer_tokens is required")
+    );
 
     Ok(())
 }

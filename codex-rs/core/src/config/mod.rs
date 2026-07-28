@@ -68,6 +68,7 @@ use codex_features::Features;
 use codex_features::FeaturesToml;
 use codex_features::MultiAgentV2ConfigToml;
 use codex_features::NetworkProxyConfigToml;
+use codex_features::TokenBudgetConfigToml;
 use codex_git_utils::resolve_root_git_project_for_trust;
 use codex_login::AuthManagerConfig;
 use codex_mcp::McpConfig;
@@ -93,6 +94,7 @@ use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::SandboxEnforcement;
+use codex_protocol::openai_models::ModelTokenBudgetConfig;
 use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::permissions::FileSystemSandboxPolicy;
@@ -964,6 +966,10 @@ pub struct Config {
     /// Settings specific to the task-path-based multi-agent tool surface.
     pub multi_agent_v2: MultiAgentV2Config,
 
+    /// Context-window token-budget configuration, when enabled.
+    pub token_budget: Option<TokenBudgetConfig>,
+    token_budget_has_explicit_settings: bool,
+
     /// Centralized feature flags; source of truth for feature gating.
     pub features: ManagedFeatures,
 
@@ -1034,6 +1040,123 @@ impl Default for MultiAgentV2Config {
             subagent_usage_hint_text: None,
             hide_spawn_agent_metadata: false,
             non_code_mode_only: false,
+        }
+    }
+}
+
+pub(crate) const DEFAULT_TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE: &str = concat!(
+    "Your context window is nearly exhausted (only {n_remaining} tokens remaining) and will be automatically reset for you soon. ",
+    "Once reset, message items in current context window will be cleared in the new window, but notes and history items will be persistent across windows."
+);
+const TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE_MAX_BYTES: usize = 2000;
+const TOKEN_BUDGET_GUIDANCE_MESSAGE_MAX_BYTES: usize = 2000;
+const AUTO_COMPACT_FALLBACK_PROMPT_MAX_BYTES: usize = 2000;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TokenBudgetConfig {
+    pub reminder_threshold_tokens: Option<i64>,
+    pub reminder_message_template: String,
+    pub guidance_message: Option<String>,
+    pub auto_compact_fallback_prompt: Option<String>,
+    pub auto_compact_fallback_buffer_tokens: Option<i64>,
+}
+
+impl TokenBudgetConfig {
+    fn from_model_defaults(defaults: &ModelTokenBudgetConfig) -> Self {
+        Self {
+            reminder_threshold_tokens: Some(defaults.reminder_threshold_tokens),
+            reminder_message_template: defaults.reminder_message_template.clone(),
+            guidance_message: Some(defaults.guidance_message.clone()),
+            auto_compact_fallback_prompt: Some(defaults.auto_compact_fallback_prompt.clone()),
+            auto_compact_fallback_buffer_tokens: Some(defaults.auto_compact_fallback_buffer_tokens),
+        }
+    }
+
+    pub(crate) fn validate(&self) -> std::io::Result<()> {
+        if self
+            .reminder_threshold_tokens
+            .is_some_and(|tokens| tokens <= 0)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "features.token_budget.reminder_threshold_tokens must be positive",
+            ));
+        }
+        if self.reminder_message_template.trim().is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "features.token_budget.reminder_message_template must not be empty",
+            ));
+        }
+        if self.reminder_message_template.len() > TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE_MAX_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "features.token_budget.reminder_message_template must not exceed {TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE_MAX_BYTES} bytes"
+                ),
+            ));
+        }
+        if self
+            .guidance_message
+            .as_ref()
+            .is_some_and(|message| message.len() > TOKEN_BUDGET_GUIDANCE_MESSAGE_MAX_BYTES)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "features.token_budget.guidance_message must not exceed {TOKEN_BUDGET_GUIDANCE_MESSAGE_MAX_BYTES} bytes"
+                ),
+            ));
+        }
+        if self
+            .auto_compact_fallback_prompt
+            .as_ref()
+            .is_some_and(|prompt| prompt.len() > AUTO_COMPACT_FALLBACK_PROMPT_MAX_BYTES)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "features.token_budget.auto_compact_fallback_prompt must not exceed {AUTO_COMPACT_FALLBACK_PROMPT_MAX_BYTES} bytes"
+                ),
+            ));
+        }
+        if self.auto_compact_fallback_prompt.is_some()
+            && self.auto_compact_fallback_buffer_tokens.is_none()
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "features.token_budget.auto_compact_fallback_buffer_tokens is required when auto_compact_fallback_prompt is set",
+            ));
+        }
+        if self
+            .auto_compact_fallback_buffer_tokens
+            .is_some_and(|tokens| tokens <= 0)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "features.token_budget.auto_compact_fallback_buffer_tokens must be positive",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn fallback_buffer_tokens(&self) -> i64 {
+        if self.auto_compact_fallback_prompt.is_some() {
+            self.auto_compact_fallback_buffer_tokens.unwrap_or(0)
+        } else {
+            0
+        }
+    }
+}
+
+impl Default for TokenBudgetConfig {
+    fn default() -> Self {
+        Self {
+            reminder_threshold_tokens: None,
+            reminder_message_template: DEFAULT_TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE.to_string(),
+            guidance_message: None,
+            auto_compact_fallback_prompt: None,
+            auto_compact_fallback_buffer_tokens: None,
         }
     }
 }
@@ -1298,6 +1421,36 @@ impl Config {
         workspace_roots.extend(self.permissions.profile_workspace_roots().iter().cloned());
         dedupe_absolute_paths(&mut workspace_roots);
         workspace_roots
+    }
+
+    /// Resolve model-owned context-window defaults without overriding explicit user settings.
+    ///
+    /// Goal/task token budgets are a separate protocol concern and remain authoritative.
+    pub fn resolve_token_budget_with_model_defaults(
+        &self,
+        model_defaults: Option<&ModelTokenBudgetConfig>,
+    ) -> Option<TokenBudgetConfig> {
+        if !self.features.enabled(Feature::TokenBudget) || self.has_explicit_token_budget_settings()
+        {
+            return self.token_budget.clone();
+        }
+        let Some(model_defaults) = model_defaults else {
+            return self.token_budget.clone();
+        };
+        let resolved = TokenBudgetConfig::from_model_defaults(model_defaults);
+        if let Err(error) = resolved.validate() {
+            tracing::warn!(%error, "ignoring invalid model-owned token-budget defaults");
+            return self.token_budget.clone();
+        }
+        Some(resolved)
+    }
+
+    pub fn has_explicit_token_budget_settings(&self) -> bool {
+        self.token_budget_has_explicit_settings
+            || self
+                .token_budget
+                .as_ref()
+                .is_some_and(|token_budget| token_budget != &TokenBudgetConfig::default())
     }
 
     pub fn to_models_manager_config(&self) -> ModelsManagerConfig {
@@ -2331,6 +2484,70 @@ fn resolve_multi_agent_v2_config(
     }
 }
 
+fn resolve_token_budget_config(
+    config_toml: &ConfigToml,
+    config_profile: &ConfigProfile,
+    features: &ManagedFeatures,
+) -> std::io::Result<Option<TokenBudgetConfig>> {
+    if !features.enabled(Feature::TokenBudget) {
+        return Ok(None);
+    }
+
+    let base = token_budget_toml_config(config_toml.features.as_ref());
+    let profile = token_budget_toml_config(config_profile.features.as_ref());
+    let reminder_threshold_tokens = profile
+        .and_then(|config| config.reminder_threshold_tokens)
+        .or_else(|| base.and_then(|config| config.reminder_threshold_tokens));
+    let reminder_message_template = profile
+        .and_then(|config| config.reminder_message_template.as_ref())
+        .or_else(|| base.and_then(|config| config.reminder_message_template.as_ref()))
+        .cloned()
+        .unwrap_or_else(|| DEFAULT_TOKEN_BUDGET_REMINDER_MESSAGE_TEMPLATE.to_string());
+    let guidance_message = profile
+        .and_then(|config| config.guidance_message.as_ref())
+        .or_else(|| base.and_then(|config| config.guidance_message.as_ref()))
+        .filter(|message| !message.trim().is_empty())
+        .cloned();
+    let auto_compact_fallback_prompt = profile
+        .and_then(|config| config.auto_compact_fallback_prompt.as_deref())
+        .or_else(|| base.and_then(|config| config.auto_compact_fallback_prompt.as_deref()))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let auto_compact_fallback_buffer_tokens = profile
+        .and_then(|config| config.auto_compact_fallback_buffer_tokens)
+        .or_else(|| base.and_then(|config| config.auto_compact_fallback_buffer_tokens));
+
+    let token_budget = TokenBudgetConfig {
+        reminder_threshold_tokens,
+        reminder_message_template,
+        guidance_message,
+        auto_compact_fallback_prompt,
+        auto_compact_fallback_buffer_tokens,
+    };
+    token_budget.validate()?;
+    Ok(Some(token_budget))
+}
+
+fn token_budget_has_explicit_settings(
+    config_toml: &ConfigToml,
+    config_profile: &ConfigProfile,
+) -> bool {
+    [
+        config_toml.features.as_ref(),
+        config_profile.features.as_ref(),
+    ]
+    .into_iter()
+    .filter_map(token_budget_toml_config)
+    .any(|config| {
+        config.reminder_threshold_tokens.is_some()
+            || config.reminder_message_template.is_some()
+            || config.guidance_message.is_some()
+            || config.auto_compact_fallback_prompt.is_some()
+            || config.auto_compact_fallback_buffer_tokens.is_some()
+    })
+}
+
 fn resolve_terminal_resize_reflow_config(config_toml: &ConfigToml) -> TerminalResizeReflowConfig {
     let Some(tui) = config_toml.tui.as_ref() else {
         return TerminalResizeReflowConfig::default();
@@ -2347,6 +2564,13 @@ fn resolve_terminal_resize_reflow_config(config_toml: &ConfigToml) -> TerminalRe
 
 fn multi_agent_v2_toml_config(features: Option<&FeaturesToml>) -> Option<&MultiAgentV2ConfigToml> {
     match features?.multi_agent_v2.as_ref()? {
+        FeatureToml::Enabled(_) => None,
+        FeatureToml::Config(config) => Some(config),
+    }
+}
+
+fn token_budget_toml_config(features: Option<&FeaturesToml>) -> Option<&TokenBudgetConfigToml> {
+    match features?.token_budget.as_ref()? {
         FeatureToml::Enabled(_) => None,
         FeatureToml::Config(config) => Some(config),
     }
@@ -2960,6 +3184,9 @@ impl Config {
         let web_search_config = resolve_web_search_config(&cfg, &config_profile);
         let update_plan_enabled = resolve_update_plan_enabled(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg, &config_profile);
+        let token_budget = resolve_token_budget_config(&cfg, &config_profile, &features)?;
+        let token_budget_has_explicit_settings =
+            token_budget_has_explicit_settings(&cfg, &config_profile);
         let apps_mcp_path_override = if features.enabled(Feature::AppsMcpPathOverride) {
             let base = apps_mcp_path_override_toml_config(cfg.features.as_ref());
             let profile = apps_mcp_path_override_toml_config(config_profile.features.as_ref());
@@ -3563,6 +3790,8 @@ impl Config {
             background_terminal_max_timeout,
             ghost_snapshot,
             multi_agent_v2,
+            token_budget,
+            token_budget_has_explicit_settings,
             features,
             suppress_unstable_features_warning: cfg
                 .suppress_unstable_features_warning

@@ -22,6 +22,7 @@ pub use feature_configs::NetworkProxyConfigToml;
 pub use feature_configs::NetworkProxyDomainPermissionToml;
 pub use feature_configs::NetworkProxyModeToml;
 pub use feature_configs::NetworkProxyUnixSocketPermissionToml;
+pub use feature_configs::TokenBudgetConfigToml;
 use legacy::LegacyFeatureToggles;
 pub use legacy::legacy_feature_keys;
 
@@ -178,6 +179,8 @@ pub enum Feature {
     GuardianApproval,
     /// Enable persisted thread goals and automatic goal continuation.
     Goals,
+    /// Add context-window budget metadata and model-owned defaults to resolved config.
+    TokenBudget,
     /// Route MCP tool approval prompts through the MCP elicitation request path.
     ToolCallMcpElicitation,
     /// Prompt Hepta Apps connector auth failures through MCP URL elicitations.
@@ -582,6 +585,8 @@ pub struct FeaturesToml {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_agent_v2: Option<FeatureToml<MultiAgentV2ConfigToml>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<FeatureToml<TokenBudgetConfigToml>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apps_mcp_path_override: Option<FeatureToml<AppsMcpPathOverrideConfigToml>>,
     pub network_proxy: Option<FeatureToml<NetworkProxyConfigToml>>,
     /// Boolean feature toggles keyed by canonical or legacy feature name.
@@ -602,6 +607,9 @@ impl FeaturesToml {
         if let Some(enabled) = self.multi_agent_v2.as_ref().and_then(FeatureToml::enabled) {
             entries.insert(Feature::MultiAgentV2.key().to_string(), enabled);
         }
+        if let Some(enabled) = self.token_budget.as_ref().and_then(FeatureToml::enabled) {
+            entries.insert(Feature::TokenBudget.key().to_string(), enabled);
+        }
         if let Some(enabled) = self
             .apps_mcp_path_override
             .as_ref()
@@ -618,6 +626,7 @@ impl FeaturesToml {
     pub fn materialize_resolved_enabled(&mut self, features: &Features) {
         let Self {
             multi_agent_v2,
+            token_budget,
             apps_mcp_path_override,
             network_proxy,
             entries,
@@ -629,6 +638,8 @@ impl FeaturesToml {
             let enabled = features.enabled(spec.id);
             if spec.id == Feature::MultiAgentV2 {
                 materialize_resolved_feature_enabled(multi_agent_v2, enabled);
+            } else if spec.id == Feature::TokenBudget {
+                materialize_resolved_feature_enabled(token_budget, enabled);
             } else if spec.id == Feature::AppsMcpPathOverride {
                 materialize_resolved_feature_enabled(apps_mcp_path_override, enabled);
             } else if spec.id == Feature::NetworkProxy {
@@ -1078,6 +1089,12 @@ pub const FEATURES: &[FeatureSpec] = &[
             menu_description: "Set a persistent goal Hepta can continue over time",
             announcement: "",
         },
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::TokenBudget,
+        key: "token_budget",
+        stage: Stage::UnderDevelopment,
         default_enabled: false,
     },
     FeatureSpec {
