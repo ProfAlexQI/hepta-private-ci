@@ -101,6 +101,7 @@ use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::TurnDiffEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
+use codex_tools::DiscoverableTool;
 use codex_tools::ToolName;
 use codex_tools::filter_request_plugin_install_discoverable_tools_for_client;
 use codex_utils_output_truncation::approx_tokens_from_byte_count_i64;
@@ -182,25 +183,30 @@ pub(crate) async fn run_turn(
     // enabled plugins, then converted into turn-scoped guidance below.
     let mentioned_plugins =
         collect_explicit_plugin_mentions(&input, loaded_plugins.capability_summaries());
-    let mcp_tools = if turn_context.apps_enabled() || !mentioned_plugins.is_empty() {
-        // Plugin mentions need raw MCP/app inventory even when app tools
-        // are normally hidden so we can describe the plugin's currently
-        // usable capabilities for this turn.
-        match sess
-            .services
-            .mcp_connection_manager
-            .read()
-            .await
-            .list_all_tools()
-            .or_cancel(&cancellation_token)
-            .await
-        {
-            Ok(mcp_tools) => mcp_tools,
-            Err(_) if turn_context.apps_enabled() => return None,
-            Err(_) => Vec::new(),
+    let mcp_tools = async {
+        if turn_context.apps_enabled() || !mentioned_plugins.is_empty() {
+            // Plugin mentions need raw MCP/app inventory even when app tools
+            // are normally hidden so we can describe the plugin's currently
+            // usable capabilities for this turn.
+            sess.services
+                .mcp_connection_manager
+                .read()
+                .await
+                .list_all_tools()
+                .await
+        } else {
+            Vec::new()
         }
-    } else {
-        Vec::new()
+    };
+    let (mcp_tools, prepared_tool_recommendations) = match prepare_mcp_and_tool_recommendations(
+        mcp_tools,
+        prepare_tool_recommendations(sess.as_ref(), turn_context.as_ref()),
+        &cancellation_token,
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(_) => return None,
     };
     let available_connectors = if turn_context.apps_enabled() {
         let connectors = codex_connectors::merge::merge_plugin_connectors_with_accessible(
@@ -382,6 +388,7 @@ pub(crate) async fn run_turn(
     // 1. At the start of a turn, so the fresh user prompt in `input` gets sampled first.
     // 2. After auto-compact, when model/tool continuation needs to resume before any steer.
     let mut can_drain_pending_input = input.is_empty();
+    let mut next_prepared_tool_recommendations = Some(prepared_tool_recommendations);
 
     loop {
         if run_pending_session_start_hooks(&sess, &turn_context).await {
@@ -453,6 +460,16 @@ pub(crate) async fn run_turn(
             .map(|user_message| user_message.message())
             .collect::<Vec<String>>();
         let turn_metadata_header = turn_context.turn_metadata_state.current_header_value();
+        let prepared_tool_recommendations = match next_prepared_tool_recommendations.take() {
+            Some(prepared_tool_recommendations) => prepared_tool_recommendations,
+            None => match prepare_tool_recommendations(sess.as_ref(), turn_context.as_ref())
+                .or_cancel(&cancellation_token)
+                .await
+            {
+                Ok(prepared_tool_recommendations) => prepared_tool_recommendations,
+                Err(_) => return None,
+            },
+        };
         match run_sampling_request(
             Arc::clone(&sess),
             Arc::clone(&turn_context),
@@ -463,6 +480,7 @@ pub(crate) async fn run_turn(
             sampling_request_input,
             &explicitly_enabled_connectors,
             skills_outcome,
+            &prepared_tool_recommendations,
             cancellation_token.child_token(),
         )
         .await
@@ -1100,14 +1118,16 @@ async fn run_sampling_request(
     input: Vec<ResponseItem>,
     explicitly_enabled_connectors: &HashSet<String>,
     skills_outcome: Option<&SkillLoadOutcome>,
+    prepared_tool_recommendations: &PreparedToolRecommendations,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
-    let router = built_tools(
+    let router = built_tools_with_recommendations(
         sess.as_ref(),
         turn_context.as_ref(),
         &input,
         explicitly_enabled_connectors,
         skills_outcome,
+        prepared_tool_recommendations,
         &cancellation_token,
     )
     .await?;
@@ -1233,16 +1253,122 @@ async fn run_sampling_request(
     }
 }
 
-#[expect(
-    clippy::await_holding_invalid_type,
-    reason = "tool router construction reads through the session-owned manager guard"
-)]
+#[derive(Debug, Default)]
+struct PreparedToolRecommendations {
+    discoverable_tools: Option<Vec<DiscoverableTool>>,
+}
+
+async fn prepare_mcp_and_tool_recommendations<McpOutput, RecommendationOutput>(
+    mcp_preparation: impl std::future::Future<Output = McpOutput> + Send,
+    recommendation_preparation: impl std::future::Future<Output = RecommendationOutput> + Send,
+    cancellation_token: &CancellationToken,
+) -> CodexResult<(McpOutput, RecommendationOutput)>
+where
+    McpOutput: Send,
+    RecommendationOutput: Send,
+{
+    let prepared = async { tokio::join!(mcp_preparation, recommendation_preparation) }
+        .or_cancel(cancellation_token)
+        .await?;
+    Ok(prepared)
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn prepare_tool_recommendations(
+    sess: &Session,
+    turn_context: &TurnContext,
+) -> PreparedToolRecommendations {
+    if !turn_context.config.config_generation().is_current()
+        || !turn_context.apps_enabled()
+        || !turn_context.tools_config.tool_suggest
+    {
+        return PreparedToolRecommendations::default();
+    }
+
+    let auth = sess.services.auth_manager.auth().await;
+    let discoverable_tools = match connectors::list_tool_suggest_discoverable_tools_with_auth(
+        &turn_context.config,
+        auth.as_ref(),
+        &[],
+    )
+    .await
+    {
+        Ok(discoverable_tools) => filter_request_plugin_install_discoverable_tools_for_client(
+            discoverable_tools,
+            turn_context.app_server_client_name.as_deref(),
+        ),
+        Err(err) => {
+            warn!("failed to prepare discoverable tool suggestions: {err:#}");
+            return PreparedToolRecommendations::default();
+        }
+    };
+
+    PreparedToolRecommendations {
+        discoverable_tools: (!discoverable_tools.is_empty()).then_some(discoverable_tools),
+    }
+}
+
+fn finalize_tool_recommendations(
+    prepared: &PreparedToolRecommendations,
+    accessible_connectors: Option<&[connectors::AppInfo]>,
+) -> Option<Vec<DiscoverableTool>> {
+    let accessible_connector_ids = accessible_connectors
+        .unwrap_or_default()
+        .iter()
+        .filter(|connector| connector.is_accessible)
+        .map(|connector| connector.id.as_str())
+        .collect::<HashSet<_>>();
+    let discoverable_tools = prepared
+        .discoverable_tools
+        .as_ref()?
+        .iter()
+        .filter(|tool| {
+            !matches!(
+                tool,
+                DiscoverableTool::Connector(connector)
+                    if accessible_connector_ids.contains(connector.id.as_str())
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    (!discoverable_tools.is_empty()).then_some(discoverable_tools)
+}
+
 pub(crate) async fn built_tools(
     sess: &Session,
     turn_context: &TurnContext,
     input: &[ResponseItem],
     explicitly_enabled_connectors: &HashSet<String>,
     skills_outcome: Option<&SkillLoadOutcome>,
+    cancellation_token: &CancellationToken,
+) -> CodexResult<Arc<ToolRouter>> {
+    let prepared_tool_recommendations = prepare_tool_recommendations(sess, turn_context)
+        .or_cancel(cancellation_token)
+        .await?;
+    built_tools_with_recommendations(
+        sess,
+        turn_context,
+        input,
+        explicitly_enabled_connectors,
+        skills_outcome,
+        &prepared_tool_recommendations,
+        cancellation_token,
+    )
+    .await
+}
+
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "tool router construction reads through the session-owned manager guard"
+)]
+async fn built_tools_with_recommendations(
+    sess: &Session,
+    turn_context: &TurnContext,
+    input: &[ResponseItem],
+    explicitly_enabled_connectors: &HashSet<String>,
+    skills_outcome: Option<&SkillLoadOutcome>,
+    prepared_tool_recommendations: &PreparedToolRecommendations,
     cancellation_token: &CancellationToken,
 ) -> CodexResult<Arc<ToolRouter>> {
     if !turn_context.config.config_generation().is_current() {
@@ -1291,34 +1417,10 @@ pub(crate) async fn built_tools(
     } else {
         None
     };
-    let auth = sess.services.auth_manager.auth().await;
-    let discoverable_tools = if apps_enabled && turn_context.tools_config.tool_suggest {
-        if let Some(accessible_connectors) = accessible_connectors_with_enabled_state.as_ref() {
-            match connectors::list_tool_suggest_discoverable_tools_with_auth(
-                &turn_context.config,
-                auth.as_ref(),
-                accessible_connectors.as_slice(),
-            )
-            .await
-            .map(|discoverable_tools| {
-                filter_request_plugin_install_discoverable_tools_for_client(
-                    discoverable_tools,
-                    turn_context.app_server_client_name.as_deref(),
-                )
-            }) {
-                Ok(discoverable_tools) if discoverable_tools.is_empty() => None,
-                Ok(discoverable_tools) => Some(discoverable_tools),
-                Err(err) => {
-                    warn!("failed to load discoverable tool suggestions: {err:#}");
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let discoverable_tools = finalize_tool_recommendations(
+        prepared_tool_recommendations,
+        accessible_connectors_with_enabled_state.as_deref(),
+    );
 
     let explicitly_enabled = if let Some(connectors) = connectors.as_ref() {
         let skill_name_counts_lower = skills_outcome.map_or_else(HashMap::new, |outcome| {

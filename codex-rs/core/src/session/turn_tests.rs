@@ -5,6 +5,8 @@ use codex_extension_api::TurnItemContributor;
 use codex_protocol::items::AgentMessageContent;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Notify;
 
 struct RewriteAgentMessageContributor;
 
@@ -35,6 +37,147 @@ fn assistant_output_text(text: &str) -> ResponseItem {
         }],
         phase: None,
     }
+}
+
+fn discoverable_connector(id: &str, is_accessible: bool) -> DiscoverableTool {
+    DiscoverableTool::Connector(Box::new(connectors::AppInfo {
+        id: id.to_string(),
+        name: id.to_string(),
+        description: None,
+        logo_url: None,
+        logo_url_dark: None,
+        distribution_channel: None,
+        install_url: None,
+        branding: None,
+        app_metadata: None,
+        labels: None,
+        is_accessible,
+        is_enabled: true,
+        plugin_display_names: Vec::new(),
+    }))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_and_tool_recommendation_preparation_overlap_and_preserve_results() {
+    let mcp_started = Arc::new(Notify::new());
+    let recommendation_started = Arc::new(Notify::new());
+    let release_mcp = Arc::new(Notify::new());
+    let cancellation_token = CancellationToken::new();
+
+    let task_mcp_started = Arc::clone(&mcp_started);
+    let task_recommendation_started = Arc::clone(&recommendation_started);
+    let task_release_mcp = Arc::clone(&release_mcp);
+    let task_cancellation_token = cancellation_token.clone();
+    let preparation = tokio::spawn(async move {
+        prepare_mcp_and_tool_recommendations(
+            async move {
+                task_mcp_started.notify_one();
+                task_release_mcp.notified().await;
+                vec!["mcp-tool"]
+            },
+            async move {
+                task_recommendation_started.notify_one();
+                vec!["plugin-recommendation"]
+            },
+            &task_cancellation_token,
+        )
+        .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::join!(mcp_started.notified(), recommendation_started.notified());
+    })
+    .await
+    .expect("MCP and recommendation preparation should both start");
+    assert!(
+        !preparation.is_finished(),
+        "combined preparation must wait for MCP readiness"
+    );
+
+    release_mcp.notify_one();
+    let (mcp_tools, recommendations) = preparation
+        .await
+        .expect("preparation task should join")
+        .expect("preparation should succeed");
+    assert_eq!(mcp_tools, vec!["mcp-tool"]);
+    assert_eq!(recommendations, vec!["plugin-recommendation"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelling_concurrent_preparation_returns_turn_aborted() {
+    let mcp_started = Arc::new(Notify::new());
+    let recommendation_started = Arc::new(Notify::new());
+    let cancellation_token = CancellationToken::new();
+
+    let task_mcp_started = Arc::clone(&mcp_started);
+    let task_recommendation_started = Arc::clone(&recommendation_started);
+    let task_cancellation_token = cancellation_token.clone();
+    let preparation = tokio::spawn(async move {
+        prepare_mcp_and_tool_recommendations(
+            async move {
+                task_mcp_started.notify_one();
+                std::future::pending::<()>().await;
+            },
+            async move {
+                task_recommendation_started.notify_one();
+                std::future::pending::<()>().await;
+            },
+            &task_cancellation_token,
+        )
+        .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::join!(mcp_started.notified(), recommendation_started.notified());
+    })
+    .await
+    .expect("MCP and recommendation preparation should both start");
+    cancellation_token.cancel();
+
+    let result = tokio::time::timeout(Duration::from_secs(1), preparation)
+        .await
+        .expect("cancellation should resolve preparation")
+        .expect("preparation task should join");
+    assert!(matches!(result, Err(CodexErr::TurnAborted)));
+}
+
+#[test]
+fn finalized_recommendations_filter_accessible_connectors_and_keep_plugins() {
+    let prepared = PreparedToolRecommendations {
+        discoverable_tools: Some(vec![
+            discoverable_connector("connector-installed", false),
+            discoverable_connector("connector-available", false),
+            DiscoverableTool::Plugin(Box::new(codex_tools::DiscoverablePluginInfo {
+                id: "github@openai-curated".to_string(),
+                name: "GitHub".to_string(),
+                description: None,
+                has_skills: true,
+                mcp_server_names: Vec::new(),
+                app_connector_ids: Vec::new(),
+            })),
+        ]),
+    };
+    let accessible_connectors = vec![connectors::AppInfo {
+        is_accessible: true,
+        is_enabled: false,
+        ..match discoverable_connector("connector-installed", false) {
+            DiscoverableTool::Connector(connector) => *connector,
+            DiscoverableTool::Plugin(_) => unreachable!("test helper returns a connector"),
+        }
+    }];
+
+    let finalized =
+        finalize_tool_recommendations(&prepared, Some(accessible_connectors.as_slice()))
+            .expect("uninstalled connector and plugin should remain");
+    let finalized_ids = finalized
+        .iter()
+        .map(DiscoverableTool::id)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        finalized_ids,
+        vec!["connector-available", "github@openai-curated"]
+    );
 }
 
 #[tokio::test]
