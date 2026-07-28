@@ -2,6 +2,8 @@ use super::PluginLoadOutcome;
 use super::startup_remote_sync::start_startup_remote_plugin_sync_once;
 use crate::OPENAI_CURATED_MARKETPLACE_NAME;
 use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
+use crate::is_openai_curated_marketplace_name;
+use crate::loader::TargetCuratedMarketplace;
 use crate::loader::configured_curated_plugin_ids_from_codex_home;
 use crate::loader::curated_plugin_cache_version;
 use crate::loader::installed_plugin_telemetry_metadata;
@@ -12,6 +14,7 @@ use crate::loader::load_plugin_skills;
 use crate::loader::load_plugins_from_layer_stack;
 use crate::loader::log_plugin_load_errors;
 use crate::loader::materialize_marketplace_plugin_source;
+use crate::loader::plugin_is_eligible_for_target_marketplace;
 use crate::loader::plugin_telemetry_metadata_from_root;
 use crate::loader::refresh_curated_plugin_cache;
 use crate::loader::refresh_non_curated_plugin_cache_detailed;
@@ -38,6 +41,7 @@ use crate::marketplace_policy::configured_plugins_from_stack;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeError;
 use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome;
 use crate::marketplace_upgrade::upgrade_configured_git_marketplaces;
+use crate::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;
 use crate::remote::RemoteInstalledPlugin;
 use crate::remote::RemotePluginCatalogError;
 use crate::remote::RemotePluginServiceConfig;
@@ -50,6 +54,7 @@ use crate::store::PluginInstallResult as StorePluginInstallResult;
 use crate::store::PluginStore;
 use crate::store::PluginStoreError;
 use codex_analytics::AnalyticsEventsClient;
+use codex_app_server_protocol::AuthMode;
 use codex_config::ConfigLayerStack;
 use codex_config::PluginConfigEdit;
 use codex_config::apply_user_plugin_config_edits;
@@ -410,6 +415,7 @@ pub struct PluginsManager {
     remote_installed_plugins_cache_refresh_state: RwLock<RemoteInstalledPluginsCacheRefreshState>,
     remote_sync_lock: Semaphore,
     restriction_product: Option<Product>,
+    auth_mode: RwLock<Option<AuthMode>>,
     analytics_events_client: RwLock<Option<AnalyticsEventsClient>>,
 }
 
@@ -451,7 +457,29 @@ impl PluginsManager {
             ),
             remote_sync_lock: Semaphore::new(/*permits*/ 1),
             restriction_product,
+            auth_mode: RwLock::new(None),
             analytics_events_client: RwLock::new(None),
+        }
+    }
+
+    pub fn set_auth_mode(&self, auth_mode: Option<AuthMode>) -> bool {
+        let mut stored_auth_mode = match self.auth_mode.write() {
+            Ok(auth_mode_guard) => auth_mode_guard,
+            Err(err) => err.into_inner(),
+        };
+        if *stored_auth_mode == auth_mode {
+            return false;
+        }
+        *stored_auth_mode = auth_mode;
+        drop(stored_auth_mode);
+        self.clear_enabled_outcome_cache();
+        true
+    }
+
+    pub fn auth_mode(&self) -> Option<AuthMode> {
+        match self.auth_mode.read() {
+            Ok(auth_mode_guard) => *auth_mode_guard,
+            Err(err) => *err.into_inner(),
         }
     }
 
@@ -493,7 +521,7 @@ impl PluginsManager {
             && let Some(outcome) =
                 self.cached_enabled_outcome(&config_version, plugin_hooks_enabled)
         {
-            return outcome;
+            return self.resolve_loaded_plugins_for_auth(outcome, config.remote_plugin_enabled);
         }
 
         let outcome = load_plugins_from_layer_stack(
@@ -514,7 +542,47 @@ impl PluginsManager {
             plugin_hooks_enabled,
             outcome: outcome.clone(),
         });
-        outcome
+        self.resolve_loaded_plugins_for_auth(outcome, config.remote_plugin_enabled)
+    }
+
+    fn resolve_loaded_plugins_for_auth(
+        &self,
+        outcome: PluginLoadOutcome,
+        remote_plugin_enabled: bool,
+    ) -> PluginLoadOutcome {
+        let target = match self.auth_mode() {
+            Some(AuthMode::ApiKey) => TargetCuratedMarketplace::OpenAiApi,
+            Some(AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens | AuthMode::AgentIdentity)
+                if remote_plugin_enabled =>
+            {
+                TargetCuratedMarketplace::OpenAiWithRemote
+            }
+            Some(AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens | AuthMode::AgentIdentity)
+            | None => TargetCuratedMarketplace::OpenAi,
+        };
+        let mut plugins = outcome.plugins().to_vec();
+        let remote_plugin_names = if target == TargetCuratedMarketplace::OpenAiWithRemote {
+            plugins
+                .iter()
+                .filter_map(|plugin| PluginId::parse(&plugin.config_name).ok())
+                .filter(|plugin_id| plugin_id.marketplace_name == REMOTE_GLOBAL_MARKETPLACE_NAME)
+                .map(|plugin_id| plugin_id.plugin_name)
+                .collect::<HashSet<_>>()
+        } else {
+            HashSet::new()
+        };
+        plugins.retain(|plugin| {
+            if !plugin_is_eligible_for_target_marketplace(&plugin.config_name, target) {
+                return false;
+            }
+            let Ok(plugin_id) = PluginId::parse(&plugin.config_name) else {
+                return true;
+            };
+            !(target == TargetCuratedMarketplace::OpenAiWithRemote
+                && plugin_id.marketplace_name == OPENAI_CURATED_MARKETPLACE_NAME
+                && remote_plugin_names.contains(&plugin_id.plugin_name))
+        });
+        PluginLoadOutcome::from_plugins(plugins)
     }
 
     pub fn clear_cache(&self) {
@@ -544,14 +612,15 @@ impl PluginsManager {
         if !config.plugins_enabled {
             return PluginLoadOutcome::default();
         }
-        load_plugins_from_layer_stack(
+        let outcome = load_plugins_from_layer_stack(
             config_layer_stack,
             self.remote_installed_plugin_configs(),
             &self.store,
             self.restriction_product,
             plugin_hooks_feature_enabled,
         )
-        .await
+        .await;
+        self.resolve_loaded_plugins_for_auth(outcome, config.remote_plugin_enabled)
     }
 
     /// Resolve plugin skill roots for a config layer stack without touching the plugins cache.
@@ -856,7 +925,7 @@ impl PluginsManager {
     ) -> Result<PluginInstallOutcome, PluginInstallError> {
         let auth_policy = resolved.policy.authentication;
         let plugin_version =
-            if resolved.plugin_id.marketplace_name == OPENAI_CURATED_MARKETPLACE_NAME {
+            if is_openai_curated_marketplace_name(&resolved.plugin_id.marketplace_name) {
                 let curated_plugin_version = read_curated_plugins_sha(self.codex_home.as_path())
                     .ok_or_else(|| {
                         PluginStoreError::Invalid(
@@ -1711,7 +1780,7 @@ impl PluginsManager {
         let mut roots = outcome
             .marketplaces
             .into_iter()
-            .filter(|marketplace| marketplace.name != OPENAI_CURATED_MARKETPLACE_NAME)
+            .filter(|marketplace| !is_openai_curated_marketplace_name(&marketplace.name))
             .filter_map(|marketplace| {
                 match policy.validate_install(
                     &config.config_layer_stack,
@@ -2032,7 +2101,7 @@ impl PluginsManager {
             self.codex_home.as_path(),
         );
         outcome.marketplaces.retain(|marketplace| {
-            marketplace.name == OPENAI_CURATED_MARKETPLACE_NAME
+            is_openai_curated_marketplace_name(&marketplace.name)
                 || allowed_marketplace_names.contains(&marketplace.name)
         });
         Ok(outcome)

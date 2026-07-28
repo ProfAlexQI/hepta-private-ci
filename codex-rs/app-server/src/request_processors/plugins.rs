@@ -467,6 +467,7 @@ impl PluginRequestProcessor {
             return Ok(empty_response());
         }
         let auth = self.auth_manager.auth().await;
+        plugins_manager.set_auth_mode(auth.as_ref().map(CodexAuth::api_auth_mode));
         if !self
             .workspace_codex_plugins_enabled(&config, auth.as_ref())
             .await

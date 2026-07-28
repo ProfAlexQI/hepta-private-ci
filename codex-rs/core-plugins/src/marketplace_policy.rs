@@ -2,6 +2,7 @@ use crate::OPENAI_BUNDLED_MARKETPLACE_NAME;
 use crate::OPENAI_CURATED_MARKETPLACE_NAME;
 use crate::installed_marketplaces::marketplace_install_root;
 use crate::installed_marketplaces::resolve_configured_marketplace_root;
+use crate::is_openai_curated_marketplace_name;
 use crate::marketplace::marketplace_root_dir;
 use crate::marketplace_add::MarketplaceSource;
 use crate::marketplace_add::parse_marketplace_source;
@@ -230,7 +231,7 @@ pub(crate) fn project_effective_user_config(
             let Ok(plugin_id) = PluginId::parse(plugin_key) else {
                 return false;
             };
-            (plugin_id.marketplace_name == OPENAI_CURATED_MARKETPLACE_NAME
+            (is_openai_curated_marketplace_name(&plugin_id.marketplace_name)
                 && !configured_marketplace_names.contains(&plugin_id.marketplace_name))
                 || allowed_marketplace_names.contains(&plugin_id.marketplace_name)
         });
@@ -321,10 +322,9 @@ pub(crate) fn validate_marketplace_name_for_add(
     if let Some(expected_name) = expected_name {
         return validate_expected_marketplace_name(expected_name, marketplace_name);
     }
-    if matches!(
-        marketplace_name,
-        OPENAI_CURATED_MARKETPLACE_NAME | OPENAI_BUNDLED_MARKETPLACE_NAME
-    ) {
+    if is_openai_curated_marketplace_name(marketplace_name)
+        || marketplace_name == OPENAI_BUNDLED_MARKETPLACE_NAME
+    {
         return Err(format!(
             "marketplace `{marketplace_name}` is reserved and cannot be added from this source"
         ));

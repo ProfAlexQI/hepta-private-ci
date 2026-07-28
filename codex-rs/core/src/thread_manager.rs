@@ -278,6 +278,12 @@ impl ThreadManager {
             codex_home.to_path_buf(),
             restriction_product,
         ));
+        plugins_manager.set_auth_mode(
+            auth_manager
+                .auth_cached()
+                .as_ref()
+                .map(CodexAuth::api_auth_mode),
+        );
         let mcp_manager = Arc::new(McpManager::new(Arc::clone(&plugins_manager)));
         let skills_manager = Arc::new(SkillsManager::new_with_restriction_product(
             codex_home,
@@ -376,6 +382,12 @@ impl ThreadManager {
             codex_home.clone(),
             restriction_product,
         ));
+        plugins_manager.set_auth_mode(
+            auth_manager
+                .auth_cached()
+                .as_ref()
+                .map(CodexAuth::api_auth_mode),
+        );
         let mcp_manager = Arc::new(McpManager::new(Arc::clone(&plugins_manager)));
         let mcp_source_generation = ConfigGenerationSource::default();
         let skills_manager = Arc::new(SkillsManager::new_with_restriction_product(

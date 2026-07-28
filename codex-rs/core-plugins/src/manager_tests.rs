@@ -416,6 +416,73 @@ plugins = true
 }
 
 #[tokio::test]
+async fn plugins_for_config_routes_curated_plugins_by_auth_mode() {
+    let codex_home = TempDir::new().unwrap();
+    for marketplace_name in ["openai-curated", "openai-api-curated", "chatgpt-global"] {
+        let plugin_base = codex_home
+            .path()
+            .join("plugins/cache")
+            .join(marketplace_name)
+            .join("github");
+        write_plugin(&plugin_base, "local", "github");
+    }
+    write_file(
+        &codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[features]
+plugins = true
+remote_plugin = true
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."github@openai-api-curated"]
+enabled = true
+"#,
+    );
+
+    let config = load_config(codex_home.path(), codex_home.path()).await;
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {
+        marketplace_name: "chatgpt-global".to_string(),
+        id: "plugins~Plugin_github".to_string(),
+        name: "github".to_string(),
+        enabled: true,
+    }]);
+
+    let local = manager.plugins_for_config(&config).await;
+    assert_eq!(
+        local
+            .plugins()
+            .iter()
+            .map(|plugin| plugin.config_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["github@openai-curated"]
+    );
+
+    assert!(manager.set_auth_mode(Some(AuthMode::ApiKey)));
+    let api = manager.plugins_for_config(&config).await;
+    assert_eq!(
+        api.plugins()
+            .iter()
+            .map(|plugin| plugin.config_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["github@openai-api-curated"]
+    );
+
+    assert!(manager.set_auth_mode(Some(AuthMode::Chatgpt)));
+    let remote = manager.plugins_for_config(&config).await;
+    assert_eq!(
+        remote
+            .plugins()
+            .iter()
+            .map(|plugin| plugin.config_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["github@chatgpt-global"]
+    );
+    assert!(!manager.set_auth_mode(Some(AuthMode::Chatgpt)));
+}
+
+#[tokio::test]
 async fn remote_installed_cache_ignores_plugins_missing_local_cache() {
     let codex_home = TempDir::new().unwrap();
     write_file(

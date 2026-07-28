@@ -1,4 +1,5 @@
 use crate::OPENAI_CURATED_MARKETPLACE_NAME;
+use crate::is_openai_curated_marketplace_name;
 use crate::manifest::PluginManifestHooks;
 use crate::manifest::PluginManifestPaths;
 use crate::manifest::load_plugin_manifest;
@@ -6,6 +7,7 @@ use crate::marketplace::MarketplacePluginSource;
 use crate::marketplace::list_marketplaces;
 use crate::marketplace::load_marketplace;
 use crate::marketplace_policy::configured_plugins_from_stack;
+use crate::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;
 use crate::remote::RemoteInstalledPlugin;
 use crate::store::PluginStore;
 use crate::store::plugin_version_for_source;
@@ -51,6 +53,35 @@ const DEFAULT_MCP_CONFIG_FILE: &str = ".mcp.json";
 const DEFAULT_APP_CONFIG_FILE: &str = ".app.json";
 const CONFIG_TOML_FILE: &str = "config.toml";
 const CURATED_PLUGIN_CACHE_VERSION_SHA_PREFIX_LEN: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetCuratedMarketplace {
+    OpenAi,
+    OpenAiWithRemote,
+    OpenAiApi,
+}
+
+pub(crate) fn plugin_is_eligible_for_target_marketplace(
+    plugin_key: &str,
+    target: TargetCuratedMarketplace,
+) -> bool {
+    let Ok(plugin_id) = PluginId::parse(plugin_key) else {
+        return true;
+    };
+    match target {
+        TargetCuratedMarketplace::OpenAi => {
+            plugin_id.marketplace_name != crate::OPENAI_API_CURATED_MARKETPLACE_NAME
+                && plugin_id.marketplace_name != REMOTE_GLOBAL_MARKETPLACE_NAME
+        }
+        TargetCuratedMarketplace::OpenAiWithRemote => {
+            plugin_id.marketplace_name != crate::OPENAI_API_CURATED_MARKETPLACE_NAME
+        }
+        TargetCuratedMarketplace::OpenAiApi => {
+            plugin_id.marketplace_name != crate::OPENAI_CURATED_MARKETPLACE_NAME
+                && plugin_id.marketplace_name != REMOTE_GLOBAL_MARKETPLACE_NAME
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum NonCuratedCacheRefreshMode {
@@ -339,7 +370,7 @@ fn refresh_non_curated_plugin_cache_with_mode(
     let mut configured_non_curated_plugin_ids = configured_plugin_keys
         .iter()
         .filter_map(|plugin_key| match PluginId::parse(plugin_key) {
-            Ok(plugin_id) if plugin_id.marketplace_name != OPENAI_CURATED_MARKETPLACE_NAME => {
+            Ok(plugin_id) if !is_openai_curated_marketplace_name(&plugin_id.marketplace_name) => {
                 Some(plugin_id)
             }
             Ok(_) => None,
@@ -371,7 +402,7 @@ fn refresh_non_curated_plugin_cache_with_mode(
     let mut plugin_sources = HashMap::<String, MarketplacePluginSource>::new();
 
     for marketplace in marketplace_outcome.marketplaces {
-        if marketplace.name == OPENAI_CURATED_MARKETPLACE_NAME {
+        if is_openai_curated_marketplace_name(&marketplace.name) {
             continue;
         }
 
@@ -551,7 +582,7 @@ fn curated_plugin_ids_from_config_keys(
         "ignoring invalid configured plugin key during curated sync setup",
     )
     .into_iter()
-    .filter(|plugin_id| plugin_id.marketplace_name == OPENAI_CURATED_MARKETPLACE_NAME)
+    .filter(|plugin_id| is_openai_curated_marketplace_name(&plugin_id.marketplace_name))
     .collect::<Vec<_>>();
     configured_curated_plugin_ids.sort_unstable_by_key(PluginId::as_key);
     configured_curated_plugin_ids

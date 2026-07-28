@@ -25,6 +25,52 @@ fn user_layer(path: AbsolutePathBuf, config: &str) -> ConfigLayerEntry {
 }
 
 #[test]
+fn curated_marketplace_eligibility_follows_auth_target() {
+    assert!(plugin_is_eligible_for_target_marketplace(
+        "github@openai-curated",
+        TargetCuratedMarketplace::OpenAi,
+    ));
+    assert!(!plugin_is_eligible_for_target_marketplace(
+        "github@openai-api-curated",
+        TargetCuratedMarketplace::OpenAi,
+    ));
+    assert!(!plugin_is_eligible_for_target_marketplace(
+        "github@chatgpt-global",
+        TargetCuratedMarketplace::OpenAi,
+    ));
+
+    assert!(plugin_is_eligible_for_target_marketplace(
+        "github@openai-curated",
+        TargetCuratedMarketplace::OpenAiWithRemote,
+    ));
+    assert!(plugin_is_eligible_for_target_marketplace(
+        "github@chatgpt-global",
+        TargetCuratedMarketplace::OpenAiWithRemote,
+    ));
+    assert!(!plugin_is_eligible_for_target_marketplace(
+        "github@openai-api-curated",
+        TargetCuratedMarketplace::OpenAiWithRemote,
+    ));
+
+    assert!(plugin_is_eligible_for_target_marketplace(
+        "github@openai-api-curated",
+        TargetCuratedMarketplace::OpenAiApi,
+    ));
+    assert!(!plugin_is_eligible_for_target_marketplace(
+        "github@openai-curated",
+        TargetCuratedMarketplace::OpenAiApi,
+    ));
+    assert!(!plugin_is_eligible_for_target_marketplace(
+        "github@chatgpt-global",
+        TargetCuratedMarketplace::OpenAiApi,
+    ));
+    assert!(plugin_is_eligible_for_target_marketplace(
+        "custom@example",
+        TargetCuratedMarketplace::OpenAiApi,
+    ));
+}
+
+#[test]
 fn configured_plugins_from_stack_merges_user_layers() {
     let temp_dir = TempDir::new().expect("tempdir");
     let stack = ConfigLayerStack::new(
