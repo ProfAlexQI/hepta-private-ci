@@ -41,6 +41,8 @@ verify() {
   local registry="codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
   local runtime="codex-rs/hepta-native-gateway/src/runtime_composition.rs"
   local gateway="codex-rs/hepta-native-gateway/src/native_gateway.rs"
+  local manifest_dispatch="codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs"
+  local route_manifest="codex-rs/hepta-native-gateway/src/route_manifest.rs"
   local routes="codex-rs/hepta-native-gateway/src/route_registry.rs"
   local gate_command="codex-rs/hepta-native-gateway/src/gate_command.rs"
   local telegram="codex-rs/hepta-native-gateway/src/native_telegram.rs"
@@ -54,7 +56,7 @@ verify() {
   local anchor="codex-rs/hepta-native-gateway/src/durability_anchor.rs"
   local freezer="codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
   local source
-  for source in "$registry" "$runtime" "$gateway" "$routes" "$gate_command" "$telegram" "$telegram_authority" "$mutation" "$operator_mutation" "$sensitive_http" "$preference" "$preference_attachment" "$reconciliation" "$anchor" "$freezer"; do
+  for source in "$registry" "$runtime" "$gateway" "$manifest_dispatch" "$route_manifest" "$routes" "$gate_command" "$telegram" "$telegram_authority" "$mutation" "$operator_mutation" "$sensitive_http" "$preference" "$preference_attachment" "$reconciliation" "$anchor" "$freezer"; do
     [[ -f "$ROOT/$source" ]] || {
       echo "native ingress composition source missing: $source" >&2
       return 1
@@ -133,11 +135,17 @@ verify() {
     'if receipt.live_read_authorized && receipt.durable_intent_recorded {' \
     "Telegram read authorization is not intent-bound"
   require_literal "$gateway" \
+    'manifest_dispatch::dispatch_manifest_route(' \
+    "native ingress dispatch bypasses the typed route manifest"
+  require_literal "$manifest_dispatch" \
     'telegram_receive_once_response(Some(runtime), options.with_telegram_plugin, 20)' \
     "Telegram receive dispatch bypasses RuntimeKernel authorization"
-  require_literal "$gateway" \
-    'if method == "POST" && path == TELEGRAM_RECEIVE_ONCE_ENDPOINT {' \
-    "credentialed Telegram effect remains reachable by GET"
+  require_literal "$manifest_dispatch" \
+    'let Some(manifest_entry) = route_manifest_entry(method, path) else {' \
+    "manifest dispatch does not enforce the declared method and path"
+  require_literal "$route_manifest" \
+    'declared_runtime_ingress_lifecycle(method, path).map(route_manifest_entry_from_lifecycle)' \
+    "route manifest does not derive dispatch from the typed ingress lifecycle"
   require_literal "$registry" \
     'let authority = match runtime.authorize_telegram_receive() {' \
     "Telegram receive admission bypasses RuntimeKernel authorization"
@@ -163,7 +171,7 @@ verify() {
   require_literal "$registry" \
     'path_pattern: RUNTIME_MUTATION_CANARY_ENDPOINT,' \
     "runtime mutation canary is not lifecycle classified"
-  require_literal "$gateway" \
+  require_literal "$manifest_dispatch" \
     'if !runtime_mutation_enabled() {' \
     "runtime mutation canary is not default-off"
   require_literal "$mutation" \
@@ -347,8 +355,14 @@ self_test() {
   local fixture
   fixture="$(mktemp -d)"
   trap 'rm -rf "$fixture"' RETURN
-  mkdir -p "$fixture/codex-rs/hepta-native-gateway/src" "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
+  mkdir -p \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_gateway" \
+    "$fixture/codex-rs/hepta-runtime/src/runtime_kernel"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/"{runtime_ingress.rs,runtime_composition.rs,native_gateway.rs,native_telegram.rs,telegram_authority.rs,runtime_mutation.rs,operator_mutation.rs,sensitive_http.rs,preference_ingress.rs,preference_attachment.rs,effect_reconciliation.rs,durability_anchor.rs,route_registry.rs,gate_command.rs} \
+    "$fixture/codex-rs/hepta-native-gateway/src/"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_gateway/"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/route_manifest.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/"
   cp "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs" \
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/"
@@ -384,6 +398,12 @@ self_test() {
     "native ingress composition self-test accepted an authority-free dispatch"
   cp "$ROOT/codex-rs/hepta-native-gateway/src/runtime_ingress.rs" \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_ingress.rs"
+  perl -0pi -e 's/telegram_receive_once_response\(Some\(runtime\), options\.with_telegram_plugin, 20\)/telegram_receive_once_response(None, options.with_telegram_plugin, 20)/' \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs"
+  expect_verify_failure "$fixture" \
+    "native ingress composition self-test accepted Telegram dispatch without RuntimeKernel authority"
+  cp "$ROOT/codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs" \
+    "$fixture/codex-rs/hepta-native-gateway/src/native_gateway/manifest_dispatch.rs"
   perl -0pi -e 's/!receipt\.durable_intent_recorded/false/' \
     "$fixture/codex-rs/hepta-native-gateway/src/runtime_mutation.rs"
   expect_verify_failure "$fixture" \
@@ -430,7 +450,7 @@ self_test() {
     "$fixture/codex-rs/hepta-runtime/src/runtime_kernel/context_freezer.rs"
   expect_verify_failure "$fixture" \
     "native ingress composition self-test accepted discarded preference authority"
-  echo '{"schema":"hepta.native-ingress-composition-self-test.v2","status":"ready","negative_fixtures":13}'
+  echo '{"schema":"hepta.native-ingress-composition-self-test.v2","status":"ready","negative_fixtures":14}'
 }
 
 case "${1:-}" in
