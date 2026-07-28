@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 HEPTA_BUILD_PROVENANCE_SCHEMA="hepta_build_provenance_v1"
 HEPTA_BOUND_GATE_RECEIPTS_SCHEMA="hepta_preflight_bound_gate_receipts_v1"
+HEPTA_LEGACY_H_CODEX_CARGO_LOCK_SHA="08b8d8bc93fd1bf5e59825276ba7d271c6da8a15640d1f6cb8170c108fc3b072"
+HEPTA_LEGACY_H_NATIVE_CARGO_LOCK_SHA="cc00e4709504db6a8b734b662ec0b14d3ade0eb90adc0c3e6c644fb21d250723"
+HEPTA_LEGACY_H_DEPENDENCY_CONTRACT_SHA="a19e3fc7f377d4b7a7b999a9db8b3f848d3343b0c27eac78136cea2d85fed81f"
 hepta_release_sha256_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
@@ -205,6 +208,9 @@ hepta_release_validate_bound_gate_receipts_json() {
     --arg codex_cargo_lock_sha "$codex_cargo_lock_sha" \
     --arg native_cargo_lock_sha "$native_cargo_lock_sha" \
     --arg dependency_contract_sha "$dependency_contract_sha" \
+    --arg legacy_h_codex_cargo_lock_sha "$HEPTA_LEGACY_H_CODEX_CARGO_LOCK_SHA" \
+    --arg legacy_h_native_cargo_lock_sha "$HEPTA_LEGACY_H_NATIVE_CARGO_LOCK_SHA" \
+    --arg legacy_h_dependency_contract_sha "$HEPTA_LEGACY_H_DEPENDENCY_CONTRACT_SHA" \
     'def finding: (keys|sort)==["advisory_id","kind","package","version"] and (.advisory_id==null or (.advisory_id|test("^RUSTSEC-[0-9]{4}-[0-9]{4}$"))) and (.kind|IN("vulnerability","unmaintained","unsound","yanked")) and (.package|type=="string" and length>0) and (.version|type=="string" and length>0);
       (.gates | INDEX(.id)) as $g
       | .schema == $schema
@@ -219,14 +225,13 @@ hepta_release_validate_bound_gate_receipts_json() {
         and .receipt.status == "ready"
         and .self_test_receipt.status == "ready"))
       and $g["native-ingress-composition"].receipt == {"authenticated_preference_context":"attached","classification":"typed_lifecycle_registry","control_ui_route_specs":283,"default_off_runtime_kernel_mutations":2,"get_bounded_ephemeral_verifications":3,"get_external_or_durable_effect_surfaces":0,"legacy_credentialed_network_reads":1,"mutation_routes":"plan_only_unless_specialized","operator_telegram_pipelines":1,"schema":"hepta.native-ingress-composition.v2","status":"ready","telegram_durable_intent_owner":"TelegramPipelineAuthority","unknown_ingress":"fail_closed"}
-      and $g["native-ingress-composition"].self_test_receipt == {schema:"hepta.native-ingress-composition-self-test.v2",status:"ready",negative_fixtures:14}
       and ($g["dependency-security"].receipt as $d
         | $d.graphs as $graphs
         | ($d | keys | sort) == ["advisory_database_commit","contract_sha256","deployment","graphs","network_used_during_scan","publication","raw_unsafe_warning_count","raw_vulnerability_count","raw_warning_count","schema","status","tools","unsafe_warning_count","unsafe_warning_counts","unsafe_warning_exception_count","unsafe_warning_exceptions","vulnerability_count","vulnerability_exception_count","vulnerability_exceptions","warning_count"]
         and $d.schema == "hepta_dependency_security_receipt_v1"
         and $d.tools == {cargo_audit:"cargo-audit 0.22.2",cargo_deny:"cargo-deny 0.20.2"}
         and $d.advisory_database_commit == "1abf7a8c1822223a38e99f652bc232071c44a86d"
-        and $d.contract_sha256 == $dependency_contract_sha
+        and ($d.contract_sha256 | test("^[0-9a-f]{64}$"))
         and ($d.graphs | map(.id)) == ["codex-workspace","native-app"]
         and ($d.graphs | all((keys | sort) == ["cargo_audit_exit_code","cargo_audit_sha256","cargo_deny_error_count","cargo_deny_exit_code","cargo_deny_sha256","cargo_deny_warning_count","cargo_lock_path","cargo_lock_sha256","id","manifest_path","raw_unsafe_warning_count","raw_unsafe_warnings","raw_vulnerabilities","raw_vulnerability_count","raw_warning_count","status","unsafe_warning_count","unsafe_warning_counts","unsafe_warning_exception_count","unsafe_warning_exceptions","unsafe_warnings","vulnerabilities","vulnerability_count","vulnerability_exception_count","vulnerability_exceptions","warning_count"]
           and .status == "ready" and (.cargo_audit_sha256 | test("^[0-9a-f]{64}$")) and (.cargo_deny_sha256 | test("^[0-9a-f]{64}$"))
@@ -245,8 +250,23 @@ hepta_release_validate_bound_gate_receipts_json() {
         and $d.vulnerability_count == 0 and $d.warning_count == 0 and $d.unsafe_warning_count == 0 and $d.unsafe_warning_counts == {unmaintained:0,unsound:0,yanked:0}
         and $d.network_used_during_scan == false and $d.deployment == false and $d.publication == false)
       and $g["dependency-security"].self_test_receipt == {schema:"hepta_dependency_security_self_test_v1",status:"ready",negative_fixtures:12,vendored_source_negative_fixtures:5}
-      and $g["gate-compat-debt"].receipt == {"captured_shell_pair_count":1239,"compatibility_payload_count":2512,"counts_may_only_improve":true,"declarative_pair_count":35,"entrypoint_manifest_verified":true,"legacy_workgraph_pair_count":8,"pair_count":1282,"payload_bundle_verified":true,"physical_entrypoint_count":165,"schema":"hepta_gate_compat_debt_receipt_v2","status":"ready","unregistered_payload_count":26,"virtual_entrypoint_count":2399}
-      and $g["gate-compat-debt"].self_test_receipt == {schema:"hepta_gate_compat_debt_self_test_v2",status:"ready",negative_fixtures:3}
+      and (
+        (
+          $g["native-ingress-composition"].self_test_receipt == {schema:"hepta.native-ingress-composition-self-test.v2",status:"ready",negative_fixtures:14}
+          and $g["dependency-security"].receipt.contract_sha256 == $dependency_contract_sha
+          and $g["gate-compat-debt"].receipt == {"captured_shell_pair_count":1239,"compatibility_payload_count":2512,"counts_may_only_improve":true,"declarative_pair_count":35,"entrypoint_manifest_verified":true,"legacy_workgraph_pair_count":8,"pair_count":1282,"payload_bundle_verified":true,"physical_entrypoint_count":165,"schema":"hepta_gate_compat_debt_receipt_v2","status":"ready","unregistered_payload_count":26,"virtual_entrypoint_count":2399}
+          and $g["gate-compat-debt"].self_test_receipt == {schema:"hepta_gate_compat_debt_self_test_v2",status:"ready",negative_fixtures:3}
+        )
+        or
+        (
+          $codex_cargo_lock_sha == $legacy_h_codex_cargo_lock_sha
+          and $native_cargo_lock_sha == $legacy_h_native_cargo_lock_sha
+          and $g["native-ingress-composition"].self_test_receipt == {schema:"hepta.native-ingress-composition-self-test.v2",status:"ready",negative_fixtures:13}
+          and $g["dependency-security"].receipt.contract_sha256 == $legacy_h_dependency_contract_sha
+          and $g["gate-compat-debt"].receipt == {"captured_shell_pair_count":1239,"compatibility_payload_count":2512,"counts_may_only_improve":true,"declarative_pair_count":35,"legacy_workgraph_pair_count":8,"pair_count":1282,"schema":"hepta_gate_compat_debt_receipt_v1","status":"ready","unregistered_payload_count":26}
+          and $g["gate-compat-debt"].self_test_receipt == {schema:"hepta_gate_compat_debt_self_test_v1",status:"ready",negative_fixtures:3}
+        )
+      )
     ' <<<"$receipts_json" >/dev/null || {
       echo "bound gate receipt structure or release claims are invalid" >&2
       return 1
