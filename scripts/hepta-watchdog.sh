@@ -5,6 +5,7 @@ BASE_URL="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib/hepta-watchdog-release-evidence-v1.sh"
 source "$REPO_ROOT/scripts/lib/hepta-watchdog-product-boundary-v1.sh"
+source "$REPO_ROOT/scripts/lib/hepta-immutable-watchdog-closure-v1.sh"
 
 RELEASE_BIN="${HEPTA_RELEASE_BIN:-${HEPTA_CODEX_RELEASE_BIN:-$REPO_ROOT/codex-rs/target/release/hepta}}"
 ROUTE_MANIFEST_BIN="${HEPTA_ROUTE_MANIFEST_BIN:-}"
@@ -14,6 +15,7 @@ CANDIDATE_MANIFEST="${HEPTA_CANDIDATE_MANIFEST:-${HEPTA_RELEASE_MANIFEST:-${HEPT
 INSTALLED_RECEIPT="${HEPTA_INSTALLED_RECEIPT:-${HEPTA_INSTALLED_MANIFEST:-${HEPTA_CODEX_INSTALLED_MANIFEST:-$INSTALLED_BIN.manifest}}}"
 EXPECTED_SOURCE_COMMIT="${HEPTA_EXPECTED_SOURCE_COMMIT:-}"
 PRODUCT_BOUNDARY="${HEPTA_PRODUCT_BOUNDARY:-$REPO_ROOT/docs/decisions/hepta-product-boundary-v1.json}"
+EXPECTED_WATCHDOG_AGGREGATE_SHA256="${HEPTA_EXPECTED_WATCHDOG_AGGREGATE_SHA256:-}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -70,6 +72,55 @@ fi
 if [[ -n "$EXPECTED_SOURCE_COMMIT" && ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
   echo "expected source commit must be a full Git SHA" >&2
   exit 2
+fi
+
+watchdog_closure_required=false
+watchdog_closure_bound=false
+watchdog_closure_aggregate_sha256=""
+watchdog_closure_source_commit=""
+if [[ -n "$EXPECTED_WATCHDOG_AGGREGATE_SHA256" ]]; then
+  watchdog_closure_required=true
+  [[ "$EXPECTED_WATCHDOG_AGGREGATE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "expected watchdog aggregate must be a SHA-256" >&2
+    exit 2
+  }
+  [[ -f "$CANDIDATE_MANIFEST" ]] || {
+    echo "immutable watchdog closure requires a candidate manifest" >&2
+    exit 1
+  }
+  watchdog_release_root="$(dirname "$(realpath "$CANDIDATE_MANIFEST")")"
+  watchdog_closure_json="$(jq -ce '.watchdog' "$CANDIDATE_MANIFEST")" || {
+    echo "candidate manifest has no immutable watchdog closure" >&2
+    exit 1
+  }
+  watchdog_closure_source_commit="$(jq -r '.source.commit' "$CANDIDATE_MANIFEST")"
+  watchdog_closure_aggregate_sha256="$(jq -r '.aggregate_sha256' <<<"$watchdog_closure_json")"
+  hepta_immutable_watchdog_verify \
+    "$watchdog_release_root" \
+    "$watchdog_closure_source_commit" \
+    true \
+    "$watchdog_closure_json" || {
+    echo "immutable watchdog closure verification failed" >&2
+    exit 1
+  }
+  expected_entrypoint="$watchdog_release_root/$(
+    jq -r '.entrypoint' <<<"$watchdog_closure_json"
+  )"
+  [[ "$(realpath "${BASH_SOURCE[0]}")" == "$(realpath "$expected_entrypoint")" ]] || {
+    echo "running watchdog is not the candidate manifest entrypoint" >&2
+    exit 1
+  }
+  [[ "$watchdog_closure_aggregate_sha256" == "$EXPECTED_WATCHDOG_AGGREGATE_SHA256" ]] || {
+    echo "watchdog aggregate differs from the installed expectation" >&2
+    exit 1
+  }
+  [[ "$(realpath "$PRODUCT_BOUNDARY")" == "$(
+    realpath "$watchdog_release_root/$(jq -r '.product_boundary' <<<"$watchdog_closure_json")"
+  )" ]] || {
+    echo "watchdog product boundary is not release-bound" >&2
+    exit 1
+  }
+  watchdog_closure_bound=true
 fi
 
 require_active_health=false
@@ -204,6 +255,10 @@ report="$(jq -n \
   --arg route_manifest_sha256 "$route_manifest_sha256" \
   --arg release_sha "$release_sha" \
   --arg installed_sha "$installed_sha" \
+  --arg watchdog_closure_aggregate_sha256 "$watchdog_closure_aggregate_sha256" \
+  --arg watchdog_closure_source_commit "$watchdog_closure_source_commit" \
+  --argjson watchdog_closure_required "$watchdog_closure_required" \
+  --argjson watchdog_closure_bound "$watchdog_closure_bound" \
   --argjson release_evidence_ready "$release_evidence_ready" \
   --argjson candidate_required "$require_candidate_artifact" \
   --argjson deployed_required "$require_deployed_receipt" \
@@ -285,6 +340,7 @@ report="$(jq -n \
     watchdog_mode:$watchdog_mode,
     status: (
       if $release_evidence_ready == true
+        and ($watchdog_closure_required == false or $watchdog_closure_bound == true)
         and $health.status == "ready"
         and $route_manifest_schema == "hepta_route_effect_gate_manifest_v1"
         and ($route_manifest_sha256 | length) == 64
@@ -474,6 +530,17 @@ report="$(jq -n \
     release_sha256:$release_sha,
     installed_sha256:$installed_sha,
     binary_sha_match:$binary_sha_match,
+    immutable_watchdog_closure:{
+      required:$watchdog_closure_required,
+      bound:$watchdog_closure_bound,
+      aggregate_sha256:(
+        if $watchdog_closure_required then $watchdog_closure_aggregate_sha256 else null end
+      ),
+      source_commit:(
+        if $watchdog_closure_required then $watchdog_closure_source_commit else null end
+      ),
+      mutable_worktree_dependency:false
+    },
     active_health:{required:true,status:(if $health.status == "ready" then "ready" else "failed" end)},
     route_effect_gate_manifest:{
       schema_version:$route_manifest_schema,

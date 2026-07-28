@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+manifest=""
+installed_bin="${HEPTA_INSTALLED_BIN:-$HOME/.local/opt/hepta/bin/hepta}"
+installed_receipt="${HEPTA_INSTALLED_RECEIPT:-$installed_bin.manifest}"
+live_url="${HEPTA_LIVE_URL:-http://127.0.0.1:7373}"
+label="ai.hepta.installed-live-watchdog"
+interval_seconds=900
+launch_agent="$HOME/Library/LaunchAgents/$label.plist"
+install_job=false
+
+usage() {
+  cat >&2 <<'EOF'
+usage: scripts/hepta-install-live-watchdog --manifest PATH [options]
+
+Options:
+  --installed-bin PATH
+  --installed-receipt PATH
+  --live-url URL
+  --label LABEL
+  --interval-seconds N
+  --launch-agent PATH
+  --install
+
+Without --install, the immutable LaunchAgent plist is written and validated but
+not loaded. With --install, the existing user job is replaced and kickstarted.
+EOF
+  exit 2
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --manifest) shift; [[ $# -gt 0 ]] || usage; manifest="$1" ;;
+    --installed-bin) shift; [[ $# -gt 0 ]] || usage; installed_bin="$1" ;;
+    --installed-receipt) shift; [[ $# -gt 0 ]] || usage; installed_receipt="$1" ;;
+    --live-url) shift; [[ $# -gt 0 ]] || usage; live_url="$1" ;;
+    --label) shift; [[ $# -gt 0 ]] || usage; label="$1" ;;
+    --interval-seconds) shift; [[ $# -gt 0 ]] || usage; interval_seconds="$1" ;;
+    --launch-agent) shift; [[ $# -gt 0 ]] || usage; launch_agent="$1" ;;
+    --install) install_job=true ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+[[ -n "$manifest" ]] || usage
+[[ "$interval_seconds" =~ ^[1-9][0-9]*$ ]] || {
+  echo "watchdog interval must be a positive integer" >&2
+  exit 2
+}
+[[ "$label" =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "watchdog label contains unsupported characters" >&2
+  exit 2
+}
+
+manifest="$(realpath "$manifest")"
+release_dir="$(dirname "$manifest")"
+verify_tool="$release_dir/$(jq -r '.watchdog.verify_tool // empty' "$manifest")"
+[[ -x "$verify_tool" && ! -L "$verify_tool" ]] || {
+  echo "release-bound immutable verifier is missing: $verify_tool" >&2
+  exit 1
+}
+"$verify_tool" verify --manifest "$manifest" >/dev/null
+
+jq -e '
+  .status == "ready"
+  and .policy.release_contract_version == 3
+  and .watchdog.immutable_release_bound == true
+  and .watchdog.source.commit_bound == true
+  and .watchdog.source.commit == .source.commit
+' "$manifest" >/dev/null || {
+  echo "watchdog installation requires a source-bound immutable release v3 manifest" >&2
+  exit 1
+}
+
+entrypoint="$release_dir/$(jq -r '.watchdog.entrypoint' "$manifest")"
+product_boundary="$release_dir/$(jq -r '.watchdog.product_boundary' "$manifest")"
+release_bin="$release_dir/$(jq -r '.artifact.relative_path' "$manifest")"
+source_commit="$(jq -r '.source.commit' "$manifest")"
+manifest_sha="$(shasum -a 256 "$manifest" | awk '{print $1}')"
+watchdog_aggregate_sha="$(jq -r '.watchdog.aggregate_sha256' "$manifest")"
+[[ -x "$entrypoint" && ! -L "$entrypoint" ]] || {
+  echo "release-bound watchdog entrypoint is missing: $entrypoint" >&2
+  exit 1
+}
+[[ -f "$product_boundary" && ! -L "$product_boundary" ]] || {
+  echo "release-bound product boundary is missing: $product_boundary" >&2
+  exit 1
+}
+
+mkdir -p "$(dirname "$launch_agent")" "$HOME/.local/opt/hepta/logs/watchdog"
+staged_plist="$(mktemp "$(dirname "$launch_agent")/.${label}.XXXXXX.plist")"
+trap 'rm -f "$staged_plist"' EXIT
+
+python3 - \
+  "$staged_plist" \
+  "$label" \
+  "$entrypoint" \
+  "$release_dir" \
+  "$interval_seconds" \
+  "$live_url" \
+  "$release_bin" \
+  "$installed_bin" \
+  "$installed_receipt" \
+  "$manifest" \
+  "$source_commit" \
+  "$product_boundary" \
+  "$watchdog_aggregate_sha" <<'PY'
+import plistlib
+from pathlib import Path
+import sys
+
+(
+    output,
+    label,
+    entrypoint,
+    release_dir,
+    interval_seconds,
+    live_url,
+    release_bin,
+    installed_bin,
+    installed_receipt,
+    manifest,
+    source_commit,
+    product_boundary,
+    watchdog_aggregate_sha,
+) = sys.argv[1:]
+
+payload = {
+    "Label": label,
+    "ProgramArguments": [entrypoint],
+    "RunAtLoad": True,
+    "StartInterval": int(interval_seconds),
+    "WorkingDirectory": release_dir,
+    "StandardOutPath": str(Path.home() / ".local/opt/hepta/logs/watchdog/stdout.log"),
+    "StandardErrorPath": str(Path.home() / ".local/opt/hepta/logs/watchdog/stderr.log"),
+    "EnvironmentVariables": {
+        "HOME": str(Path.home()),
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "HEPTA_WATCHDOG_MODE": "deployment-consistency",
+        "HEPTA_LIVE_URL": live_url,
+        "HEPTA_RELEASE_BIN": release_bin,
+        "HEPTA_ROUTE_MANIFEST_BIN": release_bin,
+        "HEPTA_INSTALLED_BIN": installed_bin,
+        "HEPTA_INSTALLED_RECEIPT": installed_receipt,
+        "HEPTA_CANDIDATE_MANIFEST": manifest,
+        "HEPTA_EXPECTED_SOURCE_COMMIT": source_commit,
+        "HEPTA_PRODUCT_BOUNDARY": product_boundary,
+        "HEPTA_EXPECTED_WATCHDOG_AGGREGATE_SHA256": watchdog_aggregate_sha,
+    },
+}
+with Path(output).open("wb") as destination:
+    plistlib.dump(payload, destination, fmt=plistlib.FMT_XML, sort_keys=True)
+PY
+
+plutil -lint "$staged_plist" >/dev/null
+chmod 0644 "$staged_plist"
+mv -f "$staged_plist" "$launch_agent"
+trap - EXIT
+
+loaded=false
+if [[ "$install_job" == "true" ]]; then
+  domain="gui/$(id -u)"
+  launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+  launchctl bootstrap "$domain" "$launch_agent"
+  launchctl kickstart -k "$domain/$label"
+  launchctl print "$domain/$label" >/dev/null
+  loaded=true
+fi
+
+jq -cn \
+  --arg status ready \
+  --arg label "$label" \
+  --arg plist "$launch_agent" \
+  --arg program "$entrypoint" \
+  --arg working_directory "$release_dir" \
+  --arg manifest "$manifest" \
+  --arg manifest_sha256 "$manifest_sha" \
+  --arg source_commit "$source_commit" \
+  --arg watchdog_aggregate_sha256 "$watchdog_aggregate_sha" \
+  --argjson interval_seconds "$interval_seconds" \
+  --argjson loaded "$loaded" \
+  '{
+    schema:"hepta_immutable_watchdog_install_v1",
+    status:$status,
+    label:$label,
+    plist:$plist,
+    program:$program,
+    working_directory:$working_directory,
+    manifest:$manifest,
+    manifest_sha256:$manifest_sha256,
+    source_commit:$source_commit,
+    watchdog_aggregate_sha256:$watchdog_aggregate_sha256,
+    run_at_load:true,
+    interval_seconds:$interval_seconds,
+    loaded:$loaded,
+    mutable_worktree_dependency:false
+  }'
