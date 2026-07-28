@@ -88,6 +88,8 @@ pub fn build_turns_from_rollout_items(items: &[RolloutItem]) -> Vec<Turn> {
 pub struct ThreadHistoryItemChange {
     pub turn_id: String,
     pub item: ThreadItem,
+    pub started_at_ms: Option<i64>,
+    pub completed_at_ms: Option<i64>,
 }
 
 /// Lightweight turn metadata snapshot for projectors that track turn status without

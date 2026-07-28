@@ -1324,6 +1324,7 @@ mod tests {
                 id: "item-1".to_string(),
                 content: Vec::new(),
             }),
+            started_at_ms: Some(0),
             completed_at_ms: 1,
         }));
 

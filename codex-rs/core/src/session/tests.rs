@@ -6520,6 +6520,23 @@ async fn upsert_goal_test_thread(session: &Session) {
         .expect("goal test thread should be upserted");
 }
 
+#[tokio::test]
+async fn item_completion_without_start_uses_completion_timestamp() {
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let item = TurnItem::UserMessage(codex_protocol::items::UserMessageItem {
+        id: "missing-start".to_string(),
+        content: Vec::new(),
+    });
+
+    session.emit_turn_item_completed(&turn_context, item).await;
+
+    let completed = rx.recv().await.expect("completed item event");
+    let EventMsg::ItemCompleted(event) = completed.msg else {
+        panic!("expected completed item event");
+    };
+    assert_eq!(event.started_at_ms, Some(event.completed_at_ms));
+}
+
 // Like make_session_and_context, but returns Arc<Session> and the event receiver
 // so tests can assert on emitted events.
 pub(crate) async fn make_session_and_context_with_rx() -> (
