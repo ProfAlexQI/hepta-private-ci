@@ -54,7 +54,6 @@ struct CompleteContractFlow {
 fn complete_architecture_flow_compares_as_whole_objects() -> Result<(), ContractError> {
     let actual = contract_flow()?;
     let expected = contract_flow()?;
-
     assert_eq!(actual, expected);
     Ok(())
 }
@@ -67,7 +66,6 @@ fn tool_schema_preserves_exact_provider_contract_material() {
         input_schema_json: r#"{"type":"object"}"#.into(),
         output_schema_json: r#"{"type":"string"}"#.into(),
     };
-
     assert_eq!(
         schema,
         ToolSchema {
