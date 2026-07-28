@@ -1372,7 +1372,7 @@ wrong_dependency_tool yes (.gates[] | select(.id == "dependency-security") | .re
 wrong_dependency_database yes (.gates[] | select(.id == "dependency-security") | .receipt.advisory_database_commit) = ("0" * 40)
 wrong_dependency_contract yes (.gates[] | select(.id == "dependency-security") | .receipt.contract_sha256) = ("0" * 64)
 minimal_ingress_receipt yes (.gates[] | select(.id == "native-ingress-composition") | .receipt) = {schema:"hepta.native-ingress-composition.v2",status:"ready"}
-minimal_compat_receipt yes (.gates[] | select(.id == "gate-compat-debt") | .receipt) = {schema:"hepta_gate_compat_debt_receipt_v1",status:"ready",counts_may_only_improve:true}
+minimal_compat_receipt yes (.gates[] | select(.id == "gate-compat-debt") | .receipt) = {schema:"hepta_gate_compat_debt_receipt_v2",status:"ready",counts_may_only_improve:true}
 EOF
   while read -r negative_name negative_filter; do
     mutated_provenance="$(jq -c "$negative_filter" <<<"$provenance")"
